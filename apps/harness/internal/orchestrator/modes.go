@@ -19,6 +19,8 @@ import (
 
 // StartOpts are the per-turn choices of a started turn.
 type StartOpts struct {
+	// SessionID is the main session the turn runs in ("": the project's default session).
+	SessionID string
 	// Mode overrides the project's mode for this turn ("": the project's).
 	Mode string
 	// PlanText, when set, is an approved plan pinned at the top of the agent's context.
@@ -250,13 +252,21 @@ func (o *Orchestrator) savePlan(rt *runtime, text string) {
 	rt.publish(events.PlanCreated, map[string]any{"plan": p})
 }
 
-// LatestPlan is the project's newest plan (projectstore.ErrNotFound: none).
+// LatestPlan is the default session's newest plan (projectstore.ErrNotFound: none).
 func (o *Orchestrator) LatestPlan(ctx context.Context, pid string) (projectstore.Plan, error) {
+	return o.LatestSessionPlan(ctx, pid, "")
+}
+
+// LatestSessionPlan is a main session's newest plan ("": the default's).
+func (o *Orchestrator) LatestSessionPlan(ctx context.Context, pid, sid string) (projectstore.Plan, error) {
 	db, err := o.store.Get(ctx, pid)
 	if err != nil {
 		return projectstore.Plan{}, err
 	}
-	return db.LatestPlan(ctx)
+	if sid, err = o.mainSession(ctx, db, sid); err != nil {
+		return projectstore.Plan{}, err
+	}
+	return db.LatestSessionPlan(ctx, sid)
 }
 
 // ApprovePlan marks the plan approved and starts an agent turn with it pinned
@@ -274,10 +284,11 @@ func (o *Orchestrator) ApprovePlan(ctx context.Context, pid, planID string) (pro
 	if p.Status != projectstore.PlanPending {
 		return p, projectstore.Message{}, ErrPlanNotPending
 	}
-	if o.Running(pid) {
+	if p.SessionID != "" && o.RunningSession(pid, p.SessionID) || p.SessionID == "" && o.Running(pid) {
 		return p, projectstore.Message{}, ErrTurnInProgress
 	}
-	msg, err := o.StartWith(ctx, pid, approvePrompt, StartOpts{Mode: projectstore.ModeAgent, PlanText: p.Text})
+	// The approved plan runs in the session that made it.
+	msg, err := o.StartWith(ctx, pid, approvePrompt, StartOpts{SessionID: p.SessionID, Mode: projectstore.ModeAgent, PlanText: p.Text})
 	if err != nil {
 		return p, msg, err
 	}

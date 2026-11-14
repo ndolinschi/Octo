@@ -17,7 +17,7 @@ func (s *Server) listChanges(w http.ResponseWriter, r *http.Request) {
 		}
 		turn = n
 	}
-	turns, err := s.svc.Changes(r.Context(), r.PathValue("pid"), turn)
+	turns, err := s.svc.SessionChanges(r.Context(), r.PathValue("pid"), turn, r.URL.Query().Get("session"))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -62,7 +62,7 @@ func (s *Server) revertChange(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listApprovals(w http.ResponseWriter, r *http.Request) {
-	list, err := s.svc.Approvals(r.Context(), r.PathValue("pid"))
+	list, err := s.svc.SessionApprovals(r.Context(), r.PathValue("pid"), r.URL.Query().Get("session"))
 	if err != nil {
 		writeErr(w, err)
 		return

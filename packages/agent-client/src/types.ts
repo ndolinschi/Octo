@@ -115,9 +115,24 @@ export type ProjectSummary = {
   pending_inputs?: number;
   /** "needs_you" while an approval or a form waits; "failed" when the last turn failed and nothing waits; else "none". */
   attention?: ProjectAttentionKind;
+  /** Parallel sessions (schema 15): the project's main sessions (not archived) by live state. */
+  sessions?: ProjectSessionsSummary;
+};
+
+/** Parallel sessions: counts of a project's main sessions (absent on an older harness). */
+export type ProjectSessionsSummary = { total: number; running: number; queued: number; needs_you: number; failed: number };
+
+/** Parallel sessions: the project's sessions setting (`PATCH /projects/{id}` `session_settings`). */
+export type SessionSettings = {
+  /** Main sessions of the project running turns at once (1-8, default 3). */
+  max_running: number;
+  default_workspace: "shared" | "worktree";
+  coordination: "workspace" | "project" | "off";
 };
 
 export type Project = ProjectSummary & {
+  /** Parallel sessions (absent on an older harness). */
+  session_settings?: SessionSettings;
   instructions: string;
   folders: Folder[];
   models: Models;
@@ -150,6 +165,8 @@ export type Project = ProjectSummary & {
 };
 
 export type Agent = {
+  /** Parallel sessions (schema 15): the main session the agent works in (a root agent's own; a sub-agent's root's). */
+  session_id?: string;
   /** The latest plan an ACP agent published (absent on a harness that predates plans). */
   plan?: PlanEntry[] | null;
   id: string;
@@ -217,7 +234,7 @@ export type Message = {
   role: "user" | "assistant";
   content: ContentBlock[];
   created_at: string;
-  /** The turn was stopped while this reply was being written (its text is cut). */
+  /** The reply was cut short (its text is cut): the turn was stopped, its stream broke off, or the harness restarted while it was written. */
   stopped?: boolean;
   /** B11: on a user message that ran an ACP agent's slash command, the command's name (without the slash); `session_report` marks a note of sub-agent results handed to the orchestrator (show it as a quiet note, not as typed text). */
   command?: string;
@@ -478,6 +495,8 @@ export type ProjectUpdatedEvent = { type: "project.updated"; seq: number; projec
 export type TurnFinishedEvent = ErrorFields & {
   type: "turn.finished";
   seq: number;
+  /** Parallel sessions: the root agent of the session whose turn ended (`session_id` names the session). */
+  agent_id?: string;
   status: TurnStatus;
   /**
    * The plain one-sentence message of the failure; for a completed turn with a standing notice it is
@@ -515,6 +534,8 @@ export type SessionCreatedEvent = { type: "session.created"; seq: number; sessio
 export type SessionUpdatedEvent = { type: "session.updated"; seq: number; session?: ProjectSession; session_id?: string; deleted?: boolean };
 /** Another main session became the current one (resume, new session, /clear). */
 export type SessionCurrentEvent = { type: "session.current"; seq: number; session_id: string; previous_session_id: string };
+/** Parallel sessions: another main session became the default (published before `session.current`, its old name). */
+export type SessionDefaultEvent = { type: "session.default"; seq: number; session_id: string; previous_session_id: string };
 export type ConversationClearedEvent = {
   type: "conversation.cleared";
   seq: number;
@@ -606,6 +627,8 @@ export type ProjectAttentionEvent = ErrorFields & {
   state?: "none" | "failed";
   /** The plain one-sentence message of the failure (decision 94b); `hint`, `command`, `action`, `details` come with it. */
   error?: string;
+  /** Parallel sessions: what waits for the person, per main session. */
+  sessions?: { session_id: string; needs_you: boolean; approvals: number; inputs: number; failed: boolean }[];
 };
 
 /**
@@ -633,7 +656,14 @@ export type MemoryUpdatedEvent = {
   session_boundary?: string;
 };
 
-export type BridgeEvent =
+/**
+ * Parallel sessions (schema 15): every event about a session's work carries the main session it belongs to (`message.*`,
+ * `tool.*`, `agent.*`, `turn.finished`, `queue.updated`, `approval.*`, `input.*`, `context.updated`, `plan.*`,
+ * `conversation.*`); absent from an older harness and from project-wide events.
+ */
+export type BridgeEvent = AnyBridgeEvent & { session_id?: string };
+
+type AnyBridgeEvent =
   | AgentCreatedEvent
   | AgentUpdatedEvent
   | MessageCreatedEvent
@@ -660,6 +690,7 @@ export type BridgeEvent =
   | SessionCreatedEvent
   | SessionUpdatedEvent
   | SessionCurrentEvent
+  | SessionDefaultEvent
   | FactRememberedEvent
   | FactForgottenEvent
   | SideDeltaEvent
@@ -1037,6 +1068,9 @@ export type QueuedMessage = {
   mode?: ProjectMode;
   /** Parity B12: ids of the attached images. */
   attachments?: string[];
+  /** Parallel sessions: the main session it waits in, and what for (its turn, or a free slot under the running caps). */
+  session_id?: string;
+  waiting_for?: "turn" | "slot";
 };
 
 // --- parity B3, B5, B6, B7 -------------------------------------------------------------------------------------
@@ -1103,9 +1137,9 @@ export type RememberKind = "fact" | "decision" | "preference" | "todo";
 
 /** A past request found by `searchRequests`. */
 export type RequestHit = { project_id: string; project_name: string; message_id: number; snippet: string; date: string };
-export type QueueState = { paused: boolean; messages: QueuedMessage[] };
+export type QueueState = { paused: boolean; messages: QueuedMessage[]; session_id?: string };
 /** What POST .../messages answers: the started turn's message, or (a turn is running) the queued one. */
-export type SendResult = { message: Message; queued?: undefined } | { queued: QueuedMessage; message?: undefined };
+export type SendResult = { message: Message; queued?: undefined } | { queued: QueuedMessage; message?: undefined; waiting_for?: "turn" | "slot" };
 
 // --- v7: approvals --------------------------------------------------------------------------------------------
 
@@ -1120,6 +1154,8 @@ export type ApprovalOption = { id: string; label: string; kind: "allow_once" | "
 export type Approval = {
   id: string;
   agent_id: string;
+  /** Parallel sessions: the main session whose turn asks. */
+  session_id?: string;
   /** The agent's role, or the plugin id of an ACP agent. */
   agent_label: string;
   turn_id: number;
@@ -1164,6 +1200,8 @@ export type InputField = {
 export type InputRequest = {
   id: string;
   agent_id: string;
+  /** Parallel sessions: the main session whose turn asks. */
+  session_id?: string;
   agent_label: string;
   turn_id: number;
   title: string;
@@ -1336,12 +1374,19 @@ export type MemoryExchange = {
   cost_usd: number | null;
   task_id?: string;
   removed?: boolean;
+  /** The harness stopped (a crash, a kill, a restart) while this turn ran; `status` is `failed`, `answer` what had been written. */
+  interrupted?: boolean;
+  /** Schema 15: why a failed turn failed (the catalogue's code, message and hint); absent otherwise and on older records. */
+  error?: { code: string; message: string; hint?: string };
+  /** A turn that did not complete (failed, stopped, interrupted): whether text it had written stays in the conversation; absent on a completed or forgotten exchange. */
+  kept_text?: boolean;
 };
 export type MemorySessionDetail = { session: MemorySession; exchanges: MemoryExchange[] };
 
 // --- Project sessions -----------------------------------------------------------------------------------------
 export type ProjectSessionKind = "main" | "agent";
-export type ProjectSessionState = "working" | "waiting" | "idle" | "failed" | "stopped";
+/** `queued` (schema 15): a main session whose message waits for a free slot under the running caps. */
+export type ProjectSessionState = "working" | "waiting" | "queued" | "idle" | "failed" | "stopped";
 /**
  * A session of the project: a conversation with the orchestrator (`main`) or the session of one sub-agent (`agent`,
  * `parent_session_id` = the main session whose turn spawned it, `turn_id` = that turn's request, 0/absent when the data
@@ -1363,9 +1408,24 @@ export type ProjectSession = {
   /** Agent sessions a main session started. */
   children: number;
   current: boolean;
+  /** Parallel sessions (schema 15): the main session that takes what is sent to the project without a session (`current` is its old name). */
+  default?: boolean;
   archived: boolean;
   /** The summary a `/clear` wrote when it ended this main session. */
   summary?: string;
+  /** Parallel sessions, main sessions only: its root agent, workspace, memory mode, mode ("" = the project's), queue and what waits for the person. */
+  root_agent_id?: string;
+  workspace?: { id: string; kind: "shared" | "worktree"; title: string; branch?: string };
+  memory?: "on" | "read" | "off";
+  memory_inherited?: boolean;
+  mode?: string;
+  queued?: number;
+  queue_paused?: boolean;
+  needs_you?: boolean;
+  pending_approvals?: number;
+  pending_inputs?: number;
+  /** Parallel sessions: the summary of the session's declared plan (coordination, phase 4). */
+  plan_summary?: string;
   /**
    * A message can be sent now. Main session: it is the current one (its messages go through `sendOrQueueMessage`);
    * agent session: `messageSession` is accepted (steered while it runs, continued after it finished).
@@ -1374,6 +1434,25 @@ export type ProjectSession = {
   /** Why not, for a disabled composer. `code`: `not_current`, `steer_unsupported`, `not_running`, `not_continuable`, `builtin_loop_unavailable`. */
   message_blocked?: { code: string; message: string };
 };
+/** `GET /v1/sessions` (parallel sessions): a main session of any project, with its project. */
+export type GlobalSession = ProjectSession & { project_id: string; project_name: string };
+export type AllSessionsParams = { kind?: ProjectSessionKind; state?: ProjectSessionState; archived?: boolean | "all"; limit?: number; before?: string };
+/** `POST /sessions` (parallel sessions, section 8). Phase 1 of the harness takes the shared workspace only. */
+export type NewSessionInput = {
+  title?: string;
+  workspace?: { kind: "shared" } | { kind: "worktree"; base_ref?: string; carry_changes?: boolean } | { id: string };
+  memory?: "project" | "on" | "read" | "off";
+  model?: string;
+  mode?: ProjectMode;
+  make_default?: boolean;
+  /** The first message, sent at once. */
+  text?: string;
+  /** With `clear: true`: `/clear` of that session (absent: the default). */
+  from_session_id?: string;
+  clear?: boolean;
+};
+/** What `POST /sessions` (and `POST /sessions/{sid}/clear`) answers: the new session and, with `text`, where that went. */
+export type CreatedSession = { session: ProjectSession; message?: Message; queued?: QueuedMessage; waiting_for?: "turn" | "slot" };
 export type SessionsParams = { kind?: ProjectSessionKind; state?: ProjectSessionState; archived?: boolean | "all"; limit?: number; before?: string };
 export type ProjectSessionDetail = {
   session: ProjectSession;

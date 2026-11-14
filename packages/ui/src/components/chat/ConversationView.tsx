@@ -10,6 +10,7 @@ import { hrefFor } from "../../lib/route";
 import { useChatSlots } from "../../state/chatSlots";
 import { useProject } from "../../state/project";
 import { CHAT, type TabId } from "../../state/workspace/layout";
+import { useSessionScope } from "../../state/session";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { roleName as baseRoleName } from "../../lib/orchestrator";
 import { useNav, useNavState } from "../../state/nav";
@@ -17,10 +18,10 @@ import { useComposerAnchor } from "./useComposerAnchor";
 
 /** Decision 63: the project's own agent goes by the project's name in its conversation, never "Orchestrator". */
 const nameIn = (projectName: string) => (a: Pick<Agent, "parent_id" | "role">) => (a.parent_id === null ? projectName : baseRoleName(a));
-import { showRail, turnWarning } from "../../lib/transcript";
-import { TurnBanner, providerIdOf, useAgentName, useLoginHint } from "./Transcript";
-import { errorFieldsOf } from "@octo/agent-client";
-import { recheckAgent } from "../../lib/providers/recheck";
+import { showRail } from "../../lib/transcript";
+/** The failed start of an empty project (rare): its own chunk. */
+const LoadFailed = lazy(() => import("./LoadFailed").then((m) => ({ default: m.LoadFailed })));
+const StartFailure = lazy(() => import("./StartFailure").then((m) => ({ default: m.StartFailure })));
 
 /** A sub-agent's header loads with the first Agent tab (its own chunk). */
 const AgentHeader = lazy(() => import("./AgentHeader").then((m) => ({ default: m.AgentHeader })));
@@ -34,10 +35,12 @@ import { useOrchestratorComposer } from "./useOrchestratorComposer";
 import { StreakLayer } from "../primitives/StreakLayer";
 import { STREAK_EMPTY } from "../../lib/streakPresets";
 import { useApp } from "../../state/app";
-import { ObserverBar } from "./ObserverBar";
+/** An Agent tab's read-only bar loads with the first Agent tab, like its header (a 40px placeholder keeps the row's height). */
+const ObserverBar = lazy(() => import("./ObserverBar").then((m) => ({ default: m.ObserverBar })));
 import { useBackdrop } from "../primitives/backdrop";
 const StickyPrompt = lazy(() => import("./StickyPrompt").then((m) => ({ default: m.StickyPrompt })));
-import { Transcript } from "./Transcript";
+import { transcriptPart } from "./transcriptPart";
+const Transcript = transcriptPart.Component;
 import { Presence } from "../primitives/Presence";
 
 /** The rewind dialog loads when first asked for (parity B5). */
@@ -84,7 +87,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const ws = useOptionalWorkspace();
   const slots = useChatSlots();
   const { theme, backdrop: appBackdrop, bridge } = useApp();
-  const { project, state, running, ensureMessages, projectId } = useProject();
+  const { project, state, running, ensureMessages, projectId, loadFailures, reload } = useProject();
   const agent = state.agents[agentId];
   const messages = state.messages[agentId];
   const streaming = state.streaming[agentId];
@@ -96,7 +99,9 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const anyRunning = state.agentOrder.some((id) => state.agents[id]?.status === "running");
   const now = useNow(anyRunning);
   const memory = ws?.memory;
-  const saved = memory?.get(tab, SCROLL_MEMORY);
+  // Decision 96: where the reader was is the session's own (Chat shows one session after another).
+  const spot = useSessionScope()?.memoryKey ?? tab;
+  const saved = memory?.get(spot, SCROLL_MEMORY);
   const scroll = useStickToBottom<HTMLDivElement>(
     [messages, streaming, agent?.status, agentId],
     saved ? saved.atBottom : isOrchestrator || agent?.status === "running",
@@ -201,12 +206,12 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
     restored.current = true;
     // Read now, not at render: the instance this one replaces saves its position in its cleanup, which runs in the
     // same commit after this render (a moved tab).
-    const at = memory?.get(tab, SCROLL_MEMORY);
+    const at = memory?.get(spot, SCROLL_MEMORY);
     if (at && !at.atBottom) {
       scroll.release();
       el.scrollTop = at.top;
     }
-  }, [messages, memory, tab, scroll]);
+  }, [messages, memory, spot, scroll]);
   // Opening a file narrows the conversation and the text re-wraps: keep the reader's place (decision 60). The scroller only
   // exists once there are messages, so the tracker is bound again when that changes.
   useScrollAnchor(scroll.ref, "article, article :is(p, li, pre, h1, h2, h3, h4, blockquote, tr)", messages === undefined ? 0 : messages.length === 0 ? 1 : 2);
@@ -216,10 +221,13 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
     const ref = scroll.ref;
     return () => {
       const el = ref.current;
-      if (el && memory) memory.set(tab, SCROLL_MEMORY, { top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight <= 2 });
+      if (el && memory) memory.set(spot, SCROLL_MEMORY, { top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight <= 2 });
     };
-  }, [memory, tab, scroll.ref]);
+  }, [memory, spot, scroll.ref]);
 
+  // A14: a first load that fails says so, with Retry, while it is retried with backoff. (The project itself failing is
+  // `ProjectWorkspace`'s notice.)
+  const failure = messages === undefined ? loadFailures[agentId] : undefined;
   if (!project) return null;
   const roleName = nameIn(project.name);
   if (!agent) {
@@ -275,7 +283,9 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
           <Suspense fallback={null}>
             <EmptyTitle project={project} />
           </Suspense>
-          <StartFailure agent={agent} />
+          <Suspense fallback={null}>
+            <StartFailure agent={agent} />
+          </Suspense>
         </div>
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col">
@@ -318,17 +328,24 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
                     <AgentHeader agent={agent} now={now} />
                   </Suspense>
                 )}
-                <Transcript
-                  agent={agent}
-                  messages={messages ?? []}
-                  now={now}
-                  watched={watched}
-                  speaker={agent?.parent_id === null ? (project?.name ?? "Assistant") : roleName(agent)}
-                  promptAuthor={isOrchestrator ? "You" : parent ? (parent.parent_id === null ? (project?.name ?? "Assistant") : roleName(parent)) : "Parent"}
-                  hideFirstPrompt={!isOrchestrator}
-                  onKeepEditing={isOrchestrator ? keepEditing : undefined}
-                  onRewind={isOrchestrator && bridge.rewind ? setRewinding : undefined}
-                />
+                {failure && (
+                  <Suspense fallback={null}>
+                    <LoadFailed error={failure} onRetry={() => void reload()} />
+                  </Suspense>
+                )}
+                <Suspense fallback={null}>
+                  <Transcript
+                    agent={agent}
+                    messages={messages ?? []}
+                    now={now}
+                    watched={watched}
+                    speaker={agent?.parent_id === null ? (project?.name ?? "Assistant") : roleName(agent)}
+                    promptAuthor={isOrchestrator ? "You" : parent ? (parent.parent_id === null ? (project?.name ?? "Assistant") : roleName(parent)) : "Parent"}
+                    hideFirstPrompt={!isOrchestrator}
+                    onKeepEditing={isOrchestrator ? keepEditing : undefined}
+                    onRewind={isOrchestrator && bridge.rewind ? setRewinding : undefined}
+                  />
+                </Suspense>
                 {isOrchestrator && (
                   <Suspense fallback={null}>
                     <InlineNotes />
@@ -361,7 +378,13 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
 
       <div ref={composerRow} className={cn(EDGES, "relative shrink-0", !empty && "pt-2 pb-3")}>
         <div data-column-edge className={cn("mx-auto w-full", empty ? "max-w-float" : "max-w-measure")}>
-          {isOrchestrator ? <Composer ref={composer} {...composerProps} comments={commentsSlot} onOverlay={setOverlay} /> : <ObserverBar />}
+          {isOrchestrator ? (
+            <Composer ref={composer} {...composerProps} comments={commentsSlot} onOverlay={setOverlay} />
+          ) : (
+            <Suspense fallback={<div className="h-bar" />}>
+              <ObserverBar />
+            </Suspense>
+          )}
         </div>
       </div>
       {empty && (
@@ -391,50 +414,6 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
       <p aria-live="polite" className="sr-only">
         {agent.status === "running" ? `${roleName(agent)} is working` : ""}
       </p>
-    </div>
-  );
-}
-
-/**
- * The orchestrator failed before anything was stored (an ACP agent that is not logged in): the failed turn shows above
- * the empty project's composer with its message and the agent's login hint — never a silent "Idle".
- */
-function StartFailure({ agent }: { agent: Agent }) {
-  const { state } = useProject();
-  const failed =
-    state.lastTurn?.status === "failed"
-      ? state.lastTurn.error
-      : agent.status === "failed" || (agent.error && !turnWarning(agent.error))
-        ? agent.error
-        : undefined;
-  const login = useLoginHint(failed !== undefined ? agent.model : null);
-  const agentName = useAgentName(agent.model);
-  const { bridge } = useApp();
-  const fromTurn = state.lastTurn?.status === "failed" ? errorFieldsOf(state.lastTurn) : agent.error_hint ? { hint: agent.error_hint } : {};
-  const recheck = async () => {
-    const id = providerIdOf(agent.model);
-    const ready = id ? await recheckAgent(bridge, id).catch(() => false) : false;
-    login.recheck();
-    return ready;
-  };
-  if (failed === undefined || agent.status === "running") return null;
-  return (
-    <div data-start-failure className="relative mx-auto mt-4 w-full max-w-float">
-      <Suspense fallback={null}>
-        <TurnBanner
-          status="failed"
-          error={failed}
-          retryText={null}
-          fields={{
-            ...fromTurn,
-            ...(fromTurn.hint || !login.hint ? {} : { hint: login.hint }),
-            ...("action" in fromTurn || !login.hint ? {} : { action: "recheck_provider" as const }),
-          }}
-          agent={agentName}
-          providerId={providerIdOf(agent.model)}
-          onCheck={recheck}
-        />
-      </Suspense>
     </div>
   );
 }

@@ -63,6 +63,9 @@ const (
 	SessionCreated = "session.created"
 	SessionUpdated = "session.updated"
 	SessionCurrent = "session.current"
+	// SessionDefault says another main session became the project's default (published before SessionCurrent,
+	// its old name, which carries the same fields).
+	SessionDefault = "session.default"
 	// SlashCommandsUpdated says the ACP agent's slash commands (or their pending state) changed:
 	// refetch GET /slash-commands.
 	SlashCommandsUpdated = "slash_commands.updated"

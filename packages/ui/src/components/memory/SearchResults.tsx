@@ -3,6 +3,10 @@ import { moveInList } from "../../lib/focus";
 import { useNow } from "../../lib/hooks";
 import { formatWhen } from "../../lib/memory/dates";
 import { emptyText, HIT_LIMIT, type HitTarget, type UiHit } from "../../lib/memory/search";
+import { ListChecks } from "lucide-react";
+import { fileIcon } from "../primitives/fileIcons";
+import { Glyph } from "../primitives/Glyph";
+import { GLYPH } from "../primitives/glyphs";
 import { Highlight } from "../primitives/Highlight";
 import { ListRow } from "../primitives/ListRow";
 import { PanelEmpty } from "../primitives/Panel";
@@ -58,6 +62,23 @@ export function SearchResults(props: { state: SearchState; query: string; canOpe
   );
 }
 
+/** The glyph column of a hit (every Memory list has one): what the hit is. */
+function hitIcon(hit: UiHit) {
+  switch (hit.kind) {
+    case "exchange":
+    case "message":
+      return GLYPH.sessions;
+    case "fact":
+      return GLYPH.memory;
+    case "task":
+      return ListChecks;
+    case "note":
+      return GLYPH.notes;
+    case "file":
+      return fileIcon(hit.target?.to === "file" ? hit.target.path : hit.name);
+  }
+}
+
 function HitRow(props: { hit: UiHit; now: number; openable: boolean; onOpen(target: HitTarget): void }) {
   const { hit } = props;
   const target = hit.target;
@@ -71,6 +92,7 @@ function HitRow(props: { hit: UiHit; now: number; openable: boolean; onOpen(targ
   return (
     <ListRow
       size="md"
+      leading={<Glyph icon={hitIcon(hit)} size={14} />}
       title={name}
       {...(single ? { meta: when } : {})}
       {...(single

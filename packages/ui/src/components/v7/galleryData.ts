@@ -72,7 +72,7 @@ export const FORMS: Record<"full" | "secret", InputRequest> = {
     agent_label: "coder",
     turn_id: 12,
     title: "Deploy settings",
-    reason: "I need these before I can write the deploy script. The token goes straight to the harness and is never shown to the model.",
+    reason: "I need these before I can write the deploy script. The token goes straight to Octo's local service and is never shown to the model.",
     fields: [
       { id: "name", label: "Service name", kind: "text", required: true, help: "Lowercase, used in the hostname." },
       { id: "token", label: "Deploy token", kind: "secret", required: true },
@@ -228,7 +228,7 @@ export function changesApi(mode: "ready" | "empty" | "loading" | "error", revert
   return {
     listChanges: async () => {
       if (mode === "loading") return new Promise<TurnChanges[]>(() => undefined);
-      if (mode === "error") throw new Error("The harness did not answer");
+      if (mode === "error") throw new Error("Octo's local service did not answer");
       await wait(80);
       return mode === "empty" ? [] : TURNS;
     },

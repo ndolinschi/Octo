@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { navigate } from "../lib/route";
+import { usePhone } from "../lib/phone";
 import { useApp } from "../state/app";
 import { CodeProvider, useCode } from "../state/code";
 import { CommentsProvider } from "../state/comments";
@@ -13,9 +14,13 @@ import { Button } from "../components/primitives/Button";
 import { Presence } from "../components/primitives/Presence";
 import { ChatSlotsProvider, type ChatSlots } from "../state/chatSlots";
 import { Panel } from "../components/shell/Panel";
+import { MainSkeleton } from "../components/shell/MainSkeleton";
 
 /** The status bar's project items load after first paint (its own chunk; the row itself is always there, so nothing shifts). */
 const ProjectStatus = lazy(() => import("../components/status/ProjectStatus").then((m) => ({ default: m.ProjectStatus })));
+
+/** Direction 7: the phone layout's one-line header in place of the tab strips (its own chunk, only in that mode). */
+const PhoneHeader = lazy(() => import("../components/dock/phone/PhoneHeader"));
 
 /** Keeps the project's command runs current for the top row, the run tabs and the status bar (decision 68). */
 const ProjectRunsFeed = lazy(() => import("../components/commands/ProjectRunsFeed"));
@@ -48,19 +53,27 @@ const CHAT_SLOTS: ChatSlots = {
 };
 
 /** One project: header row, then the dock of tab groups. */
-export function ProjectWorkspace(props: { agentId: string | null }) {
+export function ProjectWorkspace(props: { agentId: string | null; sessionId?: string | null; onLost(): void }) {
   const [settings, setSettings] = useState(false);
+  const phone = usePhone();
   const openSettings = useCallback(() => setSettings(true), []);
-  const { projectId } = useProject();
+  const { projectId, live, loadError, project } = useProject();
+  // P1-4: a stream that drops or a load that fails may mean the project was deleted elsewhere: the shell looks it up.
+  const lost = live === "reconnecting" || (loadError !== null && project === null);
+  const { onLost } = props;
+  useEffect(() => {
+    if (lost) onLost();
+  }, [lost, onLost]);
   return (
     // The file-view state sits above the workspace: the dock's width floors read each group's tree column (decision 94a).
     <FileViewProvider projectId={projectId}>
-      <WorkspaceProvider routeAgentId={props.agentId} onSettings={openSettings}>
+      <WorkspaceProvider routeAgentId={props.agentId} routeSessionId={props.sessionId ?? null} onSettings={openSettings}>
         <Files>
           <ChatSlotsProvider value={CHAT_SLOTS}>
             <Suspense fallback={null}>
               <ProjectStatus />
               <ProjectRunsFeed />
+              {phone && <PhoneHeader />}
             </Suspense>
             <Body />
           </ChatSlotsProvider>
@@ -130,8 +143,12 @@ function Body() {
         <Panel className="mt-bar flex-1">
           <LoadError message={loadError} onRetry={reload} />
         </Panel>
+      ) : project ? (
+        <Dock />
       ) : (
-        project && <Dock />
+        <Panel className="mt-bar flex-1">
+          <MainSkeleton />
+        </Panel>
       )}
     </div>
   );
@@ -165,12 +182,27 @@ function SettingsDialog({ show, onClose }: { show: boolean; onClose(): void }) {
   );
 }
 
+const NOTICE = "mx-auto w-full max-w-measure px-6 pt-10 text-sm max-drawer:px-4";
+
+/** P1-4: the route's project was deleted (the harness answered 404): nothing else is shown or sent to under its URL. */
+export function ProjectGone() {
+  return (
+    <div role="alert" className={NOTICE}>
+      <p className="text-fg">This project no longer exists.</p>
+      <p className="mt-1 text-fg-2">It was deleted, perhaps in another window. Your other projects are on Home.</p>
+      <Button size="sm" className="mt-3" onClick={() => navigate(null)}>
+        Go to Home
+      </Button>
+    </div>
+  );
+}
+
 function LoadError({ message, onRetry }: { message: string; onRetry(): Promise<void> }) {
   const [busy, setBusy] = useState(false);
   return (
-    <div role="alert" className="mx-auto w-full max-w-measure px-6 pt-10 text-sm max-drawer:px-4">
+    <div role="alert" className={NOTICE}>
       <p className="text-fg">Couldn't load this project.</p>
-      <p className="mt-1 text-fg-2">{message.replace(/\.$/, "")}. Check that the harness bridge is running, then retry.</p>
+      <p className="mt-1 text-fg-2">{message.replace(/\.$/, "")}. Octo tries again by itself; Retry tries now.</p>
       <Button
         size="sm"
         className="mt-3"

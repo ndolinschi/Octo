@@ -122,7 +122,7 @@ func (t *Tracker) PostWrite(ctx context.Context, scope Scope, f Folder, rel stri
 	}
 	t.mu.Lock()
 	if m := t.idx[f.Path]; m != nil {
-		t.setIndex(m, rel, abs, after)
+		t.setIndex(m, rel, after)
 	}
 	c, ok := t.record(context.WithoutCancel(ctx), scope, f.Label, rel, before, after)
 	t.mu.Unlock()
@@ -132,16 +132,16 @@ func (t *Tracker) PostWrite(ctx context.Context, scope Scope, f Folder, rel stri
 	return c, ok
 }
 
-// setIndex stores the file's current state in the index (and the pre-image copy).
-func (t *Tracker) setIndex(m map[string]*entry, rel, abs string, s Side) {
+// setIndex stores the file's state s in the index (and the pre-image copy).
+// The stamp is the one ReadSide took before reading the content: a stat taken
+// now could already describe a later write (another agent's command still
+// running), which the next snapshot would then skip as unchanged.
+func (t *Tracker) setIndex(m map[string]*entry, rel string, s Side) {
 	if !s.Exists {
 		delete(m, rel)
 		return
 	}
-	e := &entry{hash: s.Hash}
-	if fi, err := os.Lstat(abs); err == nil {
-		e.stamp = stamp{fi.Size(), fi.ModTime().UnixNano()}
-	}
+	e := &entry{hash: s.Hash, stamp: s.seen}
 	if s.Blob != nil && len(s.Blob) <= MaxShadowFile {
 		e.shadow = t.shadowPut(s.Hash, s.Blob)
 	}
@@ -181,7 +181,7 @@ func (t *Tracker) scan(ctx context.Context, folders []Folder, record bool, scope
 				old.stamp = st // touched, not changed
 				continue
 			}
-			t.setIndex(m, rel, abs, after)
+			t.setIndex(m, rel, after)
 			if record {
 				t.recordInto(ctx, scope, f.Label, rel, before, after, out)
 			}

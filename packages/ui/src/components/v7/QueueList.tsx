@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Clock, CircleStop, CornerDownLeft, MoreHorizontal, Pause, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Clock, CircleStop, CornerDownLeft, Info, MoreHorizontal, Pause, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { QueuedMessage } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
@@ -13,6 +13,8 @@ import { Menu, type MenuItem } from "../primitives/Menu";
 import { Notice } from "../primitives/Notice";
 import { Presence } from "../primitives/Presence";
 import { SectionHeader } from "../primitives/SectionHeader";
+import { Sheet } from "../primitives/Sheet";
+import { usePhone } from "../../lib/phone";
 
 export type QueueListProps = {
   paused: boolean;
@@ -26,15 +28,40 @@ export type QueueListProps = {
   steerUnsupported?: boolean;
   onResume(): Promise<void>;
   onClear(): Promise<void>;
+  /** Decision 96: the messages wait for a free slot under the running caps ("Waiting for a free slot (3 sessions running)"). */
+  waiting?: string | null | undefined;
 };
 
 type Pending = { kind: "remove" | "send" | "stop"; id: string } | { kind: "resume" | "clear" } | null;
 
 /**
  * Messages waiting for the running turn (v7 §2), as a compact stack above the composer: one 28px row each with "Send
- * now" and remove; folded past three; the paused state with Resume / Clear. Nothing when the queue is empty and running.
+ * now" and remove; folded past three; the paused state with Resume / Clear. Nothing when the queue is empty, paused or not (P2-8).
  */
 export function QueueList(props: QueueListProps) {
+  const phone = usePhone();
+  const [open, setOpen] = useState(false);
+  if (!phone) return <QueueBody {...props} />;
+  // Direction 7: on the phone the queue is one chip above the field ("2 queued") that opens the list in a bottom sheet.
+  const count = props.messages.length;
+  if (!count) return null;
+  return (
+    <div data-phone-queue className="flex px-1 pt-1">
+      <Button variant="quiet" size="sm" icon={props.paused ? Pause : Clock} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>
+        {props.paused ? `${count} queued · paused` : `${count} queued`}
+      </Button>
+      <Presence show={open}>
+        <Sheet label="Waiting to send" onClose={() => setOpen(false)}>
+          <div className="px-2 pb-2">
+            <QueueBody {...props} />
+          </div>
+        </Sheet>
+      </Presence>
+    </div>
+  );
+}
+
+function QueueBody(props: QueueListProps) {
   const [expanded, setExpanded] = useState(false);
   const [pending, setPending] = useState<Pending>(null);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
@@ -46,7 +73,9 @@ export function QueueList(props: QueueListProps) {
 
   // Removed rows disappear at once (optimistic); the next `queue.updated` confirms or, after a failure, they return.
   const messages = props.messages.filter((m) => !hidden.has(m.id));
-  if (!messages.length && !props.paused) return null;
+  // P2-8: paused with nothing queued is not shown (a cleared queue left an empty "Queue paused" strip); a message queued
+  // later brings the strip back with its count and Resume.
+  if (!messages.length) return null;
   const view = queueView(messages, expanded);
 
   const run = async (p: NonNullable<Pending>, work: () => Promise<void>, what: string) => {
@@ -85,9 +114,25 @@ export function QueueList(props: QueueListProps) {
 
   const count = messages.length;
   return (
-    <section aria-label={queueCountLabel(count)} className="@container/queue flex min-w-0 flex-col rounded-md border border-line bg-panel p-1 text-sm">
-      <SectionHeader inset level="caption" as="h3">
-        {props.paused ? (messages.length ? `${queueCountLabel(count)} · paused after a failed or stopped turn` : "Queue paused") : queueCountLabel(count)}
+    <section aria-label={queueCountLabel(count)} className="@container/queue flex min-w-0 flex-col border-b border-line p-1 text-sm">
+      {/* Round 3: narrow — the sentence is one info glyph's tooltip in the header (it took three lines of the card at 390). */}
+      <SectionHeader
+        inset
+        level="caption"
+        as="h3"
+        aside={
+          view.shown.length > 0 ? (
+            <span data-steer-reason={unsupported ? "" : undefined} className="inline-flex">
+              <IconButton icon={Info} size="xs" label={unsupported ? STEER_REASON : "Sent one by one when this turn ends."} />
+            </span>
+          ) : undefined
+        }
+      >
+        {props.paused
+          ? `${queueCountLabel(count)} · paused after a failed or stopped turn`
+          : props.waiting
+            ? `${queueCountLabel(count)} · ${props.waiting}`
+            : queueCountLabel(count)}
       </SectionHeader>
       {props.paused && (
         <div className="flex min-h-ctl-sm flex-wrap items-center gap-2 pr-0.5 pl-2">
@@ -96,17 +141,10 @@ export function QueueList(props: QueueListProps) {
           <Button size="xs" variant="secondary" disabled={pending !== null} onClick={() => void run({ kind: "resume" }, props.onResume, "resume the queue")}>
             Resume
           </Button>
-          {messages.length > 0 && (
-            <Button size="xs" variant="quiet" disabled={pending !== null} onClick={() => void run({ kind: "clear" }, props.onClear, "clear the queue")}>
-              Clear
-            </Button>
-          )}
+          <Button size="xs" variant="quiet" disabled={pending !== null} onClick={() => void run({ kind: "clear" }, props.onClear, "clear the queue")}>
+            Clear
+          </Button>
         </div>
-      )}
-      {view.shown.length > 0 && (
-        <p data-steer-reason={unsupported ? "" : undefined} className="px-2 pb-1 text-xs text-fg-3">
-          {unsupported ? STEER_REASON : "Sent one by one when this turn ends."}
-        </p>
       )}
       {view.shown.length > 0 && (
         <ul className="flex flex-col">
@@ -130,7 +168,7 @@ export function QueueList(props: QueueListProps) {
                       <>
                         <span className="flex gap-0.5 @max-[480px]/queue:hidden">
                           {!unsupported && <IconButton icon={CornerDownLeft} size="xs" label="Send now" disabled={pending !== null} onClick={sendNow} />}
-                          <IconButton icon={CircleStop} size="xs" label="Stop and send" disabled={pending !== null} onClick={stopSend} />
+                          <IconButton icon={CircleStop} size="xs" label="Stop this turn and send it now" disabled={pending !== null} onClick={stopSend} />
                           <IconButton icon={X} size="xs" label="Remove from queue" disabled={pending !== null} onClick={remove} />
                         </span>
                         <span className="hidden @max-[480px]/queue:inline-flex">
@@ -139,7 +177,7 @@ export function QueueList(props: QueueListProps) {
                             disabled={pending !== null}
                             items={[
                               ...(unsupported ? [] : [{ id: "now", label: "Send now", run: sendNow }]),
-                              { id: "stop", label: "Stop and send", run: stopSend },
+                              { id: "stop", label: "Stop this turn and send it now", run: stopSend },
                               { id: "remove", label: "Remove from queue", run: remove },
                             ]}
                           />

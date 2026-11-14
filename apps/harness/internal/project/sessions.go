@@ -73,9 +73,9 @@ func (s *Service) ListSessions(ctx context.Context, pid string, q SessionQuery) 
 		return nil, invalid("kind must be main or agent")
 	}
 	switch q.State {
-	case "", projectstore.SessionWorking, projectstore.SessionWaiting, projectstore.SessionIdle, projectstore.SessionFailed, projectstore.SessionStopped:
+	case "", projectstore.SessionWorking, projectstore.SessionWaiting, projectstore.SessionQueued, projectstore.SessionIdle, projectstore.SessionFailed, projectstore.SessionStopped:
 	default:
-		return nil, invalid("state must be working, waiting, idle, failed or stopped")
+		return nil, invalid("state must be working, waiting, queued, idle, failed or stopped")
 	}
 	switch q.Archived {
 	case "", "false":
@@ -167,11 +167,10 @@ func (s *Service) SessionMessagesOf(ctx context.Context, pid, sid string) (Sessi
 	if info.Kind != projectstore.KindMain {
 		return out, nil
 	}
-	orch, err := db.Orchestrator(ctx)
-	if err != nil {
-		return out, storeErr(err)
+	if info.RootAgentID == "" {
+		return out, nil
 	}
-	return s.filterMarkers(ctx, db, orch.ID, sid, out)
+	return s.filterMarkers(ctx, db, info.RootAgentID, sid, out)
 }
 
 // MessagesOfSession is the agent's messages route restricted to one main session (?session_id=): its messages
@@ -184,6 +183,10 @@ func (s *Service) MessagesOfSession(ctx context.Context, pid, aid, sid string) (
 	info, err := db.SessionInfoOf(ctx, sid)
 	if err != nil || info.Kind != projectstore.KindMain {
 		return SessionMessages{}, notFound("session")
+	}
+	// Schema 15: a session's messages are on its own root agent; any root's route answers for it.
+	if a, err := db.Agent(ctx, aid); err == nil && a.ParentID == nil && info.RootAgentID != "" {
+		aid = info.RootAgentID
 	}
 	all, err := db.Messages(ctx, aid)
 	if err != nil {
@@ -298,6 +301,7 @@ func (s *Service) DeleteSession(ctx context.Context, pid, sid string) error {
 	}
 	busy := info.State == projectstore.SessionWorking
 	if info.Kind == projectstore.KindMain {
+		busy = busy || s.sessions().ActiveSession(pid, sid)
 		kids, _ := db.ChildSessions(ctx, sid)
 		for _, k := range kids {
 			busy = busy || k.State == projectstore.SessionWorking
@@ -314,6 +318,7 @@ func (s *Service) DeleteSession(ctx context.Context, pid, sid string) error {
 		s.hub.Publish(pid, events.SessionUpdated, map[string]any{"session_id": id, "deleted": true})
 	}
 	if info.Kind == projectstore.KindMain {
+		s.sessions().ForgetSession(pid, sid)
 		s.hub.Publish(pid, "memory.updated", map[string]any{"session_id": sid, "deleted": true})
 	}
 	return nil

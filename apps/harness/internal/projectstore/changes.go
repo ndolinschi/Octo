@@ -39,6 +39,11 @@ type Change struct {
 	Source     string
 	ToolUseID  string
 	CreatedAt  string
+	// SessionID is the main session of the agent that made the change; WorkspaceID where it was made and
+	// Attribution how sure that is ("exact" until worktrees and shared windows are built). Schema 15.
+	SessionID   string
+	WorkspaceID string
+	Attribution string
 }
 
 // NewChange is a change to record with the blobs to store beside it (nil: the
@@ -48,7 +53,7 @@ type NewChange struct {
 	BeforeBlob, AfterBlob []byte
 }
 
-const changeCols = `id, turn_id, agent_id, folder, path, kind, before_hash, after_hash, added, removed, note, source, tool_use_id, created_at`
+const changeCols = `id, turn_id, agent_id, folder, path, kind, before_hash, after_hash, added, removed, note, source, tool_use_id, created_at, session_id, workspace_id, attribution`
 
 // AddChange stores the change and its blobs in one transaction.
 func (d *DB) AddChange(ctx context.Context, nc NewChange) (Change, error) {
@@ -73,9 +78,11 @@ func (d *DB) AddChange(ctx context.Context, nc NewChange) (Change, error) {
 		c.CreatedAt = Now()
 	}
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO changes (turn_id, agent_id, folder, path, kind, before_hash, after_hash, added, removed, note, source, tool_use_id, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.TurnID, c.AgentID, c.Folder, c.Path, c.Kind, c.BeforeHash, c.AfterHash, c.Added, c.Removed, c.Note, c.Source, c.ToolUseID, c.CreatedAt)
+		`INSERT INTO changes (turn_id, agent_id, folder, path, kind, before_hash, after_hash, added, removed, note, source, tool_use_id, created_at, session_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), (SELECT NULLIF(session_id, '') FROM agents WHERE id = ?),
+			(SELECT NULLIF(session_id, '') FROM messages WHERE id = ?), ''))`,
+		c.TurnID, c.AgentID, c.Folder, c.Path, c.Kind, c.BeforeHash, c.AfterHash, c.Added, c.Removed, c.Note, c.Source, c.ToolUseID, c.CreatedAt,
+		c.SessionID, c.AgentID, c.TurnID)
 	if err != nil {
 		return Change{}, err
 	}
@@ -90,7 +97,7 @@ func scanChange(sc interface{ Scan(...any) error }) (Change, error) {
 	var bh, ah sql.NullString
 	var added, removed sql.NullInt64
 	if err := sc.Scan(&c.ID, &c.TurnID, &c.AgentID, &c.Folder, &c.Path, &c.Kind, &bh, &ah, &added, &removed,
-		&c.Note, &c.Source, &c.ToolUseID, &c.CreatedAt); err != nil {
+		&c.Note, &c.Source, &c.ToolUseID, &c.CreatedAt, &c.SessionID, &c.WorkspaceID, &c.Attribution); err != nil {
 		return c, err
 	}
 	if bh.Valid {

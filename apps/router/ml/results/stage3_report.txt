@@ -1,0 +1,328 @@
+STAGE 3 REPORT - three checks: the ceiling audit, concrete models, step-level cost-quality
+Date 2026-11-13. Location: apps/router/ml/. Every number below is in results/stage3_*.json.
+Stage 1 and stage 2 code and numbers are untouched; stage 3 adds src/routerml/stage3_*.py, tests/test_stage3.py,
+Makefile targets stage3 / audit / steps3 / triples, and results/stage3_*.json.
+Same conventions: core = 39 mini-SWE-agent submissions x 500 SWE-bench Verified tasks; scheme A headline; seeds
+config.SEED + offsets; intervals 95 %. Nothing paid was run; no git writes.
+
+======================================================================================================
+1. AUDIT OF THE STAGE 2 CEILING (make audit; stage3_ceiling_audit.json; module stage3_audit.py)
+======================================================================================================
+1a. The plotted split vs the reported number.
+The right panel of figures/stage2_ceiling.png is NOT one of the 200 splits behind the reported interval: it is drawn
+with a fresh generator default_rng(SEED) (ceiling.main, "if scheme == SCHEMES[0]"), while the 200 splits come from
+default_rng(SEED + scheme index) after the reliability loop and the f = 0.25 loop. Recomputed by hand from the plotted
+points (exact integral of the piecewise-linear upper hull over [always-low cost, 1], divided by the same width for
+both curves):
+  plotted split: always-low at cost 0.258, quality 0.437; mid 0.768 / 0.634; high 1.000 / 0.7065
+  gain EB = +0.0408, raw = +0.0278, in-sample = +0.1195 (stage 2's trapezoid on 201 points gives the same to 1e-4)
+  largest vertical gap EB - mixture = 0.078 at cost 0.61
+So the figure is right about its own split, but that split sits at the 97.5th percentile of the gain distribution
+(+0.039): it is an unrepresentatively favourable picture. That reconciles the "visibly above" panel with +0.014.
+
+1b. Distribution of the gain over the 200 splits (stage 2's exact random sequence replayed; the mean matches the
+reported +0.01405 to 5 digits).
+  scheme A, EB:  mean +0.014, median +0.018, q10 -0.007, q25 +0.006, q75 +0.025, q90 +0.031,
+                 2.5-97.5 % [-0.029, +0.039], share of splits > 0: 84 %
+  scheme A, raw: mean +0.008, median +0.012, [-0.035, +0.031], share > 0: 75 %
+  scheme B, EB:  mean +0.014, median +0.016, [-0.012, +0.030], share > 0: 90 %
+  scheme C, EB:  mean +0.003, median +0.007, [-0.043, +0.027], share > 0: 65 %
+The interval stage 2 printed is a spread over splits (one split's realisation), not a standard error of the mean;
+"not significant" therefore described the variability of a single half-split, not whether the mean ceiling is > 0.
+
+1c. The area definition - three checks.
+ (i) Same normalisation for both curves: yes. Both areas are averaged over [x_low, 1] where x_low = the SCORING half's
+     always-low cost relative to the scoring half's always-high; both use the scoring half's S and K. x_low differs per
+     split (A: median 0.347, 2.5-97.5 % [0.146, 0.553]) and is handled consistently inside each split. Exact integral
+     = stage 2's trapezoid to 1e-4. No arithmetic bug.
+ (ii) The mixture is the upper hull of the three fixed tiers on the SCORING half: yes.
+ (iii) ASYMMETRY (a definitional flaw, not an arithmetic one): stage 2's curve_metrics adds only the fixed LOW and HIGH
+     points to the oracle's hull, while the mixture hull also contains fixed MID. Whenever the scoring half's mid sits
+     well above the low-high chord (its mid submissions happen to be strong), the baseline gains from mid and the
+     oracle, whose decisions come from the build half, cannot fall back on it. The gain is strongly negatively
+     correlated with mid's lift over the chord on the scoring half: r = -0.52 (A), -0.66 (B), -0.80 (C); letting the
+     oracle fall back on fixed mid removes the whole negative tail (see "with_mid" below). Equivalently, the baseline chooses which fixed tiers to mix with the scoring half's
+     knowledge (in-sample at the tier level) while the oracle uses the build half.
+Correction (new module, stage 2's file untouched). Two symmetric definitions:
+  "with_mid": the router may also mix with every fixed tier (hull of oracle points + all three fixed points), minus
+     the same fixed-tier hull. This is the like-for-like reading of stage 1's comparison. It is >= 0 by construction,
+     so its lower bound of 0 is not evidence; read the mean and the share of splits > 0.
+  "build-chosen baseline": the fixed-tier mixture whose tiers are chosen on the BUILD half (same information as the
+     oracle) and scored on the scoring half.
+                         stage 2 (EB)                 corrected "with_mid" (EB)       vs build-chosen baseline (EB)
+  scheme A, f = 0.5      +0.014 [-0.029, +0.039]      +0.017 [0.000, +0.040], 93 % > 0   +0.031 [0.000, +0.058], 96 % > 0
+  scheme B, f = 0.5      +0.014 [-0.012, +0.030]      +0.016 [+0.003, +0.030], 100 % > 0 +0.017 [-0.006, +0.061], 93 % > 0
+  scheme C, f = 0.5      +0.003 [-0.043, +0.027]      +0.010 [0.000, +0.027], 91 % > 0   +0.024 [-0.007, +0.068], 92 % > 0
+  (raw build labels, with_mid: A +0.012, B +0.011, C +0.006)
+Reading: the corrected honest ceiling for a task-level tier router on this data is about +0.01 to +0.02 curve area
+over the fixed-tier mixture (up to +0.03 if the baseline must also choose its mix out of sample), i.e. still about a
+fifth of the in-sample +0.08 (stage 1) / +0.097 (stage 2). Stage 2's qualitative conclusion stands; its "+0.014, not
+significant" should be replaced in the thesis by "+0.017 (A; B +0.016, C +0.010), positive in 91-100 % of half-splits,
+about one fifth of the in-sample oracle". It is still an estimate built from noisy half-labels (between this and the
+in-sample number lies the true-p ceiling).
+
+1d. Run-to-run vs model-to-model unreliability (stage3_ceiling_audit.json, "same_model_pairs").
+Core models with more than one submission: claude-opus-4.5 (v1.16.0 medium; v2.0.0 high), claude-sonnet-4.5 (v1.13.3;
+v2.0.0 high), gpt-5-mini (v1.7.0 medium; v2.0.0 default), gpt-5.2 (v1.17.2 default; v1.17.2 high; v2.0.0 high).
+(deepseek-v3.2 high vs deepseek-v3.2-reasoner is listed as different models in the price table and is not counted.)
+  model / pair                                   rates          tasks differ   phi    kappa [95 % task bootstrap]
+  claude-opus-4.5  v1.16 medium vs v2.0 high     0.744 / 0.768  10.0 %         0.73   0.73 [0.66, 0.80]
+  claude-sonnet-4.5 v1.13 vs v2.0 high           0.706 / 0.714  12.8 %         0.69   0.69 [0.61, 0.75]
+  gpt-5-mini v1.7 medium vs v2.0                 0.598 / 0.562  16.8 %         0.66   0.66 [0.59, 0.72]
+  gpt-5.2 v1.17.2 default vs v1.17.2 high        0.690 / 0.718  10.8 %         0.74   0.74 [0.68, 0.81]
+  gpt-5.2 v1.17.2 default vs v2.0 high           0.690 / 0.728  14.2 %         0.66   0.66 [0.58, 0.73]
+  gpt-5.2 v1.17.2 high vs v2.0 high (same effort) 0.718 / 0.728 12.2 %         0.70   0.69 [0.62, 0.76]
+  (if the two runs were independent at these rates they would differ on 37-49 % of tasks)
+Reference, DIFFERENT models in the same scheme-A tier: tasks differ 33.6 % (low), 25.0 % (mid), 16.7 % (high);
+mean kappa 0.35 / 0.48 / 0.62.
+Reading: two runs of the same model (with a different scaffold version and/or reasoning effort - the estimate is
+confounded and is an UPPER bound on pure run-to-run noise) disagree on 10-17 % of tasks, kappa 0.66-0.74. In the high
+tier, different models disagree barely more than runs of one model (16.7 % vs 10-14 %): the high tier's "noise" is
+mostly run-to-run. In the low tier, models disagree on a third of tasks, twice gpt-5-mini's run-to-run 16.8 %: about
+half of the low tier's disagreement is between models. Stage 2's split-half "noise" therefore mixed both, in
+different proportions per tier. The run-to-run rate (~12 % for strong models, ~17 % for a cheap one) is used in
+check 2 to bound the concrete-model oracle.
+
+======================================================================================================
+3. STEP-LEVEL ROUTING AS A COST-QUALITY RESULT (make steps3; stage3_steps.json, stage3_steps_swe.json;
+   modules stage3_steps.py, stage3_steps_swe.py, stage3_gencost.py)
+======================================================================================================
+Data: TwinRouterBench's whole static bank, 970 steps / 520 trajectories, label = the cheapest of its four tiers
+(low / mid / mid_high / high; its pool: deepseek-v3.2, minimax-m2.7, gemini-3-flash, claude-opus-4.6) that keeps the
+whole trajectory passing. Workloads:
+  swebench    336 steps / 40 traj.  SWE-bench Verified coding agent (mini-swe-agent); gold low 94, mid 33, mid_high 41,
+              high 168; marked "degradation_search_done" = weak labels, NOT ground_truth_ready
+  pinchbench   48 / 12   general tool-using agent (OpenClaw tasks: calendar, files, ...); gold 41 low, 7 above
+  mtrag       193 / 193  multi-turn RAG answer, single routed step per case; 183 low
+  qmsum       145 / 145  query-focused meeting summarisation, single step; 132 low
+  bfcl        248 / 130  function calling (single and multi-turn); 239 low
+Outside SWE the bank is ~95 % "low": the benchmark's headroom is mostly "this workload needs no expensive model".
+Scoring: the benchmark's own code (main/eval/section11.compute_v2_scores, imported from the pinned checkout, with
+its real tokenizers), i.e. case pass (pred >= gold), exact match, trajectory pass (every step pred >= gold), and the
+cost-savings score (always-high bill = D; a passed trajectory credits baseline - routed; a failed one is charged its
+routed chain plus one always-high re-run), combined = mean of the four. My per-trajectory decomposition reproduces
+compute_v2_scores exactly (asserted on every non-sweep policy). "Raw cost saved" = 1 - routed bill / always-high
+bill, without the re-run charge. Intervals: 1000 trajectory bootstraps stratified by workload.
+
+3a. The benchmark's metric, four tiers, all 970 steps (point, [95 %]):
+  policy                         case pass  exact  traj pass  cost-savings score   combined            raw saved
+  always low (= majority tier)   71.0       71.0   58.5       54.1 [50.8, 57.2]    63.6 [60.9, 66.2]   95.7
+  always mid                     77.4        6.4   64.0       56.8 [53.9, 59.8]    51.2                93.6
+  always mid_high                82.5        5.1   65.6       54.7                 51.9                90.0
+  always high                   100.0       17.5  100.0        0.0                 54.4                 0
+  oracle (gold)                 100.0      100.0  100.0       62.9 [59.1, 66.6]    90.7 [89.8, 91.6]   76.5
+  leave-one-TRAJECTORY-out:
+  step-time model, argmax        91.8       84.6   70.0       36.2 [29.6, 43.0]    70.6 [66.9, 74.8]   79.4
+  workload prior, argmax         96.0       78.7   93.1       56.7 [53.6, 59.7]    81.1 [79.2, 82.9]   77.1
+  (accuracy 0.846 vs 0.787; log loss 0.558 vs 0.629)
+  leave-one-WORKLOAD-out:
+  step-time model, argmax        72.7       43.6   63.0       51.2 [48.5, 53.6]    57.6 [55.6, 59.5]   80.9
+  workload prior (= majority)    = always low (63.6)              (model log loss 5.0: it does not transfer)
+Three tiers (low+mid merged, gold' = max(gold, mid)): always merged-low 68.9 combined / 56.8 cost score; oracle
+90.2 / 60.9; LOTO model argmax 74.9 / 39.2; LOTO workload prior 84.3 / 58.7; LOWO model 61.2 / 52.5.
+Two facts about the metric itself: (1) the cost-savings score is nearly saturated by a FIXED cheap tier: always-mid
+reaches 56.8 of the oracle's 62.9 (always-low 54.1), because the high tier costs ~50x more per output token, so even
+re-running every failed trajectory at high is cheap next to always-high. (2) The combined score rewards exact
+match, so always-high (54.4) scores below always-low (63.6).
+
+3b. Fixed tolerated under-routing (step-level share pred < gold), raw cost saved vs always-high, LOTO, 4 tiers.
+Each policy's cheapest frontier point with under-routing <= r, chosen on the pooled out-of-fold predictions
+(a frontier comparison; the threshold is not chosen out of sample):
+                 step-time model                    workload prior (no step features)   trivial random mix (low/high)
+  r = 1 %   64.8 [59.9, 69.4] (0.9 %, traj 97.6)    75.0 [72.3, 77.2] (0.9 %, traj 98.7)    0 (always high)
+  r = 5 %   77.0 [74.3, 79.4] (4.2 %, traj 88.0)    77.1 [74.5, 79.3] (4.0 %, traj 93.1)    7.0 (3.6 %)
+  r = 10 %  79.3 [76.6, 81.5] (9.0 %, traj 68.0)    77.1 (4.0 %)                            19.5 (9.7 %)
+  model minus trivial: +64.7 [+60.2, +69.1] / +69.9 [+67.1, +72.2] / +59.8 [+56.7, +62.4] percentage points
+Three tiers: model 70.6 / 77.7 / 78.8; workload prior 74.9 / 74.9 / 74.9; trivial 0 / 9.0 / 21.8.
+Leave-one-workload-out (4 tiers): the model's frontier jumps from 0.8 % to 14 % under-routing; at <= 1/5/10 % it
+saves 16.0 [11.1, 20.7] % (one point) vs trivial 0 / 5.6 / 18.3 %.
+Reading: against a feature-free random mix the step model looks excellent (+60-70 points), but almost all of that is
+the workload: a prior that only knows WHICH agent/application is calling (and nothing about the step) saves as much
+or more at 1-5 % under-routing, and on the benchmark's own score it is better (combined 81.1 vs 70.6; cost score
+56.7 vs 36.2). The step features add at most ~2 points of raw saving at 10 % under-routing, where a tenth of the
+steps are under-routed and 32 % of steps sit in a trajectory that breaks. Across workloads (LOWO) the model does not transfer at all.
+
+3c. SWE-bench only (the workload of this thesis; 336 steps / 40 trajectories; stage3_steps_swe.json; LOTO; the
+"prior" = training fold's label distribution; 1000 trajectory bootstraps):
+  policy                 case pass  traj pass  cost-savings score   raw saved            combined
+  always low             28.0        0.0        -7.5                  92.5                12.1
+  always mid             37.8        2.1        -5.5                  93.2                11.1
+  always high           100.0      100.0         0.0                   0                  62.5
+  ORACLE (gold)         100.0      100.0         0.8 [-7.2, +8.1]      0.8 [-7.2, +8.1]   75.2
+  step model, argmax     88.4       33.6       -57.1 [-70.8, -42.8]  10.6                33.0
+  (accuracy 0.673 vs prior 0.50; log loss 1.080 vs 1.196: the session prefix carries information, as in stage 2)
+  Fixed under-routing, raw saved: r = 1 %: model 0.3 % [0.0, 1.1]; r = 5 %: 6.0 % [0.1, 10.8] (trajectory pass
+  74 %, benchmark score -21.3); r = 10 %: 10.8 % [6.0, 14.5] (trajectory pass 38 %, score -53.2). Prior and trivial
+  policies: 0 at every r (any random cheap step raises cost, see below). Three tiers: the same picture (oracle 0.5 %;
+  model 1.0 / 7.5 / 10.3 % at 1 / 5 / 10 %).
+THE decisive SWE number: under the benchmark's own cost model even the ORACLE saves 0.8 % [-7.2, +8.1] of the
+always-high bill on coding trajectories. Its cost model is cache-aware (all prompt tokens are cache reads or cache
+writes; a tier switch is a cold start that writes the whole prefix at the new tier, and switching back to high
+writes it again at $6.25/M). Coding trajectories have long, growing prefixes; half of their steps need high; so the
+cache write on every switch eats what the cheap steps save. The 76.5 % oracle saving of 3a comes from the
+single-step workloads (mtRAG, QMSum, BFCL), not from agentic coding. Caveat: the bank's SWE trajectories are short
+(8.4 routed steps; median 11 messages), and the cost model's caching rules are the benchmark's, not a provider's
+invoice; with longer trajectories and sticky routing (switch rarely) the picture could differ - not measured.
+
+3d. Headroom captured. On the benchmark's combined score (whole bank, LOTO): best fixed tier 63.6 (always low),
+oracle 90.7 -> headroom 27.1; step model argmax 70.6 = 26 % of it; its best frontier point (q = 0.9) 76.7 = 48 %;
+the workload prior alone 81.1 = 65 %. On the cost-savings score alone: best fixed (always mid) 56.8, oracle 62.9 ->
+headroom 6.1; the step model's best frontier point 55.9 (captures nothing); the workload prior 59.8 at 0.9 %
+under-routing (49 %). Leave-one-workload-out: nothing (57.6 < 63.6). On SWE alone the headroom on cost is ~0
+(oracle +0.8 %) and the model's gains are paid for with broken trajectories.
+
+3e. What a real step-level router would need (stage3_gencost.json; arithmetic with the benchmark's own algorithm,
+prices and cost model; NO API was called).
+  Algorithm (docs/DATA_GENERATION.md): an always-high seed trajectory; then for each routed step, earlier steps
+  locked, try candidate tiers from the cheapest (up to 3 models per tier), with every LATER step at high, run to the
+  end and evaluate. Trials per step, assumed: gold low 2, mid 3+2, mid_high 6+2, high 9; SWE gold mix -> 6.5 trials
+  per step on average. Each trial costs the always-high suffix from that step.
+  On the bank's own SWE trajectories (8.4 routed steps): seed $0.092, search $2.96, total $3.05 per task
+  (= 33x the seed); all 520 trajectories of the bank: $195 (SWE $122, PinchBench $25, BFCL $20, QMSum $15, mtRAG $13).
+  These trajectories are far shorter than real mini-SWE-agent runs. Real Opus runs in the core: $0.55 (opus-4.6) to
+  $0.75 (opus-4.5 high) per task, 23-29 calls median. Search cost grows ~quadratically with length: ratio ~= trials
+  per step (6.5) x steps (n) x mean suffix share (0.59 on the bank) -> n = 25-30: ~100-115x the seed -> about
+  $55-85 per task, plus Docker evaluation of ~6.5 x n ~= 160-200 runs per task (not priced).
+  How many tasks: stage 2 and 3c show a step model on 40 SWE tasks reaches accuracy 0.67 vs 0.50 and still cannot
+  turn it into savings; SWE-Router-style learned detectors use thousands of trajectories. An order of 500-2 000 SWE
+  tasks is a plausible minimum for a learned step router: $1.5k-6k at the bank's short-trajectory cost model, about
+  $30k-170k at realistic trajectory lengths (at the benchmark's listed prices, before evaluation compute). And per
+  3c, the cost model itself says per-step switching on SWE saves ~nothing even with perfect labels, so a "sticky"
+  label (switch for a whole phase, not a step) would have to be defined first.
+
+======================================================================================================
+2. CONCRETE MODELS INSTEAD OF PRICE TIERS (make triples; stage3_triples.json; module stage3_triples.py)
+======================================================================================================
+Rules, declared before reading any per-task outcome of these models (they use only the price table, submission
+metadata and the public leaderboard solve rate):
+  T1 one provider family, one release (OpenAI GPT-5, v1.7.0, 2025-08-07, medium): gpt-5-nano / gpt-5-mini / gpt-5
+  T2 one provider family, one release batch (Anthropic 4.5, v2.0.0, 2026-02-17, high): haiku-4.5 / sonnet-4.5 / opus-4.5
+  T3 cross-provider, strongest (leaderboard) per scheme-A price band, 2026-02-17 batch: minimax-m2.5 / gemini-3-flash /
+     claude-opus-4.5
+  T4 cross-provider, cheapest per band, same batch: deepseek-v3.2 / gemini-3-flash / gpt-5.2
+Cheap-model trajectories: gpt-5-nano, minimax-m2.5, deepseek-v3.2 were in data/trajs; haiku-4.5 was fetched
+(500 files, 400 MB, same public bucket, manifest kept).
+
+  triple  models (blended $/M)                    solve rate            mean $ per task          cheap fails &   cheap solves &
+                                                  cheap / mid / dear    cheap / mid / dear       dear solves     dear fails
+  T1      nano 0.14 / mini 0.69 / gpt-5 3.44       0.348 0.598 0.650     0.038 0.035 0.280        163             12
+  T2      haiku 2.0 / sonnet 6.0 / opus 10.0        0.666 0.714 0.768     0.331 0.658 0.754        62              11
+  T3      minimax 0.53 / gem-3-flash 1.13 / opus    0.758 0.758 0.768     0.073 0.356 0.754        30              25
+  T4      deepseek 0.31 / gem-3-flash / gpt-5.2     0.700 0.758 0.728     0.448 0.356 0.474        35              21
+  2x2x2 tables (cheap,mid,dear: count) are in the JSON; "only the dear model solves": T1 40, T2 33, T3 13, T4 10;
+  "only the cheap one solves": T1 5, T2 8, T3 12, T4 6; all three solve: 148 / 317 / 338 / 317; none: 142 / 97 / 80 / 93.
+First finding, before any routing: price per token does not order cost per task. In T1 gpt-5-mini costs LESS per
+task than gpt-5-nano ($0.035 vs $0.038: fewer, better steps) and solves 0.598 vs 0.348; in T4 deepseek-v3.2 (cheapest
+per token) costs more per task than gemini-3-flash and solves less. In both, one model dominates the "cheap" one and
+the ladder collapses before routing starts. T2 and T3 are proper ladders; T3's cheap model already matches the dear
+one's solve rate (0.758 vs 0.768) at a tenth of the cost.
+
+Oracle gain over the best mixture of the three fixed models (curve area over [cheap cost, 1], corrected definition
+of check 1; single runs):
+                          in-sample oracle   noise-bounded: built on copy 1,     oracle knowing the latent p,
+                                             scored on copy 2 [95 % of 200 sims]  scored on a copy
+  T1                      +0.092             +0.031 [+0.013, +0.054]              +0.086
+  T2                      +0.086             +0.046 [+0.034, +0.064]              +0.080
+  T3                      +0.076             +0.036 [+0.016, +0.054]              +0.071
+  T4                      +0.056             +0.030 [+0.004, +0.054]              +0.056
+Noise model: each cell's latent solve probability is the observed outcome smeared so that two independent copies
+disagree at check 1's run-to-run rate (0.168 cheap, 0.12 mid/dear) with the solve rate kept. Since check 1's rates
+are upper bounds on pure run-to-run noise (version/effort confounded), the noise-bounded column is a LOWER estimate
+of the concrete-model ceiling and the in-sample column an upper one. Areas are normalised over each triple's own
+cost range, so they are comparable to stage 2's tier ceiling only roughly: about +0.03 to +0.05 here vs +0.017
+(corrected, check 1) for tiers. Concrete models leave about twice the room that price tiers leave.
+
+Can anything available capture it? Label z = "cheap fails and dear solves" (T1 32.6 %, T2 12.4 %, T3 6.0 %, T4 7.0 %).
+AUROC, leave-one-repository-out, [95 %, 1000 repository bootstraps]; the prior is 0.5:
+                       text (stats+MiniLM)   text stats only      length heuristic      text router gain (area)
+  T1                   0.535 [0.495, 0.590]  0.483 [0.443, 0.526] 0.460 [0.426, 0.541]  +0.001
+  T2                   0.483 [0.403, 0.534]  0.440 [0.401, 0.550] 0.524 [0.383, 0.576]  +0.008
+  T3                   0.403 [0.319, 0.541]  0.352 [0.294, 0.463] 0.550 [0.420, 0.614]  +0.001
+  T4                   0.555 [0.484, 0.654]  0.473 [0.304, 0.563] 0.617 [0.537, 0.776]  +0.000
+Only T4's unfitted length score clears 0.5 (longer statement -> deepseek fails while gpt-5.2 solves); it is one of
+twelve tests and not fitted, so treat it as a lead, not a result. The fitted text models are at or below 0.5.
+Early trajectory of the cheap run (stage 2's 21 features at step K; LR, LORO):
+                 AUROC for z (K = 5 / 10 / 20)       AUROC for "cheap fails" (K = 5 / 10 / 20)      ended by K
+  T1 nano        0.54 / 0.48 / 0.54                  0.58 / 0.64 / 0.68                            4 / 30 / 62 %
+  T2 haiku       0.46 / 0.46 / 0.44                  0.53 / 0.54 / 0.56                            0 / 0 / 1 %
+  T3 minimax     0.49 / 0.51 / 0.52                  0.43 / 0.59 / 0.64                            0 / 0 / 4 %
+  T4 deepseek    0.53 / 0.43 / 0.46                  0.42 / 0.46 / 0.51                            0 / 0 / 0 %
+  (intervals in the JSON; for z every interval contains 0.5 except T1 at K = 5 [0.504, 0.604] and K = 20 [0.519,
+  0.586], barely, with 24 tests run.) The early signal detects that the cheap run will fail
+  (weakly, as in stage 2), not that the dear model would succeed where it fails.
+Cascade cheap -> dear with honest cost (cheap run's cost to the stop: per-step where recorded - v2.0.0 runs - else
+linear; plus the dear run), area gain over the three-model mixture:
+                 detector "cheap fails"  K=5 / 10 / 20         perfect stop (if cheap fails)   random stop
+  T1             0 / 0 / 0                                     +0.015 / 0 / 0                  0
+  T2             +0.006 [+0.001, +0.015] / +0.003 / +0.002     +0.043                          +0.013 / +0.011 / 0
+  T3             +0.003 / +0.005 / +0.010 [+0.002, +0.024]     +0.045                          0 / +0.003 / +0.002
+  T4             0 / 0 / 0                                     +0.011                          0
+In T2 a RANDOM stop at K = 5 does better than the detector (+0.013 vs +0.006). In T3 the detector at K = 20 gives
++0.010 [+0.002, +0.024] against random +0.002: the only cascade result above random, about 1 % of curve area and a
+fifth of what a perfect stop would give.
+
+Does concrete-model routing change stage 2's conclusion? Partly, and only on the ceiling. The reproducible per-task
+room is larger between concrete models (+0.03 to +0.05 noise-bounded) than between price tiers (+0.017), so "there
+is almost nothing to predict" was too strong; "there is a small amount, and nothing available predicts it" holds:
+routing-time text gives AUROC <= 0.55 for "cheap fails and dear solves" and ~0 area; early trajectories detect
+cheap failure weakly but not the useful event, and the honest cascade gains 0 to +0.01. The largest effect is again
+model selection: within each declared ladder one model often dominates another on cost per task (T1, T4).
+
+======================================================================================================
+SYNTHESIS - what the thesis can defend with numbers
+======================================================================================================
+(1) "Per-task tier prediction from the prompt works."  NOT SUPPORTED.
+    Deciding numbers: stage 1's M1 minus the fixed-tier mixture +0.000 [-0.004, +0.012]; the corrected honest ceiling
+    for ANY task-level tier predictor is only +0.017 (A; B +0.016, C +0.010) curve area, about a fifth of the
+    in-sample oracle (check 1); with concrete models the ceiling is +0.03-0.05 but text features reach AUROC 0.40-0.56
+    for "cheap fails and dear solves" and a text router gains +0.000 to +0.008 (check 2). What can be defended is the
+    negative result with its ceiling: there is little reproducible per-task room, and the prompt does not find it.
+(2) "A learned detector on the cheap model's early trajectory makes a cascade that beats fixed tiers."  NOT
+    SUPPORTED (at most a marginal, unreplicated effect).
+    Deciding numbers: stage 2 (tiers) +0.003 / 0.000 / -0.003 at K = 5/10/20, none significant; check 2 (concrete
+    ladders, honest cost) 0 in T1 and T4, +0.002 to +0.006 in T2 where a random stop does better (+0.013), and
+    +0.010 [+0.002, +0.024] in T3 at K = 20 - one positive result out of 12 cells, ~1 % of curve area. A perfect stop
+    would give +0.04-0.07: the room exists, the detector does not (AUROC for cheap failure 0.42-0.68).
+(3) "Step-level tier selection from the session prefix saves cost at a bounded risk."  NOT SUPPORTED for agentic
+    coding; UNDETERMINED (and mostly a workload effect) for the mixed benchmark.
+    Deciding numbers: on TwinRouterBench's SWE steps, under its own cache-aware cost model, even the oracle saves
+    0.8 % [-7.2, +8.1] of the always-high bill; the step model saves 0.3 % at 1 % under-routing and 6-11 % at 5-10 %
+    only by breaking 26-62 % of trajectories (benchmark score -21 to -53). On the whole bank the step model saves
+    65-79 % at 1-10 % under-routing, but a prior that only knows the workload saves 75-77 % at <= 4 % and scores
+    higher on the benchmark's own metric (81.1 vs 70.6); leave-one-workload-out the model does not transfer
+    (57.6 < 63.6 for always-low). Labels are weak (SWE part "not ground_truth_ready"), 40 SWE tasks.
+What the thesis CAN defend with numbers: (a) the noise ceiling, now corrected and decomposed (run-to-run 10-17 %
+disagreement for one model; model-to-model 17-34 % inside a tier); (b) the negative results for text, early
+cascades and bandits with their intervals; (c) the model-selection effect - choose the concrete model per band by
+cost per task and solve rate, which beats any per-task routing measured here (stage 2: +0.025 to +0.046; check 2:
+dominated "cheap" models in two of four declared ladders); (d) for step-level routing in coding agents, that the
+prompt cache makes per-step switching nearly worthless even with perfect labels in the benchmark's own accounting.
+
+======================================================================================================
+LEFT / NOT DONE
+======================================================================================================
+- Check 3, operating point chosen out of sample (nested threshold selection); here thresholds are read off the
+  pooled out-of-fold frontier. Full-bank model-vs-workload-prior difference has no interval (SWE-only has).
+- Check 3, a "sticky" step router (switch tiers rarely) on SWE, which the cache argument calls for; a learning curve
+  over the number of training trajectories (the 500-2 000 task figure is a judgment, not a measured curve).
+- Check 2, mid-band trajectories (escalation cheap -> mid); learned sequence models on trajectories; per-step cost for
+  v1 runs (gpt-5-nano used the linear rule); intervals on the noise-bounded oracle across noise-rate assumptions
+  (only one declared rate per band was run).
+- Check 1, pure run-to-run noise (same version, same effort, repeated) is not in the public data; only confounded
+  pairs exist (upper bound). The true-p ceiling is still only bracketed.
+- No figure was redrawn: figures/stage2_ceiling.png still shows the unrepresentative split; the thesis should say so
+  in its caption or use the distribution in 1b.
+- Nothing was run against the router or the harness; no API calls; no git writes.
+
+FILES (apps/router/ml/)
+ src/routerml/stage3_audit.py      check 1 (replay of stage 2's splits, exact area, symmetric ceiling, same-model pairs)
+ src/routerml/stage3_steps.py      check 3, whole bank, the benchmark's own v2 metric and tokenizers
+ src/routerml/stage3_steps_swe.py  check 3, SWE only
+ src/routerml/stage3_gencost.py    check 3, generation cost estimate (no API calls)
+ src/routerml/stage3_triples.py    check 2
+ tests/test_stage3.py              exact area = stage 2's trapezoid; corrected ceiling >= stage 2's; latent noise
+                                   keeps marginal and disagreement; threshold monotone (4 tests; suite 22 pass)
+ Makefile: stage3, audit, steps3, gencost, triples. README: stage 3 lines. requirements.txt: + tiktoken==0.14.0.
+ results/stage3_{ceiling_audit,steps,steps_swe,gencost,triples}.json, this report.
+ data/ (git-ignored): trajs/20260217_mini-v2.0.0_claude-4-5-haiku-high (400 MB), stage3_traj_*.pkl caches, logs.
+ Note: the benchmark's low/mid tokenizers are downloaded from the Hugging Face Hub at first use (no revision pinned).

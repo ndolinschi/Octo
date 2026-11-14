@@ -1,7 +1,8 @@
 import type { MemorySessionDetail } from "@octo/agent-client";
 import { useMemo, useRef, useState } from "react";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
-import { useNow, useRowKeys } from "../../lib/hooks";
+import { useNow } from "../../lib/hooks";
+import { useRowKeys } from "../../lib/hooksMore";
 import { formatDay } from "../../lib/memory/dates";
 import { endedNote, exchangeCount, newestFirst, sessionRow, toggleExpanded } from "../../lib/memory/sessions";
 import { liveOrchestratorState } from "../../lib/orchestrator";
@@ -66,7 +67,8 @@ export function SessionsView(props: {
               role="listitem"
               size="md"
               selected={s.id === picked}
-              {...(r.working ? { leading: <StateGlyph state="working" /> } : {})}
+              // P3: the glyph column of every session list (the Sessions tab's): working, else the quiet idle dot.
+              leading={<StateGlyph state={r.working ? "working" : "idle"} />}
               title={r.title}
               description={<RowLine {...(r.current ? { end: "current" } : {})}>{r.description}</RowLine>}
               tip={r.title}
@@ -159,7 +161,7 @@ function SessionDetail(props: {
             onClose={() => setOpen(null)}
             onOpenMessage={props.onOpenMessage}
             onForget={async (id) => {
-              if (!forget) throw new Error("This harness cannot forget an exchange.");
+              if (!forget) throw new Error("This version of Octo's local service cannot forget an exchange.");
               await forget.call(bridge, props.projectId, id);
               props.onChanged();
             }}

@@ -1,4 +1,4 @@
-import { createHttpBridge, type Bridge } from "@octo/agent-client";
+import { abortingReads, createHttpBridge, type Bridge, type FetchLike } from "@octo/agent-client";
 import { useEffect, useMemo, useState } from "react";
 import type { BridgeChoice } from "./bridgeChoice";
 
@@ -7,10 +7,16 @@ import type { BridgeChoice } from "./bridgeChoice";
  * `@octo/ui/demo` with `import()`, so a normal start never downloads it, and the hook returns null until it is in.
  */
 export function useBridge(choice: BridgeChoice): Bridge | null {
-  const http = useMemo(
-    () => (choice.kind === "http" ? createHttpBridge({ baseUrl: choice.baseUrl, ...(choice.token ? { token: choice.token } : {}) }) : null),
-    [choice],
-  );
+  const http = useMemo(() => {
+    if (choice.kind !== "http") return null;
+    const options = { baseUrl: choice.baseUrl, ...(choice.token ? { token: choice.token } : {}), fetch: readsWithTimeout };
+    // Image previews in Files read bytes through `readFileBytes` (an optional method the UI looks for). Its code loads
+    // with the first image, not with the app.
+    const bridge = createHttpBridge(options);
+    const readFileBytes = async (projectId: string, folder: string, path: string) =>
+      (await import("@octo/agent-client/fileBytes")).withFileBytes(bridge, options).readFileBytes(projectId, folder, path);
+    return Object.assign(bridge, { readFileBytes });
+  }, [choice]);
   const [demo, setDemo] = useState<Bridge | null>(null);
   useEffect(() => {
     if (choice.kind !== "demo") return;
@@ -24,3 +30,9 @@ export function useBridge(choice: BridgeChoice): Bridge | null {
   }, [choice]);
   return choice.kind === "http" ? http : demo;
 }
+
+/** The webview's fetch as the client's `FetchLike`; P2-4: a read never answered gives its connection back (`abortingReads`). */
+const readsWithTimeout: FetchLike = abortingReads((url, init) => {
+  const { signal, ...rest } = init ?? {};
+  return fetch(url, signal instanceof AbortSignal ? { ...rest, signal } : rest);
+});

@@ -8,6 +8,11 @@ const MIDDLE_TAIL_MAX = 8;
 
 export function middleSplit(text: string): { head: string; tail: string } | null {
   if (text.length <= MIDDLE_MIN_LENGTH) return null;
-  const tail = Math.min(MIDDLE_TAIL_MAX, Math.floor(text.length / 3));
-  return { head: text.slice(0, text.length - tail), tail: text.slice(text.length - tail) };
+  const n = Math.min(MIDDLE_TAIL_MAX, Math.floor(text.length / 3));
+  const head = text.slice(0, text.length - n);
+  const tail = text.slice(text.length - n);
+  // A space at the cut would collapse at the edge of either span ("Claude Code ·Sonnet"): it moves to the tail's start as
+  // a no-break space, which keeps its width.
+  if (!/\s$/.test(head) && !/^\s/.test(tail)) return { head, tail };
+  return { head: head.trimEnd(), tail: `\u00a0${tail.trimStart()}` };
 }

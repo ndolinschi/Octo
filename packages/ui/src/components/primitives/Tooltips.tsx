@@ -6,6 +6,8 @@ const DELAY = 600;
 const WARM_FOR = 400;
 const GAP = 6;
 const EDGE = 8;
+/** Focus that follows a navigation key within this time is the person's own; later focus is the app's. */
+const NAV_FOCUS_MS = 500;
 
 type Tip = { text: string; shortcut: string | null; rect: DOMRect; side: "below" | "left" };
 
@@ -51,8 +53,15 @@ export function Tooltips() {
       pressedAt = { x: e.clientX, y: e.clientY };
       hide();
     };
+    // A control may change its `title` while its tooltip waits or shows (the budget reads its models on hover): follow it.
+    const watch = new MutationObserver(() => {
+      if (!current?.hasAttribute("title")) return;
+      const text = tipOf(current);
+      setTip((t) => (t && text ? { ...t, text } : t));
+    });
     const hide = () => {
       window.clearTimeout(timer);
+      watch.disconnect();
       if (current) warmUntil = Date.now() + WARM_FOR;
       current = null;
       setTip(null);
@@ -66,9 +75,16 @@ export function Tooltips() {
       if (pressedAt) return;
       arm(el);
     };
-    // Keyboard focus shows the focused control's tooltip too (same delay and warmth); pointer focus does not.
+    // Keyboard focus shows the focused control's tooltip too (same delay and warmth); pointer focus does not. Only focus the
+    // person moved (Tab, arrows, Home/End): a tab or dialog that puts focus on a row by itself shows no tooltip (B57).
+    let navAt = 0;
+    const NAV = new Set(["Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
+    const key = (e: KeyboardEvent) => {
+      if (NAV.has(e.key)) navAt = Date.now();
+      hide();
+    };
     const focusIn = (e: FocusEvent) => {
-      if (document.documentElement.dataset.input !== "keyboard") return;
+      if (document.documentElement.dataset.input !== "keyboard" || Date.now() - navAt > NAV_FOCUS_MS) return;
       const el = (e.target as Element | null)?.closest<HTMLElement>("[title], [data-tip]");
       if (!el || el === current) return;
       const box = el.getBoundingClientRect();
@@ -81,6 +97,8 @@ export function Tooltips() {
     };
     const arm = (el: HTMLElement) => {
       window.clearTimeout(timer);
+      watch.disconnect();
+      watch.observe(el, { attributes: true, attributeFilter: ["title"] });
       if (current) warmUntil = Date.now() + WARM_FOR;
       current = el;
       setTip(null);
@@ -88,10 +106,11 @@ export function Tooltips() {
       if (!text || disabled(el)) return;
       const show = () => {
         if (current !== el || !el.isConnected) return;
+        const now = tipOf(el) ?? text;
         // Tall targets (dividers, rows of text) anchor at the pointer rather than their whole box.
         const box = el.getBoundingClientRect();
         const rect = box.height > 48 ? new DOMRect(pointer.x - 1, pointer.y - 8, 2, 16) : box;
-        setTip({ text, shortcut: el.dataset.shortcut ?? null, rect, side: el.dataset.tipSide === "left" ? "left" : "below" });
+        setTip({ text: now, shortcut: el.dataset.shortcut ?? null, rect, side: el.dataset.tipSide === "left" ? "left" : "below" });
       };
       if (Date.now() < warmUntil) show();
       else timer = window.setTimeout(show, DELAY);
@@ -105,18 +124,19 @@ export function Tooltips() {
     document.addEventListener("pointerdown", press, true);
     document.addEventListener("focusin", focusIn, true);
     document.addEventListener("focusout", focusOut, true);
-    document.addEventListener("keydown", hide, true);
+    document.addEventListener("keydown", key, true);
     document.addEventListener("scroll", hide, true);
     window.addEventListener("blur", hide);
     return () => {
       window.clearTimeout(timer);
+      watch.disconnect();
       document.removeEventListener("pointermove", track, true);
       document.removeEventListener("pointerover", over, true);
       document.removeEventListener("pointerout", leaveWindow, true);
       document.removeEventListener("pointerdown", press, true);
       document.removeEventListener("focusin", focusIn, true);
       document.removeEventListener("focusout", focusOut, true);
-      document.removeEventListener("keydown", hide, true);
+      document.removeEventListener("keydown", key, true);
       document.removeEventListener("scroll", hide, true);
       window.removeEventListener("blur", hide);
     };
@@ -154,7 +174,7 @@ export function Tooltips() {
       style={pos ?? { left: -9999, top: -9999 }}
       className="pointer-events-none fixed z-[80] flex max-w-[360px] items-center gap-2 rounded-sm border border-transparent bg-overlay px-2 py-1 text-xs text-fg shadow-pop"
     >
-      <span className="min-w-0 wrap-anywhere">{tip.text}</span>
+      <span className="min-w-0 wrap-anywhere whitespace-pre-line">{tip.text}</span>
       {tip.shortcut && <kbd className="shrink-0 rounded-2xs bg-active px-1 font-sans text-xs text-fg-2">{tip.shortcut}</kbd>}
     </div>,
     document.body,

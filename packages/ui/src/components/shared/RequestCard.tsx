@@ -33,7 +33,6 @@ export const RequestCard = forwardRef<HTMLElement, RequestCardProps>(function Re
     <Card
       ref={ref}
       as="section"
-      surface="panel"
       className={cn("@container/v7 text-sm focus-visible:shadow-[0_0_0_2px_var(--octo-focus)]", className)}
       {...rest}
       header={

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { BridgeConfig, Plugin, ProviderList, SettingsView } from "@octo/agent-client";
 import { deriveProviders } from "./derive";
-import { canRun, chipLabel } from "./providers";
+import { canRun, chipLabel, chipParts } from "./providers";
+import { tidyAgentLabel } from "../models";
 import { API_PROVIDER, ROUTER_PROVIDER, connectAction, providerOf, stateText } from "./providersMore";
 import { extraReason } from "./reasons";
 
@@ -119,6 +120,11 @@ const list: ProviderList = deriveProviders({ config: config(), plugins, settings
 test("chipLabel names agent models as 'Agent · Model'", () => {
   assert.equal(chipLabel("acp:claude-code/claude-opus-5-5", list), "Claude Code · Opus 5.5");
   assert.equal(chipLabel("acp:claude-code", list), "Claude Code");
+  // G14: an agent's own remark is not part of the name; an unlisted "default" reads like a name.
+  assert.equal(tidyAgentLabel("Default (recommended)"), "Default");
+  assert.equal(tidyAgentLabel("default"), "Default");
+  assert.equal(tidyAgentLabel("Opus 5.5"), "Opus 5.5");
+  assert.equal(chipLabel("acp:claude-code/default", list).endsWith("· Default"), true);
   assert.equal(chipLabel("claude-haiku-5-5", list), "Haiku 5.5");
   assert.equal(chipLabel("openai/gpt-x", list), "gpt-x");
   assert.equal(chipLabel("acp:claude-code/claude-opus-5-5", null), "Claude Code · Opus 5.5");
@@ -144,4 +150,12 @@ test("extraReason drops a reason that only repeats the state", () => {
   assert.equal(extraReason({ state: "not_logged_in", reason: "not logged in" }), "");
   assert.equal(extraReason({ state: "not_installed", reason: "grok: command not found on PATH" }), "grok: command not found on PATH");
   assert.equal(extraReason({ state: "ready", reason: "" }), "");
+});
+
+test("item 10: an agent model's chip label splits so the provider gives way first", () => {
+  assert.deepEqual(chipParts(chipLabel("acp:claude-code/claude-opus-5-5", list)), { provider: "Claude Code · ", model: "Opus 5.5" });
+  assert.equal(chipParts(chipLabel("claude-haiku-5-5", list)), null);
+  assert.equal(chipParts("Claude Code"), null);
+  assert.equal(chipParts(" · Opus"), null);
+  assert.equal(chipParts("Claude Code · "), null);
 });

@@ -155,7 +155,7 @@ fn byok_sse_prefers_upstream_inference_cost() {
     use octo::history::{resolve_cost, CostSource, PriceTable};
 
     let output = concat!(
-        r#"data: {"type":"message_start","message":{"id":"msg_x","provider":"Mistral","usage":{"input_tokens":10}}}"#,
+        r#"data: {"type":"message_start","message":{"id":"msg_x","provider":"Parasail","usage":{"input_tokens":10}}}"#,
         "\n\n",
         r#"data: {"type":"message_delta","usage":{"input_tokens":100,"output_tokens":5,"cost":0,"is_byok":true,"cost_details":{"upstream_inference_cost":0.0075}}}"#,
         "\n\n"
@@ -164,10 +164,10 @@ fn byok_sse_prefers_upstream_inference_cost() {
     assert_eq!(usage.or_cost, Some(CostMicros(0)));
     assert_eq!(usage.upstream_cost, Some(CostMicros(7_500)));
     assert_eq!(usage.is_byok, Some(true));
-    assert_eq!(usage.upstream_provider.as_deref(), Some("Mistral"));
+    assert_eq!(usage.upstream_provider.as_deref(), Some("Parasail"));
     let resolved = resolve_cost(
         &usage,
-        Some("mistralai/devstral-2512"),
+        Some("qwen/qwen3-coder-next"),
         &PriceTable::default(),
     );
     assert_eq!(resolved.source, CostSource::Upstream);
@@ -232,17 +232,17 @@ fn upstream_reported_cost_beats_estimate_when_prices_set() {
         r#""cost":0,"is_byok":true,"cost_details":{"upstream_inference_cost":0.01}}}"#
     ));
     let prices = PriceTable::new(vec![(
-        "mistralai/devstral-2512".into(),
+        "qwen/qwen3-coder-next".into(),
         ModelPrice {
             input: 1.0,
             cache_read: 0.1,
             cache_write: 0.0,
             output: 2.0,
-            billed_as: Some("mistral-medium-3-5".into()),
+            billed_as: Some("qwen3-coder-next".into()),
             rates_complete: true,
         },
     )]);
-    let resolved = resolve_cost(&usage, Some("mistralai/devstral-2512"), &prices);
+    let resolved = resolve_cost(&usage, Some("qwen/qwen3-coder-next"), &prices);
     assert_eq!(resolved.source, CostSource::Upstream);
     assert_eq!(resolved.estimated_cost, Some(CostMicros(1_000_000)));
     assert_eq!(resolved.cost, Some(CostMicros(10_000)));
@@ -279,7 +279,7 @@ fn messages_shape_input_tokens_are_uncached_and_cache_read_is_added() {
         r#""cache_read_input_tokens":400000,"cache_creation_input_tokens":0,"cost":0}}"#
     ));
     let prices = PriceTable::new(vec![(
-        "mistralai/devstral-2512".into(),
+        "qwen/qwen3-coder-next".into(),
         ModelPrice {
             input: 1.0,
             cache_read: 0.25,
@@ -289,7 +289,7 @@ fn messages_shape_input_tokens_are_uncached_and_cache_read_is_added() {
             rates_complete: true,
         },
     )]);
-    let resolved = resolve_cost(&usage, Some("mistralai/devstral-2512"), &prices);
+    let resolved = resolve_cost(&usage, Some("qwen/qwen3-coder-next"), &prices);
     assert_eq!(resolved.source, CostSource::Estimate);
     assert_eq!(
         resolved.cost,
@@ -307,7 +307,7 @@ fn chat_shape_prompt_tokens_include_cached_tokens() {
         r#""prompt_tokens_details":{"cached_tokens":400000}}}"#
     ));
     let prices = PriceTable::new(vec![(
-        "mistralai/devstral-2512".into(),
+        "qwen/qwen3-coder-next".into(),
         ModelPrice {
             input: 1.0,
             cache_read: 0.25,
@@ -317,7 +317,7 @@ fn chat_shape_prompt_tokens_include_cached_tokens() {
             rates_complete: true,
         },
     )]);
-    let resolved = resolve_cost(&usage, Some("mistralai/devstral-2512"), &prices);
+    let resolved = resolve_cost(&usage, Some("qwen/qwen3-coder-next"), &prices);
     assert_eq!(resolved.source, CostSource::Estimate);
     assert_eq!(
         resolved.cost,
@@ -386,7 +386,7 @@ fn partial_prices_fall_through_to_upstream() {
         r#""cost":0,"is_byok":true,"cost_details":{"upstream_inference_cost":0.01}}}"#
     ));
     let prices = PriceTable::new(vec![(
-        "mistralai/devstral-2512".into(),
+        "qwen/qwen3-coder-next".into(),
         ModelPrice {
             input: 1.0,
             cache_read: 0.0,
@@ -396,7 +396,7 @@ fn partial_prices_fall_through_to_upstream() {
             rates_complete: false,
         },
     )]);
-    let resolved = resolve_cost(&usage, Some("mistralai/devstral-2512"), &prices);
+    let resolved = resolve_cost(&usage, Some("qwen/qwen3-coder-next"), &prices);
     assert_eq!(resolved.source, CostSource::Upstream);
     assert_eq!(resolved.cost, Some(CostMicros(10_000)));
     assert!(resolved.estimated_cost.is_none());
@@ -432,20 +432,20 @@ fn partial_prices_toml_loader_marks_rates_incomplete() {
     std::fs::write(
         dir.join("prices.toml"),
         r#"
-[prices."mistralai/devstral-2512"]
+[prices."qwen/qwen3-coder-next"]
 input = 1.0
 "#,
     )
     .unwrap();
     let config = Config::load_from_directory(&dir).unwrap();
-    let price = config.prices.get("mistralai/devstral-2512").unwrap();
+    let price = config.prices.get("qwen/qwen3-coder-next").unwrap();
     assert!(!price.rates_complete);
     assert_eq!(price.input, 1.0);
     let usage = usage_from_output(concat!(
         r#"{"usage":{"input_tokens":1000000,"output_tokens":0,"cache_read_input_tokens":0,"#,
         r#""cost":0,"is_byok":true,"cost_details":{"upstream_inference_cost":0.01}}}"#
     ));
-    let resolved = resolve_cost(&usage, Some("mistralai/devstral-2512"), &config.prices);
+    let resolved = resolve_cost(&usage, Some("qwen/qwen3-coder-next"), &config.prices);
     assert_eq!(resolved.source, CostSource::Upstream);
     assert_eq!(resolved.cost, Some(CostMicros(10_000)));
     assert!(resolved.estimated_cost.is_none());

@@ -22,6 +22,10 @@ pub struct CallRow {
     /// Reported cost / price-table estimate (2 decimals), set only when they differ by more than 25%.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimate_ratio: Option<f64>,
+    /// Where the price row behind the estimate came from: `manual`, `catalogue@YYYY-MM-DD` or `fallback`. Set when the
+    /// call had a table estimate (whether or not the estimate was the charged cost).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_source: Option<String>,
     /// The upstream's id for the call: the OpenRouter generation id (`gen-…`, usable with its generation lookup) when
     /// it returned one, else whatever `id` the response carried (Anthropic-style `msg_…` on the messages path).
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -300,6 +300,15 @@ test("http: changes, queue, approvals, forms and secrets request shapes", async 
   }
 });
 
+test("getLatestPlan: no plan is null, from `{plan: null}` and from an older harness's 404", async () => {
+  assert.equal(await bridgeWith(200, '{"plan":null}').bridge.getLatestPlan?.("p"), null);
+  assert.equal(await bridgeWith(404, '{"error":{"code":"not_found","message":"no plan"}}').bridge.getLatestPlan?.("p"), null);
+  await assert.rejects(
+    bridgeWith(404, '{"error":{"code":"project_not_found","message":"x"}}').bridge.getLatestPlan?.("p") ?? Promise.resolve(),
+    (e: unknown) => e instanceof BridgeError && e.code === "project_not_found",
+  );
+});
+
 test("sendOrQueueMessage tells a started turn from a queued message; sendMessage refuses a queued one", async () => {
   const started = bridgeWith(202, '{"message":{"id":4}}').bridge;
   assert.deepEqual(await started.sendOrQueueMessage?.("p", "hi"), { message: { id: 4 } });

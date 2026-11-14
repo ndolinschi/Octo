@@ -1,48 +1,42 @@
-import { cn } from "../../lib/cn";
+import { useEffect, useState } from "react";
 
-type Shape = "circle" | "square" | "diamond" | "hex" | "tri";
-
-/** A distinct simple shape per known provider; any other id gets one from its letters, so the same provider always looks the same. */
-const KNOWN: Record<string, Shape> = {
-  api: "hex",
-  router: "diamond",
-  "claude-code": "circle",
-  codex: "square",
-  copilot: "tri",
-  grok: "diamond",
-  opencode: "hex",
-};
-const SHAPES: readonly Shape[] = ["circle", "square", "diamond", "hex", "tri"];
-
-function shapeOf(id: string): Shape {
-  const known = KNOWN[id];
-  if (known) return known;
-  let h = 0;
-  for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 997;
-  return SHAPES[h % SHAPES.length] ?? "circle";
-}
-
-const OUTLINE: Record<Shape, string> = {
-  circle: "M8 1.5a6.5 6.5 0 1 0 0 13a6.5 6.5 0 0 0 0-13Z",
-  square: "M4 1.5h8a2.5 2.5 0 0 1 2.5 2.5v8a2.5 2.5 0 0 1-2.5 2.5H4A2.5 2.5 0 0 1 1.5 12V4A2.5 2.5 0 0 1 4 1.5Z",
-  diamond: "M8 1l6.5 7L8 15L1.5 8Z",
-  hex: "M8 1.2l5.9 3.4v6.8L8 14.8l-5.9-3.4V4.6Z",
-  tri: "M8 1.8l6.4 11.4H1.6Z",
-};
+type Marks = typeof import("./providerMarkAssets");
+let marks: Marks | null = null;
 
 /**
- * Decision 72 (a): the 16px mark that starts a provider row, chip and Settings row. Our own neutral glyph, never a vendor
- * logo: one simple shape per provider with its initial inside, in the surrounding text colour.
+ * Decision 72 (a), overridden by the owner: the mark that starts a provider row, chip and Settings row is the vendor's real
+ * logo, drawn in the surrounding text colour (a CSS mask over the SVG file, so it works in light and dark and costs the
+ * entry bundle almost nothing). Rule: a provider row shows the provider's mark; a model chip shows the model's vendor, or the
+ * agent CLI's mark when the model runs through an agent. `id` is a provider id or a model id. An id with no vendor mark (and
+ * our own router) keeps the neutral shape with its initial. The box has its final size before anything loads: no layout shift.
  */
 export function ProviderMark({ id, label, size = 16, className }: { id: string; label: string; size?: number; className?: string }) {
-  const shape = shapeOf(id);
-  const initial = (label.trim().charAt(0) || id.charAt(0) || "?").toUpperCase();
+  const [, loaded] = useState(0);
+  useEffect(() => {
+    if (!marks)
+      void import("./providerMarkAssets").then((m) => {
+        marks = m;
+        loaded((n) => n + 1);
+      });
+  }, []);
+  const mark = marks?.markOf(id, label);
+  const url = mark && "url" in mark ? mark.url : undefined;
+  if (mark && !url && "d" in mark)
+    return (
+      <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden data-provider-mark={id} className={`shrink-0 ${className ?? ""}`}>
+        <path d={mark.d} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <text x="8" y={mark.y} textAnchor="middle" fontSize="7.5" fontWeight="600" fill="currentColor" fontFamily="inherit">
+          {mark.initial}
+        </text>
+      </svg>
+    );
+  // Until the marks' chunk arrives the box is empty and already its final size.
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden data-provider-mark={id} className={cn("shrink-0", className)}>
-      <path d={OUTLINE[shape]} fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
-      <text x="8" y={shape === "tri" ? 11.6 : 10.6} textAnchor="middle" fontSize="7.5" fontWeight="600" fill="currentColor" fontFamily="inherit">
-        {initial}
-      </text>
-    </svg>
+    <span
+      aria-hidden
+      data-provider-mark={id}
+      className={`inline-block shrink-0 ${url ? "bg-current mask-contain mask-center mask-no-repeat" : ""} ${className ?? ""}`}
+      style={{ width: size, height: size, ...(url ? { maskImage: `url("${url}")` } : {}) }}
+    />
   );
 }

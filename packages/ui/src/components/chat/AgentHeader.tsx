@@ -5,18 +5,23 @@ import { ChevronRight } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { useId, useState } from "react";
 import { cn } from "../../lib/cn";
-import { agentDuration, formatDuration } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
+import { agentDuration } from "../../lib/duration";
 import { hrefFor } from "../../lib/route";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Markdown } from "../shared/Markdown";
-import { statusLabel, tierLabel } from "../primitives/Status";
-import { useAcpNames, useModelNames } from "../../state/models";
+import { statusLabel, tierLabel } from "../primitives/statusMore";
+import { useAcpNames } from "../../state/models";
+import { useModelNames } from "../../state/modelNames";
 import { routeLine } from "../../lib/modelsMore";
-import { contextText } from "../../lib/usageView";
+import { contextText } from "../../lib/contextText";
+import { CHAT } from "../../state/workspace/layout";
+import { retryText } from "./DelegationGroup";
+import { prefillComposer } from "./composerDraft";
 
 export function Breadcrumb({ agent }: { agent: Agent }) {
-  const { projectId, project, state } = useProject();
+  const { projectId, state } = useProject();
   const ws = useOptionalWorkspace();
   const chain = ancestorsOf(state, agent.id);
   const sep = (
@@ -27,10 +32,10 @@ export function Breadcrumb({ agent }: { agent: Agent }) {
   return (
     <nav aria-label="Breadcrumb" className="mb-2">
       <ol className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm text-fg-3">
-        <li className="max-w-[180px] truncate">{project?.name}</li>
-        {chain.map((a) => (
+        {/* B42: the project is the tab's own context; the root of the chain is the project's conversation. */}
+        {chain.map((a, i) => (
           <li key={a.id} className="flex min-w-0 items-center gap-1.5">
-            {sep}
+            {i > 0 && sep}
             <a
               href={hrefFor(projectId, a.parent_id === null ? null : a.id)}
               onClick={(e) => {
@@ -41,12 +46,12 @@ export function Breadcrumb({ agent }: { agent: Agent }) {
               }}
               className="inline-block h-6 max-w-[200px] truncate rounded-sm py-0.5 leading-5 hover:text-fg"
             >
-              {a.parent_id === null ? project?.name : roleName(a)}
+              {a.parent_id === null ? "Conversation" : roleName(a)}
             </a>
           </li>
         ))}
         <li className="flex min-w-0 items-center gap-1.5">
-          {sep}
+          {chain.length > 0 && sep}
           <span aria-current="page" className="truncate text-fg-2">
             {roleName(agent)}
           </span>
@@ -58,6 +63,7 @@ export function Breadcrumb({ agent }: { agent: Agent }) {
 
 export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
   const { state } = useProject();
+  const ws = useOptionalWorkspace();
   const [briefOpen, setBriefOpen] = useState(false);
   const briefId = useId();
   const duration = agentDuration(agent, now);
@@ -100,7 +106,20 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
       )}
       {agent.status === "failed" && (
         <p role="note" className="mt-1.5 text-sm text-fg-2">
-          <span className="text-err">{(agent.error || "No error details were reported").replace(/\.$/, "")}.</span> Ask in the conversation to retry it.
+          <span className="text-err">{(agent.error || "This helper failed").replace(/\.$/, "")}.</span>{" "}
+          {ws ? (
+            <Button
+              variant="link"
+              onClick={() => {
+                prefillComposer(ws.memory, CHAT, retryText(roleName(agent), agent.task || agent.title));
+                ws.focusChat();
+              }}
+            >
+              Retry
+            </Button>
+          ) : (
+            "Ask in the conversation to retry it."
+          )}
         </p>
       )}
       {agent.task && (

@@ -70,7 +70,7 @@
         "COPILOT_GITHUB_TOKEN": "${COPILOT_GITHUB_TOKEN}"
       },
       "auth": {
-        "command": "copilot auth login",
+        "command": "copilot login",
         "hint": "Log in once: run `copilot` and type /login, or start the harness with COPILOT_GITHUB_TOKEN set to a fine-grained token that has the \"Copilot Requests\" permission. The harness has no non-interactive Copilot login check, so its login state shows as unknown."
       },
       "install": "Install the GitHub Copilot CLI so that `copilot` is on PATH: npm install -g @github/copilot (needs Node.js 22 or newer and a Copilot plan)"

@@ -66,8 +66,10 @@ type Field struct {
 
 // Input is an open form.
 type Input struct {
-	ID         string  `json:"id"`
-	AgentID    string  `json:"agent_id"`
+	ID      string `json:"id"`
+	AgentID string `json:"agent_id"`
+	// SessionID is the main session whose turn asks (schema 15).
+	SessionID  string  `json:"session_id,omitempty"`
 	AgentLabel string  `json:"agent_label"`
 	TurnID     int64   `json:"turn_id"`
 	Title      string  `json:"title"`

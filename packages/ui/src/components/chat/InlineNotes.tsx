@@ -9,7 +9,7 @@ import { Notice } from "../primitives/Notice";
 import { ContextReport } from "./ContextReport";
 import { ErrorNotice } from "../shared/ErrorNotice";
 import { useInlineNotes, type InlineNote } from "./notesContext";
-import { useAgentName } from "./Transcript";
+import { useAgentName } from "./agentName";
 
 /** The lines and cards slash commands leave under the transcript (B11); its own chunk, mounted once something exists. */
 export function InlineNotes() {

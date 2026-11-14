@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProject } from "../../state/project";
 import { ActivityRow } from "./ActivityRow";
-import { activityLine, labelParts, runningToolOf } from "./activity";
+import { activityLine, type ActivityLine as ActivityLineKind, labelParts, runningToolOf } from "./activity";
 import { useAnimationGate } from "./useAnimationGate";
 
 /**
@@ -15,12 +15,15 @@ export function ActivityLine({
   startedAt,
   now,
   watched,
+  current = null,
 }: {
   agentId: string;
   agentName: string;
   startedAt: number | null;
   now: number;
   watched: boolean;
+  /** The kind of step the newest row above already shows (a streaming "Thinking" row, a running tool group): the line then adds nothing. */
+  current?: ActivityLineKind["kind"] | null;
 }) {
   const { state } = useProject();
   const messages = state.messages[agentId];
@@ -47,6 +50,7 @@ export function ActivityLine({
   });
   const ref = useRef<HTMLParagraphElement>(null);
   const paused = useAnimationGate(ref, watched);
+  if (current !== null && line.kind === current) return null;
   const parts = labelParts(line.label);
   const text = parts.map((p, i) =>
     p.code ? (

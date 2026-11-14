@@ -1,14 +1,21 @@
 import type { Agent, ProjectAttentionKind, ProjectState } from "@octo/agent-client";
-import { timeAgo } from "./format";
+import { formatRelative, timeAgo } from "./format";
 
 /**
  * The project orchestrator's state as the sidebar, the header and Home show it (contract decision 23), derived
  * only from what the bridge reports: the project's status, its agents (the orchestrator is the agent without a
- * parent) and their statuses. "Needs you" = the last turn failed (the orchestrator agent's status after a turn);
- * approvals will join it when the harness has them.
+ * parent) and their statuses. "Needs you" = an approval or a form waits for the user (`waiting`: the harness's `attention:
+ * "needs_you"`, sent while the turn that asked is still running), or the last turn failed (the orchestrator agent's status
+ * after a turn).
  */
 export type OrchestratorState =
-  { kind: "working"; agents: Agent[] } | { kind: "needs"; error: string | null; at: string | null } | { kind: "idle"; at: string | null } | { kind: "new" };
+  | { kind: "working"; agents: Agent[] }
+  | { kind: "needs"; error: string | null; at: string | null; waiting?: "approval" | "input" }
+  | { kind: "idle"; at: string | null }
+  | { kind: "new" };
+
+/** What waits for the user: the summary's `pending_approvals` / `pending_inputs`, or the live `project.attention` counts. */
+export type Waiting = { approvals: number; inputs: number };
 
 const byStart = (a: Agent, b: Agent) => Date.parse(a.started_at ?? a.created_at) - Date.parse(b.started_at ?? b.created_at) || a.id.localeCompare(b.id);
 
@@ -17,8 +24,18 @@ export function runningAgents(agents: readonly Agent[]): Agent[] {
   return agents.filter((a) => a.parent_id !== null && a.status === "running").sort(byStart);
 }
 
-export function orchestratorState(agents: readonly Agent[], projectStatus: "idle" | "running", attention?: ProjectAttentionKind): OrchestratorState {
-  const root = agents.find((a) => a.parent_id === null);
+export function orchestratorState(
+  agents: readonly Agent[],
+  projectStatus: "idle" | "running",
+  attention?: ProjectAttentionKind,
+  waiting?: Waiting,
+): OrchestratorState {
+  // Parallel sessions: one root per main session; the one at work, else the default's (listed first), speaks for the project.
+  const roots = agents.filter((a) => a.parent_id === null);
+  const root = roots.find((a) => a.status === "running") ?? roots[0];
+  // Pending work wins over working: a turn that waits on an approval or a form is still running at the harness.
+  const pendingWork = waitingOn(attention, waiting);
+  if (pendingWork) return { kind: "needs", error: null, at: null, waiting: pendingWork };
   const running = runningAgents(agents);
   if (projectStatus === "running" || root?.status === "running" || running.length) return { kind: "working", agents: running };
   // The harness says whether the last turn failed (`attention`); without it (an older harness) the agents decide.
@@ -33,26 +50,57 @@ export function orchestratorState(agents: readonly Agent[], projectStatus: "idle
   return { kind: "idle", at: root.finished_at ?? root.started_at };
 }
 
-/** The same derivation over a live project state (the open project). */
+/** An approval when one waits (it blocks a tool call), else a form; null when nothing waits. */
+function waitingOn(attention: ProjectAttentionKind | undefined, waiting: Waiting | undefined): "approval" | "input" | null {
+  const approvals = waiting?.approvals ?? 0;
+  const inputs = waiting?.inputs ?? 0;
+  if (approvals > 0) return "approval";
+  if (inputs > 0) return "input";
+  return attention === "needs_you" ? "approval" : null;
+}
+
+/** The same derivation over a live project state (the open project): its live `project.attention` counts decide what waits. */
 export function liveOrchestratorState(state: ProjectState, projectStatus: "idle" | "running"): OrchestratorState {
   const agents = state.agentOrder.flatMap((id) => {
     const a = state.agents[id];
     return a ? [a] : [];
   });
   const failure = state.attention.state;
-  return orchestratorState(agents, projectStatus, failure === "failed" || failure === "none" ? failure : undefined);
+  return orchestratorState(agents, projectStatus, failure === "failed" || failure === "none" ? failure : undefined, {
+    approvals: state.attention.approvals,
+    inputs: state.attention.inputs,
+  });
+}
+
+/** "Waiting for your approval", "Waiting for your answer" (a form), "Failed". */
+function needsLine(s: Extract<OrchestratorState, { kind: "needs" }>): string {
+  if (s.waiting === "approval") return "Waiting for your approval";
+  if (s.waiting === "input") return "Waiting for your answer";
+  return "Failed";
 }
 
 /**
- * One line: "Working, 3 agents", "Working", "Failed", "Idle, 2h ago", "No requests yet" (no "·" joiners: craft rule). A
- * failed turn says "Failed" (decision 53): the project is still in the "Needs you" triage group, its ring the alert.
+ * The time a project row shows (B6: the sidebar and Home show the same one): since the orchestrator's last turn, else since the
+ * project changed (`fallbackAt`, its `updated_at`); "new" for a project never started; null while it works.
+ */
+export function projectWhen(s: OrchestratorState, now: number, fallbackAt?: string): string | null {
+  if (s.kind === "working") return null;
+  if (s.kind === "new") return "new";
+  const at = s.at ?? fallbackAt;
+  return at ? formatRelative(at, now) : null;
+}
+
+/**
+ * One line: "Working, 3 agents", "Working", "Waiting for your approval", "Waiting for your answer", "Failed", "Idle, 2h ago",
+ * "No requests yet" (no "·" joiners: craft rule). A failed turn says "Failed" (decision 53): the project is still in the
+ * "Needs you" triage group, its ring the alert.
  */
 export function stateLine(s: OrchestratorState, now: number, fallbackAt?: string): string {
   switch (s.kind) {
     case "working":
       return s.agents.length === 0 ? "Working" : `Working, ${s.agents.length} ${s.agents.length === 1 ? "agent" : "agents"}`;
     case "needs":
-      return "Failed";
+      return needsLine(s);
     case "idle": {
       const at = s.at ?? fallbackAt;
       return at ? `Idle, ${timeAgo(at, now)}` : "Idle";
@@ -60,6 +108,20 @@ export function stateLine(s: OrchestratorState, now: number, fallbackAt?: string
     case "new":
       return "No requests yet";
   }
+}
+
+/**
+ * The sidebar's project row (polish step 2, F1): every row is ONE line — state glyph, name, right-aligned meta — and the
+ * meta says the one thing worth saying: idle → the time since its last turn ("1h"); working → "2 agents" when it has agents,
+ * else nothing (the turning glyph says working); needs you (a failed turn, an approval or a form waiting) → the time; never
+ * started → "new" (`projectWhen`, Home's time too). `full` is the whole sentence ("Working, 2 agents", "Waiting for your
+ * approval", "Failed", "Idle, 1h ago", "No requests yet") for the tooltip and the accessible name;
+ * the tone is carried once, by the glyph (decision 91k).
+ */
+export function projectRowLines(s: OrchestratorState, now: number, fallbackAt?: string): { meta: string | null; full: string } {
+  const full = stateLine(s, now, fallbackAt);
+  if (s.kind === "working") return { meta: s.agents.length ? `${s.agents.length} ${s.agents.length === 1 ? "agent" : "agents"}` : null, full };
+  return { meta: projectWhen(s, now, fallbackAt), full };
 }
 
 const ACTIVITY: Record<string, string> = {

@@ -215,7 +215,11 @@ func (d *DB) init(ctx context.Context, in NewProject) error {
 	if err := d.ReplaceFolders(ctx, in.Folders); err != nil {
 		return err
 	}
-	_, err = d.CreateAgent(ctx, NewAgent{Role: OrchestratorRole, Model: in.OrchestratorModel, Status: StatusIdle})
+	if _, err = d.CreateAgent(ctx, NewAgent{Role: OrchestratorRole, Model: in.OrchestratorModel, Status: StatusIdle}); err != nil {
+		return err
+	}
+	// The default session exists from the start and the orchestrator row is its root (schema 15).
+	_, err = d.RootAgent(ctx, "")
 	return err
 }
 

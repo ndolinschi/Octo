@@ -152,9 +152,18 @@ func (e *acpEnv) messages(t *testing.T, p projectJSON, agentID string) []apiMess
 }
 
 // lastText is all the assistant text of the orchestrator's latest turn, in order.
+// defaultRoot is the root agent of the project's default session now (schema 15: a /clear or a new default
+// session changes it; p.OrchestratorAgentID is what it was when p was read).
+func (e *acpEnv) defaultRoot(t *testing.T, p projectJSON) string {
+	t.Helper()
+	var cur projectJSON
+	e.into(t, "GET", "/v1/projects/"+p.ID, nil, http.StatusOK, &cur)
+	return cur.OrchestratorAgentID
+}
+
 func (e *acpEnv) lastText(t *testing.T, p projectJSON) string {
 	t.Helper()
-	msgs := e.messages(t, p, p.OrchestratorAgentID)
+	msgs := e.messages(t, p, e.defaultRoot(t, p))
 	start := 0
 	for i, m := range msgs {
 		if m.Role == "user" && len(m.Content) > 0 && m.Content[0].Type == "text" {
@@ -765,4 +774,35 @@ func TestACPModelSettingsValidation(t *testing.T) {
 		http.StatusOK, nil)
 	// Anything else is today's loop and is not checked.
 	e.into(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"models": map[string]string{"orchestrator": "claude-sonnet-5-5"}}, http.StatusOK, nil)
+}
+
+// Stopping a turn while a sub-agent that an ACP orchestrator spawned over MCP is running settles the sub-agent as
+// cancelled (the UI reads "Stopped"), not failed.
+func TestACPOrchestratorCancelSettlesSubAgentCancelled(t *testing.T) {
+	e := newACPEnv(t, nil, nil)
+	p := e.acpProject(t)
+	ch := e.subscribe(t, p.ID)
+	e.into(t, "POST", "/v1/projects/"+p.ID+"/messages", map[string]string{"text": "[mcp-spawn-hang] look around"}, http.StatusAccepted, nil)
+	deadline := time.After(20 * time.Second)
+waitChild:
+	for {
+		select {
+		case ev := <-ch:
+			if a, _ := ev.Data["agent"].(map[string]any); ev.Type == events.AgentCreated && a["parent_id"] != nil {
+				time.Sleep(500 * time.Millisecond) // the sub-agent's process is up and waiting
+				break waitChild
+			}
+		case <-deadline:
+			t.Fatal("the sub-agent never started")
+		}
+	}
+	e.into(t, "POST", "/v1/projects/"+p.ID+"/cancel", nil, http.StatusAccepted, nil)
+	if tr := finishTurn(t, ch); tr.status != "cancelled" {
+		t.Fatalf("turn = %s, want cancelled", tr.status)
+	}
+	for _, a := range e.agents(t, p) {
+		if a.ParentID != nil && (a.Status != "cancelled" || a.Error != nil) {
+			t.Fatalf("sub-agent = %s (error %v), want cancelled without an error", a.Status, a.Error)
+		}
+	}
 }

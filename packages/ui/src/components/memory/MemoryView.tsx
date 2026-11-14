@@ -11,6 +11,7 @@ import { SearchResults } from "./SearchResults";
 import { SessionsView } from "./SessionsView";
 import { useMemorySearch } from "./useMemorySearch";
 import { useMemoryFiles, useTasks } from "./useMemory";
+import { PanelPurpose } from "../shared/PanelPurpose";
 
 export type MemoryTab = "sessions" | "knowledge" | "files";
 
@@ -48,7 +49,9 @@ export function MemoryView(props: {
   const searching = query.trim() !== "";
 
   if (!bridge.listTasks && !bridge.listMemory && !bridge.listMemorySessions) {
-    return <PaneEmpty title="This harness has no memory">Update the harness to see sessions, what is remembered and memory files here.</PaneEmpty>;
+    return (
+      <PaneEmpty title="This version of Octo's local service has no memory">Update it to see sessions, what is remembered and memory files here.</PaneEmpty>
+    );
   }
 
   const open = (t: HitTarget) => {
@@ -79,6 +82,7 @@ export function MemoryView(props: {
       <Panel
         name="memory"
         title="Memory"
+        lead={<PanelPurpose tool="memory" />}
         filters={
           <PanelFilters>
             <SearchField

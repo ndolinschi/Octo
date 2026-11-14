@@ -1,5 +1,6 @@
 import { ATLAS_CONCURRENT_TEST } from "./writes";
 import { act, delegate, say, sleep, turn, type Ctx } from "./runtime";
+import { toolShowcaseTurn } from "./toolShowcase";
 
 const REFRESH_TS = `import { db } from "../db";
 import { issuePair, verifyRefresh } from "./tokens";
@@ -49,6 +50,9 @@ ${'{"level":"warn","route":"/auth/refresh","reason":"refresh_reused","token":"' 
 Nothing has been changed yet. Say **go** and I'll hand the API and web changes to two implementers in parallel, with the new test as the gate.`;
 
 export async function atlasHistory(ctx: Ctx): Promise<void> {
+  // retest3 G1/G2: every kind of tool call, as the first request (the seeded v7 changes stay on the last two).
+  await toolShowcaseTurn(ctx);
+  await sleep(ctx, 40 * 60_000);
   await turn(ctx, "Get oriented in both repos and tell me how auth works end to end.", async (c, orch) => {
     await act(c, orch, [
       { name: "list_dir", input: { folder: "atlas-api", path: "." }, result: "src/\ntest/\npackage.json\nREADME.md\ntsconfig.json", ms: 300 },

@@ -23,17 +23,23 @@ export type SessionNode = { session: ProjectSession; children: ProjectSession[] 
 const newest = (a: ProjectSession, b: ProjectSession): number => startedMs(b) - startedMs(a);
 const oldest = (a: ProjectSession, b: ProjectSession): number => startedMs(a) - startedMs(b);
 
-export const isWorking = (s: Pick<ProjectSession, "state">): boolean => s.state === "working" || s.state === "waiting";
+export const isWorking = (s: Pick<ProjectSession, "state">): boolean => s.state === "working" || s.state === "waiting" || s.state === "queued";
+
+/** The default main session (parallel sessions; `current` is its old name). */
+export const isDefaultSession = (s: Pick<ProjectSession, "kind" | "current" | "default">): boolean => s.kind === "main" && (s.default ?? s.current);
 
 /**
  * "Delete" is offered on a session that is not the current one and has nothing running (itself or, for a main session,
  * an agent session it started). The harness refuses the rest with `current_session` / `session_running`.
  */
 export function canDelete(list: readonly ProjectSession[], s: ProjectSession): boolean {
-  if (s.kind === "main" && s.current) return false;
-  if (isWorking(s)) return false;
-  return s.kind === "agent" || !list.some((x) => x.kind === "agent" && x.parent_session_id === s.id && isWorking(x));
+  if (isDefaultSession(s)) return false;
+  if (isRunning(s)) return false;
+  return s.kind === "agent" || !list.some((x) => x.kind === "agent" && x.parent_session_id === s.id && isRunning(x));
 }
+
+/** A turn of it runs (working, or waiting for the person inside a turn); one waiting for a slot does not run yet. */
+export const isRunning = (s: Pick<ProjectSession, "state">): boolean => s.state === "working" || s.state === "waiting";
 
 /** The confirmation before a delete: what goes, and what stays (decision 95 c). Memory's entries are not deleted with a session. */
 export function deleteCopy(s: Pick<ProjectSession, "kind">): { title: string; description: string } {
@@ -109,14 +115,15 @@ export function filterCounts(list: readonly ProjectSession[]): Record<SessionFil
   };
 }
 
-/** The glyph of a session's state: the ring family of decision 29. A stopped session rests like an idle one. */
+/** The glyph of a session's state: the ring family of decision 29. A stopped session rests like an idle one; `queued` (waiting for a free slot) is the dashed ring. */
 export function glyphOf(state: ProjectSessionState): GlyphState {
-  return state === "working" ? "working" : state === "waiting" ? "needs" : state === "failed" ? "failed" : "idle";
+  return state === "working" ? "working" : state === "waiting" ? "needs" : state === "failed" ? "failed" : state === "queued" ? "queued" : "idle";
 }
 
 const STATE_WORD: Record<ProjectSessionState, string> = {
   working: "Working",
   waiting: "Waiting for you",
+  queued: "Waiting for a free slot",
   idle: "Idle",
   failed: "Failed",
   stopped: "Stopped",
@@ -133,7 +140,9 @@ const exchangesOf = (s: ProjectSession): string => (s.exchanges > 0 ? exchangeCo
 export type SessionRowModel = { id: string; glyph: GlyphState; state: string; title: string; description: string; tail: string; current: boolean };
 
 export function sessionRow(s: ProjectSession, now: number, modelName: (value: string) => string): SessionRowModel {
-  const parts = [formatDay(s.started_at, now)];
+  // P3 (polish step 5): the count first, then the model; the date is the tail at the right (the last activity), and the day
+  // the session started is in its detail. In a 280px column the line gives way at the model, not in the middle of the count.
+  const parts: string[] = [];
   if (s.kind === "main") parts.push(exchangesOf(s));
   if (s.model !== "") parts.push(modelName(s.model));
   return {
@@ -141,9 +150,9 @@ export function sessionRow(s: ProjectSession, now: number, modelName: (value: st
     glyph: glyphOf(s.state),
     state: sessionStateWord(s),
     title: s.title.trim() === "" ? (s.kind === "main" ? "New session" : "Agent session") : s.title,
-    description: parts.join(" · "),
-    tail: s.current ? "current" : formatWhen(s.last_activity_at, now),
-    current: s.current,
+    description: parts.length > 0 ? parts.join(" · ") : formatDay(s.started_at, now),
+    tail: isDefaultSession(s) ? "default" : formatWhen(s.last_activity_at, now),
+    current: isDefaultSession(s),
   };
 }
 
@@ -195,12 +204,13 @@ export function blockedText(s: Pick<ProjectSession, "can_message" | "message_blo
 /** Plain words for the 409s of the sessions routes (`apps/harness/docs/sessions.md`); any other code keeps the harness's message. */
 const ERRORS: Record<string, string> = {
   turn_in_progress: "Wait for the current request to finish, or stop it.",
-  current_session: "This is the current session. Resume another one first.",
+  current_session: "This is the project's default session. Make another one the default first.",
   session_running: "This session is still working. Stop it first.",
   not_continuable: "This agent can't be continued: its conversation was not kept. Ask the orchestrator to start a new one.",
   steer_unsupported: "This agent can't take a message while it works. Wait until it finishes, then continue it.",
   not_running: "This session is not working, so there is nothing to stop.",
-  not_main_session: "Only a conversation with the orchestrator can be resumed.",
+  not_main_session: "Only a conversation with the orchestrator can be the default.",
+  queue_full: "This session already has 20 messages waiting. Wait for some to go, or remove one.",
   not_agent_session: "Messages to the orchestrator go through the project's conversation.",
   builtin_loop_unavailable: "The built-in agent loop is not available, so this agent can't be continued.",
   not_found: "This session no longer exists. It may have been deleted.",
@@ -218,6 +228,7 @@ export function outcomeText(outcome: "steered" | "continued"): string {
 const AGENT_STATUS: Record<ProjectSessionState, Agent["status"]> = {
   working: "running",
   waiting: "running",
+  queued: "idle",
   idle: "completed",
   failed: "failed",
   stopped: "cancelled",

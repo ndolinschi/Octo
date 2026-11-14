@@ -7,7 +7,7 @@ export type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved" 
 const SAVED_FOR_MS = 2400;
 
 /** One row's save cycle: saving → "Saved" (for a moment) or the error, which stays until the next change. */
-export function useSave(): [SaveState, (work: () => Promise<unknown>) => Promise<boolean>] {
+export function useSave(): [SaveState, (work: () => Promise<unknown>) => Promise<boolean>, () => void] {
   const [state, setState] = useState<SaveState>({ kind: "idle" });
   const timer = useRef(0);
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -24,5 +24,10 @@ export function useSave(): [SaveState, (work: () => Promise<unknown>) => Promise
       return false;
     }
   }, []);
-  return [state, run];
+  /** B11: an edit after a save takes "Saved" (or an old error) back at once. */
+  const clear = useCallback(() => {
+    window.clearTimeout(timer.current);
+    setState((s) => (s.kind === "saving" || s.kind === "idle" ? s : { kind: "idle" }));
+  }, []);
+  return [state, run, clear];
 }

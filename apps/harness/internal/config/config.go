@@ -21,6 +21,9 @@ const (
 	MaxDepthLimit   = 8
 	DefaultAddr     = "127.0.0.1:8790"
 	DefaultACPIdle  = 30 * time.Minute
+	// DefaultMaxRunningSessions is HARNESS_MAX_RUNNING_SESSIONS's default; MaxRunningSessionsLimit its maximum.
+	DefaultMaxRunningSessions = 6
+	MaxRunningSessionsLimit   = 32
 	// DefaultRouteTimeout is how long the route call may take before the
 	// harness falls back to its own default tier.
 	DefaultRouteTimeout = 2500 * time.Millisecond
@@ -187,6 +190,9 @@ type Config struct {
 	// before it is shut down (HARNESS_ACP_IDLE, a Go duration such as 90s or
 	// 30m; default 30m).
 	ACPIdle time.Duration
+	// MaxRunningSessions caps the turns of main sessions running at once on this machine, across projects
+	// (HARNESS_MAX_RUNNING_SESSIONS, 1-32; default 6). A project's own cap is its sessions.max_running setting.
+	MaxRunningSessions int
 	// RouteTimeout bounds the router's route call that picks who does a
 	// delegated task (HARNESS_ROUTE_TIMEOUT, a Go duration; default 2500ms).
 	RouteTimeout time.Duration
@@ -205,6 +211,8 @@ func Load() (Config, error) {
 		Stream:   true,
 		Models:   defaultModels(),
 		ACPIdle:  DefaultACPIdle,
+
+		MaxRunningSessions: DefaultMaxRunningSessions,
 
 		PromptCaching: true,
 		Limits: tools.Limits{
@@ -247,6 +255,13 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("HARNESS_MAX_TURNS: want positive integer, got %q", v)
 		}
 		cfg.MaxTurns = n
+	}
+	if v := os.Getenv("HARNESS_MAX_RUNNING_SESSIONS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > MaxRunningSessionsLimit {
+			return Config{}, fmt.Errorf("HARNESS_MAX_RUNNING_SESSIONS: want an integer from 1 to %d, got %q", MaxRunningSessionsLimit, v)
+		}
+		cfg.MaxRunningSessions = n
 	}
 	if v := os.Getenv("HARNESS_ACP_IDLE"); v != "" {
 		d, err := time.ParseDuration(v)

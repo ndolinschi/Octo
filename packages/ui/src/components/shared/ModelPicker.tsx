@@ -1,8 +1,8 @@
-import { Bot, ChevronDown, Sparkles } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { middleTruncate } from "../../lib/format";
-import { canRun, chipLabel } from "../../lib/providers/providers";
+import { canRun, chipLabel, chipParts } from "../../lib/providers/providers";
 import { useProviders } from "../../lib/providers/useProviders";
 import { parseAcp } from "../../lib/models";
 import { useApp } from "../../state/app";
@@ -10,6 +10,9 @@ import { Chip } from "../primitives/Chip";
 import { Glyph } from "../primitives/Glyph";
 import { Presence } from "../primitives/Presence";
 import type { ModelPickerProps } from "./modelPickerProps";
+
+/** The chip's mark loads the same way (its SVG chunk after it): the box in the Suspense fallback holds its place, 14px, so nothing shifts when it arrives. */
+const ProviderMark = lazy(() => import("../primitives/ProviderMark").then((m) => ({ default: m.ProviderMark })));
 
 /** The list loads on first open (its own chunk): the chip is all the composer and the title bar need up front. */
 const ModelPickerPanel = lazy(() => import("./ModelPickerPanel").then((m) => ({ default: m.ModelPickerPanel })));
@@ -39,6 +42,7 @@ export function ModelPicker(props: ModelPickerProps) {
   // Decision 53 d: a setting whose provider cannot run it now is said where it is used.
   const broken = props.warn === true || (list !== null && props.value !== "" && !canRun(list, props.value));
   const tip = props.warn !== true && broken ? "This model's provider is not connected. Open the list to connect it or choose another." : props.tip;
+  const toned = broken && props.problemShown !== true;
   const variant = props.variant ?? "chip";
   const side = props.side ?? "top";
   const ref = parseAcp(props.value);
@@ -68,7 +72,7 @@ export function ModelPicker(props: ModelPickerProps) {
           className={cn(
             "flex h-row-nav w-full min-w-0 press items-center gap-1.5 rounded-sm border border-line-strong bg-raised px-3 text-left text-sm whitespace-nowrap text-fg hover:bg-hover disabled:pointer-events-none disabled:text-fg-3",
             open && "bg-active",
-            broken && "text-warn",
+            toned && "text-warn",
             props.className,
           )}
         >
@@ -83,13 +87,18 @@ export function ModelPicker(props: ModelPickerProps) {
     <>
       <Chip
         ref={button}
-        icon={ref ? Bot : Sparkles}
+        lead={
+          <Suspense fallback={<span className="size-3.5 shrink-0" />}>
+            <ProviderMark id={ref ? ref.id : props.value} label={text} size={14} />
+          </Suspense>
+        }
         name={props.label}
         label={text}
+        parts={typeof label === "string" ? chipParts(text) : null}
         bare={props.bare ?? false}
         open={open}
         disabled={props.disabled ?? false}
-        warn={broken}
+        warn={toned}
         aria-haspopup="dialog"
         data-model-picker
         onClick={() => setOpen(!open)}

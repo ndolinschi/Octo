@@ -21,6 +21,25 @@ export const OCTO_FALLBACK: OctoSlashCommand[] = [
   { name: "help", description: "What these commands do", available: true, endpoint: "ui:help" },
 ];
 
+/**
+ * The names of every Octo command: the ones `chat/slashRun.ts` runs (a harness lists these in `getSlashCommands().octo`). The
+ * composer highlights a command typed with one of these names (`lib/mentions.ts`).
+ */
+export const OCTO_COMMAND_NAMES: readonly string[] = [
+  "compact",
+  "clear",
+  "mode",
+  "model",
+  "rewind",
+  "export",
+  "review",
+  "context",
+  "memory",
+  "settings",
+  "remember",
+  "help",
+];
+
 /** The word after a `/` at the very start of the text, up to the caret; null when the text does not start with a slash command being typed. */
 export function slashQuery(text: string, caret: number): string | null {
   const m = /^\/([^\s/]*)$/.exec(text.slice(0, caret));

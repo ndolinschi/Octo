@@ -2,12 +2,15 @@ import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ReviewComment, ReviewThread } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
+import { focusSoon } from "../../lib/focus";
 import { timeAgo } from "../../lib/format";
 import { threadSummary, visibleComments } from "../../lib/review/threads";
 import { Button, IconButton } from "../primitives/Button";
 import { Textarea } from "../primitives/Field";
 import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
+import { FormActions } from "../primitives/Panel";
+import { proseClass } from "../primitives/Prose";
 import { Markdown } from "../shared/Markdown";
 import { PR_TEXT } from "./ExternalText";
 
@@ -24,6 +27,22 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
   const [open, setOpen] = useState(!t.resolved);
   const [all, setAll] = useState(false);
   const [replying, setReplying] = useState(false);
+  // The reply box held focus: when it closes (Cancel, Esc, added), focus goes back to the thread's Reply button.
+  const replyButton = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (replying || !refocus.current) return;
+    refocus.current = false;
+    // In the diff the card lives in Monaco's view-zone layer: a plain focus() scrolls the editor's own layers natively, Monaco
+    // then re-renders its zones and the focused element is hidden for a frame (focus falls to the page). Never scroll on focus.
+    replyButton.current?.focus({ preventScroll: true });
+    // The card shrinks and Monaco lays its zone out again; if that still drops focus to the page, take it back once.
+    focusSoon(() => replyButton.current, { onlyIfLost: true, timeout: 800 });
+  }, [replying]);
+  const closeReply = () => {
+    refocus.current = true;
+    setReplying(false);
+  };
   const { shown, hidden } = visibleComments(t.comments, all);
 
   if (!open)
@@ -35,14 +54,15 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
         leading={<Glyph icon={ChevronRight} size={14} />}
         title={`Resolved · ${threadSummary(t)}`}
         onClick={() => setOpen(true)}
-        className="border border-line bg-raised"
+        className="bg-raised"
       />
     );
 
   return (
     <section
       aria-label={`Thread on ${t.path}${t.line ? ` line ${t.line}` : ""}`}
-      className="flex flex-col gap-2 rounded-md border border-line bg-raised p-3 text-sm"
+      // R4 (polish step 6b): a card is a tone, no outline (step 1's rule); inside it a field is recessed (`octo-in-card`).
+      className="octo-in-card flex flex-col gap-2 rounded-md bg-raised p-3 text-sm"
     >
       <header className="flex min-h-5 items-center gap-2 text-xs text-fg-3">
         {props.showPath && (
@@ -51,10 +71,10 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
             {t.original_line ? `:${t.original_line}` : ""}
           </span>
         )}
-        <span className="shrink-0">{t.outdated ? "Outdated: the code changed since" : t.resolved ? "Resolved" : "Unresolved"}</span>
+        <span className="shrink-0">{t.outdated ? "Outdated: the code changed since this comment was written" : t.resolved ? "Resolved" : "Unresolved"}</span>
         {t.side === "old" && !t.outdated && <span className="shrink-0">removed side</span>}
         <span className="min-w-0 flex-1 truncate text-right">Others' text, shown as text</span>
-        {t.resolved && <IconButton icon={ChevronDown} label="Collapse the thread" onClick={() => setOpen(false)} className="max-md:size-10" />}
+        {t.resolved && <IconButton icon={ChevronDown} label="Collapse the thread" onClick={() => setOpen(false)} />}
       </header>
       {shown.map((c, i) => (
         <div key={c.id} className={cn("flex flex-col gap-1", i > 0 && "border-t border-line pt-2")}>
@@ -62,7 +82,7 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
             <span className="font-medium text-fg">{c.author}</span>
             <span className="text-fg-3">{timeAgo(c.created_at, props.now)}</span>
           </p>
-          <Markdown text={c.body} components={PR_TEXT} />
+          <Markdown text={c.body} components={PR_TEXT} className={proseClass("compact")} />
           {i === 0 && hidden > 0 && (
             <Button variant="link" size="xs" onClick={() => setAll(true)} className="w-fit px-1">
               {hidden === 1 ? "1 more reply" : `${hidden} more replies`}
@@ -76,23 +96,21 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
             <p className="text-xs text-fg-3">Your reply · pending until you submit the review</p>
             <p className="break-words whitespace-pre-wrap text-fg">{c.body}</p>
           </div>
-          {!props.actions.readOnly && (
-            <IconButton icon={Trash2} label="Delete this reply" onClick={() => props.actions.deleteReply(c)} className="max-md:size-10" />
-          )}
+          {!props.actions.readOnly && <IconButton icon={Trash2} label="Delete this reply" onClick={() => props.actions.deleteReply(c)} />}
         </div>
       ))}
       {!props.actions.readOnly &&
         (replying ? (
           <ReplyBox
-            onCancel={() => setReplying(false)}
+            onCancel={closeReply}
             onSave={async (body) => {
               const problem = await props.actions.reply(t, body);
-              if (!problem) setReplying(false);
+              if (!problem) closeReply();
               return problem;
             }}
           />
         ) : (
-          <Button variant="ghost" size="sm" onClick={() => setReplying(true)} className="w-fit max-md:h-10">
+          <Button ref={replyButton} variant="quiet" size="sm" onClick={() => setReplying(true)} className="-ml-2 w-fit">
             Reply
           </Button>
         ))}
@@ -105,7 +123,10 @@ function ReplyBox(props: { onSave(body: string): Promise<string | null>; onCance
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => field.current?.focus(), []);
+  useEffect(() => {
+    // `preventScroll`: see the Reply button above (a scroll inside Monaco's layers hid the zone and dropped the caret).
+    field.current?.focus({ preventScroll: true });
+  }, []);
   const save = async () => {
     if (!body.trim() || busy) return;
     setBusy(true);
@@ -137,14 +158,17 @@ function ReplyBox(props: { onSave(body: string): Promise<string | null>; onCance
           {problem}
         </p>
       )}
+      {/* P2's action row: a dim note at the left, then Cancel and the primary at the right. */}
       <div className="flex items-center gap-2">
-        <Button variant="secondary" size="sm" disabled={!body.trim() || busy} onClick={() => void save()} className="max-md:h-10">
-          Add reply
-        </Button>
-        <Button variant="ghost" size="sm" onClick={props.onCancel} className="max-md:h-10">
-          Cancel
-        </Button>
-        <span className="text-xs text-fg-3 max-sm:hidden">Posted with your review.</span>
+        <span className="min-w-0 flex-1 truncate text-xs text-fg-3">Posted with your review.</span>
+        <FormActions>
+          <Button variant="quiet" size="sm" onClick={props.onCancel}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="sm" disabled={!body.trim() || busy} onClick={() => void save()}>
+            Add reply
+          </Button>
+        </FormActions>
       </div>
     </div>
   );

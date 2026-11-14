@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 )
 
 // defaultSessionID is the session id unless EnvUniqueSessions asks for fresh ones.
@@ -15,8 +16,16 @@ const defaultSessionID = "fake-session-1"
 
 // Markers in the prompt text that switch the scripted behaviour.
 const (
+	// ClosedNoteEnd ends the harness's note about an earlier request nothing answered (orchestrator/closed.go).
+	ClosedNoteEnd = "they will ask again.]\n\n"
 	MarkerEscape  = "[escape]"
 	MarkerCrash   = "[crash]"
+	// MarkerDieInCommand: the agent starts a command (an execute tool call, in progress) and its process dies.
+	MarkerDieInCommand = "[die-in-command]"
+	// MarkerDieSilent: the agent works 1.5 s without sending anything, then its process dies.
+	MarkerDieSilent = "[die-silent]"
+	// DieSilentLog is the file in the working folder MarkerDieSilent appends each request it got to.
+	DieSilentLog  = ".fakeacp-die-silent.log"
 	MarkerHang    = "[hang]"
 	MarkerDeaf    = "[deaf]"
 	MarkerUnknown = "[unknown]"
@@ -27,6 +36,19 @@ const (
 	// MarkerMCPSpawnBuiltin is MarkerMCPSpawn but asks for a built-in sub-agent
 	// (no `agent` argument), the one that needs the Messages API.
 	MarkerMCPSpawnBuiltin = "[mcp-spawn-builtin]"
+	// MarkerMCPSpawnHang is MarkerMCPSpawn with a task that makes the sub-agent hang until it is cancelled
+	// (a test stops the turn while the sub-agent runs).
+	MarkerMCPSpawnHang = "[mcp-spawn-hang]"
+	// MarkerMCPSpawnLazy plays Claude Code with MCP tool search: it calls
+	// spawn_agent knowing only the tool's name (no tools/list), with the
+	// arguments the server's initialize instructions show in their example (else
+	// the guess task + tier), wraps a failed result in a Markdown fence as Claude
+	// Code's ACP adapter does, retries once with the arguments the refusal's
+	// example shows, and reports "lazy-spawn first=ok|refused retry=...".
+	MarkerMCPSpawnLazy = "[mcp-spawn-lazy]"
+	// MarkerMCPSpawnGuess is MarkerMCPSpawnLazy ignoring the server's
+	// instructions: the first call is the guess (the owner's live run).
+	MarkerMCPSpawnGuess = "[mcp-spawn-guess]"
 	// MarkerEcho makes the agent answer with pid, session and the prompt it got.
 	MarkerEcho = "[echo]"
 	// MarkerBlocks answers with the content blocks of the prompt: "blocks=image:image/png:1234,text".
@@ -108,6 +130,10 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 	if i := strings.LastIndex(prompt, "User request:\n"); i >= 0 {
 		request = prompt[i+len("User request:\n"):]
 	}
+	// The harness's note closing an unanswered earlier request quotes that request (and its markers).
+	if i := strings.LastIndex(request, ClosedNoteEnd); i >= 0 {
+		request = request[i+len(ClosedNoteEnd):]
+	}
 	// A side question's first prompt carries a recap of the orchestrator's conversation.
 	if i := strings.LastIndex(request, "Side question: "); i >= 0 {
 		request = request[i+len("Side question: "):]
@@ -146,12 +172,28 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		return "refusal"
 	case has(MarkerMaxTokens):
 		return "max_tokens"
+	case has(MarkerDieSilent):
+		if f, err := os.OpenFile(filepath.Join(cwd, DieSilentLog), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+			_, _ = f.WriteString(request + "\n") // a test counts how many times the request reached an agent
+			_ = f.Close()
+		}
+		time.Sleep(1500 * time.Millisecond) // working without a word (a long first model call), then killed
+		a.exit(137)
+		return "end_turn"
 	case has(MarkerLive) || has(MarkerSlowTool) || has(MarkerQuiet) || has(MarkerSecretThought) || has(MarkerAuthRequired) || has(MarkerLateInput) || has(MarkerSayHang):
 		stop, _ := a.liveScript(ctx, cwd, request)
 		return stop
 	}
 	a.say("I'll look at the project first. ")
 	switch {
+	case has(MarkerDieInCommand):
+		a.update(map[string]any{
+			"sessionUpdate": "tool_call", "toolCallId": "call-cmd", "title": "Run go test ./...", "kind": "execute",
+			"status": "in_progress", "rawInput": map[string]string{"command": "go test ./..."},
+		})
+		time.Sleep(200 * time.Millisecond)
+		a.exit(137) // killed while the command runs
+		return "end_turn"
 	case has(MarkerCrash):
 		a.toolCall("call-crash", "Read README.md", "read", "pending", filepath.Join(cwd, "README.md"))
 		a.exit(3)
@@ -204,10 +246,16 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		a.mu.Unlock()
 		a.say(fmt.Sprintf("pid=%d session=%s loaded=%v prompt<<%s>>", os.Getpid(), a.sid(), loaded, prompt))
 		return "end_turn"
+	case has(MarkerMCPSpawnLazy):
+		return a.mcpSpawnLazy(ctx, true)
+	case has(MarkerMCPSpawnGuess):
+		return a.mcpSpawnLazy(ctx, false)
 	case has(MarkerMCPSpawnBuiltin):
-		return a.mcpSpawn(ctx, true)
+		return a.mcpSpawn(ctx, true, "Report that you are ready.")
+	case has(MarkerMCPSpawnHang):
+		return a.mcpSpawn(ctx, false, MarkerHang+" wait")
 	case has(MarkerMCPSpawn):
-		return a.mcpSpawn(ctx, false)
+		return a.mcpSpawn(ctx, false, "Report that you are ready.")
 	case has(MarkerMCPInfo):
 		a.say(a.mcpInfo())
 		return "end_turn"
@@ -334,7 +382,7 @@ func (a *agent) mcpToolCall(id, title string, args map[string]any) {
 }
 
 // mcpSpawn is the [mcp-spawn] script.
-func (a *agent) mcpSpawn(ctx context.Context, builtin bool) string {
+func (a *agent) mcpSpawn(ctx context.Context, builtin bool, task string) string {
 	a.say("Using the harness tools. ")
 	c, err := a.harnessMCP(ctx)
 	if err != nil {
@@ -360,7 +408,7 @@ func (a *agent) mcpSpawn(ctx context.Context, builtin bool) string {
 	}
 	a.say("Tools: " + strings.Join(names, ",") + ". ")
 
-	args := map[string]any{"role": "Explorer", "title": "Look around", "task": "Report that you are ready.", "tier": "fast"}
+	args := map[string]any{"role": "Explorer", "title": "Look around", "task": task, "tier": "fast"}
 	if autoTier {
 		// The schema offers tier auto (a router can choose): leave the choice to it.
 		args["tier"] = "auto"

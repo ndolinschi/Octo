@@ -48,3 +48,12 @@ export function fitCrumbs(w: CrumbWidths, available: number, charWidth = 7): Cru
 export function crumbName(name: string, plan: CrumbPlan): string {
   return plan.nameChars === null ? name : middleTruncate(name, plan.nameChars);
 }
+
+/**
+ * The least room the crumbs may be given (finding B21): `… › file`, the plan that keeps the whole name. The bar gives the
+ * crumbs at least this before anything beside them, so the status folds (to a glyph or a dot) before the name is cut.
+ * The file crumb's width includes its icon and gap (`w.file`).
+ */
+export function crumbFloor(w: CrumbWidths): number {
+  return w.ellipsis + w.sep + 2 * w.gap + w.file;
+}

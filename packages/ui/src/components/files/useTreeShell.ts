@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useState, type RefObject } from "react";
 import type { FileKey } from "../../lib/files";
 import { treeLayout } from "../../lib/treeLayout";
 import { TREE_MIN, useFileView } from "../../state/fileView";
@@ -62,6 +62,13 @@ export function useTreeShell(root: RefObject<HTMLDivElement | null>, tab: TabId,
   }
 
   const { setColumnOpen } = fv;
+  // Decision 94a: opening the Files tool (the empty view coming into sight, from any entry point) shows its group's tree column,
+  // also when the column was hidden; the toggle in the bar hides it again.
+  const emptyShown = fileKey === null && ws.isVisible(tab);
+  useEffect(() => {
+    if (emptyShown && groupId) setColumnOpen(groupId, true);
+  }, [emptyShown, groupId, fv.focusTreeTick, setColumnOpen]);
+
   return {
     width,
     page,

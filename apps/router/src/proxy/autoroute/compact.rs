@@ -183,7 +183,7 @@ fn record(plan: RecordPlan<'_>) -> Recorded {
         plan.state.history.token_hash(&secret).ok()
     };
     let usage = usage_from_output(&output_text);
-    let resolved = resolve_cost(&usage, model.as_deref(), plan.state.history.prices());
+    let resolved = resolve_cost(&usage, model.as_deref(), &plan.state.history.prices());
     let session = session_of_bytes(plan.request_body);
     let parent = session
         .as_deref()
@@ -198,7 +198,7 @@ fn record(plan: RecordPlan<'_>) -> Recorded {
     let served = model.clone().unwrap_or_default();
     let estimate_ratio = crate::history::estimate_ratio(&resolved);
     if let Some(ratio) = estimate_ratio {
-        crate::history::warn_estimate_ratio(&served, ratio);
+        crate::history::warn_estimate_ratio(&served, ratio, resolved.price_source);
     }
     let generation_id = plan
         .header_generation_id
@@ -216,6 +216,7 @@ fn record(plan: RecordPlan<'_>) -> Recorded {
         cost_usd: resolved.cost.map_or(0.0, |c| c.0 as f64 / 1_000_000.0),
         cost_source: crate::providers::utils::cost_source_label(resolved.source),
         estimate_ratio,
+        price_source: resolved.price_source.map(|source| source.label()),
         upstream_id: generation_id.clone(),
         spent_after_usd: spent_after.map(crate::auto::micros_usd),
         route: None,

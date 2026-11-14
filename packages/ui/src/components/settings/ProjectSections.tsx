@@ -1,36 +1,61 @@
 import type { Limit, Project, ProjectInput } from "@octo/agent-client";
-import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
+import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { errorMessage } from "../../lib/format";
+import { useNow } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
+import { modelName } from "../../lib/models";
+import { canRun, useProviders } from "../../lib/providers";
+import { remainingText } from "../../lib/usage";
 import { useApp } from "../../state/app";
+import { Button } from "../primitives/Button";
 import { Notice } from "../primitives/Notice";
 import { Select } from "../primitives/Select";
 import { SkeletonList } from "../primitives/Skeleton";
 import { TextField } from "../primitives/TextField";
-import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
+import { settingsHref } from "../../lib/route";
+import { limitTitle, resetsIn, spendText } from "./usageText";
+import { CONTROL_W, LoadErrorRow, SaveStatus, SELECT_W, SettingsGroup, SettingsRow } from "./parts";
+import { ScopeRow, useProjectScope } from "./scope";
 import { useProjectDetails, type ProjectDetails } from "./useProjectDetails";
 import { useSave } from "./useSave";
 import { UsageByProject } from "./UsageByProject";
 
-const IntegrationsView = lazy(() => import("./IntegrationsView").then((m) => ({ default: m.IntegrationsView })));
+type Update = (id: string, patch: Partial<ProjectInput>) => Promise<void>;
 
-/** Rows of one setting per project: loading, error, empty and "N more" handled once for Editor, Usage and Memory. */
-function PerProject(props: { label: string; rowId: string; details: ProjectDetails; retry(): void; footer?: string; row(p: Project): ReactNode }) {
+/**
+ * B10: a per-project section is one scope menu ("Settings for", the same control in Models, Commands, Editor, Memory and
+ * Budget) and the chosen project's rows; loading, error and "no projects" are handled once here.
+ */
+function PerProject(props: {
+  label: string;
+  rowId: string;
+  details: ProjectDetails;
+  retry(): void;
+  openProject: string | null;
+  scopeText: string;
+  footer?: string;
+  row(p: Project): ReactNode;
+}) {
   const { details } = props;
+  const projects = details.status === "ready" ? details.projects : [];
+  const { sorted, project, choose } = useProjectScope(projects, props.openProject);
   return (
-    <SettingsGroup
-      label={props.label}
-      id={`row-${props.rowId}`}
-      footer={details.status === "ready" && details.more > 0 ? `${details.more} more in each project's own settings.` : props.footer}
-    >
-      {details.status === "loading" && <SkeletonList count={2} size="lg" twoLine />}
-      {details.status === "error" && (
-        <LoadErrorRow what="projects" message={details.message} hint="Check that the harness is running, then retry." onRetry={props.retry} />
-      )}
-      {details.status === "ready" && details.projects.length === 0 && (
-        <SettingsRow title="No projects yet" description="Each project you create gets its own row here." />
-      )}
-      {details.status === "ready" && details.projects.map((p) => props.row(p))}
-    </SettingsGroup>
+    <>
+      {project && <ScopeRow projects={sorted} value={project.id} onChange={choose} description={props.scopeText} />}
+      <SettingsGroup
+        label={props.label}
+        id={`row-${props.rowId}`}
+        footer={details.status === "ready" && details.more > 0 ? `${props.footer ?? ""} ${details.more} older projects are not listed.`.trim() : props.footer}
+      >
+        {details.status === "loading" && <SkeletonList count={1} size="lg" twoLine />}
+        {details.status === "error" && (
+          <LoadErrorRow what="projects" message={details.message} hint="Check that Octo's local service is running, then retry." onRetry={props.retry} />
+        )}
+        {details.status === "ready" && !project && <SettingsRow title="No projects yet" description="Each project you create can be set here." />}
+        {project && props.row(project)}
+      </SettingsGroup>
+    </>
   );
 }
 
@@ -38,32 +63,32 @@ function ProjectSelect<T extends string>(props: {
   project: Project;
   value: T;
   options: readonly { id: T; label: string }[];
-  /** What the control sets, for its accessible name. */
   title: string;
-  description: string;
+  description: ReactNode;
   patch(v: T): Partial<ProjectInput>;
-  update(id: string, patch: Partial<ProjectInput>): Promise<void>;
+  update: Update;
 }) {
   const [saved, run] = useSave();
   const id = useId();
   return (
     <SettingsRow
-      title={props.project.name}
+      title={props.title}
       htmlFor={id}
       description={props.description}
       status={<SaveStatus state={saved} />}
       control={
-        <Select
-          id={id}
-          label={`${props.project.name}: ${props.title}`}
-          value={props.value}
-          options={props.options.map((o) => ({ value: o.id, label: o.label }))}
-          onChange={(value) => {
-            const v = props.options.find((o) => o.id === value)?.id;
-            if (v !== undefined) void run(() => props.update(props.project.id, props.patch(v)));
-          }}
-          className={CONTROL_W.md}
-        />
+        <div className={SELECT_W}>
+          <Select
+            id={id}
+            label={`${props.title} for ${props.project.name}`}
+            value={props.value}
+            options={props.options.map((o) => ({ value: o.id, label: o.label }))}
+            onChange={(value) => {
+              const v = props.options.find((o) => o.id === value)?.id;
+              if (v !== undefined) void run(() => props.update(props.project.id, props.patch(v)));
+            }}
+          />
+        </div>
       }
     />
   );
@@ -76,8 +101,11 @@ const COMPLETION = [
   { id: "deep", label: "Deep tier" },
 ] as const;
 
-export function EditorSection() {
+export function EditorSection({ projectId }: { projectId: string | null }) {
   const { details, update, retry } = useProjectDetails();
+  const { bridge } = useApp();
+  const providers = useProviders(bridge);
+  const list = providers.status === "ready" ? providers.list : null;
   return (
     <>
       <PerProject
@@ -85,30 +113,56 @@ export function EditorSection() {
         rowId="completion"
         details={details}
         retry={retry}
-        footer="Suggests code as you type in the editor. Uses the API (never an agent)."
+        openProject={projectId}
+        scopeText="Inline completion is set per project."
+        footer="Suggests code as you type in the editor. It runs on an Anthropic API key or the router, never on an agent."
         row={(p) => {
           const value = p.models.completion ?? "off";
           const known = COMPLETION.some((o) => o.id === value);
+          // A3: a value that cannot run is said the same way as everywhere else (the warn tone and a reason).
+          const stuck = value !== "off" && list !== null && !canRun(list, value);
           return (
             <ProjectSelect
               key={p.id}
               project={p}
               value={value}
-              options={known ? COMPLETION : [...COMPLETION, { id: value, label: value }]}
-              title="Inline completion"
-              description={value === "off" ? "No suggestions." : "Suggestions on."}
+              options={known ? COMPLETION : [...COMPLETION, { id: value, label: modelName(value) }]}
+              title="Suggestions"
+              description={
+                value === "off" ? (
+                  "No suggestions."
+                ) : stuck ? (
+                  <Notice
+                    tone="warn"
+                    action={
+                      <a href={settingsHref("providers")} className="text-link underline-offset-2 hover:underline">
+                        Add a key
+                      </a>
+                    }
+                  >
+                    Cannot run: it needs an Anthropic API key or the router.
+                  </Notice>
+                ) : (
+                  "Suggestions on."
+                )
+              }
               patch={(v) => ({ models: { completion: v } })}
               update={update}
             />
           );
         }}
       />
-      <SettingsGroup label="Plugins and language servers" id="row-plugins">
-        <div className="p-4">
-          <Suspense fallback={<p className="h-9" aria-busy />}>
-            <IntegrationsView />
-          </Suspense>
-        </div>
+      {/* B9: plugins have their own section; Editor keeps a way there (the palette's "Open integrations" lands here). */}
+      <SettingsGroup label="Language servers">
+        <SettingsRow
+          title="Integrations"
+          description="Language servers, agents and tool servers that plugins add are in their own section."
+          control={
+            <Button size="sm" onClick={() => (window.location.hash = settingsHref("integrations"))}>
+              Open Integrations
+            </Button>
+          }
+        />
       </SettingsGroup>
     </>
   );
@@ -119,14 +173,16 @@ const CONTEXT = [
   { id: "window", label: "Recent window" },
 ] as const;
 
-export function MemorySection() {
+export function MemorySection({ projectId }: { projectId: string | null }) {
   const { details, update, retry } = useProjectDetails();
   return (
     <PerProject
-      label="Context mode"
+      label="Context"
       rowId="context"
       details={details}
       retry={retry}
+      openProject={projectId}
+      scopeText="How the conversation is remembered is set per project."
       footer="Full history sends the whole conversation; Recent window builds the context from memory, tasks and the last exchanges."
       row={(p) => {
         const m = p.memory ?? { context: "full", recent_exchanges: 5 };
@@ -147,26 +203,61 @@ export function MemorySection() {
   );
 }
 
-export function UsageSection() {
+/** All-time cost per project from the usage report: what the budget row says when the project carries no spend figure. */
+function useAllTimeCost(): Record<string, number | null> {
+  const { bridge } = useApp();
+  const [cost, setCost] = useState<Record<string, number | null>>({});
+  useEffect(() => {
+    let live = true;
+    bridge.getUsage({ from: "2000-01-01", group: "project" }).then(
+      (r) => live && setCost(Object.fromEntries(r.buckets.map((b) => [b.key, b.cost_usd]))),
+      () => {
+        // The row then says the spend is not known; the usage table above shows its own error.
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [bridge]);
+  return cost;
+}
+
+export function UsageSection({ projectId }: { projectId: string | null }) {
   const { details, update, retry } = useProjectDetails();
+  const cost = useAllTimeCost();
+  // Re-test 4 (CLS 0.30 at 640px): the table's rows, the limits and the budget arrive at different times. Everything under
+  // the table waits (mounted, hidden) until all three have answered, then appears at once, so nothing on screen moves;
+  // a slow load shows a placeholder at the bottom, which nothing follows.
+  const [usageSettled, setUsageSettled] = useState(false);
+  const [limitsSettled, setLimitsSettled] = useState(false);
+  const below = usageSettled && limitsSettled && details.status !== "loading";
+  const slow = useDelayedLoading(!below);
   return (
     <>
-      <UsageByProject />
-      <Limits />
-      <PerProject
-        label="Budget"
-        rowId="budget"
-        details={details}
-        retry={retry}
-        footer="A project stops starting new work once it has spent its budget."
-        row={(p) => <BudgetRow key={p.id} project={p} update={update} />}
-      />
+      <UsageByProject holdFooter={!below} onSettled={setUsageSettled} />
+      {!below && slow && usageSettled && <SkeletonList count={2} size="lg" twoLine className="max-w-settings-rows" />}
+      {/* Round 3: the table takes the 880 column (project names); the row groups keep their reading measure. */}
+      <div hidden={!below} className="flex max-w-settings-rows flex-col gap-6">
+        <Limits onSettled={setLimitsSettled} />
+        <PerProject
+          label="Budget"
+          rowId="budget"
+          details={details}
+          retry={retry}
+          openProject={projectId}
+          scopeText="A budget is set per project."
+          // B11: what the harness does (apps/harness/docs/architecture.md, Budget): the cap is on everything the project has
+          // ever spent, not per month; subscription use is not spend.
+          footer="A budget caps everything a project spends, in total (not per month). It is checked between steps: once it is used up the project starts no new work, but a step already running can go over. Subscription use does not count."
+          row={(p) => <BudgetRow key={p.id} project={p} update={update} usage={cost[p.id]} />}
+        />
+      </div>
     </>
   );
 }
 
-function BudgetRow({ project: p, update }: { project: Project; update(id: string, patch: Partial<ProjectInput>): Promise<void> }) {
-  const [saved, run] = useSave();
+function BudgetRow({ project: p, update, usage }: { project: Project; update: Update; usage: number | null | undefined }) {
+  const [saved, run, clear] = useSave();
   const [draft, setDraft] = useState<string | null>(null);
   const id = useId();
   const stored = p.budget_usd != null ? String(p.budget_usd) : "";
@@ -177,26 +268,29 @@ function BudgetRow({ project: p, update }: { project: Project; update(id: string
     if (draft === null || draft.trim() === stored || invalid) return;
     void run(() => update(p.id, { budget_usd: draft.trim() === "" ? null : parsed })).then((ok) => ok && setDraft(null));
   };
-  const spent = p.spent_usd != null ? `$${p.spent_usd.toFixed(2)} spent` : "Spend not known yet";
   return (
     <SettingsRow
-      title={p.name}
+      title="Budget"
       htmlFor={id}
-      description={
-        invalid ? <Notice tone="error">A positive amount in USD, or empty for no budget.</Notice> : `${spent}. ${stored ? `Budget $${stored}.` : "No budget."}`
-      }
+      description={invalid ? <Notice tone="error">A positive amount in USD, or empty for no budget.</Notice> : spendText(p.spent_usd, usage, stored)}
       status={<SaveStatus state={saved} />}
       control={
         <TextField
           id={id}
           inputMode="decimal"
           value={value}
+          leading="$"
           placeholder="No budget"
+          aria-label={`Budget for ${p.name}, in USD`}
           aria-invalid={invalid || undefined}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            // B11: an edit takes back the last "Saved", so it never sits beside a new validation error.
+            clear();
+            setDraft(e.target.value);
+          }}
           onBlur={commit}
           onKeyDown={(e) => e.key === "Enter" && commit()}
-          className={`${CONTROL_W.sm} text-right tabular-nums max-settings:text-left`}
+          className={`${CONTROL_W.sm} tabular-nums`}
         />
       }
     />
@@ -205,20 +299,29 @@ function BudgetRow({ project: p, update }: { project: Project; update(id: string
 
 type LimitsLoad = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; limits: Limit[] };
 
-function Limits() {
+function Limits({ onSettled }: { onSettled(settled: boolean): void }) {
   const { bridge } = useApp();
   const [load, setLoad] = useState<LimitsLoad>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const now = useNow(true, CLOCK_MINUTE_MS);
   useEffect(() => {
     let live = true;
     bridge.getLimits().then(
-      (limits) => live && setLoad({ status: "ready", limits }),
-      (e: unknown) => live && setLoad({ status: "error", message: errorMessage(e).replace(/\.$/, "") }),
+      (limits) => {
+        if (!live) return;
+        setLoad({ status: "ready", limits });
+        onSettled(true);
+      },
+      (e: unknown) => {
+        if (!live) return;
+        setLoad({ status: "error", message: errorMessage(e).replace(/\.$/, "") });
+        onSettled(true);
+      },
     );
     return () => {
       live = false;
     };
-  }, [bridge, attempt]);
+  }, [bridge, attempt, onSettled]);
   return (
     <SettingsGroup label="Plan limits" id="row-limits">
       {load.status === "loading" && <SkeletonList count={1} size="lg" twoLine />}
@@ -226,7 +329,7 @@ function Limits() {
         <LoadErrorRow
           what="limits"
           message={load.message}
-          hint="Retry once the harness is running."
+          hint="Retry once Octo's local service is running."
           onRetry={() => {
             setLoad({ status: "loading" });
             setAttempt((n) => n + 1);
@@ -239,12 +342,19 @@ function Limits() {
       {load.status === "ready" &&
         load.limits.map((l) => (
           <SettingsRow
-            key={`${l.provider}/${l.model}/${l.kind}`}
-            title={`${l.provider} · ${l.kind.replace(/_/g, " ")}`}
-            description={l.resets_at ? `Resets ${new Date(l.resets_at).toLocaleString()}` : "No reset time reported"}
+            key={`${l.provider}/${l.model}/${l.kind}/${l.resets_at ?? ""}`}
+            title={<span title={`${l.provider} · ${l.model}`}>{limitTitle(l)}</span>}
+            // C20: relative, the exact time in the tooltip.
+            description={
+              <span title={l.resets_at ? new Date(l.resets_at).toLocaleString() : undefined}>{`${resetsIn(l.resets_at, now)} · ${modelName(l.model)}`}</span>
+            }
+            // S6: compact numbers ("1.7M of 2M left"), the full values in the tooltip.
             control={
-              <span className="text-sm text-fg-2 tabular-nums">
-                {l.remaining ?? "?"} of {l.limit ?? "?"} left
+              <span
+                className="text-sm text-fg-2 tabular-nums"
+                title={`${l.remaining?.toLocaleString("en-US") ?? "?"} of ${l.limit?.toLocaleString("en-US") ?? "?"} left`}
+              >
+                {remainingText(l)}
               </span>
             }
           />

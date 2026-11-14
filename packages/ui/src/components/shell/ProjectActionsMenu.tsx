@@ -3,6 +3,7 @@ import { formatTokens, structuredError, errorMessage } from "../../lib/format";
 import { saveConversation } from "../../lib/download";
 import { MOD_LABEL } from "../../lib/keys";
 import { budgetState } from "../../lib/modelsMore";
+import { mayChangeProject, ON_YOUR_COMPUTER } from "../../lib/remoteDevice";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
@@ -21,7 +22,7 @@ export default function ProjectActionsMenu(props: {
   onFailure(failure: Failure): void;
 }) {
   const { project, state } = useProject();
-  const { openProjectInEditor } = useHost();
+  const { openProjectInEditor, remoteDevice } = useHost();
   const { bridge } = useApp();
   const ws = useOptionalWorkspace();
   if (!project) return null;
@@ -45,14 +46,12 @@ export default function ProjectActionsMenu(props: {
           ? [
               {
                 id: "tokens",
-                label: `${formatTokens(total)} tokens used`,
+                caption: `${formatTokens(total)} tokens used`,
                 title: `${total.toLocaleString()} tokens used in this project (${tokens.input.toLocaleString()} in, ${tokens.output.toLocaleString()} out)`,
-                disabled: true,
-                run: () => undefined,
               },
             ]
           : []),
-        ...(budget && budget.tone === "fg-3" ? [{ id: "budget", label: `Budget: ${budget.text}`, disabled: true, run: () => undefined }] : []),
+        ...(budget && budget.tone === "fg-3" ? [{ id: "budget", caption: `Budget: ${budget.text}` }] : []),
         ...(openProjectInEditor
           ? [{ id: "editor", label: "Open in editor", disabled: project.folders.length === 0, run: () => openProjectInEditor(project.id) }]
           : []),
@@ -65,7 +64,9 @@ export default function ProjectActionsMenu(props: {
               },
             ]
           : []),
-        { id: "settings", label: "Project settings", disabled: !ws, run: () => ws?.openSettings() },
+        mayChangeProject(remoteDevice)
+          ? { id: "settings", label: "Project settings", disabled: !ws, run: () => ws?.openSettings() }
+          : { id: "settings", label: "Project settings", sub: ON_YOUR_COMPUTER, disabled: true, run: () => undefined },
       ]}
     />
   );

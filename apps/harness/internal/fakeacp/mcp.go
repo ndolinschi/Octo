@@ -111,19 +111,24 @@ func (a *agent) harnessMCP(ctx context.Context) (*mcpClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.call(ctx, "initialize", map[string]any{
+	raw, err := c.call(ctx, "initialize", map[string]any{
 		"protocolVersion": "2025-06-18", "capabilities": map[string]any{},
 		"clientInfo": map[string]string{"name": "fake-acp", "version": "0.1.0"},
-	}); err != nil {
+	})
+	if err != nil {
 		c.close()
 		return nil, fmt.Errorf("mcp initialize: %w", err)
 	}
+	var init struct {
+		Instructions string `json:"instructions"`
+	}
+	_ = json.Unmarshal(raw, &init)
 	if err := c.notify(ctx, "notifications/initialized", map[string]any{}); err != nil {
 		c.close()
 		return nil, fmt.Errorf("mcp initialized: %w", err)
 	}
 	a.mu.Lock()
-	a.mcpc = c
+	a.mcpc, a.mcpInstr = c, init.Instructions
 	a.mu.Unlock()
 	return c, nil
 }

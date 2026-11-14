@@ -207,11 +207,12 @@ pub const CAPABILITIES: [&str; 5] = [
     "route_api",
 ];
 
-pub async fn health() -> impl IntoResponse {
+pub async fn health(State(state): State<AppState>) -> impl IntoResponse {
     axum::Json(serde_json::json!({
         "status": "ok",
         "service": "octo",
         "version": env!("CARGO_PKG_VERSION"),
         "capabilities": CAPABILITIES,
+        "prices": state.prices.health_json(crate::prices::now_unix()),
     }))
 }

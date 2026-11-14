@@ -62,19 +62,8 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
       </button>
       <Presence show={open}>
         <Popover anchor={anchor} label="Pending comments" side="top" gap={4} onClose={() => setOpen(false)} className="w-[min(380px,calc(100vw-16px))]">
-          <div className="flex h-bar shrink-0 items-center gap-2 border-b border-line px-2">
-            <p className="min-w-0 flex-1 truncate px-2 text-xs text-fg-3">Sent with your next message</p>
-            <button
-              type="button"
-              onClick={() => {
-                store.removeAll();
-                setOpen(false);
-              }}
-              className="h-6 shrink-0 press rounded-sm px-2 text-xs text-fg-2 hover:bg-hover hover:text-fg"
-            >
-              Remove all
-            </button>
-          </div>
+          {/* B23: the list comes first, so focus opens on the first comment; "Remove all" is the last stop, in the footer. */}
+          <p className="flex h-row shrink-0 items-center px-4 pt-1 text-xs text-fg-3">Sent with your next message</p>
           <div className="overflow-y-auto overscroll-contain p-1">
             {byFile(store.comments).map((g) => (
               <section key={g.key} aria-label={`${g.folder}/${g.path}`} className="not-first:mt-1">
@@ -118,6 +107,18 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
                 </ul>
               </section>
             ))}
+          </div>
+          <div className="flex h-bar shrink-0 items-center justify-end border-t border-line px-2">
+            <button
+              type="button"
+              onClick={() => {
+                store.removeAll();
+                setOpen(false);
+              }}
+              className="h-6 shrink-0 press rounded-sm px-2 text-xs text-fg-2 hover:bg-hover hover:text-fg"
+            >
+              Remove all
+            </button>
           </div>
         </Popover>
       </Presence>

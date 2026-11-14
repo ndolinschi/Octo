@@ -58,9 +58,10 @@ var columnsAdded = []struct {
 //
 // Numbering: 9 slash commands and /clear (columns), 10 notes, 11 attachments, 12 sessions and exchanges, 13 project
 // sessions (kind, parent, state, current; session ids on messages and compactions), 14 task state and the M6 clean-up of
-// request-only tasks. The next free version is 15; take it and add `migrate_v15_<name>.go` (parallel work renumbers its
-// migration when it lands).
-const SchemaVersion = 14
+// request-only tasks, 15 parallel sessions (a root agent per main session, per-session queue, workspace and
+// coordination tables). The next free version is 16; take it and add `migrate_v16_<name>.go` (parallel work renumbers
+// its migration when it lands).
+const SchemaVersion = 15
 
 // NewerSchemaError says a database belongs to a newer version of the app. The
 // database is not touched.
@@ -170,6 +171,15 @@ func (d *DB) migrate(ctx context.Context) error {
 	}
 	// Schema 14: task state, closing reason, session; clean-up of request-only tasks (migrate_v14_tasks.go); last: it reads exchanges and sessions.
 	if err := d.migrateV14Tasks(ctx); err != nil {
+		return err
+	}
+	// The streamed-text checkpoints (partials.go); no version of their own.
+	if err := d.migratePartials(ctx); err != nil {
+		return err
+	}
+	// Schema 15: parallel sessions (migrate_v15_parallel_sessions.go); last: it moves messages, compactions and agents
+	// between the root agents and fills the session columns of every table above.
+	if err := d.migrateV15ParallelSessions(ctx); err != nil {
 		return err
 	}
 	return stampVersion(ctx, d.sql)

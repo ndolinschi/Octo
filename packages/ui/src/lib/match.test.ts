@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { matchScore } from "./match";
+import { fieldScore, matchScore, rankMatches } from "./match";
 import { matchKind, rankGroups } from "./matchMore";
 
 test("an empty query matches everything with the same score", () => {
@@ -72,5 +72,42 @@ test("groups: a word-start action outranks a project that matches loosely; ties 
   assert.deepEqual(
     rankGroups("", groups, (g) => g.labels).map((g) => g.title),
     ["Projects", "Actions"],
+  );
+});
+
+test("field score: the label first, then the second text; a word-wise hit counts as a real one", () => {
+  assert.equal(fieldScore("theme", "Theme", "dark light").sub, true);
+  assert.equal(fieldScore("dark", "Theme", "dark light mode").score, 200);
+  assert.equal(fieldScore("dark mode", "Theme", "dark light mode").sub, true);
+  assert.ok(fieldScore("theme", "Theme", "").score > fieldScore("theme", "Appearance", "the theme").score);
+  assert.deepEqual(fieldScore("zzz", "Theme", "dark"), { score: -1, sub: false });
+  assert.equal(fieldScore("tm", "Theme").sub, false, "letters in order are loose, not a hit");
+  assert.ok(fieldScore("tm", "Theme").score > 0);
+});
+
+test("ranking: loose hits go when a substring hit exists, and stay when none does", () => {
+  const items = [
+    { label: "Open integrations", more: "" },
+    { label: "Keyboard shortcuts", more: "keys" },
+    { label: "Knock every yellow", more: "" },
+  ];
+  const f = (i: (typeof items)[number]) => [i.label, i.more] as const;
+  assert.deepEqual(
+    rankMatches("key", items, f, 6, true).map((i) => i.label),
+    ["Keyboard shortcuts"],
+  );
+  assert.deepEqual(
+    rankMatches("key", items, f, 6).map((i) => i.label),
+    ["Keyboard shortcuts", "Knock every yellow"],
+  );
+  assert.deepEqual(
+    rankMatches("kbd", items, f, 6).map((i) => i.label),
+    ["Keyboard shortcuts"],
+  );
+  assert.equal(rankMatches("", items, f, 2).length, 2);
+  assert.deepEqual(
+    rankMatches("keys", items, f, 6, true).map((i) => i.label),
+    ["Keyboard shortcuts"],
+    "the second text is searched",
   );
 });

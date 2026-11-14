@@ -55,9 +55,37 @@ export function modelLabel(m: { id: string; label: string }): string {
   return out.join(" ") || m.id;
 }
 
+const BRANDS: Record<string, string> = { Deepseek: "DeepSeek", Openai: "OpenAI", Mistral: "Mistral", Qwen: "Qwen" };
+
+/**
+ * An id with no provider entry, made readable (the raw id stays in tooltips): the vendor prefix and a trailing date or build
+ * ("-0905", "-1120", "-20251022") go, the family is title-cased and version numbers are kept — "deepseek-v4.1-flash-0905"
+ * is "DeepSeek v4.1 Flash".
+ */
+export function readableModelId(id: string): string {
+  const claude = claudeLabel(id);
+  if (claude !== id) return claude;
+  const slash = id.lastIndexOf("/");
+  const short = (slash >= 0 && slash < id.length - 1 ? id.slice(slash + 1) : id).replace(/-(?:\d{4}|\d{8})$/, "");
+  if (!short) return id;
+  return modelLabel({ id: short, label: short })
+    .split(" ")
+    .map((t) => BRANDS[t] ?? (/^V\d/.test(t) ? `v${t.slice(1)}` : t))
+    .join(" ");
+}
+
 /** The label of an agent's model: a name the user typed is kept as typed, anything else is made readable. */
 export function agentModelLabel(m: { id: string; label: string; source?: string }): string {
-  return m.source === "custom" ? m.id : modelLabel(m);
+  return m.source === "custom" ? m.id : tidyAgentLabel(modelLabel(m));
+}
+
+/**
+ * G14: an agent's remark in its model's label is not part of the name — "Default (recommended)" reads "Default", a bare
+ * "default" reads "Default" — so Settings and the pickers print "Claude Code · Default", like every other model.
+ */
+export function tidyAgentLabel(label: string): string {
+  const t = label.replace(/\s*\((?:recommended|default)\)\s*$/i, "").trim() || label;
+  return t === "default" ? "Default" : t;
 }
 
 /**
@@ -66,9 +94,9 @@ export function agentModelLabel(m: { id: string; label: string; source?: string 
  */
 export function modelName(value: string, acp: readonly AcpName[] = []): string {
   const ref = parseAcp(value);
-  if (!ref) return displayId(value);
+  if (!ref) return readableModelId(value);
   const label = acp.find((a) => a.id === ref.id)?.label ?? agentLabelOf(ref.id);
-  return ref.model ? `${label} · ${displayId(ref.model)}` : label;
+  return ref.model ? `${label} · ${readableModelId(ref.model)}` : label;
 }
 
 /** The model that answered (decision 37): `served_model` when a router reported one, and the requested one when it differs. */

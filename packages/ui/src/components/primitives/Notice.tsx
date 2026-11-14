@@ -22,7 +22,7 @@ const TONE: Record<Tone, { icon: LucideIcon; text: string; glyph: string }> = {
  * - `tone`: `info`, `warn`, `error`, `success`.
  * - `form="line"` (default): one inline line, 12px text, glyph in front, optional `action` (a `Button variant="link"` or
  *   quiet) at the end; wraps when narrow. For field messages, save status, a bar under a header.
- * - `form="block"`: a neutral `raised` block with a `title`, the text, `actions` under it and an optional `command` copy line.
+ * - `form="block"`: a neutral `raised` block, no outline (polish step 3, C3: a block is a tone), with a `title`, the text, `actions` under it and an optional `command` copy line.
  *
  * Not for: an empty or centred state (`EmptyState`), a toast, a tooltip, the validation message of one field (`Field error`).
  */
@@ -43,7 +43,7 @@ export function Notice(props: {
   const role = props.tone === "error" ? "alert" : "status";
   if (props.form === "block") {
     return (
-      <div role={role} className={cn("flex min-w-0 flex-col gap-2 rounded-md border border-line bg-raised p-card text-sm", props.className)}>
+      <div role={role} className={cn("flex min-w-0 flex-col gap-2 rounded-md bg-raised p-card text-sm", props.className)}>
         <div className="flex min-w-0 items-start gap-2">
           <Glyph icon={tone.icon} size={16} className={cn("mt-0.5 shrink-0", tone.glyph)} />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -57,10 +57,12 @@ export function Notice(props: {
     );
   }
   return (
-    <div role={role} className={cn("flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs", tone.text, props.className)}>
-      <Glyph icon={tone.icon} size={14} className={cn("shrink-0", tone.glyph)} />
-      <span className="min-w-0 break-words">{props.children}</span>
-      {props.action}
+    <div role={role} className={cn("flex min-w-0 items-start gap-2 text-xs", tone.text, props.className)}>
+      <Glyph icon={tone.icon} size={14} className={cn("mt-px shrink-0", tone.glyph)} />
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="min-w-0 break-words">{props.children}</span>
+        {props.action}
+      </div>
     </div>
   );
 }

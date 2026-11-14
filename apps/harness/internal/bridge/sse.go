@@ -24,7 +24,8 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	h.Set("Cache-Control", "no-cache")
 	h.Set("Connection", "keep-alive")
 	h.Set("X-Accel-Buffering", "no")
-	if _, err := fmt.Fprint(w, ": connected\n\n"); err != nil {
+	// `retry`: after a dropped connection (the harness restarted) EventSource tries again in 1 s instead of its 3 s default.
+	if _, err := fmt.Fprint(w, "retry: 1000\n: connected\n\n"); err != nil {
 		return
 	}
 	flusher.Flush()
@@ -44,7 +45,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			}
 			flusher.Flush()
 		case <-ticker.C:
-			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+			// A named event, not a comment: EventSource hides comments from the page, and the UI treats a
+			// stream that has been silent for several intervals as dead (half-open) and reopens it. No `id:`,
+			// so the last event id stays the last real event's seq.
+			if _, err := fmt.Fprint(w, "event: heartbeat\ndata: {}\n\n"); err != nil {
 				return
 			}
 			flusher.Flush()

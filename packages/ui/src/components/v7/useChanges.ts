@@ -13,6 +13,8 @@ export type ChangesApi = {
 
 export type TurnsState = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; turns: TurnChanges[] };
 export type DiffState = { status: "loading" } | { status: "error"; message: string } | ({ status: "ready" } & NetDiff);
+/** A file the conversation asked for ("Open diff"); `seq` tells a repeated request from the one already shown. */
+export type FocusFile = { folder: string; path: string; seq: number };
 export type Selection = { turnId: number; file: FileChangeSummary };
 /** Per file row: reverted, or why not. */
 export type RowState = { reverting: true } | { reverted: true } | { problem: RevertProblem };
@@ -22,9 +24,9 @@ export type RowState = { reverting: true } | { reverted: true } | { problem: Rev
  * selected file's net diff (first before → last after, details cached by id), and reverts per file and per turn
  * (newest change first; one file's failure does not stop the others).
  */
-export function useChanges(api: ChangesApi, refreshKey: number, focusTurn: number | null) {
+export function useChanges(api: ChangesApi, refreshKey: number, focusTurn: number | null, focusFile: FocusFile | null = null) {
   const [turns, setTurns] = useState<TurnsState>({ status: "loading" });
-  const [picked, setPicked] = useState<{ turnId: number; key: string } | null>(null);
+  const [picked, setPicked] = useState<{ turnId: number; key: string; seq: number } | null>(null);
   const [diff, setDiff] = useState<DiffState>({ status: "loading" });
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [flash, setFlash] = useState(0);
@@ -44,8 +46,12 @@ export function useChanges(api: ChangesApi, refreshKey: number, focusTurn: numbe
   }, [api, refreshKey, reloads, focusTurn]);
 
   const all = turns.status === "ready" ? turns.turns.flatMap((t) => t.files.map((file) => ({ turnId: t.turn_id, file }))) : [];
+  // A pick made before the latest focus request gives way to it; a pick made after wins.
+  const seq = focusFile?.seq ?? 0;
+  const pickedNow = picked !== null && picked.seq === seq ? picked : null;
+  const focused = focusFile ? all.find((s) => s.file.folder === focusFile.folder && s.file.path === focusFile.path) : undefined;
   const selected: Selection | null =
-    all.find((s) => picked !== null && s.turnId === picked.turnId && rowKey(s.turnId, s.file) === picked.key) ?? all[0] ?? null;
+    all.find((s) => pickedNow !== null && s.turnId === pickedNow.turnId && rowKey(s.turnId, s.file) === pickedNow.key) ?? focused ?? all[0] ?? null;
   const selectedKey = selected ? rowKey(selected.turnId, selected.file) : null;
 
   const detail = useCallback(
@@ -119,7 +125,7 @@ export function useChanges(api: ChangesApi, refreshKey: number, focusTurn: numbe
     turns,
     selected,
     selectedKey,
-    select: (s: Selection) => setPicked({ turnId: s.turnId, key: rowKey(s.turnId, s.file) }),
+    select: (s: Selection) => setPicked({ turnId: s.turnId, key: rowKey(s.turnId, s.file), seq }),
     all,
     diff,
     retryDiff: () => setDiffTries((n) => n + 1),

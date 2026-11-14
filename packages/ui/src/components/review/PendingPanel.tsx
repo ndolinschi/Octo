@@ -9,6 +9,9 @@ import { Segmented } from "../primitives/Segmented";
 
 type Tab = "comments" | "findings";
 
+/** R5 (polish step 6b): pending comments and findings are list rows split by hairlines, not outlined cards on the overlay. */
+const PENDING_ROW = "flex flex-col gap-2 border-t border-line py-3 first:border-t-0 first:pt-1";
+
 const SEVERITY_TONE: Record<ReviewFinding["severity"], string> = {
   critical: "text-err",
   high: "text-err",
@@ -35,6 +38,18 @@ export function PendingPanel(props: {
   const [tab, setTab] = useState<Tab>(props.comments.length === 0 && props.findings.length > 0 ? "findings" : "comments");
   const box = useRef<HTMLElement>(null);
   const { onClose } = props;
+  // Closing returns focus to the control that opened the panel (when nothing else took it, like the comment box does).
+  // The opener is read while rendering, before the panel takes focus (an effect would see the panel itself on a re-run).
+  const [opener] = useState(() => document.activeElement);
+  useEffect(
+    () => () => {
+      requestAnimationFrame(() => {
+        const now = document.activeElement;
+        if ((!now || now === document.body) && opener instanceof HTMLElement && opener.isConnected) opener.focus();
+      });
+    },
+    [opener],
+  );
   useEffect(() => {
     const el = box.current;
     el?.focus();
@@ -54,13 +69,13 @@ export function PendingPanel(props: {
       aria-label="Pending comments and findings"
       className="absolute inset-y-0 right-0 z-20 flex w-[400px] max-w-full flex-col border-l border-line-strong bg-overlay shadow-pop outline-none"
     >
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line pr-1 pl-3">
+      <header className="flex h-ctl-lg shrink-0 items-center gap-2 border-b border-line pr-2 pl-4">
         <h2 className="text-heading text-fg">Pending</h2>
         <span className="text-xs text-fg-3">Posted only when you submit</span>
         <IconButton icon={X} label="Close" onClick={props.onClose} className="ml-auto max-md:size-10" />
       </header>
       {props.findings.length > 0 && (
-        <div className="shrink-0 border-b border-line px-3 py-2">
+        <div className="shrink-0 border-b border-line px-4 py-2">
           <Segmented<Tab>
             label="Pending list"
             value={tab}
@@ -73,25 +88,25 @@ export function PendingPanel(props: {
         </div>
       )}
       {props.problem && (
-        <p role="alert" className="border-b border-line px-3 py-2 text-xs text-err">
+        <p role="alert" className="border-b border-line px-4 py-2 text-xs text-err">
           {props.problem}
         </p>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {tab === "comments" ? (
           props.comments.length === 0 ? (
             <p className="text-sm text-fg-3">
               No pending comments. Hover a line and press the “+” in the gutter, or select lines and press <kbd className="font-sans">c</kbd>.
             </p>
           ) : (
-            <ul className="flex flex-col gap-3">
+            <ul className="flex flex-col">
               {props.comments.map((c) => (
                 <CommentCard key={c.id} c={c} onJump={props.onJump} onEdit={props.onEdit} onDelete={props.onDelete} />
               ))}
             </ul>
           )
         ) : (
-          <ul className="flex flex-col gap-3">
+          <ul className="flex flex-col">
             {props.findings.map((f) => (
               <FindingCard key={f.id} f={f} onJump={props.onJump} onDecide={props.onDecide} />
             ))}
@@ -118,7 +133,7 @@ function CommentCard(props: {
   const jump = () =>
     c.path && props.onJump({ path: c.path, ...(c.line !== undefined ? { line: c.start_line ?? c.line } : {}), ...(c.side ? { side: c.side } : {}) });
   return (
-    <li className="flex flex-col gap-2 rounded-md border border-line bg-raised p-3">
+    <li className={PENDING_ROW}>
       <div className="flex min-w-0 items-center gap-1">
         {c.path ? (
           <Button variant="link" mono size="xs" onClick={jump} className="min-w-0 truncate" title={commentWhere(c)}>
@@ -168,7 +183,7 @@ function FindingCard(props: {
   const [reason, setReason] = useState<string | null>(null);
   const lines = f.end_line > f.start_line ? `${f.start_line}–${f.end_line}` : `${f.start_line}`;
   return (
-    <li className={cn("flex flex-col gap-2 rounded-md border border-line bg-raised p-3", f.status === "dismissed" && "opacity-70")}>
+    <li className={cn(PENDING_ROW, f.status === "dismissed" && "opacity-70")}>
       <div className="flex min-w-0 items-center gap-2">
         <span className={cn("shrink-0 text-xs font-medium", SEVERITY_TONE[f.severity])}>{f.severity}</span>
         <Button

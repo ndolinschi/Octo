@@ -1,0 +1,152 @@
+{
+ "data": [
+  {
+   "id": "inclusionai/ling-3.2-flash:free",
+   "canonical_slug": "inclusionai/ling-3.2-flash-20261113",
+   "name": "inclusionAI: Ling 3.2 Flash (free)",
+   "context_length": 1048576,
+   "pricing": {
+    "prompt": "0",
+    "completion": "0"
+   }
+  },
+  {
+   "id": "minimax/minimax-m3.1-flash",
+   "canonical_slug": "minimax/minimax-m3.1-flash-20261019",
+   "name": "MiniMax: MiniMax M3.1 Flash",
+   "context_length": 1048576,
+   "pricing": {
+    "prompt": "0.000000075",
+    "completion": "0.0000003",
+    "input_cache_read": "0.0000000075",
+    "overrides": [
+     {
+      "utc_start": 1500,
+      "utc_end": 100,
+      "prompt": "0.000000075",
+      "completion": "0.0000003",
+      "input_cache_read": "0.0000000075"
+     },
+     {
+      "utc_start": 100,
+      "utc_end": 1500,
+      "prompt": "0.00000015",
+      "completion": "0.0000006",
+      "input_cache_read": "0.000000015"
+     }
+    ]
+   }
+  },
+  {
+   "id": "deepseek/deepseek-v4.1-flash-1017",
+   "canonical_slug": "deepseek/deepseek-v4.1-flash-20261017",
+   "name": "DeepSeek: DeepSeek V4.1 Flash 1017",
+   "context_length": 1048576,
+   "pricing": {
+    "prompt": "0.000000038",
+    "completion": "0.0000005",
+    "input_cache_read": "0.00000001"
+   }
+  },
+  {
+   "id": "deepseek/deepseek-v4.1-flash",
+   "canonical_slug": "deepseek/deepseek-v4.1-flash-20260910",
+   "name": "DeepSeek: DeepSeek V4.1 Flash",
+   "context_length": 1048576,
+   "pricing": {
+    "prompt": "0.0000000507",
+    "completion": "0.0000002028",
+    "input_cache_read": "0.000000001014"
+   }
+  },
+  {
+   "id": "qwen/qwen3.7-flash",
+   "canonical_slug": "qwen/qwen3.7-flash-20260727",
+   "name": "Qwen: Qwen3.7 Flash",
+   "context_length": 1000000,
+   "pricing": {
+    "prompt": "0.00000003",
+    "completion": "0.00000013",
+    "input_cache_read": "0.000000006",
+    "input_cache_write": "0.000000038",
+    "overrides": [
+     {
+      "min_prompt_tokens": 32000,
+      "prompt": "0.0000001",
+      "completion": "0.0000004",
+      "input_cache_read": "0.00000002",
+      "input_cache_write": "0.000000125"
+     },
+     {
+      "min_prompt_tokens": 256000,
+      "prompt": "0.0000002",
+      "completion": "0.0000008",
+      "input_cache_read": "0.00000004",
+      "input_cache_write": "0.00000025"
+     }
+    ]
+   }
+  },
+  {
+   "id": "qwen/qwen3-coder-next",
+   "canonical_slug": "qwen/qwen3-coder-next-2025-02-03",
+   "name": "Qwen: Qwen3 Coder Next",
+   "context_length": 262144,
+   "pricing": {
+    "prompt": "0.00000012",
+    "completion": "0.0000008",
+    "input_cache_read": "0.00000007"
+   }
+  },
+  {
+   "id": "meta-llama/llama-3.1-8b-instruct",
+   "canonical_slug": "meta-llama/llama-3.1-8b-instruct",
+   "name": "Meta: Llama 3.1 8B Instruct",
+   "context_length": 131072,
+   "pricing": {
+    "prompt": "0.00000002",
+    "completion": "0.00000004"
+   }
+  },
+  {
+   "id": "typesafe/jev-router",
+   "canonical_slug": "typesafe/jev-router",
+   "name": "TypeSafe: Jev Router",
+   "context_length": 1000000,
+   "pricing": {
+    "prompt": "-1",
+    "completion": "-1"
+   }
+  },
+  {
+   "id": "google/gemini-4-hydrogen",
+   "canonical_slug": "google/gemini-4-hydrogen-20261112",
+   "name": "Google: Gemini 4 Hydrogen",
+   "context_length": 1048576,
+   "pricing": {
+    "prompt": "0.0000015",
+    "completion": "0.0000075",
+    "image": "0.0000015",
+    "audio": "0.0000015",
+    "input_audio_cache": "0.000000075",
+    "web_search": "0.014",
+    "internal_reasoning": "0.0000075",
+    "input_cache_read": "0.000000075",
+    "input_cache_write": "0.0000000833333333333333"
+   }
+  },
+  {
+   "id": "example/malformed-no-pricing",
+   "name": "hand-written: no pricing object"
+  },
+  {
+   "id": "example/malformed-price",
+   "name": "hand-written: unparsable price",
+   "pricing": {
+    "prompt": "abc",
+    "completion": "0.000001"
+   }
+  }
+ ],
+ "total_count": 11
+}

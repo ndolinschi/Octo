@@ -273,6 +273,7 @@ func (rt *runtime) assembleWindow(ctx context.Context, a projectstore.Agent, st 
 	// what a provider's prompt cache needs. Each message is cut to a fixed share
 	// of the cap (sized for the longest window) so its text never changes either.
 	ex := splitExchanges(stored[:from])
+	ended := rt.unfinishedTurns(ctx, a.ID)
 	n0 := st.RecentExchanges
 	ex = ex[windowStart(len(ex), n0):]
 	per := CapWindow * 4 / (2 * (2*n0 - 1)) // characters per message
@@ -280,6 +281,9 @@ func (rt *runtime) assembleWindow(ctx context.Context, a projectstore.Agent, st 
 	var winIDs []string
 	for _, e := range ex {
 		u, asst := e.reduced(per)
+		if c, ok := ended[e.msgs[0].ID]; ok && strings.TrimSpace(asst) == "" {
+			asst = closedNote(c) // NEW-8: a request nothing answered is closed for the model (closed.go)
+		}
 		et := exchangeText{user: u, assistant: asst}
 		for _, mm := range e.msgs {
 			et.ids = append(et.ids, mm.ID)

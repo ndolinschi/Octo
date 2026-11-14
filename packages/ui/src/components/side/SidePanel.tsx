@@ -1,6 +1,6 @@
 import { BridgeError, type SideMessage } from "@octo/agent-client";
 import { ArrowUp, Pin, Square } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { errorMessage } from "../../lib/format";
 import { useStickToBottom } from "../../lib/hooks";
 import { settingsHref } from "../../lib/route";
@@ -11,16 +11,17 @@ import { SIDE_PINNED } from "../../state/workspace/tabMemory";
 import { useTabMemory } from "../../state/workspace/useTabMemory";
 import { Button } from "../primitives/Button";
 import { Card } from "../primitives/Card";
-import { EmptyState } from "../primitives/EmptyState";
 import { FloatRoom } from "../primitives/floatRoom";
 import { IconButton } from "../primitives/IconButton";
 import { Notice } from "../primitives/Notice";
+import { Panel, PanelEmpty } from "../primitives/Panel";
 import { ScrollArea } from "../primitives/ScrollArea";
 import { SkeletonList } from "../primitives/Skeleton";
 import { Spinner } from "../primitives/Status";
 import { TextField } from "../primitives/TextField";
 import { Markdown } from "../shared/Markdown";
 import { ModelPicker } from "../shared/ModelPicker";
+import { PanelPurpose } from "../shared/PanelPurpose";
 
 const TAB = toolTab("side");
 /** The input's id: `Ctrl/Cmd+;` and the "+" picker focus it when the pane opens. */
@@ -53,7 +54,8 @@ function connectProvider() {
 /**
  * Decision 40 and parity B13 — the side question: a disposable conversation about the project that never enters the
  * orchestrator's history. The question, the answer (it streams, with the agent's live activity and thinking) and the
- * input share one column: the conversation's measure and side padding (decision 64h), so their edges line up. The input
+ * input share one column on the panel frame (P5, polish step 5: `Panel`, title "Side question", Keep and Clear at the
+ * right of its header), left aligned on the frame's text edge at every width, so their edges line up. The input
  * carries a small model control that writes `models.side` and a Stop while an answer is in flight. With nothing able to
  * answer it says so in one `Notice` with a "Connect a provider" button. "Keep" pins the conversation, so closing the tab
  * does not clear it (the workspace clears an unpinned one).
@@ -63,6 +65,7 @@ export function SidePanel() {
   const { projectId, project, state, askSide, loadSide, clearSide, update } = useProject();
   const side = state.side;
   const [pinned, setPinned] = useTabMemory(TAB, SIDE_PINNED, false);
+  const input = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [asked, setAsked] = useState<string | null>(null);
   const [sendError, setSendError] = useState<{ message: string; code: string | null } | null>(null);
@@ -83,6 +86,11 @@ export function SidePanel() {
     };
   }, [loadSide]);
 
+  const clear = () => {
+    // The Clear button goes away with the answers: focus goes to the input, where the next question is typed (B1 family).
+    input.current?.focus();
+    void clearSide().catch(() => undefined);
+  };
   const ask = async (q: string) => {
     const question = q.trim();
     if (!question || pending) return;
@@ -113,155 +121,167 @@ export function SidePanel() {
   const sideModel = project ? (project.models.side ?? project.models.fast) : null;
 
   return (
-    <div data-side className="@container/side flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/side:[--pad:16px]">
-      {(list.length > 0 || pending) && (
-        <div className="px-(--pad) pt-pane">
-          <div className="mx-auto flex w-full max-w-measure items-center gap-1">
-            <p className="min-w-0 flex-1 truncate text-xs text-fg-3">Nothing here is added to the project's history.</p>
-            <Button
-              variant="quiet"
-              size="xs"
-              icon={Pin}
-              pressed={pinned}
-              title={pinned ? "Kept when this tab closes" : "Cleared when this tab closes; keep it instead"}
-              onClick={() => setPinned(!pinned)}
-            >
-              {pinned ? "Kept" : "Keep"}
-            </Button>
-            <Button variant="quiet" size="xs" onClick={() => void clearSide().catch(() => undefined)}>
-              Clear
-            </Button>
-          </div>
-        </div>
-      )}
-      {empty && (
-        <EmptyState
-          title="Ask about this project"
-          actions={STARTERS.map((q) => (
-            <Button key={q} variant="quiet" size="sm" fullWidth data-row onClick={() => void ask(q)}>
-              {q}
-            </Button>
-          ))}
-        >
-          Without interrupting the work. Nothing is added to its history.
-        </EmptyState>
-      )}
-      <ScrollArea ref={scroller} data-side-list gutter="stable" className={showList ? "min-h-0 flex-1 px-(--pad) pt-pane" : "hidden"}>
-        <div className="mx-auto flex w-full max-w-measure flex-col gap-4 pb-4">
-          {load === "loading" && list.length === 0 && <SkeletonList count={2} size="md" />}
-          {load === "error" && list.length === 0 && (
-            <Notice
-              action={
-                <Button
-                  variant="link"
-                  size="xs"
-                  onClick={() =>
-                    void loadSide().then(
-                      () => setLoad("ok"),
-                      () => setLoad("error"),
+    <div data-side className="h-full min-h-0">
+      <Panel
+        name="side"
+        title="Side question"
+        lead={<PanelPurpose tool="side" />}
+        {...(list.length > 0 || pending
+          ? {
+              actions: (
+                <>
+                  <Button
+                    variant="quiet"
+                    size="sm"
+                    icon={Pin}
+                    pressed={pinned}
+                    title={pinned ? "Kept when this tab closes" : "Cleared when this tab closes; keep it instead"}
+                    onClick={() => setPinned(!pinned)}
+                  >
+                    {pinned ? "Kept" : "Keep"}
+                  </Button>
+                  <Button variant="quiet" size="sm" onClick={clear}>
+                    Clear
+                  </Button>
+                </>
+              ),
+            }
+          : {})}
+      >
+        <div className="flex h-full min-h-0 flex-col">
+          {empty && (
+            <div className="min-h-0 flex-1">
+              <PanelEmpty
+                title="Ask about this project"
+                actions={STARTERS.map((q) => (
+                  <Button key={q} variant="quiet" size="sm" fullWidth data-row onClick={() => void ask(q)}>
+                    {q}
+                  </Button>
+                ))}
+              >
+                Without interrupting the work. Nothing here is added to the project's conversation.
+              </PanelEmpty>
+            </div>
+          )}
+          <ScrollArea ref={scroller} data-side-list className={showList ? "min-h-0 flex-1 px-pane pt-1" : "hidden"}>
+            <div className="flex w-full max-w-measure flex-col gap-4 px-2 pb-4">
+              {load === "loading" && list.length === 0 && <SkeletonList count={2} size="md" />}
+              {load === "error" && list.length === 0 && (
+                <Notice
+                  action={
+                    <Button
+                      variant="link"
+                      size="xs"
+                      onClick={() =>
+                        void loadSide().then(
+                          () => setLoad("ok"),
+                          () => setLoad("error"),
+                        )
+                      }
+                    >
+                      Try again
+                    </Button>
+                  }
+                >
+                  Couldn't load earlier side questions.
+                </Notice>
+              )}
+              {list.map((ex) => (
+                <div key={ex.id} data-side-exchange className="flex flex-col gap-2">
+                  {ex.question && (
+                    <Card padding="md">
+                      <p className="text-sm wrap-anywhere text-fg">{ex.question.text}</p>
+                    </Card>
+                  )}
+                  {ex.answer ? (
+                    <Markdown text={ex.answer.text} className="octo-prose octo-prose-sm" />
+                  ) : pending?.side_id === ex.id ? (
+                    <Answering pending={pending} />
+                  ) : null}
+                </div>
+              ))}
+              {noProvider && (
+                <Notice
+                  form="block"
+                  tone="warn"
+                  title="Nothing can answer a side question"
+                  actions={
+                    <Button variant="primary" size="sm" onClick={connectProvider}>
+                      Connect a provider
+                    </Button>
+                  }
+                >
+                  Connect a provider, or choose a model for side questions below. Your question is still in the box.
+                </Notice>
+              )}
+              {failed && (
+                <Notice
+                  form="block"
+                  tone="error"
+                  title="No answer"
+                  actions={
+                    asked && (
+                      <Button size="sm" onClick={() => void ask(asked)}>
+                        Ask again
+                      </Button>
                     )
                   }
                 >
-                  Try again
-                </Button>
-              }
-            >
-              Couldn't load earlier side questions.
-            </Notice>
-          )}
-          {list.map((ex) => (
-            <div key={ex.id} data-side-exchange className="flex flex-col gap-2">
-              {ex.question && (
-                <Card padding="md">
-                  <p className="text-sm wrap-anywhere text-fg">{ex.question.text}</p>
-                </Card>
+                  {failed.message.replace(/\.$/, "")}.{failed.hint ? ` ${failed.hint}` : ""}
+                </Notice>
               )}
-              {ex.answer ? (
-                <Markdown text={ex.answer.text} className="octo-prose octo-prose-sm" />
-              ) : pending?.side_id === ex.id ? (
-                <Answering pending={pending} />
-              ) : null}
             </div>
-          ))}
-          {noProvider && (
-            <Notice
-              form="block"
-              tone="warn"
-              title="Nothing can answer a side question"
-              actions={
-                <Button variant="primary" size="sm" onClick={connectProvider}>
-                  Connect a provider
-                </Button>
-              }
+            <FloatRoom />
+          </ScrollArea>
+          <div className="shrink-0 px-pane pb-pane">
+            <form
+              className="octo-composer flex w-full max-w-measure flex-col gap-1 bg-raised p-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void ask(text);
+              }}
             >
-              Connect a provider, or choose a model for side questions below. Your question is still in the box.
-            </Notice>
-          )}
-          {failed && (
-            <Notice
-              form="block"
-              tone="error"
-              title="No answer"
-              actions={
-                asked && (
-                  <Button size="sm" onClick={() => void ask(asked)}>
-                    Ask again
-                  </Button>
-                )
-              }
-            >
-              {failed.message.replace(/\.$/, "")}.{failed.hint ? ` ${failed.hint}` : ""}
-            </Notice>
-          )}
-        </div>
-        <FloatRoom />
-      </ScrollArea>
-      <div className="px-(--pad) pb-pane">
-        <form
-          className="octo-composer mx-auto flex w-full max-w-measure flex-col gap-1 bg-raised p-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void ask(text);
-          }}
-        >
-          <label htmlFor={SIDE_INPUT_ID} className="sr-only">
-            Side question
-          </label>
-          <TextField
-            id={SIDE_INPUT_ID}
-            variant="bare"
-            size="md"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={working ? "Answering…" : "Ask about this project…"}
-            autoComplete="off"
-            aria-describedby={sendError && sendError.code !== "no_provider" ? `${SIDE_INPUT_ID}-error` : undefined}
-            className="octo-composer-input px-1"
-          />
-          <div className="flex items-center gap-1">
-            {sideModel !== null && (
-              <ModelPicker
-                label="Side question model"
-                value={sideModel}
-                onChoose={chooseModel}
-                side="top"
-                tip={project?.models.side ? undefined : "Side questions use the fast model until you choose one"}
+              <label htmlFor={SIDE_INPUT_ID} className="sr-only">
+                Side question
+              </label>
+              <TextField
+                id={SIDE_INPUT_ID}
+                ref={input}
+                variant="bare"
+                size="md"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={working ? "Answering…" : "Ask about this project…"}
+                autoComplete="off"
+                aria-describedby={sendError && sendError.code !== "no_provider" ? `${SIDE_INPUT_ID}-error` : undefined}
+                className="octo-composer-input px-1"
               />
-            )}
-            <span className="ml-auto" />
-            {working && bridge.stopSide ? (
-              <IconButton icon={Square} label="Stop" variant="primary" round onClick={stop} />
-            ) : (
-              <IconButton icon={ArrowUp} label="Ask" shortcut="↵" variant="primary" round type="submit" disabled={!text.trim() || working} />
-            )}
+              <div className="flex items-center gap-1">
+                {sideModel !== null && (
+                  <ModelPicker
+                    label="Side question model"
+                    value={sideModel}
+                    onChoose={chooseModel}
+                    side="top"
+                    tip={project?.models.side ? undefined : "Side questions use the fast model until you choose one"}
+                  />
+                )}
+                <span className="ml-auto" />
+                {working && bridge.stopSide ? (
+                  <IconButton icon={Square} label="Stop" variant="primary" round onClick={stop} />
+                ) : (
+                  <IconButton icon={ArrowUp} label="Ask" shortcut="↵" variant="primary" round type="submit" disabled={!text.trim() || working} />
+                )}
+              </div>
+            </form>
+            {(sendError && sendError.code !== "no_provider") || modelError ? (
+              <div id={`${SIDE_INPUT_ID}-error`} className="mt-1 w-full max-w-measure px-2">
+                <Notice tone="error">{modelError ?? `Couldn't ask: ${sendError?.message}. Your question is still in the box.`}</Notice>
+              </div>
+            ) : null}
           </div>
-        </form>
-        {(sendError && sendError.code !== "no_provider") || modelError ? (
-          <div id={`${SIDE_INPUT_ID}-error`} className="mx-auto mt-1 w-full max-w-measure px-2">
-            <Notice tone="error">{modelError ?? `Couldn't ask: ${sendError?.message}. Your question is still in the box.`}</Notice>
-          </div>
-        ) : null}
-      </div>
+        </div>
+      </Panel>
     </div>
   );
 }

@@ -36,9 +36,9 @@ export function truncateDistinct(names: readonly string[], max: number): string[
 }
 
 export const TIER_POLICIES: readonly { value: TierPolicy; label: string; detail: string }[] = [
-  { value: "auto", label: "Auto", detail: "The router may go lower or higher" },
-  { value: "ceiling", label: "Ceiling", detail: "Never above the chosen tier" },
-  { value: "fixed", label: "Fixed", detail: "Always the chosen tier" },
+  { value: "auto", label: "Auto", detail: "The router picks a cheaper or stronger model as each task needs; cost follows the work" },
+  { value: "ceiling", label: "Ceiling", detail: "Never a stronger (dearer) model than the tier you chose, but it may go cheaper" },
+  { value: "fixed", label: "Fixed", detail: "Always the tier you chose: steady quality and cost, even for easy tasks" },
 ];
 
 export function policyLabel(policy: TierPolicy | undefined): string {

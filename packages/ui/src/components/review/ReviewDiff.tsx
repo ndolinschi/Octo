@@ -3,10 +3,12 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { MonacoApi } from "../../lib/buffers";
 import { errorMessage } from "../../lib/format";
-import { useDelayedLoading, useLatest } from "../../lib/hooks";
+import { useLatest } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import type { ChangeBlock } from "../../lib/review/changes";
 import { commentableRuns, type Anchor, type LineRun, type Side } from "../../lib/review/position";
 import { DIFF_FLASH_MS } from "../../lib/v7/changes";
+import { EditorContextMenu } from "../shared/EditorContextMenu";
 import { Spinner } from "../primitives/Status";
 
 /** What the diff needs from the editor chunk; the dock passes the files feature's loader (Monaco is a value only there). */
@@ -44,6 +46,10 @@ export function ReviewDiff(props: {
   onSelection(anchor: Anchor | null): void;
   /** Called once the diff is computed and shown. */
   onReady?(): void;
+  /** The first changed line on the new side (null until the diff is computed, or when nothing changed), for "Go to line". */
+  onFirstLine?(line: number | null): void;
+  /** A click on a line number of the new side: open the file there. */
+  onGoToLine?(line: number): void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [mod, setMod] = useState<ReviewMonaco | null>(null);
@@ -91,6 +97,7 @@ export function ReviewDiff(props: {
       enableSplitViewResizing: false,
       useInlineViewWhenSpaceIsLimited: false,
       ariaLabel: "Diff",
+      contextmenu: false,
     });
     setEditor(ed);
     return () => {
@@ -122,12 +129,33 @@ export function ReviewDiff(props: {
     const original = mod.monaco.editor.createModel(props.before, undefined, uri("before"));
     const modified = mod.monaco.editor.createModel(props.after, undefined, uri("after"));
     const old = editor.getModel();
+    latest.current.onFirstLine?.(null);
     editor.setModel({ original, modified });
     editor.getModifiedEditor().setScrollLeft(0);
     editor.getOriginalEditor().setScrollLeft(0);
     old?.original.dispose();
     old?.modified.dispose();
-  }, [mod, editor, props.path, props.before, props.after]);
+  }, [mod, editor, props.path, props.before, props.after, latest]);
+
+  // "Go to line" (as in Changes): the first changed line of the new side, and its line numbers open the file there.
+  useEffect(() => {
+    if (!mod || !editor) return;
+    const report = () => {
+      const changes = editor.getLineChanges();
+      const first = changes?.find((c) => c.modifiedEndLineNumber > 0) ?? changes?.[0];
+      if (changes) latest.current.onFirstLine?.(first ? Math.max(1, first.modifiedStartLineNumber) : null);
+    };
+    const sub = editor.onDidUpdateDiff(report);
+    report();
+    const down = editor.getModifiedEditor().onMouseDown((e) => {
+      const line = e.target.position?.lineNumber;
+      if (e.target.type === mod.monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS && line) latest.current.onGoToLine?.(line);
+    });
+    return () => {
+      sub.dispose();
+      down.dispose();
+    };
+  }, [mod, editor, latest]);
 
   // The "+" in the gutter and the selection, one set of listeners per side.
   useEffect(() => {
@@ -236,6 +264,11 @@ export function ReviewDiff(props: {
         dom.className = "octo-thread-zone";
         const inner = document.createElement("div");
         dom.appendChild(inner);
+        // A press on the thread is the thread's, not the editor's: Monaco's mouse handler (on an ancestor) would take focus
+        // back to the code, so a reply box opened by a click lost its caret and the review's Esc then restored the layout.
+        // Clicks still reach React (they are separate events, and its root listener is above the editor).
+        const own = (e: Event) => e.stopPropagation();
+        for (const type of ["mousedown", "pointerdown", "mouseup", "pointerup"]) dom.addEventListener(type, own);
         return { z, dom, inner };
       }),
     [props.zones],
@@ -281,6 +314,8 @@ export function ReviewDiff(props: {
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={host} className="absolute inset-0" />
+      {editor && <EditorContextMenu editor={editor.getModifiedEditor()} path={props.path} />}
+      {editor && <EditorContextMenu editor={editor.getOriginalEditor()} path={props.path} />}
       {failed && (
         <p role="alert" className="absolute inset-x-0 top-6 px-6 text-center text-sm text-err">
           The diff viewer did not load: {failed}. Reload the window to try again.

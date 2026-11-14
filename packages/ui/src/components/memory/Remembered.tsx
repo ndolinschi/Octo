@@ -6,6 +6,7 @@ import { fold, GROUP_FOLD, itemDescription, keeperName, needsFullFact, remembere
 import { errorMessage } from "../../lib/format";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
+import { useBlockFloating } from "../../state/workspace/useFloatingHere";
 import { cn } from "../../lib/cn";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
@@ -25,7 +26,7 @@ export function RememberedHeader(props: { count: number; onAdd?: (() => void) | 
         <>
           <span className="tabular-nums">{props.count}</span>
           {props.onAdd && (
-            <Button variant="quiet" size="xs" icon={Plus} className="-mr-1" onClick={props.onAdd}>
+            <Button variant="quiet" size="xs" icon={Plus} className="-mr-2" onClick={props.onAdd}>
               Add
             </Button>
           )}
@@ -46,6 +47,7 @@ const KINDS: readonly { id: RememberKind; label: string }[] = [
 
 /** Writing an item yourself (`/remember`): one line, a kind, Enter to keep it. */
 export function AddFact(props: { onDone(): void; onKept(): void }) {
+  useBlockFloating();
   const { bridge } = useApp();
   const { projectId } = useProject();
   const [text, setText] = useState("");
@@ -94,15 +96,16 @@ export function AddFact(props: { onDone(): void; onKept(): void }) {
           }
         }}
       />
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2">
         <Segmented<RememberKind> label="Kind" options={KINDS} value={kind} onChange={setKind} />
-        <span className="flex-1" />
-        <Button variant="quiet" size="sm" onClick={props.onDone} disabled={busy}>
-          Cancel
-        </Button>
-        <Button type="submit" variant="primary" size="sm" loading={busy} disabled={text.trim() === ""}>
-          Remember
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="quiet" size="sm" onClick={props.onDone} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" size="sm" loading={busy} disabled={text.trim() === ""}>
+            Remember
+          </Button>
+        </div>
       </div>
       {error && <Notice tone="error">{error}</Notice>}
     </form>
@@ -145,7 +148,7 @@ export function RememberedList(props: {
         return (
           <section key={g.key} aria-label={g.subject} className="flex flex-col">
             <ListRow
-              size="sm"
+              size="md"
               tone="quiet"
               leading={<Glyph icon={isCollapsed ? ChevronRight : ChevronDown} size={14} />}
               title={g.subject}
@@ -156,7 +159,7 @@ export function RememberedList(props: {
             />
             {!isCollapsed && (
               <>
-                <ul aria-label={g.subject} className="flex flex-col">
+                <ul aria-label={g.subject} className="flex flex-col pl-6">
                   {shown.map((item) => (
                     <RememberedRow
                       key={item.key}
@@ -172,7 +175,12 @@ export function RememberedList(props: {
                     />
                   ))}
                 </ul>
-                {hidden > 0 && <ListRow size="sm" tone="quiet" title={`Show ${hidden} more`} onClick={() => setUnfolded((u) => flip(u, g.key))} />}
+                {hidden > 0 && (
+                  // On the items' text edge, one step in like them, 32 like the rows around it (P3): never read as a group header.
+                  <div className="pl-6">
+                    <ListRow size="md" tone="quiet" title={`Show ${hidden} more`} onClick={() => setUnfolded((u) => flip(u, g.key))} />
+                  </div>
+                )}
               </>
             )}
           </section>

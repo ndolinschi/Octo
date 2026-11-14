@@ -23,8 +23,8 @@ pub use call::{CallObserve, DecisionRow, FinishedCall};
 pub use call_kind::CallKind;
 pub use call_provider::CallProvider;
 pub use cost::{
-    blended_cost_micros, estimate_ratio, estimate_warn_due, resolve_cost, warn_estimate_ratio,
-    CostSource, ModelPrice, PriceTable, ResolvedCost,
+    blended_cost_micros, estimate_ratio, estimate_warn_due, resolve_cost, utc_date, utc_timestamp,
+    warn_estimate_ratio, CostSource, LivePrices, ModelPrice, PriceSource, PriceTable, ResolvedCost,
 };
 pub use error::HistoryError;
 pub use metrics::{CostMicros, Millis, TokenCount};
@@ -55,7 +55,7 @@ pub struct History {
     pool: Option<SqlitePool>,
     token_key: Vec<u8>,
     capture_limit: usize,
-    prices: Arc<PriceTable>,
+    prices: LivePrices,
     store_payloads: bool,
     inserts: Arc<Semaphore>,
     insert_acquire_timeout: Duration,
@@ -71,7 +71,7 @@ impl History {
             pool: None,
             token_key: Vec::new(),
             capture_limit: 0,
-            prices: Arc::new(PriceTable::default()),
+            prices: LivePrices::default(),
             store_payloads: true,
             inserts: Arc::new(Semaphore::new(INSERT_SLOTS)),
             insert_acquire_timeout: Duration::from_secs(5),
@@ -90,12 +90,14 @@ impl History {
         self.capture_limit
     }
 
-    pub fn prices(&self) -> &PriceTable {
-        &self.prices
+    /// The current price table (a snapshot: a refresh after this call does not change it).
+    pub fn prices(&self) -> Arc<PriceTable> {
+        self.prices.snapshot()
     }
 
-    pub fn with_prices(mut self, prices: PriceTable) -> Self {
-        self.prices = Arc::new(prices);
+    /// Uses `prices` for cost estimates; a [`LivePrices`] handle keeps following its refreshes.
+    pub fn with_prices(mut self, prices: impl Into<LivePrices>) -> Self {
+        self.prices = prices.into();
         self
     }
 
@@ -128,7 +130,7 @@ impl History {
             pool: Some(pool),
             token_key: key,
             capture_limit,
-            prices: Arc::new(PriceTable::default()),
+            prices: LivePrices::default(),
             store_payloads: true,
             inserts: Arc::new(Semaphore::new(INSERT_SLOTS)),
             insert_acquire_timeout: Duration::from_secs(5),

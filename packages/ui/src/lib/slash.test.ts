@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SlashCommands } from "@octo/agent-client";
-import { octoCommandFor, parseSlash, slashQuery } from "./slash";
+import { OCTO_COMMAND_NAMES, OCTO_FALLBACK, octoCommandFor, parseSlash, slashQuery } from "./slash";
 import { slashGroups } from "./slashRows";
 
 const CMDS: SlashCommands = {
@@ -61,4 +61,8 @@ test("typed commands: Octo ones run, the agent's are sent as typed", () => {
   assert.equal(octoCommandFor("/compact", CMDS)?.command.name, "compact");
   assert.equal(octoCommandFor("/init", CMDS), null);
   assert.equal(octoCommandFor("/review", CMDS), null);
+});
+
+test("OCTO_COMMAND_NAMES covers every command the UI runs without a harness list", () => {
+  for (const c of OCTO_FALLBACK) assert.ok(OCTO_COMMAND_NAMES.includes(c.name), c.name);
 });

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import type { AnsweredInput, Approval, ApprovalAnswer, InputAnswer, InputRequest } from "@octo/agent-client";
+import type { AnsweredInput, Approval, ApprovalAnswer, InputAnswer, InputRequest, TurnChanges } from "@octo/agent-client";
+import { earlierRequestLabel } from "../../lib/v7/changes";
 import { useApp } from "../../state/app";
 import type { Resolution } from "../../lib/v7/approval";
 import { ApprovalCard } from "./ApprovalCard";
@@ -112,7 +113,7 @@ function FormDemo({ request, fails = false, initial = null }: { request: InputRe
   const [answered, setAnswered] = useState<AnsweredInput | null>(initial);
   const submit = async (_id: string, _answer: InputAnswer) => {
     await wait(400);
-    if (fails) throw new Error("the harness is not reachable");
+    if (fails) throw new Error("Octo's local service is not reachable");
   };
   return (
     <InputFormCard
@@ -163,7 +164,7 @@ function Queue() {
   const props = { onRemove: noop, onSendNow: noop, onStopAndSend: noop, onResume: noop, onClear: noop };
   const failing = async () => {
     await wait(200);
-    throw new Error("the harness did not answer");
+    throw new Error("Octo's local service did not answer");
   };
   return (
     <Section id="queue" title="Message queue">
@@ -210,7 +211,7 @@ function Pane({ height = 520, children }: { height?: number; children: ReactNode
 
 function Changes({ theme, loadMonaco }: { theme: "dark" | "light"; loadMonaco(): Promise<DiffMonaco> }) {
   const [last, setLast] = useState<string>("none yet");
-  const label = (id: number) => TURN_LABELS[id] ?? `Turn ${id}`;
+  const label = (turn: TurnChanges) => TURN_LABELS[turn.turn_id] ?? earlierRequestLabel(turn, Date.now());
   const view = (mode: "ready" | "empty" | "loading" | "error", revert: RevertMode = "ok", extra: { height?: number } = {}) => (
     <Pane height={extra.height ?? 520}>
       <ChangesView

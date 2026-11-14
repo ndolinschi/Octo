@@ -4,22 +4,23 @@ import { useHiddenModels, useProviders } from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { Select } from "../primitives/Select";
 import { SkeletonList } from "../primitives/Skeleton";
-import { ViewTabs } from "../primitives/ViewTabs";
 import { useHarnessSettings } from "./harnessSettings";
-import { modelOptions, MODEL_ROWS, type ModelRow } from "./modelRows";
-import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
+import { modelOptions, MODEL_ROWS, TIERS_NOTE, type ModelRow } from "./modelRows";
+import { LoadErrorRow, SELECT_W, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
 import { ModelsProblem } from "./ModelsProblem";
 import { ProjectModels } from "./ProjectModels";
+import { ScopeRow, useProjectScope } from "./scope";
 import { useProjectDetails } from "./useProjectDetails";
 import { useSave } from "./useSave";
 import { VisibleModels } from "./VisibleModels";
 
 type Scope = "defaults" | "project";
+const DEFAULTS = "__defaults__";
 
 /**
- * Decisions 59 and 74: Models has two scopes. "Defaults" is this machine (the models new projects start with, and which models
- * pickers show); the second tab is a project (its own four models, inherited from the defaults until changed). The tabs are
- * only offered while a project exists. Models are the one setting that has both levels today.
+ * Decisions 59 and 74: Models has two scopes, chosen in the section's scope menu (B10). "Defaults for new projects" is this
+ * computer (the models new projects start with, and which models pickers show); a project is its own four models, inherited
+ * from the defaults until changed. The menu is only offered while a project exists.
  */
 export function ModelsSection(props: { projectId?: string | null }) {
   const { bridge } = useApp();
@@ -27,33 +28,24 @@ export function ModelsSection(props: { projectId?: string | null }) {
   const harness = useHarnessSettings();
   const { details, update } = useProjectDetails();
   const [scope, setScope] = useState<Scope>("defaults");
-  // The project tab opens on the project that is open in the app (when it still exists), else the most recently updated one.
-  const [pick, setPick] = useState<string | null>(props.projectId ?? null);
   const list = providers.status === "ready" ? providers.list : null;
-  const projects = details.status === "ready" ? details.projects : [];
-  const project = projects.find((p) => p.id === pick) ?? projects[0];
+  // B10: the same scope menu as every per-project section; here it also offers the defaults for new projects.
+  const { sorted, project, choose } = useProjectScope(details.status === "ready" ? details.projects : [], props.projectId ?? null);
   const projectScope = scope === "project" && project !== undefined;
   const loading = providers.status === "loading" || harness.load.status === "loading";
   return (
     <>
       {project && (
-        <ViewTabs<Scope>
-          label="Settings scope"
-          value={projectScope ? "project" : "defaults"}
-          onChange={setScope}
-          options={[
-            { id: "defaults", label: "Defaults", title: "What this machine starts new projects with" },
-            {
-              id: "project",
-              label: project.name,
-              title: projects.length > 1 ? "This project's own models; press again to pick another project" : "This project's own models",
-              // Several projects: the tab's label is the menu that chooses which one (the scope is chosen once, here).
-              ...(projects.length > 1
-                ? { menu: projects.map((p) => ({ id: p.id, label: p.name, checked: p.id === project.id, run: () => setPick(p.id) })) }
-                : {}),
-            },
-          ]}
-          className="px-0"
+        <ScopeRow
+          projects={sorted}
+          value={projectScope ? project.id : DEFAULTS}
+          extra={[{ value: DEFAULTS, label: "Defaults for new projects" }]}
+          onChange={(v) => {
+            if (v === DEFAULTS) return setScope("defaults");
+            choose(v);
+            setScope("project");
+          }}
+          description="New projects start with the defaults; each project can then change its own."
         />
       )}
       {projectScope && list && <ProjectModels key={project.id} project={project} list={list} update={update} />}
@@ -61,21 +53,25 @@ export function ModelsSection(props: { projectId?: string | null }) {
       {!projectScope && (
         <>
           {list && harness.load.status === "ready" && (
-            <ModelsProblem list={list} values={MODEL_ROWS.map((d) => (typeof harness.get(d.id)?.value === "string" ? String(harness.get(d.id)?.value) : ""))} />
+            <ModelsProblem
+              list={list}
+              values={MODEL_ROWS.map((d) => (typeof harness.get(d.id)?.value === "string" ? String(harness.get(d.id)?.value) : ""))}
+              onApply={(next) => harness.save({ set: Object.fromEntries(MODEL_ROWS.flatMap((d, i) => (next[i] !== undefined ? [[d.id, next[i]]] : []))) })}
+            />
           )}
-          <SettingsGroup label="Defaults for new projects" footer="A project keeps the models it was created with; change them in its own tab.">
+          <SettingsGroup label="Defaults for new projects" footer={TIERS_NOTE}>
             {loading && <SkeletonList count={MODEL_ROWS.length} size="lg" twoLine />}
             {harness.load.status === "unavailable" && (
-              <SettingsRow title="Not available here" description="This connection cannot change the harness's default models." />
+              <SettingsRow title="Not available here" description="This connection cannot change the default models." />
             )}
             {harness.load.status === "error" && (
-              <LoadErrorRow what="settings" message={harness.load.message} hint="Retry once the harness is running." onRetry={harness.reload} />
+              <LoadErrorRow what="settings" message={harness.load.message} hint="Retry once Octo's local service is running." onRetry={harness.reload} />
             )}
             {providers.status === "error" && (
               <LoadErrorRow
                 what="providers"
                 message={providers.message.replace(/\.$/, "")}
-                hint="Retry once the harness is running."
+                hint="Retry once Octo's local service is running."
                 onRetry={() => void providers.refresh()}
               />
             )}
@@ -105,15 +101,17 @@ function DefaultModelRow({ def, list }: { def: ModelRow; list: ProviderList }) {
       description={s.editable ? def.description : (s.note ?? `Set by the ${s.source}.`)}
       status={<SaveStatus state={saved} />}
       control={
-        <Select
-          id={id}
-          label={def.title}
-          value={value}
-          options={options}
-          disabled={!s.editable || list.providers.every((p) => p.state !== "ready")}
-          onChange={(v) => void run(() => harness.save({ set: { [def.id]: v } }))}
-          className={CONTROL_W.lg}
-        />
+        // The width sits on a wrapper: the select's own `w-full` would win over a `w-64` on it and size it by its text.
+        <div className={SELECT_W}>
+          <Select
+            id={id}
+            label={def.title}
+            value={value}
+            options={options}
+            disabled={!s.editable || list.providers.every((p) => p.state !== "ready")}
+            onChange={(v) => void run(() => harness.save({ set: { [def.id]: v } }))}
+          />
+        </div>
       }
     />
   );

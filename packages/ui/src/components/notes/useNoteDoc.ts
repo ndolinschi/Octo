@@ -21,7 +21,7 @@ export function useNoteDoc(note: Note | null): DocLoad {
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
-    const read = bridge.getNote?.(projectId, id) ?? Promise.reject(new Error("this harness cannot open notes"));
+    const read = bridge.getNote?.(projectId, id) ?? Promise.reject(new Error("this version of Octo's local service cannot open notes"));
     read.then(
       (doc) => !cancelled && setSettled({ key, load: { status: "ok", doc } }),
       (e: unknown) => !cancelled && setSettled({ key, load: { status: "error", message: errorMessage(e) } }),

@@ -57,45 +57,56 @@ type ClearResult struct {
 	PreviousSessionID string `json:"previous_session_id,omitempty"`
 }
 
-// Clear tidies the project: a conversation boundary is stored after the orchestrator's last
-// message (the messages stay in the transcript, the search index and the export), the history
-// sent to the model starts over from a carry-over of at most CarryOverTokens (a summary of the
-// session written now, the open tasks' titles, a pointer to recall the rest), an ACP orchestrator's
-// session is dropped (its next session gets the carry-over as its recap) and the context report
-// starts over. The turn slot is held meanwhile; ErrTurnInProgress while a turn runs.
+// Clear is ClearSession of the default session.
 func (o *Orchestrator) Clear(ctx context.Context, pid string) (ClearResult, error) {
+	return o.ClearSession(ctx, pid, "")
+}
+
+// ClearSession tidies one main session ("": the default): a new main session follows it, with its own root
+// agent, the old one's workspace and memory mode, and a carry-over of at most CarryOverTokens (a summary of the
+// session written now, the open tasks' titles, a pointer to recall the rest) as the first thing its history
+// holds; the new session is the default when the old one was. The old session keeps its conversation (it can
+// be opened and continued). An ACP orchestrator's process of the old session is ended (its next session gets
+// the carry-over as its recap). The session's slot is held meanwhile; ErrTurnInProgress while it runs a turn.
+func (o *Orchestrator) ClearSession(ctx context.Context, pid, sid string) (ClearResult, error) {
 	if o.baseCtx.Err() != nil {
 		return ClearResult{}, ErrShuttingDown
 	}
+	db, err := o.store.Get(ctx, pid)
+	if err != nil {
+		return ClearResult{}, err
+	}
+	if sid, err = o.mainSession(ctx, db, sid); err != nil {
+		return ClearResult{}, err
+	}
+	key := skey(pid, sid)
 	turnCtx, cancel := context.WithCancel(o.baseCtx)
 	defer cancel()
-	if o.Active(pid) || !o.claim(pid, cancel) {
+	if o.ActiveSession(pid, sid) || !o.claim(key, cancel) {
 		return ClearResult{}, ErrTurnInProgress
 	}
-	// Session announcements wait until the turn slot is released: while the clear holds it the project reads as
+	// Session announcements wait until the slot is released: while the clear holds it the session reads as
 	// Active, and the new session would be announced as "working" with nothing running (decision 95 d).
 	var announce []func()
+	next := sid
 	defer func() {
 		// A message sent meanwhile was queued: start it now.
-		o.release(pid)
+		o.release(key)
 		for _, f := range announce {
 			f()
 		}
 		o.qmu.Lock()
 		defer o.qmu.Unlock()
-		if db, err := o.store.Get(context.Background(), pid); err == nil {
-			o.startNext(db)
+		o.startNext(db, sid)
+		if next != sid {
+			o.startNext(db, next)
 		}
 	}()
-	db, err := o.store.Get(ctx, pid)
+	orch, err := db.RootAgent(ctx, sid)
 	if err != nil {
 		return ClearResult{}, err
 	}
-	orch, err := db.Orchestrator(ctx)
-	if err != nil {
-		return ClearResult{}, err
-	}
-	rt, err := o.newRuntime(ctx, db)
+	rt, err := o.newSessionRuntime(ctx, db, sid)
 	if err != nil {
 		return ClearResult{}, err
 	}
@@ -116,51 +127,70 @@ func (o *Orchestrator) Clear(ctx context.Context, pid string) (ClearResult, erro
 		}
 	}
 	title := sessionTitle(live)
-	// The memory session boundary first: the carry-over belongs to the session it starts. A failure here never undoes the clear.
-	before, _ := db.CurrentSessionID(ctx)
+	wasDefault := false
+	if info, err := db.SessionInfoOf(ctx, sid); err == nil {
+		wasDefault = info.Default
+	}
+	// The session boundary first: the carry-over belongs to the session it starts. A failure here never undoes the clear.
 	var boundary memory.Boundary
 	boundaryErr := error(nil)
-	if boundary, boundaryErr = o.memoryOf(db).StartSession(ctx, "clear", memory.Carry{Summary: summary, Source: source}); boundaryErr != nil {
+	if boundary, boundaryErr = o.memoryOf(db).StartSessionFrom(ctx, sid, "clear", memory.Carry{Summary: summary, Source: source}); boundaryErr != nil {
 		slog.Warn("memory session boundary failed", "err", boundaryErr)
 	}
-	c, err := db.AddClear(ctx, orch.ID, projectstore.NewID("conv"), carryOver(summary, open), source, title)
+	target := orch
+	if boundaryErr == nil && boundary.SessionID != sid {
+		next = boundary.SessionID
+		if target, err = db.RootAgent(ctx, next); err != nil {
+			return ClearResult{}, err
+		}
+	}
+	c, err := db.AddClear(ctx, target.ID, projectstore.NewID("conv"), carryOver(summary, open), source, title)
 	if err != nil {
 		return ClearResult{}, err
 	}
-	if err := db.ResetContext(ctx, orch.ID); err != nil {
+	if err := db.ResetContext(ctx, target.ID); err != nil {
 		return ClearResult{}, err
 	}
 	isACP := plugins.IsACPRef(rt.models.Orchestrator)
 	if isACP {
-		if st, ok, err := db.ACPSession(ctx, orch.ID); err == nil && ok && before != "" {
-			// The agent keeps the session being left: Resume loads it again.
-			_ = db.SetSessionACP(ctx, before, projectstore.SessionACP{Agent: st.PluginAgent, Model: st.Model, SessionID: st.SessionID})
+		if st, ok, err := db.ACPSession(ctx, orch.ID); err == nil && ok {
+			// The agent keeps the session being left (on its root and, for older readers, on the session row).
+			_ = db.SetSessionACP(ctx, sid, projectstore.SessionACP{Agent: st.PluginAgent, Model: st.Model, SessionID: st.SessionID})
 		}
-		if err := db.DeleteACPSession(ctx, orch.ID); err != nil {
-			return ClearResult{}, err
+		if next == sid {
+			if err := db.DeleteACPSession(ctx, orch.ID); err != nil {
+				return ClearResult{}, err
+			}
 		}
-		o.resetACPSession(pid)
-		if s := o.acp.lookup(pid); s != nil {
+		if s := o.acp.lookup(key); s != nil {
 			s.forgetCommands()
 		}
+		o.resetACPSession(key)
 	}
 	res := ClearResult{ConversationID: c.ConversationID, UptoMessageID: c.UptoMessageID, At: c.CreatedAt, Title: title, Summary: summary, SummarySource: source}
 	if boundaryErr == nil {
 		res.SessionID, res.PreviousSessionID = boundary.SessionID, boundary.PreviousID
-		if res.SessionID != before {
-			// A new main session exists and is current; the one that ended changed state too.
+		if next != sid {
+			// A new main session exists (the default when the old one was); the one that ended changed state too.
+			newRoot := target
 			announce = append(announce, func() {
-				o.publishSession(context.Background(), db, res.SessionID, true)
-				o.hub.Publish(pid, events.SessionCurrent, map[string]any{"session_id": res.SessionID, "previous_session_id": before})
-				o.publishSession(context.Background(), db, before, false)
+				bg := context.Background()
+				o.hub.Publish(pid, events.AgentCreated, map[string]any{"agent": newRoot, "session_id": next})
+				o.publishSession(bg, db, next, true)
+				if wasDefault {
+					o.defaultChanged(bg, db, sid, next)
+				} else {
+					o.publishSession(bg, db, sid, false)
+				}
 			})
 		}
 	}
 	o.hub.Publish(pid, events.ConversationCleared, map[string]any{
 		"project_id": pid, "conversation_id": res.ConversationID, "upto_message_id": res.UptoMessageID, "at": res.At,
 		"title": title, "summary": summary, "summary_source": source, "session_id": res.SessionID, "previous_session_id": res.PreviousSessionID,
+		"agent_id": target.ID,
 	})
-	o.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid})
+	o.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid, "session_id": next})
 	if isACP {
 		o.hub.Publish(pid, events.SlashCommandsUpdated, map[string]any{"project_id": pid})
 	}
@@ -226,7 +256,7 @@ func (c *summaryCollector) WriteTextFile(context.Context, acp.WriteTextFileParam
 // agentSummary asks the live ACP session for the summary (one prompt, agentSummaryTimeout, not
 // a user turn: nothing is stored). It never starts a session.
 func (o *Orchestrator) agentSummary(ctx context.Context, rt *runtime) (string, bool) {
-	s := o.acp.lookup(rt.pid())
+	s := o.acp.lookup(rt.key())
 	if s == nil {
 		return "", false
 	}
@@ -322,17 +352,25 @@ func carryOver(summary string, openTasks []string) string {
 // sent is false when the orchestrator is not such an agent (the caller compacts itself, or
 // refuses with the reason Compact gives). ErrTurnInProgress while a turn runs.
 func (o *Orchestrator) CompactViaAgent(ctx context.Context, pid string) (msg projectstore.Message, sent bool, err error) {
+	return o.CompactViaAgentSession(ctx, pid, "")
+}
+
+// CompactViaAgentSession is CompactViaAgent for one main session ("": the default).
+func (o *Orchestrator) CompactViaAgentSession(ctx context.Context, pid, sid string) (msg projectstore.Message, sent bool, err error) {
 	db, err := o.store.Get(ctx, pid)
 	if err != nil {
 		return msg, false, err
 	}
-	rt, err := o.newRuntime(ctx, db)
+	if sid, err = o.mainSession(ctx, db, sid); err != nil {
+		return msg, false, err
+	}
+	rt, err := o.newSessionRuntime(ctx, db, sid)
 	if err != nil {
 		return msg, false, err
 	}
 	if !rt.isACPOrchestrator() || !o.agentCommandNamed(rt, "compact") {
 		return msg, false, nil
 	}
-	msg, err = o.StartWith(ctx, pid, "/compact", StartOpts{Command: "compact"})
+	msg, err = o.StartWith(ctx, pid, "/compact", StartOpts{SessionID: sid, Command: "compact"})
 	return msg, err == nil, err
 }

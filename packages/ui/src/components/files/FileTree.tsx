@@ -9,7 +9,7 @@ import { useOptionalComments } from "../../state/comments";
 import { CommentCount, commentsDescription } from "./CommentCount";
 import { fileIcon } from "../primitives/fileIcons";
 import { Highlight } from "../primitives/Highlight";
-import { useDelayedLoading } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import { Spinner } from "../primitives/Status";
 
 type NodeRow = { id: string; kind: "dir" | "file"; folder: string; path: string; name: string; level: number; expanded: boolean; title: string };
@@ -18,8 +18,12 @@ type Row = NodeRow | StateRow;
 
 const isNode = (row: Row): row is NodeRow => row.kind === "dir" || row.kind === "file";
 
-/** Indent per level; the 24px chevron box of level n starts at (n − 1) × 16. */
-const INDENT = 16;
+/**
+ * Indent per level (polish step 4, E2: was 16). A root folder is the tree's section head and its entries start on its own
+ * edge, so the 24px glyph box of level n ≥ 2 starts at (n − 2) × 12: five levels deep a name still starts 76px in.
+ */
+const INDENT = 12;
+const indentOf = (level: number) => Math.max(0, level - 2) * INDENT;
 
 function flatten(
   folders: { label: string; path: string }[],
@@ -69,9 +73,9 @@ export type FileTreeHandle = { focusFirst(): void };
 /**
  * ARIA tree of the project's folders; directories load when expanded. With `filter`, only files whose
  * folder-relative path contains it (case-insensitive) are shown, with their ancestors expanded; the
- * caller loads the folders first (`indexFiles`). Rows: 28px, radius 6, 16px per level,
- * [24px glyph box: chevron for folders, type glyph for files] 4 [name] … — one anatomy for roots (medium weight),
- * folders and files, so siblings share one label edge.
+ * caller loads the folders first (`indexFiles`). Rows: 28px (40 under touch), radius 6, 12px per level,
+ * [24px glyph box: chevron for folders, type glyph for files] 4 [name] … — one anatomy for folders and files, so siblings
+ * share one label edge. A root folder is a section head on the same edges: a meta caption (12px, `fg-3`, medium) with its chevron, 8px above every root but the first.
  */
 export const FileTree = forwardRef<
   FileTreeHandle,
@@ -191,13 +195,14 @@ export const FileTree = forwardRef<
     }
   };
 
+  const firstRoot = rows.find((r) => r.kind === "dir" && r.path === "");
   return (
     <div ref={root} role="tree" aria-label={label} className="flex flex-col">
       {rows.map((row) => {
-        const indent = (row.level - 1) * INDENT;
+        const indent = indentOf(row.level);
         if (row.kind === "empty") {
           return (
-            <div key={row.id} role="none" className="flex h-row shrink-0 items-center text-xs text-fg-3">
+            <div key={row.id} role="none" className="flex h-row shrink-0 items-center text-xs text-fg-3 touch:h-ctl-lg">
               <Indent px={indent + 24 + 4} />
               Empty folder
             </div>
@@ -221,7 +226,7 @@ export const FileTree = forwardRef<
               {...common}
               aria-disabled={row.kind === "loading" || undefined}
               aria-busy={row.kind === "loading" || undefined}
-              className="flex h-row shrink-0 items-center gap-1 rounded-sm pr-1 text-xs text-fg-3 focus-inset"
+              className="flex h-row shrink-0 items-center gap-1 rounded-sm pr-1 text-xs text-fg-3 focus-inset touch:h-ctl-lg"
             >
               <Indent px={indent} />
               <span className="grid size-6 shrink-0 place-items-center">{row.kind === "loading" && <Spinner size={10} />}</span>
@@ -254,7 +259,11 @@ export const FileTree = forwardRef<
             data-path={row.title}
             data-root={isRoot || undefined}
             onClick={() => activate(row)}
-            className={cn("flex h-row shrink-0 items-center rounded-sm px-1 text-sm press-row focus-inset", selected ? "bg-active" : "hover:bg-hover")}
+            className={cn(
+              "flex h-row shrink-0 items-center rounded-sm px-1 text-sm press-row focus-inset touch:h-ctl-lg",
+              selected ? "bg-active" : "hover:bg-hover",
+              isRoot && row !== firstRoot && "mt-2",
+            )}
           >
             <Indent px={indent} />
             {/* One glyph column (decided once, v6.2): a folder's chevron or a file's type glyph, so every label of a
@@ -266,7 +275,7 @@ export const FileTree = forwardRef<
                 <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-150", row.kind === "dir" && row.expanded && "rotate-90")} />
               )}
             </span>
-            <span data-label className={cn("ml-1 min-w-0 truncate text-fg", isRoot && "font-medium")} title={row.name}>
+            <span data-label className={cn("ml-1 min-w-0 truncate", isRoot ? "text-xs font-medium text-fg-3" : "text-fg")} title={row.name}>
               {query && row.kind === "file" ? <Highlight text={row.name} query={query} /> : row.name}
             </span>
             {comments > 0 && (

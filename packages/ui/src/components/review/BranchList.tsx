@@ -3,14 +3,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { OpenReviewInput, ReviewBranch, ReviewBranchList } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { errorMessage, timeAgo } from "../../lib/format";
-import { useRowKeys } from "../../lib/hooks";
+import { useRowKeys } from "../../lib/hooksMore";
+import { useRovingRows } from "../../lib/rovingRows";
 import { aheadBehindCompact, aheadBehindText, splitName, branchOrder, hasChanges, openInput } from "../../lib/review/branches";
 import type { ReviewApi } from "../../lib/review/api";
 import { Glyph } from "../primitives/Glyph";
 import { SkeletonRows } from "../primitives/InfoList";
-import { MenuButton } from "../primitives/MenuButton";
 import { Spinner } from "../primitives/Status";
-import { Notice, ROW } from "./parts";
+import { TextMenu } from "./parts";
+import { PanelBody, PanelEmpty } from "../primitives/Panel";
 
 type Load = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; data: ReviewBranchList };
 
@@ -26,6 +27,7 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
   const [now] = useState(() => Date.now());
   const list = useRef<HTMLDivElement>(null);
   useRowKeys(list);
+  useRovingRows(list);
 
   useEffect(() => {
     let alive = true;
@@ -56,46 +58,61 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
 
   const data = load.status === "ready" ? load.data : null;
   const rows = useMemo(() => (data ? branchOrder(data.branches) : []), [data]);
-  if (load.status === "loading") return <SkeletonRows count={5} widths={[60, 48, 54, 44, 50]} />;
-  if (load.status === "error")
+  if (load.status === "loading")
     return (
-      <Notice tone="err" title="The branches did not load">
-        {load.message}. Check that the folder is a git repository, then pick this view again.
-      </Notice>
+      <PanelBody>
+        <SkeletonRows count={5} widths={[60, 48, 54, 44, 50]} />
+      </PanelBody>
     );
+  if (load.status === "error")
+    return <PanelEmpty title="The branches did not load">{load.message}. Check that the folder is a git repository, then pick this view again.</PanelEmpty>;
   const shownBase = data?.base ?? "main";
-  const names = [...new Set([data?.default_base ?? "main", ...rows.map((r) => r.name)])];
+  // The base is never offered against itself: the current branch is not a base for its own review.
+  const current = rows.find((r) => r.current)?.name;
+  const names = [...new Set([data?.default_base ?? "main", ...rows.map((r) => r.name)])].filter((n) => n !== current || n === shownBase);
+  // R1 (polish step 6b): the list header is the panel's filter row (caption at the rows' text edge, the base menu at the right),
+  // the rows sit in the frame's list inset.
   return (
-    <section aria-label="Local branches" className="flex flex-col gap-1">
-      <header className="flex min-h-8 items-center gap-2 px-3 text-xs text-fg-3">
-        <span>{rows.length === 1 && !api.branches ? "Current branch" : "Branches"}</span>
-        <span className="ml-auto flex items-center">
-          {api.branches && (
-            <MenuButton
+    <section aria-label="Local branches" className="flex h-full min-h-0 flex-col">
+      <div data-panel-filters className="box-content flex h-9 max-w-home shrink-0 items-center gap-2 px-pane touch:h-ctl-lg">
+        <span className="px-2 text-xs font-medium text-fg-3">{rows.length === 1 && !api.branches ? "Current branch" : "Branches"}</span>
+        {api.branches && (
+          <span className="ml-auto flex min-w-0 items-center">
+            <TextMenu
               label="Compare against"
               text={`against ${shownBase}`}
               alignEnd
-              items={names.map((n) => ({ id: `base:${n}`, label: n, run: () => setBase(n) }))}
+              items={names.map((n) => ({ id: `base:${n}`, label: n, checked: n === shownBase, run: () => setBase(n) }))}
             />
-          )}
-        </span>
-      </header>
-      <div ref={list} className="flex flex-col">
-        {rows.map((b) => (
-          <BranchRow
-            key={b.name}
-            b={b}
-            now={now}
-            busy={props.opening === `branch:${b.name}`}
-            onOpen={() => props.onOpen(`branch:${b.name}`, openInput(b, shownBase))}
-          />
-        ))}
-        {rows.length === 0 && <Notice title="No local branches">This folder has no branch to review. Create one, or switch to Pull requests.</Notice>}
+          </span>
+        )}
       </div>
-      {data?.truncated && <p className="px-3 text-xs text-fg-3">More branches exist than are listed. Check one out or delete old ones to see the rest.</p>}
+      {rows.length === 0 ? (
+        <PanelEmpty title="No local branches">This folder has no branch to review. Create one, or switch to Pull requests.</PanelEmpty>
+      ) : (
+        <PanelBody>
+          <div ref={list} className="flex max-w-home flex-col">
+            {rows.map((b) => (
+              <BranchRow
+                key={b.name}
+                b={b}
+                now={now}
+                busy={props.opening === `branch:${b.name}`}
+                onOpen={() => props.onOpen(`branch:${b.name}`, openInput(b, shownBase))}
+              />
+            ))}
+          </div>
+          {data?.truncated && (
+            <p className="px-2 pt-2 text-xs text-fg-3">More branches exist than are listed. Check one out or delete old ones to see the rest.</p>
+          )}
+        </PanelBody>
+      )}
     </section>
   );
 }
+
+/** The list family's anatomy (`ListRow`): 8px side padding, glyph column 16, gap 8, 40px, the hover and focus of a row. */
+const BRANCH_ROW = "flex min-h-ctl-lg w-full items-center gap-2 rounded-sm px-2 text-left text-sm press-row focus-inset hover:bg-hover disabled:opacity-60";
 
 function BranchRow({ b, now, busy, onOpen }: { b: ReviewBranch; now: number; busy: boolean; onOpen(): void }) {
   const dim = !hasChanges(b);
@@ -106,8 +123,8 @@ function BranchRow({ b, now, busy, onOpen }: { b: ReviewBranch; now: number; bus
   // joins on the same line only when the column is wide, and goes to a second line below the list floor; the time stays right.
   return (
     // eslint-disable-next-line octo/no-native-controls -- name, ahead/behind and subject re-flow by container query (decision 90), which ListRow's fixed title/meta/description slots cannot do
-    <button type="button" data-row className={cn(ROW, "h-10 items-center py-0", dim && "text-fg-3")} disabled={busy} aria-busy={busy} onClick={onOpen}>
-      <span className="text-fg-3">{busy ? <Spinner /> : <Glyph icon={GitBranch} size={14} />}</span>
+    <button type="button" data-row className={cn(BRANCH_ROW, dim && "text-fg-3")} disabled={busy} aria-busy={busy} onClick={onOpen}>
+      <span className="grid size-4 shrink-0 place-items-center text-fg-3">{busy ? <Spinner /> : <Glyph icon={GitBranch} size={14} />}</span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-3">
           <span title={b.name} className={cn("flex min-w-0 flex-[2] font-mono text-sm @md:min-w-[24ch]", tone)}>

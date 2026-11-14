@@ -1,4 +1,18 @@
-import { FAIL_TRIGGER, LIVE_TRIGGER, failTurn, liveTurn } from "./live";
+import { createDemoRemote } from "./remote";
+import {
+  APPROVAL_TRIGGER,
+  FAIL_TRIGGER,
+  LIVE_TRIGGER,
+  SLOW_TRIGGER,
+  SPAWN_REFUSED_TRIGGER,
+  STUBBORN_TRIGGER,
+  approvalTurn,
+  failTurn,
+  liveTurn,
+  slowTurn,
+  spawnRefusedTurn,
+  stubbornTurn,
+} from "./live";
 import {
   BridgeError,
   type Agent,
@@ -9,11 +23,12 @@ import {
   type ProjectSummary,
   type SideMessage,
   type CompactionMarker,
+  type FileBytesReader,
 } from "@octo/agent-client";
 import { basename } from "../lib/format";
 import { atlasHistory } from "./atlas";
 import { backgroundTurn, docsHistory } from "./extra";
-import { ensureSeeded, listDemoFiles, readDemoFile, writeDemo } from "./files";
+import { ensureSeeded, listDemoFiles, readDemoFile, readDemoFileBytes, writeDemo } from "./files";
 import { genericTurn } from "./generic";
 import { infraAcpTurn, ledgerShowcase, pastHistory } from "./history";
 import { demoLanguageServers, demoPlugins } from "./plugins";
@@ -29,7 +44,7 @@ import { withDemoV7 } from "./v7";
 import { withDemoSlash } from "./slash";
 import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
 import { acpOrchestratorHistory, routeAgents, tablesTurn } from "./routed";
-import { act, say, sleep, turn, type Ctx } from "./runtime";
+import { act, Interrupted, say, sleep, turn, type Ctx } from "./runtime";
 import { clone, emit, newId, orchestratorOf, type ProjectRecord } from "./store";
 
 /** full: the regular demo (plus a Stress test project) · empty: no projects · one: a single project ·
@@ -126,8 +141,26 @@ function dedupeFolders(folders: { path: string; label?: string }[]): Project["fo
   });
 }
 
-function startScript(rec: ProjectRecord, t: number, script: (ctx: Ctx) => Promise<void>): void {
-  void script({ rec, t, signal: { cancelled: false } });
+function startScript(rec: ProjectRecord, t: number, script: (ctx: Ctx) => Promise<void>, root?: string): void {
+  void script({ rec, t, signal: { cancelled: false }, ...(root ? { root } : {}) });
+}
+
+/** The scripted turn a message starts (the demo triggers: fail, live, spawn refused, slow, approval, stubborn, else generic). */
+function scriptFor(text: string): (ctx: Ctx) => Promise<void> {
+  return (ctx) =>
+    FAIL_TRIGGER.test(text)
+      ? failTurn(ctx, text)
+      : LIVE_TRIGGER.test(text)
+        ? liveTurn(ctx, text)
+        : SPAWN_REFUSED_TRIGGER.test(text)
+          ? spawnRefusedTurn(ctx, text)
+          : SLOW_TRIGGER.test(text)
+            ? slowTurn(ctx, text)
+            : APPROVAL_TRIGGER.test(text)
+              ? approvalTurn(ctx, text)
+              : STUBBORN_TRIGGER.test(text)
+                ? stubbornTurn(ctx, text)
+                : genericTurn(ctx, text);
 }
 
 function seed(): ProjectRecord[] {
@@ -275,6 +308,39 @@ function seed(): ProjectRecord[] {
       await say(c, orch, "We handle 14 event types; `charge.dispute.*` and `payout.*` fall through to the default branch and are ignored.");
     });
     await sleep(ctx, 40 * 60_000);
+    // NEW-1: earlier failed turns keep their reason after a reload: the harness stores each failure (code, message, hint)
+    // with its exchange. Two turns a restart cut (item 7): one had written text (kept), one had not.
+    await turn(ctx, "Which events are stuck in the retry queue?", async (c, orch) => {
+      await act(c, orch, [
+        {
+          name: "bash",
+          input: { command: "pnpm queue:inspect --stuck" },
+          result: "Redis at 127.0.0.1:6379 is not running. Start it with `docker compose up redis`, then ask again.",
+          ms: 600,
+          error: true,
+        },
+      ]);
+      throw new Error("Redis at 127.0.0.1:6379 is not running.");
+    });
+    await sleep(ctx, 5 * 60_000);
+    await turn(ctx, "Draft a reply to the ticket about duplicate charges.", async (c, orch) => {
+      await say(c, orch, "Reading the ticket and the two charges it mentions…");
+      throw Object.assign(new Error("The model did not answer."), {
+        code: "model_call_failed",
+        hint: "Try again. If it keeps happening, check the provider in Settings.",
+      });
+    });
+    await sleep(ctx, 6 * 60_000);
+    await turn(ctx, "Summarise the refunds issued last week.", async (c, orch) => {
+      await say(c, orch, "Last week's refunds so far: 12 issued, 3 of them partial; the largest was €480 for a duplicate annual plan.");
+      throw new Interrupted();
+    });
+    await sleep(ctx, 4 * 60_000);
+    await turn(ctx, "Check whether the retry queue drops events after 24 hours.", async () => {
+      await Promise.resolve();
+      throw new Interrupted();
+    });
+    await sleep(ctx, 10 * 60_000);
     await turn(ctx, "Replay yesterday's failed webhooks against staging.", async (c, orch) => {
       await act(c, orch, [
         {
@@ -319,7 +385,7 @@ function seed(): ProjectRecord[] {
   Object.assign(orchestratorOf(copilot), {
     status: "failed",
     error: "GitHub Copilot is not logged in.",
-    error_hint: "Log in once with `copilot auth login`, then check again.",
+    error_hint: "Log in once with `copilot login`, then check again.",
     finished_at: new Date(now - 40 * 60_000).toISOString(),
   });
 
@@ -422,7 +488,9 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
   });
 
   const { refuse: refuseModels, ...providerMethods } = demoProviders();
+  const remote = createDemoRemote();
   const bridge: Bridge = {
+    remoteAccess: () => Promise.resolve(remote),
     // Providers, settings and diagnostics (decisions 53, 59): `?providers=none` shows the connect screen.
     ...providerMethods,
     health: async () => (await delay(), { ok: true, version: "demo" }),
@@ -446,7 +514,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
         ...(nokey ? {} : { router_capabilities: ["autoroute", "route_hints", "result_headers", "budget_key"] }),
         acp_orchestrators: pluginsOn ? [claude, copilot, codex] : [],
         builtin_loop: nokey
-          ? { available: false, reason: "No API key: set ANTHROPIC_API_KEY for the harness, or run it behind an Octo router." }
+          ? { available: false, reason: "No API key: set ANTHROPIC_API_KEY for Octo's local service, or run it behind an Octo router." }
           : { available: true },
         default_orchestrator: nokey && pluginsOn ? "acp:claude-code" : DEFAULT_MODELS.orchestrator,
       };
@@ -659,9 +727,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const rec = get(id);
       if (rec.turn) throw new BridgeError(409, "turn_in_progress", "a turn is already running");
       trace("sendMessage", text);
-      startScript(rec, Date.now(), (ctx) =>
-        FAIL_TRIGGER.test(text) ? failTurn(ctx, text) : LIVE_TRIGGER.test(text) ? liveTurn(ctx, text) : genericTurn(ctx, text),
-      );
+      startScript(rec, Date.now(), scriptFor(text));
       const orch = orchestratorOf(rec);
       const sent = [...rec.messages].reverse().find((m) => m.agent_id === orch.id && m.role === "user");
       if (!sent) throw new BridgeError(500, "internal", "message not recorded");
@@ -672,6 +738,33 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const rec = get(id);
       if (rec.turn) rec.turn.cancelled = true;
     },
+    // Parallel sessions: the base bridge runs a session's turn on its root agent (the sessions layer, `sessions.ts`, owns the
+    // session list, the queues and the running cap, and sends the default session's messages through the project route).
+    sendSessionMessage: async (id, sid, text) => {
+      await delay();
+      const rec = get(id);
+      const root = rec.agents.find((a) => a.parent_id === null && a.session_id === sid);
+      if (!root) throw new BridgeError(404, "not_found", "session not found");
+      if (rec.turns?.has(root.id)) throw new BridgeError(409, "turn_in_progress", "a turn is already running");
+      trace("sendSessionMessage", text);
+      startScript(rec, Date.now(), scriptFor(text), root.id);
+      const sent = [...rec.messages].reverse().find((m) => m.agent_id === root.id && m.role === "user");
+      if (!sent) throw new BridgeError(500, "internal", "message not recorded");
+      return { message: clone(sent) };
+    },
+    stopSession: async (id, sid) => {
+      await delay();
+      throw new BridgeError(404, "not_found", `no session ${sid} in ${id}`);
+    },
+    createSession: async (id) => {
+      await delay();
+      throw new BridgeError(404, "not_found", `no sessions in ${id}`);
+    },
+    setDefaultSession: async (id, sid) => {
+      await delay();
+      throw new BridgeError(404, "not_found", `no session ${sid} in ${id}`);
+    },
+    listAllSessions: async () => (await delay(), []),
     listNotes: async (id) => (await delay(), clone(get(id).notes.map(listed))),
     getNote: async (id, noteId) => {
       await delay();
@@ -801,9 +894,17 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       };
     },
   };
-  return withDemoSide(
+  const wrapped = withDemoSide(
     withDemoSlash(withDemoCommands(withDemoReview(withDemoSessions(withDemoParity(withDemoV7(bridge, records), records), records), records), records), records),
     records,
     sideModeFromUrl(),
   );
+  // The optional byte read (`fileBytesReader` in @octo/agent-client): image previews in Files.
+  const readFileBytes: FileBytesReader["readFileBytes"] = async (id, folder, path) => {
+    await delay();
+    await ensureSeeded(get(id));
+    return readDemoFileBytes(get(id), folder, path);
+  };
+  const withBytes: Bridge & FileBytesReader = { ...wrapped, readFileBytes };
+  return withBytes;
 }

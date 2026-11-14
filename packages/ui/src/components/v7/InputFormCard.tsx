@@ -56,7 +56,8 @@ function OpenForm(props: InputFormCardProps) {
         error={f.error}
       >
         {request.reason && <p className="[overflow-wrap:anywhere] text-fg-2">{request.reason}</p>}
-        <div className="flex flex-col gap-3">
+        {/* C5: label → field 6 (Field), field → next label 16. */}
+        <div className="flex flex-col gap-4">
           {request.fields.map((field) => (
             <FormField
               key={field.id}
@@ -74,7 +75,7 @@ function OpenForm(props: InputFormCardProps) {
         <p className="flex items-start gap-2 text-xs text-fg-3">
           <Glyph icon={Lock} size={14} className="mt-px shrink-0" />
           <span>
-            Sent to the harness, not to the model.
+            Sent to Octo's local service, not to the model.
             {hasSecret && " Secrets are stored for this project; the agent only learns that they were provided."}
           </span>
         </p>

@@ -78,3 +78,36 @@ func indexOf(s, sub string) int {
 	}
 	return -1
 }
+
+// P2-9: an agent whose program was not found on PATH when plugins loaded is
+// "not installed" with its install line and a PATH hint, not "the agent chosen
+// cannot be used" (which the UI paired with the agent's login command).
+func TestACPOrchestratorMissingProgramIsNotInstalled(t *testing.T) {
+	missing := fakeAgent("fake", false)
+	missing.UnavailableReason = "the agent's program was not found on PATH"
+	missing.InstallHint = "Install it with npm install -g fake-cli"
+	r := newACPRig(t, mockllm.New(0), missing)
+	pid := r.supervisedProject(t, t.TempDir(), "acp:fake")
+	got := r.runCollect(t, pid, "[echo] hello", nil)
+	if got.status != "failed" {
+		t.Fatalf("turn = %s, want failed", got.status)
+	}
+	fin := got.of("turn.finished")[0]
+	msg, _ := fin["error"].(string)
+	hint, _ := fin["hint"].(string)
+	cmd, _ := fin["command"].(string)
+	details, _ := fin["details"].(string)
+	if msg != "Fake fake is not installed." || cmd != "npm install -g fake-cli" || !contains(hint, "PATH") || !contains(details, "not found on PATH") {
+		t.Fatalf("error %q, hint %q, command %q, details %q", msg, hint, cmd, details)
+	}
+
+	// An agent Octo does not support stays "cannot be used".
+	unsupported := fakeAgent("fake", false)
+	unsupported.Unsupported = "it has no ACP mode"
+	r = newACPRig(t, mockllm.New(0), unsupported)
+	pid = r.supervisedProject(t, t.TempDir(), "acp:fake")
+	got = r.runCollect(t, pid, "[echo] hello", nil)
+	if msg, _ := got.of("turn.finished")[0]["error"].(string); !contains(msg, "cannot be used") {
+		t.Fatalf("unsupported agent error = %q", msg)
+	}
+}

@@ -1,5 +1,5 @@
 import type { Provider, ProvidersResponse } from "@octo/agent-client";
-import { agentModelLabel, displayId, modelLabel, modelName } from "../models";
+import { agentModelLabel, displayId, modelLabel, modelName, readableModelId, tidyAgentLabel } from "../models";
 
 export const isReady = (p: Pick<Provider, "state">): boolean => p.state === "ready";
 
@@ -12,7 +12,7 @@ export function chipLabel(value: string, list: ProvidersResponse | null): string
     const agent = agents.find((p) => p.id === id);
     if (agent && model) {
       const known = agent.models.find((m) => m.id === model);
-      return `${agent.label} · ${known ? agentModelLabel(known) : displayId(model)}`;
+      return `${agent.label} · ${known ? agentModelLabel(known) : tidyAgentLabel(readableModelId(model))}`;
     }
     return modelName(value, agents);
   }
@@ -21,6 +21,18 @@ export function chipLabel(value: string, list: ProvidersResponse | null): string
     if (m) return modelLabel(m);
   }
   return displayId(value);
+}
+
+/**
+ * Item 10: a chip label in its two parts when it names an agent's model ("Claude Code · " and "Opus 5.5"): a chip that must
+ * shorten drops the provider part first (the mark beside it still says whose model it is; the tooltip keeps the full name).
+ * Null for a label of one part.
+ */
+export function chipParts(label: string): { provider: string; model: string } | null {
+  const at = label.indexOf(" · ");
+  if (at <= 0) return null;
+  const model = label.slice(at + 3).trim();
+  return model ? { provider: label.slice(0, at + 3), model } : null;
 }
 
 /** Whether a model setting can run now (decision 53 a): its provider is ready and still lists it. */

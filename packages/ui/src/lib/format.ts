@@ -33,13 +33,6 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
 }
 
-export function agentDuration(agent: { started_at: string | null; finished_at: string | null }, now: number): number | null {
-  if (!agent.started_at) return null;
-  const start = Date.parse(agent.started_at);
-  const end = agent.finished_at ? Date.parse(agent.finished_at) : now;
-  return end - start;
-}
-
 export function formatRelative(iso: string, now: number): string {
   const diff = Math.max(0, now - Date.parse(iso));
   const min = Math.floor(diff / 60_000);

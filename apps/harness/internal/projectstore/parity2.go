@@ -45,20 +45,23 @@ type Plan struct {
 	Status     string  `json:"status"`
 	CreatedAt  string  `json:"created_at"`
 	ApprovedAt *string `json:"approved_at"`
+	// SessionID is the main session whose turn made the plan (schema 15).
+	SessionID string `json:"session_id"`
 }
 
-// AddPlan stores a plan for the turn.
+// AddPlan stores a plan for the turn, in the session of the turn's user message.
 func (d *DB) AddPlan(ctx context.Context, turnID int64, text string) (Plan, error) {
 	p := Plan{ID: NewID("pln"), TurnID: turnID, Text: text, Status: PlanPending, CreatedAt: Now()}
-	_, err := d.sql.ExecContext(ctx, `INSERT INTO plans (id, turn_id, text, status, created_at) VALUES (?, ?, ?, ?, ?)`,
-		p.ID, p.TurnID, p.Text, p.Status, p.CreatedAt)
+	_ = d.sql.QueryRowContext(ctx, `SELECT session_id FROM messages WHERE id = ?`, turnID).Scan(&p.SessionID)
+	_, err := d.sql.ExecContext(ctx, `INSERT INTO plans (id, turn_id, text, status, created_at, session_id) VALUES (?, ?, ?, ?, ?, ?)`,
+		p.ID, p.TurnID, p.Text, p.Status, p.CreatedAt, p.SessionID)
 	return p, err
 }
 
 func scanPlan(sc interface{ Scan(...any) error }) (Plan, error) {
 	var p Plan
 	var ap sql.NullString
-	if err := sc.Scan(&p.ID, &p.TurnID, &p.Text, &p.Status, &p.CreatedAt, &ap); err != nil {
+	if err := sc.Scan(&p.ID, &p.TurnID, &p.Text, &p.Status, &p.CreatedAt, &ap, &p.SessionID); err != nil {
 		return p, err
 	}
 	if ap.Valid {
@@ -67,7 +70,7 @@ func scanPlan(sc interface{ Scan(...any) error }) (Plan, error) {
 	return p, nil
 }
 
-const planCols = `id, turn_id, text, status, created_at, approved_at`
+const planCols = `id, turn_id, text, status, created_at, approved_at, session_id`
 
 // Plan returns one plan.
 func (d *DB) Plan(ctx context.Context, id string) (Plan, error) {
@@ -78,9 +81,18 @@ func (d *DB) Plan(ctx context.Context, id string) (Plan, error) {
 	return p, err
 }
 
-// LatestPlan is the newest plan; ErrNotFound when there is none.
+// LatestPlan is the newest plan of the default session; ErrNotFound when there is none.
 func (d *DB) LatestPlan(ctx context.Context) (Plan, error) {
-	p, err := scanPlan(d.sql.QueryRowContext(ctx, `SELECT `+planCols+` FROM plans ORDER BY created_at DESC, rowid DESC LIMIT 1`))
+	return d.LatestSessionPlan(ctx, "")
+}
+
+// LatestSessionPlan is the newest plan of a session ("": the default); ErrNotFound when there is none.
+func (d *DB) LatestSessionPlan(ctx context.Context, sid string) (Plan, error) {
+	sid, err := d.orDefault(ctx, sid)
+	if err != nil {
+		return Plan{}, err
+	}
+	p, err := scanPlan(d.sql.QueryRowContext(ctx, `SELECT `+planCols+` FROM plans WHERE session_id = ? OR session_id = '' ORDER BY created_at DESC, rowid DESC LIMIT 1`, sid))
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, ErrNotFound
 	}
@@ -153,6 +165,15 @@ type RewindResult struct {
 // recorded changes, context receipts, compactions that reach into the cut and
 // plans are removed. The caller has checked and restored the files.
 func (d *DB) Rewind(ctx context.Context, fromID int64) (RewindResult, error) {
+	return d.RewindIn(ctx, "", fromID)
+}
+
+// sessionScope restricts a statement to the agents of one main session ("": every agent).
+const sessionScope = ` AND (? = '' OR agent_id IN (SELECT id FROM agents WHERE session_id = ?))`
+
+// RewindIn is Rewind restricted to one main session ("": the whole project): other sessions' messages, agents,
+// receipts, compactions, plans, changes and tasks are left alone.
+func (d *DB) RewindIn(ctx context.Context, sid string, fromID int64) (RewindResult, error) {
 	var res RewindResult
 	var created string
 	if err := d.sql.QueryRowContext(ctx, `SELECT created_at FROM messages WHERE id = ?`, fromID).Scan(&created); err != nil {
@@ -167,7 +188,7 @@ func (d *DB) Rewind(ctx context.Context, fromID int64) (RewindResult, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	now := Now()
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM messages WHERE id >= ? AND rewound_at IS NULL`, fromID)
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM messages WHERE id >= ? AND rewound_at IS NULL`+sessionScope, fromID, sid, sid)
 	if err != nil {
 		return res, err
 	}
@@ -188,26 +209,27 @@ func (d *DB) Rewind(ctx context.Context, fromID int64) (RewindResult, error) {
 			return res, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE messages SET rewound_at = ? WHERE id >= ? AND rewound_at IS NULL`, now, fromID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE messages SET rewound_at = ? WHERE id >= ? AND rewound_at IS NULL`+sessionScope, now, fromID, sid, sid); err != nil {
 		return res, err
 	}
 	res.MessagesCut = len(ids)
-	r, err := tx.ExecContext(ctx, `UPDATE agents SET rewound_at = ? WHERE parent_id IS NOT NULL AND created_at >= ? AND rewound_at IS NULL`, now, created)
+	r, err := tx.ExecContext(ctx, `UPDATE agents SET rewound_at = ? WHERE parent_id IS NOT NULL AND created_at >= ? AND rewound_at IS NULL
+		AND (? = '' OR session_id = ?)`, now, created, sid, sid)
 	if err != nil {
 		return res, err
 	}
 	n, _ := r.RowsAffected()
 	res.AgentsCut = int(n)
 	for _, q := range []string{
-		`DELETE FROM context_receipts WHERE turn_id >= ?`,
-		`DELETE FROM compactions WHERE upto_message_id >= ?`,
-		`DELETE FROM plans WHERE turn_id >= ?`,
+		`DELETE FROM context_receipts WHERE turn_id >= ? AND (? = '' OR turn_id IN (SELECT id FROM messages WHERE session_id = ?))`,
+		`DELETE FROM compactions WHERE upto_message_id >= ?` + sessionScope,
+		`DELETE FROM plans WHERE turn_id >= ? AND (? = '' OR session_id = ? OR session_id = '')`,
 	} {
-		if _, err := tx.ExecContext(ctx, q, fromID); err != nil {
+		if _, err := tx.ExecContext(ctx, q, fromID, sid, sid); err != nil {
 			return res, err
 		}
 	}
-	r, err = tx.ExecContext(ctx, `DELETE FROM changes WHERE turn_id >= ?`, fromID)
+	r, err = tx.ExecContext(ctx, `DELETE FROM changes WHERE turn_id >= ? AND (? = '' OR session_id = ? OR session_id = '')`, fromID, sid, sid)
 	if err != nil {
 		return res, err
 	}
@@ -216,7 +238,7 @@ func (d *DB) Rewind(ctx context.Context, fromID int64) (RewindResult, error) {
 	if err := tx.Commit(); err != nil {
 		return res, err
 	}
-	dropped, err := d.dropTaskRefs(ctx, fromID)
+	dropped, err := d.dropTaskRefs(ctx, sid, fromID)
 	res.TasksDropped = dropped
 	if err != nil {
 		return res, err
@@ -227,14 +249,14 @@ func (d *DB) Rewind(ctx context.Context, fromID int64) (RewindResult, error) {
 // dropTaskRefs deletes the task records created by the cut turns (every message
 // they reference is cut) and removes the references to cut messages from the
 // others (message ids, quotes, facts).
-func (d *DB) dropTaskRefs(ctx context.Context, fromID int64) (int, error) {
+func (d *DB) dropTaskRefs(ctx context.Context, sid string, fromID int64) (int, error) {
 	tasks, err := d.Tasks(ctx)
 	if err != nil {
 		return 0, err
 	}
 	dropped := 0
 	for _, t := range tasks {
-		if len(t.MessageIDs) == 0 {
+		if len(t.MessageIDs) == 0 || (sid != "" && t.SessionID != "" && t.SessionID != sid) {
 			continue
 		}
 		keep := slices.DeleteFunc(slices.Clone(t.MessageIDs), func(id int64) bool { return id >= fromID })
@@ -267,13 +289,19 @@ func orAgentMode(m string) string {
 
 // CountCut says how many messages and sub-agents a Rewind to fromID would hide.
 func (d *DB) CountCut(ctx context.Context, fromID int64) (messages, agents int, err error) {
+	return d.CountCutIn(ctx, "", fromID)
+}
+
+// CountCutIn is CountCut restricted to one main session ("": the whole project).
+func (d *DB) CountCutIn(ctx context.Context, sid string, fromID int64) (messages, agents int, err error) {
 	var created string
 	if err = d.sql.QueryRowContext(ctx, `SELECT created_at FROM messages WHERE id = ?`, fromID).Scan(&created); err != nil {
 		return 0, 0, err
 	}
-	if err = d.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE id >= ? AND rewound_at IS NULL`, fromID).Scan(&messages); err != nil {
+	if err = d.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE id >= ? AND rewound_at IS NULL`+sessionScope, fromID, sid, sid).Scan(&messages); err != nil {
 		return
 	}
-	err = d.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE parent_id IS NOT NULL AND created_at >= ? AND rewound_at IS NULL`, created).Scan(&agents)
+	err = d.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE parent_id IS NOT NULL AND created_at >= ? AND rewound_at IS NULL AND (? = '' OR session_id = ?)`,
+		created, sid, sid).Scan(&agents)
 	return
 }

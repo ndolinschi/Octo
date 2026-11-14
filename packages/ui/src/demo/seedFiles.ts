@@ -433,6 +433,9 @@ body {
 `,
   "public/favicon.svg": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#1c1c1c"/></svg>\n',
   "public/logo.png": { binary: true },
+  "public/mark.svg":
+    '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><rect x="8" y="8" width="80" height="80" rx="18" fill="#3b6ed8"/><path d="M28 60 L48 28 L68 60 Z" fill="#f2b13c"/><circle cx="48" cy="66" r="6" fill="#ffffff"/><script>document.title = "svg script ran"</script></svg>\n',
+  "public/hero.jpg": { size: 3_400_000 },
 };
 
 const ORBIT_APP: Seed = {

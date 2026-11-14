@@ -1,16 +1,29 @@
-import { useId, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useScrollFade } from "../../lib/hooks";
+import { useId, useLayoutEffect, useRef, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import type { PickerRow, PickerSection } from "../../lib/picker";
 import { Highlight } from "./Highlight";
 import { createPointerGate } from "./popupNav";
 
-/** Rows visible before the list scrolls (28px each). */
+/** Rows visible before the list scrolls. */
 const VISIBLE = 9;
-const ROW = 28;
+/**
+ * The list's height: whole rows of the row token in force (28px, 40px under `touch:`) plus the list's 4px padding top and
+ * bottom. Computed by CSS from the same tokens as the rows' `h-row` / `touch:h-ctl-lg`, so a narrow window shows whole rows.
+ */
+const MAX_HEIGHT = "max-h-[calc(var(--spacing-row)*var(--popup-rows)+8px)] touch:max-h-[calc(var(--spacing-ctl-lg)*var(--popup-rows)+8px)]";
+
+/**
+ * `tall` (audit B4): up to 480px, but never past the window, still whole rows (CSS `round`). 88px is the popover's margins
+ * and its search field; a footer or a note takes its room from the list, which shrinks inside the popover (min-h-0). It was
+ * 160px: at a short window (200 % zoom, ~400px tall) the list stopped at 3 rows with the window's height unused.
+ */
+const TALL_HEIGHT =
+  "max-h-[calc(round(down,min(480px,100vh-88px)-8px,var(--spacing-row))+8px)] touch:max-h-[calc(round(down,min(480px,100vh-88px)-8px,var(--spacing-ctl-lg))+8px)]";
 
 /** The panel look of every popup list that floats on its own (slash and mention menus; the pickers get it from `Popover`). */
 export const POPUP_PANEL =
-  "octo-overlay fixed z-[60] flex flex-col overflow-hidden rounded-lg border border-transparent bg-overlay text-sm shadow-pop [--octo-origin:0%_100%]";
+  "octo-overlay fixed z-[60] flex flex-col overflow-hidden rounded-xl border border-transparent bg-overlay text-sm shadow-pop [--octo-origin:0%_100%]";
 
 /** The DOM id of a row's option, for `aria-activedescendant` (the owner of the keys sets it on its input). */
 export function popupOptionId(listId: string, rowId: string): string {
@@ -19,7 +32,7 @@ export function popupOptionId(listId: string, rowId: string): string {
 
 /**
  * The one list of every popup (decision 95): the composer's slash and mention menus, the model, folder and routing pickers.
- * Same rows (28px, 40px with a `sub` line; 16px lead slot, name with the match highlighted, dim detail, right-aligned hint),
+ * Same rows (28px, 40px with a `sub` line or under `touch:`; 16px lead slot, name with the match highlighted, dim detail, right-aligned hint),
  * same group captions, same empty line, same keyboard contract.
  *
  * It does not own the keys: the field that keeps focus (a search input, or the composer's text) calls `popupTarget`
@@ -44,6 +57,10 @@ export function PopupList(props: {
   empty?: ReactNode;
   hintOnActive?: boolean;
   maxRows?: number;
+  /** A tall list (the model picker): grows with the window up to 480px instead of `maxRows`, its scrolling ends fade (12px). */
+  tall?: boolean;
+  /** The row's `detail` is a short tag ("experimental", "default"): a pill that never shrinks; the name keeps its room too, so a long hint goes to the second line (`sub`). */
+  tagDetail?: boolean;
   /** Keys that reach the list itself (focus normally stays in the field; a click may have put it here). */
   onKeyDown?(e: KeyboardEvent<HTMLDivElement>): void;
   className?: string;
@@ -53,6 +70,7 @@ export function PopupList(props: {
   const list = useRef<HTMLDivElement>(null);
   const fromPointer = useRef<string | null>(null);
   const gate = useRef(createPointerGate());
+  useScrollFade(list, "y");
   const { activeId, query = "" } = props;
   const count = props.sections.reduce((n, s) => n + s.rows.length, 0);
 
@@ -83,8 +101,8 @@ export function PopupList(props: {
         const row = props.sections.flatMap((s) => s.rows).find((r) => r.id === el.dataset.pickerRow);
         if (row && !row.disabled) props.onChoose(row);
       }}
-      className={cn("min-h-0 overflow-y-auto overscroll-contain p-1", props.className)}
-      style={{ maxHeight: (props.maxRows ?? VISIBLE) * ROW + 8 }}
+      className={cn("min-h-0 overflow-y-auto overscroll-contain p-1", props.tall ? cn(TALL_HEIGHT, "octo-popup-fade") : MAX_HEIGHT, props.className)}
+      style={{ "--popup-rows": props.maxRows ?? VISIBLE } as CSSProperties}
     >
       {props.sections.map((s) =>
         s.rows.length === 0 ? null : (
@@ -118,7 +136,7 @@ export function PopupList(props: {
                     props.onActive(r.id);
                   }}
                   className={cn(
-                    "group flex min-w-0 items-center gap-2 rounded-sm px-2 press-row max-md:h-bar",
+                    "group flex min-w-0 items-center gap-2 rounded-md px-2 press-row touch:h-ctl-lg",
                     r.sub ? "h-10" : "h-row",
                     r.disabled ? "text-fg-3" : on ? "bg-active text-fg" : "text-fg",
                   )}
@@ -130,9 +148,9 @@ export function PopupList(props: {
                     r.content
                   ) : (
                     <span className="flex min-w-0 flex-1 flex-col">
-                      {/* The name keeps its room: the detail and the hint give way first (decision 64 f). */}
+                      {/* The name keeps its room: the tag, the detail and the hint give way first (decision 64 f); it truncates only when it alone is wider than the row. */}
                       <span className="flex min-w-0 items-center gap-2">
-                        <span className={cn("min-w-0 shrink-[0.1] truncate", r.quiet && !on && "text-fg-2")}>
+                        <span className={cn("max-w-full min-w-0 shrink-0 truncate", r.quiet && !on && "text-fg-2")}>
                           <Highlight text={r.label} query={query} />
                         </span>
                         {r.checked && <span className="sr-only">(current)</span>}
@@ -142,6 +160,8 @@ export function PopupList(props: {
                               {/* RTL truncation keeps the end of the path visible. */}
                               <bdi>{r.detail}</bdi>
                             </span>
+                          ) : props.tagDetail ? (
+                            <span className="shrink-0 rounded-xs bg-hover px-1.5 text-xs text-fg-3">{r.detail}</span>
                           ) : (
                             // On the active row the muted detail steps up to fg-2 (fg-3 over the active fill measured 4.06:1).
                             <span className={cn("min-w-0 flex-1 shrink-[10] truncate text-xs", sub)}>{r.detail}</span>

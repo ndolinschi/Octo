@@ -139,6 +139,7 @@ pub async fn route(
         cost_usd: classified.cost_micros as f64 / 1_000_000.0,
         cost_source: classified.cost_source,
         estimate_ratio: None,
+        price_source: None,
         upstream_id: None,
         spent_after_usd: spent_after.map(crate::auto::micros_usd),
         route: Some(RouteRecord {

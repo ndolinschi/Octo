@@ -89,7 +89,7 @@ Protected keys (`tools`, `tool_choice`, `system`, `messages`, `max_tokens`, `sto
 
 ## Price rule: never pay more for less
 
-`[autoroute] never_pay_more_for_less` (default `true`). Whenever the router has decided a ladder tier **T** for a request, whatever picked it (classifier, hint, sticky hold, stall escalation, housekeeping/background routing, fill `upgrade`, budget cap, the unavailable-model retry escalation, a permission check on a remembered session), the tier **served** is the cheapest tier among T and all tiers above T, by the `prices.toml` blended estimate for that request's shape (estimated input tokens and `min(max_tokens, 1024)` output, the same shape budget routing uses).
+`[autoroute] never_pay_more_for_less` (default `true`). Whenever the router has decided a ladder tier **T** for a request, whatever picked it (classifier, hint, sticky hold, stall escalation, housekeeping/background routing, fill `upgrade`, budget cap, the unavailable-model retry escalation, a permission check on a remembered session), the tier **served** is the cheapest tier among T and all tiers above T, by the blended estimate of the live price table ([prices.md](./prices.md): manual rows, then the refreshed OpenRouter catalogue, then `prices.toml` fallback rows; a refresh is seen by the next request and never changes a session's decided tier) for that request's shape (estimated input tokens and `min(max_tokens, 1024)` output, the same shape budget routing uses).
 
 | Case | Behaviour |
 | --- | --- |

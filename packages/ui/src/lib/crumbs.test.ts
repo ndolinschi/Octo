@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { crumbName, fitCrumbs, type CrumbWidths } from "./crumbs";
+import { crumbFloor, crumbName, fitCrumbs, type CrumbWidths } from "./crumbs";
 
 // folder 80, dirs 60/50/70, file 120 (chrome 30), sep 14, gaps 2 → separators cost 18 each.
 const w: CrumbWidths = { folder: 80, dirs: [60, 50, 70], file: 120, fileChrome: 30, sep: 14, ellipsis: 20, gap: 2 };
@@ -33,4 +33,12 @@ test("a file at the folder root: folder › file, else … › file", () => {
   const root: CrumbWidths = { ...w, dirs: [] };
   assert.deepEqual(fitCrumbs(root, 80 + 120 + 18), { folder: true, dirs: [], hidden: [], nameChars: null });
   assert.deepEqual(fitCrumbs(root, 80 + 120 + 17).hidden, [-1]);
+});
+
+test("the floor is the room of … › file, icon included, and that plan fits in it", () => {
+  const w = { folder: 60, dirs: [30, 40], file: 90, fileChrome: 30, sep: 14, ellipsis: 16, gap: 2 };
+  assert.equal(crumbFloor(w), 16 + 14 + 4 + 90);
+  const plan = fitCrumbs(w, crumbFloor(w));
+  assert.equal(plan.nameChars, null);
+  assert.deepEqual(plan.dirs, []);
 });

@@ -5,10 +5,10 @@ import { useOptionalComments } from "../../state/comments";
 import { useScrollFade } from "../../lib/hooks";
 import { useCode } from "../../state/code";
 import { useProject } from "../../state/project";
-import { CHAT, toolTab, type TabId } from "../../state/workspace/layout";
+import { toolTab, type TabId } from "../../state/workspace/layout";
 import { SIDE_PAD, useChrome } from "../../state/chrome";
 import { ProjectActions, ProjectTeamLine } from "../shell/ProjectBar";
-import { slotShift, tabsOverflow } from "../../state/workspace/tabStrip";
+import { endPlan, RUN_FREED, slotShift, TAB_MIN, tabsOverflow } from "../../state/workspace/tabStrip";
 import { MOD, useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Presence } from "../primitives/Presence";
 import { dragStep, pressTab, takeSettle, useDrag } from "./drag";
@@ -28,6 +28,20 @@ const ProjectCommands = lazy(() => import("../commands/ProjectCommands"));
 /** The tab context menu builds on first use (its own chunk). */
 const TabMenu = lazy(() => import("./TabMenu"));
 const AllTabsPicker = lazy(() => import("./AllTabsPicker").then((m) => ({ default: m.AllTabsPicker })));
+
+/**
+ * Round 3: narrow — how far the strip's direct children (laid out at their widths now, the tabs box at its minimum) run past
+ * the strip's content box; 0 when they fit. Summed from the children's own widths, not from `scrollWidth`, which also counts
+ * absolutely placed and invisible parts and changes with the fold it is meant to decide.
+ */
+function stripShortfall(el: HTMLElement): number {
+  const css = getComputedStyle(el);
+  const gap = parseFloat(css.columnGap) || 0;
+  const inner = el.clientWidth - (parseFloat(css.paddingLeft) || 0) - (parseFloat(css.paddingRight) || 0);
+  const kids = [...el.children].filter((c): c is HTMLElement => c instanceof HTMLElement && getComputedStyle(c).position !== "absolute");
+  const used = kids.reduce((sum, c) => sum + c.offsetWidth, 0) + gap * Math.max(0, kids.length - 1);
+  return Math.max(0, Math.round(used - inner));
+}
 
 /** Room the "+" takes after the tabs (28 + the 4px gap), and the "all tabs" button when the strip scrolls (24 + 4). */
 const PLUS_ROOM = 32;
@@ -65,15 +79,40 @@ export function TabStrip(props: {
   const allButton = useRef<HTMLButtonElement>(null);
   const [allOpen, setAllOpen] = useState(false);
   const [room, setRoom] = useState(0);
+  const strip = useRef<HTMLDivElement>(null);
+  // Round 3: narrow — the strip's own width too: its tabs box never measures below TAB_MIN + the "+", so `room` alone does not say that the end cluster pushed past the edge.
+  const [stripWidth, setStripWidth] = useState(0);
   useLayoutEffect(() => {
     const w = wrap.current;
+    const st = strip.current;
     if (!w) return;
-    const measure = () => setRoom(w.clientWidth);
+    const measure = () => {
+      setRoom(w.clientWidth);
+      if (st) setStripWidth(st.clientWidth);
+    };
     const ro = new ResizeObserver(measure);
     ro.observe(w);
+    if (st) ro.observe(st);
     measure();
     return () => ro.disconnect();
   }, []);
+  // Decision 90, narrow strips: what "N agents" and "Run" give back when they fold, measured from the end of this strip.
+  // `short`: how far the strip's content runs past its edge now (0 when it fits), taken off `room` before deciding.
+  const [ends, setEnds] = useState({ agents: 0, run: 0, short: 0 });
+  const [compactAgents, setCompactAgents] = useState(false);
+  const [compactRun, setCompactRun] = useState(false);
+  useLayoutEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    const label = el.querySelector<HTMLElement>("[data-team-label]");
+    const next = {
+      agents: label ? label.offsetWidth : 0,
+      run: el.querySelector('[aria-label^="Run a project command"]') ? RUN_FREED : 0,
+      short: stripShortfall(el),
+    };
+    setEnds((e) => (e.agents === next.agents && e.run === next.run && e.short === next.short ? e : next));
+    // The lazy commands arrive and the strip's width changes (`room`), a fold flips: measure again.
+  }, [room, stripWidth, compactAgents, compactRun, props.tabs.length]);
   const [menu, setMenu] = useState<{ tab: TabId; x: number; y: number } | null>(null);
   const drag = useDrag();
   const counts = useOptionalComments()?.counts;
@@ -81,6 +120,7 @@ export function TabStrip(props: {
     state,
     projectName: project?.name,
     orchestratorId: project?.orchestrator_agent_id,
+    chatSessionId: ws.chatSessionId,
     file: code.file,
     comments: (key: FileKey) => counts?.get(key) ?? 0,
     runStatus: (name: string) => ws.runStatuses[name.toLowerCase()] ?? null,
@@ -97,6 +137,17 @@ export function TabStrip(props: {
     })
     .join("\n");
   const fit = useStripFit(list, room - reserved, signature);
+  const end = endPlan({
+    room: room - reserved - ends.short,
+    tabs: props.tabs.length,
+    agents: ends.agents,
+    run: ends.run,
+    agentsCompact: compactAgents,
+    runCompact: compactRun,
+  });
+  // Derived from measurements already in state: adjusted while rendering, not in an effect.
+  if (end.agentsCompact !== compactAgents) setCompactAgents(end.agentsCompact);
+  if (end.runCompact !== compactRun) setCompactRun(end.runCompact);
   // Decision 90: the review's own header carries the commands (run in its worktree), so the top row does not repeat them.
   const reviewActive = ws.layout.groups.some((g) => g.active === toolTab("review"));
   const listWidth = room > 0 ? room - reserved - (overflow ? ALL_TABS_ROOM : 0) : 0;
@@ -176,6 +227,7 @@ export function TabStrip(props: {
 
   return (
     <div
+      ref={strip}
       data-strip
       data-drag-region
       className="relative flex h-bar shrink-0 items-center gap-1 px-pane"
@@ -184,7 +236,9 @@ export function TabStrip(props: {
         ...(props.last && insetEnd > SIDE_PAD ? { paddingInlineEnd: insetEnd } : {}),
       }}
     >
-      <div ref={wrap} className="flex min-w-0 flex-1 items-center gap-1">
+      {/* Polish step 2 (F3): the tabs' box never measures 0 — at least one tab and the "+" — so a strip whose end cluster is
+          wider than the strip still has a `room` to fold the cluster against (endPlan and useStripFit do nothing at 0). */}
+      <div ref={wrap} className="flex min-w-0 flex-1 items-center gap-1" style={{ minWidth: TAB_MIN + PLUS_ROOM }}>
         <div
           ref={list}
           role="tablist"
@@ -247,8 +301,10 @@ export function TabStrip(props: {
           />
         )}
       </div>
-      {/* Decision 91g: the sub-agents are one quiet "N agents" button at the end of the strip, before the commands. */}
-      {props.tabs.includes(CHAT) && <ProjectTeamLine />}
+      {/* Decision 91g: the sub-agents are one quiet "N agents" button at the end of the strip, before the commands. Polish step 2
+          (F3): it opens the window's one end cluster (agents, pinned commands, Run, "⋯") in the last strip, so with a side group it
+          no longer floats alone at the end of the conversation's strip. */}
+      {props.last && <ProjectTeamLine compact={compactAgents} />}
       {props.last && (
         <Suspense fallback={null}>
           {/* The "Restore" control of a maximised group lives in this chunk too (decision 78): the initial bundle has no room for it. */}
@@ -256,6 +312,7 @@ export function TabStrip(props: {
             onRestore={props.maximised ? () => ws.toggleMaximise(props.active, false) : null}
             hideCommands={reviewActive}
             collapsePinned={fit.collapse}
+            compactRun={compactRun}
             onPinnedWidth={fit.setPinned}
           />
         </Suspense>

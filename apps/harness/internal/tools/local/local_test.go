@@ -411,3 +411,38 @@ func TestBashDoesNotSeeSecrets(t *testing.T) {
 		t.Fatalf("PATH missing from bash environment:\n%s", output)
 	}
 }
+
+// A failed command's result always ends with how it ended ("exit status N"), with output or without, and a long
+// output is cut so the line survives the result cap (the UI reads "Failed (exit N)" from it).
+func TestBashFailureEndsWithTheExitStatus(t *testing.T) {
+	workspace := t.TempDir()
+	reg := tools.NewRegistry()
+	lim := tools.Limits{ResultBytes: 2048}
+	if err := RegisterRootsLimits(reg, []Root{{Path: workspace}}, lim, ToolBash); err != nil {
+		t.Fatal(err)
+	}
+	def, _ := reg.Get("bash")
+	for _, tc := range []struct{ name, cmd, want string }{
+		{"no output", "exit 3", "exit status 3"},
+		{"output", "echo partial; echo oops >&2; exit 2", "oops\nexit status 2"},
+		{"output without a newline", "printf done; exit 1", "done\nexit status 1"},
+		{"long output", "yes line | head -c 100000; exit 4", "exit status 4"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, isErr, err := def.Handle(context.Background(), json.RawMessage(fmt.Sprintf(`{"command":%q}`, tc.cmd)))
+			if err != nil || !isErr {
+				t.Fatalf("err %v isError %v", err, isErr)
+			}
+			if !strings.HasSuffix(out, tc.want) {
+				t.Fatalf("result does not end with %q: %q", tc.want, out[max(0, len(out)-200):])
+			}
+			if capped := lim.CapResult(out); !strings.HasSuffix(capped, "exit status "+tc.want[len(tc.want)-1:]) || len(out) > 2048 {
+				t.Fatalf("the cap cuts the exit line (len %d)", len(out))
+			}
+		})
+	}
+	out, isErr, _ := def.Handle(context.Background(), json.RawMessage(`{"command":"echo fine"}`))
+	if isErr || strings.Contains(out, "exit status") {
+		t.Fatalf("a successful command = %q %v", out, isErr)
+	}
+}

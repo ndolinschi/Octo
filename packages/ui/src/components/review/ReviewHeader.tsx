@@ -3,13 +3,21 @@ import type { ReactNode } from "react";
 import type { Review } from "@octo/agent-client";
 import { plural } from "../../lib/review/files";
 import { reviewTarget } from "../../lib/review/submit";
-import { Button, IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
+import { IconMenu } from "../primitives/IconMenu";
+import type { MenuItem } from "../primitives/Menu";
 
 /**
- * Decision 64 and 78: one title row (back, title, the run buttons and "Check out" as quiet controls, and the single
- * primary "Submit review" with the pending count inside it), one quiet meta line (what it is, who wrote it, the branches,
- * how far you are, open threads), and "Details" for everything else. "Update" shows only when the code host has commits
- * this review has not fetched.
+ * Decision 64 and 78, polish step 6b (R3): two lines at every width. The title line: Back, the title, and one right-hand group
+ * of 28px controls with the single primary "Submit review" last. The meta line under the title (what it is, who wrote it, the
+ * branches, how far you are, open threads) is one line that gives way from the right; in page mode (`compact`) it is not drawn
+ * and the title's tooltip carries it (Details shows it too).
+ *
+ * The group folds by the header's own width (container `rh`), in this declared order, never wrapping:
+ *   below 1024  the pinned commands go into "Run ▾" (which already lists them) — in `commands/RunBar`;
+ *   below 720   Check out, Pending and Details go into "⋯";
+ *   below 480   "Run" becomes its play glyph (RunBar) and "Submit review" says "Submit".
  */
 export function ReviewHeader(props: {
   review: Review;
@@ -20,8 +28,11 @@ export function ReviewHeader(props: {
   /** The pull request has commits this review has not fetched yet. */
   behind: boolean;
   refreshing: boolean;
+  /** Page mode (a narrow review): the title line only. */
+  compact: boolean;
   runs: ReactNode;
   checkout: ReactNode;
+  checkoutItems: MenuItem[];
   onOverview(): void;
   onPending(): void;
   onSubmit(): void;
@@ -29,52 +40,78 @@ export function ReviewHeader(props: {
   onBack(): void;
 }) {
   const r = props.review;
+  const update = props.behind && r.kind !== "local";
+  const facts = [
+    reviewTarget(r),
+    r.author ?? "",
+    `${r.base_ref} ← ${r.head_ref}`,
+    `${props.viewed} of ${r.totals.files} viewed`,
+    props.unresolved > 0 ? plural(props.unresolved, "unresolved thread") : "",
+  ].filter(Boolean);
+  const more: MenuItem[] = [
+    { id: "pending", label: `Pending comments (${props.pending})`, run: props.onPending },
+    { id: "details", label: props.overviewOpen ? "Hide details" : "Show details", run: props.onOverview },
+    ...(update && props.compact ? [{ id: "update", label: "New commits: update", run: props.onRefresh }] : []),
+    ...(props.checkoutItems.length > 0 ? [{ id: "sep-checkout", separator: true } as const, ...props.checkoutItems] : []),
+  ];
+  const submit = `Submit review${props.pending > 0 ? ` · ${props.pending}` : ""}`;
   return (
-    <header className="flex shrink-0 flex-col gap-1 border-b border-line pb-2">
-      <div className="flex min-h-10 flex-wrap items-center gap-2 px-2 pt-1">
-        <IconButton icon={ArrowLeft} label="All pull requests" onClick={props.onBack} className="max-md:size-10" />
-        <h1 className="min-w-0 flex-1 truncate text-heading text-fg" title={r.title}>
-          {r.title}
-          {r.meta.draft && <span className="ml-2 text-xs font-normal text-fg-3">Draft</span>}
-        </h1>
-        {/* Rendered once: on a phone-width window it takes a row of its own under the title (order and basis), instead of a second copy. */}
-        <span className="flex shrink-0 items-center gap-1 max-sm:order-last max-sm:basis-full">
-          {props.runs}
-          {props.checkout}
-        </span>
-        <Button variant="primary" size="sm" onClick={props.onSubmit} className="shrink-0 max-md:h-10">
-          Submit review{props.pending > 0 ? ` · ${props.pending}` : ""}
-        </Button>
-      </div>
-      <div className="flex min-h-6 flex-wrap items-center gap-x-3 px-3 text-xs text-fg-3">
-        <span className="shrink-0 font-mono">{reviewTarget(r)}</span>
-        {r.author && <span className="shrink-0 max-sm:hidden">{r.author}</span>}
-        <span className="min-w-0 truncate font-mono max-md:hidden" title={`${r.head_ref} into ${r.base_ref}`}>
-          {r.base_ref} ← {r.head_ref}
-        </span>
-        <span className="shrink-0 tabular-nums">
-          {props.viewed} of {r.totals.files} viewed
-        </span>
-        {props.unresolved > 0 && <span className="shrink-0 max-sm:hidden">{plural(props.unresolved, "unresolved thread")}</span>}
-        {props.behind && r.kind !== "local" && (
-          <Button variant="quiet" size="xs" icon={RefreshCw} loading={props.refreshing} onClick={props.onRefresh}>
-            New commits: update
-          </Button>
+    <header data-review-header className="@container/rh flex shrink-0 items-start gap-2 border-b border-line px-pane">
+      <span className="flex h-ctl-lg shrink-0 items-center">
+        <IconButton icon={ArrowLeft} label="All pull requests" onClick={props.onBack} />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex h-ctl-lg min-w-0 items-center gap-2">
+          <h1 className="min-w-0 flex-1 truncate text-heading text-fg" title={props.compact ? `${r.title}\n${facts.join(" · ")}` : r.title}>
+            {r.title}
+            {r.meta.draft && <span className="ml-2 text-xs font-normal text-fg-3">Draft</span>}
+          </h1>
+          <div data-review-actions className="flex shrink-0 items-center gap-1">
+            {props.runs}
+            <span className="flex items-center gap-1 @max-[720px]/rh:hidden">
+              {props.checkout}
+              <Button variant="quiet" size="sm" onClick={props.onPending} aria-haspopup="dialog" className="tabular-nums">
+                Pending {props.pending}
+              </Button>
+              <Button
+                variant="quiet"
+                size="sm"
+                icon={props.overviewOpen ? ChevronDown : ChevronRight}
+                aria-expanded={props.overviewOpen}
+                onClick={props.onOverview}
+              >
+                Details
+              </Button>
+            </span>
+            <span className="flex @min-[720px]/rh:hidden">
+              <IconMenu label="More review actions" items={more} />
+            </span>
+            <Button variant="primary" size="sm" onClick={props.onSubmit} aria-label={submit} className="ml-1">
+              <span className="@max-[480px]/rh:hidden">{submit}</span>
+              <span aria-hidden className="@min-[480px]/rh:hidden">
+                Submit{props.pending > 0 ? ` · ${props.pending}` : ""}
+              </span>
+            </Button>
+          </div>
+        </div>
+        {!props.compact && (
+          <div className="-mt-1 flex h-6 min-w-0 items-center gap-2 pb-1 text-xs text-fg-3">
+            <p className="min-w-0 truncate">
+              <span className="font-mono">{facts[0]}</span>
+              {facts.slice(1).map((f, i) => (
+                <span key={i} className={f.includes("←") ? "font-mono" : undefined}>
+                  <span className="font-sans"> · </span>
+                  {f}
+                </span>
+              ))}
+            </p>
+            {update && (
+              <Button variant="quiet" size="xs" icon={RefreshCw} loading={props.refreshing} onClick={props.onRefresh} className="shrink-0">
+                New commits: update
+              </Button>
+            )}
+          </div>
         )}
-        <span className="ml-auto flex shrink-0 items-center gap-1">
-          <Button variant="quiet" size="xs" onClick={props.onPending} aria-haspopup="dialog">
-            Pending {props.pending}
-          </Button>
-          <Button
-            variant="quiet"
-            size="xs"
-            icon={props.overviewOpen ? ChevronDown : ChevronRight}
-            aria-expanded={props.overviewOpen}
-            onClick={props.onOverview}
-          >
-            Details
-          </Button>
-        </span>
       </div>
     </header>
   );

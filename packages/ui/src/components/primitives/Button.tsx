@@ -6,12 +6,14 @@ import { Glyph } from "./Glyph";
 import { IconButton as ScaleIconButton, type IconButtonProps as ScaleIconButtonProps } from "./IconButton";
 import { Spinner } from "./Status";
 
-export type ButtonVariant = "primary" | "secondary" | "quiet" | "link" | "danger" | "ghost";
+export type ButtonVariant = "primary" | "secondary" | "quiet" | "link" | "danger" | "ghost" | "float";
 
 const VARIANT: Record<ButtonVariant, string> = {
   primary: "bg-primary text-primary-fg font-medium hover:opacity-90 disabled:bg-active disabled:text-fg-3 disabled:opacity-100",
   secondary: "border border-line-strong text-fg hover:bg-hover disabled:text-fg-3",
   quiet: "text-fg-2 hover:bg-hover hover:text-fg disabled:text-fg-3",
+  // An opaque surface for a control that floats over content (the composer's status chips): it must not show text through it.
+  float: "border border-line-strong bg-overlay text-fg hover:bg-raised disabled:text-fg-3",
   ghost: "text-fg-2 hover:bg-hover hover:text-fg disabled:text-fg-3",
   // Decision 81c: destructive and deny actions are quiet buttons with coloured text, not coloured outlines.
   danger: "text-err hover:bg-hover disabled:text-fg-3",
@@ -23,6 +25,7 @@ const VARIANT: Record<ButtonVariant, string> = {
 const PAD_KIND: Record<ButtonVariant, "boxed" | "quiet" | null> = {
   primary: "boxed",
   secondary: "boxed",
+  float: "boxed",
   danger: "boxed",
   ghost: "boxed",
   quiet: "quiet",
@@ -52,7 +55,7 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
  * The labelled action (decision 90).
  *
  * - `variant`: `primary` (the one filled button of a surface, decision 64b), `secondary` (bordered), `quiet` (text button,
- *   the default for toolbars), `danger` (quiet with error-coloured text), `link` (inline text link, no box).
+ *   the default for toolbars), `danger` (quiet with error-coloured text), `float` (bordered with an opaque surface, for chips over content), `link` (inline text link, no box).
  * - `size`: xs 24 (`text-xs`), sm 28, md 32 (default), lg 40.
  * - `icon`, `iconEnd`, `pressed`, `loading`, `fullWidth`.
  * - Touch: a 40px hit area grows around it without changing its look.

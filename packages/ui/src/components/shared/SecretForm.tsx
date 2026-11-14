@@ -15,6 +15,8 @@ export function SecretForm(props: {
   placeholder: string;
   onSave(value: string): Promise<void>;
   focusFirst?: boolean;
+  /** `false` when the caller shows its own message after a save (for example "Saved. Applies after a restart"). */
+  showSaved?: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{ kind: "idle" | "saving" | "saved" } | { kind: "error"; message: string }>({ kind: "idle" });
@@ -46,7 +48,7 @@ export function SecretForm(props: {
         hint={
           props.set
             ? `A key is set${props.hint ? ` (${props.hint})` : ""}. A new one replaces it.`
-            : "Stored by the harness in its settings file on this machine; never shown again."
+            : "Kept on this computer by Octo's local service; never shown again."
         }
         error={status.kind === "error" ? status.message : null}
         errorId={errId}
@@ -70,7 +72,7 @@ export function SecretForm(props: {
           </Button>
         </div>
       </Field>
-      {status.kind === "saved" && (
+      {status.kind === "saved" && props.showSaved !== false && (
         <p role="status" className="text-xs text-ok">
           Saved.
         </p>

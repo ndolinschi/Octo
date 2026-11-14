@@ -75,6 +75,12 @@ func writeErr(w http.ResponseWriter, err error) {
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
 	if err := dec.Decode(v); err != nil {
+		// P2-6: a body over the limit (a pasted log in a message) is 413 with the limit, not "not valid".
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			writeProblem(w, http.StatusRequestEntityTooLarge, usererr.RequestTooLarge(tooBig.Limit))
+			return false
+		}
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body: "+err.Error())
 		return false
 	}

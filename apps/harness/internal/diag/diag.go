@@ -83,7 +83,9 @@ type Report struct {
 	ShellEnvSet []string      `json:"shell_env_set"`
 	BuiltinLoop BuiltinReport `json:"builtin_loop"`
 	Router      RouterReport  `json:"router"`
-	Agents      []AgentReport `json:"agents"`
+	// Cloudflared is the tunnel program remote access runs (nil when not looked for).
+	Cloudflared *CloudflaredReport `json:"cloudflared,omitempty"`
+	Agents      []AgentReport      `json:"agents"`
 	// ACPTrace says whether the wire trace is on and lists its files.
 	ACPTrace TraceReport `json:"acp_trace"`
 	LogTail  []string    `json:"log_tail"`
@@ -129,6 +131,16 @@ type Inputs struct {
 	// desktop app starts the router and doctor does not. The built-in loop is then
 	// not reported as broken.
 	RouterPending bool
+	// Cloudflared: see Report.Cloudflared.
+	Cloudflared *CloudflaredReport
+}
+
+// CloudflaredReport is whether Cloudflare's tunnel program (remote access) is installed.
+type CloudflaredReport struct {
+	Found   bool   `json:"found"`
+	Path    string `json:"path,omitempty"`
+	Version string `json:"version,omitempty"`
+	Install string `json:"install,omitempty"`
 }
 
 // secretNamed marks environment names whose presence is worth reporting.
@@ -160,6 +172,7 @@ func Build(in Inputs) Report {
 		BuiltinLoop: BuiltinReport{Available: in.BuiltinOK, Reason: in.BuiltinWhy},
 		Router:      RouterReport{BaseURL: StripURL(in.BaseURL), Detected: in.RouterOn, Capabilities: append([]string{}, in.RouterCaps...)},
 		Agents:      []AgentReport{}, LogTail: []string{}, ShowProbeOutput: in.ShowProbeOutput,
+		Cloudflared: in.Cloudflared,
 	}
 	r.ShellEnvSet = []string{}
 	for _, kv := range childenv.Build(env, nil) {
@@ -266,6 +279,13 @@ func (r Report) Text() string {
 	fmt.Fprintf(&b, "router: base url %q, detected=%v, capabilities=%s\n", r.Router.BaseURL, r.Router.Detected, strings.Join(r.Router.Capabilities, ","))
 	if r.Router.Note != "" {
 		fmt.Fprintf(&b, "  note: %s\n", r.Router.Note)
+	}
+	if c := r.Cloudflared; c != nil {
+		if c.Found {
+			fmt.Fprintf(&b, "cloudflared: found %s (%s)\n", c.Path, c.Version)
+		} else {
+			fmt.Fprintf(&b, "cloudflared: not found (remote access needs it: %s)\n", c.Install)
+		}
 	}
 	fmt.Fprintf(&b, "\nAgents\n")
 	for _, a := range r.Agents {

@@ -1,4 +1,4 @@
-import { BridgeError, type FileContent, type FileEntry, type FileStat, type WriteFileInput } from "@octo/agent-client";
+import { BridgeError, type FileBytes, type FileContent, type FileEntry, type FileStat, type WriteFileInput } from "@octo/agent-client";
 import { writeDemoFile, type DemoFile, type ProjectRecord } from "./store";
 
 /** Same limit as the harness. */
@@ -77,6 +77,30 @@ export function readDemoFile(rec: ProjectRecord, folder: string, rawPath: string
   if (size(file) > MAX_BYTES) throw new BridgeError(413, "file_too_large", "file exceeds the 2 MiB limit");
   if (file.binary) throw new BridgeError(415, "binary_file", "file is not text");
   return { ...stat(folder, path, file), content: file.content };
+}
+
+/** A 120×80 palette PNG (357 bytes): what every binary demo `.png` holds, so the image preview has something to show. */
+const DEMO_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAHgAAABQCAMAAADlRUG7AAAADFBMVEUAAAA7bthYiujysTyocZmMAAAAAXRSTlMAQObYZgAAAQdJREFUeNrt2UEOwyAMRNEU3//O3aWqYhuC+11FmlmyyGMTGJnjUBRFKWeM15lx5udrDtziOnCPm8Gom8CsG8OwG8K0G8G4G8C868MNrgt3uMOBW9zhndUdbgazZ2cMw2d2CNN3RQTjd1QA83ejD69/zz65txcXXnbtO3f2XOpcZhe5pXPZNS2dyyyRwc5llshg5zJLZLJzZTDZuSwO27kSmO1cKzDSuRZgpnPNYahzTWGqc81grHNNYK5z5TDYuVKY7FwZzHauorvfudLbCe1cNbfSuUruIzuX8zO3zbn23fKc6/5/pDmX5lyac2nOpTmX5lz0nGt7rTbnKqzpbfGPb4uKojw1bxvAKY84J7D8AAAAAElFTkSuQmCC";
+
+/** The file API's `?encoding=base64` read: any file, same limits; binary `.png` files are {@link DEMO_PNG}. */
+export function readDemoFileBytes(rec: ProjectRecord, folder: string, rawPath: string): FileBytes {
+  const tree = folderTree(rec, folder);
+  const path = cleanPath(rawPath);
+  const file = tree.get(path);
+  if (!file) {
+    if (isDir(tree, path)) throw new BridgeError(400, "invalid", "path is not a regular file");
+    throw new BridgeError(404, "not_found", "path not found");
+  }
+  if (size(file) > MAX_BYTES) throw new BridgeError(413, "file_too_large", "file exceeds the 2 MiB limit");
+  if (file.binary) {
+    const content = path.toLowerCase().endsWith(".png") ? DEMO_PNG : "";
+    return { folder, path, size: atob(content).length, mtime: file.mtime, content, encoding: "base64" };
+  }
+  const bytes = new TextEncoder().encode(file.content);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return { ...stat(folder, path, file), content: btoa(bin), encoding: "base64" };
 }
 
 export function writeDemo(rec: ProjectRecord, input: WriteFileInput): FileStat {

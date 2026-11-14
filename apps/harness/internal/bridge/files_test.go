@@ -154,6 +154,29 @@ func TestFileEndpointErrors(t *testing.T) {
 		map[string]any{"folder": label, "path": "a.txt", "content": "x", "expected_mtime": "yesterday"}, 400, "invalid_request")
 }
 
+func TestFileReadBase64(t *testing.T) {
+	e := newEnv(t, nil)
+	pid, label, _ := newFileProject(t, e)
+	b64 := func(path string) string { return filesURL(pid, "/content", label, path) + "&encoding=base64" }
+	var rd struct {
+		fileStat
+		Content, Encoding string
+	}
+	e.into(t, "GET", b64("bin.dat"), nil, http.StatusOK, &rd)
+	if rd.Content != "AAEC" || rd.Encoding != "base64" || rd.Size != 3 || rd.Path != "bin.dat" || rd.Folder != label {
+		t.Fatalf("base64 read = %+v", rd)
+	}
+	e.into(t, "GET", b64("a.txt"), nil, http.StatusOK, &rd)
+	if rd.Content != "YWxwaGE=" {
+		t.Fatalf("base64 text read = %+v", rd)
+	}
+	e.wantError(t, "GET", b64("big.txt"), nil, 413, "file_too_large")
+	e.wantError(t, "GET", b64("../x"), nil, 400, "invalid_request")
+	e.wantError(t, "GET", b64("missing.png"), nil, 404, "not_found")
+	e.wantError(t, "GET", b64("src"), nil, 400, "invalid_request")
+	e.wantError(t, "GET", filesURL(pid, "/content", label, "a.txt")+"&encoding=hex", nil, 400, "invalid_request")
+}
+
 func TestProjectWithoutFolders(t *testing.T) {
 	e := newEnv(t, nil)
 	var p project.Project

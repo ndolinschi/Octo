@@ -20,6 +20,20 @@ func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) readFile(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	switch q.Get("encoding") {
+	case "", "utf-8":
+	case "base64":
+		fb, err := s.files.ReadBytes(r.Context(), r.PathValue("pid"), q.Get("folder"), q.Get("path"))
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, fb)
+		return
+	default:
+		writeError(w, http.StatusBadRequest, "invalid_request", "encoding must be base64 or omitted")
+		return
+	}
 	fc, err := s.files.Read(r.Context(), r.PathValue("pid"), q.Get("folder"), q.Get("path"))
 	if err != nil {
 		writeErr(w, err)

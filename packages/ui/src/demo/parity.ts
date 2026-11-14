@@ -229,8 +229,7 @@ export function withDemoParity(base: Bridge, records: Map<string, ProjectRecord>
     getLatestPlan: async (id) => {
       await delay();
       const { d } = demo(id);
-      if (!d.plan) throw new BridgeError(404, "not_found", "no plan yet");
-      return clone(d.plan);
+      return d.plan ? clone(d.plan) : null;
     },
     approvePlan: async (id, planId) => {
       await delay();

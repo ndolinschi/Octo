@@ -1,10 +1,12 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useLayoutEffect } from "react";
 import type { Bridge, ShellKind } from "@octo/agent-client";
 import { HostProvider, type HostCapabilities } from "../state/host";
 import { AppProvider } from "../state/app";
 import { ChromeProvider, NO_CHROME, type WindowChrome } from "../state/chrome";
 import { AppShell } from "./AppShell";
 import { useInputModality } from "../lib/modality";
+import { useMediaQuery } from "../lib/hooks";
+import { PHONE_QUERY, PhoneContext } from "../lib/phone";
 
 // Demo-only review page for the v7 components (`?demo=1#/__v7`); a separate chunk, never loaded otherwise.
 const V7Gallery = lazy(() => import("../components/v7/Gallery").then((m) => ({ default: m.Gallery })));
@@ -26,26 +28,34 @@ export type OctoAppProps = {
 
 export function OctoApp({ bridge, bridgeUrl, shell, demo = false, host, chrome = NO_CHROME }: OctoAppProps) {
   useInputModality();
+  // Direction 7: the one phone switch; `data-phone` drives the `phone:` CSS variant.
+  const query = useMediaQuery(PHONE_QUERY);
+  const phone = host?.layout ? host.layout === "phone" : query;
+  useLayoutEffect(() => {
+    document.documentElement.toggleAttribute("data-phone", phone);
+  }, [phone]);
   return (
-    <HostProvider value={host ?? {}}>
-      <ChromeProvider value={chrome}>
-        <AppProvider bridge={bridge} bridgeUrl={bridgeUrl} shell={shell} demo={demo}>
-          {demo && window.location.hash === "#/__v7" ? (
+    <PhoneContext.Provider value={phone}>
+      <HostProvider value={host ?? {}}>
+        <ChromeProvider value={chrome}>
+          <AppProvider bridge={bridge} bridgeUrl={bridgeUrl} shell={shell} demo={demo}>
+            {demo && window.location.hash === "#/__v7" ? (
+              <Suspense fallback={null}>
+                <V7Gallery loadMonaco={loadDiffMonaco} />
+              </Suspense>
+            ) : demo && new URLSearchParams(window.location.search).has("gallery") ? (
+              <Suspense fallback={null}>
+                <Gallery />
+              </Suspense>
+            ) : (
+              <AppShell />
+            )}
             <Suspense fallback={null}>
-              <V7Gallery loadMonaco={loadDiffMonaco} />
+              <Tooltips />
             </Suspense>
-          ) : demo && new URLSearchParams(window.location.search).has("gallery") ? (
-            <Suspense fallback={null}>
-              <Gallery />
-            </Suspense>
-          ) : (
-            <AppShell />
-          )}
-          <Suspense fallback={null}>
-            <Tooltips />
-          </Suspense>
-        </AppProvider>
-      </ChromeProvider>
-    </HostProvider>
+          </AppProvider>
+        </ChromeProvider>
+      </HostProvider>
+    </PhoneContext.Provider>
   );
 }

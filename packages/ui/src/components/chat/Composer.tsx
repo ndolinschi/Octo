@@ -1,30 +1,52 @@
 import type { Folder, TierPolicy } from "@octo/agent-client";
 import { ArrowUp, Clock, Plus, Square } from "lucide-react";
-import { forwardRef, lazy, Suspense, useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
+import {
+  forwardRef,
+  lazy,
+  Suspense,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { cn } from "../../lib/cn";
 import { useChatSlots } from "../../state/chatSlots";
 import { errorMessage } from "../../lib/format";
-import { canForce, refusedProvider } from "../../lib/providers/recheck";
+import { canForce, refusedProvider } from "../../lib/providers/refusal";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { Presence } from "../primitives/Presence";
 import { withAttachments } from "./attachments";
 import type { ComposerMenuHandle, MenuPick } from "./ComposerMenu";
 import { modeNote } from "../../lib/modes";
-import { FolderChip, ModelChip, useShedLabels } from "./ComposerChips";
+import { FolderChip, ModelChip } from "./ComposerChips";
+import type { ComposerSession } from "./SessionChip";
 import type { ComposerMode } from "./composerMode";
 import type { QueuedMessage } from "./ComposerPills";
-import { ContextRing } from "./ContextRing";
 import { useAttachments } from "./useAttachments";
 import { useImages } from "./useImages";
 import { useHost } from "../../state/host";
-import { FileInput, type FileInputHandle } from "../primitives/FileInput";
-import { useAgentName } from "./Transcript";
+import type { FileInputHandle } from "../primitives/FileInput";
+import { useAgentName } from "./agentName";
 import { errorCode as errorCodeOf, structuredError } from "../../lib/format";
 import type { SlashMenuHandle } from "./SlashMenu";
 import { octoCommandFor, slashQuery, type SlashRow } from "../../lib/slash";
 import { useSlashCommands, useSlashRunner } from "./useSlash";
 import { useComposerText, type ComposerDraft } from "./useComposerText";
+import { SENDING_NOTICE_MS } from "../../lib/constants";
+import { clearStopping, markStopping, STILL_STOPPING_MS, useStopping } from "../../lib/stopping";
+import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { mayNearLimit, plainShaping, triggerAt } from "../../lib/composerInput";
+import type * as SizeModule from "../../lib/messageSize";
+import { usePhone } from "../../lib/phone";
+import { deviceMay, ON_YOUR_COMPUTER } from "../../lib/remoteDevice";
 
 const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
 const ModelRefusedActions = lazy(() => import("../shared/ModelRefusedActions").then((m) => ({ default: m.ModelRefusedActions })));
@@ -35,6 +57,12 @@ const ModeChip = lazy(() => import("./ModeChip").then((m) => ({ default: m.ModeC
 const ComposerPills = lazy(() => import("./ComposerPills").then((m) => ({ default: m.ComposerPills })));
 const RoutingLine = lazy(() => import("./RoutingLine").then((m) => ({ default: m.RoutingLine })));
 const SlashMenu = lazy(() => import("./SlashMenu").then((m) => ({ default: m.SlashMenu })));
+/** The context gauge shows once the harness reports the context's size (after the project's state loads): warmed after first paint. */
+const ContextRing = lazy(() => import("./ContextRing").then((m) => ({ default: m.ContextRing })));
+/** Decision 96: the session chip at the top of the box (its own chunk; its row is reserved meanwhile, so nothing moves). */
+const SessionChip = lazy(() => import("./SessionChip").then((m) => ({ default: m.SessionChip })));
+/** The hidden file input behind "Attach image…": its own chunk, fetched with the composer's first render (entry budget). */
+const FileInput = lazy(() => import("../primitives/FileInput").then((m) => ({ default: m.FileInput })));
 const ComposerHighlight = lazy(() => import("./ComposerHighlight").then((m) => ({ default: m.ComposerHighlight })));
 
 export type ComposerHandle = {
@@ -81,23 +109,22 @@ export type ComposerProps = {
   floating?: boolean;
   /** A popover of the composer opened or closed (the conversation hides "Jump to latest" meanwhile, decision 56). */
   onOverlay?(open: boolean): void;
+  /** Decision 96: the main session it sends to (parallel sessions); absent before them. */
+  session?: ComposerSession | null | undefined;
 };
 
 const noCount = () => undefined;
 
-/** `/` or `@` at the start of a word, up to the caret: the "+" menu's inline query. */
-const TRIGGER = /(^|\s)([/@])([^\s/@]*)$/;
+/** P2-6: the size check's own chunk, loaded once a text could be near the body limit. */
+const loadSizer = () => import("../../lib/messageSize");
 
 type MenuState = { mode: "button" } | { mode: "inline"; start: number; query: string };
-
-/** Chips that can shed their label (mode, folder, model); at most four controls before send (decision 91e). */
-const SHEDDABLE = 3;
 
 /**
  * The composer (decision 62): one container (radius 14, raised, hairline that brightens on focus;
  * no glow, decision 87). Inside: the pills (queued messages, line comments, attached files), the text area
- * (1–10 lines), and the control row — "+", the model / folder / tier chips (labels shed tier → folder → model when
- * narrow), the context ring and one round button that is Send, Stop, or Queue.
+ * (1–10 lines), and the control row — "+", the model / folder / tier chips (labels shed by container width,
+ * round 3: narrow: mode, then model, then folder), the context ring and one round button that is Send, Stop, or Queue.
  */
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(props, handle) {
   const { text, setText, area, place } = useComposerText(props.draft);
@@ -108,6 +135,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [errorFields, setErrorFields] = useState<ReturnType<typeof structuredError>>(null);
   const [sending, setSending] = useState(false);
+  // A9: a send still unanswered after a moment says so; the bridge times it out (then the notice below offers Retry).
+  const [slow, setSlow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelError, setModelError] = useState<{ model: string; message: string; provider?: string } | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -116,7 +145,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [chipOpen, setChipOpen] = useState(0);
   const box = useRef<HTMLFormElement>(null);
   const plus = useRef<HTMLButtonElement>(null);
-  const row = useRef<HTMLDivElement>(null);
   const menuRef = useRef<ComposerMenuHandle>(null);
   const slashRef = useRef<SlashMenuHandle>(null);
   const [slash, setSlash] = useState<{ query: string } | null>(null);
@@ -128,6 +156,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const slashListId = useId();
   const listId = useId();
   const slots = useChatSlots();
+  const phone = usePhone();
+  // G5: Stop answers at once ("Stopping…", here and on the turn's live row) and says what is true if the turn takes long.
+  const ownKey = useId();
+  const stopKey = useOptionalWorkspace()?.projectId ?? ownKey;
+  const stopping = useStopping(stopKey, props.running);
+  const [lateFor, setLateFor] = useState<number | null>(null);
+  useEffect(() => {
+    if (stopping === null) return;
+    const t = window.setTimeout(() => setLateFor(stopping), Math.max(0, stopping + STILL_STOPPING_MS - Date.now()));
+    return () => window.clearTimeout(t);
+  }, [stopping]);
+  const stillStopping = stopping !== null && lateFor === stopping;
+  const stop = () => {
+    if (stopping !== null) return;
+    markStopping(stopKey);
+    // A refused cancel gives the button back (the turn still runs; pressing again asks again).
+    props.onCancel().catch(() => clearStopping(stopKey));
+  };
 
   const modeChoose = props.mode?.choose;
   useImperativeHandle(
@@ -154,7 +200,22 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const pendingComments = props.comments?.count ?? 0;
   const hasContent = text.trim().length > 0 || attach.files.length > 0 || pics.images.length > 0 || pendingComments > 0;
   const canSend = !disabled && !sending && !pics.busy && hasContent;
-  const shed = useShedLabels(row, SHEDDABLE, `${props.model?.value}|${props.folders.length}|${props.tier?.value}|${props.mode?.value}`);
+  // P2-6: the harness refuses a body over 1 MiB; the size shows near the limit and a longer message is not sent.
+  // Counted in a deferred render, off the keystroke (a pass over a 2.4 MB text is ~20 ms).
+  const sizedText = useDeferredValue(text);
+  const large = mayNearLimit(sizedText);
+  const [sizer, setSizer] = useState<typeof SizeModule | null>(null);
+  useEffect(() => {
+    // A failed load leaves no counter; the harness still refuses the body itself.
+    if (large && !sizer) void loadSizer().then(setSizer, () => undefined);
+  }, [large, sizer]);
+  const size = useMemo(() => (large && sizer ? sizer.messageSize(sizedText) : null), [large, sizer, sizedText]);
+  // Set before a paste that brings one goes in (the browser lays the text out once while inserting it): see `plainShaping`.
+  const [pastingLong, setPastingLong] = useState(false);
+  const plainText = useMemo(() => plainShaping(text), [text]);
+  const longWord = plainText || pastingLong;
+  /** The refusal of a message too long to send (until the text is edited). */
+  const [refused, setRefused] = useState<string | null>(null);
 
   const outgoing = () => withAttachments(text.trim(), attach.files);
   const queue = () => {
@@ -175,8 +236,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       await runSlash(octo.command.name, octo.args);
       return;
     }
+    // P2-6: a message over the harness's body limit is not sent (a short one never waits for the check).
+    const message = outgoing();
+    const check = mayNearLimit(message) ? await loadSizer().catch(() => null) : null;
+    const big = check?.messageSize(message);
+    setRefused(check && big?.over ? check.tooLongText(big.bytes) : null);
+    if (big?.over) return;
     if (props.running && !props.serverQueue) return queue();
     setSending(true);
+    // Cleared when the send settles, which the bridge's send timeout bounds.
+    const timer = window.setTimeout(() => setSlow(true), SENDING_NOTICE_MS);
     setError(null);
     setErrorCode(null);
     setErrorFields(null);
@@ -193,7 +262,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setErrorCode(errorCodeOf(e));
       setErrorFields(structuredError(e));
     } finally {
+      window.clearTimeout(timer);
       setSending(false);
+      setSlow(false);
     }
   };
 
@@ -205,9 +276,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setMenu(null);
       return;
     }
-    const m = TRIGGER.exec(value.slice(0, caret));
-    const query = m?.[3];
-    if (query !== undefined) setMenu({ mode: "inline", start: caret - query.length - 1, query });
+    // Only the words before the caret are read (P1-5: a pasted megabyte must not be scanned on every keystroke).
+    const at = triggerAt(value, caret);
+    if (at) setMenu({ mode: "inline", ...at });
     else setMenu((cur) => (cur?.mode === "inline" ? null : cur));
   };
   // Closing the button-opened menu gives focus back: Esc to the "+" that opened it (decision 95 b), a pick or a click to the text.
@@ -285,7 +356,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     if (e.key === "Escape" && props.running && !menu) {
       e.preventDefault();
-      void props.onCancel();
+      stop();
     }
   };
 
@@ -305,6 +376,45 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   };
   const agentName = useAgentName(model?.value);
   const action = props.running ? (hasContent ? "queue" : "stop") : "send";
+  // The mode, model and folder chips: on the control row, and (direction 7, phone) in the "+" menu, which shows them there only.
+  const chips = (
+    <>
+      {props.mode && (
+        <Suspense fallback={<span aria-hidden className="size-7 shrink-0" />}>
+          <ModeChip
+            value={props.mode.value}
+            isDefault={props.mode.isDefault}
+            onChoose={props.mode.choose}
+            onMakeDefault={() => void props.mode?.makeDefault().catch(() => undefined)}
+            bare={false}
+            disabled={disabled}
+            onOpenChange={onChip}
+          />
+        </Suspense>
+      )}
+      {model && (
+        <ModelChip
+          value={model.value}
+          title={model.title}
+          unavailable={model.unavailable === true}
+          onChoose={chooseModel}
+          onChooseUnverified={(value) => chooseModel(value, true)}
+          openRequest={modelRequest}
+          footer={
+            props.tier ? (
+              <Suspense fallback={null}>
+                <RoutingLine value={props.tier.value} onChoose={(p) => void props.tier?.choose(p).catch(() => undefined)} />
+              </Suspense>
+            ) : undefined
+          }
+          bare={false}
+          disabled={disabled}
+          onOpenChange={onChip}
+        />
+      )}
+      <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={false} disabled={disabled} onOpenChange={onChip} />
+    </>
+  );
 
   return (
     <div data-composer-wrap>
@@ -328,6 +438,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 }
               : {})}
           />
+        </Suspense>
+      )}
+      {refused !== null && (
+        <Suspense fallback={null}>
+          <ErrorNotice fields={{ message: refused }} className="mb-2" data="too-long" />
         </Suspense>
       )}
       {props.acceptsImages === false && pics.images.length > 0 && !error && (
@@ -366,6 +481,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {props.notice.text}
         </p>
       )}
+      {stillStopping && (
+        <p role="status" data-still-stopping className="octo-fade mb-2 px-3 text-sm text-fg-3">
+          Still stopping — a running command has to finish
+        </p>
+      )}
       {props.mode && modeNote(props.mode.value) && <p className="mb-2 px-3 text-sm text-fg-3">{modeNote(props.mode.value)}</p>}
       {attach.note && (
         <Notice>
@@ -400,15 +520,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             void submit();
           }}
           onMouseDown={(e) => {
-            // A click on the container's padding still puts the caret in the text.
-            if (e.target === e.currentTarget) {
+            // A click on the container's padding (or the text box's fixed top padding) still puts the caret in the text.
+            if (e.target === e.currentTarget || (e.target instanceof HTMLElement && e.target.hasAttribute("data-composer-pad"))) {
               e.preventDefault();
               area.current?.focus();
             }
           }}
           {...attach.dropProps}
-          className={cn("octo-composer relative isolate flex flex-col bg-raised", disabled && "opacity-80")}
+          className={cn("octo-composer @container/composer relative isolate flex flex-col bg-raised", disabled && "opacity-80")}
         >
+          {props.session && (
+            // A narrow composer (beside a panel) has no room for the session chip in the control row: there it keeps a line of its
+            // own at the top of the box (styles.css shows one of the two places, never both).
+            <div data-composer-session="top" className="flex min-w-0 px-1.5 pt-1.5">
+              <Suspense fallback={<span aria-hidden className="h-ctl-sm" />}>
+                <SessionChip session={props.session} bare={false} disabled={false} onOpenChange={onChip} />
+              </Suspense>
+            </div>
+          )}
           {slots?.queue?.({ onCount: noCount })}
           {(pics.images.length > 0 || attach.files.length > 0 || props.queue.items.length > 0 || pendingComments > 0) && (
             <Suspense fallback={null}>
@@ -426,7 +555,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <label htmlFor={props.floating ? "octo-composer-float" : "octo-composer"} className="sr-only">
             Message the orchestrator
           </label>
-          <div className="relative">
+          {/* C6: the top padding sits outside the scrolling text, so a long prompt never scrolls it away. */}
+          <div data-composer-pad className="relative pt-3">
             <Suspense fallback={null}>
               <ComposerHighlight text={text} area={area} />
             </Suspense>
@@ -435,28 +565,34 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               ref={area}
               rows={1}
               value={text}
+              data-long-word={longWord || undefined}
               disabled={disabled}
               onChange={(e) => {
                 setText(e.target.value);
+                setRefused(null);
+                setPastingLong(false);
                 syncTrigger(e.target.value, e.target.selectionStart);
               }}
               onSelect={(e) => inlineOpen && syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
               onKeyDown={onKeyDown}
-              onPaste={attach.onPaste}
+              onPaste={(e) => {
+                if (!longWord && plainShaping(e.clipboardData.getData("text/plain"))) flushSync(() => setPastingLong(true));
+                attach.onPaste(e);
+              }}
               onBlur={() => {
                 if (inlineOpen) setMenu(null);
                 setSlash(null);
               }}
-              placeholder={props.disabledReason ?? "Ask anything, @ to mention a file"}
+              placeholder={props.disabledReason ?? (phone ? "Ask anything" : "Ask anything, @ to mention a file")}
               aria-autocomplete="list"
               aria-expanded={inlineOpen || slash !== null}
               aria-controls={slash ? slashListId : inlineOpen ? listId : undefined}
               aria-activedescendant={slash ? (slashActive ?? undefined) : inlineOpen && activeOption ? activeOption : undefined}
               aria-keyshortcuts="Enter Shift+Enter Control+Enter Escape"
-              className="octo-composer-input relative block w-full resize-none overscroll-contain bg-transparent px-3 pt-3 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
+              className="octo-composer-input relative block w-full resize-none overscroll-contain bg-transparent px-3 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
             />
           </div>
-          <div ref={row} data-composer-row className="flex h-10 min-w-0 items-center gap-1 px-1.5 pb-1.5">
+          <div data-composer-row className="flex h-10 min-w-0 items-center gap-1 px-1.5 pb-1.5">
             <IconButton
               ref={plus}
               icon={Plus}
@@ -468,47 +604,56 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               disabled={disabled}
               onClick={() => setMenu((m) => (m?.mode === "button" ? null : { mode: "button" }))}
             />
-            {props.mode && (
-              <Suspense fallback={<span aria-hidden className="size-7 shrink-0" />}>
-                <ModeChip
-                  value={props.mode.value}
-                  isDefault={props.mode.isDefault}
-                  onChoose={props.mode.choose}
-                  onMakeDefault={() => void props.mode?.makeDefault().catch(() => undefined)}
-                  bare={shed >= 1}
-                  disabled={disabled}
-                  onOpenChange={onChip}
-                />
+            {chips}
+            {props.session && (
+              // Balance pass: the session the composer sends to is the last chip of the control row (it was a line of its own at
+              // the top of the box). It takes the row's free room (the spacer gives way, styles.css), so it is the one to shorten.
+              <span data-composer-session="row" className="flex min-w-0 flex-1">
+                <Suspense fallback={<span aria-hidden className="h-ctl-sm" />}>
+                  <SessionChip session={props.session} bare={false} disabled={false} onOpenChange={onChip} />
+                </Suspense>
+              </span>
+            )}
+            <span data-composer-spacer className="min-w-0 flex-1" />
+            {props.context.used && props.context.size ? (
+              <Suspense fallback={null}>
+                <ContextRing used={props.context.used} size={props.context.size} />
               </Suspense>
+            ) : null}
+            {size?.near && (
+              <span data-composer-size data-over={size.over || undefined} className={cn("px-1 text-xs tabular-nums", size.over ? "text-err" : "text-fg-3")}>
+                {size.label}
+              </span>
             )}
-            {model && (
-              <ModelChip
-                value={model.value}
-                title={model.title}
-                unavailable={model.unavailable === true}
-                onChoose={chooseModel}
-                onChooseUnverified={(value) => chooseModel(value, true)}
-                openRequest={modelRequest}
-                footer={
-                  props.tier ? (
-                    <Suspense fallback={null}>
-                      <RoutingLine value={props.tier.value} onChoose={(p) => void props.tier?.choose(p).catch(() => undefined)} />
-                    </Suspense>
-                  ) : undefined
-                }
-                bare={shed >= 3}
-                disabled={disabled}
-                onOpenChange={onChip}
+            {slow && (
+              <span role="status" className="px-1 text-xs text-fg-3">
+                Sending…
+              </span>
+            )}
+            {stopping !== null && action === "stop" && (
+              <span role="status" className="px-1 text-xs text-fg-3">
+                Stopping…
+              </span>
+            )}
+            {/* Remote access: no Send (or Stop) on a device that may not use it; the field says why, this says where it changes. */}
+            {deviceMay(host.remoteDevice, action === "stop" ? "stop" : "send") ? (
+              <SendButton
+                action={action}
+                stopping={stopping !== null}
+                enabled={action === "stop" ? !disabled && stopping === null : canSend && !size?.over}
+                onStop={stop}
               />
+            ) : (
+              <span data-composer-note className="shrink-0 px-1 text-xs text-fg-3">
+                {ON_YOUR_COMPUTER}
+              </span>
             )}
-            <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={shed >= 2} disabled={disabled} onOpenChange={onChip} />
-            <span className="min-w-0 flex-1" />
-            <ContextRing used={props.context.used} size={props.context.size} />
-            <SendButton action={action} enabled={action === "stop" ? !disabled : canSend} onStop={() => void props.onCancel()} />
           </div>
         </form>
       </div>
-      <FileInput ref={picker} label="Attach images" accept="image/png,image/jpeg,image/webp,image/gif,image/*" multiple onFiles={pics.add} />
+      <Suspense fallback={null}>
+        <FileInput ref={picker} label="Attach images" accept="image/png,image/jpeg,image/webp,image/gif,image/*" multiple onFiles={pics.add} />
+      </Suspense>
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
           <Suspense fallback={null}>
@@ -524,6 +669,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               onPickImage={pickImage}
               onPick={pick}
               onClose={closeMenu}
+              chips={chips}
             />
           </Suspense>
         )}
@@ -545,10 +691,12 @@ const SEND = {
   queue: { icon: Clock, label: "Queue: send when this turn ends (Enter)" },
   stop: { icon: Square, label: "Stop the turn (Esc)" },
 } as const;
+const STOPPING_LABEL = "Stopping… the turn ends once its current step does";
 
 /** One 28px round button: Send (dim while empty), Stop while working, Queue while working with text (decision 62). */
-function SendButton({ action, enabled, onStop }: { action: "send" | "queue" | "stop"; enabled: boolean; onStop(): void }) {
-  const { icon, label } = SEND[action];
+function SendButton({ action, enabled, stopping, onStop }: { action: "send" | "queue" | "stop"; enabled: boolean; stopping: boolean; onStop(): void }) {
+  const { icon } = SEND[action];
+  const label = action === "stop" && stopping ? STOPPING_LABEL : SEND[action].label;
   const solid = enabled && action !== "stop";
   return (
     <IconButton
@@ -560,7 +708,8 @@ function SendButton({ action, enabled, onStop }: { action: "send" | "queue" | "s
       onClick={action === "stop" ? onStop : undefined}
       disabled={!enabled}
       data-action={action}
-      className={cn(!solid && action === "stop" && "bg-active text-fg")}
+      data-stopping={(action === "stop" && stopping) || undefined}
+      className={cn(!solid && action === "stop" && !stopping && "bg-active text-fg")}
     />
   );
 }

@@ -94,6 +94,7 @@ fn start(dir: &std::path::Path, exit_on_close: bool) -> (Child, mpsc::Receiver<S
         .current_dir(dir)
         .env("OCTO_CONFIG", dir.join("config"))
         .env("OCTO_HISTORY_TOKEN_KEY", "test-key")
+        .env(octo::prices::REFRESH_ENV, "off")
         .env("RUST_LOG", "info")
         .env_remove(EXIT_ON_STDIN_CLOSE_ENV)
         .stdin(Stdio::piped())

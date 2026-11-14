@@ -32,7 +32,8 @@ fn tiers_with(low: f64, mid: f64, high: f64) -> Tiers {
         ("low-model".into(), price(low, low)),
         ("mid-model".into(), price(mid, mid)),
         ("high-model".into(), price(high, high)),
-    ]);
+    ])
+    .into();
     tiers
 }
 
@@ -230,7 +231,8 @@ fn a_partial_price_row_takes_no_part_in_the_price_rule() {
         ("low-model".into(), price(9.0, 9.0)),
         ("mid-model".into(), price(5.0, 5.0)),
         ("high-model".into(), partial),
-    ]);
+    ])
+    .into();
     let shape = RequestShape::default();
     assert_eq!(tiers.blended_cost_micros("high", shape), None);
     assert_eq!(tiers.price_swap("low", None, shape), Some("mid"));
@@ -245,7 +247,7 @@ async fn a_spent_budget_allows_an_escalation_the_rule_serves_at_the_cheapest_tie
     config.autoroute_low_model = "low-model".into();
     config.autoroute_mid_model = "mid-model".into();
     config.autoroute_high_model = "high-model".into();
-    config.prices = tiers_with(9.0, 5.0, 1.0).prices;
+    config.prices = (*tiers_with(9.0, 5.0, 1.0).prices.snapshot()).clone();
     let state = AppState::new(config).unwrap();
     let hints = Hints {
         budget_key: Some("proj".into()),
@@ -291,6 +293,7 @@ fn resolved(cost: u64, estimated: u64, differs: bool) -> ResolvedCost {
         is_byok: None,
         upstream_provider: None,
         estimate_basis_differs: differs,
+        price_source: None,
     }
 }
 

@@ -110,37 +110,47 @@ func List(root, rel string) ([]Entry, error) {
 
 // Read returns a UTF-8 text file's content and info.
 func Read(root, rel string) (string, Info, error) {
-	abs, clean, err := resolve(root, rel)
+	data, info, err := ReadBytes(root, rel)
 	if err != nil {
 		return "", Info{}, err
-	}
-	f, err := os.Open(abs)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return "", Info{}, ErrNotFound
-		}
-		return "", Info{}, err
-	}
-	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		return "", Info{}, err
-	}
-	if !fi.Mode().IsRegular() {
-		return "", Info{}, ErrNotFile
-	}
-	if fi.Size() > MaxReadBytes {
-		return "", Info{}, ErrTooLarge
-	}
-	data, err := io.ReadAll(io.LimitReader(f, MaxReadBytes+1))
-	if err != nil {
-		return "", Info{}, err
-	}
-	if len(data) > MaxReadBytes {
-		return "", Info{}, ErrTooLarge
 	}
 	if !utf8.Valid(data) || slices.Contains(data, 0) {
 		return "", Info{}, ErrBinary
 	}
-	return string(data), Info{Path: clean, Size: int64(len(data)), MTime: fi.ModTime()}, nil
+	return string(data), info, nil
+}
+
+// ReadBytes returns any regular file's bytes and info, with the same path
+// checks and size limit as Read (used to preview images).
+func ReadBytes(root, rel string) ([]byte, Info, error) {
+	abs, clean, err := resolve(root, rel)
+	if err != nil {
+		return nil, Info{}, err
+	}
+	f, err := os.Open(abs)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, Info{}, ErrNotFound
+		}
+		return nil, Info{}, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, Info{}, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, Info{}, ErrNotFile
+	}
+	if fi.Size() > MaxReadBytes {
+		return nil, Info{}, ErrTooLarge
+	}
+	data, err := io.ReadAll(io.LimitReader(f, MaxReadBytes+1))
+	if err != nil {
+		return nil, Info{}, err
+	}
+	if len(data) > MaxReadBytes {
+		return nil, Info{}, ErrTooLarge
+	}
+	return data, Info{Path: clean, Size: int64(len(data)), MTime: fi.ModTime()}, nil
 }

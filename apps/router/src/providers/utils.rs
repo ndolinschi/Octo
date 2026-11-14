@@ -217,7 +217,11 @@ impl Capture {
                 },
             );
         }
-        let resolved = resolve_cost(&usage, self.model.as_deref(), self.observe.history.prices());
+        let resolved = resolve_cost(
+            &usage,
+            self.model.as_deref(),
+            &self.observe.history.prices(),
+        );
         let response_payload = response_payload(
             self.observe.kind,
             self.observe.provider,
@@ -230,7 +234,11 @@ impl Capture {
         let generation_id_for_row = generation_id.clone();
         let estimate_ratio = crate::history::estimate_ratio(&resolved);
         if let Some(ratio) = estimate_ratio {
-            crate::history::warn_estimate_ratio(self.model.as_deref().unwrap_or(""), ratio);
+            crate::history::warn_estimate_ratio(
+                self.model.as_deref().unwrap_or(""),
+                ratio,
+                resolved.price_source,
+            );
         }
         let call_model = self.model.clone().unwrap_or_default();
         let parent = self
@@ -300,6 +308,7 @@ impl Capture {
                     cost_usd: resolved.cost.map_or(0.0, |c| c.0 as f64 / 1_000_000.0),
                     cost_source: cost_source_label(resolved.source),
                     estimate_ratio,
+                    price_source: resolved.price_source.map(|source| source.label()),
                     upstream_id: generation_id_for_row,
                     spent_after_usd: spent_after.map(crate::auto::micros_usd),
                     route: None,

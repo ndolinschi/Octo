@@ -16,11 +16,32 @@ export type ProjectRecord = {
   listeners: Set<SubscribeHandlers>;
   seq: number;
   nextMessageId: number;
+  /** The default session's running turn (what the project routes stop). */
   turn: { cancelled: boolean } | null;
+  /** Parallel sessions: the running turn of each main session, by its root agent id. */
+  turns?: Map<string, { cancelled: boolean }>;
+  /** How each root agent's latest turn ended (a session's resting state). */
+  lastStatus?: Map<string, "completed" | "failed" | "cancelled">;
+  /** Called when a turn of root `rootId` ended (the sessions layer starts what waited for a slot). */
+  afterTurn?: (rootId: string) => void;
   /** folder label → folder-relative path → file. Directories are implied by paths. */
   files: Map<string, Map<string, DemoFile>>;
   /** Folder labels whose sample content has been loaded (see `ensureSeeded`). */
   seeded: Set<string>;
+  /**
+   * How each orchestrator request ended, as the harness stores it in the default session's exchanges (schema 15): a failed
+   * one with its `error` (code, message, hint), one a restart cut `interrupted`, and for any that did not complete whether
+   * text it had written is kept (`kept_text`).
+   */
+  endings?: {
+    turn_id: number;
+    status: "completed" | "failed" | "stopped";
+    started_at: string;
+    duration_ms: number;
+    error?: { code: string; message: string; hint?: string };
+    interrupted?: boolean;
+    kept_text?: boolean;
+  }[];
 };
 
 let idCounter = 0;

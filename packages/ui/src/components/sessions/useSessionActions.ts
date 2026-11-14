@@ -1,4 +1,4 @@
-import { BridgeError, type ProjectSession, type SessionMessageResult } from "@octo/agent-client";
+import { BridgeError, type NewSessionInput, type ProjectSession, type SessionMessageResult } from "@octo/agent-client";
 import { useCallback, useMemo, useState } from "react";
 import { useLatest } from "../../lib/hooks";
 import { isStructured } from "../../lib/errors/plain";
@@ -59,20 +59,22 @@ export function useSessionActions() {
 
   const api = useMemo(() => {
     const need = <T>(method: T | undefined): T => {
-      if (method === undefined) throw new Error("This harness does not support sessions.");
+      if (method === undefined) throw new Error("This version of Octo's local service does not support sessions.");
       return method;
     };
     return {
-      create: () =>
+      /** A new main session (parallel sessions: not the default unless `make_default`; nothing else changes). */
+      create: (input?: NewSessionInput) =>
         run("create", async () => {
-          const session = await need(bridge.createSession).call(bridge, projectId);
+          const { session } = await bridge.createSession(projectId, input);
           applySession({ kind: "upsert", session });
-          applySession({ kind: "current", id: session.id, previous: currentId.current ?? "" });
+          if (session.default ?? session.current) applySession({ kind: "current", id: session.id, previous: currentId.current ?? "" });
           return session;
         }),
-      resume: (sid: string) =>
+      /** Makes a main session the default: where unaddressed messages go (decision 96; "Resume" before parallel sessions). */
+      makeDefault: (sid: string) =>
         run("resume", async () => {
-          const session = await need(bridge.resumeSession).call(bridge, projectId, sid);
+          const session = await bridge.setDefaultSession(projectId, sid);
           applySession({ kind: "upsert", session });
           if (currentId.current !== sid) applySession({ kind: "current", id: sid, previous: currentId.current ?? "" });
           return session;
@@ -86,7 +88,7 @@ export function useSessionActions() {
           applySession({ kind: "remove", ids: [sid, ...children] });
           return true;
         }),
-      stop: (sid: string) => changed("stop", () => need(bridge.stopSession).call(bridge, projectId, sid)),
+      stop: (sid: string) => changed("stop", () => bridge.stopSession(projectId, sid)),
       message: (sid: string, text: string, reportToParent: boolean): Promise<SessionMessageResult | undefined> =>
         run("message", async () => {
           const sent = await need(bridge.messageSession).call(bridge, projectId, sid, text, { reportToParent });

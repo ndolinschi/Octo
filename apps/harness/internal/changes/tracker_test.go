@@ -182,3 +182,38 @@ func TestLargeFileHasNoPreimage(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+// A write that lands after a snapshot read a file (another agent's command is
+// still running when this window ends) must be recorded by a later snapshot:
+// the index keeps the stamp from before the read, not one taken after it.
+// (Bridge TestBashChangesAreRecorded failed about once in 100 runs this way:
+// three sub-agents run "printf ... > old.txt"; one window read old.txt
+// truncated, indexed the stamp of the finished write and the final content was
+// never recorded.)
+func TestWriteAfterReadIsRecordedLater(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	write(t, dir, "f.txt", "a\nb\n")
+	tr, _, folders := newTracker(t, dir)
+	tr.Begin(ctx, folders)
+	write(t, dir, "f.txt", "") // truncated: the other command's write has not landed yet
+
+	abs := filepath.Join(dir, "f.txt")
+	read, err := ReadSide(abs)
+	if err != nil || !read.Exists || read.Size != 0 {
+		t.Fatalf("read = %+v, %v", read, err)
+	}
+	write(t, dir, "f.txt", "a\nB\nc\n") // lands between the read and the indexing
+	tr.mu.Lock()
+	tr.setIndex(tr.idx[dir], "f.txt", read)
+	tr.mu.Unlock()
+
+	got := byPath(tr.End(ctx, folders, Scope{AgentID: "b"}))
+	c, ok := got["f.txt"]
+	if !ok {
+		t.Fatalf("the write that landed after the read was never recorded: %+v", got)
+	}
+	if c.Kind != projectstore.ChangeModified || c.Added == nil || *c.Added != 3 || *c.Removed != 0 {
+		t.Errorf("change = %+v, want \"\" -> 3 lines", c)
+	}
+}

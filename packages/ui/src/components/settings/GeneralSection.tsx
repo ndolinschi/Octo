@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { PREFS, usePersistentState } from "../../lib/storage";
+import { PREFS, sidebarViewCodec, usePersistentState, writePref } from "../../lib/storage";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { Segmented } from "../primitives/Segmented";
@@ -14,6 +14,8 @@ import type { Backdrop, ThemePref } from "../../state/app";
 export function GeneralSection() {
   const [startup, setStartup] = usePersistentState(PREFS.startup, startupCodec);
   const [saved, run] = useSave();
+  const [view, setView] = usePersistentState(PREFS.sidebarView, sidebarViewCodec);
+  const [savedView, runView] = useSave();
   return (
     <>
       <SettingsGroup label="Startup">
@@ -30,7 +32,35 @@ export function GeneralSection() {
                 { id: "home", label: "Home" },
               ]}
               value={startup}
-              onChange={(v) => void run(async () => setStartup(v))}
+              onChange={(v) =>
+                void run(async () => {
+                  if (!writePref(PREFS.startup, startupCodec.stringify(v))) throw new Error("Could not save. The browser's storage is full or blocked");
+                  setStartup(v);
+                })
+              }
+            />
+          }
+        />
+        <SettingsRow
+          rowId="sidebar-view"
+          title="Sidebar shows"
+          description="Projects with their sessions, projects only (a project opens its default session), or every session by latest activity."
+          status={<SaveStatus state={savedView} />}
+          control={
+            <Segmented
+              label="Sidebar shows"
+              options={[
+                { id: "tree", label: "Projects and sessions" },
+                { id: "projects", label: "Projects" },
+                { id: "sessions", label: "Sessions" },
+              ]}
+              value={view}
+              onChange={(v) =>
+                void runView(async () => {
+                  if (!writePref(PREFS.sidebarView, sidebarViewCodec.stringify(v))) throw new Error("Could not save. The browser's storage is full or blocked");
+                  setView(v);
+                })
+              }
             />
           }
         />
@@ -44,23 +74,17 @@ export function GeneralSection() {
 
 function BridgeRow() {
   const { bridgeUrl, health, retry, version, demo } = useApp();
-  const state =
-    health === "online"
-      ? demo
-        ? "Demo data, in memory"
-        : `Connected${version ? `, version ${version}` : ""}`
-      : health === "offline"
-        ? "Offline: the harness does not answer"
-        : "Connecting…";
+  const state = health === "online" ? (demo ? "Demo data, in memory" : "Connected") : health === "offline" ? "Not answering" : "Connecting…";
   return (
     <SettingsRow
       rowId="bridge"
-      title="Harness connection"
-      leading={health === "checking" ? <Spinner size={10} /> : <ToneDot tone={health === "online" ? "ok" : "err"} />}
+      // B8: one plain name for the background service, as the offline screen says it; the address and version in the tooltip.
+      title="Octo's local service"
       description={
-        <span className="flex min-w-0 flex-wrap gap-x-2">
-          <code className="min-w-0 font-mono text-xs break-all text-fg-2">{bridgeUrl}</code>
-          <span role="status">{state}</span>
+        <span role="status" className="inline-flex items-center gap-1.5" title={`${bridgeUrl}${version ? ` · version ${version}` : ""}`}>
+          {health === "checking" ? <Spinner size={10} /> : <ToneDot tone={health === "online" ? "ok" : "err"} />}
+          {state}
+          {health === "online" && !demo ? ". It keeps your projects and runs the agents." : ""}
         </span>
       }
       control={
@@ -91,13 +115,26 @@ export function AppearanceSection() {
   const forced = backdrop === "off" && backdropPref !== "off";
   const [motion, setMotion] = useMotionPref();
   const motionId = useId();
+  // S2: every section confirms a change in the same place ("Saved" left of the control); these apply at once.
+  const [themeSaved, saveTheme] = useSave();
+  const [backdropSaved, saveBackdrop] = useSave();
+  const [motionSaved, saveMotion] = useSave();
+  const now = (set: () => void) => async () => {
+    set();
+    await Promise.resolve();
+  };
   return (
     <SettingsGroup label="Look">
       <SettingsRow
         rowId="theme"
         title="Theme"
         description={canChooseTheme ? "System follows your operating system's appearance." : "Set by the app that hosts this window."}
-        control={canChooseTheme ? <Segmented label="Theme" options={THEMES} value={themePref} onChange={setThemePref} /> : undefined}
+        status={<SaveStatus state={themeSaved} />}
+        control={
+          canChooseTheme ? (
+            <Segmented label="Theme" options={THEMES} value={themePref} onChange={(v) => void saveTheme(now(() => setThemePref(v)))} />
+          ) : undefined
+        }
       />
       <SettingsRow
         rowId="backdrop"
@@ -105,14 +142,30 @@ export function AppearanceSection() {
         description={
           forced ? "Off while your system asks for reduced transparency or forced colours." : "Behind Home, an empty project and the first-run screen."
         }
-        control={<Segmented label="Start-screen backdrop" options={BACKDROPS} value={backdropPref} onChange={setBackdropPref} />}
+        status={<SaveStatus state={backdropSaved} />}
+        control={
+          <Segmented
+            label="Start-screen backdrop"
+            options={BACKDROPS}
+            value={backdropPref}
+            onChange={(v) => void saveBackdrop(now(() => setBackdropPref(v)))}
+          />
+        }
       />
       <SettingsRow
         rowId="motion"
         title="Reduce motion"
         htmlFor={motionId}
         description="Turn off transitions and animations in this app, whatever the system says."
-        control={<Switch id={motionId} label="Reduce motion" checked={motion === "reduced"} onChange={(on) => setMotion(on ? "reduced" : "system")} />}
+        status={<SaveStatus state={motionSaved} />}
+        control={
+          <Switch
+            id={motionId}
+            label="Reduce motion"
+            checked={motion === "reduced"}
+            onChange={(on) => void saveMotion(now(() => setMotion(on ? "reduced" : "system")))}
+          />
+        }
       />
     </SettingsGroup>
   );

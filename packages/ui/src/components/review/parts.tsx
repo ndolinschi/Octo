@@ -1,11 +1,15 @@
-import { Check, Circle, Minus, X } from "lucide-react";
-import type { ReactNode } from "react";
+import { Check, ChevronDown, Circle, Minus, X } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
 import type { PullRequestRow, ReviewFile } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { CHECKS_LABEL } from "../../lib/review/pull";
 import { formatBytes } from "../../lib/review/files";
+import { Button } from "../primitives/Button";
 import { EmptyState } from "../primitives/EmptyState";
 import { Glyph } from "../primitives/Glyph";
+import { Menu, type MenuItem } from "../primitives/Menu";
+import { MiddleText } from "../primitives/MiddleText";
+import { Presence } from "../primitives/Presence";
 
 /** `+12 −3` for a text file; a size for a binary one. */
 export function LineStat({ file }: { file: Pick<ReviewFile, "added" | "removed" | "binary" | "new_size" | "old_size"> }) {
@@ -53,8 +57,51 @@ export function Notice(props: { title: string; children?: ReactNode; actions?: R
   );
 }
 
-/** A small "kbd" hint. */
-export const ROW = "flex w-full items-start gap-3 rounded-md px-3 py-2 text-left press-row focus-inset hover:bg-hover disabled:opacity-60";
+/** "owner/name" gives way from the owner ("atl…/atlas-api"); any other text from its middle. */
+function CutText({ text, className }: { text: string; className: string }) {
+  const slash = text.lastIndexOf("/");
+  if (slash <= 0) return <MiddleText text={text} {...(className ? { className } : {})} />;
+  return (
+    <span className={cn("flex min-w-0 items-baseline", className)}>
+      <span className="min-w-0 truncate">{text.slice(0, slash)}</span>
+      <span className="shrink-0">{text.slice(slash)}</span>
+    </span>
+  );
+}
+
+/**
+ * Polish step 6b (R1, R3): a quiet 28px menu trigger whose text gives way from its middle ("atlas-l…/atlas-api"), so a
+ * header line keeps its one line in a narrow group. `MenuButton` is 24px and never truncates; this composes `Button` and
+ * `Menu` for the review's headers only.
+ */
+export function TextMenu(props: { label: string; text: string; items: MenuItem[]; mono?: boolean; alignEnd?: boolean; className?: string }) {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <Button
+        ref={button}
+        variant="quiet"
+        size="sm"
+        title={props.text}
+        aria-label={`${props.label}: ${props.text}`}
+        aria-haspopup="menu"
+        aria-expanded={menu !== null}
+        onClick={() => {
+          const r = button.current?.getBoundingClientRect();
+          if (r) setMenu(menu ? null : { x: props.alignEnd ? r.right : r.left, y: r.bottom + 4 });
+        }}
+        className={cn("min-w-0 shrink! gap-1!", menu && "bg-active text-fg", props.className)}
+      >
+        <CutText text={props.text} className={props.mono ? "font-mono text-xs" : ""} />
+        <Glyph icon={ChevronDown} size={14} className="shrink-0 text-fg-3" />
+      </Button>
+      <Presence show={menu !== null} exitMs={0}>
+        {menu && <Menu label={props.label} x={menu.x} y={menu.y} alignEnd={props.alignEnd ?? false} items={props.items} onClose={() => setMenu(null)} />}
+      </Presence>
+    </>
+  );
+}
 
 export function Key({ children }: { children: ReactNode }) {
   return (

@@ -7,6 +7,7 @@ import {
   TAB_GAP,
   TAB_MAX,
   stripPlan,
+  endPlan,
   TAB_MIN,
   clampLeft,
   insertionIndex,
@@ -115,4 +116,16 @@ test("strip plan (decision 90): pinned buttons fold first, then inactive tabs gi
   assert.deepEqual(stripPlan({ room: 600, wanted: 400, pinned: 200, collapsed: true }), { collapse: false, overlay: false }, "fits beside the buttons again");
   assert.deepEqual(stripPlan({ room: 400, wanted: 700, pinned: 200, collapsed: false }), { collapse: true, overlay: true });
   assert.deepEqual(stripPlan({ room: 400, wanted: 700, pinned: 0, collapsed: false }), { collapse: false, overlay: true }, "no pinned buttons");
+});
+
+test("endPlan folds the agents first, then Run, and does not flap", () => {
+  const e = { tabs: 1, agents: 60, run: 32, agentsCompact: false, runCompact: false };
+  assert.deepEqual(endPlan({ ...e, room: 0 }), { agentsCompact: false, runCompact: false }, "unmeasured");
+  assert.deepEqual(endPlan({ ...e, room: 120 }), { agentsCompact: false, runCompact: false }, "fits");
+  assert.deepEqual(endPlan({ ...e, room: 90 }), { agentsCompact: true, runCompact: false }, "agents first");
+  assert.deepEqual(endPlan({ ...e, room: 25 }), { agentsCompact: true, runCompact: true }, "then Run");
+  assert.deepEqual(endPlan({ ...e, room: 150, agentsCompact: true, runCompact: true }), { agentsCompact: true, runCompact: false }, "Run comes back first");
+  assert.deepEqual(endPlan({ ...e, room: 190, agentsCompact: true, runCompact: true }), { agentsCompact: false, runCompact: false }, "everything fits again");
+  assert.deepEqual(endPlan({ ...e, room: 96, agents: 0 }), { agentsCompact: false, runCompact: false }, "nothing to fold");
+  assert.deepEqual(endPlan({ ...e, tabs: 3, room: 196, agents: 0 }), { agentsCompact: false, runCompact: true }, "three tabs: Run folds");
 });

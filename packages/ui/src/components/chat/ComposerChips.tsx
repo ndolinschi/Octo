@@ -1,5 +1,5 @@
 import type { Folder } from "@octo/agent-client";
-import { lazy, Suspense, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { lazy, Suspense, useRef, useState, type ReactNode } from "react";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { GLYPH } from "../primitives/glyphs";
 import { Presence } from "../primitives/Presence";
@@ -14,34 +14,6 @@ const FolderPicker = lazy(() => import("../shared/FolderPicker").then((m) => ({ 
 
 /** Gap between a chip and the menu it opens (decision 56). */
 const MENU_GAP = 4;
-
-/**
- * How many chips have shed their label (decision 62: tier first, then folder, then model) so the control row fits.
- * Measured: on a width change all labels come back and drop again until the row stops overflowing.
- */
-export function useShedLabels(row: RefObject<HTMLElement | null>, max: number, key: string): number {
-  const [level, setLevel] = useState(0);
-  useLayoutEffect(() => {
-    const el = row.current;
-    if (el && level < max && el.scrollWidth > el.clientWidth + 0.5) setLevel(level + 1);
-  }, [level, max, key, row]);
-  useLayoutEffect(() => {
-    const el = row.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    let width = el.clientWidth;
-    const ro = new ResizeObserver(() => {
-      if (el.clientWidth === width) return;
-      const grew = el.clientWidth > width;
-      width = el.clientWidth;
-      // Wider: try every label again; narrower: the overflow check above sheds more.
-      setLevel((l) => (grew ? 0 : l));
-      if (!grew && el.scrollWidth > el.clientWidth + 0.5) setLevel((l) => Math.min(max, l + 1));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [row, max]);
-  return level;
-}
 
 export type ChipProps = { bare: boolean; disabled: boolean; onOpenChange(open: boolean): void };
 
@@ -114,6 +86,7 @@ export function FolderChip(props: ChipProps & { folders: Folder[]; onAdd?: ((pat
         warn={!first}
         disabled={props.disabled}
         aria-haspopup="menu"
+        data-chip="folder"
         onClick={() => setOpen(!open)}
         className="max-w-48"
       />

@@ -2,18 +2,18 @@ import { useEffect, useRef } from "react";
 import { parseColor, renderStreak, streakCell } from "../../lib/streak";
 import { STREAK_NARROW_BELOW, type StreakPreset } from "../../lib/streakPresets";
 
-/** How far the optional drift moves the band (CSS px); the canvas overhangs by this much on every side. */
+/** The canvas overhangs the host by this much on every side (CSS px; `.octo-streak` in styles.css places it). */
 const DRIFT = 12;
 /** A resize redraws once this long after the last size change; meanwhile the last frame stretches with the host. */
 const RESIZE_SETTLE_MS = 120;
 
 /**
- * The dithered light streak (decision 32), drawn by `lib/streak.ts` into the canvas's own bitmap at cell resolution
- * (2 CSS px up to a 1600px window, 3 above) and scaled up with `pixelated`, so DPR does not change the cost. It is
- * drawn once, and again only when the host's size settles after a resize or the theme changes — nothing runs per
- * frame while it is static (the optional drift is a compositor transform, styles.css). While a resize is in flight the
- * last frame stretches with the host (its CSS size is relative). `data-draws` counts draws, `data-draw-ms` /
- * `data-render-ms` time the last one. Loaded with `import()` on the start screens only; `aria-hidden`.
+ * The quiet light streak (owner's audit; decisions 32, 91a), drawn by `lib/streak.ts` into the canvas's own bitmap at
+ * one pixel per device pixel (capped at 2×), smooth, no dither pattern. It is drawn once, and again only when the host's
+ * size settles after a resize, the screen's pixel ratio changes or the theme changes — nothing runs per frame (decision
+ * 76). While a resize is in flight the last frame stretches with the host (its CSS size is relative). `data-draws`
+ * counts draws, `data-draw-ms` / `data-render-ms` time the last one. Loaded with `import()` on the start screens only;
+ * `aria-hidden`.
  */
 /** A theme colour as the engine resolves it: a hidden probe's computed background, else the raw custom property. */
 function resolveColor(host: HTMLElement, name: string) {
@@ -46,13 +46,14 @@ export default function Streak({ preset, theme, mono = false }: { preset: Streak
       frame = 0;
       const w = host.clientWidth;
       const h = host.clientHeight;
-      const cell = streakCell(window.innerWidth);
+      const cell = streakCell(window.devicePixelRatio);
       const key = `${w}x${h}@${cell}:${mono ? "mono" : "vivid"}`;
       if (w === 0 || h === 0 || key === drawn) return;
       drawn = key;
       const t0 = performance.now();
       const cols = Math.ceil((w + 2 * DRIFT) / cell);
       const rows = Math.ceil((h + 2 * DRIFT) / cell);
+      dpr.update();
       el.width = cols;
       el.height = rows;
       const ctx = el.getContext("2d");
@@ -99,20 +100,23 @@ export default function Streak({ preset, theme, mono = false }: { preset: Streak
       window.clearTimeout(timer);
       timer = window.setTimeout(now, drawn ? RESIZE_SETTLE_MS : 0);
     };
+    // A window moved to a screen with another pixel ratio redraws at that ratio (one query per ratio, re-armed on change).
+    const dpr = {
+      query: null as MediaQueryList | null,
+      update() {
+        this.query?.removeEventListener("change", now);
+        this.query = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+        this.query.addEventListener("change", now);
+      },
+    };
     now();
     const ro = new ResizeObserver(settle);
     ro.observe(host);
-    // The drift runs only while the page is visible (and never under reduced motion: styles.css).
-    const onVisibility = () => {
-      if (document.hidden) el.dataset.paused = "";
-      else delete el.dataset.paused;
-    };
-    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelAnimationFrame(frame);
       window.clearTimeout(timer);
       ro.disconnect();
-      document.removeEventListener("visibilitychange", onVisibility);
+      dpr.query?.removeEventListener("change", now);
     };
   }, [anchorX, anchorY, rise, echo, nX, nY, nRise, theme, mono]);
 

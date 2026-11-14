@@ -3,7 +3,24 @@ import type { ContentBlock, Message } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SPAWN_TOOL } from "./tools";
-import { buildTurns, latestReply, promptText, requestSummaries, compactionSlots, turnWarning, showRail } from "./transcript";
+import {
+  buildTurns,
+  turnDurationMs,
+  latestReply,
+  promptText,
+  requestSummaries,
+  compactionSlots,
+  turnWarning,
+  showRail,
+  isInterruption,
+  stepState,
+  turnHead,
+  isRestartInterruption,
+  RESTART_INTERRUPTION,
+  spawnStatus,
+  turnFailureText,
+  railLayout,
+} from "./transcript";
 
 let nextId = 1;
 const msg = (role: "user" | "assistant", content: ContentBlock[], at: string): Message => ({ id: nextId++, agent_id: "a", role, content, created_at: at });
@@ -202,4 +219,127 @@ test("the rail shows from five requests (decision 57)", () => {
   assert.equal(showRail(4), false);
   assert.equal(showRail(5), true);
   assert.equal(showRail(12), true);
+});
+
+const err = (content: string) => ({ content, is_error: true });
+const ok = (content: string) => ({ content, is_error: false });
+
+test("a stop's interruption: the harness's own texts unless the turn failed, an agent's cancel answer only in a stopped turn", () => {
+  // history.go interruptedResult (built-in loop, written before the next request) and acp_session.go finishLocked.
+  assert.equal(isInterruption(err("interrupted: the tool call did not complete"), "cancelled"), true);
+  assert.equal(isInterruption(err("interrupted: the tool call did not complete"), null), true);
+  assert.equal(isInterruption(err("interrupted: the tool call did not complete"), "failed"), false);
+  assert.equal(isInterruption(err("the agent stopped before this tool call finished"), "cancelled"), true);
+  // An ACP agent's answer to session/cancel (Claude Code: "rejected").
+  assert.equal(isInterruption(err("rejected"), "cancelled"), true);
+  assert.equal(isInterruption(err("rejected"), "completed"), false);
+  assert.equal(isInterruption(err("rejected"), null), false);
+  assert.equal(isInterruption(err("[Request interrupted by user for tool use]"), "cancelled"), true);
+  // A genuine failure in a stopped turn stays a failure; a success is never one.
+  assert.equal(isInterruption(err("exit status 1: tests failed"), "cancelled"), false);
+  assert.equal(isInterruption(ok("rejected"), "cancelled"), false);
+});
+
+test("a tool call's state from its result, the agent's run and the turn's ending", () => {
+  assert.equal(stepState(undefined, true, null), "running");
+  assert.equal(stepState(undefined, false, "cancelled"), "stopped");
+  assert.equal(stepState(ok("12 passed"), false, "cancelled"), "done");
+  assert.equal(stepState(err("rejected"), false, "cancelled"), "stopped");
+  assert.equal(stepState(err("rejected"), false, "completed"), "error");
+  assert.equal(stepState(err("exit status 2"), false, "cancelled"), "error");
+  assert.equal(stepState(err("the agent stopped before this tool call finished"), false, "failed"), "error");
+});
+
+test("the head of a finished turn says how it ended", () => {
+  assert.deepEqual(turnHead("completed", 8_000), { state: "done", label: "Worked for 8s" });
+  assert.deepEqual(turnHead("cancelled", 8_400), { state: "stopped", label: "Stopped after 8s" });
+  assert.deepEqual(turnHead("failed", 75_000), { state: "failed", label: "Failed after 1m 15s" });
+  // Unknown ending (an earlier turn after a reload): a stopped step means the turn was cut.
+  assert.deepEqual(turnHead(null, 8_000, ["done", "stopped"]), { state: "stopped", label: "Stopped after 8s" });
+  assert.deepEqual(turnHead(null, 8_000, ["done", "error"]), { state: "done", label: "Worked for 8s" });
+});
+
+test("P1-1: a turn the harness closed after a restart says so in its head", () => {
+  assert.deepEqual(turnHead("failed", 12_000, ["stopped"], { interrupted: true }), {
+    state: "failed",
+    label: "Interrupted after 12s — Octo's local service restarted",
+  });
+  // Only a failed ending is a restart's: a later stop or completion of the same request says what it was.
+  assert.deepEqual(turnHead("cancelled", 12_000, [], { interrupted: true }), { state: "stopped", label: "Stopped after 12s" });
+  assert.deepEqual(turnHead("failed", 12_000, [], {}), { state: "failed", label: "Failed after 12s" });
+  assert.equal(isRestartInterruption(RESTART_INTERRUPTION), true);
+  assert.equal(isRestartInterruption(` ${RESTART_INTERRUPTION}\n`), true);
+  assert.equal(isRestartInterruption("The connection to the model broke off."), false);
+  assert.equal(isRestartInterruption(null), false);
+});
+
+test("a delegation without an agent settles from its result; a finished turn never leaves it pending", () => {
+  const refused = err("spawn_agent requires role, title and task, and tier if given (auto|fast|balanced|deep)");
+  assert.equal(spawnStatus(undefined, refused, true, null), "failed");
+  assert.equal(spawnStatus(undefined, refused, false, "completed"), "failed");
+  assert.equal(spawnStatus(undefined, ok("report"), false, "completed"), "completed");
+  assert.equal(spawnStatus(undefined, undefined, true, null), "pending");
+  assert.equal(spawnStatus(undefined, undefined, false, "cancelled"), "cancelled");
+  assert.equal(spawnStatus(undefined, undefined, false, null), "cancelled");
+  assert.equal(spawnStatus(undefined, undefined, false, "failed"), "failed");
+  assert.equal(spawnStatus(undefined, err("rejected"), false, "cancelled"), "cancelled");
+  // With an agent, its own status wins.
+  assert.equal(spawnStatus("running", undefined, true, null), "running");
+  assert.equal(spawnStatus("failed", err("sub-agent failed: x"), false, "completed"), "failed");
+  assert.equal(spawnStatus("cancelled", err("sub-agent stopped by the user"), false, "completed"), "cancelled");
+});
+
+test("B4: a finished turn's duration runs to its end, not to its last item", () => {
+  const start = Date.parse("2026-11-10T10:00:00Z");
+  const lastAt = "2026-11-10T10:00:01Z";
+  // Stopped 5 s in, one second after the last message: the agent's finished_at says so.
+  assert.equal(turnDurationMs(start, { live: false, lastAt, finishedAt: "2026-11-10T10:00:05Z" }), 5_000);
+  // The stored exchange wins (after a reload, for an earlier turn too).
+  assert.equal(turnDurationMs(start, { live: false, lastAt, stored: { status: "cancelled", startedAt: start, ms: 5_400 } }), 5_400);
+  // A finished_at from before this turn (an older turn's) is not its end.
+  assert.equal(turnDurationMs(start, { live: false, lastAt, finishedAt: "2026-11-10T09:00:00Z" }), 1_000);
+  assert.equal(turnDurationMs(start, { live: true, lastAt, finishedAt: null }), null);
+  assert.equal(turnDurationMs(null, { live: false, lastAt }), null);
+});
+
+test("NEW-1: a failed turn's own reason is its last error result that a stop did not write", () => {
+  const r = (id: string, content: string, isError = true) => [id, { content, is_error: isError }] as const;
+  const turn = must(
+    buildTurns([user("go", T(0)), msg("assistant", [use("a"), use("b")], T(1)), msg("assistant", [use("c")], T(2)), msg("assistant", [text("x")], T(3))])[0],
+  );
+  // The newest error result wins; a success after it does not hide it.
+  assert.equal(
+    turnFailureText(turn, new Map([r("a", "first"), r("b", "GitHub Copilot is not logged in."), r("c", "ok", false)])),
+    "GitHub Copilot is not logged in.",
+  );
+  // A stop's texts are no reason; an earlier real error is.
+  assert.equal(turnFailureText(turn, new Map([r("a", "boom"), r("c", "interrupted: the tool call did not complete.")])), "boom");
+  assert.equal(turnFailureText(turn, new Map([r("b", "Tool use was rejected")])), null);
+  // No error at all, or an empty one: nothing to say.
+  assert.equal(turnFailureText(turn, new Map([r("a", "  ")])), null);
+  assert.equal(turnFailureText(turn, new Map()), null);
+});
+
+test("N7: rail targets stay 12 tall while the conversation's height holds them, then shrink to nearest-wins cells", () => {
+  // Few requests: 16 apart, inside the 60% share.
+  assert.deepEqual(railLayout(5, 600, 8), { pitch: 16, height: 96 });
+  // 30 requests in 600px: 360/30 = 12 still fits the share.
+  assert.deepEqual(railLayout(30, 600, 8), { pitch: 12, height: 376 });
+  // 40 requests: the share would give 9; the whole height (584) still holds 40 x 12, so the rail grows instead.
+  assert.deepEqual(railLayout(40, 600, 8), { pitch: 12, height: 496 });
+  // 120 requests: no room for 12 each — cells of the whole height, at least 6, and the rail scrolls.
+  const dense = railLayout(120, 600, 8);
+  assert.equal(dense.pitch, 6);
+  assert.equal(dense.height, 600);
+});
+
+test("3: in a turn a restart interrupted, the calls its interruption closed read stopped, not failed", () => {
+  const closed = { content: "interrupted: the tool call did not complete", is_error: true };
+  const failedCall = { content: "exit status 1", is_error: true };
+  assert.equal(stepState(closed, false, "failed"), "error");
+  assert.equal(stepState(closed, false, "failed", true), "stopped");
+  assert.equal(stepState(failedCall, false, "failed", true), "error");
+  assert.equal(stepState(undefined, false, "failed", true), "stopped");
+  assert.equal(spawnStatus(undefined, closed, false, "failed", true), "cancelled");
+  assert.equal(spawnStatus(undefined, closed, false, "failed"), "failed");
 });

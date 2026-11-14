@@ -1,15 +1,16 @@
 /**
- * The dithered light streak, third pass (decision 32), as a pure function over a pixel buffer so it can be measured and
- * tested without a browser. Three layers in one pass, one sample per cell:
- * - a **hot core**: a line 2–4 cells wide at near-white (`#fff4e0`; dark 95%, light its own preset) along the band's
- *   axis, with a slow waviness so it never reads as a ruled line;
- * - a **glow** that falls off from the core with a long exponential tail, coloured by the distance from the core, not
- *   by the position along it: the warm side (below) runs amber → orange → red → magenta over a short tail, the cool side
- *   (above) runs pale gold → cyan → blue → indigo over a long one — the temperature contrast of the references;
- * - **grain everywhere**: the strength is quantised with interleaved-gradient (blue-noise-like) thresholds — no
- *   Bayer cross-hatch, so no staircase on the edges — every lit cell gets a small chromatic jitter, and a static field
- *   of faint coloured specks covers the whole background.
- * The cell size comes from the window width (2 CSS px up to 1600, 3 above).
+ * The light streak, quiet pass (owner's audit: "a different banner on Home instead of the noisy dithering"; decisions 32,
+ * 91a), as a pure function over a pixel buffer so it can be measured and tested without a browser. One smooth pass,
+ * one sample per device pixel:
+ * - a **core**: a soft line about 2 CSS px wide (near-white in dark, a muted coral in light) along the band's axis, with a
+ *   slow waviness so it never reads as a ruled line;
+ * - a **glow** that falls off from the core exponentially, coloured by the distance from it: warm below (amber → coral →
+ *   plum), cool above over a longer tail (pale gold → sky → indigo) — the temperature contrast of the earlier passes,
+ *   at lower alpha and saturation;
+ * - an **envelope** along the band: full strength over the middle, easing to nothing well before either end, the core
+ *   tapering sooner than the glow — a streak of light, not a ruled line clipped by the panel's corners.
+ * No quantisation and no speck field: the only grain is a ±1-level luminance dither on lit pixels, below what the eye
+ * sees, which keeps the gradient free of banding. Pixels the band does not reach are exactly the panel colour.
  */
 
 import type { StreakAnchor } from "./streakPresets";
@@ -23,23 +24,21 @@ export type StreakTheme = "dark" | "light";
 export type StreakOptions = {
   cols: number;
   rows: number;
-  /** CSS px per cell. */
+  /** CSS px per buffer pixel (1 / the drawing scale: 0.5 on a 2× screen). */
   cell: number;
-  /** CSS px the buffer overhangs the host on every side (room for the drift). */
+  /** CSS px the buffer overhangs the host on every side. */
   overhang: number;
   anchor: StreakAnchor;
   /** Steepness: the line climbs `rise` × height over the width (default 1, the host's diagonal). */
   rise?: number;
-  /** Kept for the presets' shape; the third pass has no echo band. */
+  /** Kept for the presets' shape; the streak has no echo band. */
   echo?: number;
   panel: Rgb;
   accent: Rgb;
   theme: StreakTheme;
-  /** Quantisation levels of the strength (default 5). */
-  levels?: number;
-  /** Share of background cells that carry a speck (default 0.35). */
-  noise?: number;
-  /** Decision 31's Mono backdrop: the same band in the accent hue alone, at 35% peak. */
+  /** Anti-banding dither in 8-bit levels on lit pixels (default 1; 0 turns it off). */
+  grain?: number;
+  /** Decision 31's Mono backdrop: the same band in the accent hue alone, at a low peak. */
   mono?: boolean;
 };
 
@@ -52,84 +51,85 @@ export type StreakLook = {
   cool: readonly Rgb[];
   warmTail: number;
   coolTail: number;
-  /** Background specks: peak alpha. */
-  speck: number;
-  /** The glow's alpha follows exp(−u)^gamma: below 1 the colour stays strong longer, then drops (a lit edge, not a haze). */
+  /** The glow's alpha follows exp(−u)^gamma: below 1 the colour holds longer, then drops. */
   gamma: number;
 };
 
-/** Decision 32: near-white core at 95% over a dark panel; warm short tail below, cool long tail above. */
+/** Dark: a near-white core at 85% over the panel; warm short tail below, cool long tail above, glow at 50%. */
 const DARK: StreakLook = {
-  core: [0xff, 0xf4, 0xe0],
-  coreAlpha: 0.95,
-  glowAlpha: 0.9,
+  core: [0xff, 0xf6, 0xe8],
+  coreAlpha: 0.85,
+  glowAlpha: 0.5,
   warm: [
-    [0xff, 0xc4, 0x5a],
-    [0xff, 0x6a, 0x1a],
-    [0xff, 0x2a, 0x12],
-    [0xd8, 0x14, 0x4a],
-    [0x6a, 0x10, 0x5a],
+    [0xff, 0xcc, 0x84],
+    [0xff, 0x8e, 0x52],
+    [0xe8, 0x56, 0x6c],
+    [0x9a, 0x3a, 0x86],
+    [0x3a, 0x26, 0x5e],
   ],
   cool: [
-    [0xf6, 0xf0, 0xc8],
-    [0x7c, 0xc8, 0xff],
-    [0x2a, 0x78, 0xff],
-    [0x22, 0x3c, 0xe0],
-    [0x1a, 0x18, 0x7a],
+    [0xf4, 0xee, 0xd4],
+    [0x9c, 0xcf, 0xff],
+    [0x5a, 0x96, 0xff],
+    [0x46, 0x56, 0xdc],
+    [0x22, 0x20, 0x66],
   ],
-  warmTail: 0.05,
-  coolTail: 0.08,
-  speck: 0.18,
-  gamma: 0.7,
+  warmTail: 0.06,
+  coolTail: 0.12,
+  gamma: 0.8,
 };
 
 /**
- * Light has its own preset (a near-white core vanishes on white): the core is a deep red-orange line, the glow keeps
- * saturated, darker hues at a high alpha over short tails so the band reads as colour, not pastel mush.
+ * Light: a near-white core vanishes on white, so the core is a muted coral line; the glow is soft and low in
+ * saturation (owner: the red/blue line on white noise "looks like an artefact"), over slightly longer tails.
  */
 const LIGHT: StreakLook = {
-  core: [0xe8, 0x2a, 0x08],
-  coreAlpha: 0.95,
-  glowAlpha: 0.9,
+  core: [0xee, 0x8a, 0x6e],
+  coreAlpha: 0.72,
+  glowAlpha: 0.4,
   warm: [
-    [0xff, 0x4a, 0x10],
-    [0xf0, 0x1e, 0x4a],
-    [0xc0, 0x1a, 0x9a],
-    [0x7a, 0x2a, 0xe0],
-    [0x9a, 0x8a, 0xff],
+    [0xff, 0xa8, 0x7c],
+    [0xf2, 0x8c, 0xa4],
+    [0xc4, 0x9c, 0xe4],
+    [0xb4, 0xbc, 0xf2],
+    [0xd8, 0xdc, 0xf6],
   ],
   cool: [
-    [0xff, 0x9a, 0x1a],
-    [0xff, 0xc0, 0x2a],
-    [0x1e, 0x9a, 0xff],
-    [0x24, 0x4a, 0xf0],
-    [0x7a, 0x7a, 0xff],
+    [0xff, 0xc8, 0x8c],
+    [0xff, 0xdc, 0xa8],
+    [0x9c, 0xc6, 0xfa],
+    [0xa8, 0xb2, 0xf4],
+    [0xd6, 0xda, 0xf8],
   ],
-  warmTail: 0.026,
-  coolTail: 0.05,
-  speck: 0.12,
-  gamma: 0.45,
+  warmTail: 0.07,
+  coolTail: 0.14,
+  gamma: 0.9,
 };
 
 export const STREAK_LOOK: Record<StreakTheme, StreakLook> = { dark: DARK, light: LIGHT };
 
-/** Decision 31 — Mono: the band's shape and grain in one hue (`accent`), peak 35%: it reads as texture, not light. */
+/** Decision 31 — Mono: the band's shape in one hue (`accent`), peak 30%: it reads as a tint, not light. */
 export function monoLook(accent: Rgb, theme: StreakTheme): StreakLook {
   const base = STREAK_LOOK[theme];
   const ramp = [accent, accent, accent, accent, accent] as const;
-  return { ...base, core: accent, coreAlpha: 0.35, glowAlpha: 0.35, warm: ramp, cool: ramp, speck: base.speck * 0.6 };
+  return { ...base, core: accent, coreAlpha: 0.3, glowAlpha: 0.22, warm: ramp, cool: ramp };
 }
 
-/** Core half-width in cells (a 2–4 cell line) and the glow's cut-off (exp(−3.9) ≈ 2%; the sparse grain beyond it is the speck field). */
-const CORE_CELLS = 1.15;
-const CUTOFF = 3.9;
+/** Core half-width (CSS px) and the glow's cut-off (exp(−4.6) ≈ 1%). */
+const CORE_PX = 1.25;
+const CUTOFF = 4.6;
 /** The axis's slow waviness: amplitude (× shorter side) and waves along the band. */
-const WAVE = { amp: 0.006, freq: 1.6, phase: 0.7 } as const;
+const WAVE = { amp: 0.04, freq: 1.2, phase: 0.7 } as const;
 /** The colour runs through its stops over this many tails (faster than the light fades: saturated near the core). */
 const COLOR_TAILS = 2.6;
+/**
+ * The envelope along the band, over the horizontal offset from the anchor as a share of half the width: full strength
+ * inside `plateau`, zero beyond `reach`, a smoothstep between. The core takes the envelope squared, so it tapers sooner.
+ */
+const ENVELOPE = { plateau: 0.12, reach: 0.94 } as const;
 
 const pack = (r: number, g: number, b: number) => ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
-const clamp255 = (v: number) => (v < 0 ? 0 : v > 255 ? 255 : v | 0);
+const clamp255 = (v: number) => (v < 0 ? 0 : v > 255 ? 255 : (v + 0.5) | 0);
 
 /** A colour along `stops` at `t` ∈ [0, 1], linear between evenly spaced stops. */
 export function sideColor(stops: readonly Rgb[], t: number): [number, number, number] {
@@ -141,84 +141,37 @@ export function sideColor(stops: readonly Rgb[], t: number): [number, number, nu
   return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
 }
 
-/** Interleaved gradient noise (Jimenez 2014): a blue-noise-like threshold in [0, 1) per cell, with no grid pattern. */
+/** The envelope at a horizontal offset `t` (share of half the width, any sign): 1 in the middle, 0 at the ends. */
+export function envelope(t: number): number {
+  const a = t < 0 ? -t : t;
+  if (a <= ENVELOPE.plateau) return 1;
+  if (a >= ENVELOPE.reach) return 0;
+  const u = 1 - (a - ENVELOPE.plateau) / (ENVELOPE.reach - ENVELOPE.plateau);
+  return u * u * (3 - 2 * u);
+}
+
+/** Interleaved gradient noise (Jimenez 2014): a blue-noise-like value in [0, 1) per pixel, with no grid pattern. */
 export function ign(x: number, y: number): number {
   const v = 52.9829189 * ((0.06711056 * x + 0.00583715 * y) % 1);
   return v - Math.floor(v);
 }
 
-/** A cheap integer hash of a cell (the specks are static: the same on every draw). */
-function hash(x: number, y: number): number {
-  let h = (x * 374761393 + y * 668265263) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return (h ^ (h >>> 16)) >>> 0;
-}
-
-/** The strength `a` on one of `levels` steps (threshold ∈ [0, 1) from the dither), never above 1. */
-export function quantize(a: number, levels: number, threshold: number): number {
-  const q = Math.floor(a * levels + threshold) / levels;
-  return q > 1 ? 1 : q;
-}
-
-/** The background tile: the panel with faint coloured specks (static, tiled under the band). */
-const TILE = 128;
-let tileCache: { key: string; tile: Uint32Array } | null = null;
-function speckTile(panel: Rgb, look: StreakLook, share: number): Uint32Array {
-  const key = `${panel.join(",")}:${look.speck}:${share}:${look.warm.map((c) => c.join(",")).join("|")}`;
-  if (tileCache?.key === key) return tileCache.tile;
-  const tile = new Uint32Array(TILE * TILE).fill(pack(panel[0], panel[1], panel[2]));
-  for (let y = 0; y < TILE; y++)
-    for (let x = 0; x < TILE; x++) {
-      const h = hash(x, y);
-      if ((h & 1023) / 1024 >= share) continue;
-      // Mostly very faint, a few brighter (cubic): grain, not confetti.
-      const n = ((h >>> 10) & 255) / 255;
-      const a = look.speck * n * n * n + 0.015;
-      const stops = (h >>> 18) & 1 ? look.warm : look.cool;
-      const [r, g, b] = sideColor(stops, ((h >>> 19) & 255) / 255);
-      tile[y * TILE + x] = pack(clamp255(panel[0] + (r - panel[0]) * a), clamp255(panel[1] + (g - panel[1]) * a), clamp255(panel[2] + (b - panel[2]) * a));
-    }
-  tileCache = { key, tile };
+let ditherCache: { grain: number; tile: Float32Array } | null = null;
+/** 64 × 64 triangular dither values in −grain…grain (two interleaved-gradient samples summed), computed once. */
+function ditherTile(grain: number): Float32Array {
+  if (ditherCache?.grain === grain) return ditherCache.tile;
+  const tile = new Float32Array(64 * 64);
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) tile[(y << 6) | x] = (ign(x, y) + ign(x + 17, y + 31) - 1) * grain;
+  ditherCache = { grain, tile };
   return tile;
 }
 
-/** Per-cell dither thresholds (interleaved gradient noise) and chromatic jitter, as 128×128 tiles (computed once). */
-let noiseTiles: { th: Float32Array; variant: Uint8Array } | null = null;
-function noise(): NonNullable<typeof noiseTiles> {
-  if (noiseTiles) return noiseTiles;
-  const n = TILE * TILE;
-  const t = { th: new Float32Array(n), variant: new Uint8Array(n) };
-  for (let y = 0; y < TILE; y++)
-    for (let x = 0; x < TILE; x++) {
-      const i = y * TILE + x;
-      t.th[i] = ign(x, y);
-      t.variant[i] = hash(x + 9173, y + 331) % VARIANTS.length;
-    }
-  noiseTiles = t;
-  return t;
-}
-
-/** The packed colour table of the last draw (a redraw at the same band size reuses it). */
-let colorCache: { key: string; colors: Uint32Array } | null = null;
-
-/** The grain's chroma shifts (per channel, −1…1): a cell takes one of these, scaled by its strength. */
-const VARIANTS: readonly Rgb[] = [
-  [0, 0, 0],
-  [1, -0.4, -0.6],
-  [-0.6, 1, -0.3],
-  [-0.5, -0.3, 1],
-  [0.8, 0.6, -0.9],
-  [-0.9, 0.5, 0.7],
-  [0.6, -0.8, 0.6],
-  [-0.4, -0.4, -0.4],
-];
-
-/** Steps of the per-distance tables (1 CSS px each). */
+/** Per-distance tables (one step per buffer pixel): glow strength and colour on one side of the core. */
 type SideTables = { glow: Float32Array; r: Float32Array; g: Float32Array; b: Float32Array };
-function sideTables(stops: readonly Rgb[], tail: number, span: number, gamma: number): SideTables {
+function sideTables(stops: readonly Rgb[], tail: number, span: number, step: number, gamma: number): SideTables {
   const t: SideTables = { glow: new Float32Array(span), r: new Float32Array(span), g: new Float32Array(span), b: new Float32Array(span) };
   for (let i = 0; i < span; i++) {
-    const u = i / tail;
+    const u = (i * step) / tail;
     t.glow[i] = Math.exp(-u * gamma);
     const [r, g, b] = sideColor(stops, u / COLOR_TAILS);
     t.r[i] = r;
@@ -232,7 +185,10 @@ function sideTables(stops: readonly Rgb[], tail: number, span: number, gamma: nu
 export function renderStreak(out: Uint32Array, o: StreakOptions): number {
   const { cols, rows, cell, overhang, panel, theme } = o;
   const look = o.mono ? monoLook(o.accent, theme) : STREAK_LOOK[theme];
-  const levels = o.levels ?? 5;
+  const grain = o.grain ?? 1;
+  const [pr, pg, pb] = panel;
+  out.fill(pack(pr, pg, pb));
+
   const w = cols * cell - 2 * overhang;
   const h = rows * cell - 2 * overhang;
   const short = Math.max(1, Math.min(w, h));
@@ -241,117 +197,95 @@ export function renderStreak(out: Uint32Array, o: StreakOptions): number {
   const angle = Math.atan2(h * (o.rise ?? 1), w);
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-  const length = Math.hypot(w, h);
+  const halfW = Math.max(1, w / 2);
 
-  // Background: the speck tile — its first 128 rows written once, the rest copied (the tile repeats every 128 rows).
-  const tile = speckTile(panel, look, o.noise ?? 0.35);
-  for (let y = 0; y < Math.min(rows, TILE); y++) {
-    const ty = y * TILE;
-    for (let x = 0; x < cols; x += TILE) out.set(tile.subarray(ty, ty + Math.min(TILE, cols - x)), y * cols + x);
-  }
-  for (let y = TILE; y < rows; y += TILE) out.copyWithin(y * cols, 0, Math.min(TILE, rows - y) * cols);
-
+  // Distance tables over the signed distance d from the axis (one step per buffer pixel, index d/cell + cSpan): glow
+  // strength, side colour and the core's weight, so a pixel costs a few lookups.
   const warmTail = look.warmTail * short;
   const coolTail = look.coolTail * short;
-  const wSpan = Math.ceil((warmTail * CUTOFF) / look.gamma) + 2;
-  const cSpan = Math.ceil((coolTail * CUTOFF) / look.gamma) + 2;
-  // One table over the signed distance d (1 CSS px steps, index d + cSpan): glow, colour and the core's weight with
-  // the core colour already mixed in, so a cell costs a handful of lookups.
-  const warm = sideTables(look.warm, warmTail, wSpan, look.gamma);
-  const cool = sideTables(look.cool, coolTail, cSpan, look.gamma);
-  const coreW = Math.max(CORE_CELLS * cell, 0.0018 * short);
-  const { coreAlpha, glowAlpha } = look;
-  const [kr, kg, kb] = look.core;
+  const wSpan = Math.ceil((warmTail * CUTOFF) / look.gamma / cell) + 2;
+  const cSpan = Math.ceil((coolTail * CUTOFF) / look.gamma / cell) + 2;
+  const warm = sideTables(look.warm, warmTail, wSpan, cell, look.gamma);
+  const cool = sideTables(look.cool, coolTail, cSpan, cell, look.gamma);
   const span = cSpan + wSpan + 1;
-  const tA = new Float32Array(span);
+  const tGlow = new Float32Array(span);
+  const tCore = new Float32Array(span);
   const tR = new Float32Array(span);
   const tG = new Float32Array(span);
   const tB = new Float32Array(span);
   for (let k = 0; k < span; k++) {
-    const d = k - cSpan;
-    const side = d >= 0 ? warm : cool;
-    const i = d < 0 ? -d : d;
-    const glow = side.glow[i] ?? 0;
-    const core = Math.exp(-((d / coreW) ** 2));
-    tA[k] = glow * glowAlpha + core * (coreAlpha - glowAlpha * glow);
-    const r = side.r[i] ?? 0;
-    const g = side.g[i] ?? 0;
-    const b = side.b[i] ?? 0;
-    tR[k] = r + (kr - r) * core;
-    tG[k] = g + (kg - g) * core;
-    tB[k] = b + (kb - b) * core;
+    const i = k - cSpan;
+    const side = i >= 0 ? warm : cool;
+    const j = i < 0 ? -i : i;
+    tGlow[k] = side.glow[j] ?? 0;
+    tCore[k] = Math.exp(-(((i * cell) / CORE_PX) ** 2));
+    tR[k] = side.r[j] ?? 0;
+    tG[k] = side.g[j] ?? 0;
+    tB[k] = side.b[j] ?? 0;
   }
+  const [kr, kg, kb] = look.core;
+  const { coreAlpha, glowAlpha } = look;
+
+  // Per column: the envelope (glow) and its square (core), and the axis's wavy offset — the band runs left to right.
+  const envG = new Float32Array(cols);
+  const envC = new Float32Array(cols);
+  const wave = new Float32Array(cols);
   const waveAmp = WAVE.amp * short;
-  // The waviness over s (1 CSS px steps), so the loop does no trigonometry.
-  const sReach = Math.ceil(length) + 2 * overhang + 4;
-  const wave = new Float32Array(2 * sReach + 1);
-  for (let i = 0; i < wave.length; i++) wave[i] = waveAmp * Math.sin(((i - sReach) * Math.PI * 2 * WAVE.freq) / length + WAVE.phase);
-  const wLast = wave.length - 1;
-  const { th: thTile, variant } = noise();
-  const reachUp = cSpan + waveAmp + cell;
-  const reachDown = wSpan + waveAmp + cell;
-
-  // Every colour a cell can take, packed: per chroma variant (the grain's per-cell colour shift), distance and level.
-  // A cell then costs its distance, one threshold and one read.
-  const [pr, pg, pb] = panel;
-  // Mono stays one hue: no chromatic jitter in its grain.
-  const jitter = o.mono ? 0 : theme === "dark" ? 40 : 30;
-  const L1 = levels + 1;
-  const colorKey = `${theme}:${o.mono ? `mono:${o.accent.join(",")}` : "vivid"}:${panel.join(",")}:${span}:${cSpan}:${coreW}:${levels}:${short}`;
-  const fresh = colorCache?.key !== colorKey;
-  const colors = fresh ? new Uint32Array(VARIANTS.length * span * L1) : (colorCache?.colors ?? new Uint32Array(0));
-  for (let v = 0; fresh && v < VARIANTS.length; v++) {
-    const [jr, jg, jb] = VARIANTS[v] ?? [0, 0, 0];
-    for (let k = 0; k < span; k++)
-      for (let q = 1; q <= levels; q++) {
-        const aq = q / levels;
-        const j = jitter * aq;
-        const r = pr + ((tR[k] as number) + jr * j - pr) * aq;
-        const g = pg + ((tG[k] as number) + jg * j - pg) * aq;
-        const b = pb + ((tB[k] as number) + jb * j - pb) * aq;
-        colors[(v * span + k) * L1 + q] = pack(clamp255(r), clamp255(g), clamp255(b));
-      }
+  for (let x = 0; x < cols; x++) {
+    const px = (x + 0.5) * cell - overhang - ax;
+    const e = envelope(px / halfW);
+    envG[x] = e;
+    envC[x] = e * e;
+    wave[x] = waveAmp * Math.sin((px / w) * Math.PI * 2 * WAVE.freq + WAVE.phase);
   }
-  if (fresh) colorCache = { key: colorKey, colors };
-  let brightest = 0;
-  for (let k = 0; k < span; k++) if ((tA[k] as number) > brightest) brightest = tA[k] as number;
 
-  const half = cell / 2 - overhang;
+  // The dither as a 64 × 64 tile of triangular values (−1…1) × grain, so a pixel costs one read.
+  const noise = grain ? ditherTile(grain) : null;
   const dStep = -cell * sin;
-  const sStep = cell * cos;
+  let brightest = 0;
   for (let y = 0; y < rows; y++) {
-    const py = y * cell + half - ay;
+    const py = (y + 0.5) * cell - overhang - ay;
     const rowBase = y * cols;
-    const tRow = (y & (TILE - 1)) * TILE;
-    // d = −px·sin + py·cos is linear in x: only cells within the band's reach on either side are visited.
-    const xFrom = Math.max(0, Math.floor(((py * cos - reachDown) / sin + ax - half) / cell) - 1);
-    const xTo = Math.min(cols, Math.ceil(((py * cos + reachUp) / sin + ax - half) / cell) + 2);
-    const px0 = xFrom * cell + half - ax;
-    let dLin = -px0 * sin + py * cos + cSpan + 0.5;
-    let sIdx = px0 * cos + py * sin + sReach + 0.5;
-    for (let x = xFrom; x < xTo; x++, dLin += dStep, sIdx += sStep) {
-      let si = sIdx | 0;
-      si = si < 0 ? 0 : si > wLast ? wLast : si;
-      // k: the signed distance from the (wavy) axis, d > 0 below it (the warm side).
-      const k = (dLin - (wave[si] as number)) | 0;
-      if (k < 0 || k >= span) continue;
-      // Blue-noise-like quantisation: grain at every level (only the thin core reaches the top step).
-      const ti = tRow + (x & (TILE - 1));
-      let q = ((tA[k] as number) * levels + (thTile[ti] as number)) | 0;
-      if (q <= 0) continue;
-      if (q > levels) q = levels;
-      out[rowBase + x] = colors[((variant[ti] as number) * span + k) * L1 + q] as number;
+    const nRow = (y & 63) << 6;
+    // d / cell + cSpan, linear in x before the wave: one add per pixel.
+    let f0 = (-((0.5 * cell - overhang - ax) * sin) + py * cos) / cell + cSpan;
+    for (let x = 0; x < cols; x++, f0 += dStep / cell) {
+      const eg = envG[x] as number;
+      if (eg <= 0) continue;
+      // Signed distance from the (wavy) axis in table steps (d > 0 below it, the warm side), read between two
+      // entries so the line has no stair-steps.
+      const f = f0 - (wave[x] as number) / cell;
+      const k = f | 0;
+      if (f < 0 || k + 1 >= span) continue;
+      const t = f - k;
+      const u = 1 - t;
+      const glow = ((tGlow[k] as number) * u + (tGlow[k + 1] as number) * t) * glowAlpha * eg;
+      const core = ((tCore[k] as number) * u + (tCore[k + 1] as number) * t) * (envC[x] as number);
+      const al = glow + core * (coreAlpha - glow);
+      if (al < 0.002) continue;
+      if (al > brightest) brightest = al;
+      const sr = (tR[k] as number) * u + (tR[k + 1] as number) * t;
+      const sg = (tG[k] as number) * u + (tG[k + 1] as number) * t;
+      const sb = (tB[k] as number) * u + (tB[k + 1] as number) * t;
+      // Triangular luminance dither: smooth, but no 8-bit bands in a long low-alpha falloff.
+      const n = noise ? (noise[nRow | (x & 63)] as number) : 0;
+      out[rowBase + x] = pack(
+        clamp255(pr + (sr + (kr - sr) * core - pr) * al + n),
+        clamp255(pg + (sg + (kg - sg) * core - pg) * al + n),
+        clamp255(pb + (sb + (kb - sb) * core - pb) * al + n),
+      );
     }
   }
   return brightest;
 }
 
-/** The dither cell in CSS px for the *window* width (decision 32: 2 up to 1600 wide, 3 above). */
-export function streakCell(windowWidth: number): number {
-  return windowWidth > 1600 ? 3 : 2;
+/** CSS px per buffer pixel for a device pixel ratio: one buffer pixel per device pixel, capped at 2× (the cost). */
+export function streakCell(devicePixelRatio: number): number {
+  const scale = Math.min(2, Math.max(1, Math.round(devicePixelRatio || 1)));
+  return 1 / scale;
 }
 
-/** "#rrggbb" or "rgb(r g b)" / "rgb(r, g, b)" → RGB; anything else is black. */
+/** "#rrggbb" or "rgb(r g b)" / "rgb(r, g, b)" → RGB; anything else is null. */
 export function parseColor(value: string): Rgb | null {
   const v = value.trim();
   const hex = /^#([\da-f]{3}|[\da-f]{6})$/i.exec(v)?.[1];

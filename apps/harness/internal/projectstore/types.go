@@ -141,6 +141,9 @@ type Agent struct {
 	RouteChoice    *string `json:"route_choice"`
 	// Plan is the latest plan an ACP agent published (null when none).
 	Plan []PlanEntry `json:"plan"`
+	// SessionID is the main session the agent works in: a root agent's own session, a sub-agent's the one of the
+	// root that spawned it (schema 15).
+	SessionID string `json:"session_id"`
 }
 
 // PlanEntry is one line of an agent's plan.
@@ -163,6 +166,8 @@ type NewAgent struct {
 	Started        bool
 	// Route is the router decision recorded on the agent (nil: tier was explicit).
 	Route *RouteInfo
+	// SessionID is the main session of a root agent; a sub-agent takes its parent's when it is empty.
+	SessionID string
 }
 
 // RouteInfo is what the agent row keeps of an automatic choice; empty fields

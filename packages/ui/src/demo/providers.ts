@@ -33,9 +33,10 @@ const refreshFindsNothing = () => knob("refresh") === "none";
 const CLAUDE_LOGIN = "Log in once: run `claude` and type /login (or run `claude auth login`).";
 const CLAUDE_INSTALL = "Install Node.js and the Claude Code CLI: `npm install -g @anthropic-ai/claude-code`";
 const COPILOT_LOGIN =
-  'Log in once: run `copilot` and type /login, or start the harness with COPILOT_GITHUB_TOKEN set to a fine-grained token that has the "Copilot Requests" permission.';
+  'Log in once: run `copilot` and type /login, or start Octo\'s local service with COPILOT_GITHUB_TOKEN set to a fine-grained token that has the "Copilot Requests" permission.';
 const COPILOT_INSTALL = "Install the GitHub Copilot CLI: `npm install -g @github/copilot` (needs Node.js 22 or newer and a Copilot plan)";
-const GROK_LOGIN = "Log in once in the browser: run `grok login`. An XAI_API_KEY in the harness environment switches Grok to per-token billing.";
+const GROK_LOGIN =
+  "Log in once in the browser: run `grok login`. An XAI_API_KEY in the environment of Octo's local service switches Grok to per-token billing.";
 const GROK_INSTALL = "Install the Grok CLI so that `grok` is on PATH (from x.ai).";
 
 /** The harness's catalogue (`internal/providers`): the three compiled-in tiers, deepest first. */
@@ -80,7 +81,7 @@ const settingDefs: Omit<Setting, "source" | "editable">[] = [
     label: "Use the Octo router",
     group: "router",
     applies: "restart",
-    hint: "Read by the desktop app, which starts the router; the harness only stores it.",
+    hint: "Read by the desktop app, which starts the router; Octo's local service only stores it.",
   },
   {
     id: "OCTO_ROUTER_BASE_URL",
@@ -96,7 +97,7 @@ const settingDefs: Omit<Setting, "source" | "editable">[] = [
     label: "Environment variables passed to agents and tools",
     group: "advanced",
     applies: "now",
-    hint: "Names or PREFIX_* patterns, on top of the built-in allow-list. Secrets of the harness itself are never passed.",
+    hint: "Names or PREFIX_* patterns, on top of the built-in allow-list. Secrets of Octo's local service itself are never passed.",
   },
   {
     id: "HARNESS_ACP_TRACE",

@@ -6,6 +6,7 @@ import { useCopy } from "../../lib/hooks";
 import { costCellText, usageCsv, usageTotals, type RoleRow, type UsageRow, type UsageTotals } from "../../lib/usage/model";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
+import { Skeleton } from "../primitives/Skeleton";
 
 /** A table row: a model, agent, day or project; `nested` rows (roles, a project's models) sit under it, dimmer. */
 export type UsageTableRow = UsageRow & {
@@ -80,7 +81,7 @@ function Cells({ r, dim }: { r: UsageRow; dim?: boolean }) {
 
 function costTitle(r: UsageRow): string {
   if (r.cost.spent === null) {
-    const none = "No price for this model, so its cost is not counted. Add the model to prices.toml in the harness data directory.";
+    const none = "No price for this model, so its cost is not counted. Add the model to prices.toml in Octo's data folder.";
     return r.cost.equivalent > 0 ? `${none} The subscription part is not spend.` : none;
   }
   if (r.cost.equivalent > 0) return `${costCellText(r.cost)}: the subscription part is not spend`;
@@ -126,6 +127,75 @@ function Body({ r, nested, onToggle }: { r: UsageTableRow; nested: boolean; onTo
   );
 }
 
+function Head({ first }: { first: string }) {
+  return (
+    <thead>
+      <tr className="border-b border-line">
+        <th scope="col" className="h-row w-full px-2 text-left text-xs font-normal text-fg-3">
+          {first}
+        </th>
+        <th scope="col" className={cn(TH, WIDE)}>
+          Input
+        </th>
+        <th scope="col" className={cn(TH, WIDE)}>
+          Cached
+        </th>
+        <th scope="col" className={cn(TH, WIDE)}>
+          Output
+        </th>
+        <th scope="col" className={TH}>
+          Total
+        </th>
+        <th scope="col" className={cn(TH, WIDE)}>
+          Requests
+        </th>
+        <th scope="col" className={cn(TH, WIDE)}>
+          Cost
+        </th>
+        <th scope="col" aria-label="Share" className={cn("w-16", WIDE)} />
+      </tr>
+    </thead>
+  );
+}
+
+const BAR_W = ["56%", "40%", "64%", "48%"];
+
+/**
+ * The table while its rows load (re-test 4, layout shift): the same header, `rows` rows of the real row height (with the
+ * narrow layout's second line), the totals row and the CSV line, so the answer replaces it without moving its edges.
+ */
+export function UsageTableSkeleton({ first = "", rows }: { first?: string; rows: number }) {
+  return (
+    <div aria-hidden className="@container/utable flex min-w-0 flex-col">
+      <table className="w-full table-auto border-collapse text-sm">
+        <Head first={first} />
+        <tbody>
+          {Array.from({ length: rows + 1 }, (_, i) => (
+            <tr key={i} className="h-row border-t border-line first:border-t-0">
+              <td className="w-full max-w-0 px-2 text-left">
+                <span className="flex h-5 items-center">
+                  <Skeleton width={i === rows ? "24%" : (BAR_W[i % BAR_W.length] ?? "50%")} />
+                </span>
+                <span className="invisible hidden pb-1 text-xs @max-xl/utable:block">0</span>
+              </td>
+              <td className={cn(TD, WIDE)} />
+              <td className={cn(TD, WIDE)} />
+              <td className={cn(TD, WIDE)} />
+              <td className={TD}>
+                <Skeleton width={32} className="ml-auto" />
+              </td>
+              <td className={cn(TD, WIDE)} />
+              <td className={cn(TD, WIDE)} />
+              <td className={cn("w-16 px-2", WIDE)} />
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="h-row" />
+    </div>
+  );
+}
+
 /**
  * Decision 86 a: one table, a row per model / agent / day / project — Input · Cached · Output · Total · Requests · Cost
  * and a share bar, a totals row that is the sum of the rows shown, compact numbers with the full value in the tooltip,
@@ -159,32 +229,7 @@ export function UsageTable({
   return (
     <div className="@container/utable flex min-w-0 flex-col">
       <table aria-label={label} className="w-full table-auto border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-line">
-            <th scope="col" className="h-row w-full px-2 text-left text-xs font-normal text-fg-3">
-              {first}
-            </th>
-            <th scope="col" className={cn(TH, WIDE)}>
-              Input
-            </th>
-            <th scope="col" className={cn(TH, WIDE)}>
-              Cached
-            </th>
-            <th scope="col" className={cn(TH, WIDE)}>
-              Output
-            </th>
-            <th scope="col" className={TH}>
-              Total
-            </th>
-            <th scope="col" className={cn(TH, WIDE)}>
-              Requests
-            </th>
-            <th scope="col" className={cn(TH, WIDE)}>
-              Cost
-            </th>
-            <th scope="col" aria-label="Share" className={cn("w-16", WIDE)} />
-          </tr>
-        </thead>
+        <Head first={first} />
         {rows.map((r) => (
           <tbody key={r.key} className="border-t border-line first:border-t-0">
             <Body r={r} nested={false} onToggle={onToggle} />

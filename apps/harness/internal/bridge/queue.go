@@ -3,7 +3,7 @@ package bridge
 import "net/http"
 
 func (s *Server) getQueue(w http.ResponseWriter, r *http.Request) {
-	q, err := s.svc.Queue(r.Context(), r.PathValue("pid"))
+	q, err := s.svc.SessionQueueState(r.Context(), r.PathValue("pid"), r.PathValue("sid"))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -18,7 +18,7 @@ func (s *Server) editQueued(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	m, err := s.svc.EditQueued(r.Context(), r.PathValue("pid"), r.PathValue("qid"), in.Text)
+	m, err := s.svc.EditSessionQueued(r.Context(), r.PathValue("pid"), r.PathValue("sid"), r.PathValue("qid"), in.Text)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -27,7 +27,7 @@ func (s *Server) editQueued(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) removeQueued(w http.ResponseWriter, r *http.Request) {
-	if err := s.svc.RemoveQueued(r.Context(), r.PathValue("pid"), r.PathValue("qid")); err != nil {
+	if err := s.svc.RemoveSessionQueued(r.Context(), r.PathValue("pid"), r.PathValue("sid"), r.PathValue("qid")); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -35,7 +35,7 @@ func (s *Server) removeQueued(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) clearQueue(w http.ResponseWriter, r *http.Request) {
-	if err := s.svc.RemoveQueued(r.Context(), r.PathValue("pid"), ""); err != nil {
+	if err := s.svc.RemoveSessionQueued(r.Context(), r.PathValue("pid"), r.PathValue("sid"), ""); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -43,7 +43,7 @@ func (s *Server) clearQueue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) resumeQueue(w http.ResponseWriter, r *http.Request) {
-	if err := s.svc.ResumeQueue(r.Context(), r.PathValue("pid")); err != nil {
+	if err := s.svc.ResumeSessionQueue(r.Context(), r.PathValue("pid"), r.PathValue("sid")); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -59,7 +59,7 @@ func (s *Server) sendNow(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	steered, err := s.svc.SendNow(r.Context(), r.PathValue("pid"), r.PathValue("qid"), in.Interrupt)
+	steered, err := s.svc.SendNowSession(r.Context(), r.PathValue("pid"), r.PathValue("sid"), r.PathValue("qid"), in.Interrupt)
 	if err != nil {
 		writeErr(w, err)
 		return

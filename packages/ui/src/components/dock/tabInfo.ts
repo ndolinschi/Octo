@@ -2,7 +2,7 @@ import { File, type LucideIcon } from "lucide-react";
 import { currentTitle } from "../../lib/sessions/current";
 import { roleText } from "../../lib/orchestrator";
 import { GLYPH } from "../primitives/glyphs";
-import type { ProjectState } from "@octo/agent-client";
+import { sessionRoot, type ProjectState } from "@octo/agent-client";
 import type { OpenFile } from "../../state/code";
 import { middleTruncate } from "../../lib/format";
 import { fileIcon } from "../primitives/fileIcons";
@@ -46,6 +46,34 @@ function firstWords(text: string, n = 6): string {
   return words.length > n ? `${words.slice(0, n).join(" ")}…` : words.join(" ");
 }
 
+type ConversationCtx = { state: ProjectState; projectName?: string | undefined; orchestratorId: string | undefined };
+
+/**
+ * A conversation tab: Chat, or a main session's own tab (decision 96). Decision 63/67: named after the project, the dim part
+ * the session ("Project / Session"); the state ring is its root agent's.
+ */
+function conversationInfo(ctx: ConversationCtx, sessionId: string | null): TabInfo {
+  const root = (sessionId !== null ? sessionRoot(ctx.state, sessionId) : "") || (sessionId === ctx.state.sessions.defaultId ? ctx.orchestratorId : undefined);
+  const status = root ? ctx.state.agents[root]?.status : undefined;
+  const running = status === "running";
+  const name = ctx.projectName || "Conversation";
+  // The session's title (project sessions), else its root's own.
+  const own = root ? (ctx.state.agents[root]?.title?.trim() ?? "") : "";
+  const topic = currentTitle(ctx.state.sessions.list, sessionId, own).trim();
+  const detail = topic && topic !== name ? middleTruncate(topic, 40) : undefined;
+  const queued = sessionId !== null && ctx.state.sessions.list.find((x) => x.id === sessionId)?.state === "queued";
+  return {
+    label: middleTruncate(name, 28),
+    ...(detail ? { detail } : {}),
+    name: detail ? `${name} / ${topic}` : name,
+    title: `${name}: the project's conversation${topic ? ` — ${topic}` : ""}`,
+    icon: GLYPH.chat,
+    status: running ? "running" : null,
+    glyph: running ? "working" : status === "failed" ? "needs" : queued ? "queued" : null,
+    comments: 0,
+  };
+}
+
 /** The tool tabs as the "+" picker lists them (decision 25), in that order. */
 export const TOOL_TABS = TOOLS;
 
@@ -55,6 +83,8 @@ export function tabInfo(
     state: ProjectState;
     projectName?: string | undefined;
     orchestratorId: string | undefined;
+    /** Decision 96: the main session the conversation tab (Chat) shows; null: the default one. */
+    chatSessionId?: string | null;
     file(key: FileKey): OpenFile | undefined;
     comments(key: FileKey): number;
     /** The state of a project command's latest run (decision 68). */
@@ -63,27 +93,7 @@ export function tabInfo(
 ): TabInfo {
   const ref = parseTab(tab);
   if (!ref) return { label: tab, title: tab, icon: File, status: null, glyph: null, comments: 0 };
-  if (ref.kind === "chat") {
-    const status = ctx.orchestratorId ? ctx.state.agents[ctx.orchestratorId]?.status : undefined;
-    const running = status === "running";
-    // Decision 63: named after what is in it — the project's conversation.
-    const name = ctx.projectName || "Conversation";
-    // Decision 67: the tab is the project's breadcrumb — "Project / the latest task" (dim); the title is the orchestrator's own.
-    // The current session's title (project sessions), else the orchestrator's own.
-    const own = ctx.orchestratorId ? (ctx.state.agents[ctx.orchestratorId]?.title?.trim() ?? "") : "";
-    const topic = currentTitle(ctx.state.sessions.list, ctx.state.sessions.currentId, own).trim();
-    const detail = topic && topic !== name ? middleTruncate(topic, 40) : undefined;
-    return {
-      label: middleTruncate(name, 28),
-      ...(detail ? { detail } : {}),
-      name: detail ? `${name} / ${topic}` : name,
-      title: `${name}: the project's conversation${topic ? ` — ${topic}` : ""}`,
-      icon: GLYPH.chat,
-      status: running ? "running" : null,
-      glyph: running ? "working" : status === "failed" ? "needs" : null,
-      comments: 0,
-    };
-  }
+  if (ref.kind === "chat") return conversationInfo(ctx, ctx.chatSessionId ?? ctx.state.sessions.defaultId);
   if (ref.kind === "tool") {
     const tool = TOOLS[ref.tool];
     return tool ? { ...tool, status: null, glyph: null, comments: 0 } : { label: tab, title: tab, icon: File, status: null, glyph: null, comments: 0 };
@@ -104,6 +114,8 @@ export function tabInfo(
   }
   if (ref.kind === "session") {
     const s = ctx.state.sessions.list.find((x) => x.id === ref.sessionId);
+    // A main session's tab is a conversation like Chat (decision 96); an agent session's is its detail.
+    if (s?.kind === "main") return conversationInfo(ctx, s.id);
     const title = s?.title.trim() || "Session";
     const working = s?.state === "working" || s?.state === "waiting";
     return {

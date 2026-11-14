@@ -30,6 +30,8 @@ type Summary struct {
 	// approval or a form waits, "failed" when the last turn failed (the error is
 	// on the orchestrator's agent row) and nothing waits, else "none".
 	Attention string `json:"attention"`
+	// Sessions counts the project's main sessions (not archived) by live state (schema 15).
+	Sessions SessionsSummary `json:"sessions"`
 }
 
 type Project struct {
@@ -67,6 +69,9 @@ type Project struct {
 	// ModelsUnavailable lists the stored models whose provider cannot run them
 	// now (never an error: the project is still readable and editable).
 	ModelsUnavailable []ModelIssue `json:"models_unavailable"`
+	// SessionSettings is the project's sessions setting: how many of its main sessions run at once
+	// (max_running), where a new session works and how sessions coordinate (the last two: later phases).
+	SessionSettings projectstore.SessionsSettings `json:"session_settings"`
 	// AcceptsImages says whether the project's orchestrator takes images:
 	// true for the built-in loop, what the ACP agent advertised
 	// (promptCapabilities.image) once it has been started, null before that
@@ -124,23 +129,28 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 		p.SpentUSD = &spent
 	}
 	failed := false
+	// orchestrator_agent_id is the default session's root (schema 15: every main session has its own root).
+	if root, err := db.RootAgent(ctx, ""); err == nil {
+		p.OrchestratorAgentID = root.ID
+	}
 	for _, a := range agents {
 		if a.ParentID == nil {
-			p.OrchestratorAgentID = a.ID
 			if a.Status == projectstore.StatusRunning {
 				p.Status = "running"
 			}
-			// The orchestrator is idle after a failed turn; its error (not a
-			// warning) says it failed, until the next request resets it.
-			failed = a.Status == projectstore.StatusFailed ||
+			// A root is idle after a failed turn; its error (not a warning) says it failed, until its
+			// session's next request resets it.
+			failed = failed || a.Status == projectstore.StatusFailed ||
 				(a.Error != nil && *a.Error != "" && !strings.HasPrefix(*a.Error, "warning:"))
 		}
 	}
+	p.SessionSettings = db.SessionsSettings(ctx)
 	// Read last: a project whose orchestrator row says idle is still running until
 	// turn.finished has been published (see Orchestrator.finish).
 	if p.Status == "idle" && s.turns.Active(info.ID) {
 		p.Status = "running"
 	}
+	p.Sessions = s.summarizeSessions(ctx, db)
 	switch {
 	case p.NeedsYou:
 		p.Attention = "needs_you"

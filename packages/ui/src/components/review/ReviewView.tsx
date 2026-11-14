@@ -15,7 +15,7 @@ import { Checkbox } from "../primitives/Checkbox";
 import { SkeletonRows } from "../primitives/InfoList";
 import { Presence } from "../primitives/Presence";
 import { ApartThreads } from "./ApartThreads";
-import { CheckoutBanner, CheckoutMenu, DirtyDialog } from "./Checkout";
+import { CheckoutBanner, CheckoutMenu, checkoutItems, DirtyDialog } from "./Checkout";
 import { Composer, type ComposerValue } from "./Composer";
 import { DiffPane } from "./DiffPane";
 import { FileList, FilePicker } from "./FileList";
@@ -27,6 +27,7 @@ import type { DiffZone, Marked, RevealRequest, ReviewMonaco } from "./ReviewDiff
 import { SubmitSheet } from "./SubmitSheet";
 import { ThreadCard, type ThreadActions } from "./ThreadCard";
 import { useCheckout } from "./useCheckout";
+import { useCode } from "../../state/code";
 import { useFileDiff, useReview, type ReviewData } from "./useReview";
 import { useReviewActions } from "./useReviewActions";
 import { useReviewKeys } from "./useReviewKeys";
@@ -92,6 +93,7 @@ function Ready(props: {
   const actions = useReviewActions(api, reviewId, props.patch, props.reload);
   const threads = useThreads(api, reviewId);
   const checkout = useCheckout(api, review);
+  const code = useCode();
   const [now] = useState(() => Date.now());
   const threadList = useMemo<ReviewThread[]>(() => (threads.load.status === "ready" ? threads.load.data.threads : []), [threads.load]);
   const unresolved = threads.load.status === "ready" ? unresolvedTotal(threads.load.data.unresolved_by_path) : 0;
@@ -232,6 +234,19 @@ function Ready(props: {
     if (w.line !== undefined) setHint(`${w.path}:${w.line}. Press j or k to move between changes.`);
   };
 
+  // The panel returns focus to its opener; opened from the header's "⋯" that opener is gone, so the review takes it back
+  // (its keys keep working).
+  const closePending = () => {
+    setPendingOpen(false);
+    // Two frames: the panel's own return to its opener runs in the first.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const now = document.activeElement;
+        if (!now || now === document.body) root.current?.focus({ preventScroll: true });
+      }),
+    );
+  };
+
   // The composer's field held focus; the review's keys need it back on the review when the box closes.
   const closeComposer = () => {
     setComposer(null);
@@ -254,14 +269,7 @@ function Ready(props: {
   };
 
   const composerEl = composer && file && (
-    <ComposerFor
-      key={composer.n}
-      state={composer.state}
-      path={file.path}
-      after={after}
-      onSave={(v) => saveComposer(composer, v)}
-      onCancel={() => setComposer(null)}
-    />
+    <ComposerFor key={composer.n} state={composer.state} path={file.path} after={after} onSave={(v) => saveComposer(composer, v)} onCancel={closeComposer} />
   );
 
   const here = comments.filter((c) => c.path === path && c.line !== undefined);
@@ -286,13 +294,14 @@ function Ready(props: {
   const renderZone = (key: string) => {
     const t = threadList.find((x) => x.id === key);
     return t ? (
-      <div className="px-3 py-2 font-sans">
+      // R4: the card starts on the code's left edge and keeps a reading width; no side inset of its own.
+      <div className="max-w-thread py-2 pr-4 font-sans">
         <ThreadCard thread={t} pending={pendingReplies.get(t.id) ?? []} actions={threadActions} now={now} />
       </div>
     ) : null;
   };
   const kit = props.commands;
-  const pickerEl = narrow && <FilePicker sections={shownSections} selected={path} onSelect={select} onStep={stepFileBy} />;
+  const pickerEl = narrow ? <FilePicker sections={shownSections} selected={path} onSelect={select} /> : undefined;
 
   const body = (
     <div ref={root} tabIndex={-1} className="relative flex h-full min-h-0 min-w-0 flex-col bg-panel outline-none" data-review>
@@ -304,18 +313,20 @@ function Ready(props: {
         behind={behind}
         overviewOpen={overview}
         refreshing={refreshing}
+        compact={narrow}
         runs={kit ? <kit.Bar /> : null}
         checkout={<CheckoutMenu checkout={checkout} review={review} />}
+        checkoutItems={checkoutItems(checkout, review)}
         onOverview={() => setOverview((o) => !o)}
         onPending={() => setPendingOpen((o) => !o)}
         onSubmit={() => setSheet(true)}
         onRefresh={() => void refresh()}
         onBack={props.onBack}
       />
-      {overview && <Overview review={review} />}
+      {overview && <Overview review={review} {...(narrow ? { facts: `${data.files.viewed_count} of ${review.totals.files} viewed` } : {})} />}
       <CheckoutBanner checkout={checkout} />
       {threads.load.status === "error" && (
-        <div role="status" className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line px-3 py-1.5 text-sm">
+        <div role="status" className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line px-4 py-1.5 text-sm">
           <span className="text-fg-2">The existing comments did not load: {threads.load.message}.</span>
           <Button size="sm" variant="secondary" onClick={threads.refresh} className="max-md:h-10">
             Try again
@@ -375,10 +386,13 @@ function Ready(props: {
                 setEdge(null);
               }}
               composer={composerEl}
-              picker={pickerEl}
+              {...(pickerEl ? { picker: pickerEl, onStepFile: (dir: 1 | -1) => stepFileBy(dir) } : {})}
+              // The review's code: its read-only worktree while it is the project's workspace, else the project's folder.
+              onOpenAt={(line) => code.openFile(checkout.inWorkspace ? "@review" : review.folder, file.path, line ? { line, column: 1 } : undefined)}
+              openWhere={checkout.inWorkspace ? "in the review's workspace" : `in ${review.folder}`}
             />
             {hint && (
-              <p role="status" className={cn("shrink-0 border-t border-line px-3 py-1.5 text-xs text-fg-2")}>
+              <p role="status" className={cn("shrink-0 border-t border-line px-4 py-1.5 text-xs text-fg-2")}>
                 {hint}
               </p>
             )}
@@ -408,7 +422,7 @@ function Ready(props: {
             setPendingOpen(false);
             setComposer({ n: ++seq.current, state: { kind: "general" } });
           }}
-          onClose={() => setPendingOpen(false)}
+          onClose={closePending}
         />
       )}
       <Presence show={sheet}>
@@ -512,7 +526,7 @@ function Banners(props: {
   return (
     <>
       {props.review.state === "closed" && (
-        <div role="status" className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line px-3 py-1.5 text-sm">
+        <div role="status" className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line px-4 py-1.5 text-sm">
           <span className="text-fg-2">This review is closed. You can read it; reopen it to comment.</span>
           <Button size="sm" variant="secondary" disabled={busy} onClick={() => void reopen()}>
             Reopen
@@ -521,7 +535,7 @@ function Banners(props: {
         </div>
       )}
       {props.newCommits && (
-        <div role="status" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-3 py-1.5 text-sm">
+        <div role="status" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-1.5 text-sm">
           <span className="text-warn">
             New commits since your review: {props.count} {props.count === 1 ? "file" : "files"} changed.
           </span>
@@ -536,9 +550,9 @@ function Banners(props: {
 function ReviewSkeleton() {
   return (
     <div className="flex h-full min-h-0 flex-col" aria-busy aria-label="Loading the review">
-      <div className="flex shrink-0 flex-col gap-2 border-b border-line px-3 py-3">
-        <div className="h-5 w-2/5 rounded-sm bg-hover" />
-        <div className="h-3 w-3/5 rounded-sm bg-hover" />
+      <div className="flex h-16 shrink-0 flex-col justify-center gap-3 border-b border-line pr-4 pl-11">
+        <div className="h-3 w-2/5 rounded-sm bg-hover" />
+        <div className="h-2 w-3/5 rounded-sm bg-hover" />
       </div>
       <div className="flex min-h-0 flex-1">
         <div className="shrink-0 border-r border-line max-md:hidden" style={{ width: FILES_WIDTH }}>

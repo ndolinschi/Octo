@@ -30,13 +30,72 @@ function useSettingsView() {
     };
   }, [bridge]);
   const save = async (update: SettingsUpdate) => {
-    if (!bridge.putSettings) throw new Error("This connection cannot change the harness's settings");
+    if (!bridge.putSettings) throw new Error("This connection cannot change Octo's settings");
     const view = await bridge.putSettings(update);
     setLoad({ status: "ready", view });
     await refreshProviders(bridge);
   };
   return { load, save };
 }
+
+/** Prose from the harness or a plugin, where text in backticks is code: shown as inline code, never as literal backticks. */
+export function Rich({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/`([^`\n]+)`/).map((part, i) =>
+        i % 2 === 1 ? (
+          <code key={i} className="font-mono text-xs text-fg">
+            {part}
+          </code>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
+/** Where to get a key, for the keys we know (the harness sends no URL): plain link text, opened outside the app. */
+const KEY_PAGES: Record<string, { href: string; host: string }> = {
+  api: { href: "https://console.anthropic.com/settings/keys", host: "console.anthropic.com" },
+  router: { href: "https://openrouter.ai/keys", host: "openrouter.ai" },
+};
+
+export function KeyLink({ kind }: { kind: string }) {
+  const page = KEY_PAGES[kind];
+  if (!page) return null;
+  return (
+    <p className="text-xs text-fg-3">
+      Get a key at{" "}
+      <a href={page.href} target="_blank" rel="noreferrer noopener" className="text-link underline-offset-2 hover:underline">
+        {page.host}
+      </a>
+      {kind === "router" ? " or your router's provider." : "."}
+    </p>
+  );
+}
+
+/** The sentence behind a "Details" fold: the commands are already shown as copy lines (decision 89 d: no "set X" as prose). */
+function Details({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col gap-1">
+      <div>
+        <Button size="sm" variant="quiet" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="-ml-2">
+          {open ? "Hide details" : "Details"}
+        </Button>
+      </div>
+      {open && (
+        <p className="text-sm text-fg-2">
+          <Rich text={text} />
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** An environment variable name in prose (`COPILOT_GITHUB_TOKEN`): an instruction that belongs under "Details". */
+const ENV_VAR = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/;
 
 /** An agent's install and login steps as commands to copy (decision 53); a ready agent shows its models. */
 export function AgentSteps({ provider: p }: { provider: Provider }) {
@@ -53,7 +112,11 @@ export function AgentSteps({ provider: p }: { provider: Provider }) {
   steps.push({ title: "Log in", text: p.login_hint, commands: commandsIn(p.login_hint) });
   return (
     <div className="flex flex-col gap-4">
-      {extraReason(p) && <p className="text-xs text-fg-3">{extraReason(p)}</p>}
+      {extraReason(p) && (
+        <p className="text-xs text-fg-3">
+          <Rich text={extraReason(p)} />
+        </p>
+      )}
       <ol className="flex flex-col gap-4">
         {steps.map((s, i) => (
           <li key={s.title} className="flex flex-col gap-2">
@@ -61,10 +124,17 @@ export function AgentSteps({ provider: p }: { provider: Provider }) {
               {steps.length > 1 ? `${i + 1}. ` : ""}
               {s.title}
             </h3>
-            {s.text && <p className="text-sm text-fg-2">{s.text}</p>}
             {s.commands.map((c) => (
               <CommandLine key={c} command={c} label={`${s.title.toLowerCase()} command`} />
             ))}
+            {s.text &&
+              (s.commands.length > 0 || ENV_VAR.test(s.text) ? (
+                <Details text={s.text} />
+              ) : (
+                <p className="text-sm text-fg-2">
+                  <Rich text={s.text} />
+                </p>
+              ))}
             {!s.text && <p className="text-sm text-fg-3">The agent's plugin gives no instructions; see its documentation.</p>}
           </li>
         ))}
@@ -87,11 +157,16 @@ export function KeySteps({ provider, upstream }: { provider: Provider; upstream:
     );
   if (load.status === "unavailable" || load.status === "error")
     return (
-      <p role={load.status === "error" ? "alert" : undefined} className="text-sm text-fg-2">
-        {load.status === "error" ? `${load.message}. ` : ""}This connection cannot set keys: the harness accepts them only from this machine. Set{" "}
-        <code className="font-mono text-xs">{provider.kind === "api" ? SETTING_IDS.anthropicApiKey : SETTING_IDS.routerUpstreamKey}</code> in the harness's
-        environment instead.
-      </p>
+      // Decision 89 d: the sentence in plain words; the variable to set is under "Details", like the agents' steps.
+      <div role={load.status === "error" ? "alert" : undefined} className="flex flex-col gap-1">
+        <p className="text-sm text-fg-2">
+          {load.status === "error" ? `${load.message}. ` : ""}This connection cannot set keys: Octo's local service accepts them only from this computer. Set
+          the key on the computer it runs on.
+        </p>
+        <Details
+          text={`Set \`${provider.kind === "api" ? SETTING_IDS.anthropicApiKey : SETTING_IDS.routerUpstreamKey}\` in the environment of Octo's local service, then restart it.`}
+        />
+      </div>
     );
   const view = load.view;
   const get = (id: string) => view.settings.find((s) => s.id === id);
@@ -121,9 +196,10 @@ export function KeySteps({ provider, upstream }: { provider: Provider; upstream:
           onSave={(value) => settings.save({ set: { [keyId]: value } })}
         />
       )}
+      {key?.editable !== false && <KeyLink kind={keyId === SETTING_IDS.anthropicApiKey ? "api" : "router"} />}
       {restart && (
         <p role="status" className="flex flex-wrap items-center gap-x-2 text-xs text-warn">
-          Saved. The harness applies keys and the router switch after a restart.
+          Saved. Keys and the router switch apply after a restart.
           {host.restart ? (
             <Button variant="link" size="xs" onClick={host.restart}>
               Restart now

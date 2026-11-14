@@ -138,19 +138,27 @@ func TestSessionLifecycle(t *testing.T) {
 	if _, _, err := db.RecordExchange(ctx, Exchange{TurnID: m1.ID, Request: "hello", Answer: "hi", Status: ExchangeCompleted, StartedAt: Now()}, SessionGap); err != nil {
 		t.Fatal(err)
 	}
-	// A boundary starts a second session, which is current; the first one can be resumed.
+	// A boundary starts a second session, which is current (the default) and has its own root agent (schema 15);
+	// the first one can be made the default again.
 	prev, cur, err := db.StartNewSession(ctx, "clear", "sum", "stored", time.Now())
 	if err != nil || prev != first || cur == first {
 		t.Fatalf("boundary = %q %q %v", prev, cur, err)
 	}
-	m2, _ := db.AppendMessage(ctx, orch.ID, "user", textRaw("second"))
+	root2, err := db.RootAgent(ctx, cur)
+	if err != nil || root2.ID == orch.ID || root2.SessionID != cur {
+		t.Fatalf("root of the new session = %+v %v", root2, err)
+	}
+	if d, _ := db.Orchestrator(ctx); d.ID != root2.ID {
+		t.Fatalf("the default's root = %s, want %s", d.ID, root2.ID)
+	}
+	m2, _ := db.AppendMessage(ctx, root2.ID, "user", textRaw("second"))
 	if m2.SessionID != cur {
 		t.Fatalf("second message in %q, want %q", m2.SessionID, cur)
 	}
 	if _, _, err := db.RecordExchange(ctx, Exchange{TurnID: m2.ID, Request: "second", Answer: "ok", Status: ExchangeCompleted, StartedAt: Now()}, SessionGap); err != nil {
 		t.Fatal(err)
 	}
-	live, _ := db.LiveMessages(ctx, orch.ID)
+	live, _ := db.LiveMessages(ctx, root2.ID)
 	if len(live) != 1 || live[0].ID != m2.ID {
 		t.Fatalf("live messages of the new session = %+v", live)
 	}
@@ -179,7 +187,7 @@ func TestSessionLifecycle(t *testing.T) {
 	if _, err := db.SetCurrentSession(ctx, cur); err != nil {
 		t.Fatal(err)
 	}
-	if c, ok, _ := db.LatestCompaction(ctx, orch.ID); ok {
+	if c, ok, _ := db.LatestCompaction(ctx, root2.ID); ok {
 		t.Fatalf("the other session sees %+v", c)
 	}
 	// The current one cannot be archived or deleted; another one can.

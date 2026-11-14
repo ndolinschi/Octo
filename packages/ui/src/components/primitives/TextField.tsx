@@ -1,4 +1,4 @@
-import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { cn } from "../../lib/cn";
 import { CONTROL, FIELD, type ControlSize } from "../../lib/controls";
 
@@ -14,14 +14,26 @@ type Variant = "default" | "bare";
  *
  * - `size`: xs 24, sm 28, md 32 (default), lg 40; at touch widths every size is 40px tall.
  * - `variant`: `default` (framed) or `bare` (no frame: for an input that sits inside another frame).
+ * - `leading`: a short fixed adornment inside the frame, before the text (a currency sign: "$"); decorative, so the label
+ *   and placeholder must say what it means. `className` then styles the wrapper, which carries the width.
  *
  * Not for: search (`SearchField`), a choice from a list (`Select`), several lines (`TextArea`), a label (`Field`).
  */
-export const TextField = forwardRef<HTMLInputElement, Omit<InputHTMLAttributes<HTMLInputElement>, "size"> & { size?: ControlSize; variant?: Variant }>(
-  function TextField({ size = "md", variant = "default", className, ...rest }, ref) {
-    return <input ref={ref} className={cn("w-full", variant === "bare" ? BARE : cn(FIELD, "px-3 touch:h-ctl-lg"), CONTROL[size].h, className)} {...rest} />;
-  },
-);
+export const TextField = forwardRef<
+  HTMLInputElement,
+  Omit<InputHTMLAttributes<HTMLInputElement>, "size"> & { size?: ControlSize; variant?: Variant; leading?: ReactNode }
+>(function TextField({ size = "md", variant = "default", leading, className, ...rest }, ref) {
+  const look = cn("w-full", variant === "bare" ? BARE : cn(FIELD, "px-3 touch:h-ctl-lg"), CONTROL[size].h);
+  if (leading === undefined) return <input ref={ref} className={cn(look, className)} {...rest} />;
+  return (
+    <span className={cn("relative block w-full", className)}>
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-fg-3 touch:text-input-touch">
+        {leading}
+      </span>
+      <input ref={ref} className={cn(look, "pl-6 touch:pl-7")} {...rest} />
+    </span>
+  );
+});
 
 /**
  * Multi-line text entry: the same look and focus rule as `TextField`; grows by the user's drag (`resize-y`).

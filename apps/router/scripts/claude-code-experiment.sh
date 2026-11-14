@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run Claude Code with Octo autoroute + Mistral tiers.
+# Run Claude Code with Octo autoroute + the OpenRouter ladder tiers.
 # Keys from apps/router .env (via claude-code-env.sh). Session/artifacts under experiments/;
 # apps/router is added with --add-dir so reads of src/ still work.
 #

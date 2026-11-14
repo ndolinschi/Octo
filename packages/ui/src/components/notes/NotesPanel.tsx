@@ -2,10 +2,10 @@ import { Pin, Plus, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Note } from "@octo/agent-client";
 import { errorMessage } from "../../lib/format";
-import { filterNotes, indexFooter, noteFileName, sortNotes, titleFromFileName } from "../../lib/notes";
+import { formatDay } from "../../lib/memory/dates";
+import { filterNotes, indexFooter, noteFileName, noteLine, sortNotes, titleFromFileName } from "../../lib/notes";
 import { useProject } from "../../state/project";
 import { Button } from "../primitives/Button";
-import { EmptyState } from "../primitives/EmptyState";
 import { FileInput } from "../primitives/FileInput";
 import { Glyph } from "../primitives/Glyph";
 import { ListDetail } from "../primitives/ListDetail";
@@ -16,6 +16,7 @@ import { SearchField } from "../primitives/SearchField";
 import { NoteDetail } from "./NoteDetail";
 import { NoteEditor } from "./NoteEditor";
 import { useNoteDoc } from "./useNoteDoc";
+import { PanelPurpose } from "../shared/PanelPurpose";
 
 type Mode = { kind: "view" } | { kind: "edit" } | { kind: "new" };
 
@@ -119,6 +120,7 @@ export function NotesPanel() {
       <Panel
         name="notes"
         title="Notes"
+        lead={<PanelPurpose tool="notes" />}
         notice={problem ? <Notice tone="error">{problem}</Notice> : undefined}
         actions={
           <>
@@ -133,10 +135,11 @@ export function NotesPanel() {
             </Button>
           </>
         }
-        footer={indexFooter(state.notes)}
+        // An empty project has nothing to index: no footer then (B4).
+        {...(state.notes.length > 0 ? { footer: <NotesFooter notes={state.notes} /> } : {})}
       >
         {empty ? (
-          <EmptyState title="No notes yet">Decisions and facts saved while working appear here.</EmptyState>
+          <PanelEmpty title="No notes yet">Decisions and facts saved while working appear here, and agents read them when they are relevant.</PanelEmpty>
         ) : (
           <ListDetail
             label="Notes"
@@ -156,7 +159,7 @@ export function NotesPanel() {
                   <PanelEmpty>No note matches "{query}".</PanelEmpty>
                 </div>
               ) : (
-                shown.map((n) => <NoteRow key={n.id} note={n} active={current?.id === n.id && mode.kind !== "new"} onPick={() => select(n.id)} />)
+                shown.map((n) => <NoteRow key={n.id} note={n} now={now} active={current?.id === n.id && mode.kind !== "new"} onPick={() => select(n.id)} />)
               )
             }
           />
@@ -166,25 +169,41 @@ export function NotesPanel() {
   );
 }
 
-function NoteRow(props: { note: Note; active: boolean; onPick(): void }) {
+/**
+ * P3 (polish step 5): the anatomy of every tool list. A 16px glyph column (the pin of a pinned note), the title, and a dim
+ * second line: the description with its tags after it (they give way, never the title), the date at the right.
+ */
+function NoteRow(props: { note: Note; now: number; active: boolean; onPick(): void }) {
   const { note } = props;
+  const line = noteLine(note);
   return (
     <ListRow
       role="listitem"
       size="md"
       selected={props.active}
-      title={note.title}
-      description={note.description || "No description"}
-      meta={
-        note.pinned || note.tags.length > 0 ? (
-          <span className="inline-flex items-center gap-1">
-            {note.pinned && <Glyph icon={Pin} size={14} aria-label="Pinned" />}
-            {note.tags.map((t) => `#${t}`).join(" ")}
-          </span>
-        ) : undefined
+      // The glyph column holds the pin only: a notebook on every row was noise, an empty slot keeps the text edge.
+      leading={note.pinned ? <Glyph icon={Pin} size={14} /> : null}
+      title={
+        <>
+          {note.pinned && <span className="sr-only">Pinned: </span>}
+          {note.title}
+        </>
+      }
+      description={
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="min-w-0 flex-1 truncate">{line}</span>
+          <span className="shrink-0 tabular-nums">{formatDay(note.updated_at, props.now)}</span>
+        </span>
       }
       tip={note.description_auto ? "Auto description: taken from the first line of the note" : note.title}
       onClick={props.onPick}
+      trailing={<span aria-hidden className="size-6" />}
     />
   );
+}
+
+/** The index line in plain words; the counts are its tooltip (walk B13). */
+function NotesFooter({ notes }: { notes: Parameters<typeof indexFooter>[0] }) {
+  const { text, tip } = indexFooter(notes);
+  return <span title={tip}>{text}</span>;
 }

@@ -1,12 +1,14 @@
-import { readable } from "../../lib/errors/plain";
+import { plainError } from "../../lib/errors/plain";
 import type { Agent } from "@octo/agent-client";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { agentGroups, foldLine, type AgentNode } from "../../lib/agentGroups";
-import { cn } from "../../lib/cn";
-import { agentDuration, formatDuration } from "../../lib/format";
-import { useNow, useRowKeys } from "../../lib/hooks";
+import { formatDuration } from "../../lib/format";
+import { agentDuration } from "../../lib/duration";
+import { useNow } from "../../lib/hooks";
+import { useRowKeys } from "../../lib/hooksMore";
 import { agentActivity } from "../../lib/orchestrator";
+import { agentWaiting, WAIT_TEXT } from "../../lib/agentWaiting";
 import { agentGlyph } from "../../lib/stateGlyph";
 import { useProject } from "../../state/project";
 import { toolTab } from "../../state/workspace/layout";
@@ -14,12 +16,13 @@ import { isBooleanRecord, isNumber, slot } from "../../state/workspace/tabMemory
 import { useTabMemory } from "../../state/workspace/useTabMemory";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Button } from "../primitives/Button";
-import { EmptyState } from "../primitives/EmptyState";
 import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
-import { Panel, PanelBody } from "../primitives/Panel";
+import { ProviderMark } from "../primitives/ProviderMark";
+import { Panel, PanelBody, PanelEmpty } from "../primitives/Panel";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { StateGlyph } from "../primitives/StateGlyph";
+import { PanelPurpose } from "../shared/PanelPurpose";
 
 const AGENTS_TAB = toolTab("agents");
 const EXPANDED = slot("expanded", isBooleanRecord);
@@ -60,7 +63,7 @@ export function AgentsPanel() {
         <AgentRow agent={n.agent} now={now} quiet={!running} onOpen={(alt) => ws.openAgent(n.agent.id, { otherSide: alt })} />
         {fold && (
           <ListRow
-            size="sm"
+            size="md"
             tone="quiet"
             leading={<Glyph icon={open ? ChevronDown : ChevronRight} size={14} />}
             expanded={open}
@@ -100,35 +103,41 @@ export function AgentsPanel() {
   const empty = groups.running.length + groups.finished.length === 0;
   return (
     <div data-agents className="h-full min-h-0">
-      <Panel name="agents" title="Agents" meta={groups.running.length > 0 ? `${groups.running.length} running` : undefined}>
-        <PanelBody ref={scroller} onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)} className={cn(empty && "flex flex-col")}>
-          <div ref={rows} className={cn("flex w-full max-w-details flex-col gap-4", empty && "min-h-0 flex-1")}>
-            {empty && (
-              <EmptyState
-                title="No agents yet"
-                actions={
-                  <Button variant="quiet" data-row onClick={ws.focusChat}>
-                    Give the project a task
-                  </Button>
-                }
-              >
-                They appear here when a request is split into tasks.
-              </EmptyState>
-            )}
-            {groups.running.length > 0 && (
-              <section aria-labelledby="agents-running" className="flex flex-col">
-                <SectionHeader inset id="agents-running">{`Running ${groups.running.length}`}</SectionHeader>
-                <ul className="flex flex-col">{groups.running.map((n) => node(n, true))}</ul>
-              </section>
-            )}
-            {groups.finished.length > 0 && (
-              <section aria-labelledby="agents-finished" className="flex flex-col">
-                <SectionHeader inset id="agents-finished">{`Finished ${groups.finished.length}`}</SectionHeader>
-                <ul className="flex flex-col">{groups.finished.map((n) => node(n, false))}</ul>
-              </section>
-            )}
-          </div>
-        </PanelBody>
+      <Panel
+        name="agents"
+        title="Agents"
+        lead={<PanelPurpose tool="agents" />}
+        meta={groups.running.length > 0 ? `${groups.running.length} running` : undefined}
+      >
+        {empty ? (
+          <PanelEmpty
+            title="No agents yet"
+            actions={
+              <Button variant="secondary" size="sm" onClick={ws.focusChat}>
+                Give the project a task
+              </Button>
+            }
+          >
+            They appear here when a request is split into tasks.
+          </PanelEmpty>
+        ) : (
+          <PanelBody ref={scroller} onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)}>
+            <div ref={rows} className="flex w-full max-w-details flex-col gap-4">
+              {groups.running.length > 0 && (
+                <section aria-labelledby="agents-running" className="flex flex-col">
+                  <SectionHeader inset id="agents-running">{`Running ${groups.running.length}`}</SectionHeader>
+                  <ul className="flex flex-col">{groups.running.map((n) => node(n, true))}</ul>
+                </section>
+              )}
+              {groups.finished.length > 0 && (
+                <section aria-labelledby="agents-finished" className="flex flex-col">
+                  <SectionHeader inset id="agents-finished">{`Finished ${groups.finished.length}`}</SectionHeader>
+                  <ul className="flex flex-col">{groups.finished.map((n) => node(n, false))}</ul>
+                </section>
+              )}
+            </div>
+          </PanelBody>
+        )}
       </Panel>
     </div>
   );
@@ -139,12 +148,22 @@ function AgentRow(props: { agent: Agent; now: number; quiet: boolean; via?: stri
   const a = props.agent;
   const running = a.status === "running";
   const duration = agentDuration(a, props.now);
-  const line = running ? agentActivity(state, a.id) : a.status === "failed" ? (a.error ? readable(a.error) : a.title) : a.title;
+  // NEW-3: an approval or a form of this agent waits for the person: that wins over what it was doing.
+  const wait = running ? agentWaiting(state, a.id) : null;
+  const line = wait
+    ? WAIT_TEXT[wait]
+    : running
+      ? agentActivity(state, a.id)
+      : a.status === "failed"
+        ? a.error
+          ? plainError(a.error).sentence
+          : a.title
+        : a.title;
   return (
     <ListRow
       size="md"
       tone={props.quiet ? "quiet" : "default"}
-      leading={<StateGlyph state={agentGlyph(a.status)} />}
+      leading={<StateGlyph state={wait ? "needs" : agentGlyph(a.status)} />}
       title={
         <>
           {props.via && <span className="mr-1.5 text-fg-3">↳ {props.via}</span>}
@@ -152,7 +171,13 @@ function AgentRow(props: { agent: Agent; now: number; quiet: boolean; via?: stri
           <span className="ml-2 text-xs text-fg-3">{line}</span>
         </>
       }
-      meta={duration !== null ? <span className="tabular-nums">{formatDuration(duration)}</span> : undefined}
+      // N9: the mark of the model's vendor (or the agent CLI it runs through) beside the time, as on the model chips.
+      meta={
+        <span className="flex items-center gap-1.5 tabular-nums">
+          {a.model && <ProviderMark id={a.model} label={a.model} size={14} />}
+          {duration !== null && formatDuration(duration)}
+        </span>
+      }
       tip={`${a.role}${a.title ? `: ${a.title}` : ""}${a.status === "failed" && a.error ? ` — failed: ${a.error}` : ""}\nOpens in its own tab`}
       onClick={(e) => props.onOpen(e.altKey)}
     />

@@ -1,9 +1,11 @@
-import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink, Pilcrow, Undo2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { ArrowLeft, ChevronDown, ChevronUp, CornerDownRight, ExternalLink, Pilcrow, Undo2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { useDelayedLoading } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import { kindLabel, kindLetter, splitPath, type DiffLayout } from "../../lib/v7/changes";
 import { Button, IconButton } from "../primitives/Button";
+import { IconButton as GoToButton } from "../primitives/IconButton";
+import { FloatRoom } from "../primitives/floatRoom";
 import { Spinner } from "../primitives/Status";
 import { DiffEditor, type DiffMonaco } from "./DiffEditor";
 import type { LineComment } from "./DiffComments";
@@ -32,7 +34,8 @@ export function DiffPanel(props: {
   onToggleWhitespace(): void;
   onRevert(): void;
   onRetry(): void;
-  onOpenFile?(): void;
+  /** Opens the file in the editor, at a line when given. */
+  onOpenFile?(line?: number): void;
   onAddComment?(c: LineComment): void;
 }) {
   const { file } = props.selection;
@@ -41,6 +44,7 @@ export function DiffPanel(props: {
   const reverted = props.row !== undefined && "reverted" in props.row;
   const reverting = props.row !== undefined && "reverting" in props.row;
   const problem = props.row !== undefined && "problem" in props.row ? props.row.problem : null;
+  const [firstLine, setFirstLine] = useState<number | null>(null);
   const loading = useDelayedLoading(props.diff.status === "loading");
   return (
     <div className="@container/diff flex min-h-0 min-w-0 flex-1 flex-col">
@@ -49,12 +53,12 @@ export function DiffPanel(props: {
         <span aria-label={kindLabel(file.kind)} className={cn("w-4 shrink-0 text-center font-mono text-xs font-medium", KIND_TONE[letter])}>
           {letter}
         </span>
-        <span className="flex min-w-0 items-baseline gap-2 pl-1">
-          <span className="shrink-0 truncate text-sm text-fg">{name}</span>
+        <span className="flex min-w-0 flex-1 items-baseline gap-2 pl-1">
+          <span className="min-w-0 truncate text-sm text-fg">{name}</span>
           <span className="min-w-0 truncate text-xs text-fg-3 @max-md/diff:hidden">{dir ? `${file.folder}/${dir}` : file.folder}</span>
         </span>
-        <LineCounts added={file.added} removed={file.removed} className="ml-2 @max-xs/diff:hidden" />
-        <span className="ml-auto flex shrink-0 items-center gap-1">
+        <LineCounts added={file.added} removed={file.removed} className="ml-2 shrink-0 @max-md/diff:hidden" />
+        <span className="flex shrink-0 items-center gap-1">
           <IconButton icon={ChevronUp} label="Previous file" disabled={!props.onPrev} onClick={() => props.onPrev?.()} className="max-md:size-10" />
           <IconButton icon={ChevronDown} label="Next file" disabled={!props.onNext} onClick={() => props.onNext?.()} className="max-md:size-10" />
           <span className="contents @max-lg/diff:hidden">
@@ -78,19 +82,23 @@ export function DiffPanel(props: {
               onClick={props.onToggleWhitespace}
             />
           </span>
+          {props.onOpenFile && file.kind !== "deleted" && firstLine !== null && (
+            <GoToButton icon={CornerDownRight} label={`Go to line ${firstLine}`} onClick={() => props.onOpenFile?.(firstLine)} className="max-md:size-10" />
+          )}
           {props.onOpenFile && file.kind !== "deleted" && (
-            <IconButton icon={ExternalLink} label="Open file" onClick={props.onOpenFile} className="max-md:size-10" />
+            <IconButton icon={ExternalLink} label="Open file" onClick={() => props.onOpenFile?.()} className="max-md:size-10" />
           )}
           <Button
             variant="secondary"
             size="sm"
             icon={Undo2}
             className="max-md:h-10"
+            title={reverted ? "Reverted" : "Revert"}
             disabled={reverted || reverting}
             aria-busy={reverting}
             onClick={props.onRevert}
           >
-            <span className="@max-sm/diff:sr-only">{reverted ? "Reverted" : "Revert"}</span>
+            <span className="@max-md/diff:sr-only">{reverted ? "Reverted" : "Revert"}</span>
           </Button>
         </span>
       </div>
@@ -100,7 +108,7 @@ export function DiffPanel(props: {
           tone="err"
           action={
             problem.kind !== "other" && props.onOpenFile ? (
-              <Button size="sm" variant="secondary" className="h-6 px-2" onClick={props.onOpenFile}>
+              <Button size="sm" variant="secondary" className="h-6 px-2" onClick={() => props.onOpenFile?.()}>
                 Open file
               </Button>
             ) : null
@@ -121,6 +129,8 @@ export function DiffPanel(props: {
             ignoreWhitespace={props.ignoreWhitespace}
             flashKey={props.flash}
             commented={props.commented}
+            onFirstLine={setFirstLine}
+            {...(props.onOpenFile && file.kind !== "deleted" ? { onGoToLine: (line: number) => props.onOpenFile?.(line) } : {})}
             {...(props.onAddComment ? { onAddComment: props.onAddComment } : {})}
           />
         ) : props.diff.status === "ready" ? (
@@ -144,6 +154,7 @@ export function DiffPanel(props: {
             </Centered>
           )
         )}
+        <FloatRoom />
       </div>
     </div>
   );

@@ -1,0 +1,3002 @@
+{
+ "method": "Stage 2, part C: online adaptation, simulated with bandit feedback.\n\nStream: the 12 repositories arrive one after another in a random order (one order per stream); inside a\nrepository, tasks come in created_at order. For each task the policy picks a tier and then observes ONLY that\ntier's outcome: a 0/1 draw from the tier's soft label on the task (drawn up front with a fixed seed per stream,\nso all policies face the same draws; the `Env` object hands out only the chosen arm's draw). 200 streams.\nCosts: every policy knows the tier price list in the form of the mean per-task cost of each tier on the OTHER\nrepositories (a public price table); the realised cost is the task's mean cost in the chosen tier.\n\nObjectives (declared before running):\n  (1) maximise quality - lambda * cost (cost in $ per task), lambda in LAMBDAS;\n  (2) minimise cost subject to quality >= 95 % of always-high (target = 0.95 x always-high's quality on the\n      other repositories), simple Lagrangian / threshold versions.\nEvaluation uses expected values (soft labels S and mean costs K of the chosen tier), not the sampled draws.\n\nPolicies: fixed tiers; global prior (best fixed tier on the other repositories); Thompson sampling and UCB per\nrepository, flat start and empirical-Bayes start (Beta prior with the other repositories' tier mean and a\nstrength fitted from the between-repository variance of the other repositories); one Thompson sampler shared by\nthe whole stream (no prior); for (2): the offline mixture from the other repositories, a Lagrangian Thompson\nsampler (dual ascent on the quality constraint) and a threshold rule (cheapest tier whose EB posterior mean\n>= tau; tau adapted by Robbins-Monro on the observed quality gap).\nRegret: against (i) the best fixed tier per repository in hindsight and (ii) the best fixed tier over all tasks.\n",
+ "n_streams": 200,
+ "lambdas": [
+  0.0,
+  0.25,
+  0.4,
+  0.5,
+  0.6,
+  0.75,
+  1.0,
+  2.0
+ ],
+ "scheme": "A_model_terciles",
+ "repositories": [
+  "astropy/astropy",
+  "django/django",
+  "matplotlib/matplotlib",
+  "mwaskom/seaborn",
+  "pallets/flask",
+  "psf/requests",
+  "pydata/xarray",
+  "pylint-dev/pylint",
+  "pytest-dev/pytest",
+  "scikit-learn/scikit-learn",
+  "sphinx-doc/sphinx",
+  "sympy/sympy"
+ ],
+ "eb_strength_n0_mean_over_heldout_repos": {
+  "low": 67.59439,
+  "mid": 38.1527,
+  "high": 25.64022
+ },
+ "lambda_objective": {
+  "0.0": {
+   "best_fixed_tier_global": "high",
+   "best_fixed_tier_per_repo": {
+    "astropy/astropy": "high",
+    "django/django": "high",
+    "matplotlib/matplotlib": "high",
+    "mwaskom/seaborn": "low",
+    "pallets/flask": "high",
+    "psf/requests": "mid",
+    "pydata/xarray": "high",
+    "pylint-dev/pylint": "high",
+    "pytest-dev/pytest": "high",
+    "scikit-learn/scikit-learn": "high",
+    "sphinx-doc/sphinx": "high",
+    "sympy/sympy": "high"
+   },
+   "fixed_low": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 99.92235,
+     "lo": 99.92235,
+     "hi": 99.92235
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 99.20833,
+     "lo": 99.20833,
+     "hi": 99.20833
+    },
+    "mean_reward_per_task": {
+     "mean": 0.48783,
+     "lo": 0.48783,
+     "hi": 0.48783
+    },
+    "quality": {
+     "mean": 0.48783,
+     "lo": 0.48783,
+     "hi": 0.48783
+    },
+    "cost_rel_high": {
+     "mean": 0.32632,
+     "lo": 0.32632,
+     "hi": 0.32632
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.15827,
+     "pos_10_49": 0.20866,
+     "pos_50_plus": 0.21197
+    },
+    "tier_share": {
+     "low": 1.0,
+     "mid": 0.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "fixed_mid": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 37.74811,
+     "lo": 37.74811,
+     "hi": 37.74811
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 37.03409,
+     "lo": 37.03409,
+     "hi": 37.03409
+    },
+    "mean_reward_per_task": {
+     "mean": 0.61218,
+     "lo": 0.61218,
+     "hi": 0.61218
+    },
+    "quality": {
+     "mean": 0.61218,
+     "lo": 0.61218,
+     "hi": 0.61218
+    },
+    "cost_rel_high": {
+     "mean": 0.70018,
+     "lo": 0.70018,
+     "hi": 0.70018
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.05303,
+     "pos_10_49": 0.08964,
+     "pos_50_plus": 0.07326
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 1.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "fixed_high": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 0.71402,
+     "lo": 0.71402,
+     "hi": 0.71402
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.68625,
+     "lo": 0.68625,
+     "hi": 0.68625
+    },
+    "quality": {
+     "mean": 0.68625,
+     "lo": 0.68625,
+     "hi": 0.68625
+    },
+    "cost_rel_high": {
+     "mean": 1.0,
+     "lo": 1.0,
+     "hi": 1.0
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.00707,
+     "pos_10_49": 0.0,
+     "pos_50_plus": 0.0
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 0.0,
+     "high": 1.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 0
+   },
+   "global_prior": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 0.71402,
+     "lo": 0.71402,
+     "hi": 0.71402
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.68625,
+     "lo": 0.68625,
+     "hi": 0.68625
+    },
+    "quality": {
+     "mean": 0.68625,
+     "lo": 0.68625,
+     "hi": 0.68625
+    },
+    "cost_rel_high": {
+     "mean": 1.0,
+     "lo": 1.0,
+     "hi": 1.0
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.00707,
+     "pos_10_49": 0.0,
+     "pos_50_plus": 0.0
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 0.0,
+     "high": 1.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 0
+   },
+   "ts_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 26.36876,
+     "lo": 16.26771,
+     "hi": 39.19716
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 25.65474,
+     "lo": 15.55369,
+     "hi": 38.48314
+    },
+    "mean_reward_per_task": {
+     "mean": 0.63494,
+     "lo": 0.60928,
+     "hi": 0.65514
+    },
+    "quality": {
+     "mean": 0.63494,
+     "lo": 0.60928,
+     "hi": 0.65514
+    },
+    "cost_rel_high": {
+     "mean": 0.80167,
+     "lo": 0.71083,
+     "hi": 0.86657
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.06294,
+     "pos_10_49": 0.06709,
+     "pos_50_plus": 0.03428
+    },
+    "tier_share": {
+     "low": 0.15534,
+     "mid": 0.30944,
+     "high": 0.53522
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 10.76896,
+     "lo": 5.55829,
+     "hi": 19.4831
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 10.05494,
+     "lo": 4.84427,
+     "hi": 18.76908
+    },
+    "mean_reward_per_task": {
+     "mean": 0.66614,
+     "lo": 0.64871,
+     "hi": 0.67656
+    },
+    "quality": {
+     "mean": 0.66614,
+     "lo": 0.64871,
+     "hi": 0.67656
+    },
+    "cost_rel_high": {
+     "mean": 0.91812,
+     "lo": 0.84608,
+     "hi": 0.95514
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.01972,
+     "pos_10_49": 0.02665,
+     "pos_50_plus": 0.01764
+    },
+    "tier_share": {
+     "low": 0.01278,
+     "mid": 0.24495,
+     "high": 0.74227
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 229
+   },
+   "ucb_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 36.9667,
+     "lo": 30.36652,
+     "hi": 43.47154
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 36.25268,
+     "lo": 29.65251,
+     "hi": 42.75753
+    },
+    "mean_reward_per_task": {
+     "mean": 0.61374,
+     "lo": 0.60073,
+     "hi": 0.62694
+    },
+    "quality": {
+     "mean": 0.61374,
+     "lo": 0.60073,
+     "hi": 0.62694
+    },
+    "cost_rel_high": {
+     "mean": 0.74429,
+     "lo": 0.70885,
+     "hi": 0.77533
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.07748,
+     "pos_10_49": 0.08853,
+     "pos_50_plus": 0.05852
+    },
+    "tier_share": {
+     "low": 0.2396,
+     "mid": 0.32886,
+     "high": 0.43154
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ucb_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 14.68878,
+     "lo": 9.57713,
+     "hi": 21.1508
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 13.97476,
+     "lo": 8.86312,
+     "hi": 20.43679
+    },
+    "mean_reward_per_task": {
+     "mean": 0.6583,
+     "lo": 0.64538,
+     "hi": 0.66852
+    },
+    "quality": {
+     "mean": 0.6583,
+     "lo": 0.64538,
+     "hi": 0.66852
+    },
+    "cost_rel_high": {
+     "mean": 0.90097,
+     "lo": 0.86133,
+     "hi": 0.93393
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.00808,
+     "pos_10_49": 0.03109,
+     "pos_50_plus": 0.03822
+    },
+    "tier_share": {
+     "low": 0.03516,
+     "mid": 0.25547,
+     "high": 0.70937
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_stream_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 13.7324,
+     "lo": 2.61795,
+     "hi": 37.58002
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 13.01838,
+     "lo": 1.90393,
+     "hi": 36.866
+    },
+    "mean_reward_per_task": {
+     "mean": 0.66021,
+     "lo": 0.61252,
+     "hi": 0.68244
+    },
+    "quality": {
+     "mean": 0.66021,
+     "lo": 0.61252,
+     "hi": 0.68244
+    },
+    "cost_rel_high": {
+     "mean": 0.8987,
+     "lo": 0.70936,
+     "hi": 0.9754
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.02907,
+     "pos_10_49": 0.03352,
+     "pos_50_plus": 0.02101
+    },
+    "tier_share": {
+     "low": 0.05976,
+     "mid": 0.20392,
+     "high": 0.73632
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   }
+  },
+  "0.25": {
+   "best_fixed_tier_global": "high",
+   "best_fixed_tier_per_repo": {
+    "astropy/astropy": "high",
+    "django/django": "high",
+    "matplotlib/matplotlib": "high",
+    "mwaskom/seaborn": "low",
+    "pallets/flask": "high",
+    "psf/requests": "mid",
+    "pydata/xarray": "high",
+    "pylint-dev/pylint": "low",
+    "pytest-dev/pytest": "high",
+    "scikit-learn/scikit-learn": "high",
+    "sphinx-doc/sphinx": "high",
+    "sympy/sympy": "high"
+   },
+   "fixed_low": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 57.78062,
+     "lo": 57.78062,
+     "hi": 57.78062
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 55.70027,
+     "lo": 55.70027,
+     "hi": 55.70027
+    },
+    "mean_reward_per_task": {
+     "mean": 0.44568,
+     "lo": 0.44568,
+     "hi": 0.44568
+    },
+    "quality": {
+     "mean": 0.48783,
+     "lo": 0.48783,
+     "hi": 0.48783
+    },
+    "cost_rel_high": {
+     "mean": 0.32632,
+     "lo": 0.32632,
+     "hi": 0.32632
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.08089,
+     "pos_10_49": 0.12341,
+     "pos_50_plus": 0.1252
+    },
+    "tier_share": {
+     "low": 1.0,
+     "mid": 0.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "fixed_mid": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 19.75111,
+     "lo": 19.75111,
+     "hi": 19.75111
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 17.67076,
+     "lo": 17.67076,
+     "hi": 17.67076
+    },
+    "mean_reward_per_task": {
+     "mean": 0.52174,
+     "lo": 0.52174,
+     "hi": 0.52174
+    },
+    "quality": {
+     "mean": 0.61218,
+     "lo": 0.61218,
+     "hi": 0.61218
+    },
+    "cost_rel_high": {
+     "mean": 0.70018,
+     "lo": 0.70018,
+     "hi": 0.70018
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.02475,
+     "pos_10_49": 0.05581,
+     "pos_50_plus": 0.03146
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 1.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "fixed_high": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 2.08035,
+     "lo": 2.08035,
+     "hi": 2.08035
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.55709,
+     "lo": 0.55709,
+     "hi": 0.55709
+    },
+    "quality": {
+     "mean": 0.68625,
+     "lo": 0.68625,
+     "hi": 0.68625
+    },
+    "cost_rel_high": {
+     "mean": 1.0,
+     "lo": 1.0,
+     "hi": 1.0
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.0206,
+     "pos_10_49": 0.0,
+     "pos_50_plus": 0.0
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 0.0,
+     "high": 1.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 10
+   },
+   "global_prior": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 2.08035,
+     "lo": 2.08035,
+     "hi": 2.08035
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.55709,
+     "lo": 0.55709,
+     "hi": 0.55709
+    },
+    "quality": {
+     "mean": 0.68625,
+     "lo": 0.68625,
+     "hi": 0.68625
+    },
+    "cost_rel_high": {
+     "mean": 1.0,
+     "lo": 1.0,
+     "hi": 1.0
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.0206,
+     "pos_10_49": 0.0,
+     "pos_50_plus": 0.0
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 0.0,
+     "high": 1.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 10
+   },
+   "ts_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 20.93252,
+     "lo": 13.48949,
+     "hi": 31.85581
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 18.85216,
+     "lo": 11.40913,
+     "hi": 29.77546
+    },
+    "mean_reward_per_task": {
+     "mean": 0.51938,
+     "lo": 0.49753,
+     "hi": 0.53427
+    },
+    "quality": {
+     "mean": 0.61428,
+     "lo": 0.5822,
+     "hi": 0.63983
+    },
+    "cost_rel_high": {
+     "mean": 0.7347,
+     "lo": 0.63175,
+     "hi": 0.81806
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.04384,
+     "pos_10_49": 0.05322,
+     "pos_50_plus": 0.03026
+    },
+    "tier_share": {
+     "low": 0.23844,
+     "mid": 0.35293,
+     "high": 0.40863
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 11.86064,
+     "lo": 6.24914,
+     "hi": 19.85975
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 9.78029,
+     "lo": 4.16878,
+     "hi": 17.7794
+    },
+    "mean_reward_per_task": {
+     "mean": 0.53752,
+     "lo": 0.52153,
+     "hi": 0.54875
+    },
+    "quality": {
+     "mean": 0.64743,
+     "lo": 0.62413,
+     "hi": 0.6654
+    },
+    "cost_rel_high": {
+     "mean": 0.85091,
+     "lo": 0.78192,
+     "hi": 0.90818
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.0244,
+     "pos_10_49": 0.02848,
+     "pos_50_plus": 0.01894
+    },
+    "tier_share": {
+     "low": 0.06725,
+     "mid": 0.34661,
+     "high": 0.58614
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ucb_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 23.48019,
+     "lo": 18.15168,
+     "hi": 29.51985
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 21.39984,
+     "lo": 16.07132,
+     "hi": 27.4395
+    },
+    "mean_reward_per_task": {
+     "mean": 0.51429,
+     "lo": 0.50221,
+     "hi": 0.52494
+    },
+    "quality": {
+     "mean": 0.60635,
+     "lo": 0.59082,
+     "hi": 0.62059
+    },
+    "cost_rel_high": {
+     "mean": 0.71277,
+     "lo": 0.67667,
+     "hi": 0.74651
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.04831,
+     "pos_10_49": 0.05448,
+     "pos_50_plus": 0.03925
+    },
+    "tier_share": {
+     "low": 0.27067,
+     "mid": 0.34918,
+     "high": 0.38015
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ucb_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 13.5108,
+     "lo": 9.20556,
+     "hi": 18.21517
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 11.43045,
+     "lo": 7.12521,
+     "hi": 16.13481
+    },
+    "mean_reward_per_task": {
+     "mean": 0.53422,
+     "lo": 0.52482,
+     "hi": 0.54284
+    },
+    "quality": {
+     "mean": 0.64546,
+     "lo": 0.63224,
+     "hi": 0.65907
+    },
+    "cost_rel_high": {
+     "mean": 0.86119,
+     "lo": 0.81462,
+     "hi": 0.90374
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.02154,
+     "pos_10_49": 0.0259,
+     "pos_50_plus": 0.03076
+    },
+    "tier_share": {
+     "low": 0.07686,
+     "mid": 0.30002,
+     "high": 0.62312
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_stream_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 14.86669,
+     "lo": 3.50149,
+     "hi": 32.86901
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 12.78634,
+     "lo": 1.42114,
+     "hi": 30.78866
+    },
+    "mean_reward_per_task": {
+     "mean": 0.53151,
+     "lo": 0.49551,
+     "hi": 0.55424
+    },
+    "quality": {
+     "mean": 0.63673,
+     "lo": 0.57532,
+     "hi": 0.67857
+    },
+    "cost_rel_high": {
+     "mean": 0.81461,
+     "lo": 0.61788,
+     "hi": 0.96695
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.0311,
+     "pos_10_49": 0.03575,
+     "pos_50_plus": 0.02342
+    },
+    "tier_share": {
+     "low": 0.11826,
+     "mid": 0.35346,
+     "high": 0.52828
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   }
+  },
+  "0.4": {
+   "best_fixed_tier_global": "high",
+   "best_fixed_tier_per_repo": {
+    "astropy/astropy": "mid",
+    "django/django": "high",
+    "matplotlib/matplotlib": "high",
+    "mwaskom/seaborn": "low",
+    "pallets/flask": "high",
+    "psf/requests": "mid",
+    "pydata/xarray": "high",
+    "pylint-dev/pylint": "low",
+    "pytest-dev/pytest": "high",
+    "scikit-learn/scikit-learn": "high",
+    "sphinx-doc/sphinx": "high",
+    "sympy/sympy": "high"
+   },
+   "fixed_low": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 32.92293,
+     "lo": 32.92293,
+     "hi": 32.92293
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 29.59543,
+     "lo": 29.59543,
+     "hi": 29.59543
+    },
+    "mean_reward_per_task": {
+     "mean": 0.4204,
+     "lo": 0.4204,
+     "hi": 0.4204
+    },
+    "quality": {
+     "mean": 0.48783,
+     "lo": 0.48783,
+     "hi": 0.48783
+    },
+    "cost_rel_high": {
+     "mean": 0.32632,
+     "lo": 0.32632,
+     "hi": 0.32632
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.04363,
+     "pos_10_49": 0.06968,
+     "pos_50_plus": 0.07314
+    },
+    "tier_share": {
+     "low": 1.0,
+     "mid": 0.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "fixed_mid": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 9.38026,
+     "lo": 9.38026,
+     "hi": 9.38026
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 6.05276,
+     "lo": 6.05276,
+     "hi": 6.05276
+    },
+    "mean_reward_per_task": {
+     "mean": 0.46748,
+     "lo": 0.46748,
+     "hi": 0.46748
+    },
+    "quality": {
+     "mean": 0.61218,
+     "lo": 0.61218,
+     "hi": 0.61218
+    },
+    "cost_rel_high": {
+     "mean": 0.70018,
+     "lo": 0.70018,
+     "hi": 0.70018
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.01695,
+     "pos_10_49": 0.03293,
+     "pos_50_plus": 0.00638
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 1.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "fixed_high": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 3.3275,
+     "lo": 3.3275,
+     "hi": 3.3275
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.47959,
+     "lo": 0.47959,
+     "hi": 0.47959
+    },
+    "quality": {
+     "mean": 0.68625,
+     "lo": 0.68625,
+     "hi": 0.68625
+    },
+    "cost_rel_high": {
+     "mean": 1.0,
+     "lo": 1.0,
+     "hi": 1.0
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.03788,
+     "pos_10_49": -0.00258,
+     "pos_50_plus": 0.0
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 0.0,
+     "high": 1.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 11
+   },
+   "global_prior": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 3.3275,
+     "lo": 3.3275,
+     "hi": 3.3275
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.47959,
+     "lo": 0.47959,
+     "hi": 0.47959
+    },
+    "quality": {
+     "mean": 0.68625,
+     "lo": 0.68625,
+     "hi": 0.68625
+    },
+    "cost_rel_high": {
+     "mean": 1.0,
+     "lo": 1.0,
+     "hi": 1.0
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.03788,
+     "pos_10_49": -0.00258,
+     "pos_50_plus": 0.0
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 0.0,
+     "high": 1.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 11
+   },
+   "ts_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 13.68662,
+     "lo": 5.96436,
+     "hi": 23.19174
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 10.35912,
+     "lo": 2.63685,
+     "hi": 19.86424
+    },
+    "mean_reward_per_task": {
+     "mean": 0.45887,
+     "lo": 0.43986,
+     "hi": 0.47431
+    },
+    "quality": {
+     "mean": 0.60198,
+     "lo": 0.56313,
+     "hi": 0.63594
+    },
+    "cost_rel_high": {
+     "mean": 0.69247,
+     "lo": 0.58149,
+     "hi": 0.80109
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.03324,
+     "pos_10_49": 0.03256,
+     "pos_50_plus": 0.01964
+    },
+    "tier_share": {
+     "low": 0.29616,
+     "mid": 0.35724,
+     "high": 0.3466
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 10.04283,
+     "lo": 4.85057,
+     "hi": 17.01164
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 6.71533,
+     "lo": 1.52307,
+     "hi": 13.68414
+    },
+    "mean_reward_per_task": {
+     "mean": 0.46616,
+     "lo": 0.45222,
+     "hi": 0.47654
+    },
+    "quality": {
+     "mean": 0.62874,
+     "lo": 0.60132,
+     "hi": 0.65161
+    },
+    "cost_rel_high": {
+     "mean": 0.78671,
+     "lo": 0.69835,
+     "hi": 0.85602
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.03006,
+     "pos_10_49": 0.02149,
+     "pos_50_plus": 0.01388
+    },
+    "tier_share": {
+     "low": 0.14796,
+     "mid": 0.38008,
+     "high": 0.47196
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ucb_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 14.43211,
+     "lo": 9.23776,
+     "hi": 19.70882
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 11.10461,
+     "lo": 5.91025,
+     "hi": 16.38132
+    },
+    "mean_reward_per_task": {
+     "mean": 0.45738,
+     "lo": 0.44682,
+     "hi": 0.46777
+    },
+    "quality": {
+     "mean": 0.60108,
+     "lo": 0.58509,
+     "hi": 0.6157
+    },
+    "cost_rel_high": {
+     "mean": 0.69536,
+     "lo": 0.64936,
+     "hi": 0.73293
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.03913,
+     "pos_10_49": 0.03133,
+     "pos_50_plus": 0.02152
+    },
+    "tier_share": {
+     "low": 0.29538,
+     "mid": 0.34668,
+     "high": 0.35794
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ucb_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 10.15548,
+     "lo": 5.87603,
+     "hi": 14.19566
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 6.82797,
+     "lo": 2.54853,
+     "hi": 10.86816
+    },
+    "mean_reward_per_task": {
+     "mean": 0.46593,
+     "lo": 0.45785,
+     "hi": 0.47449
+    },
+    "quality": {
+     "mean": 0.63501,
+     "lo": 0.61896,
+     "hi": 0.64959
+    },
+    "cost_rel_high": {
+     "mean": 0.81814,
+     "lo": 0.77226,
+     "hi": 0.86242
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.03044,
+     "pos_10_49": 0.01679,
+     "pos_50_plus": 0.01864
+    },
+    "tier_share": {
+     "low": 0.11288,
+     "mid": 0.35038,
+     "high": 0.53674
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_stream_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 10.55567,
+     "lo": 2.7728,
+     "hi": 21.76623
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 7.22816,
+     "lo": -0.5547,
+     "hi": 18.43873
+    },
+    "mean_reward_per_task": {
+     "mean": 0.46513,
+     "lo": 0.44271,
+     "hi": 0.4807
+    },
+    "quality": {
+     "mean": 0.6233,
+     "lo": 0.55705,
+     "hi": 0.67601
+    },
+    "cost_rel_high": {
+     "mean": 0.76536,
+     "lo": 0.54807,
+     "hi": 0.95345
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.03043,
+     "pos_10_49": 0.02468,
+     "pos_50_plus": 0.0132
+    },
+    "tier_share": {
+     "low": 0.17506,
+     "mid": 0.38824,
+     "high": 0.4367
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   }
+  },
+  "0.5": {
+   "best_fixed_tier_global": "mid",
+   "best_fixed_tier_per_repo": {
+    "astropy/astropy": "low",
+    "django/django": "mid",
+    "matplotlib/matplotlib": "low",
+    "mwaskom/seaborn": "low",
+    "pallets/flask": "high",
+    "psf/requests": "low",
+    "pydata/xarray": "high",
+    "pylint-dev/pylint": "low",
+    "pytest-dev/pytest": "high",
+    "scikit-learn/scikit-learn": "high",
+    "sphinx-doc/sphinx": "mid",
+    "sympy/sympy": "high"
+   },
+   "fixed_low": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 20.81329,
+     "lo": 20.81329,
+     "hi": 20.81329
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 13.88478,
+     "lo": 13.88478,
+     "hi": 13.88478
+    },
+    "mean_reward_per_task": {
+     "mean": 0.40354,
+     "lo": 0.40354,
+     "hi": 0.40354
+    },
+    "quality": {
+     "mean": 0.48783,
+     "lo": 0.48783,
+     "hi": 0.48783
+    },
+    "cost_rel_high": {
+     "mean": 0.32632,
+     "lo": 0.32632,
+     "hi": 0.32632
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.04649,
+     "pos_10_49": 0.03329,
+     "pos_50_plus": 0.04705
+    },
+    "tier_share": {
+     "low": 1.0,
+     "mid": 0.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "fixed_mid": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 6.92851,
+     "lo": 6.92851,
+     "hi": 6.92851
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.43131,
+     "lo": 0.43131,
+     "hi": 0.43131
+    },
+    "quality": {
+     "mean": 0.61218,
+     "lo": 0.61218,
+     "hi": 0.61218
+    },
+    "cost_rel_high": {
+     "mean": 0.70018,
+     "lo": 0.70018,
+     "hi": 0.70018
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.03944,
+     "pos_10_49": 0.0171,
+     "pos_50_plus": -0.00172
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 1.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 65
+   },
+   "fixed_high": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 8.62108,
+     "lo": 8.62108,
+     "hi": 8.62108
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 1.69257,
+     "lo": 1.69257,
+     "hi": 1.69257
+    },
+    "mean_reward_per_task": {
+     "mean": 0.42792,
+     "lo": 0.42792,
+     "hi": 0.42792
+    },
+    "quality": {
+     "mean": 0.68625,
+     "lo": 0.68625,
+     "hi": 0.68625
+    },
+    "cost_rel_high": {
+     "mean": 1.0,
+     "lo": 1.0,
+     "hi": 1.0
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.0771,
+     "pos_10_49": -0.00488,
+     "pos_50_plus": 0.00862
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 0.0,
+     "high": 1.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 230
+   },
+   "global_prior": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 9.77509,
+     "lo": 9.77509,
+     "hi": 9.77509
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 2.84658,
+     "lo": 2.84658,
+     "hi": 2.84658
+    },
+    "mean_reward_per_task": {
+     "mean": 0.42561,
+     "lo": 0.42561,
+     "hi": 0.42561
+    },
+    "quality": {
+     "mean": 0.64474,
+     "lo": 0.64474,
+     "hi": 0.64474
+    },
+    "cost_rel_high": {
+     "mean": 0.84824,
+     "lo": 0.84824,
+     "hi": 0.84824
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.05319,
+     "pos_10_49": 0.01545,
+     "pos_50_plus": 0.0069
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 0.538,
+     "high": 0.462
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 230
+   },
+   "ts_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 11.78948,
+     "lo": 5.95968,
+     "hi": 18.99997
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 4.86097,
+     "lo": -0.96883,
+     "hi": 12.07146
+    },
+    "mean_reward_per_task": {
+     "mean": 0.42158,
+     "lo": 0.40716,
+     "hi": 0.43324
+    },
+    "quality": {
+     "mean": 0.59348,
+     "lo": 0.55994,
+     "hi": 0.62626
+    },
+    "cost_rel_high": {
+     "mean": 0.66543,
+     "lo": 0.56027,
+     "hi": 0.76086
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.0523,
+     "pos_10_49": 0.01627,
+     "pos_50_plus": 0.01635
+    },
+    "tier_share": {
+     "low": 0.33825,
+     "mid": 0.35609,
+     "high": 0.30566
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 11.14205,
+     "lo": 5.58584,
+     "hi": 16.31725
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 4.21354,
+     "lo": -1.34267,
+     "hi": 9.38874
+    },
+    "mean_reward_per_task": {
+     "mean": 0.42288,
+     "lo": 0.41253,
+     "hi": 0.43399
+    },
+    "quality": {
+     "mean": 0.61065,
+     "lo": 0.58005,
+     "hi": 0.63749
+    },
+    "cost_rel_high": {
+     "mean": 0.72686,
+     "lo": 0.62491,
+     "hi": 0.81208
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.05568,
+     "pos_10_49": 0.01223,
+     "pos_50_plus": 0.01533
+    },
+    "tier_share": {
+     "low": 0.23484,
+     "mid": 0.38373,
+     "high": 0.38143
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ucb_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 12.16933,
+     "lo": 7.64904,
+     "hi": 17.43896
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 5.24082,
+     "lo": 0.72053,
+     "hi": 10.51045
+    },
+    "mean_reward_per_task": {
+     "mean": 0.42082,
+     "lo": 0.41029,
+     "hi": 0.42987
+    },
+    "quality": {
+     "mean": 0.59731,
+     "lo": 0.579,
+     "hi": 0.61356
+    },
+    "cost_rel_high": {
+     "mean": 0.68319,
+     "lo": 0.64816,
+     "hi": 0.72322
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.06079,
+     "pos_10_49": 0.01501,
+     "pos_50_plus": 0.01521
+    },
+    "tier_share": {
+     "low": 0.31323,
+     "mid": 0.35613,
+     "high": 0.33064
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ucb_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 10.13792,
+     "lo": 5.59602,
+     "hi": 14.76141
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 3.20941,
+     "lo": -1.33249,
+     "hi": 7.8329
+    },
+    "mean_reward_per_task": {
+     "mean": 0.42489,
+     "lo": 0.41564,
+     "hi": 0.43397
+    },
+    "quality": {
+     "mean": 0.6269,
+     "lo": 0.60871,
+     "hi": 0.64267
+    },
+    "cost_rel_high": {
+     "mean": 0.78201,
+     "lo": 0.73775,
+     "hi": 0.8293
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.05155,
+     "pos_10_49": 0.00858,
+     "pos_50_plus": 0.0159
+    },
+    "tier_share": {
+     "low": 0.14916,
+     "mid": 0.385,
+     "high": 0.46584
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_stream_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 11.24116,
+     "lo": 5.52574,
+     "hi": 21.43004
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 4.31265,
+     "lo": -1.40277,
+     "hi": 14.50153
+    },
+    "mean_reward_per_task": {
+     "mean": 0.42268,
+     "lo": 0.4023,
+     "hi": 0.43411
+    },
+    "quality": {
+     "mean": 0.60489,
+     "lo": 0.52122,
+     "hi": 0.67031
+    },
+    "cost_rel_high": {
+     "mean": 0.70534,
+     "lo": 0.44392,
+     "hi": 0.92518
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.05419,
+     "pos_10_49": 0.01491,
+     "pos_50_plus": 0.01404
+    },
+    "tier_share": {
+     "low": 0.26906,
+     "mid": 0.37811,
+     "high": 0.35283
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   }
+  },
+  "0.6": {
+   "best_fixed_tier_global": "mid",
+   "best_fixed_tier_per_repo": {
+    "astropy/astropy": "low",
+    "django/django": "mid",
+    "matplotlib/matplotlib": "low",
+    "mwaskom/seaborn": "low",
+    "pallets/flask": "mid",
+    "psf/requests": "low",
+    "pydata/xarray": "high",
+    "pylint-dev/pylint": "low",
+    "pytest-dev/pytest": "high",
+    "scikit-learn/scikit-learn": "high",
+    "sphinx-doc/sphinx": "mid",
+    "sympy/sympy": "low"
+   },
+   "fixed_low": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 12.62779,
+     "lo": 12.62779,
+     "hi": 12.62779
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 4.22688,
+     "lo": 4.22688,
+     "hi": 4.22688
+    },
+    "mean_reward_per_task": {
+     "mean": 0.38668,
+     "lo": 0.38668,
+     "hi": 0.38668
+    },
+    "quality": {
+     "mean": 0.48783,
+     "lo": 0.48783,
+     "hi": 0.48783
+    },
+    "cost_rel_high": {
+     "mean": 0.32632,
+     "lo": 0.32632,
+     "hi": 0.32632
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.02278,
+     "pos_10_49": 0.01995,
+     "pos_50_plus": 0.03144
+    },
+    "tier_share": {
+     "low": 1.0,
+     "mid": 0.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "fixed_mid": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 8.4009,
+     "lo": 8.4009,
+     "hi": 8.4009
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.39513,
+     "lo": 0.39513,
+     "hi": 0.39513
+    },
+    "quality": {
+     "mean": 0.61218,
+     "lo": 0.61218,
+     "hi": 0.61218
+    },
+    "cost_rel_high": {
+     "mean": 0.70018,
+     "lo": 0.70018,
+     "hi": 0.70018
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.03536,
+     "pos_10_49": 0.02432,
+     "pos_50_plus": 0.00066
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 1.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 63
+   },
+   "fixed_high": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 17.83881,
+     "lo": 17.83881,
+     "hi": 17.83881
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 9.43791,
+     "lo": 9.43791,
+     "hi": 9.43791
+    },
+    "mean_reward_per_task": {
+     "mean": 0.37626,
+     "lo": 0.37626,
+     "hi": 0.37626
+    },
+    "quality": {
+     "mean": 0.68625,
+     "lo": 0.68625,
+     "hi": 0.68625
+    },
+    "cost_rel_high": {
+     "mean": 1.0,
+     "lo": 1.0,
+     "hi": 1.0
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.08975,
+     "pos_10_49": 0.01588,
+     "pos_50_plus": 0.02772
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 0.0,
+     "high": 1.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 230
+   },
+   "global_prior": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 15.54341,
+     "lo": 15.54341,
+     "hi": 15.54341
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 7.14251,
+     "lo": 7.14251,
+     "hi": 7.14251
+    },
+    "mean_reward_per_task": {
+     "mean": 0.38085,
+     "lo": 0.38085,
+     "hi": 0.38085
+    },
+    "quality": {
+     "mean": 0.5487,
+     "lo": 0.5487,
+     "hi": 0.5487
+    },
+    "cost_rel_high": {
+     "mean": 0.54146,
+     "lo": 0.54146,
+     "hi": 0.54146
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.03666,
+     "pos_10_49": 0.02709,
+     "pos_50_plus": 0.0321
+    },
+    "tier_share": {
+     "low": 0.462,
+     "mid": 0.538,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 12.06408,
+     "lo": 6.63577,
+     "hi": 17.14293
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 3.66318,
+     "lo": -1.76513,
+     "hi": 8.74203
+    },
+    "mean_reward_per_task": {
+     "mean": 0.3878,
+     "lo": 0.37765,
+     "hi": 0.39866
+    },
+    "quality": {
+     "mean": 0.58388,
+     "lo": 0.54587,
+     "hi": 0.61953
+    },
+    "cost_rel_high": {
+     "mean": 0.63251,
+     "lo": 0.52458,
+     "hi": 0.73595
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.0417,
+     "pos_10_49": 0.02063,
+     "pos_50_plus": 0.01879
+    },
+    "tier_share": {
+     "low": 0.38463,
+     "mid": 0.35979,
+     "high": 0.25558
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 12.70371,
+     "lo": 6.22824,
+     "hi": 18.96369
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 4.30281,
+     "lo": -2.17267,
+     "hi": 10.56279
+    },
+    "mean_reward_per_task": {
+     "mean": 0.38653,
+     "lo": 0.37401,
+     "hi": 0.39948
+    },
+    "quality": {
+     "mean": 0.59507,
+     "lo": 0.56168,
+     "hi": 0.62623
+    },
+    "cost_rel_high": {
+     "mean": 0.67274,
+     "lo": 0.57643,
+     "hi": 0.76169
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.04845,
+     "pos_10_49": 0.02057,
+     "pos_50_plus": 0.01864
+    },
+    "tier_share": {
+     "low": 0.31439,
+     "mid": 0.38294,
+     "high": 0.30267
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ucb_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 12.66078,
+     "lo": 8.52299,
+     "hi": 17.33303
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 4.25988,
+     "lo": 0.12209,
+     "hi": 8.93212
+    },
+    "mean_reward_per_task": {
+     "mean": 0.38661,
+     "lo": 0.37727,
+     "hi": 0.39489
+    },
+    "quality": {
+     "mean": 0.59339,
+     "lo": 0.57699,
+     "hi": 0.60764
+    },
+    "cost_rel_high": {
+     "mean": 0.66703,
+     "lo": 0.62456,
+     "hi": 0.70446
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.05263,
+     "pos_10_49": 0.01919,
+     "pos_50_plus": 0.01768
+    },
+    "tier_share": {
+     "low": 0.33425,
+     "mid": 0.34902,
+     "high": 0.31673
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ucb_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 13.45276,
+     "lo": 8.83674,
+     "hi": 17.82816
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 5.05185,
+     "lo": 0.43583,
+     "hi": 9.42726
+    },
+    "mean_reward_per_task": {
+     "mean": 0.38503,
+     "lo": 0.37628,
+     "hi": 0.39426
+    },
+    "quality": {
+     "mean": 0.61696,
+     "lo": 0.5967,
+     "hi": 0.63348
+    },
+    "cost_rel_high": {
+     "mean": 0.74817,
+     "lo": 0.69526,
+     "hi": 0.80171
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.05793,
+     "pos_10_49": 0.01885,
+     "pos_50_plus": 0.01924
+    },
+    "tier_share": {
+     "low": 0.19313,
+     "mid": 0.39905,
+     "high": 0.40782
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_stream_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 13.00933,
+     "lo": 7.62009,
+     "hi": 18.27353
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 4.60843,
+     "lo": -0.78081,
+     "hi": 9.87262
+    },
+    "mean_reward_per_task": {
+     "mean": 0.38591,
+     "lo": 0.37539,
+     "hi": 0.39669
+    },
+    "quality": {
+     "mean": 0.58435,
+     "lo": 0.50155,
+     "hi": 0.65565
+    },
+    "cost_rel_high": {
+     "mean": 0.64013,
+     "lo": 0.38965,
+     "hi": 0.88149
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.04652,
+     "pos_10_49": 0.0212,
+     "pos_50_plus": 0.02048
+    },
+    "tier_share": {
+     "low": 0.37411,
+     "mid": 0.36191,
+     "high": 0.26398
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   }
+  },
+  "0.75": {
+   "best_fixed_tier_global": "low",
+   "best_fixed_tier_per_repo": {
+    "astropy/astropy": "low",
+    "django/django": "mid",
+    "matplotlib/matplotlib": "low",
+    "mwaskom/seaborn": "low",
+    "pallets/flask": "mid",
+    "psf/requests": "low",
+    "pydata/xarray": "mid",
+    "pylint-dev/pylint": "low",
+    "pytest-dev/pytest": "mid",
+    "scikit-learn/scikit-learn": "high",
+    "sphinx-doc/sphinx": "low",
+    "sympy/sympy": "low"
+   },
+   "fixed_low": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 2.79473,
+     "lo": 2.79473,
+     "hi": 2.79473
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.36139,
+     "lo": 0.36139,
+     "hi": 0.36139
+    },
+    "quality": {
+     "mean": 0.48783,
+     "lo": 0.48783,
+     "hi": 0.48783
+    },
+    "cost_rel_high": {
+     "mean": 0.32632,
+     "lo": 0.32632,
+     "hi": 0.32632
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.00953,
+     "pos_10_49": 0.00103,
+     "pos_50_plus": 0.00793
+    },
+    "tier_share": {
+     "low": 1.0,
+     "mid": 0.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "fixed_mid": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 13.05469,
+     "lo": 13.05469,
+     "hi": 13.05469
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 10.25996,
+     "lo": 10.25996,
+     "hi": 10.25996
+    },
+    "mean_reward_per_task": {
+     "mean": 0.34087,
+     "lo": 0.34087,
+     "hi": 0.34087
+    },
+    "quality": {
+     "mean": 0.61218,
+     "lo": 0.61218,
+     "hi": 0.61218
+    },
+    "cost_rel_high": {
+     "mean": 0.70018,
+     "lo": 0.70018,
+     "hi": 0.70018
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.05157,
+     "pos_10_49": 0.03625,
+     "pos_50_plus": 0.00412
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 1.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 64
+   },
+   "fixed_high": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 34.11059,
+     "lo": 34.11059,
+     "hi": 34.11059
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 31.31586,
+     "lo": 31.31586,
+     "hi": 31.31586
+    },
+    "mean_reward_per_task": {
+     "mean": 0.29876,
+     "lo": 0.29876,
+     "hi": 0.29876
+    },
+    "quality": {
+     "mean": 0.68625,
+     "lo": 0.68625,
+     "hi": 0.68625
+    },
+    "cost_rel_high": {
+     "mean": 1.0,
+     "lo": 1.0,
+     "hi": 1.0
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.13105,
+     "pos_10_49": 0.04811,
+     "pos_50_plus": 0.05626
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 0.0,
+     "high": 1.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 230
+   },
+   "global_prior": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 2.79473,
+     "lo": 2.79473,
+     "hi": 2.79473
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.36139,
+     "lo": 0.36139,
+     "hi": 0.36139
+    },
+    "quality": {
+     "mean": 0.48783,
+     "lo": 0.48783,
+     "hi": 0.48783
+    },
+    "cost_rel_high": {
+     "mean": 0.32632,
+     "lo": 0.32632,
+     "hi": 0.32632
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.00953,
+     "pos_10_49": 0.00103,
+     "pos_50_plus": 0.00793
+    },
+    "tier_share": {
+     "low": 1.0,
+     "mid": 0.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 12.91436,
+     "lo": 7.46586,
+     "hi": 19.94484
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 10.11963,
+     "lo": 4.67113,
+     "hi": 17.15011
+    },
+    "mean_reward_per_task": {
+     "mean": 0.34115,
+     "lo": 0.32709,
+     "hi": 0.35205
+    },
+    "quality": {
+     "mean": 0.56982,
+     "lo": 0.53451,
+     "hi": 0.60699
+    },
+    "cost_rel_high": {
+     "mean": 0.59014,
+     "lo": 0.49483,
+     "hi": 0.70432
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.0472,
+     "pos_10_49": 0.02403,
+     "pos_50_plus": 0.01703
+    },
+    "tier_share": {
+     "low": 0.46267,
+     "mid": 0.33178,
+     "high": 0.20555
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 12.54111,
+     "lo": 7.05537,
+     "hi": 17.77037
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 9.74638,
+     "lo": 4.26064,
+     "hi": 14.97565
+    },
+    "mean_reward_per_task": {
+     "mean": 0.3419,
+     "lo": 0.33144,
+     "hi": 0.35287
+    },
+    "quality": {
+     "mean": 0.5673,
+     "lo": 0.53688,
+     "hi": 0.60013
+    },
+    "cost_rel_high": {
+     "mean": 0.58169,
+     "lo": 0.50733,
+     "hi": 0.66683
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.04726,
+     "pos_10_49": 0.02317,
+     "pos_50_plus": 0.016
+    },
+    "tier_share": {
+     "low": 0.47269,
+     "mid": 0.33389,
+     "high": 0.19342
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ucb_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 14.71834,
+     "lo": 9.52835,
+     "hi": 19.59502
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 11.92362,
+     "lo": 6.73362,
+     "hi": 16.80029
+    },
+    "mean_reward_per_task": {
+     "mean": 0.33754,
+     "lo": 0.32779,
+     "hi": 0.34792
+    },
+    "quality": {
+     "mean": 0.58664,
+     "lo": 0.56967,
+     "hi": 0.60283
+    },
+    "cost_rel_high": {
+     "mean": 0.64285,
+     "lo": 0.6037,
+     "hi": 0.68836
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.0623,
+     "pos_10_49": 0.02406,
+     "pos_50_plus": 0.01837
+    },
+    "tier_share": {
+     "low": 0.3695,
+     "mid": 0.34489,
+     "high": 0.28561
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ucb_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 18.23628,
+     "lo": 12.83277,
+     "hi": 22.90319
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 15.44155,
+     "lo": 10.03804,
+     "hi": 20.10846
+    },
+    "mean_reward_per_task": {
+     "mean": 0.33051,
+     "lo": 0.32117,
+     "hi": 0.34131
+    },
+    "quality": {
+     "mean": 0.59694,
+     "lo": 0.57769,
+     "hi": 0.61555
+    },
+    "cost_rel_high": {
+     "mean": 0.68759,
+     "lo": 0.63348,
+     "hi": 0.73304
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.08323,
+     "pos_10_49": 0.03132,
+     "pos_50_plus": 0.01838
+    },
+    "tier_share": {
+     "low": 0.29727,
+     "mid": 0.36473,
+     "high": 0.338
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "ts_stream_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 11.41993,
+     "lo": 4.59064,
+     "hi": 21.16003
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 8.6252,
+     "lo": 1.79591,
+     "hi": 18.3653
+    },
+    "mean_reward_per_task": {
+     "mean": 0.34414,
+     "lo": 0.32466,
+     "hi": 0.3578
+    },
+    "quality": {
+     "mean": 0.55608,
+     "lo": 0.49694,
+     "hi": 0.62392
+    },
+    "cost_rel_high": {
+     "mean": 0.54695,
+     "lo": 0.36543,
+     "hi": 0.76765
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.04409,
+     "pos_10_49": 0.02136,
+     "pos_50_plus": 0.0138
+    },
+    "tier_share": {
+     "low": 0.53067,
+     "mid": 0.32344,
+     "high": 0.14589
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   }
+  },
+  "1.0": {
+   "best_fixed_tier_global": "low",
+   "best_fixed_tier_per_repo": {
+    "astropy/astropy": "low",
+    "django/django": "low",
+    "matplotlib/matplotlib": "low",
+    "mwaskom/seaborn": "low",
+    "pallets/flask": "mid",
+    "psf/requests": "low",
+    "pydata/xarray": "low",
+    "pylint-dev/pylint": "low",
+    "pytest-dev/pytest": "low",
+    "scikit-learn/scikit-learn": "low",
+    "sphinx-doc/sphinx": "low",
+    "sympy/sympy": "low"
+   },
+   "fixed_low": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 0.07301,
+     "lo": 0.07301,
+     "hi": 0.07301
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.31924,
+     "lo": 0.31924,
+     "hi": 0.31924
+    },
+    "quality": {
+     "mean": 0.48783,
+     "lo": 0.48783,
+     "hi": 0.48783
+    },
+    "cost_rel_high": {
+     "mean": 0.32632,
+     "lo": 0.32632,
+     "hi": 0.32632
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.00072,
+     "pos_10_49": 0.0,
+     "pos_50_plus": 0.0
+    },
+    "tier_share": {
+     "low": 1.0,
+     "mid": 0.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 0
+   },
+   "fixed_mid": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 34.4777,
+     "lo": 34.4777,
+     "hi": 34.4777
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 34.40469,
+     "lo": 34.40469,
+     "hi": 34.40469
+    },
+    "mean_reward_per_task": {
+     "mean": 0.25043,
+     "lo": 0.25043,
+     "hi": 0.25043
+    },
+    "quality": {
+     "mean": 0.61218,
+     "lo": 0.61218,
+     "hi": 0.61218
+    },
+    "cost_rel_high": {
+     "mean": 0.70018,
+     "lo": 0.70018,
+     "hi": 0.70018
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.09185,
+     "pos_10_49": 0.08663,
+     "pos_50_plus": 0.04117
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 1.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 215
+   },
+   "fixed_high": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 74.89694,
+     "lo": 74.89694,
+     "hi": 74.89694
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 74.82393,
+     "lo": 74.82393,
+     "hi": 74.82393
+    },
+    "mean_reward_per_task": {
+     "mean": 0.16959,
+     "lo": 0.16959,
+     "hi": 0.16959
+    },
+    "quality": {
+     "mean": 0.68625,
+     "lo": 0.68625,
+     "hi": 0.68625
+    },
+    "cost_rel_high": {
+     "mean": 1.0,
+     "lo": 1.0,
+     "hi": 1.0
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.21314,
+     "pos_10_49": 0.13232,
+     "pos_50_plus": 0.13511
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 0.0,
+     "high": 1.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 230
+   },
+   "global_prior": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 0.07301,
+     "lo": 0.07301,
+     "hi": 0.07301
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.31924,
+     "lo": 0.31924,
+     "hi": 0.31924
+    },
+    "quality": {
+     "mean": 0.48783,
+     "lo": 0.48783,
+     "hi": 0.48783
+    },
+    "cost_rel_high": {
+     "mean": 0.32632,
+     "lo": 0.32632,
+     "hi": 0.32632
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.00072,
+     "pos_10_49": 0.0,
+     "pos_50_plus": 0.0
+    },
+    "tier_share": {
+     "low": 1.0,
+     "mid": 0.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 0
+   },
+   "ts_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 20.53689,
+     "lo": 12.48102,
+     "hi": 31.1587
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 20.46388,
+     "lo": 12.40801,
+     "hi": 31.08569
+    },
+    "mean_reward_per_task": {
+     "mean": 0.27831,
+     "lo": 0.25707,
+     "hi": 0.29442
+    },
+    "quality": {
+     "mean": 0.54696,
+     "lo": 0.51868,
+     "hi": 0.58843
+    },
+    "cost_rel_high": {
+     "mean": 0.51998,
+     "lo": 0.44187,
+     "hi": 0.63108
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.06072,
+     "pos_10_49": 0.04682,
+     "pos_50_plus": 0.02606
+    },
+    "tier_share": {
+     "low": 0.59623,
+     "mid": 0.2782,
+     "high": 0.12557
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 215
+   },
+   "ts_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 12.48376,
+     "lo": 6.86119,
+     "hi": 18.74656
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 12.41075,
+     "lo": 6.78818,
+     "hi": 18.67355
+    },
+    "mean_reward_per_task": {
+     "mean": 0.29442,
+     "lo": 0.28189,
+     "hi": 0.30566
+    },
+    "quality": {
+     "mean": 0.52639,
+     "lo": 0.50858,
+     "hi": 0.55214
+    },
+    "cost_rel_high": {
+     "mean": 0.44898,
+     "lo": 0.40396,
+     "hi": 0.51224
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.03168,
+     "pos_10_49": 0.02972,
+     "pos_50_plus": 0.01722
+    },
+    "tier_share": {
+     "low": 0.72411,
+     "mid": 0.21506,
+     "high": 0.06083
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 215
+   },
+   "ucb_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 28.7228,
+     "lo": 22.70336,
+     "hi": 34.24624
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 28.64979,
+     "lo": 22.63035,
+     "hi": 34.17323
+    },
+    "mean_reward_per_task": {
+     "mean": 0.26194,
+     "lo": 0.25089,
+     "hi": 0.27398
+    },
+    "quality": {
+     "mean": 0.57469,
+     "lo": 0.56063,
+     "hi": 0.5893
+    },
+    "cost_rel_high": {
+     "mean": 0.60533,
+     "lo": 0.57111,
+     "hi": 0.64377
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.08903,
+     "pos_10_49": 0.06036,
+     "pos_50_plus": 0.03923
+    },
+    "tier_share": {
+     "low": 0.43654,
+     "mid": 0.32274,
+     "high": 0.24072
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 227
+   },
+   "ucb_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 27.56888,
+     "lo": 22.06555,
+     "hi": 33.53371
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 27.49587,
+     "lo": 21.99254,
+     "hi": 33.4607
+    },
+    "mean_reward_per_task": {
+     "mean": 0.26425,
+     "lo": 0.25232,
+     "hi": 0.27525
+    },
+    "quality": {
+     "mean": 0.56613,
+     "lo": 0.54593,
+     "hi": 0.58794
+    },
+    "cost_rel_high": {
+     "mean": 0.5843,
+     "lo": 0.53768,
+     "hi": 0.63108
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.09959,
+     "pos_10_49": 0.05809,
+     "pos_50_plus": 0.03058
+    },
+    "tier_share": {
+     "low": 0.48254,
+     "mid": 0.31559,
+     "high": 0.20187
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 227
+   },
+   "ts_stream_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 11.91876,
+     "lo": 2.92407,
+     "hi": 31.21573
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 11.84575,
+     "lo": 2.85106,
+     "hi": 31.14272
+    },
+    "mean_reward_per_task": {
+     "mean": 0.29555,
+     "lo": 0.25695,
+     "hi": 0.31354
+    },
+    "quality": {
+     "mean": 0.52268,
+     "lo": 0.49184,
+     "hi": 0.59128
+    },
+    "cost_rel_high": {
+     "mean": 0.43961,
+     "lo": 0.34882,
+     "hi": 0.62609
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.03762,
+     "pos_10_49": 0.02809,
+     "pos_50_plus": 0.0131
+    },
+    "tier_share": {
+     "low": 0.75245,
+     "mid": 0.1853,
+     "high": 0.06225
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 215
+   }
+  },
+  "2.0": {
+   "best_fixed_tier_global": "low",
+   "best_fixed_tier_per_repo": {
+    "astropy/astropy": "low",
+    "django/django": "low",
+    "matplotlib/matplotlib": "low",
+    "mwaskom/seaborn": "low",
+    "pallets/flask": "mid",
+    "psf/requests": "low",
+    "pydata/xarray": "low",
+    "pylint-dev/pylint": "low",
+    "pytest-dev/pytest": "low",
+    "scikit-learn/scikit-learn": "low",
+    "sphinx-doc/sphinx": "low",
+    "sympy/sympy": "low"
+   },
+   "fixed_low": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 0.07784,
+     "lo": 0.07784,
+     "hi": 0.07784
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.15065,
+     "lo": 0.15065,
+     "hi": 0.15065
+    },
+    "quality": {
+     "mean": 0.48783,
+     "lo": 0.48783,
+     "hi": 0.48783
+    },
+    "cost_rel_high": {
+     "mean": 0.32632,
+     "lo": 0.32632,
+     "hi": 0.32632
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.00077,
+     "pos_10_49": 0.0,
+     "pos_50_plus": 0.0
+    },
+    "tier_share": {
+     "low": 1.0,
+     "mid": 0.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 0
+   },
+   "fixed_mid": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 131.06146,
+     "lo": 131.06146,
+     "hi": 131.06146
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 130.98362,
+     "lo": 130.98362,
+     "hi": 130.98362
+    },
+    "mean_reward_per_task": {
+     "mean": -0.11132,
+     "lo": -0.11132,
+     "hi": -0.11132
+    },
+    "quality": {
+     "mean": 0.61218,
+     "lo": 0.61218,
+     "hi": 0.61218
+    },
+    "cost_rel_high": {
+     "mean": 0.70018,
+     "lo": 0.70018,
+     "hi": 0.70018
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.28827,
+     "pos_10_49": 0.29227,
+     "pos_50_plus": 0.22106
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 1.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 230
+   },
+   "fixed_high": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 248.93403,
+     "lo": 248.93403,
+     "hi": 248.93403
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 248.85619,
+     "lo": 248.85619,
+     "hi": 248.85619
+    },
+    "mean_reward_per_task": {
+     "mean": -0.34707,
+     "lo": -0.34707,
+     "hi": -0.34707
+    },
+    "quality": {
+     "mean": 0.68625,
+     "lo": 0.68625,
+     "hi": 0.68625
+    },
+    "cost_rel_high": {
+     "mean": 1.0,
+     "lo": 1.0,
+     "hi": 1.0
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.57681,
+     "pos_10_49": 0.47329,
+     "pos_50_plus": 0.48219
+    },
+    "tier_share": {
+     "low": 0.0,
+     "mid": 0.0,
+     "high": 1.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 231
+   },
+   "global_prior": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 0.07784,
+     "lo": 0.07784,
+     "hi": 0.07784
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0
+    },
+    "mean_reward_per_task": {
+     "mean": 0.15065,
+     "lo": 0.15065,
+     "hi": 0.15065
+    },
+    "quality": {
+     "mean": 0.48783,
+     "lo": 0.48783,
+     "hi": 0.48783
+    },
+    "cost_rel_high": {
+     "mean": 0.32632,
+     "lo": 0.32632,
+     "hi": 0.32632
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.00077,
+     "pos_10_49": 0.0,
+     "pos_50_plus": 0.0
+    },
+    "tier_share": {
+     "low": 1.0,
+     "mid": 0.0,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 0
+   },
+   "ts_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 16.0126,
+     "lo": 7.90497,
+     "hi": 26.90519
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 15.93476,
+     "lo": 7.82713,
+     "hi": 26.82735
+    },
+    "mean_reward_per_task": {
+     "mean": 0.11878,
+     "lo": 0.09699,
+     "hi": 0.13499
+    },
+    "quality": {
+     "mean": 0.50054,
+     "lo": 0.4922,
+     "hi": 0.51182
+    },
+    "cost_rel_high": {
+     "mean": 0.36945,
+     "lo": 0.3493,
+     "hi": 0.4039
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.06675,
+     "pos_10_49": 0.03942,
+     "pos_50_plus": 0.00807
+    },
+    "tier_share": {
+     "low": 0.89639,
+     "mid": 0.09588,
+     "high": 0.00773
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 169
+   },
+   "ts_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 0.62049,
+     "lo": -0.46219,
+     "hi": 2.23962
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 0.54266,
+     "lo": -0.54003,
+     "hi": 2.16178
+    },
+    "mean_reward_per_task": {
+     "mean": 0.14956,
+     "lo": 0.14632,
+     "hi": 0.15173
+    },
+    "quality": {
+     "mean": 0.48837,
+     "lo": 0.4877,
+     "hi": 0.49015
+    },
+    "cost_rel_high": {
+     "mean": 0.32788,
+     "lo": 0.32609,
+     "hi": 0.33141
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.00174,
+     "pos_10_49": 0.00187,
+     "pos_50_plus": 0.00041
+    },
+    "tier_share": {
+     "low": 0.99611,
+     "mid": 0.00389,
+     "high": 0.0
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 0
+   },
+   "ucb_repo_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 60.99789,
+     "lo": 50.98215,
+     "hi": 69.476
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 60.92005,
+     "lo": 50.90432,
+     "hi": 69.39816
+    },
+    "mean_reward_per_task": {
+     "mean": 0.02881,
+     "lo": 0.01185,
+     "hi": 0.04884
+    },
+    "quality": {
+     "mean": 0.53868,
+     "lo": 0.52621,
+     "hi": 0.55217
+    },
+    "cost_rel_high": {
+     "mean": 0.49344,
+     "lo": 0.46878,
+     "hi": 0.52044
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.19411,
+     "pos_10_49": 0.14272,
+     "pos_50_plus": 0.06722
+    },
+    "tier_share": {
+     "low": 0.64514,
+     "mid": 0.22835,
+     "high": 0.12651
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 230
+   },
+   "ucb_repo_eb": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 11.46626,
+     "lo": 6.59049,
+     "hi": 17.38521
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 11.38842,
+     "lo": 6.51265,
+     "hi": 17.30737
+    },
+    "mean_reward_per_task": {
+     "mean": 0.12787,
+     "lo": 0.11603,
+     "hi": 0.13762
+    },
+    "quality": {
+     "mean": 0.49852,
+     "lo": 0.49213,
+     "hi": 0.50774
+    },
+    "cost_rel_high": {
+     "mean": 0.3587,
+     "lo": 0.34458,
+     "hi": 0.37459
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.00077,
+     "pos_10_49": 0.0227,
+     "pos_50_plus": 0.03401
+    },
+    "tier_share": {
+     "low": 0.92522,
+     "mid": 0.06003,
+     "high": 0.01475
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 230
+   },
+   "ts_stream_flat": {
+    "cum_regret_vs_best_tier_per_repo": {
+     "mean": 4.51226,
+     "lo": 0.31927,
+     "hi": 15.15446
+    },
+    "cum_regret_vs_global_best_tier": {
+     "mean": 4.43442,
+     "lo": 0.24143,
+     "hi": 15.07662
+    },
+    "mean_reward_per_task": {
+     "mean": 0.14178,
+     "lo": 0.12049,
+     "hi": 0.15016
+    },
+    "quality": {
+     "mean": 0.49161,
+     "lo": 0.48792,
+     "hi": 0.50241
+    },
+    "cost_rel_high": {
+     "mean": 0.33856,
+     "lo": 0.32813,
+     "hi": 0.37164
+    },
+    "regret_per_task_by_position_in_repo_vs_repo_best": {
+     "pos_0_9": 0.01737,
+     "pos_10_49": 0.01123,
+     "pos_50_plus": 0.00287
+    },
+    "tier_share": {
+     "low": 0.96886,
+     "mid": 0.02961,
+     "high": 0.00153
+    },
+    "tasks_until_within_0.01_per_task_vs_repo_best": 63
+   }
+  }
+ },
+ "constrained_95": {
+  "mu0": 1.74631,
+  "fixed_high": {
+   "quality_rel_high": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "cost_rel_high": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "share_streams_meeting_95": 1.0,
+   "tier_share": {
+    "low": 0.0,
+    "mid": 0.0,
+    "high": 1.0
+   }
+  },
+  "offline_mixture_95": {
+   "quality_rel_high": {
+    "mean": 0.95147,
+    "lo": 0.94267,
+    "hi": 0.95962
+   },
+   "cost_rel_high": {
+    "mean": 0.86634,
+    "lo": 0.84488,
+    "hi": 0.88343
+   },
+   "share_streams_meeting_95": 0.61,
+   "tier_share": {
+    "low": 0.0,
+    "mid": 0.44698,
+    "high": 0.55302
+   }
+  },
+  "lagrangian_ts_eb": {
+   "quality_rel_high": {
+    "mean": 0.90155,
+    "lo": 0.86295,
+    "hi": 0.93554
+   },
+   "cost_rel_high": {
+    "mean": 0.75145,
+    "lo": 0.67471,
+    "hi": 0.83242
+   },
+   "share_streams_meeting_95": 0.0,
+   "tier_share": {
+    "low": 0.19709,
+    "mid": 0.38313,
+    "high": 0.41978
+   }
+  },
+  "threshold_eb": {
+   "quality_rel_high": {
+    "mean": 0.95264,
+    "lo": 0.91477,
+    "hi": 0.98439
+   },
+   "cost_rel_high": {
+    "mean": 0.8714,
+    "lo": 0.76959,
+    "hi": 0.96341
+   },
+   "share_streams_meeting_95": 0.58,
+   "tier_share": {
+    "low": 0.01759,
+    "mid": 0.37769,
+    "high": 0.60472
+   }
+  },
+  "offline_reference": {
+   "mixture_cost_saved_at_95": 0.13811,
+   "in_sample_oracle_saved_at_95": 0.50526,
+   "fixed": {
+    "low": {
+     "cost_rel": 0.32632,
+     "quality": 0.48783
+    },
+    "mid": {
+     "cost_rel": 0.70018,
+     "quality": 0.61218
+    },
+    "high": {
+     "cost_rel": 1.0,
+     "quality": 0.68625
+    }
+   }
+  }
+ },
+ "runtime_s": 5
+}

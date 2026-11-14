@@ -7,7 +7,7 @@ import { IconButton } from "../IconButton";
 import { Spinner } from "../Status";
 import { Section, Variants } from "./parts";
 
-const VARIANTS = ["primary", "secondary", "quiet", "danger", "link"] as const;
+const VARIANTS = ["primary", "secondary", "quiet", "danger", "float", "link"] as const;
 
 export function ButtonsSection() {
   const [pressed, setPressed] = useState(true);

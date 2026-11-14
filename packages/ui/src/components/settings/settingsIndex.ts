@@ -8,17 +8,16 @@ export const SECTIONS = [
   { id: "providers", label: "Providers" },
   { id: "models", label: "Models" },
   { id: "editor", label: "Editor" },
+  { id: "integrations", label: "Integrations" },
   { id: "usage", label: "Usage and budget" },
   { id: "memory", label: "Memory" },
   { id: "commands", label: "Commands and review" },
   { id: "privacy", label: "Privacy and data" },
+  { id: "remote", label: "Remote access" },
   { id: "about", label: "About" },
 ] as const;
 
 export type SectionId = (typeof SECTIONS)[number]["id"];
-
-/** Sections whose page uses the whole width (a list beside a detail) instead of the 780px column. */
-export const isWideSection = (id: SectionId): boolean => id === "providers";
 
 /** Decision 89 f: the Agents page is gone; its address opens Providers. */
 const RENAMED: Record<string, SectionId> = { agents: "providers" };
@@ -35,7 +34,20 @@ export type IndexedRow = { section: SectionId; id: string; title: string; descri
 
 export const SETTINGS_INDEX: readonly IndexedRow[] = [
   { section: "general", id: "startup", title: "On startup", description: "What the app shows when it opens", keywords: "launch open home last project" },
-  { section: "general", id: "bridge", title: "Harness connection", description: "The harness this window talks to", keywords: "bridge url offline retry" },
+  {
+    section: "general",
+    id: "sidebar-view",
+    title: "Sidebar shows",
+    description: "Projects and sessions, projects, or sessions",
+    keywords: "sidebar tree sessions projects view list",
+  },
+  {
+    section: "general",
+    id: "bridge",
+    title: "Octo's local service",
+    description: "The background service that keeps projects and runs agents",
+    keywords: "harness connection bridge url offline retry",
+  },
   { section: "appearance", id: "theme", title: "Theme", description: "Dark, light, or follow the system", keywords: "dark light mode colour color" },
   {
     section: "appearance",
@@ -74,8 +86,20 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
     description: "The key the router forwards to (for example OpenRouter)",
     keywords: "openrouter secret",
   },
-  { section: "models", id: "default-orchestrator", title: "Default orchestrator", description: "Runs new projects' orchestrators", keywords: "model default" },
-  { section: "models", id: "tiers", title: "Tiers", description: "Fast, balanced and deep models for delegated work", keywords: "fast balanced deep tier" },
+  {
+    section: "models",
+    id: "default-orchestrator",
+    title: "Default model",
+    description: "Answers in new projects",
+    keywords: "model default orchestrator main",
+  },
+  {
+    section: "models",
+    id: "tiers",
+    title: "Tiers",
+    description: "Fast, balanced and deep models for work handed to a helper",
+    keywords: "fast balanced deep tier roles speed",
+  },
   { section: "models", id: "visible", title: "Models in pickers", description: "Which models appear when you choose one", keywords: "hide show list picker" },
   {
     section: "editor",
@@ -85,11 +109,11 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
     keywords: "autocomplete copilot suggestions",
   },
   {
-    section: "editor",
+    section: "integrations",
     id: "plugins",
-    title: "Plugins and language servers",
-    description: "What the harness loaded from plugin manifests",
-    keywords: "integrations lsp language server tool server mcp",
+    title: "Integrations",
+    description: "Language servers, agents and tool servers that plugins add",
+    keywords: "plugins lsp language server tool server mcp agents",
   },
   {
     section: "commands",
@@ -120,7 +144,7 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
     keywords: "split unified side by side review diff",
   },
   { section: "usage", id: "limits", title: "Plan limits", description: "Rate limits the provider reported", keywords: "rate limit quota" },
-  { section: "usage", id: "budget", title: "Budget", description: "A spending cap per project", keywords: "spend cost usd cap" },
+  { section: "usage", id: "budget", title: "Budget", description: "A total spending cap per project", keywords: "spend cost usd cap limit" },
   {
     section: "memory",
     id: "context",
@@ -138,11 +162,11 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
   {
     section: "privacy",
     id: "trace",
-    title: "Record an ACP wire trace",
-    description: "Write what agents send and receive, secrets removed",
-    keywords: "debug log trace",
+    title: "Record what agents send and receive",
+    description: "Each agent conversation saved to a file, secrets removed",
+    keywords: "debug log trace acp wire",
   },
-  { section: "privacy", id: "data-dir", title: "Data folder", description: "Where the harness keeps projects and traces", keywords: "directory folder path" },
+  { section: "privacy", id: "data-dir", title: "Data folder", description: "Where Octo keeps projects and traces", keywords: "directory folder path harness" },
   {
     section: "privacy",
     id: "child-env",
@@ -150,7 +174,16 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
     description: "Variables agents and tools may see",
     keywords: "env allow list variables",
   },
-  { section: "about", id: "version", title: "Version", description: "The harness and the app", keywords: "about build" },
+  {
+    section: "remote",
+    id: "remote",
+    title: "Remote access",
+    description: "Reach this computer from your phone through Cloudflare",
+    keywords: "phone mobile tunnel cloudflare cloudflared remote pair qr devices",
+  },
+  { section: "remote", id: "remote-add", title: "Pair a phone", description: "A QR code and a code that work once", keywords: "add device pairing qr code" },
+  { section: "about", id: "version", title: "Version", description: "Octo's local service and the app", keywords: "about build" },
+  { section: "about", id: "shortcuts", title: "Keyboard shortcuts", description: "Every shortcut in one list", keywords: "keys hotkeys help" },
 ];
 
 /** Rows whose title, description, keywords or section match every word of `query`, in index order. */

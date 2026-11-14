@@ -26,6 +26,8 @@ pub struct AppState {
     pub decision: decision::Providers,
     pub history: History,
     pub auto: Auto,
+    /// The live price table (`prices.toml` merged with the catalogue) and its refresh status.
+    pub prices: crate::prices::PriceBook,
 }
 
 impl AppState {
@@ -42,6 +44,7 @@ impl AppState {
             kind: "llm.messages",
             name: config.llm_messages_backend.clone(),
         })?;
+        let prices = crate::prices::PriceBook::from_config(&config);
         let connect_timeout = Duration::from_secs(config.upstream_connect_timeout_secs);
         let request_timeout = Duration::from_secs(config.upstream_request_timeout_secs);
         Ok(Self {
@@ -53,7 +56,7 @@ impl AppState {
             default_messages_provider,
             llm: llm::Providers::from_config(&config),
             decision: decision::Providers::from_config(&config)?,
-            history: History::disabled(),
+            history: History::disabled().with_prices(prices.live()),
             auto: Auto::new({
                 let mut tiers = Tiers::new(
                     config.autoroute_low_model.clone(),
@@ -87,11 +90,12 @@ impl AppState {
                     crate::auto::BudgetAction::parse(&config.autoroute_session_budget_action)
                         .unwrap_or(crate::auto::BudgetAction::Downgrade);
                 tiers.never_pay_more_for_less = config.autoroute_never_pay_more_for_less;
-                tiers.prices = config.prices.clone();
+                tiers.prices = prices.live();
                 tiers.route = config.autoroute_route.clone();
                 tiers
             }),
             config,
+            prices,
         })
     }
 }

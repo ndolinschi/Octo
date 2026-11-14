@@ -10,9 +10,10 @@ export function focusSoon(
     delay?: number;
     onlyIfLost?: boolean;
     /** Focus here also counts as lost (a placeholder holder). */ holder?: () => Element | null;
+    /** Stop looking (checked every frame): the reason to move focus is gone. */ abort?: () => boolean;
   } = {},
 ): void {
-  const { timeout = 1000, delay = 0, onlyIfLost = false, holder } = options;
+  const { timeout = 1000, delay = 0, onlyIfLost = false, holder, abort } = options;
   const until = performance.now() + delay + timeout;
   // Lost: nothing focused, or the focused element was removed or hidden (a tab panel that just went away).
   const lost = () => {
@@ -26,6 +27,7 @@ export function focusSoon(
     );
   };
   const step = () => {
+    if (abort?.()) return;
     // Focus still somewhere real: keep watching until the timeout (it may be lost a frame later), never take it.
     if (onlyIfLost && !lost()) {
       if (performance.now() < until) requestAnimationFrame(step);
@@ -74,26 +76,41 @@ export function moveInList(e: { key: string; currentTarget: EventTarget | null; 
   rows[to]?.focus();
 }
 
-const FOCUSABLE = 'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex="0"]';
+/**
+ * Where an opened tool panel puts focus (one rule): a target the panel marks (`data-autofocus`), else its search field, else
+ * its list — the chosen row, else the first — and never a header button or a view tab.
+ */
+const PANEL_TARGETS = ["[data-autofocus]", 'input[type="search"]', '[data-row][aria-current="true"], [data-row][aria-selected="true"]', "[data-row]"];
 
-/** The first visible element in `root` that takes keyboard focus. */
-export function firstFocusable(root: ParentNode): HTMLElement | null {
-  for (const el of root.querySelectorAll<HTMLElement>(FOCUSABLE)) if (el.offsetParent !== null && !el.closest("[inert]")) return el;
+function panelTarget(root: ParentNode): HTMLElement | null {
+  for (const selector of PANEL_TARGETS)
+    for (const el of root.querySelectorAll<HTMLElement>(selector)) if (el.offsetParent !== null && !el.closest("[inert]")) return el;
   return null;
 }
 
 /**
- * Decision 35: a surface that just opened takes focus — its first focusable element once it has one (lazy panels load
- * a moment later), else, after `wait`, the container itself (`tabindex="-1"`). Never leaves focus on the page.
+ * Decision 35: a surface that just opened takes focus — its search field or list (`panelTarget`) once it has one (lazy panels
+ * and their lists load a moment later), else, after `wait`, the container itself (`tabindex="-1"`). Never leaves focus on the page.
  */
-export function focusSurfaceSoon(root: () => HTMLElement | null, wait = 600): void {
+export function focusSurfaceSoon(root: () => HTMLElement | null, wait = 1000): void {
   const start = performance.now();
+  const from = document.activeElement;
   focusSoon(
     () => {
       const el = root();
       if (!el) return null;
-      return firstFocusable(el) ?? (performance.now() - start > wait ? el : null);
+      return panelTarget(el) ?? (performance.now() - start > wait ? el : null);
     },
-    { timeout: wait + 1500 },
+    {
+      timeout: wait + 1500,
+      // The person moved focus somewhere else meanwhile (opened a menu, clicked a field): a panel whose content arrives
+      // late must not take it back — that closed the tab picker a moment after it opened.
+      abort: () => {
+        const a = document.activeElement;
+        if (!a || a === from || a === document.body || !a.isConnected) return false;
+        const el = root();
+        return !el?.contains(a);
+      },
+    },
   );
 }

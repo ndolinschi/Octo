@@ -56,32 +56,39 @@ const compactInputCap = 120_000
 // orchestrator and in the window memory mode (ErrCompactUnsupported), and when
 // there is nothing to compact (ErrNothingToCompact).
 func (o *Orchestrator) Compact(ctx context.Context, pid string) (CompactResult, error) {
+	return o.CompactSession(ctx, pid, "")
+}
+
+// CompactSession is Compact for one main session ("": the default).
+func (o *Orchestrator) CompactSession(ctx context.Context, pid, sid string) (CompactResult, error) {
 	if o.baseCtx.Err() != nil {
 		return CompactResult{}, ErrShuttingDown
 	}
-	turnCtx, cancel := context.WithCancel(o.baseCtx)
-	defer cancel()
-	if !o.claim(pid, cancel) { // the project's turn slot: no turn runs while its history is being replaced
-		return CompactResult{}, ErrTurnInProgress
-	}
-	defer func() {
-		// A message sent while the history was being replaced was queued: start it now.
-		o.release(pid)
-		o.qmu.Lock()
-		defer o.qmu.Unlock()
-		if db, err := o.store.Get(context.Background(), pid); err == nil {
-			o.startNext(db)
-		}
-	}()
 	db, err := o.store.Get(ctx, pid)
 	if err != nil {
 		return CompactResult{}, err
 	}
-	orch, err := db.Orchestrator(ctx)
+	if sid, err = o.mainSession(ctx, db, sid); err != nil {
+		return CompactResult{}, err
+	}
+	key := skey(pid, sid)
+	turnCtx, cancel := context.WithCancel(o.baseCtx)
+	defer cancel()
+	if !o.claim(key, cancel) { // the session's turn slot: no turn runs while its history is being replaced
+		return CompactResult{}, ErrTurnInProgress
+	}
+	defer func() {
+		// A message sent while the history was being replaced was queued: start it now.
+		o.release(key)
+		o.qmu.Lock()
+		defer o.qmu.Unlock()
+		o.startNext(db, sid)
+	}()
+	orch, err := db.RootAgent(ctx, sid)
 	if err != nil {
 		return CompactResult{}, err
 	}
-	rt, err := o.newRuntime(ctx, db)
+	rt, err := o.newSessionRuntime(ctx, db, sid)
 	if err != nil {
 		return CompactResult{}, err
 	}
@@ -126,9 +133,9 @@ func (o *Orchestrator) Compact(ctx context.Context, pid string) (CompactResult, 
 	out := CompactResult{UptoMessageID: c.UptoMessageID, At: c.CreatedAt, SummaryTokens: c.SummaryTokens(), MessageCount: count, Manual: true}
 	o.hub.Publish(pid, events.AgentCompacted, map[string]any{
 		"agent_id": orch.ID, "upto_message_id": c.UptoMessageID, "summary_tokens": out.SummaryTokens, "at": c.CreatedAt,
-		"manual": true, "message_count": count,
+		"manual": true, "message_count": count, "session_id": sid,
 	})
-	o.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid})
+	o.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid, "session_id": sid})
 	return out, nil
 }
 

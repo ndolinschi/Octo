@@ -1,16 +1,23 @@
 import {
   applyEvent,
   withAgents,
+  withApprovals,
   withCompactions,
+  withInputs,
   withMessages,
   withNotes,
   withSessions,
+  settleStreams,
+  ancestorsOf,
   withSideAsked,
   withSideCleared,
   withSideMessages,
+  withTurnCleared,
   type Agent,
+  type Approval,
   type BridgeEvent,
   type CompactionMarker,
+  type InputRequest,
   type Message,
   type Note,
   type ProjectSession,
@@ -24,6 +31,8 @@ export type Action =
   | { type: "agents"; agents: Agent[] }
   | { type: "messages"; agentId: string; messages: Message[] }
   | { type: "notes"; notes: Note[] }
+  /** NEW-3: the pending approvals and open forms as read (a reload, a reopened stream); events keep them current. */
+  | { type: "waits"; approvals: Approval[] | null; inputs: InputRequest[] | null }
   | { type: "sessions"; sessions: ProjectSession[] }
   | { type: "compactions"; agentId: string; markers: CompactionMarker[] }
   /** The agent's conversation replaced by another one (a resumed session): messages, markers and any streamed text. */
@@ -31,8 +40,12 @@ export type Action =
   | { type: "side"; messages: SideMessage[] }
   | { type: "sideAsked"; started: SideStarted }
   | { type: "sideCleared" }
-  | { type: "clearTurn" }
-  | { type: "rewound"; messageId: number; label: string; at: string; soft?: boolean };
+  /** A turn is about to start in session `sessionId` (default: the default session): its last outcome goes. */
+  | { type: "clearTurn"; sessionId?: string }
+  /** After a re-read: drop the live parts of agents that are not running any more (A11). */
+  | { type: "settle" }
+  /** `root`: the root agent of the session that was rewound (parallel sessions); absent: the project's first root. */
+  | { type: "rewound"; messageId: number; label: string; at: string; soft?: boolean; root?: string };
 
 export function projectReducer(state: ProjectState, action: Action): ProjectState {
   switch (action.type) {
@@ -44,6 +57,12 @@ export function projectReducer(state: ProjectState, action: Action): ProjectStat
       return withMessages(state, action.agentId, action.messages);
     case "notes":
       return withNotes(state, action.notes);
+    case "waits": {
+      // Merged with what events brought while the lists were read (one asked meanwhile is not dropped).
+      const merge = <T extends { id: string }>(read: T[], live: readonly T[]) => [...read, ...live.filter((x) => !read.some((r) => r.id === x.id))];
+      const a = action.approvals ? withApprovals(state, merge(action.approvals, state.approvals)) : state;
+      return action.inputs ? withInputs(a, merge(action.inputs, a.inputs)) : a;
+    }
     case "sessions":
       return withSessions(state, action.sessions);
     case "transcript":
@@ -61,10 +80,12 @@ export function projectReducer(state: ProjectState, action: Action): ProjectStat
       return withSideAsked(state, action.started);
     case "sideCleared":
       return withSideCleared(state);
+    case "settle":
+      return settleStreams(state);
     case "clearTurn":
-      return { ...state, lastTurn: null };
+      return withTurnCleared(state, action.sessionId ?? null);
     case "rewound":
-      return rewound(state, action.messageId, action.label, action.at, action.soft === true);
+      return rewound(state, action.messageId, action.label, action.at, action.soft === true, action.root);
   }
 }
 
@@ -73,28 +94,38 @@ export function projectReducer(state: ProjectState, action: Action): ProjectStat
  * gone, sub-agents created since are hidden, and a quiet marker stays where the cut is. Idempotent (the event and the
  * dialog's own result both apply it; the marker at the same position is replaced, unless `soft` (the event) finds one.
  */
-export function rewound(state: ProjectState, messageId: number, label: string, at: string, soft = false): ProjectState {
-  const present = Object.values(state.compactions).some((list) => list.some((c) => c.upto_message_id === messageId - 1 && c.label?.startsWith("Rewound")));
+export function rewound(state: ProjectState, messageId: number, label: string, at: string, soft = false, root?: string): ProjectState {
+  // Parallel sessions: only the rewound session's agents are cut (message ids are project-wide; another session's later
+  // messages stay). Without a root (an older harness) every agent is.
+  const inScope = (id: string) => root === undefined || ancestorsOf(state, id).some((a) => a.id === root) || id === root;
+  const present = Object.entries(state.compactions).some(
+    ([agentId, list]) => inScope(agentId) && list.some((c) => c.upto_message_id === messageId - 1 && c.label?.startsWith("Rewound")),
+  );
   if (soft && present) return state;
   const cutAt = Object.values(state.messages)
     .flat()
     .find((m) => m.id === messageId)?.created_at;
   const gone = new Set(
-    cutAt === undefined ? [] : state.agentOrder.filter((id) => state.agents[id]?.parent_id !== null && (state.agents[id]?.created_at ?? "") >= cutAt),
+    cutAt === undefined
+      ? []
+      : state.agentOrder.filter((id) => state.agents[id]?.parent_id !== null && inScope(id) && (state.agents[id]?.created_at ?? "") >= cutAt),
   );
   const messages = Object.fromEntries(
     Object.entries(state.messages)
       .filter(([agentId]) => !gone.has(agentId))
-      .map(([agentId, list]) => [agentId, list.filter((m) => m.id < messageId)]),
+      .map(([agentId, list]) => [agentId, inScope(agentId) ? list.filter((m) => m.id < messageId) : list]),
   );
   const agents = Object.fromEntries(Object.entries(state.agents).filter(([id]) => !gone.has(id)));
   const compactions = Object.fromEntries(
-    Object.entries(state.compactions).map(([agentId, list]) => [agentId, list.filter((c) => c.upto_message_id < messageId - 1)]),
+    Object.entries(state.compactions).map(([agentId, list]) => [agentId, inScope(agentId) ? list.filter((c) => c.upto_message_id < messageId - 1) : list]),
   );
-  const orchestrator = state.agentOrder.find((id) => state.agents[id]?.parent_id === null);
+  const orchestrator = root ?? state.agentOrder.find((id) => state.agents[id]?.parent_id === null);
   if (orchestrator !== undefined) {
     const marker: CompactionMarker = { upto_message_id: messageId - 1, at, label };
     compactions[orchestrator] = [...(compactions[orchestrator] ?? []), marker];
   }
-  return { ...state, messages, agents, agentOrder: state.agentOrder.filter((id) => !gone.has(id)), compactions, lastTurn: null, streaming: {} };
+  const streaming = root === undefined ? {} : Object.fromEntries(Object.entries(state.streaming).filter(([id]) => !inScope(id)));
+  const next = { ...state, messages, agents, agentOrder: state.agentOrder.filter((id) => !gone.has(id)), compactions, streaming };
+  const sid = root === undefined ? null : (Object.entries(state.sessions.byId).find(([, x]) => x.rootAgentId === root)?.[0] ?? null);
+  return withTurnCleared(next, sid);
 }

@@ -63,7 +63,7 @@ export function CommandDialog(props: {
             {
               id: ids[0],
               label: "Name",
-              control: <TextField id={ids[0]} value={name} onChange={(e) => setName(e.target.value)} placeholder="Tests" />,
+              control: <TextField id={ids[0]} data-autofocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Tests" />,
             },
             {
               id: ids[2],
@@ -129,9 +129,11 @@ export function OfferedDialog(props: {
     >
       <div className="flex flex-col gap-1">
         {props.all.length === 0 && <p className="text-sm text-fg-3">This project has no commands yet. Add some first.</p>}
-        {props.all.map((c) => (
+        {props.all.map((c, i) => (
           <Checkbox
             key={c.name}
+            // The dialog opens on its first box (the list is what it is for), not on Close.
+            data-autofocus={i === 0 || undefined}
             label={c.name}
             description={<span className="font-mono">{c.command}</span>}
             checked={chosen.has(c.name.toLowerCase())}
@@ -183,6 +185,7 @@ export function GlobsDialog(props: { initial: ReviewConfig["mechanical_globs"]; 
       <Field label="Patterns" htmlFor={id}>
         <TextArea
           id={id}
+          data-autofocus
           rows={6}
           value={text}
           spellCheck={false}

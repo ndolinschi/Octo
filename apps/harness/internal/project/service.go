@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/ndolinschi/Octo/apps/harness/internal/completion"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync"
@@ -203,6 +204,10 @@ func NewService(store *projectstore.Store, hub *events.Hub, turns Turns, default
 	for _, o := range opts {
 		o(s)
 	}
+	if st, ok := turns.(SessionTurns); ok {
+		// The project's orchestrator_agent_id is the default session's root: a new default republishes the project.
+		st.OnDefaultChanged(s.announceProject)
+	}
 	return s
 }
 
@@ -228,6 +233,13 @@ func (s *Service) SetDefaultTiers(orchestrator, fast, balanced, deep string) {
 	s.defaults.Models.Deep = deep
 }
 
+// TurnRecoverer closes the turn a previous process left running in a project
+// (orchestrator.RecoverInterrupted): its streamed text kept, its open tool calls
+// closed, its exchange recorded. Recover calls it before the rows are settled.
+type TurnRecoverer interface {
+	RecoverInterrupted(ctx context.Context, db *projectstore.DB) error
+}
+
 // Recover settles agents a previous process left running.
 func (s *Service) Recover(ctx context.Context) error {
 	ids, err := s.store.IDs(ctx)
@@ -238,6 +250,12 @@ func (s *Service) Recover(ctx context.Context) error {
 		db, err := s.store.Get(ctx, id)
 		if err != nil {
 			return err
+		}
+		if r, ok := s.turns.(TurnRecoverer); ok {
+			// A project whose turn cannot be closed still starts: its rows are settled below as before.
+			if err := r.RecoverInterrupted(ctx, db); err != nil {
+				slog.Error("close the interrupted turn", "project", id, "err", err)
+			}
 		}
 		if err := db.RecoverInterrupted(ctx); err != nil {
 			return err
@@ -339,6 +357,9 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	if err := checkReview(in.Review); err != nil {
 		return Project{}, err
 	}
+	if err := checkSessionSettings(in.SessionSettings); err != nil {
+		return Project{}, err
+	}
 	memJSON := ""
 	if in.Memory != nil {
 		if err := in.Memory.Validate(); err != nil {
@@ -367,6 +388,9 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 		return Project{}, err
 	}
 	if err := saveReview(ctx, db, in.Review); err != nil {
+		return Project{}, err
+	}
+	if err := saveSessionSettings(ctx, db, in.SessionSettings); err != nil {
 		return Project{}, err
 	}
 	return s.load(ctx, db)
@@ -439,6 +463,9 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 	if err := checkReview(in.Review); err != nil {
 		return Project{}, err
 	}
+	if err := checkSessionSettings(in.SessionSettings); err != nil {
+		return Project{}, err
+	}
 	if in.Memory != nil {
 		if err := in.Memory.Validate(); err != nil {
 			return Project{}, invalid("%s", err.Error())
@@ -460,6 +487,14 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 	}
 	if err := saveReview(ctx, db, in.Review); err != nil {
 		return Project{}, err
+	}
+	if err := saveSessionSettings(ctx, db, in.SessionSettings); err != nil {
+		return Project{}, err
+	}
+	if in.SessionSettings != nil {
+		if st, ok := s.turns.(SessionTurns); ok {
+			st.Reschedule() // a higher cap lets waiting messages start now
+		}
 	}
 	p, err := s.load(ctx, db)
 	if err != nil {

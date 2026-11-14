@@ -57,6 +57,11 @@ test("hits group by kind in a fixed order, messages join exchanges, empty groups
     groups[1]?.hits.map((h) => h.key),
     ["fact:t/f2", "task:t", "fact:t/f1"],
   );
+  // Each hit carries its kind (the row's glyph), notes included.
+  assert.deepEqual(
+    groups.map((g) => g.hits.map((h) => h.kind)),
+    [["message", "exchange"], ["fact", "task", "fact"], ["file"], ["note"]],
+  );
   assert.deepEqual(
     groupHits(hits.filter((h) => h.group === "files")).map((g) => g.id),
     ["files"],
@@ -113,6 +118,13 @@ test("a long snippet is cut around the match so a one-line row shows it", () => 
   assert.equal(windowAround("short text", "text"), "short text");
   assert.equal(windowAround("x".repeat(100), "zz", 20), "x".repeat(100), "no match: unchanged");
   assert.ok(!windowAround(`needle ${"x ".repeat(50)}`, "needle", 30).startsWith("…"));
+});
+
+test("a cut snippet puts a late match near its start, where a short row still shows it (B33)", () => {
+  const text = `${"lorem ipsum dolor ".repeat(6)}the refresh token rotates`;
+  const w = windowAround(text, "refresh", 60);
+  assert.ok(w.startsWith("…"));
+  assert.ok(w.indexOf("refresh") <= 20, w);
 });
 
 test("hits show plain words: Markdown marks are stripped from snippets and titles", () => {

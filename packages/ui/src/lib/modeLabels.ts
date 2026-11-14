@@ -4,9 +4,9 @@ export const MODE_LABEL: Record<ProjectMode, string> = { agent: "Agent", ask: "A
 
 /** What a mode does, for its menu row's tooltip. */
 export const MODE_DETAIL: Record<ProjectMode, string> = {
-  agent: "Agent: reads, edits and runs commands",
-  ask: "Ask: answers questions, changes nothing",
-  plan: "Plan: writes a plan you can approve, changes nothing",
+  agent: "Reads, edits files and runs commands",
+  ask: "Answers questions, changes nothing",
+  plan: "Writes a plan you approve first, changes nothing",
 };
 
 /** Why approving a plan did not work, as one sentence with a next step; `refresh` says the plan should be read again. */

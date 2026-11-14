@@ -124,7 +124,7 @@ func (o *Orchestrator) Context(ctx context.Context, projectID, agentID string) (
 	if err != nil {
 		return ContextReport{}, err
 	}
-	rt, err := o.newRuntime(ctx, db)
+	rt, err := o.newSessionRuntime(ctx, db, a.SessionID)
 	if err != nil {
 		return ContextReport{}, err
 	}

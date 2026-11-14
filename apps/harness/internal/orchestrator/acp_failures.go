@@ -3,10 +3,14 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"io"
 	"io/fs"
+	"net"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
@@ -123,6 +127,26 @@ func describe(err error) *usererr.Error {
 		return usererr.ApiKeyRejected(err.Error()).Caused(err)
 	case errors.As(err, &api):
 		return usererr.ModelCallFailed(err.Error()).Caused(err)
+	case unreachable(err):
+		return usererr.ModelUnreachable(err.Error()).Caused(err)
 	}
 	return usererr.Unexpected(err)
+}
+
+// unreachable: the model's service could not be reached or the connection broke
+// off mid-answer (a router or provider that stopped).
+func unreachable(err error) bool {
+	var op *net.OpError
+	var ue *url.Error
+	return errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) ||
+		errors.As(err, &op) || errors.As(err, &ue)
+}
+
+// describeTurn is describe, naming the Octo router when the model is reached through it.
+func (o *Orchestrator) describeTurn(err error) *usererr.Error {
+	u := describe(err)
+	if u.Code == "model_unreachable" && o.opts.Router != nil && o.opts.Router.Enabled() {
+		return usererr.RouterUnreachable(u.Details).Caused(err)
+	}
+	return u
 }

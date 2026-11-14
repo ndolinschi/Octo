@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useRef } from "react";
 import { cn } from "../../../lib/cn";
-import { useRowKeys } from "../../../lib/hooks";
+import { useRowKeys } from "../../../lib/hooksMore";
 import type { ProviderGroupView, ProviderRowView, Tone } from "../../../lib/providers";
 import { Glyph } from "../../primitives/Glyph";
 import { ListRow } from "../../primitives/ListRow";
@@ -13,7 +13,7 @@ export function ToneDot({ tone }: { tone: Tone }) {
   return (
     <span
       aria-hidden
-      className={cn("size-2 shrink-0 rounded-full", tone === "ok" ? "bg-ok" : tone === "warn" ? "bg-warn" : tone === "err" ? "bg-err" : "bg-fg-3")}
+      className={cn("inline-block size-2 shrink-0 rounded-full", tone === "ok" ? "bg-ok" : tone === "warn" ? "bg-warn" : tone === "err" ? "bg-err" : "bg-fg-3")}
     />
   );
 }
@@ -30,6 +30,8 @@ export function ProviderRows(props: {
   onExpand(open: boolean): void;
   /** `false`: no border and fill of its own (it sits in a frame that has them, as on the connect screen). */
   framed?: boolean;
+  /** Nothing opened yet: in one column (the list alone) no row reads as chosen (polish step 6a, S7; styles.css). */
+  unpicked?: boolean;
   className?: string;
 }) {
   const list = useRef<HTMLDivElement>(null);
@@ -39,9 +41,10 @@ export function ProviderRows(props: {
       ref={list}
       role="group"
       aria-label="Providers"
+      data-unpicked={props.unpicked || undefined}
       className={cn(
         "flex flex-col p-1",
-        props.framed !== false && "overflow-hidden rounded-lg border border-panel-edge bg-panel shadow-panel",
+        props.framed !== false && "overflow-hidden rounded-xl border border-panel-edge bg-panel shadow-panel",
         props.className,
       )}
     >

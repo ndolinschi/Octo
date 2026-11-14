@@ -46,7 +46,7 @@ export function ViewTabs<T extends string>(props: {
     box.current?.querySelectorAll<HTMLElement>('[role="tab"]')[to ?? 0]?.focus();
   };
   return (
-    <div className={cn("box-content flex h-row-nav shrink-0 items-stretch border-b border-line px-pane", props.className)}>
+    <div className={cn("box-content flex h-row-nav shrink-0 items-stretch border-b border-line px-pane touch:h-ctl-lg", props.className)}>
       <div ref={box} role="tablist" tabIndex={-1} aria-label={props.label} onKeyDown={onKeyDown} className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
         {props.options.map((o) => {
           const on = o.id === props.value;

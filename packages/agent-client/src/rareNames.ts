@@ -1,5 +1,13 @@
 /** Bridge methods implemented in `rare.ts` (a lazy chunk); `createHttpBridge` forwards each to it. */
 export const RARE_METHODS = [
+  "createProject",
+  "updateProject",
+  "deleteProject",
+  "sendMessage",
+  "sendOrQueueMessage",
+  "cancelTurn",
+  "getContext",
+  "writeFile",
   "askSide",
   "listSide",
   "clearSide",
@@ -90,6 +98,21 @@ export const RARE_METHODS = [
   "submitInput",
   "getSessionTranscript",
   "stopSide",
+  "setDefaultSession",
+  "listAllSessions",
+  "sendSessionMessage",
+  "getSessionQueue",
+  "editSessionQueued",
+  "removeSessionQueued",
+  "clearSessionQueue",
+  "resumeSessionQueue",
+  "sendSessionQueuedNow",
+  "getSessionContext",
+  "compactSession",
+  "clearSession",
+  "rewindSession",
+  "getSessionLatestPlan",
+  "exportSession",
 ] as const;
 
 export type RareMethod = (typeof RARE_METHODS)[number];

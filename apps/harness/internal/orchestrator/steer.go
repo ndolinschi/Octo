@@ -40,26 +40,26 @@ func (b *steerBox) take() []string {
 	return out
 }
 
-// openSteerBox registers the running built-in turn of a project as steerable and
+// openSteerBox registers the running built-in turn of a main session (key: skey) as steerable and
 // returns the function that unregisters it.
-func (o *Orchestrator) openSteerBox(pid string) func() {
+func (o *Orchestrator) openSteerBox(key string) func() {
 	b := &steerBox{}
 	o.steerMu.Lock()
-	o.steer[pid] = b
+	o.steer[key] = b
 	o.steerMu.Unlock()
 	return func() {
 		o.steerMu.Lock()
-		if o.steer[pid] == b {
-			delete(o.steer, pid)
+		if o.steer[key] == b {
+			delete(o.steer, key)
 		}
 		o.steerMu.Unlock()
 	}
 }
 
-func (o *Orchestrator) steerBox(pid string) *steerBox {
+func (o *Orchestrator) steerBox(key string) *steerBox {
 	o.steerMu.Lock()
 	defer o.steerMu.Unlock()
-	return o.steer[pid]
+	return o.steer[key]
 }
 
 // steerTexts is the loop's Steer hook (the orchestrator's loop only): at a tool
@@ -68,7 +68,7 @@ func (o *Orchestrator) steerBox(pid string) *steerBox {
 // sent as edited) and announces each with message.steered. The texts become user
 // messages of the conversation.
 func (rt *runtime) steerTexts(ctx context.Context) []string {
-	box := rt.o.steerBox(rt.pid())
+	box := rt.o.steerBox(rt.key())
 	if box == nil {
 		return nil
 	}
@@ -81,7 +81,7 @@ func (rt *runtime) steerTexts(ctx context.Context) []string {
 	defer o.qmu.Unlock()
 	c, cancel := dbCtx(ctx)
 	defer cancel()
-	q, _, err := rt.db.Queue(c)
+	q, _, err := rt.db.SessionQueue(c, rt.sessionID)
 	if err != nil {
 		rt.logErr("read queue to steer", err)
 		return nil
@@ -100,7 +100,7 @@ func (rt *runtime) steerTexts(ctx context.Context) []string {
 		rt.publish(events.MessageSteered, map[string]any{"queue_id": id, "text": q[i].Text})
 	}
 	if len(out) > 0 {
-		o.publishQueue(c, rt.db)
+		o.publishQueue(c, rt.db, rt.sessionID)
 	}
 	return out
 }

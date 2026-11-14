@@ -266,6 +266,20 @@ func TestLiveACPSubAgentStreamsThoughtPlanToolAndText(t *testing.T) {
 	checkLiveTurn(t, r, pid, r.acpChild(t, pid).ID, evs)
 }
 
+// A slow disk must not hold the stream back: the checkpoint of streamed text is written off the streaming path. On a
+// CI runner the first write once took longer than the whole 400 ms of text, and every chunk reached the subscriber at
+// the same instant (the write used to run before the delta was published).
+func TestLiveStreamIsNotHeldBackByASlowCheckpointWrite(t *testing.T) {
+	defer orchestrator.SetBeforeCheckpointWrite(func() { time.Sleep(700 * time.Millisecond) })()
+	r := liveRigWith(t, 0)
+	pid := r.acpOrchProject(t)
+	evs, status := r.liveRun(t, pid, "[live] go")
+	if status != "completed" {
+		t.Fatalf("status = %s", status)
+	}
+	checkLiveTurn(t, r, pid, r.agents(t, pid)[0].ID, evs)
+}
+
 func TestLiveACPSlowToolIsVisibleWhileItRuns(t *testing.T) {
 	r := liveRigWith(t, 0)
 	pid := r.acpOrchProject(t)

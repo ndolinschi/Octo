@@ -1,4 +1,5 @@
 import { RARE_METHODS, type RareMethod } from "./rareNames";
+import type { RemoteAccessApi } from "./remoteAccess";
 import type { CommandRun, CommandSuggestion, StartedCommandRun } from "./commands";
 import type {
   ListPullRequestsParams,
@@ -42,6 +43,10 @@ import type {
   MemorySessionsParams,
   ProjectSession,
   ProjectSessionDetail,
+  AllSessionsParams,
+  CreatedSession,
+  GlobalSession,
+  NewSessionInput,
   SessionMessageResult,
   SessionsParams,
   Task,
@@ -201,6 +206,8 @@ export type BinaryFetchLike = (
 ) => Promise<FetchResponseLike>;
 
 export type EventSourceLike = {
+  /** 0 connecting, 1 open, 2 closed (a refused connection: EventSource does not retry it). */
+  readonly readyState?: number;
   onopen: ((ev: unknown) => void) | null;
   onerror: ((ev: unknown) => void) | null;
   addEventListener(type: string, listener: (ev: { data?: unknown }) => void): void;
@@ -217,8 +224,43 @@ export type SubscribeHandlers = {
 
 export type HealthResponse = { ok: boolean; version: string };
 
+/** Timers and a clock, passed in like `fetch` (this package builds without DOM or Node types); default: the global ones. */
+export type TimersLike = { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(id: unknown): void; now(): number };
+
+/** The event stream as the watchdog (`watchStream`, lazy) sees it. */
+export type StreamHandle = {
+  /** When the stream last carried anything: opened, an event, a heartbeat. */
+  seen: number;
+  source: EventSourceLike | null;
+  open(): void;
+  /** Set by the watchdog: EventSource gave up on a refused connection. */
+  refused?: () => void;
+};
+
+/** Backoff for retries after a failure: 1 s, 2 s, 4 s … up to `cap`. `attempt` counts from 1. */
+export function retryDelay(attempt: number, cap = 30_000): number {
+  return Math.min(cap, 1000 * 2 ** Math.min(Math.max(attempt - 1, 0), 20));
+}
+
+/**
+ * P2-12: how far the service's clock (`Date` of its answer) is ahead of this machine's, in ms; 0 when the gap is under
+ * 30 s (the header has 1 s resolution and a request takes time) or there is no usable header.
+ */
+export function clockSkew(dateHeader: string | null | undefined, localMs: number): number {
+  const server = dateHeader ? Date.parse(dateHeader) : NaN;
+  const skew = server - localMs;
+  return Number.isFinite(skew) && Math.abs(skew) > 30_000 ? skew : 0;
+}
+
+/** The harness answered but refused this window's API token (it restarted with a new one): not "offline". */
+export function isAuthRefused(e: unknown): boolean {
+  return e instanceof BridgeError && e.status === 401;
+}
+
 export interface Bridge {
   health(): Promise<HealthResponse>;
+  /** P2-12: the service's clock minus this machine's (ms), from the last answer's `Date` header; 0 when close. HTTP bridge only. */
+  clockOffset?(): number;
   getConfig(): Promise<BridgeConfig>;
   listProjects(): Promise<ProjectSummary[]>;
   createProject(input: ProjectInput): Promise<Project>;
@@ -308,6 +350,8 @@ export interface Bridge {
   pickFolder?(start?: string): Promise<PickFolderResult>;
   /** R1: the diagnostics report (versions, PATH, per-agent resolution and login state, last 200 log lines). */
   getDiagnostics?(): Promise<Diagnostics>;
+  /** Remote access: the computer's `/v1/remote` control routes (local token only), loaded on first use. Optional; HTTP only. */
+  remoteAccess?(): Promise<RemoteAccessApi>;
   /**
    * Decision 53: every provider (API key, router, agent CLIs) with its state and models. Optional: a harness that
    * predates `GET /v1/providers` answers 404, and the UI then derives the list from the config and the plugins.
@@ -342,8 +386,11 @@ export interface Bridge {
    * `steer_unsupported`: say the message is sent when the turn ends, or use `sendQueuedNow(..., { interrupt: true })`.
    */
   steerQueued?(projectId: string, queueId: string): Promise<{ steered: boolean }>;
-  /** Parity B3: the plan the newest plan-mode turn produced; 404 `not_found` without one. */
-  getLatestPlan?(projectId: string): Promise<Plan>;
+  /**
+   * Parity B3: the plan the newest plan-mode turn produced; `null` without one (the harness answers `{"plan": null}`;
+   * an older harness answered 404 `not_found`, which this client also turns into `null`).
+   */
+  getLatestPlan?(projectId: string): Promise<Plan | null>;
   /** Approves a plan and starts an `agent` turn with it pinned; 409 `plan_not_pending` / `turn_in_progress`. */
   approvePlan?(projectId: string, planId: string): Promise<{ plan: Plan; message: Message }>;
   /** Parity B5: cut the conversation back to a request and restore the files after it (see {@link RewindReport}). */
@@ -376,13 +423,14 @@ export interface Bridge {
   getChange?(projectId: string, changeId: number): Promise<ChangeDetail>;
   /** Writes the content before the change back; 409 `file_changed` when the file moved on, 409 `revert_unavailable` without a stored original. */
   revertChange?(projectId: string, changeId: number): Promise<RevertResult>;
-  listApprovals?(projectId: string): Promise<Approval[]>;
+  /** Pending approvals; `sessionId` keeps one main session's (`?session=`). */
+  listApprovals?(projectId: string, opts?: { sessionId?: string }): Promise<Approval[]>;
   resolveApproval?(projectId: string, approvalId: string, answer: ApprovalAnswer): Promise<void>;
   /** The project's saved "always allow" rules (parity B4), oldest first. */
   listApprovalRules?(projectId: string): Promise<ApprovalRule[]>;
   /** Removes a rule: requests it covered are asked about again. 404 `not_found` for an unknown id. */
   deleteApprovalRule?(projectId: string, ruleId: string): Promise<void>;
-  listInputs?(projectId: string): Promise<InputRequest[]>;
+  listInputs?(projectId: string, opts?: { sessionId?: string }): Promise<InputRequest[]>;
   /** Submits or skips an open form. Secret values go to the harness's secret store and are never echoed. */
   submitInput?(projectId: string, inputId: string, answer: InputAnswer): Promise<void>;
   listSecrets?(projectId: string): Promise<SecretInfo[]>;
@@ -408,16 +456,45 @@ export interface Bridge {
   listSessions?(projectId: string, params?: SessionsParams): Promise<ProjectSession[]>;
   getSession?(projectId: string, sessionId: string): Promise<ProjectSessionDetail>;
   getSessionTranscript?(projectId: string, sessionId: string): Promise<Transcript>;
-  /** A new main session, made current (like `/clear`); 409 `turn_in_progress` while a turn runs. */
-  createSession?(projectId: string, title?: string): Promise<ProjectSession>;
-  /** Makes a main session current; 409 `turn_in_progress`, `not_main_session`. */
+  /**
+   * Parallel sessions: a new main session (not the default unless `make_default`; with `from_session_id` and `clear` it is
+   * `/clear` of that session); `text` sends its first message. 404 `workspace_not_found`, 409 `worktree_unavailable`,
+   * 409 `turn_in_progress` (clear of a running session).
+   */
+  createSession(projectId: string, input?: NewSessionInput): Promise<CreatedSession>;
+  /** Makes a main session the default (where unaddressed messages go); nothing stops or rebuilds. 409 `not_main_session`. */
+  setDefaultSession(projectId: string, sessionId: string): Promise<ProjectSession>;
+  /** The old name of {@link setDefaultSession} (`POST /sessions/{sid}/resume`). */
   resumeSession?(projectId: string, sessionId: string): Promise<ProjectSession>;
-  /** Title and/or archive flag; 409 `current_session` when archiving the current one. */
+  /** Title and/or archive flag; 409 `current_session` when archiving the default one. */
   patchSession?(projectId: string, sessionId: string, patch: { title?: string; archived?: boolean }): Promise<ProjectSession>;
-  /** 409 `current_session`, `session_running`. */
+  /** 409 `current_session` (the default), `session_running`. */
   deleteSession?(projectId: string, sessionId: string): Promise<void>;
-  /** Stops the project's running turn (current main session) or one sub-agent; 409 `not_running`. */
-  stopSession?(projectId: string, sessionId: string): Promise<ProjectSession>;
+  /** Stops a main session's running turn (pausing its queue) or one sub-agent; 409 `not_running`. */
+  stopSession(projectId: string, sessionId: string): Promise<ProjectSession>;
+  /**
+   * A message to a main session: it starts that session's turn, or waits in its queue (`waiting_for`: its own turn, or a
+   * free slot under the running caps). The same timeout and read-back as `sendOrQueueMessage`. 409 `queue_full`.
+   */
+  sendSessionMessage(projectId: string, sessionId: string, text: string, opts?: { mode?: ProjectMode; attachments?: string[] }): Promise<SendResult>;
+  /** `GET /v1/sessions`: main sessions across projects, newest activity first, each with its project. */
+  listAllSessions(params?: AllSessionsParams): Promise<GlobalSession[]>;
+  /** One main session's queue (the project routes of the same name act on the default session). */
+  getSessionQueue?(projectId: string, sessionId: string): Promise<QueueState>;
+  editSessionQueued?(projectId: string, sessionId: string, queueId: string, text: string): Promise<QueuedMessage>;
+  removeSessionQueued?(projectId: string, sessionId: string, queueId: string): Promise<void>;
+  clearSessionQueue?(projectId: string, sessionId: string): Promise<void>;
+  resumeSessionQueue?(projectId: string, sessionId: string): Promise<void>;
+  sendSessionQueuedNow?(projectId: string, sessionId: string, queueId: string, opts?: { interrupt?: boolean }): Promise<void>;
+  /** One main session's context report, compaction, rewind, latest plan and export (the project routes act on the default). */
+  getSessionContext?(projectId: string, sessionId: string): Promise<ContextOverview | ContextBreakdown>;
+  compactSession?(projectId: string, sessionId: string): Promise<CompactResult | CompactSentToAgent>;
+  /** `/clear` of one session: the answer is the new session (the default when the cleared one was). */
+  clearSession?(projectId: string, sessionId: string): Promise<CreatedSession>;
+  rewindSession?(projectId: string, sessionId: string, input: { message_id: number; dry_run?: boolean }): Promise<RewindReport>;
+  getSessionLatestPlan?(projectId: string, sessionId: string): Promise<Plan | null>;
+  exportSessionUrl?(projectId: string, sessionId: string): string;
+  exportSession?(projectId: string, sessionId: string): Promise<BlobLike>;
   /** A message to a sub-agent's session; 409 `steer_unsupported`, `not_continuable`, `not_running`, `builtin_loop_unavailable`, `not_agent_session`. */
   messageSession?(projectId: string, sessionId: string, text: string, opts?: { reportToParent?: boolean }): Promise<SessionMessageResult>;
   /*
@@ -501,6 +578,10 @@ export type HttpBridgeOptions = {
    */
   token?: string;
   fetch?: FetchLike;
+  timers?: TimersLike;
+  /** Defaults (in `rare.ts`): `SEND_TIMEOUT_MS`, `STREAM_STALE_MS`. */
+  sendTimeoutMs?: number;
+  streamStaleMs?: number;
   /** Used for attachment upload and download; defaults to the global `fetch`. */
   fetchBinary?: BinaryFetchLike;
   EventSource?: EventSourceCtor;
@@ -533,6 +614,7 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "session.created",
   "session.updated",
   "session.current",
+  "session.default",
   "fact.remembered",
   "fact.forgotten",
   "side.delta",
@@ -647,6 +729,10 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   /** An SSE URL: EventSource sends no headers, so the token travels in the query. */
   const streamUrl = (path: string) => `${base}${path}${token === "" ? "" : `${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`}`;
 
+  // Default timers live in the lazy half (`rare.ts`), the only place that sets any.
+  const timers = options.timers;
+  let offset = 0;
+
   async function request(method: string, path: string, body?: unknown, signal?: AbortSignalLike): Promise<unknown> {
     const doFetch = options.fetch ?? globalFetch();
     const init: { method: string; headers?: Record<string, string>; body?: string; signal?: AbortSignalLike } = { method };
@@ -663,12 +749,16 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     try {
       res = await doFetch(`${base}${path}`, init);
       text = await res.text();
+      offset = clockSkew(res.headers?.get("date"), Date.now());
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       throw new BridgeError(0, "network_error", msg);
     }
     if (!res.ok) throw toBridgeError(res.status, text);
-    return parseJson(text);
+    const parsed = parseJson(text);
+    // P2-4: an answer that is not JSON is a failure with its own words, not an empty value that leaves a screen waiting.
+    if (parsed === undefined && text.trim() !== "") throw new BridgeError(0, "invalid_response", "Octo's local service sent an answer that could not be read.");
+    return parsed;
   }
 
   async function unwrap<T>(promise: Promise<unknown>, key: string): Promise<T> {
@@ -683,6 +773,7 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   const memoryPath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
 
   const p = (id: string) => `/v1/projects/${encodeURIComponent(id)}`;
+  const sessionQuery = (o: { sessionId?: string } | undefined) => (o?.sessionId ? `?session=${encodeURIComponent(o.sessionId)}` : "");
   const fileQuery = (folder: string, path: string) => `folder=${encodeURIComponent(folder)}&path=${encodeURIComponent(path)}`;
 
   let rare: Promise<Pick<Bridge, RareMethod>> | undefined;
@@ -695,6 +786,8 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
         memoryPath,
         base,
         token,
+        timers,
+        sendTimeout: options.sendTimeoutMs,
         binaryFetch: () => options.fetchBinary ?? globalBinaryFetch(),
         fail: toBridgeError,
       }),
@@ -712,14 +805,10 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     // The keys come from RARE_METHODS and `createRareMethods` returns exactly that Pick, so each forwarder has its method's type.
     ...(forwarded as Pick<Bridge, RareMethod>),
     health: () => request("GET", "/health") as Promise<HealthResponse>,
+    clockOffset: () => offset,
     getConfig: () => request("GET", "/v1/config") as Promise<BridgeConfig>,
     listProjects: () => unwrap<ProjectSummary[]>(request("GET", "/v1/projects"), "projects"),
-    createProject: (input) => request("POST", "/v1/projects", input) as Promise<Project>,
     getProject: (id) => request("GET", p(id)) as Promise<Project>,
-    updateProject: (id, patch) => request("PATCH", p(id), patch) as Promise<Project>,
-    deleteProject: async (id) => {
-      await request("DELETE", p(id));
-    },
     listAgents: (id) => unwrap<Agent[]>(request("GET", `${p(id)}/agents`), "agents"),
     getAgent: (id, agentId) => request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}`) as Promise<Agent>,
     listMessages: (id, agentId) => unwrap<Message[]>(request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}/messages`), "messages"),
@@ -735,35 +824,13 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
         ...(Array.isArray(body.conversations) ? { conversations: body.conversations as ConversationMarker[] } : {}),
       };
     },
-    sendMessage: async (id, text) => {
-      const body = await request("POST", `${p(id)}/messages`, { text });
-      if (isRecord(body) && isRecord(body.queued)) {
-        throw new BridgeError(202, "queued", "a turn is running: the message was queued (use sendOrQueueMessage)");
-      }
-      if (!isRecord(body) || !isRecord(body.message)) throw new BridgeError(0, "invalid_response", 'missing "message" in response');
-      return body.message as unknown as Message;
-    },
-    cancelTurn: async (id) => {
-      await request("POST", `${p(id)}/cancel`);
-    },
-    getContext: (id, agentId) =>
-      request("GET", `${p(id)}/context${agentId === undefined ? "" : `?agent=${encodeURIComponent(agentId)}`}`) as Promise<ContextBreakdown>,
     listFiles: (id, folder, path) => unwrap<FileEntry[]>(request("GET", `${p(id)}/files?${fileQuery(folder, path)}`), "entries"),
     readFile: (id, folder, path) => request("GET", `${p(id)}/files/content?${fileQuery(folder, path)}`) as Promise<FileContent>,
-    writeFile: (id, input) => request("PUT", `${p(id)}/files/content`, input) as Promise<FileStat>,
-    sendOrQueueMessage: async (id, text, opts) => {
-      const payload: Record<string, unknown> = { text };
-      if (opts?.mode) payload.mode = opts.mode;
-      if (opts?.attachments && opts.attachments.length > 0) payload.attachments = opts.attachments;
-      const body = await request("POST", `${p(id)}/messages`, payload);
-      if (isRecord(body) && isRecord(body.queued)) return { queued: body.queued as QueuedMessage };
-      if (isRecord(body) && isRecord(body.message)) return { message: body.message as unknown as Message };
-      throw new BridgeError(0, "invalid_response", 'missing "message" or "queued" in response');
-    },
     getQueue: (id) => request("GET", `${p(id)}/queue`) as Promise<QueueState>,
     exportConversationUrl: (id) => `${base}${p(id)}/export?format=md`,
-    listApprovals: (id) => unwrap<Approval[]>(request("GET", `${p(id)}/approvals`), "approvals"),
-    listInputs: (id) => unwrap<InputRequest[]>(request("GET", `${p(id)}/inputs`), "inputs"),
+    listApprovals: (id, o) => unwrap<Approval[]>(request("GET", `${p(id)}/approvals${sessionQuery(o)}`), "approvals"),
+    listInputs: (id, o) => unwrap<InputRequest[]>(request("GET", `${p(id)}/inputs${sessionQuery(o)}`), "inputs"),
+    exportSessionUrl: (id, sid) => `${base}${p(id)}/sessions/${encodeURIComponent(sid)}/export?format=md`,
     reviewFileRawUrl: (id, rid, path, side) => `${base}${p(id)}/reviews/${encodeURIComponent(rid)}/files/${memoryPath(path)}?raw=${side}`,
     listSessions: (id, params) => {
       const q: string[] = [];
@@ -777,6 +844,7 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
     listProviders: () => request("GET", "/v1/providers") as Promise<ProvidersResponse>,
+    remoteAccess: async () => (await import("./remoteAccess")).remoteAccessApi(request),
     refreshProviderModels: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/refresh-models`), id),
     recheckProvider: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/recheck`), id),
     setProviderCustomModels: async (id, models) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/custom-models`, { models }), id),
@@ -791,18 +859,55 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
         p(id),
         serverId,
       ),
+    /**
+     * The project's events. EventSource retries a dropped connection itself; the watchdog (`watchStream`, in the lazy
+     * half) also reopens a refused one (closed for good after an HTTP error) with backoff, and a half-open one: nothing
+     * at all, not even the harness's `heartbeat`, for `streamStaleMs`. Every reopen ends in `onOpen`, where the caller
+     * re-reads what it may have missed.
+     */
     subscribe(id, handlers) {
       const Ctor = options.EventSource ?? globalEventSource();
-      const source = new Ctor(streamUrl(`${p(id)}/events`));
-      source.onopen = () => handlers.onOpen?.();
-      source.onerror = (err) => handlers.onError?.(err);
-      for (const type of BRIDGE_EVENT_TYPES) {
-        source.addEventListener(type, (ev) => {
-          const event = parseEvent(ev.data);
-          if (event) handlers.onEvent(event);
-        });
-      }
-      return () => source.close();
+      const h: StreamHandle = {
+        seen: 0,
+        source: null,
+        open: () => {
+          const s = new Ctor(streamUrl(`${p(id)}/events`));
+          const alive = () => (h.seen = timers?.now() ?? Date.now());
+          h.source = s;
+          alive();
+          s.onopen = () => {
+            alive();
+            handlers.onOpen?.();
+          };
+          s.onerror = (err) => {
+            handlers.onError?.(err);
+            if (s.readyState === 2 && h.source === s) h.refused?.();
+          };
+          s.addEventListener("heartbeat", alive);
+          for (const type of BRIDGE_EVENT_TYPES) {
+            s.addEventListener(type, (ev) => {
+              alive();
+              const event = parseEvent(ev.data);
+              if (event) handlers.onEvent(event);
+            });
+          }
+        },
+      };
+      h.open();
+      let stop: (() => void) | undefined;
+      let stopped = false;
+      // A failed chunk load leaves the stream as EventSource keeps it (no watchdog).
+      void import("./rare").then(
+        (m) => {
+          if (!stopped) stop = m.watchStream(h, handlers.onError, timers, options.streamStaleMs);
+        },
+        () => undefined,
+      );
+      return () => {
+        stopped = true;
+        stop?.();
+        h.source?.close();
+      };
     },
   };
 }

@@ -90,9 +90,18 @@ export function Tab(props: {
         <span aria-hidden className="grid size-4 shrink-0 place-items-center">
           {info.glyph ? <StateGlyph state={info.glyph} /> : <Glyph icon={info.icon} size={14} />}
         </span>
-        <span data-tab-label className="min-w-0 truncate" aria-hidden={info.name ? true : undefined}>
-          {info.label}
-          {info.detail && <span className="text-fg-3"> / {info.detail}</span>}
+        {/* Polish step 2 (F3): the active tab's title is medium weight. The `::after` holds the same text in that weight, invisible
+            and 0px tall, so every tab is always as wide as its medium-weight title: selecting a tab never changes a width (83). */}
+        <span
+          data-tab-label
+          data-bold={info.detail ? `${info.label} / ${info.detail}` : info.label}
+          aria-hidden={info.name ? true : undefined}
+          className="flex min-w-0 flex-col overflow-hidden after:invisible after:h-0 after:font-medium after:whitespace-nowrap after:content-[attr(data-bold)]"
+        >
+          <span className={cn("min-w-0 truncate", selected && "font-medium")}>
+            {info.label}
+            {info.detail && <span className="font-normal text-fg-3"> / {info.detail}</span>}
+          </span>
         </span>
         {info.name && <span className="sr-only">{info.name}</span>}
         {info.comments > 0 && <CommentCount count={info.comments} />}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,6 +29,9 @@ import (
 var (
 	ErrTurnInProgress = errors.New("orchestrator: turn already in progress")
 	ErrShuttingDown   = errors.New("orchestrator: shutting down")
+	// ErrNoSlot: the running caps are reached (sessions.max_running of the project, MaxRunning of the harness);
+	// a submitted message waits in its session's queue for a slot instead.
+	ErrNoSlot = errors.New("orchestrator: no free slot for another running session")
 )
 
 // NoteBook is the note persistence the orchestrator's note tools call.
@@ -97,9 +101,14 @@ type Options struct {
 	ACPQuietAfter time.Duration
 	// Secrets is the project secret store; nil makes one under each project's data directory.
 	Secrets *secrets.Manager
+	// MaxRunning caps the main sessions running turns at once across every project
+	// (HARNESS_MAX_RUNNING_SESSIONS; zero: config.DefaultMaxRunningSessions). A project's own cap is its
+	// sessions.max_running setting (default 3).
+	MaxRunning int
 }
 
-// Orchestrator runs project turns: one at a time per project, each a tree of agents.
+// Orchestrator runs project turns: one at a time per main session (several sessions of a project at once,
+// within the running caps), each a tree of agents. Per-session state is keyed by skey(project, session).
 type Orchestrator struct {
 	store *projectstore.Store
 	hub   *events.Hub
@@ -138,21 +147,27 @@ type Orchestrator struct {
 	steerMu sync.Mutex
 	steer   map[string]*steerBox
 
+	// waiting holds the sessions whose queues may hold a message that can start when a slot frees (qmu).
+	waiting map[string]bool
+
 	mu    sync.Mutex
-	turns map[string]context.CancelFunc
+	turns map[string]*turnSlot
 	// runs are the sub-agent runs that can be stopped or messaged from their session, by agent id (sessions.go).
 	runs map[string]*agentRun
 	// live: a turn started and its turn.finished is not published yet (see finish).
 	live   map[string]bool
 	sides  map[string]*side
 	bridge string
+	// defaultHook is called after a project's default session changed (OnDefaultChanged).
+	defaultHook func(pid string)
 }
 
 func New(store *projectstore.Store, hub *events.Hub, notes NoteBook, opts Options) *Orchestrator {
 	ctx, stop := context.WithCancel(context.Background())
 	o := &Orchestrator{
 		store: store, hub: hub, notes: notes, opts: opts, acp: newACPHost(opts.ACPIdle), side: newSideHost(),
-		baseCtx: ctx, stop: stop, turns: make(map[string]context.CancelFunc), live: make(map[string]bool), sides: make(map[string]*side),
+		baseCtx: ctx, stop: stop, turns: make(map[string]*turnSlot), live: make(map[string]bool), sides: make(map[string]*side),
+		waiting:  make(map[string]bool),
 		trackers: make(map[string]*changes.Tracker), memories: make(map[string]*memory.Service), sendNow: make(map[string]bool),
 		steer: make(map[string]*steerBox),
 	}
@@ -182,21 +197,103 @@ func New(store *projectstore.Store, hub *events.Hub, notes NoteBook, opts Option
 	return o
 }
 
+// turnSlot is what holds a session's turn slot: a turn (counted against the running caps) or an operation that
+// must not overlap one (clear, compact).
+type turnSlot struct {
+	cancel  context.CancelFunc
+	counted bool
+}
+
+// skey is the key of a main session's per-session state.
+func skey(pid, sid string) string { return pid + "/" + sid }
+
+func splitKey(k string) (pid, sid string) {
+	pid, sid, _ = strings.Cut(k, "/")
+	return pid, sid
+}
+
+func ofProject(k, pid string) bool { return strings.HasPrefix(k, pid+"/") }
+
+// Running reports whether any session of the project holds its turn slot.
 func (o *Orchestrator) Running(projectID string) bool {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	_, ok := o.turns[projectID]
+	for k := range o.turns {
+		if ofProject(k, projectID) {
+			return true
+		}
+	}
+	return false
+}
+
+// RunningSession reports whether a main session holds its turn slot.
+func (o *Orchestrator) RunningSession(projectID, sessionID string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	_, ok := o.turns[skey(projectID, sessionID)]
 	return ok
 }
 
-// Cancel aborts the project's running turn, if any.
+// RunningCount is how many main sessions run a turn: in the project and on the whole harness.
+func (o *Orchestrator) RunningCount(projectID string) (project, total int) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.countLocked(projectID)
+}
+
+func (o *Orchestrator) countLocked(projectID string) (project, total int) {
+	for k, t := range o.turns {
+		if !t.counted {
+			continue
+		}
+		total++
+		if ofProject(k, projectID) {
+			project++
+		}
+	}
+	return project, total
+}
+
+// Cancel aborts every running turn of the project (POST /cancel?all=true, shutdown paths).
 func (o *Orchestrator) Cancel(projectID string) {
 	o.mu.Lock()
-	cancel := o.turns[projectID]
-	o.mu.Unlock()
-	if cancel != nil {
-		cancel()
+	var cancels []context.CancelFunc
+	for k, t := range o.turns {
+		if ofProject(k, projectID) {
+			cancels = append(cancels, t.cancel)
+		}
 	}
+	o.mu.Unlock()
+	for _, c := range cancels {
+		c()
+	}
+}
+
+// CancelSession aborts a main session's running turn, if any ("": the default session).
+func (o *Orchestrator) CancelSession(ctx context.Context, projectID, sessionID string) error {
+	sid, err := o.resolveSession(ctx, projectID, sessionID)
+	if err != nil {
+		return err
+	}
+	o.mu.Lock()
+	t := o.turns[skey(projectID, sid)]
+	o.mu.Unlock()
+	if t != nil {
+		t.cancel()
+	}
+	return nil
+}
+
+// resolveSession turns "" into the project's default session.
+func (o *Orchestrator) resolveSession(ctx context.Context, pid, sid string) (string, error) {
+	if sid != "" {
+		return sid, nil
+	}
+	db, err := o.store.Get(ctx, pid)
+	if err != nil {
+		return "", err
+	}
+	return db.DefaultSessionID(ctx)
 }
 
 // Shutdown cancels every turn and waits for them to settle their rows.
@@ -216,113 +313,214 @@ func (o *Orchestrator) Shutdown(ctx context.Context) error {
 	}
 }
 
-// Start persists the user's message and runs the turn in the background.
+// Start persists the user's message and runs the turn in the background (in the default session).
 func (o *Orchestrator) Start(ctx context.Context, projectID, text string) (projectstore.Message, error) {
 	return o.StartWith(ctx, projectID, text, StartOpts{})
 }
 
-// StartWith is Start with the turn's mode and an optional pinned plan.
+// StartWith is Start with the turn's session ("": the default), mode and an optional pinned plan.
+// ErrTurnInProgress while the session runs a turn; ErrNoSlot when the running caps are reached.
 func (o *Orchestrator) StartWith(ctx context.Context, projectID, text string, opts StartOpts) (projectstore.Message, error) {
 	if o.baseCtx.Err() != nil {
 		return projectstore.Message{}, ErrShuttingDown
 	}
-	turnCtx, cancel := context.WithCancel(o.baseCtx)
-	if !o.claim(projectID, cancel) {
-		cancel()
-		return projectstore.Message{}, ErrTurnInProgress
+	db, err := o.store.Get(ctx, projectID)
+	if err != nil {
+		return projectstore.Message{}, err
 	}
-	msg, rt, orch, err := o.begin(ctx, projectID, text, opts)
+	sid := opts.SessionID
+	if sid == "" {
+		if sid, err = db.DefaultSessionID(ctx); err != nil {
+			return projectstore.Message{}, err
+		}
+	}
+	key := skey(projectID, sid)
+	turnCtx, cancel := context.WithCancel(o.baseCtx)
+	if err := o.claimTurn(key, cancel, o.projectCap(ctx, db)); err != nil {
+		cancel()
+		return projectstore.Message{}, err
+	}
+	msg, rt, orch, err := o.begin(ctx, db, sid, text, opts)
 	if err != nil {
 		cancel()
-		o.release(projectID)
+		o.release(key)
 		return projectstore.Message{}, err
 	}
 	// A built-in turn can take steered messages from the moment it is claimed
 	// until it is finished (an ACP turn never can).
 	closeBox := func() {}
 	if !rt.isACPOrchestrator() {
-		closeBox = o.openSteerBox(projectID)
+		closeBox = o.openSteerBox(key)
 	}
 	o.wg.Add(1)
 	go func() {
 		defer o.wg.Done()
 		defer cancel()
+		stopAlive := o.keepAlive(rt)
 		status, finished := o.runTurn(turnCtx, rt, orch)
+		stopAlive()
 		o.qmu.Lock()
 		closeBox()
-		o.finish(projectID, finished)
-		o.advance(projectID, status)
+		finished["session_id"], finished["agent_id"] = sid, orch.ID
+		// NEW-10: the session's state as it is once the turn is over goes out right after turn.finished. The
+		// update runTurn published still said working (the session was live then); a client that shows Stop from
+		// the session's state kept it until some later event.
+		o.finish(key, finished, o.endedView(db, sid))
+		o.advance(projectID, sid, status)
 		o.qmu.Unlock()
 	}()
 	return msg, nil
 }
 
-func (o *Orchestrator) claim(projectID string, cancel context.CancelFunc) bool {
+// turnAliveEvery is how often a running turn records that it is alive
+// (projectstore.TurnAlive): what a turn cut by a crash during a long tool call
+// is said to have run for, to within this much. One tiny write per project
+// every few seconds, only while a turn runs.
+var turnAliveEvery = 5 * time.Second
+
+// keepAlive records the turn as alive now and every turnAliveEvery until the
+// returned stop is called.
+func (o *Orchestrator) keepAlive(rt *runtime) (stop func()) {
+	beat := func() {
+		c, cancel := dbCtx(context.Background())
+		defer cancel()
+		if err := rt.db.TurnAlive(c); err != nil {
+			rt.logErr("record the turn alive", err)
+		}
+	}
+	beat()
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		t := time.NewTicker(turnAliveEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				beat()
+			}
+		}
+	}()
+	return func() { close(done); wg.Wait() }
+}
+
+// claim takes a session's slot for an operation that is not a turn (clear, compact): it does not count against
+// the running caps. False while the session holds its slot.
+func (o *Orchestrator) claim(key string, cancel context.CancelFunc) bool {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if _, ok := o.turns[projectID]; ok {
+	if _, ok := o.turns[key]; ok {
 		return false
 	}
-	o.turns[projectID] = cancel
-	o.live[projectID] = true
+	o.turns[key] = &turnSlot{cancel: cancel}
+	o.live[key] = true
 	return true
 }
 
-func (o *Orchestrator) release(projectID string) {
+// claimTurn takes a session's slot for a turn: ErrTurnInProgress while the session holds it, ErrNoSlot when the
+// project runs projectCap turns or the harness MaxRunning.
+func (o *Orchestrator) claimTurn(key string, cancel context.CancelFunc, projectCap int) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	delete(o.turns, projectID)
-	delete(o.live, projectID)
+	if _, ok := o.turns[key]; ok {
+		return ErrTurnInProgress
+	}
+	pid, _ := splitKey(key)
+	inProject, total := o.countLocked(pid)
+	if inProject >= projectCap || total >= o.machineCap() {
+		return ErrNoSlot
+	}
+	o.turns[key] = &turnSlot{cancel: cancel, counted: true}
+	o.live[key] = true
+	return nil
+}
+
+func (o *Orchestrator) machineCap() int {
+	if o.opts.MaxRunning > 0 {
+		return o.opts.MaxRunning
+	}
+	return config.DefaultMaxRunningSessions
+}
+
+// hasSlot reports whether a turn of the project could start now under the running caps.
+func (o *Orchestrator) hasSlot(pid string, projectCap int) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	inProject, total := o.countLocked(pid)
+	return inProject < projectCap && total < o.machineCap()
+}
+
+func (o *Orchestrator) release(key string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.turns, key)
+	delete(o.live, key)
 }
 
 // finish ends a turn for the outside world in one step: the turn slot is
 // released (a client that reacts to turn.finished can start the next turn),
-// turn.finished is published, and the project stops being Active. All three
-// happen under o.mu, which Active also takes, so nobody can see the project as
+// turn.finished is published, and the session stops being Active. All three
+// happen under o.mu, which Active also takes, so nobody can see the session as
 // idle (the agent row says idle before this) without turn.finished already
 // published: a client that polls for idle and then subscribes would otherwise
 // catch the previous turn's turn.finished as the next turn's.
-func (o *Orchestrator) finish(projectID string, finished map[string]any) {
+func (o *Orchestrator) finish(key string, finished, session map[string]any) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	delete(o.turns, projectID)
-	o.hub.Publish(projectID, events.TurnFinished, finished)
-	delete(o.live, projectID)
+	delete(o.turns, key)
+	pid, _ := splitKey(key)
+	o.hub.Publish(pid, events.TurnFinished, finished)
+	if session != nil {
+		// Under o.mu: an operation that claims the slot next (a clear) publishes after this, never before.
+		o.hub.Publish(pid, events.SessionUpdated, session)
+	}
+	delete(o.live, key)
 }
 
-// Active reports whether a turn has started and its turn.finished has not been
-// published yet. A project in that state is reported as running whatever its
-// orchestrator row says.
+// Active reports whether a turn of the project has started and its turn.finished has not been published yet
+// (any session). A project in that state is reported as running whatever its root agents' rows say.
 func (o *Orchestrator) Active(projectID string) bool {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	return o.live[projectID]
+	for k := range o.live {
+		if ofProject(k, projectID) {
+			return true
+		}
+	}
+	return false
 }
 
-func (o *Orchestrator) begin(ctx context.Context, projectID, text string, opts StartOpts) (projectstore.Message, *runtime, projectstore.Agent, error) {
-	db, err := o.store.Get(ctx, projectID)
-	if err != nil {
-		return projectstore.Message{}, nil, projectstore.Agent{}, err
-	}
-	orch, err := db.Orchestrator(ctx)
+// ActiveSession is Active for one main session.
+func (o *Orchestrator) ActiveSession(projectID, sessionID string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.live[skey(projectID, sessionID)]
+}
+
+func (o *Orchestrator) begin(ctx context.Context, db *projectstore.DB, sid, text string, opts StartOpts) (projectstore.Message, *runtime, projectstore.Agent, error) {
+	orch, err := db.RootAgent(ctx, sid)
 	if err != nil {
 		return projectstore.Message{}, nil, projectstore.Agent{}, err
 	}
 	o.memoryOf(db) // installs the secret redactor of the search index before anything is indexed
-	rt, err := o.newRuntime(ctx, db)
+	rt, err := o.newSessionRuntime(ctx, db, sid)
 	if err != nil {
 		return projectstore.Message{}, nil, projectstore.Agent{}, err
 	}
 	if err := rt.repairDangling(ctx, orch.ID); err != nil {
 		return projectstore.Message{}, nil, projectstore.Agent{}, err
 	}
+	if err := db.UnarchiveSession(ctx, sid); err != nil {
+		return projectstore.Message{}, nil, projectstore.Agent{}, err
+	}
 	// A retry sends the text of a turn that failed before it answered: the
 	// stored user message is run again, not stored a second time.
 	msg, retried := rt.failedRequest(ctx, orch, text)
 	reportNote := ""
-	if sid, err := db.CurrentSessionID(ctx); err == nil {
-		rt.sessionID = sid
-	}
 	if !retried {
 		// What the user collected from sub-agent sessions for the orchestrator is stored before the request.
 		reportNote = rt.pendingReportNote(ctx, orch.ID)
@@ -380,12 +578,23 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 	case ctx.Err() != nil, errors.Is(err, errAgentCancelled):
 		status = projectstore.StatusCancelled
 	default:
-		status, problem = projectstore.StatusFailed, describe(err)
+		status, problem = projectstore.StatusFailed, o.describeTurn(err)
 		slog.Error("turn failed", "project", rt.pid(), "err", err)
+	}
+	if status == projectstore.StatusCancelled && !rt.isACPOrchestrator() {
+		// The calls the stop interrupted get their result now, at the stop, not
+		// before the next request: a reload then shows the stopped step and
+		// the turn's end as it was seen live. (An ACP turn closes its open
+		// calls itself, acp_session.go finishLocked.)
+		c, cancel := dbCtx(context.Background())
+		if err := rt.repairDangling(c, orch.ID); err != nil {
+			rt.logErr("close interrupted tool calls", err)
+		}
+		cancel()
 	}
 	if status == projectstore.StatusCompleted && rt.isACPOrchestrator() {
 		// A notice, not a failure: the session works without harness tools.
-		notice = o.acp.warning(rt.pid())
+		notice = o.acp.warning(rt.key())
 	}
 	o.approvals.EndTurn(rt.pid(), rt.turnID)
 	if status == projectstore.StatusCompleted && rt.mode == projectstore.ModePlan {
@@ -394,7 +603,7 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 	}
 	finished := rt.finishTurn(orch.ID, status, res.Text, problem, notice)
 	rt.publish(events.ContextUpdated, map[string]any{"project_id": rt.pid()})
-	o.recordExchange(rt, orch.ID, status, res.Text)
+	o.recordExchange(rt, orch.ID, status, res.Text, problem)
 	rt.publishSession(rt.sessionID, false)
 	o.settleTurn(rt, orch.ID, status, res.Text)
 	return status, finished

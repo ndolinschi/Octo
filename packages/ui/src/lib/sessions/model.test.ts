@@ -11,6 +11,8 @@ import {
   earlierSession,
   filterCounts,
   glyphOf,
+  isWorking,
+  stateWord,
   hasSeveral,
   isCompact,
   sessionErrorText,
@@ -98,14 +100,14 @@ test("glyphs: waiting needs you, stopped rests", () => {
   assert.equal(glyphOf("stopped"), "idle");
 });
 
-test("row: day, exchanges and model on the second line; 'current' or the last activity at the right", () => {
+test("row: day, exchanges and model on the second line; 'default' or the last activity at the right", () => {
   const name = (v: string) => (v === "opus" ? "Opus 5.5" : v);
   const row = sessionRow(s("m3", { title: "Plan the release", model: "opus", exchanges: 5, current: true }), NOW, name);
-  assert.equal(row.description, "Nov 12 · 5 exchanges · Opus 5.5");
-  assert.equal(row.tail, "current");
+  assert.equal(row.description, "5 exchanges · Opus 5.5");
+  assert.equal(row.tail, "default");
   assert.equal(sessionRow(s("m1", { last_activity_at: "2026-11-11T09:00:00Z" }), NOW, name).tail, "Yesterday");
   const a = sessionRow(agent("a1", "m2", { model: "haiku", title: "Map the repository" }), NOW, name);
-  assert.equal(a.description, "Nov 12 · haiku");
+  assert.equal(a.description, "haiku");
   assert.equal(sessionRow(s("e", { title: " " }), NOW, name).title, "New session");
 });
 
@@ -121,7 +123,7 @@ test("the composer note: the harness's sentence, else the reason by code, none w
 
 test("error codes read as plain words; an unknown code keeps the harness's message", () => {
   assert.equal(sessionErrorText("turn_in_progress", "x"), "Wait for the current request to finish, or stop it.");
-  assert.match(sessionErrorText("current_session", "x"), /current session/);
+  assert.match(sessionErrorText("current_session", "x"), /default session/);
   assert.match(sessionErrorText("session_running", "x"), /Stop it first/);
   assert.match(sessionErrorText("not_continuable", "x"), /can't be continued/);
   assert.match(sessionErrorText("steer_unsupported", "x"), /can't take a message while it works/);
@@ -214,4 +216,13 @@ test("an empty session says it has no requests; working comes from a running tur
 test("the delete confirmation says what goes and what stays", () => {
   assert.match(deleteCopy({ kind: "main" }).description, /transcript.*agents.*remembered.*stays/);
   assert.match(deleteCopy({ kind: "agent" }).title, /agent session/);
+});
+
+test("parallel sessions: queued is its own state (dashed ring, its words), counts as at work, and the default is not deletable", () => {
+  assert.equal(glyphOf("queued"), "queued");
+  assert.equal(stateWord("queued"), "Waiting for a free slot");
+  assert.equal(isWorking({ state: "queued" }), true);
+  const d = s("d", { default: true, current: true });
+  assert.equal(canDelete([d], d), false);
+  assert.equal(canDelete([d], s("x", { default: false })), true);
 });

@@ -20,7 +20,7 @@ import (
 func samples() map[string]*Error {
 	const long = "exit status 1: acp initialize: JSON-RPC session/new failed (stderr: boom)"
 	return map[string]*Error{
-		"AgentNotLoggedIn":       AgentNotLoggedIn("GitHub Copilot", "copilot auth login", long),
+		"AgentNotLoggedIn":       AgentNotLoggedIn("GitHub Copilot", "copilot login", long),
 		"AgentNotInstalled":      AgentNotInstalled("GitHub Copilot", "npm install -g @github/copilot", long),
 		"AgentLaunchRejected":    AgentLaunchRejected("Antigravity", "agy", "unexpected argument 'acp'", "Update agy."),
 		"AgentExitedDuringStart": AgentExitedDuringStart("Claude Code", long),
@@ -36,12 +36,16 @@ func samples() map[string]*Error {
 		"AgentUnavailable":       AgentUnavailable("unknown or unavailable agent x"),
 		"AgentFailed":            AgentFailed("Claude Code", long),
 
+		"RequestTooLarge":      RequestTooLarge(1 << 20),
+		"DataDirInUse":         DataDirInUse("/home/me/.octo", "resource temporarily unavailable"),
 		"Unexpected":           Unexpected(errors.New(long)),
 		"NoProvider":           NoProvider(),
 		"ProviderNotConnected": ProviderNotConnected("Anthropic API", "", "no key"),
 		"ProviderNotSupported": ProviderNotSupported("Pi", "its CLI has no ACP mode"),
 		"ProviderNotWorking":   ProviderNotWorking("Claude Code", long),
 		"ModelCallFailed":      ModelCallFailed("HTTP 500"),
+		"ModelUnreachable":     ModelUnreachable("unexpected EOF"),
+		"RouterUnreachable":    RouterUnreachable("dial tcp 127.0.0.1:8090: connect: connection refused"),
 		"ApiKeyRejected":       ApiKeyRejected("HTTP 401"),
 		"TooManySteps":         TooManySteps("exceeded max turns"),
 		"Generic":              Generic("a_code_nobody_listed", "boom: a: b: c"),
@@ -49,7 +53,10 @@ func samples() map[string]*Error {
 		"FolderInvalid":        FolderInvalid("/nope", "not a directory"),
 		"NoteTitleTaken":       NoteTitleTaken("Plan", "n1"),
 		"BudgetReached":        BudgetReached(4.2, 5),
+		"BudgetCut":            BudgetCut(0.0011, 0.0005),
 		"TurnInProgress":       TurnInProgress(),
+		"TurnInterrupted":      TurnInterrupted(true),
+		"TurnInterruptedEmpty": TurnInterrupted(false),
 		"SideInProgress":       SideInProgress(),
 		"SideNoAnswer":         SideNoAnswer("no key"),
 		"QueueFull":            QueueFull(50),
@@ -71,6 +78,9 @@ func samples() map[string]*Error {
 		"GitHubCLINotLoggedIn": GitHubCLINotLoggedIn("gh auth login"),
 		"GitHubNoRemote":       GitHubNoRemote("git remote add origin URL"),
 		"GitMissing":           GitMissing("git: not found"),
+		"CloudflaredMissing":   CloudflaredMissing("brew install cloudflared"),
+		"TunnelFailed":         TunnelFailed("failed to dial to edge"),
+		"Remote":               Remote("an_unknown_remote_code"),
 		"RepoMismatch":         RepoMismatch("github.com/a/b is not one of x"),
 		"InvalidRepo":          InvalidRepo("none of them"),
 		"AmbiguousPR":          AmbiguousPR("in a/b and c/d"),
@@ -90,6 +100,16 @@ func samples() map[string]*Error {
 		"TitleTaken":          TitleTaken(),
 		"CommandNameTaken":    CommandNameTaken(),
 		"BranchMissing":       BranchMissing(),
+
+		"WorktreeUnavailable":   WorktreeUnavailable("no folder is in a git repository"),
+		"SessionWorktreeFailed": SessionWorktreeFailed("fatal: a branch named 'octo/x-1a2b' already exists"),
+		"WorkspaceNotFound":     WorkspaceNotFound("wsp_1"),
+		"WorkspaceMissing":      WorkspaceMissing("/data/projects/p/worktrees/wsp_1/atlas"),
+		"WorkspaceDirty":        WorkspaceDirty("src/a.go, src/b.go"),
+		"WorkspaceInUse":        WorkspaceInUse(),
+		"ApplyConflict":         ApplyConflict("src/a.go"),
+		"CoordinationOff":       CoordinationOff(),
+		"SessionSlotsFull":      SessionSlotsFull(3),
 	}
 }
 
@@ -199,9 +219,9 @@ func filterOut(in []string, suffix string) []string {
 }
 
 func TestFieldsAndFallback(t *testing.T) {
-	e := AgentNotLoggedIn("GitHub Copilot", "copilot auth login", "run it once")
+	e := AgentNotLoggedIn("GitHub Copilot", "copilot login", "run it once")
 	f := e.Fields()
-	if f["message"] != "GitHub Copilot is not logged in." || f["command"] != "copilot auth login" || f["action"] != "recheck_provider" || f["details"] != "run it once" || f["hint"] == "" {
+	if f["message"] != "GitHub Copilot is not logged in." || f["command"] != "copilot login" || f["action"] != "recheck_provider" || f["details"] != "run it once" || f["hint"] == "" {
 		t.Fatalf("fields = %v", f)
 	}
 	if _, ok := TurnInProgress().Fields()["action"]; ok {

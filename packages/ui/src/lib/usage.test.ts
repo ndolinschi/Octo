@@ -17,11 +17,12 @@ import {
   observedLabel,
   remainingShare,
   remainingText,
+  spentShare,
   resetLabel,
   shareRows,
   sortLimits,
 } from "./usage";
-import { contextText } from "./usageView";
+import { contextText } from "./contextText";
 
 const NOW = Date.parse("2026-11-10T15:00:00Z");
 const bucket = (key: string, n: number, p: Partial<UsageBucket> = {}): UsageBucket => ({
@@ -137,8 +138,11 @@ test("limits: remaining share and text, sorted by provider, model, kind", () => 
   });
   assert.equal(remainingShare(l("tokens")), 0.95);
   assert.equal(remainingShare(l("tokens", "m", { limit: null })), null);
-  assert.equal(remainingText(l("tokens")), "38k / 40k");
-  assert.equal(remainingText(l("requests", "m", { limit: 50, remaining: 45 })), "45 / 50");
+  // B43: what is left, in words (was "38k / 40k", read as spent).
+  assert.equal(remainingText(l("tokens")), "38k of 40k left");
+  assert.equal(remainingText(l("requests", "m", { limit: 4000, remaining: 3998 })), "3,998 of 4,000 left");
+  assert.equal(remainingText(l("requests", "m", { limit: 2_000_000, remaining: 1_712_400 })), "1.7M of 2M left");
+  assert.ok(Math.abs((spentShare(l("tokens")) ?? 0) - 0.05) < 1e-9);
   assert.deepEqual(
     sortLimits([l("output_tokens"), l("requests", "b"), l("requests")]).map((x) => `${x.model}:${x.kind}`),
     ["b:requests", "m:requests", "m:output_tokens"],

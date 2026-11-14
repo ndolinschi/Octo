@@ -1,4 +1,4 @@
-import { emptyProjectState, type Agent, type Message, type Note } from "@octo/agent-client";
+import { emptyProjectState, type Agent, type Approval, type Message, type Note } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { projectReducer } from "./projectReducer";
@@ -162,4 +162,29 @@ test("the reducer never mutates the state it is given", () => {
   projectReducer(before, { type: "event", event: { type: "agent.created", seq: 1, agent: agent("a") } });
   projectReducer(before, { type: "clearTurn" });
   assert.equal(JSON.stringify(before), frozen);
+});
+
+test("NEW-3: the pending approvals and forms read on load join what events brought, without duplicates", () => {
+  const approval = (id: string, at: string): Approval => ({
+    id,
+    agent_id: "agt_sub",
+    agent_label: "Code explorer",
+    turn_id: 1,
+    kind: "command",
+    title: "ls",
+    detail: { command: "ls" },
+    created_at: at,
+  });
+  let s = emptyProjectState();
+  s = projectReducer(s, { type: "waits", approvals: [approval("b", "2026-11-14T10:00:02Z"), approval("a", "2026-11-14T10:00:01Z")], inputs: null });
+  assert.deepEqual(
+    s.approvals.map((a) => a.id),
+    ["a", "b"],
+  );
+  s = projectReducer(s, { type: "waits", approvals: [approval("a", "2026-11-14T10:00:01Z")], inputs: [] });
+  assert.deepEqual(
+    s.approvals.map((a) => a.id),
+    ["a", "b"],
+  );
+  assert.deepEqual(s.inputs, []);
 });

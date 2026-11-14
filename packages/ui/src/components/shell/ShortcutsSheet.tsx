@@ -1,0 +1,137 @@
+import { useEffect, useState } from "react";
+import { MOD_LABEL } from "../../lib/keys";
+import { SHORTCUTS_EVENT } from "../../lib/openShortcuts";
+import { Dialog } from "../primitives/Dialog";
+import { KeyHint } from "../primitives/KeyHint";
+import { Presence } from "../primitives/Presence";
+import { SectionHeader } from "../primitives/SectionHeader";
+
+const MAC = MOD_LABEL === "⌘";
+/** Key names as the platform writes them: "Mod" is ⌘ or Ctrl, the others their Mac symbols. */
+const NAMES: Record<string, string> = MAC ? { Mod: "⌘", Shift: "⇧", Alt: "⌥", Ctrl: "⌃" } : { Mod: "Ctrl" };
+
+type Shortcut = { keys: readonly string[]; does: string };
+const GROUPS: readonly { title: string; items: readonly Shortcut[] }[] = [
+  {
+    title: "General",
+    items: [
+      { keys: ["Mod", "K"], does: "Search and run commands" },
+      { keys: ["?"], does: "Show this list (not while typing)" },
+      { keys: ["Mod", "L"], does: "Write a message" },
+      { keys: ["Esc"], does: "Close a dialog, menu or the palette" },
+    ],
+  },
+  {
+    title: "Conversation",
+    items: [
+      { keys: ["Enter"], does: "Send" },
+      { keys: ["Shift", "Enter"], does: "New line" },
+      { keys: ["Mod", "Enter"], does: "Queue the message while the agent works" },
+      { keys: ["Esc"], does: "Stop the running answer" },
+      { keys: ["↑"], does: "In an empty box, bring back your last request" },
+      { keys: ["Shift", "Tab"], does: "Change the mode" },
+      { keys: ["Alt", "↑"], does: "Previous request" },
+      { keys: ["Alt", "↓"], does: "Next request" },
+      { keys: ["Mod", "Shift", "U"], does: "Context details" },
+      { keys: ["/"], does: "Commands in the message box" },
+      { keys: ["@"], does: "Mention a file" },
+    ],
+  },
+  {
+    title: "Files and editor",
+    items: [
+      { keys: ["Mod", "S"], does: "Save the file" },
+      { keys: ["Mod", "Alt", "C"], does: "Comment on the selected lines" },
+      { keys: ["Mod", "Enter"], does: "Save a comment" },
+      { keys: ["Esc"], does: "Cancel a comment" },
+    ],
+  },
+  {
+    title: "Review",
+    items: [
+      { keys: ["J"], does: "Next change" },
+      { keys: ["K"], does: "Previous change" },
+      { keys: ["]"], does: "Next file" },
+      { keys: ["["], does: "Previous file" },
+      { keys: ["V"], does: "Mark the file viewed" },
+      { keys: ["C"], does: "Comment" },
+      { keys: ["S"], does: "Suggest a change" },
+      { keys: ["Mod", "Enter"], does: "Send a comment" },
+    ],
+  },
+  {
+    title: "Panels",
+    items: [
+      { keys: ["Mod", "T"], does: "Open a tab" },
+      { keys: ["Mod", "W"], does: "Close the tab" },
+      { keys: ["Mod", "Shift", "T"], does: "Reopen the closed tab" },
+      { keys: ["Ctrl", "Tab"], does: "Walk through the tabs" },
+      { keys: ["Mod", "1…9"], does: "Go to the tab by number" },
+      { keys: ["Mod", "Shift", "PgUp"], does: "Move the tab left" },
+      { keys: ["Mod", "Shift", "PgDn"], does: "Move the tab right" },
+      { keys: ["Mod", "\\"], does: "Move the tab to the other side" },
+      { keys: ["Mod", ";"], does: "Ask a side question" },
+      { keys: ["Mod", "Shift", "Enter"], does: "Give the panel the whole window" },
+      { keys: ["Esc"], does: "Give the window back" },
+    ],
+  },
+];
+
+const name = (k: string) => NAMES[k] ?? k;
+
+/**
+ * The keyboard shortcut reference: a dialog of every shortcut the app answers, grouped. Lazy chunk, always mounted by the shell
+ * (it holds the "?" key and the open event, which the palette and Settings send); the sheet itself only renders while open.
+ * Each entry was pressed in the browser before it was listed.
+ */
+export default function ShortcutsSheet() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const show = () => setOpen(true);
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target;
+      const typing = t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey && !typing && !document.querySelector('[aria-modal="true"]')) show();
+    };
+    // NEW-6: navigating (Back / Forward, a hash change) closes the sheet, as it does the palette.
+    const hide = () => setOpen(false);
+    window.addEventListener(SHORTCUTS_EVENT, show);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("hashchange", hide);
+    return () => {
+      window.removeEventListener(SHORTCUTS_EVENT, show);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("hashchange", hide);
+    };
+  }, []);
+  return <Presence show={open}>{open && <Sheet onClose={() => setOpen(false)} />}</Presence>;
+}
+
+function Sheet({ onClose }: { onClose(): void }) {
+  return (
+    <Dialog title="Keyboard shortcuts" width="lg" onClose={onClose}>
+      <div className="flex flex-col gap-4 @min-[520px]/dialog:block @min-[520px]/dialog:columns-2 @min-[520px]/dialog:gap-x-8">
+        {GROUPS.map((g) => (
+          <section key={g.title} aria-label={g.title} className="flex break-inside-avoid flex-col @min-[520px]/dialog:mb-4">
+            <SectionHeader as="h3">{g.title}</SectionHeader>
+            <ul className="flex flex-col">
+              {g.items.map((s) => (
+                <li key={s.does} className="flex min-h-ctl-md items-center justify-between gap-3 py-1 text-sm text-fg">
+                  <span className="min-w-0">{s.does}</span>
+                  <span className="flex shrink-0 items-center gap-1 text-fg-2">
+                    <span className="sr-only">{s.keys.map(name).join(" plus ")}</span>
+                    {s.keys.map((k) => (
+                      <KeyHint key={k} always>
+                        {name(k)}
+                      </KeyHint>
+                    ))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </Dialog>
+  );
+}

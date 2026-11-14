@@ -110,7 +110,7 @@ func (rt *runtime) inputDef(a projectstore.Agent) tools.Def {
 			}
 			rt.activity(a.ID, activity.WaitingApproval, "Waiting for your answer", "")
 			res, err := rt.o.inputs.Request(ctx, rt.pid(), inputs.Input{
-				AgentID: a.ID, AgentLabel: agentLabel(a), TurnID: rt.turnID, Title: in.Title, Reason: in.Reason, Fields: in.Fields,
+				AgentID: a.ID, SessionID: rt.sessionID, AgentLabel: agentLabel(a), TurnID: rt.turnID, Title: in.Title, Reason: in.Reason, Fields: in.Fields,
 			})
 			rt.activity(a.ID, activity.Thinking, "Thinking", "")
 			if err != nil {

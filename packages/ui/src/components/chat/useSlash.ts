@@ -2,6 +2,7 @@ import type { SlashCommands } from "@octo/agent-client";
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
+import { useSessionScope } from "../../state/session";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { ComposerMode } from "./composerMode";
 import { useInlineNotes } from "./notesContext";
@@ -35,6 +36,7 @@ export function useSlashRunner(ctx: { mode: ComposerMode | null | undefined; ope
   const { bridge } = useApp();
   const { projectId } = useProject();
   const ws = useOptionalWorkspace();
+  const scope = useSessionScope();
   const notes = useInlineNotes();
   const push = notes?.push;
   const rewindLast = notes?.rewindLast;
@@ -44,11 +46,22 @@ export function useSlashRunner(ctx: { mode: ComposerMode | null | undefined; ope
       // The runner (compact, export, remember ...) loads with the first command, not with the composer.
       const { runSlash } = await import("./slashRun");
       return runSlash(
-        { bridge, projectId, mode, openModel, push, rewindLast, openTool: (t) => ws?.openTool(t), openSettings: () => ws?.openSettings() },
+        {
+          bridge,
+          projectId,
+          mode,
+          openModel,
+          push,
+          rewindLast,
+          openTool: (t) => ws?.openTool(t),
+          openSettings: () => ws?.openSettings(),
+          // Decision 96: `/clear` makes a new session; this conversation follows it.
+          onCleared: scope ? (next) => scope.follow(next) : undefined,
+        },
         name,
         args,
       );
     },
-    [bridge, projectId, ws, push, rewindLast, mode, openModel],
+    [bridge, projectId, ws, scope, push, rewindLast, mode, openModel],
   );
 }

@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 import { cn } from "../../lib/cn";
 import { durationText, runStatusText, runTone, stripAnsi, type RunTone } from "../../lib/commands/format";
@@ -6,6 +6,7 @@ import { isRunning, type RunView } from "../../lib/commands/runs";
 import { useNow } from "../../lib/hooks";
 import type { GlyphState } from "../../lib/stateGlyph";
 import { Button } from "../primitives/Button";
+import { Glyph } from "../primitives/Glyph";
 import { IconButton } from "../primitives/IconButton";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { useRuns } from "./RunsContext";
@@ -92,7 +93,10 @@ export function RunPanel({ tab }: { /** The "Run: name" tab (decision 68): fills
   );
 }
 
-/** Name · state glyph · command (dim mono) · duration: the whole status of a run, once. A failure also says so in words. */
+/**
+ * Name · state glyph · command (dim mono) · duration: the whole status of a run, once. A finished run also says how in words
+ * (B10): "Passed" with the done check, as a failure says "Failed (exit 2)".
+ */
 function RunLine({ v }: { v: RunView }) {
   const run = v.run;
   const tone = runTone(run);
@@ -100,12 +104,18 @@ function RunLine({ v }: { v: RunView }) {
     <div className="flex min-w-0 flex-1 items-center gap-2">
       <span className="shrink-0 text-sm text-fg">{run.name}</span>
       <span title={runStatusText(run)} className="flex shrink-0">
-        <StateGlyph state={GLYPH[tone]} label />
+        {tone === "ok" ? (
+          <span className="flex text-ok">
+            <Glyph icon={Check} size={14} />
+          </span>
+        ) : (
+          <StateGlyph state={GLYPH[tone]} label />
+        )}
       </span>
       <span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-3" title={`${run.command} in ${run.cwd}`}>
         {run.command}
       </span>
-      {tone === "err" && <span className="shrink-0 text-xs text-err">{runStatusText(run)}</span>}
+      {(tone === "err" || tone === "ok") && <span className={cn("shrink-0 text-xs", TONE[tone])}>{runStatusText(run)}</span>}
       <span className="shrink-0 text-xs text-fg-3">{isRunning(run) ? <LiveDuration startedAt={run.started_at} /> : durationText(run.duration_ms)}</span>
     </div>
   );

@@ -40,7 +40,7 @@ export default function InlineCompletion({
     const set = (s: CompletionState | null) => completionStatus.set(fileKey, s);
     const complete = bridge.complete;
     if (!complete) {
-      set({ kind: "off", reason: "This harness has no inline completion" });
+      set({ kind: "off", reason: "This version of Octo's local service has no inline completion" });
       return () => set(null);
     }
     if (!model || model === "off") {

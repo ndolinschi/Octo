@@ -493,7 +493,7 @@ async fn store_payloads_false_omits_text_keeps_costs() {
         estimated_cost: None,
         cost_source: "upstream".into(),
         is_byok: Some(true),
-        upstream_provider: Some("Mistral".into()),
+        upstream_provider: Some("Parasail".into()),
         trimmed_from_tokens: None,
         client_model: Some("claude-haiku".into()),
         client_has_thinking: Some(false),
@@ -563,7 +563,7 @@ async fn client_observe_columns_persist_before_model_rewrite() {
     history.record(FinishedCall {
         kind: CallKind::Messages,
         provider: CallProvider::OpenRouter,
-        model: Some("mistralai/ministral-8b-2512".into()),
+        model: Some("qwen/qwen3.7-flash".into()),
         token_hash: None,
         message: None,
         input: "{}".into(),
@@ -626,7 +626,7 @@ async fn client_observe_columns_persist_before_model_rewrite() {
     assert_eq!(row.2.as_deref(), Some("Bash,Read"));
     assert_eq!(row.3, Some(1));
     assert_eq!(row.4, Some(0));
-    assert_eq!(row.5.as_deref(), Some("mistralai/ministral-8b-2512"));
+    assert_eq!(row.5.as_deref(), Some("qwen/qwen3.7-flash"));
 }
 
 #[tokio::test]
@@ -654,8 +654,7 @@ async fn generation_id_prefers_openrouter_header_over_body_msg() {
         .await
         .unwrap();
     let client = Client::builder().build().unwrap();
-    let input =
-        r#"{"model":"mistralai/devstral-2512","messages":[{"role":"user","content":"hi"}]}"#;
+    let input = r#"{"model":"qwen/qwen3-coder-next","messages":[{"role":"user","content":"hi"}]}"#;
     let request = Request::builder()
         .method("POST")
         .uri("http://127.0.0.1:8080/v1/messages")

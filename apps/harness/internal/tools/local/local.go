@@ -105,7 +105,7 @@ func RegisterRootsLimits(reg *tools.Registry, roots []Root, lim tools.Limits, na
 		return err
 	}
 	handlers := map[string]tools.Handler{
-		ToolBash:        bashHandler(rs),
+		ToolBash:        bashHandler(rs, lim),
 		ToolReadFile:    readFileHandler(rs, lim),
 		ToolWriteFile:   writeFileHandler(rs),
 		ToolListDir:     listDirHandler(rs),

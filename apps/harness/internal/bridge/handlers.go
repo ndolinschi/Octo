@@ -151,20 +151,26 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	msg, queued, err := s.svc.PostMessageWith(r.Context(), r.PathValue("pid"), in.Text, in.Mode, in.Attachments)
+	s.postSessionMessage(w, r, in.Text, in.Mode, in.Attachments)
+}
+
+// postSessionMessage sends a message to a main session ({sid}; none: the default): 202 {message}, or 202
+// {queued, waiting_for} when it waits for the session's turn or for a slot.
+func (s *Server) postSessionMessage(w http.ResponseWriter, r *http.Request, text string, mode *string, attachments []string) {
+	msg, queued, err := s.svc.PostSessionMessage(r.Context(), r.PathValue("pid"), r.PathValue("sid"), text, mode, attachments)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 	if queued != nil {
-		writeJSON(w, http.StatusAccepted, map[string]any{"queued": queued})
+		writeJSON(w, http.StatusAccepted, map[string]any{"queued": queued, "waiting_for": queued.WaitingFor})
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"message": msg})
 }
 
 func (s *Server) cancel(w http.ResponseWriter, r *http.Request) {
-	if err := s.svc.Cancel(r.Context(), r.PathValue("pid")); err != nil {
+	if err := s.svc.CancelSession(r.Context(), r.PathValue("pid"), r.PathValue("sid"), r.URL.Query().Get("all") == "true"); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -189,6 +195,15 @@ func (s *Server) deleteNote(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) context(w http.ResponseWriter, r *http.Request) {
+	if sid := r.PathValue("sid"); sid != "" {
+		rep, err := s.svc.SessionContext(r.Context(), r.PathValue("pid"), sid)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rep)
+		return
+	}
 	rep, err := s.svc.Context(r.Context(), r.PathValue("pid"), r.URL.Query().Get("agent"))
 	if err != nil {
 		writeErr(w, err)

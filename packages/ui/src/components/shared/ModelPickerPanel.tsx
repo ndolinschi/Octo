@@ -21,7 +21,7 @@ import { SearchField } from "../primitives/SearchField";
 import { TextField } from "../primitives/TextField";
 import { ProviderMark } from "../primitives/ProviderMark";
 import { PopupList, popupOptionId } from "../primitives/PopupList";
-import { popupTarget } from "../primitives/popupNav";
+import { popupMove } from "../primitives/popupNav";
 import type { PickerSection } from "../../lib/picker";
 import { Popover } from "../primitives/Popover";
 import type { ModelPickerProps } from "./modelPickerProps";
@@ -30,6 +30,9 @@ const STALE_NOTE = "not offered in the last session";
 
 /** A model typed by hand: at the top level (project settings) a model id of any provider, in an agent's list a name for that agent. */
 type Custom = { kind: "custom"; key: string; value: string; label: string; agentId: string | null };
+
+/** The folded "Not set up" group: one row that opens the rest in place (Settings → Providers' wording and behaviour). */
+type More = { kind: "more"; key: string; label: string };
 
 /**
  * The model picker's list (decisions 53, 56, 58), loaded with the first open: a 320px popover attached to its chip. It renders
@@ -47,6 +50,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
   const [inside, setInside] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
   const [typing, setTyping] = useState(false);
+  const [unfolded, setUnfolded] = useState(false);
   const [draft, setDraft] = useState("");
   const [refreshNote, setRefreshNote] = useState<string | null>(null);
   /** The agent whose "Check again" runs, and the one that was checked and still reads as logged out. */
@@ -57,7 +61,19 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
   const { load, view, refresh, refreshModels, addModel, removeModel, refreshing } = useModelPicker(bridge, { query, agent: inside, current: props.value });
   const top = useMemo(() => (load.status === "ready" || load.status === "error" ? (load.list ? pickerView(load.list, { query: "" }) : null) : null), [load]);
   const typed = query.trim();
-  const rows = view ? pickerRows(view) : [];
+  const providerKinds = new Map((load.status === "ready" || load.status === "error" ? (load.list?.providers ?? []) : []).map((p) => [p.id, p.kind]));
+  const allRows = view ? pickerRows(view) : [];
+  // Settings → Providers folds "Not set up" into "N more … can be added" once something is connected; a search shows every match.
+  const loose = allRows.flatMap((r) => (r.kind === "connect" ? [r] : []));
+  const fold = view?.level === "top" && !unfolded && typed === "" && loose.length > 0 && loose.length < allRows.length;
+  const rows = fold ? allRows.filter((r) => r.kind !== "connect") : allRows;
+  const more: More | null = fold
+    ? {
+        kind: "more",
+        key: "more:connect",
+        label: `${loose.length} more ${loose.every((r) => providerKinds.get(r.providerId) === "agent") ? "agent" : "provider"}${loose.length === 1 ? "" : "s"} can be added`,
+      }
+    : null;
   const agent = view?.level === "agent" ? view.agent : null;
   const single = typed !== "" && !/\s/.test(typed);
   const taken = rows.some((r) => r.kind !== "connect" && r.kind !== "other" && r.value.replace(/^acp:[^/]*\//, "") === typed);
@@ -69,17 +85,13 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         : props.custom && inside === null
           ? { kind: "custom", key: `custom:${typed}`, value: typed, label: typed, agentId: null }
           : null;
-  const entries: (PickerRow | Custom)[] = custom ? [custom, ...rows] : rows;
+  const entries: (PickerRow | Custom | More)[] = [...(custom ? [custom] : []), ...rows, ...(more ? [more] : [])];
   const at = entries.length ? Math.min(selected, entries.length - 1) : -1;
   const optionId = (i: number) => popupOptionId(listId, entries[i]?.key ?? "");
 
   const choose = (value: string, name?: { agent: string; model: string }) => {
     if (name) addModel(name.agent, name.model);
     props.onChoose(value);
-    props.onClose();
-  };
-  const pickAnyway = (providerId: string) => {
-    props.onChooseUnverified?.(`acp:${providerId}`);
     props.onClose();
   };
   const checkAgain = async (providerId: string) => {
@@ -95,8 +107,9 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
       setChecking(null);
     }
   };
-  const act = (r: PickerRow | Custom | undefined) => {
+  const act = (r: PickerRow | Custom | More | undefined) => {
     if (!r) return;
+    if (r.kind === "more") return setUnfolded(true);
     if (r.kind === "connect" && r.unsupported) return;
     if (r.kind === "connect") {
       props.onClose();
@@ -157,13 +170,17 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     const n = entries.length;
     const row = at >= 0 ? entries[at] : undefined;
-    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && n) {
+    // Decision 95 (`popupNav`): the search is a text field, so plain Home / End move its caret and Ctrl+Home / End jump.
+    const to = n
+      ? popupMove(
+          e,
+          true,
+          entries.map((x) => x.key),
+          row?.key ?? null,
+        )
+      : null;
+    if (to !== null) {
       e.preventDefault();
-      const to = popupTarget(
-        e.key,
-        entries.map((x) => x.key),
-        row?.key ?? null,
-      );
       setSelected(
         Math.max(
           0,
@@ -183,6 +200,13 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
     if (e.key === "ArrowRight" && !atEnd) return;
     if (e.key === "ArrowLeft" && !atStart) return;
     if (e.key === "Backspace" && (query || !inside)) return;
+    if (row?.kind === "more") {
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        act(row);
+      }
+      return;
+    }
     if (!view || row?.kind === "custom") return;
     const step = pickerKey(view, at - (custom ? 1 : 0), e.key === "Backspace" ? "ArrowLeft" : e.key, top ?? undefined);
     if (step?.do === "open") {
@@ -208,9 +232,9 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
     if (!r || view?.level !== "top") return null;
     if (r.kind === "custom") return "Custom";
     const prev = entries[i - 1];
-    if (r.kind === "connect") return prev?.kind === "connect" ? null : "Not set up";
+    if (r.kind === "connect" || r.kind === "more") return prev?.kind === "connect" ? null : "Not set up";
     const group = view.groups.find((g) => g.rows.includes(r));
-    const same = prev !== undefined && prev.kind !== "custom" && prev.kind !== "connect" && group?.rows.includes(prev);
+    const same = prev !== undefined && prev.kind !== "custom" && prev.kind !== "connect" && prev.kind !== "more" && group?.rows.includes(prev);
     return same ? null : (group?.label ?? null);
   };
 
@@ -223,7 +247,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         ? "Nothing matches"
         : "Nothing can run yet. Connect a provider."
       : null;
-  const rowOf = (r: PickerRow | Custom): PickerSection["rows"][number] => {
+  const rowOf = (r: PickerRow | Custom | More): PickerSection["rows"][number] => {
     const base = { id: r.key, title: rowTitle(r), run: () => act(r) };
     if (r.kind === "other" && typing)
       return {
@@ -241,25 +265,23 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
           />
         ),
       };
+    if (r.kind === "more") return { ...base, label: r.label, quiet: true, lead: <Glyph icon={ChevronRight} size={14} className="text-fg-3" /> };
     if (r.kind === "custom") return { ...base, label: `Use “${r.label}”`, hint: r.agentId ? "model name" : "model id" };
     if (r.kind === "connect") {
       const text = r.unsupported ? (r.reason ?? r.state) : r.unverified ? r.state : `${r.state} · ${r.action}`;
+      // B13: beside "Check again" the state is a second dim line under the name (a 40px row), so neither the name nor the state
+      // truncates at 320px; a right-aligned hint took a fraction of a pixel from the name, enough for "GitHub Co…".
+      const note = r.experimental ? "experimental" : null;
       return {
         ...base,
         label: r.label,
         quiet: true,
-        hint: text,
         lead: <ProviderMark id={r.providerId} label={r.label} className="text-fg-3" />,
-        ...(r.experimental ? { detail: "experimental" } : {}),
+        ...(r.unverified ? { sub: note ? `${note} · ${text}` : text } : { hint: text, ...(note ? { detail: note } : {}) }),
         ...(r.unverified
           ? {
               trailing: (
-                <UnverifiedActions
-                  checking={checking === r.providerId}
-                  still={stillOut === r.providerId}
-                  onCheck={() => void checkAgain(r.providerId)}
-                  {...(props.onChooseUnverified ? { onUse: () => pickAnyway(r.providerId) } : {})}
-                />
+                <UnverifiedActions checking={checking === r.providerId} still={stillOut === r.providerId} onCheck={() => void checkAgain(r.providerId)} />
               ),
             }
           : {}),
@@ -272,8 +294,9 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         label: r.label,
         lead: <ProviderMark id={r.providerId} label={r.label} className="text-fg-3" />,
         trailing: <Glyph icon={ChevronRight} size={14} className="-mr-0.5 shrink-0 text-fg-3" />,
+        // With the "experimental" tag beside the name there is no room for the default model on the same line: it is the second line.
         ...(r.experimental ? { detail: "experimental" } : {}),
-        ...(r.detail ? { hint: r.detail } : {}),
+        ...(r.detail ? (r.experimental ? { sub: r.detail } : { hint: r.detail }) : {}),
       };
     const lead = isCurrent(r) ? <Glyph icon={Check} size={14} className="text-fg" /> : null;
     if (r.kind === "default") return { ...base, label: r.label, lead, ...(r.detail ? { hint: r.detail } : {}) };
@@ -328,7 +351,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
       gap={4}
       align={props.side === "bottom" ? "end" : "start"}
       onClose={props.onClose}
-      className="w-[min(320px,calc(100vw-16px))]"
+      className="max-h-[min(640px,calc(100dvh-24px))]! w-[min(320px,calc(100vw-16px))]"
     >
       <SearchField
         ref={input}
@@ -397,7 +420,8 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         }
         onChoose={(r) => r.run()}
         query={query}
-        maxRows={9}
+        tall
+        tagDetail
         empty={
           <>
             <span className="min-w-0 flex-1">{empty}</span>
@@ -414,8 +438,11 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
   );
 }
 
-/** "Check again" and "Use anyway" on a not-logged-in agent's row; out of the tab order like the row's remove button (Enter opens the connect sheet with both). */
-function UnverifiedActions({ checking, still, onCheck, onUse }: { checking: boolean; still: boolean; onCheck(): void; onUse?: () => void }) {
+/**
+ * "Check again" on a not-logged-in agent's row; out of the tab order like the row's remove button. One action only, so the
+ * name keeps its room at 320px (B13): "Use anyway" is in the connect sheet the row opens (Enter or a click), beside "Check again".
+ */
+function UnverifiedActions({ checking, still, onCheck }: { checking: boolean; still: boolean; onCheck(): void }) {
   const stop = (fn: () => void) => (e: { stopPropagation(): void }) => {
     e.stopPropagation();
     fn();
@@ -426,16 +453,12 @@ function UnverifiedActions({ checking, still, onCheck, onUse }: { checking: bool
       <Button variant="quiet" size="xs" tabIndex={-1} loading={checking} onClick={stop(onCheck)}>
         Check again
       </Button>
-      {onUse && (
-        <Button variant="quiet" size="xs" tabIndex={-1} onClick={stop(onUse)}>
-          Use anyway
-        </Button>
-      )}
     </span>
   );
 }
 
-function rowTitle(r: PickerRow | Custom): string {
+function rowTitle(r: PickerRow | Custom | More): string {
+  if (r.kind === "more") return `${r.label}: show them`;
   if (r.kind === "custom") return r.agentId ? `Use “${r.label}” as the model name` : `Use “${r.value}” as the model id`;
   if (r.kind === "connect") return r.unsupported ? `${r.label}: ${r.reason ?? r.state}` : `${r.label}: ${r.state}`;
   if (r.kind === "other") return "Type the name of a model this agent accepts";

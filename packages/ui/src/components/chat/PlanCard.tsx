@@ -48,7 +48,7 @@ function PlanCard(props: { plan: Plan; onPlan(plan: Plan): void; onRefresh(): Pr
         <Card surface="panel" padding="none">
           <Button variant="quiet" size="md" fullWidth aria-expanded={open} onClick={() => setOpen((o) => !o)} className="justify-start px-3">
             <Glyph icon={Check} size={14} className="shrink-0 text-ok" />
-            <span className="flex-1 text-left">Plan approved</span>
+            <span className="text-left">Plan approved</span>
             <Glyph icon={ChevronRight} size={14} className={cn("text-fg-3", open && "rotate-90")} />
           </Button>
           {open && (
@@ -80,7 +80,7 @@ function PlanCard(props: { plan: Plan; onPlan(plan: Plan): void; onRefresh(): Pr
       }
       error={problem}
     >
-      <div className="max-h-80 overflow-y-auto scroll-quiet">
+      <div className="max-h-80 overflow-y-auto">
         <LazyMarkdown text={plan.text} className="octo-prose" />
       </div>
       {running && !problem && <p className="text-fg-3">A turn is running.</p>}
@@ -93,7 +93,7 @@ const latest = new Map<string, { at: number; plan: Promise<Plan | null> }>();
 function latestPlan(bridge: Bridge, projectId: string): Promise<Plan | null> {
   const hit = latest.get(projectId);
   if (hit && Date.now() - hit.at < 1000) return hit.plan;
-  // 404: no plan turn yet. Any other failure: plans still arrive as events, and a reload asks again.
+  // null: no plan turn yet. Any failure: plans still arrive as events, and a reload asks again.
   const plan = (bridge.getLatestPlan?.(projectId) ?? Promise.resolve(null)).catch(() => null);
   latest.set(projectId, { at: Date.now(), plan });
   return plan;

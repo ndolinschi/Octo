@@ -22,7 +22,10 @@ const bashTimeout = 30 * time.Second
 
 var bashTrustWarn sync.Once
 
-func bashHandler(rs *rootSet) tools.Handler {
+// bashWaitDelay is how long a cancelled command's output pipes may stay open before Run returns anyway.
+const bashWaitDelay = 500 * time.Millisecond
+
+func bashHandler(rs *rootSet, lim tools.Limits) tools.Handler {
 	return func(ctx context.Context, input json.RawMessage) (string, bool, error) {
 		bashTrustWarn.Do(func() {
 			slog.Warn("bash runs real shell commands with the harness process privileges; not sandboxed")
@@ -49,6 +52,9 @@ func bashHandler(rs *rootSet) tools.Handler {
 		runCtx, cancel := context.WithTimeout(ctx, bashTimeout)
 		defer cancel()
 		cmd := exec.CommandContext(runCtx, "bash", "-c", in.Command)
+		killGroupOnCancel(cmd)
+		// Whatever still holds the output pipes after the cancel does not keep the call open.
+		cmd.WaitDelay = bashWaitDelay
 		cmd.Dir = dir
 		// Same allow-list as plugin processes: no provider keys or other secrets.
 		cmd.Env = childenv.Build(os.Environ(), extra)
@@ -64,13 +70,30 @@ func bashHandler(rs *rootSet) tools.Handler {
 			out += se
 		}
 		if err != nil {
-			if out == "" {
-				out = err.Error()
-			}
-			return out, true, nil
+			return failedOutput(out, err, runCtx.Err() == context.DeadlineExceeded, lim), true, nil
 		}
 		return out, false, nil
 	}
+}
+
+// failedOutput is a failed command's result: its output, then always a last line saying how it ended ("exit
+// status N" for an exit code, which the UI reads as "Failed (exit N)"; "signal: killed" and the like otherwise).
+// The output is cut first when it would not leave room for that line under the result cap, so the cap applied
+// later never cuts the line away.
+func failedOutput(out string, err error, timedOut bool, lim tools.Limits) string {
+	line := err.Error()
+	if timedOut {
+		line += fmt.Sprintf(" (timed out after %s)", bashTimeout)
+	}
+	if out == "" {
+		return line
+	}
+	room := lim.Resolved().ResultBytes - len(line) - 1
+	out = tools.Truncate(out, max(room, 0), tools.ResultHint)
+	if !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return out + line
 }
 
 // readFooterReserve is the room read_file keeps for its own truncation footer.

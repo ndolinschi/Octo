@@ -1,119 +1,140 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useMemo } from "react";
 
 import { cn } from "../../lib/cn";
-import { acpCall, toolMeta } from "../../lib/tools";
-import type { ToolUse } from "../../lib/transcript";
+import { locateInProject } from "../../lib/toolsMore";
+import { callRow, editView, groupProblems, groupState, groupSummary, mergeRuns, toolKind, viewState, type CallRow } from "../../lib/toolView";
+import { stepState, type StepState, type ToolUse, type TurnEnd } from "../../lib/transcript";
+import { useOptionalCode } from "../../state/code";
 import { ActivityRow, type ActivityState } from "./ActivityRow";
-import { toolState, useTranscript, type ToolState } from "./transcriptContext";
+import { useTranscript } from "./transcriptContext";
 
 /** A tool call's input and result load with the first one opened (their own chunk: links, tables, diff colours). */
 const ToolDetailLazy = lazy(() => import("./ToolDetail").then((m) => ({ default: m.ToolDetail })));
-function ToolDetail({ use }: { use: ToolUse }) {
+function ToolDetail({ uses, end, interrupted }: { uses: readonly ToolUse[]; end: TurnEnd; interrupted: boolean }) {
+  const [use, ...more] = uses;
+  if (!use) return null;
   return (
     <Suspense fallback={<div className="h-row rounded-md bg-code-bg" aria-busy />}>
-      <ToolDetailLazy use={use} />
+      <ToolDetailLazy use={use} more={more} end={end} interrupted={interrupted} />
     </Suspense>
   );
 }
 
-const PHRASES: Record<string, [string, string]> = {
-  read_file: ["read", "file"],
-  list_dir: ["listed", "folder"],
-  bash: ["ran", "command"],
-  write_file: ["wrote", "file"],
-  save_note: ["saved", "note"],
-  delete_note: ["deleted", "note"],
-};
+type Item = { use: ToolUse; state: StepState; row: CallRow };
 
-/** ACP kinds as summary phrases (the title says the rest). */
-const ACP_PHRASES: Record<string, [string, string]> = {
-  read: ["read", "file"],
-  edit: ["edited", "file"],
-  delete: ["deleted", "file"],
-  move: ["moved", "file"],
-  execute: ["ran", "command"],
-  search: ["ran", "search"],
-  fetch: ["fetched", "page"],
-};
+const ROW_STATE: Record<StepState, ActivityState> = { running: "running", error: "failed", stopped: "stopped", done: "done" };
+const WORD: Partial<Record<StepState, string>> = { error: "failed", stopped: "stopped" };
 
-/** The argument of a call: code-like text (a path, a command) in mono; an ACP title's prose stays in the UI face. */
-const isCodeLike = (text: string) => !/\s/.test(text.trim()) || /[/\\]/.test(text.split(" ")[0] ?? "");
-
-function Arg({ use, text, className }: { use: ToolUse; text: string; className?: string }) {
-  // An ACP "execute" title is a command line: mono, like the built-in bash row.
-  const prose = acpCall(use.name, use.input) !== null && use.name !== "execute" && !isCodeLike(text);
-  // The argument is content (a path, a command), shortened by design; the full text is in the row's tooltip.
+/** A run's "+N −M" (G2: the size of the change is on the row, before it is opened); null for anything but finished edits. */
+function EditCounts({ uses }: { uses: readonly ToolUse[] }) {
+  const ctx = useTranscript();
+  let added = 0;
+  let removed = 0;
+  for (const use of uses) {
+    const result = ctx.results.get(use.id);
+    if (result?.is_error || toolKind(use.name, use.input) !== "edit") return null;
+    const view = editView(use.name, use.input, typeof result?.content === "string" ? result.content : "");
+    if (!view) return null;
+    added += view.added;
+    removed += view.removed;
+  }
+  if (added === 0 && removed === 0) return null;
   return (
-    <span data-allow-truncate className={cn("min-w-0 truncate", prose ? "font-sans text-sm" : "font-mono text-xs", className)}>
-      {text}
+    <span className="shrink-0 tabular-nums">
+      {added > 0 && <span className="text-ok">+{added}</span>}
+      {added > 0 && removed > 0 && " "}
+      {removed > 0 && <span className="text-err">−{removed}</span>}
     </span>
   );
 }
 
-function summarize(uses: ToolUse[]): string {
-  const counts = new Map<string, number>();
-  for (const u of uses) {
-    const acp = acpCall(u.name, u.input) !== null;
-    const key = acp ? (u.name in ACP_PHRASES ? `acp:${u.name}` : "other") : u.name in PHRASES ? u.name : "other";
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  const parts = [...counts].map(([key, n]) => {
-    const phrase = key.startsWith("acp:") ? ACP_PHRASES[key.slice(4)] : PHRASES[key];
-    if (key === "other" || !phrase) return `called ${n} tool${n === 1 ? "" : "s"}`;
-    const [verb, noun] = phrase;
-    return `${verb} ${n} ${noun}${n === 1 ? "" : "s"}`;
-  });
-  const text = parts.join(", ");
-  return text.charAt(0).toUpperCase() + text.slice(1);
+/**
+ * The words of a row (toolpolish): the object (mono for a path, a command, a pattern; a phrase stays in the UI face), a quiet
+ * qualifier, the folder only when the group spans several, "2 edits" for a merged run, then +N −M.
+ */
+function RowDetail({ run, folder }: { run: readonly Item[]; folder: boolean }) {
+  const [first] = run;
+  if (!first) return null;
+  const { row } = first;
+  return (
+    <span className="flex min-w-0 items-baseline gap-1.5">
+      {row.object && (
+        // The object is content (a path, a command), shortened by design; the full text is in the row's tooltip.
+        <span data-allow-truncate className={cn("min-w-0 truncate", row.mono ? "font-mono text-xs" : "font-sans text-sm")}>
+          {row.object}
+        </span>
+      )}
+      {row.qualifier && <span className="shrink-0">{row.qualifier}</span>}
+      {folder && row.folder && <span className="shrink-0">in {row.folder}</span>}
+      {run.length > 1 && <span className="shrink-0">· {run.length} edits</span>}
+      <EditCounts uses={run.map((r) => r.use)} />
+    </span>
+  );
 }
 
-/** One activity row per run of tool calls (decision 91d); collapsed by default. */
-export function ToolGroup({ uses }: { uses: ToolUse[] }) {
+function tipOf(run: readonly Item[]): string {
+  const [first] = run;
+  if (!first) return "";
+  const { row } = first;
+  return [row.verb, row.object, row.qualifier, run.length > 1 ? `· ${run.length} edits` : ""].filter(Boolean).join(" ");
+}
+
+/**
+ * One activity row per run of tool calls (decision 91d); collapsed by default. Every row has one grammar (`callRow`): a
+ * past-tense verb, the object, a quiet qualifier; its state is the leading glyph and, when it is not "done", a quiet word at the
+ * right. Consecutive edits of one file are one row with one combined diff. The group's summary leads with what was done and puts
+ * problems as a quiet suffix; its glyph shows the worst state only when every call ended that way (`groupState`).
+ * `end`: how the turn ended (a stop's call reads "stopped"); `interrupted`: a restart cut the turn (its calls read "interrupted").
+ */
+export function ToolGroup({ uses, end = null, interrupted = false }: { uses: ToolUse[]; end?: TurnEnd; interrupted?: boolean }) {
   const ctx = useTranscript();
-  const rows = uses.map((use) => ({ use, state: toolState(ctx, use.id) }));
-  const running = rows.some((r) => r.state === "running");
-  const errors = rows.filter((r) => r.state === "error").length;
-  const [only] = uses;
-  const single = uses.length === 1 ? only : undefined;
-  const meta = single ? toolMeta(single.name, single.input) : null;
-  const state: ActivityState = running ? "running" : errors > 0 ? "failed" : rows.some((r) => r.state === "interrupted") ? "stopped" : "done";
+  const code = useOptionalCode();
+  const locate = useMemo(() => (code ? (p: string) => locateInProject(code.folders, p) : () => null), [code]);
+  // A refusal (the agent's "rejected", the harness's deny) reads as stopped, never failed (retest3 G1).
+  const items: Item[] = uses.map((use) => {
+    const result = ctx.results.get(use.id);
+    return { use, state: viewState(stepState(result, ctx.agentRunning, end, interrupted), result), row: callRow(use.name, use.input, locate) };
+  });
+  const runs = mergeRuns(items, (it) =>
+    it.state === "done" && it.row.path && toolKind(it.use.name, it.use.input) === "edit" ? `${it.row.folder}\u0001${it.row.path}` : "",
+  );
+  const folder = (code?.folders.length ?? 0) > 1 && new Set(items.map((it) => it.row.folder).filter(Boolean)).size > 1;
+  const [only] = runs;
+  if (runs.length === 1 && only) return <ToolRow run={only} folder={folder} end={end} interrupted={interrupted} />;
+  const states = items.map((it) => it.state);
+  const problems = groupProblems(states, interrupted ? "interrupted" : "stopped");
   return (
     <ActivityRow
-      state={state}
-      verb={single && meta ? meta.verb : summarize(uses)}
-      detail={
-        single && meta ? (
-          <span className="flex min-w-0 items-baseline gap-1.5">
-            {meta.arg && <Arg use={single} text={meta.arg} />}
-            {meta.folder && <span className="shrink-0">in {meta.folder}</span>}
-            {errors > 0 && <span className="shrink-0">failed</span>}
-          </span>
-        ) : errors > 0 ? (
-          `${errors} failed`
-        ) : undefined
+      state={ROW_STATE[groupState(states)]}
+      // One truncating line (the problems are part of it, dim) so a narrow column cuts it with an ellipsis before the chevron.
+      verb={
+        <>
+          {groupSummary(uses)}
+          {problems && <span className="text-fg-3"> · {problems}</span>}
+        </>
       }
+      tip={[groupSummary(uses), problems].filter(Boolean).join(" · ")}
     >
-      {single ? <ToolDetail use={single} /> : rows.map((r) => <ToolRow key={r.use.id} use={r.use} state={r.state} />)}
+      {runs.map((run) => (
+        <ToolRow key={run[0]?.use.id} run={run} folder={folder} end={end} interrupted={interrupted} />
+      ))}
     </ActivityRow>
   );
 }
 
-function ToolRow({ use, state }: { use: ToolUse; state: ToolState }) {
-  const meta = toolMeta(use.name, use.input);
-  const row: ActivityState = state === "running" ? "running" : state === "error" ? "failed" : state === "interrupted" ? "stopped" : "done";
+function ToolRow({ run, folder, end, interrupted }: { run: readonly Item[]; folder: boolean; end: TurnEnd; interrupted: boolean }) {
+  const [first] = run;
+  if (!first) return null;
+  const word = interrupted && first.state === "stopped" ? "interrupted" : WORD[first.state];
   return (
     <ActivityRow
-      state={row}
-      verb={meta.verb}
-      detail={
-        <span className="flex min-w-0 items-baseline gap-1.5">
-          {meta.arg && <Arg use={use} text={meta.arg} />}
-          {meta.folder && <span className="shrink-0">in {meta.folder}</span>}
-          {state === "interrupted" && <span className="shrink-0">no result</span>}
-        </span>
-      }
+      state={ROW_STATE[first.state]}
+      verb={first.row.verb}
+      detail={<RowDetail run={run} folder={folder} />}
+      tip={tipOf(run)}
+      {...(word ? { aside: word } : {})}
     >
-      <ToolDetail use={use} />
+      <ToolDetail uses={run.map((r) => r.use)} end={end} interrupted={interrupted} />
     </ActivityRow>
   );
 }

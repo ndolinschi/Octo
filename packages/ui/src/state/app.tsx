@@ -1,13 +1,23 @@
-import type { Bridge, BridgeConfig, ProjectSummary, ShellKind } from "@octo/agent-client";
+import { errorCode } from "../lib/format";
+import { setClockOffset } from "../lib/clock";
+import { isAuthRefused, retryDelay, type Bridge, type BridgeConfig, type ProjectSummary, type ShellKind } from "@octo/agent-client";
+import { isUnanswered, withDeadline } from "../lib/deadline";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useHost } from "./host";
 import { useMediaQuery } from "../lib/hooks";
 import { choiceCodec, PREFS, usePersistentState } from "../lib/storage";
 import { themeCodec, type Theme, type ThemePref } from "./themePref";
-import { HEALTH_POLL_ONLINE_MS, HEALTH_POLL_OFFLINE_MS, PROJECTS_POLL_BUSY_MS, PROJECTS_POLL_IDLE_MS } from "../lib/constants";
+import { HEALTH_POLL_ONLINE_MS, PROJECTS_POLL_BUSY_MS, PROJECTS_POLL_IDLE_MS } from "../lib/constants";
 import { createRequiredContext } from "../lib/context";
 
 export type Health = "checking" | "online" | "offline";
+export type OfflineCause = "refused" | "unreadable" | "unanswered" | null;
+
+function causeOf(e: unknown): OfflineCause {
+  if (isAuthRefused(e)) return "refused";
+  if (errorCode(e) === "invalid_response") return "unreadable";
+  return isUnanswered(e) ? "unanswered" : null;
+}
 export type { Theme, ThemePref };
 
 type AppValue = {
@@ -16,6 +26,16 @@ type AppValue = {
   shell: ShellKind;
   demo: boolean;
   health: Health;
+  /**
+   * Why `health` is "offline" when it is not "nothing answered": A15 `refused` (401: it restarted with a new token), P2-4
+   * `unreadable` (an answer that is not JSON) and `unanswered` (it took the connection and never answered). Null otherwise.
+   */
+  cause: OfflineCause;
+  /**
+   * P2-3: check health now. `back`: the event stream opened again, so the service is likely back. Without it (the stream
+   * failed) only while online, so a stream retrying while the service is down costs nothing.
+   */
+  probe(back?: boolean): void;
   version: string | null;
   projects: ProjectSummary[] | null;
   config: BridgeConfig | null;
@@ -44,6 +64,7 @@ export const { Provider: AppContextProvider, useRequired: useApp } = createRequi
 export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: ShellKind; demo: boolean; children: ReactNode }) {
   const { bridge } = props;
   const [health, setHealth] = useState<Health>("checking");
+  const [cause, setCause] = useState<OfflineCause>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [config, setConfig] = useState<BridgeConfig | null>(null);
@@ -70,41 +91,71 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
 
   const refreshProjects = useCallback(async () => {
     try {
-      setProjects(await bridge.listProjects());
-    } catch {
-      /* health polling reports connectivity */
+      setProjects(await withDeadline(bridge.listProjects()));
+    } catch (e) {
+      // Health polling reports connectivity; a refused token or an unreadable list only shows here (`/health` needs no token).
+      // P2-4: the health loop then checks again at once and keeps retrying with backoff until the list reads.
+      const why = causeOf(e);
+      if (why) {
+        healthRef.current = "offline";
+        setCause(why);
+        setHealth("offline");
+        setAttempt((n) => n + 1);
+      }
     }
   }, [bridge]);
 
+  // P2-4: failed checks in a row; while offline the next check comes after 1 s, 2 s, 4 s … 30 s (the load retry's policy),
+  // at once when the window gets focus or the event stream opens again (`probe(true)`).
+  const failures = useRef(0);
   useEffect(() => {
     let cancelled = false;
     let timer = 0;
+    let checking = false;
     const check = async () => {
+      window.clearTimeout(timer);
+      checking = true;
       try {
-        const h = await bridge.health();
+        // Every read has a deadline: one that is never answered must not hold the first load ("Connecting…") for good.
+        const h = await withDeadline(bridge.health());
         if (cancelled) return;
+        setClockOffset(bridge.clockOffset?.() ?? 0);
         setVersion(h.version);
         if (healthRef.current !== "online") {
-          const [list, cfg] = await Promise.all([bridge.listProjects(), bridge.getConfig()]);
+          const [list, cfg] = await withDeadline(Promise.all([bridge.listProjects(), bridge.getConfig()]));
           if (cancelled) return;
           setProjects(list);
           setConfig(cfg);
         }
+        failures.current = 0;
         healthRef.current = "online";
+        setCause(null);
         setHealth("online");
-      } catch {
+      } catch (e) {
         if (cancelled) return;
+        failures.current += 1;
+        setCause(causeOf(e));
         healthRef.current = "offline";
         setHealth("offline");
       }
-      timer = window.setTimeout(check, healthRef.current === "online" ? HEALTH_POLL_ONLINE_MS : HEALTH_POLL_OFFLINE_MS);
+      checking = false;
+      timer = window.setTimeout(check, healthRef.current === "online" ? HEALTH_POLL_ONLINE_MS : retryDelay(failures.current));
+    };
+    const onFocus = () => {
+      if (healthRef.current === "offline" && !checking) void check();
     };
     void check();
+    window.addEventListener("focus", onFocus);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      window.removeEventListener("focus", onFocus);
     };
   }, [bridge, attempt]);
+
+  const probe = useCallback((back?: boolean) => {
+    if (back ? healthRef.current === "offline" : healthRef.current === "online") setAttempt((n) => n + 1);
+  }, []);
 
   const anyRunning = projects?.some((p) => p.status === "running") ?? false;
   useEffect(() => {
@@ -120,6 +171,8 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
       shell: props.shell,
       demo: props.demo,
       health,
+      cause,
+      probe,
       version,
       projects,
       config,
@@ -143,10 +196,12 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
       props.shell,
       props.demo,
       health,
+      cause,
       version,
       projects,
       config,
       refreshProjects,
+      probe,
       theme,
       themePref,
       setThemePref,

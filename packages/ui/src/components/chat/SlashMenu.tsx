@@ -5,14 +5,26 @@ import type { SlashRow } from "../../lib/slash";
 import { slashGroups } from "../../lib/slashRows";
 import type { PickerSection } from "../../lib/picker";
 import { PopupList, popupOptionId, POPUP_PANEL } from "../primitives/PopupList";
-import { popupTarget } from "../primitives/popupNav";
+import { popupMove } from "../primitives/popupNav";
+import { useLatest } from "../../lib/hooks";
+import { MODE_LABEL } from "../../lib/modeLabels";
+import { MODES } from "../../lib/modes";
+
+/** "ask|plan|agent" reads "Agent, Ask or Plan"; any other argument hint stays as it is. */
+function argsText(args: string): string {
+  const parts = args.split("|");
+  if (parts.length < 2 || !parts.every((p) => p in MODE_LABEL)) return args;
+  const names = MODES.filter((m) => parts.includes(m)).map((m) => MODE_LABEL[m]);
+  return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
 
 export type SlashMenuHandle = { onKeyDown(e: KeyboardEvent): boolean };
 
 /**
  * B11: the one menu `/` opens at the start of the composer. Two groups (Octo's commands, then the agent's under its
- * name), fuzzy-filtered by what is typed; ↑ ↓ move, Enter and Tab choose, Esc closes (the composer forwards the keys: the
- * focus stays in the text). A command that is not available stays, dim, with the reason.
+ * name), fuzzy-filtered by what is typed; ↑ ↓ (and Ctrl+Home / Ctrl+End) move, Enter and Tab choose, Esc closes (the composer
+ * forwards the keys: the focus stays in the text, so plain Home / End move its caret; decision 95, `popupNav`). A command that is
+ * not available stays, dim, with the reason. Resizing the window closes it, as `Menu` and `Popover` do (B9).
  */
 export const SlashMenu = forwardRef<
   SlashMenuHandle,
@@ -31,28 +43,30 @@ export const SlashMenu = forwardRef<
   const [selected, setSelected] = useState<string | null>(null);
   const [pos, setPos] = useState<{ left: number; bottom: number; width: number } | null>(null);
   const { box } = props;
-  // Fixed and in a portal (the composer's own ancestors clip), measured from the box and kept there on resize.
+  const close = useLatest(props.onClose);
+  // Fixed and in a portal (the composer's own ancestors clip), measured from the box. A window resize closes it, as it closes
+  // `Menu` and `Popover` (B9): the box moves after the resize (the sidebar folds), so a measure on `resize` was stale.
   useLayoutEffect(() => {
-    const place = () => {
-      const r = box.current?.getBoundingClientRect();
-      if (r) setPos({ left: r.left, bottom: window.innerHeight - r.top + 6, width: r.width });
-    };
-    place();
-    window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [box]);
+    const r = box.current?.getBoundingClientRect();
+    if (r) setPos({ left: r.left, bottom: window.innerHeight - r.top + 6, width: r.width });
+    const onResize = () => close.current();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [box, close]);
   const enabled = rows.filter((r) => r.available);
   const activeRow = enabled.find((r) => r.id === selected) ?? enabled[0] ?? null;
   const { onActive, listId } = props;
   const activeId = activeRow?.id ?? null;
   useEffect(() => onActive(activeId === null ? null : popupOptionId(listId, activeId)), [activeId, onActive, listId]);
+  // A name that both Octo and the agent offer says whose it is on the agent's row ("/review · Claude Code").
+  const octoNames = new Set(groups.filter((g) => g.rows[0]?.group === "octo").flatMap((g) => g.rows.map((r) => r.name)));
   const sections: PickerSection[] = groups.map((g) => ({
     title: g.label,
     rows: g.rows.map((row) => ({
       id: row.id,
-      label: `/${row.name}`,
+      label: row.group === "agent" && octoNames.has(row.name) ? `/${row.name} · ${g.label}` : `/${row.name}`,
       detail: row.available ? row.description : `${row.description}. ${row.reason ?? "Not available right now."}`,
-      ...(row.args ? { hint: row.args } : {}),
+      ...(row.args ? { hint: argsText(row.args) } : {}),
       disabled: !row.available,
       run: () => props.onChoose(row),
     })),
@@ -70,8 +84,9 @@ export const SlashMenu = forwardRef<
           if (activeRow) props.onChoose(activeRow);
           return true;
         }
-        const to = popupTarget(
-          e.key,
+        const to = popupMove(
+          e,
+          true,
           enabled.map((r) => r.id),
           activeId,
         );

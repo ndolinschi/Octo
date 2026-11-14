@@ -46,7 +46,7 @@
   "metadata": {
     "user_id": "{\"session_id\":\"fixture-528\",\"device_id\":\"d\"}"
   },
-  "model": "mistralai/devstral-2512",
+  "model": "qwen/qwen3-coder-next",
   "output_config": {
     "effort": "high"
   },

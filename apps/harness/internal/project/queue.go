@@ -14,6 +14,8 @@ import (
 type QueueState struct {
 	Paused   bool                         `json:"paused"`
 	Messages []projectstore.QueuedMessage `json:"messages"`
+	// SessionID is the main session the queue belongs to (the default for GET /queue).
+	SessionID string `json:"session_id,omitempty"`
 }
 
 func queueErr(err error) error {

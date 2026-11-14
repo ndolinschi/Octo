@@ -442,7 +442,7 @@ async fn r4_classifier_request_does_not_scale_with_pasted_text() {
 fn r6_over_budget_routes_to_cheapest_tier_by_price() {
     let mut tiers = tiers();
     tiers.session_budget_micros = 1_000_000;
-    tiers.prices = price_table((0.30, 1.20), (0.15, 0.60), (0.006, 0.50));
+    tiers.prices = price_table((0.30, 1.20), (0.15, 0.60), (0.006, 0.50)).into();
     for classified in [Complexity::Low, Complexity::Mid, Complexity::High] {
         let mut sticky = apply_sticky(StickyPlan {
             tiers: &tiers,
@@ -465,7 +465,7 @@ fn r6_over_budget_routes_to_cheapest_tier_by_price() {
 fn r6_over_budget_picks_low_when_low_is_cheapest_and_keeps_cheapest_unchanged() {
     let mut tiers = tiers();
     tiers.session_budget_micros = 1_000_000;
-    tiers.prices = price_table((0.05, 0.10), (0.15, 0.60), (3.0, 15.0));
+    tiers.prices = price_table((0.05, 0.10), (0.15, 0.60), (3.0, 15.0)).into();
     let mut sticky = apply_sticky(StickyPlan {
         tiers: &tiers,
         choice: None,
@@ -493,7 +493,7 @@ fn r6_over_budget_picks_low_when_low_is_cheapest_and_keeps_cheapest_unchanged() 
 fn r6_request_shape_decides_the_cheapest_tier() {
     let mut tiers = tiers();
     tiers.session_budget_micros = 1;
-    tiers.prices = price_table((1.0, 1.0), (0.1, 10.0), (5.0, 5.0));
+    tiers.prices = price_table((1.0, 1.0), (0.1, 10.0), (5.0, 5.0)).into();
     let input_heavy = RequestShape {
         input_tokens: 100_000,
         output_tokens: 10,
@@ -695,7 +695,7 @@ async fn r6_budget_key_shares_one_budget_across_sessions_and_is_stripped() {
 #[test]
 fn r8_ladder_warnings_flag_inverted_and_unpriced_models() {
     let mut inverted = tiers();
-    inverted.prices = price_table((0.051, 0.567), (0.15, 0.60), (0.006, 0.50));
+    inverted.prices = price_table((0.051, 0.567), (0.15, 0.60), (0.006, 0.50)).into();
     let warnings = ladder_warnings(&inverted);
     assert!(
         warnings
@@ -705,11 +705,11 @@ fn r8_ladder_warnings_flag_inverted_and_unpriced_models() {
     );
 
     let mut ordered = tiers();
-    ordered.prices = price_table((0.05, 0.1), (0.15, 0.6), (3.0, 15.0));
+    ordered.prices = price_table((0.05, 0.1), (0.15, 0.6), (3.0, 15.0)).into();
     assert!(ladder_warnings(&ordered).is_empty());
 
     let mut missing = tiers();
-    missing.prices = PriceTable::new(vec![("low-m".into(), price(0.05, 0.1))]);
+    missing.prices = PriceTable::new(vec![("low-m".into(), price(0.05, 0.1))]).into();
     let warnings = ladder_warnings(&missing);
     assert!(warnings
         .iter()

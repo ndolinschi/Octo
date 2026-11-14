@@ -33,3 +33,9 @@ test("the index: unique ids, every section has a row", () => {
       s.id,
     );
 });
+
+test("the index: one name for the main model, plain words for the trace (polish step 6a, S6)", () => {
+  assert.equal(searchSettings("default model")[0]?.id, "default-orchestrator");
+  assert.ok(searchSettings("acp").some((r) => r.id === "trace"));
+  assert.ok(!SETTINGS_INDEX.some((r) => /orchestrator|wire trace/i.test(r.title)));
+});

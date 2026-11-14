@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { CLOCK_IDLE_MS, COPY_FEEDBACK_MS, LOADING_MIN_SHOWN_MS, LOADING_SHOW_AFTER_MS, NOW_ACTIVE_MS } from "./constants";
-import { moveInList } from "./focus";
+import { CLOCK_IDLE_MS, COPY_FEEDBACK_MS, NOW_ACTIVE_MS } from "./constants";
+import { clockNow, onClockOffset } from "./clock";
 
 /**
  * A ref that always holds the latest `value`, updated in a layout effect (after the commit, before any event or effect can
@@ -20,13 +20,19 @@ export function useLatest<T>(value: T): RefObject<T> {
  * unrelated updates such as scrolling.
  */
 export function useNow(active: boolean, intervalMs = NOW_ACTIVE_MS, paused = false): number {
-  const [now, setNow] = useState(() => Date.now());
+  // The service's clock (P2-12): times it stamped are compared with it, not with a machine clock that is off.
+  const [now, setNow] = useState(clockNow);
   useEffect(() => {
     // Paused (a hidden tab or page): no timer at all; the clock catches up when it shows again.
     if (paused) return;
-    setNow(Date.now());
-    const id = window.setInterval(() => setNow(Date.now()), active ? intervalMs : CLOCK_IDLE_MS);
-    return () => window.clearInterval(id);
+    setNow(clockNow());
+    const tick = () => setNow(clockNow());
+    const id = window.setInterval(tick, active ? intervalMs : CLOCK_IDLE_MS);
+    const off = onClockOffset(tick);
+    return () => {
+      window.clearInterval(id);
+      off();
+    };
   }, [active, intervalMs, paused]);
   return now;
 }
@@ -203,31 +209,6 @@ export function useEscape(active: boolean, onEscape: () => void) {
 }
 
 /**
- * Whether to show a loading indicator for `loading`: never for loads under 200ms (no flash), and
- * once shown, for at least 300ms (no flicker). While it returns true, keep showing the indicator
- * even if the data has arrived.
- */
-export function useDelayedLoading(loading: boolean): boolean {
-  const [shown, setShown] = useState(false);
-  const since = useRef(0);
-  useEffect(() => {
-    if (loading && !shown) {
-      const id = window.setTimeout(() => {
-        since.current = Date.now();
-        setShown(true);
-      }, LOADING_SHOW_AFTER_MS);
-      return () => window.clearTimeout(id);
-    }
-    if (!loading && shown) {
-      const id = window.setTimeout(() => setShown(false), Math.max(0, since.current + LOADING_MIN_SHOWN_MS - Date.now()));
-      return () => window.clearTimeout(id);
-    }
-    return undefined;
-  }, [loading, shown]);
-  return shown;
-}
-
-/**
  * Fades whichever end of a scroller has more content (`data-fade="start end"`, styled by the `fade-x` /
  * `fade-y` utilities): the cue for lists whose scrollbar is hidden so their rows keep the panel's insets.
  * Returns an updater to call after programmatic scrolls.
@@ -256,27 +237,4 @@ export function useScrollFade<T extends HTMLElement>(ref: RefObject<T | null>, a
     };
   }, [ref, update]);
   return update;
-}
-
-/**
- * ↑/↓/Home/End between the `[data-row]` rows inside `ref` (lists of plain buttons: Home, Details). The container may mount
- * after the hook's first render (a list that appears once its data has loaded): every render checks whether `ref` points
- * at another element and rebinds.
- */
-export function useRowKeys<T extends HTMLElement>(ref: RefObject<T | null>): void {
-  const bound = useRef<T | null>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (el === bound.current) return;
-    bound.current?.removeEventListener("keydown", moveInList);
-    el?.addEventListener("keydown", moveInList);
-    bound.current = el;
-  });
-  useEffect(
-    () => () => {
-      bound.current?.removeEventListener("keydown", moveInList);
-      bound.current = null;
-    },
-    [],
-  );
 }

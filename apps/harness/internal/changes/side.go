@@ -41,6 +41,11 @@ type Side struct {
 	Blob []byte
 	// Note says why Blob is nil: a projectstore.Note* value.
 	Note string
+	// seen is the file's size and mtime as stat'ed before its content was
+	// read (ReadSide). The index stores this stamp, never one taken after the
+	// read: a write that lands between the read and a later stat would
+	// otherwise be indexed as already seen and never recorded.
+	seen stamp
 }
 
 // text reports whether data may be kept: valid UTF-8 without NUL bytes.
@@ -79,7 +84,7 @@ func ReadSide(abs string) (Side, error) {
 		return Side{}, nil
 	}
 	if fi.Size() > MaxHashBytes {
-		return Side{Exists: true, Size: fi.Size(), Note: projectstore.NoteTooLarge}, nil
+		return Side{Exists: true, Size: fi.Size(), Note: projectstore.NoteTooLarge, seen: stampOf(fi)}, nil
 	}
 	data, err := os.ReadFile(abs)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -88,7 +93,11 @@ func ReadSide(abs string) (Side, error) {
 	if err != nil {
 		return Side{}, err
 	}
-	return sideOfBytes(data), nil
+	s := sideOfBytes(data)
+	if int64(len(data)) == fi.Size() {
+		s.seen = stampOf(fi)
+	} // else the file changed between the stat and the read: a zero stamp makes the next snapshot read it again
+	return s, nil
 }
 
 // HashFile is the sha256 of the file at abs and whether it exists.

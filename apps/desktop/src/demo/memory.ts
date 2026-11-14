@@ -2,8 +2,6 @@ import {
   BridgeError,
   type Bridge,
   type ContextReceipt,
-  type ProjectSession,
-  type SessionsParams,
   type MemoryFile,
   type MemoryHit,
   type MemorySearchKind,
@@ -11,22 +9,12 @@ import {
   type MemorySearchResult,
   type Message,
   type RememberKind,
+  type SubscribeHandlers,
   type ReceiptBlock,
   type Task,
   type TaskFact,
 } from "@octo/agent-client";
-import {
-  addSession,
-  buildSessions,
-  forget,
-  listSessions,
-  mainSessions,
-  makeCurrent,
-  removeSession,
-  sessionDetail,
-  sessionMessages,
-  type DemoSessions,
-} from "./memorySessions";
+import { buildSessions, forget, listSessions, sessionDetail } from "./memorySessions";
 import { CROSS_SUPERSEDES, EXTRA_FACTS, FILES, TASKS } from "./memoryData";
 
 /**
@@ -57,35 +45,8 @@ const LATENCY_MS = 120;
 
 const delay = (ms = LATENCY_MS) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** `?sessions=<code>` forces the 409 a sessions route would answer (the UI package's demo does the same for agent sessions). */
-function forced(...codes: string[]): void {
-  const k = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("sessions");
-  if (k !== null && codes.includes(k)) throw new BridgeError(409, k, `forced by ?sessions=${k}`);
-}
-
-/** The session of `buildSessions` that owns the base demo's conversation (the others have their exchanges only). */
-const BASE_SESSION = "ses_1";
-
-const currentOf = (d: DemoSessions): string | undefined => d.sessions.find((x) => x.open)?.id;
-
-/**
- * The agent sessions of the base demo, hung under the main sessions of the memory: the project's real agents under the
- * current one, and the base demo's seeded agent sessions (`ses_<project>_<seed>_...`) under the other sessions newest first.
- */
-const SEEDS = ["plan", "flaky", "build", "waiting", "old"];
-function agentsOf(d: DemoSessions, pid: string, agents: ProjectSession[]): ProjectSession[] {
-  const current = currentOf(d);
-  const others = listSessions(d, 200).filter((m) => !m.open);
-  return agents.flatMap((a) => {
-    const seed = SEEDS.findIndex((k) => a.parent_session_id === `ses_${pid}_${k}`);
-    if (seed < 0) return current ? [{ ...a, parent_session_id: current }] : [a];
-    const parent = others[seed];
-    return parent ? [{ ...a, parent_session_id: parent.id }] : [];
-  });
-}
-
 export type Request = { id: number; text: string; at: string };
-export type Store = { tasks: Task[]; files: MemoryFile[]; requests: Request[]; replies: Request[]; sessions?: DemoSessions };
+export type Store = { tasks: Task[]; files: MemoryFile[]; requests: Request[]; replies: Request[]; sessions?: ReturnType<typeof buildSessions> };
 
 function textOf(m: Message): string {
   return m.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
@@ -312,6 +273,9 @@ export function receipt(store: Store, turnId: number): ContextReceipt {
 export function withDemoMemory(bridge: Bridge, mode: DemoMemoryMode): Bridge {
   if (mode === "none") return bridge;
   const stores = new Map<string, Promise<Store>>();
+  // The project's event listeners (and the last seq they saw), so `rememberFact` can say `fact.remembered` as the harness does.
+  const listeners = new Map<string, Set<SubscribeHandlers>>();
+  const lastSeq = new Map<string, number>();
   const readThread = async (projectId: string): Promise<{ requests: Request[]; replies: Request[] }> => {
     const agents = await bridge.listAgents(projectId);
     const orchestrator = agents.find((a) => a.parent_id === null);
@@ -353,6 +317,22 @@ export function withDemoMemory(bridge: Bridge, mode: DemoMemoryMode): Bridge {
   };
   return {
     ...bridge,
+    subscribe: (pid, handlers) => {
+      const own: SubscribeHandlers = {
+        ...handlers,
+        onEvent: (e) => {
+          lastSeq.set(pid, Math.max(lastSeq.get(pid) ?? 0, e.seq));
+          handlers.onEvent(e);
+        },
+      };
+      const set = listeners.get(pid) ?? new Set<SubscribeHandlers>();
+      listeners.set(pid, set.add(own));
+      const off = bridge.subscribe(pid, own);
+      return () => {
+        set.delete(own);
+        off();
+      };
+    },
     listTasks: (pid) => read(pid, (s) => [...s.tasks].sort((a, b) => b.updated_at.localeCompare(a.updated_at))),
     listMemory: (pid) =>
       read(pid, (s) => ({
@@ -383,149 +363,12 @@ export function withDemoMemory(bridge: Bridge, mode: DemoMemoryMode): Bridge {
         if (!d) throw new BridgeError(404, "not_found", `no session ${sid}`);
         return d;
       }),
-    // Project sessions (schema 13) on top of the memory sessions: each memory session is a main session, the open one is
-    // current; the agent sessions come from the base demo bridge, re-parented to the current main session.
-    listSessions: async (pid, params?: SessionsParams) => {
-      const agents = bridge.listSessions ? await bridge.listSessions(pid, { kind: "agent", archived: "all" }) : [];
-      return read(pid, (s) => {
-        const d = s.sessions;
-        if (!d) return [];
-        const mapped = agentsOf(d, pid, agents);
-        const archived = params?.archived ?? false;
-        const all: ProjectSession[] = [...mainSessions(d, mapped.filter((a) => a.parent_session_id === currentOf(d)).length), ...mapped];
-        const counted = all.map((x) => (x.kind === "main" && !x.current ? { ...x, children: mapped.filter((a) => a.parent_session_id === x.id).length } : x));
-        return counted
-          .filter((x) => (params?.kind ? x.kind === params.kind : true) && (params?.state ? x.state === params.state : true))
-          .filter((x) => archived === "all" || x.archived === archived)
-          .filter((x) => (params?.before ? x.started_at < params.before : true))
-          .sort((a, b) => b.started_at.localeCompare(a.started_at))
-          .slice(0, params?.limit ?? 50);
-      });
-    },
-    getSession: async (pid, sid) => {
-      const agentSessions = bridge.listSessions ? await bridge.listSessions(pid, { kind: "agent", archived: "all" }) : [];
-      return read(pid, (s) => {
-        const d = s.sessions;
-        const mapped = d ? agentsOf(d, pid, agentSessions) : agentSessions;
-        const detail = d ? sessionDetail(d, sid) : null;
-        const main = d ? mainSessions(d, 0).find((x) => x.id === sid) : undefined;
-        if (d && detail && main) {
-          const children = mapped.filter((a) => a.parent_session_id === sid);
-          return { session: { ...main, children: children.length }, exchanges: detail.exchanges, children };
-        }
-        const agent = mapped.find((x) => x.id === sid);
-        if (!agent) throw new BridgeError(404, "not_found", `no session ${sid}`);
-        return { session: agent, exchanges: [], children: [] };
-      });
-    },
-    // The project's conversation of a resumed session: that session's own messages (the base demo has one conversation only).
-    getTranscript: async (pid, agentId, opts) => {
-      const d = opts?.sessionId ? await read(pid, (s) => s.sessions) : undefined;
-      if (d && opts?.sessionId !== BASE_SESSION && d.sessions.some((x) => x.id === opts?.sessionId))
-        return { messages: sessionMessages(d, opts?.sessionId ?? "", agentId), compactions: [] };
-      return bridge.getTranscript(pid, agentId, opts);
-    },
-    getSessionTranscript: async (pid, sid) => {
-      const main = await read(pid, (s) => (s.sessions?.sessions.some((x) => x.id === sid) ? s.sessions : null));
-      if (!main) return bridge.getSessionTranscript ? bridge.getSessionTranscript(pid, sid) : { messages: [], compactions: [] };
-      const orchestrator = (await bridge.listAgents(pid)).find((a) => a.parent_id === null)?.id ?? "";
-      // The base demo's one conversation belongs to the first session (`ses_1`); any other one that was resumed has only its exchanges.
-      // The `/clear` (or "New session") that started it comes as a `conversations[]` marker, as the harness sends it.
-      const sorted = listSessions(main, 200).reverse();
-      const at = sorted.findIndex((x) => x.id === sid);
-      const earlier = at > 0 ? sorted[at - 1] : undefined;
-      const mark = (e: (typeof sorted)[number]) => [
-        {
-          conversation_id: `conv_${sid}`,
-          upto_message_id: 0,
-          at: sorted[at]?.started_at ?? e.ended_at,
-          label: "New session",
-          title: e.title,
-          summary: e.summary ?? "",
-          summary_source: "stored" as const,
-        },
-      ];
-      const conversations = earlier ? mark(earlier) : [];
-      if (sid === BASE_SESSION) return { messages: await bridge.listMessages(pid, orchestrator), compactions: [], conversations };
-      return { messages: sessionMessages(main, sid, orchestrator), compactions: [], conversations };
-    },
-    stopSession: async (pid, sid) => {
-      const main = await read(pid, (s) => s.sessions?.sessions.find((x) => x.id === sid));
-      if (!main) {
-        if (!bridge.stopSession) throw new BridgeError(404, "not_found", `no session ${sid}`);
-        return bridge.stopSession(pid, sid);
-      }
-      if (!main.open || !bridge.stopSession) throw new BridgeError(409, "not_running", "the session is not running");
-      // The current main session is the base demo's first one: stopping it cancels the running turn there.
-      await bridge.stopSession(pid, `ses_${pid}_1`);
-      const now = await read(pid, (s) => (s.sessions ? mainSessions(s.sessions, 0).find((x) => x.id === sid) : undefined));
-      if (!now) throw new BridgeError(404, "not_found", `no session ${sid}`);
-      return now;
-    },
-    deleteSession: async (pid, sid) => {
-      const kind = await read(pid, (s) => {
-        const d = s.sessions;
-        const m = d?.sessions.find((x) => x.id === sid);
-        if (!d || !m) return "other";
-        forced("current_session", "session_running");
-        if (m.open) throw new BridgeError(409, "current_session", "the current session cannot be deleted");
-        removeSession(d, sid);
-        return "main";
-      });
-      if (kind === "other") {
-        if (!bridge.deleteSession) throw new BridgeError(404, "not_found", `no session ${sid}`);
-        return bridge.deleteSession(pid, sid);
-      }
-    },
-    createSession: (pid, title) =>
-      read(pid, (s) => {
-        forced("turn_in_progress");
-        if (!s.sessions) throw new BridgeError(404, "not_found", "no sessions");
-        const made = addSession(s.sessions, title ?? "New session", Date.now());
-        const main = mainSessions(s.sessions, 0).find((x) => x.id === made.id);
-        if (!main) throw new BridgeError(404, "not_found", `no session ${made.id}`);
-        return main;
-      }),
-    resumeSession: (pid, sid) =>
-      read(pid, (s) => {
-        forced("turn_in_progress");
-        if (!s.sessions || !makeCurrent(s.sessions, sid)) throw new BridgeError(409, "not_main_session", "only a main session can be resumed");
-        const main = mainSessions(s.sessions, 0).find((x) => x.id === sid);
-        if (!main) throw new BridgeError(404, "not_found", `no session ${sid}`);
-        return main;
-      }),
-    patchSession: async (pid, sid, patch) => {
-      const isMain = await read(pid, (s) => s.sessions?.sessions.some((x) => x.id === sid) ?? false);
-      if (!isMain) {
-        if (!bridge.patchSession) throw new BridgeError(404, "not_found", `no session ${sid}`);
-        return bridge.patchSession(pid, sid, patch);
-      }
-      return read(pid, (s) => {
-        const d = s.sessions;
-        const m = d?.sessions.find((x) => x.id === sid);
-        if (!d || !m) throw new BridgeError(404, "not_found", `no session ${sid}`);
-        if (patch.archived === true) forced("current_session");
-        if (patch.archived === true && m.open) throw new BridgeError(409, "current_session", "the current session cannot be archived");
-        if (patch.title !== undefined) {
-          if (patch.title.trim() === "") throw new BridgeError(400, "invalid_request", "a title cannot be empty");
-          m.title = patch.title.trim();
-        }
-        if (patch.archived !== undefined) {
-          d.archived ??= new Set();
-          if (patch.archived) d.archived.add(sid);
-          else d.archived.delete(sid);
-        }
-        const main = mainSessions(d, 0).find((x) => x.id === sid);
-        if (!main) throw new BridgeError(404, "not_found", `no session ${sid}`);
-        return main;
-      });
-    },
     forgetExchange: (pid, eid) =>
       read(pid, (s) => {
         if (!s.sessions || !forget(s.sessions, eid)) throw new BridgeError(404, "not_found", `no exchange ${eid}`);
       }),
-    rememberFact: (pid, input) =>
-      read(pid, (s) => {
+    rememberFact: async (pid, input) => {
+      const kept = await read(pid, (s) => {
         const task = s.tasks.find((t) => t.status === "open") ?? s.tasks[0];
         if (!task) throw new BridgeError(409, "no_task", "there is no task to attach this to yet");
         const fact: TaskFact = {
@@ -540,7 +383,12 @@ export function withDemoMemory(bridge: Bridge, mode: DemoMemoryMode): Bridge {
         task.facts = [...task.facts, fact];
         task.updated_at = fact.date;
         return { task_id: task.id, fact };
-      }),
+      });
+      const agent = (await bridge.listAgents(pid)).find((a) => a.parent_id === null)?.id ?? "";
+      const event = { type: "fact.remembered" as const, seq: lastSeq.get(pid) ?? 0, ...kept, turn_id: kept.fact.message_id, agent_id: agent };
+      for (const l of listeners.get(pid) ?? []) l.onEvent(event);
+      return kept;
+    },
     forgetFact: (pid, taskId, factId) =>
       read(pid, (s) => {
         const task = s.tasks.find((t) => t.id === taskId);

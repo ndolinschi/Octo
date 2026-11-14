@@ -95,7 +95,26 @@ export type ProjectState = {
   turnOutcomes: Record<number, TurnOutcome>;
 };
 
-export type SessionsState = { list: ProjectSession[]; currentId: string | null };
+/**
+ * Parallel sessions (spec section 9): what belongs to one main session and not to the project. The agent-keyed maps of
+ * `ProjectState` stay as they are (each session's root is an agent); `scopeState` reads a session's view from them.
+ */
+export type SessionSlice = {
+  /** Its root agent ("" until the harness gave it one). */
+  rootAgentId: string;
+  queue: { paused: boolean; messages: QueuedMessage[] };
+  lastTurn: TurnOutcome | null;
+  /** How each of its turns seen live ended, by the id of the request that started it. */
+  turnOutcomes: Record<number, TurnOutcome>;
+  /** Its failed state (`project.attention` with this `session_id`); the counts are its own approvals and forms. */
+  attention: AttentionState;
+};
+
+/**
+ * The sessions seen (`withSessions` loads them, `session.*` events keep them), newest first; the default main session
+ * (`defaultId`; `currentId` is its old name, kept equal) and one slice per main session (`byId`).
+ */
+export type SessionsState = { list: ProjectSession[]; defaultId: string | null; currentId: string | null; byId: Record<string, SessionSlice> };
 
 export type TurnOutcome = { status: TurnStatus; error: string | null; notice?: ErrorInfo } & ErrorFields;
 
@@ -122,7 +141,7 @@ export function emptyProjectState(): ProjectState {
     answeredInputs: {},
     queue: { paused: false, messages: [] },
     attention: { needs_you: false, approvals: 0, inputs: 0 },
-    sessions: { list: [], currentId: null },
+    sessions: { list: [], defaultId: null, currentId: null, byId: {} },
     tasks: {},
     memoryRevision: 0,
     secretsRevision: 0,
@@ -178,15 +197,97 @@ function upsertNote(notes: Note[], note: Note): Note[] {
   return notes.map((n, idx) => (idx === i ? note : n));
 }
 
-/** The id of the orchestrator's latest request (a user message with text, not a tool result). */
-function lastRequestId(state: ProjectState): number | null {
-  const root = state.agentOrder.find((id) => state.agents[id]?.parent_id === null);
+/** The id of the latest request of `root` (default: the first root agent): a user message with text, not a tool result. */
+function lastRequestId(state: ProjectState, root = state.agentOrder.find((id) => state.agents[id]?.parent_id === null)): number | null {
   const list = root ? (state.messages[root] ?? []) : [];
   for (let i = list.length - 1; i >= 0; i--) {
     const m = list[i];
     if (m?.role === "user" && m.content.some((b) => b.type === "text")) return m.id;
   }
   return null;
+}
+
+/** An event without `state` (approval counts) keeps the last state of the turn. */
+function nextAttention(prev: AttentionState, event: Extract<BridgeEvent, { type: "project.attention" }>): AttentionState {
+  const attention: AttentionState = { needs_you: event.needs_you, approvals: event.approvals, inputs: event.inputs };
+  const from = event.state === undefined ? prev : event;
+  if (from.state !== undefined) attention.state = from.state;
+  if (from.error !== undefined) attention.error = from.error;
+  Object.assign(attention, errorFieldsOf(from));
+  return attention;
+}
+
+function emptySlice(rootAgentId = ""): SessionSlice {
+  return { rootAgentId, queue: { paused: false, messages: [] }, lastTurn: null, turnOutcomes: {}, attention: { needs_you: false, approvals: 0, inputs: 0 } };
+}
+
+/** Whether `sid` is the default session (or nothing says which session: an older harness, or no sessions known). */
+function isDefault(state: ProjectState, sid: string | null | undefined): boolean {
+  return sid === null || sid === undefined || state.sessions.defaultId === null || state.sessions.defaultId === sid;
+}
+
+/** Applies `fn` to the slice of `sid` (made when missing); nothing when no session is named. */
+function withSlice(sessions: SessionsState, sid: string | null | undefined, fn: (slice: SessionSlice) => SessionSlice): SessionsState {
+  if (sid === null || sid === undefined) return sessions;
+  return { ...sessions, byId: { ...sessions.byId, [sid]: fn(sessions.byId[sid] ?? emptySlice()) } };
+}
+
+function withDefault(sessions: SessionsState, sid: string): SessionsState {
+  const list = sessions.list.map((s) => {
+    if (s.kind !== "main") return s;
+    const on = s.id === sid;
+    return s.current !== on || (s.default !== undefined && s.default !== on) ? { ...s, current: on, ...(s.default === undefined ? {} : { default: on }) } : s;
+  });
+  return { ...sessions, list, defaultId: sid, currentId: sid };
+}
+
+/** The main session an agent works in: its own `session_id`, else its root's. */
+export function agentSession(state: ProjectState, agentId: string): string | null {
+  const seen = new Set<string>();
+  let id: string | null = agentId;
+  while (id !== null && !seen.has(id)) {
+    seen.add(id);
+    const a: Agent | undefined = state.agents[id];
+    if (!a) break;
+    if (a.session_id) return a.session_id;
+    id = a.parent_id;
+  }
+  const owner = Object.entries(state.sessions.byId).find(([, x]) => x.rootAgentId === agentId);
+  return owner?.[0] ?? null;
+}
+
+/**
+ * A turn ended. With `session_id` (schema 15) only that session's live parts (streamed text, reasoning, tools, activity of
+ * its agents) go, and its outcome is filed under its own latest request; another session's stream keeps running. Without it
+ * (an older harness) everything live goes, as before.
+ */
+function turnFinished(state: ProjectState, event: Extract<BridgeEvent, { type: "turn.finished" }>): ProjectState {
+  const outcome: TurnOutcome = { status: event.status, error: event.error, ...errorFieldsOf(event), ...(event.notice ? { notice: event.notice } : {}) };
+  const sid = event.session_id ?? null;
+  const root = event.agent_id ?? (sid !== null ? state.sessions.byId[sid]?.rootAgentId : undefined) ?? undefined;
+  const request = lastRequestId(state, root === "" ? undefined : root);
+  const outcomes = (prev: Record<number, TurnOutcome>) => (request === null ? prev : { ...prev, [request]: outcome });
+  if (sid === null) {
+    return { ...state, streaming: {}, activeTools: {}, thinking: {}, activity: {}, lastTurn: outcome, turnOutcomes: outcomes(state.turnOutcomes) };
+  }
+  const mine = (id: string) => agentSession(state, id) === sid || id === root;
+  const keep = <T>(record: Record<string, T>) => Object.fromEntries(Object.entries(record).filter(([id]) => !mine(id)));
+  const sessions = withSlice(state.sessions, sid, (x) => ({
+    ...x,
+    ...(root ? { rootAgentId: root } : {}),
+    lastTurn: outcome,
+    turnOutcomes: outcomes(x.turnOutcomes),
+  }));
+  const top = isDefault(state, sid) ? { lastTurn: outcome, turnOutcomes: outcomes(state.turnOutcomes) } : {};
+  return {
+    ...state,
+    ...top,
+    streaming: keep(state.streaming),
+    activeTools: keep(state.activeTools),
+    thinking: keep(state.thinking),
+    activity: keep(state.activity),
+    sessions,
+  };
 }
 
 function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
@@ -253,19 +354,8 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
         ...state,
         notes: event.note ? upsertNote(state.notes, event.note) : state.notes.filter((n) => n.id !== event.note_id),
       };
-    case "turn.finished": {
-      const outcome: TurnOutcome = { status: event.status, error: event.error, ...errorFieldsOf(event), ...(event.notice ? { notice: event.notice } : {}) };
-      const request = lastRequestId(state);
-      return {
-        ...state,
-        streaming: {},
-        activeTools: {},
-        thinking: {},
-        activity: {},
-        lastTurn: outcome,
-        turnOutcomes: request === null ? state.turnOutcomes : { ...state.turnOutcomes, [request]: outcome },
-      };
-    }
+    case "turn.finished":
+      return turnFinished(state, event);
     case "agent.compacted": {
       const marker: CompactionMarker = { upto_message_id: event.upto_message_id, at: event.at };
       if (event.summary_tokens !== undefined) marker.summary_tokens = event.summary_tokens;
@@ -328,16 +418,15 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
       return { ...state, sessions: upsertSession(state.sessions, event.session) };
     case "session.updated":
       if (event.deleted && event.session_id !== undefined) {
-        const list = state.sessions.list.filter((s) => s.id !== event.session_id);
-        return { ...state, sessions: { list, currentId: state.sessions.currentId === event.session_id ? null : state.sessions.currentId } };
+        const gone = event.session_id;
+        const list = state.sessions.list.filter((s) => s.id !== gone);
+        const defaultId = state.sessions.defaultId === gone ? null : state.sessions.defaultId;
+        return { ...state, sessions: { list, defaultId, currentId: defaultId, byId: omitKey(state.sessions.byId, gone) } };
       }
       return event.session ? { ...state, sessions: upsertSession(state.sessions, event.session) } : state;
-    case "session.current": {
-      const list = state.sessions.list.map((s) =>
-        s.kind === "main" && s.current !== (s.id === event.session_id) ? { ...s, current: s.id === event.session_id } : s,
-      );
-      return { ...state, sessions: { list, currentId: event.session_id } };
-    }
+    case "session.default":
+    case "session.current":
+      return { ...state, sessions: withDefault(state.sessions, event.session_id) };
     case "fact.remembered":
     case "fact.forgotten":
       return state; // views refetch (getLatestPlan, the transcript, getContext) or read the event themselves
@@ -355,16 +444,20 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
         inputs: state.inputs.filter((i) => i.id !== event.id),
         answeredInputs: { ...state.answeredInputs, [event.id]: { status: event.status, provided: event.provided, values: event.values } },
       };
-    case "queue.updated":
-      return { ...state, queue: { paused: event.paused, messages: event.messages } };
+    case "queue.updated": {
+      const queue = { paused: event.paused, messages: event.messages };
+      // Without `session_id` (an older harness) the queue is the default session's.
+      const sid = event.session_id ?? state.sessions.defaultId;
+      const top = isDefault(state, sid) ? { queue } : {};
+      return { ...state, ...top, sessions: withSlice(state.sessions, sid, (x) => ({ ...x, queue })) };
+    }
     case "project.attention": {
-      // An event without `state` (approval counts) keeps the last state of the turn.
-      const attention: AttentionState = { needs_you: event.needs_you, approvals: event.approvals, inputs: event.inputs };
-      const from = event.state === undefined ? state.attention : event;
-      if (from.state !== undefined) attention.state = from.state;
-      if (from.error !== undefined) attention.error = from.error;
-      Object.assign(attention, errorFieldsOf(from));
-      return { ...state, attention };
+      const sid = event.session_id ?? null;
+      const attention = nextAttention(state.attention, event);
+      // A session's failed state goes to its slice; the project-wide counts (no `session_id`) stay the project's.
+      if (sid === null) return { ...state, attention };
+      const sessions = withSlice(state.sessions, sid, (x) => ({ ...x, attention: nextAttention(x.attention, event) }));
+      return { ...state, ...(isDefault(state, sid) ? { attention } : {}), sessions };
     }
     case "providers.updated":
       return { ...state, providersRevision: state.providersRevision + 1 };
@@ -416,6 +509,16 @@ export function withAgents(state: ProjectState, agents: Agent[]): ProjectState {
 export function withMessages(state: ProjectState, agentId: string, messages: Message[]): ProjectState {
   const merged = mergeMessages(state.messages[agentId] ?? [], messages);
   return { ...state, messages: { ...state.messages, [agentId]: merged } };
+}
+
+/**
+ * After a re-read (a reconnect, the stream watchdog): the live parts of every agent that is not running any more —
+ * streamed text, reasoning, tools in flight, activity — are dropped, because the `turn.finished` that would have cleared
+ * them was missed and the stored messages now hold what they were showing. A running agent keeps them.
+ */
+export function settleStreams(state: ProjectState): ProjectState {
+  const live = <T>(record: Record<string, T>) => Object.fromEntries(Object.entries(record).filter(([id]) => state.agents[id]?.status === "running"));
+  return { ...state, streaming: live(state.streaming), thinking: live(state.thinking), activeTools: live(state.activeTools), activity: live(state.activity) };
 }
 
 export function withCompactions(state: ProjectState, agentId: string, markers: CompactionMarker[]): ProjectState {
@@ -506,20 +609,94 @@ function bySessionStart(a: ProjectSession, b: ProjectSession): number {
   return a.started_at < b.started_at ? 1 : a.started_at > b.started_at ? -1 : 0;
 }
 
-/** Adds or replaces one session (newest first); a main session that is current makes every other main session not current. */
+/** Adds or replaces one session (newest first); a main session that is the default makes every other main session not. */
 function upsertSession(sessions: SessionsState, session: ProjectSession): SessionsState {
-  const demote = session.kind === "main" && session.current;
-  const rest = sessions.list.filter((s) => s.id !== session.id).map((s) => (demote && s.kind === "main" && s.current ? { ...s, current: false } : s));
+  const on = session.kind === "main" && (session.default ?? session.current);
+  const rest = sessions.list.filter((s) => s.id !== session.id);
   const list = [...rest, session].sort(bySessionStart);
-  const currentId = demote ? session.id : sessions.currentId === session.id && session.kind === "main" && !session.current ? null : sessions.currentId;
-  return { list, currentId };
+  const byId = session.kind === "main" ? withRoot(sessions.byId, session) : sessions.byId;
+  if (on) return withDefault({ ...sessions, list, byId }, session.id);
+  const stillDefault = !(sessions.defaultId === session.id && session.kind === "main");
+  return { ...sessions, list, byId, ...(stillDefault ? {} : { defaultId: null, currentId: null }) };
 }
 
-/** Loads sessions from `listSessions` (the list replaces the one in the state; the current main session is read from it when it is in the list). */
+/** A main session's slice with its root agent as the session says (a slice is made for every main session seen). */
+function withRoot(byId: Record<string, SessionSlice>, session: ProjectSession): Record<string, SessionSlice> {
+  const prev = byId[session.id];
+  const root = session.root_agent_id ?? "";
+  if (prev && (root === "" || prev.rootAgentId === root)) return byId;
+  return { ...byId, [session.id]: prev ? { ...prev, rootAgentId: root } : emptySlice(root) };
+}
+
+/** Loads sessions from `listSessions` (the list replaces the one in the state; the default main session is read from it when it is in the list). */
 export function withSessions(state: ProjectState, list: ProjectSession[]): ProjectState {
   const sorted = [...list].sort(bySessionStart);
-  const current = sorted.find((s) => s.kind === "main" && s.current);
-  return { ...state, sessions: { list: sorted, currentId: current?.id ?? state.sessions.currentId } };
+  const current = sorted.find((s) => s.kind === "main" && (s.default ?? s.current));
+  let byId = state.sessions.byId;
+  for (const s of sorted) if (s.kind === "main") byId = withRoot(byId, s);
+  const defaultId = current?.id ?? state.sessions.defaultId;
+  return { ...state, sessions: { list: sorted, defaultId, currentId: defaultId, byId } };
+}
+
+/** Whether the harness addresses main sessions one by one (schema 15: its sessions name a root agent and a default). */
+export function hasParallelSessions(state: ProjectState): boolean {
+  return state.sessions.list.some((s) => s.kind === "main" && s.default !== undefined);
+}
+
+/** The root agent of main session `sid`: its slice's, else the session record's; "" when neither names one yet. */
+export function sessionRoot(state: ProjectState, sid: string): string {
+  const fromSlice = state.sessions.byId[sid]?.rootAgentId ?? "";
+  if (fromSlice !== "") return fromSlice;
+  return state.sessions.list.find((s) => s.id === sid)?.root_agent_id ?? "";
+}
+
+/** Whether an approval or a form belongs to main session `sid` (one without a session is the default session's). */
+function ofSession(state: ProjectState, item: { session_id?: string }, sid: string): boolean {
+  return item.session_id ? item.session_id === sid : isDefault(state, sid);
+}
+
+/** The pending approvals of one main session (the project list keeps all of them for Home and the attention count). */
+export function sessionApprovals(state: ProjectState, sid: string): Approval[] {
+  return state.approvals.filter((a) => ofSession(state, a, sid));
+}
+
+/** The open forms of one main session. */
+export function sessionInputs(state: ProjectState, sid: string): InputRequest[] {
+  return state.inputs.filter((i) => ofSession(state, i, sid));
+}
+
+/**
+ * The project state as one main session sees it: its queue, its last turn and turn outcomes, its approvals and forms and
+ * its attention instead of the project's (the default session's). The agent-keyed maps are shared. The same object when
+ * nothing is known about `sid` (no slice: an older harness).
+ */
+export function scopeState(state: ProjectState, sid: string): ProjectState {
+  const slice = state.sessions.byId[sid];
+  if (!slice) return state;
+  const approvals = sessionApprovals(state, sid);
+  const inputs = sessionInputs(state, sid);
+  const attention: AttentionState = { ...slice.attention, approvals: approvals.length, inputs: inputs.length, needs_you: approvals.length + inputs.length > 0 };
+  return { ...state, queue: slice.queue, lastTurn: slice.lastTurn, turnOutcomes: slice.turnOutcomes, approvals, inputs, attention };
+}
+
+/** A turn is about to start in `sid` (a send): its last outcome is cleared, like `lastTurn` for the project. */
+export function withTurnCleared(state: ProjectState, sid: string | null): ProjectState {
+  const sessions = sid === null ? state.sessions : withSlice(state.sessions, sid, (x) => ({ ...x, lastTurn: null }));
+  return { ...state, sessions, ...(isDefault(state, sid) ? { lastTurn: null } : {}) };
+}
+
+/**
+ * Whether `event` concerns main session `sid` (for a view of one session): an event that names another session (its
+ * `session_id`, or its approval's or form's) does not; `session.*` events (about the list) and events that name no session
+ * (project-wide: files, notes, settings…) do. `conversation.cleared` belongs to the session it cleared (`previous_session_id`).
+ */
+export function eventInSession(event: BridgeEvent, sid: string): boolean {
+  if (event.type.startsWith("session.")) return true;
+  if (event.type === "conversation.cleared") return !event.previous_session_id || event.previous_session_id === sid;
+  const named =
+    event.session_id ??
+    (event.type === "approval.requested" ? event.approval.session_id : event.type === "input.requested" ? event.input.session_id : undefined);
+  return !named || named === sid;
 }
 
 export function withTasks(state: ProjectState, tasks: Task[]): ProjectState {

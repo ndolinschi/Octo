@@ -5,3 +5,7 @@ export * from "./commands";
 export * from "./client";
 export * from "./state";
 export * from "./messageBridge";
+export * from "./sessionBridge";
+export * from "./fileBytes";
+export * from "./remoteAccess";
+export * from "./readDeadline";

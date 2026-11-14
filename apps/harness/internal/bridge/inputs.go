@@ -7,7 +7,7 @@ import (
 )
 
 func (s *Server) listInputs(w http.ResponseWriter, r *http.Request) {
-	list, err := s.svc.Inputs(r.Context(), r.PathValue("pid"))
+	list, err := s.svc.SessionInputs(r.Context(), r.PathValue("pid"), r.URL.Query().Get("session"))
 	if err != nil {
 		writeErr(w, err)
 		return

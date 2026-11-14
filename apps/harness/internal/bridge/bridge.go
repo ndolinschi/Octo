@@ -43,6 +43,7 @@ type Server struct {
 	picker      picker
 	defaultOrch func() string // the orchestrator a project without a choice runs now
 	apiToken    string        // required on /v1 routes when set (WithAPIToken)
+	mounts      []mount       // extra handlers behind the token and CORS (WithMount)
 }
 
 // PluginSource is the read-only plugin view GET /v1/plugins serves.
@@ -192,8 +193,24 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("DELETE /v1/projects/{pid}/sessions/{sid}", s.deleteSession)
 	mux.HandleFunc("GET /v1/projects/{pid}/sessions/{sid}/messages", s.sessionMessages)
 	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/resume", s.resumeSession)
+	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/default", s.resumeSession)
 	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/stop", s.stopSession)
 	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/messages", s.messageSession)
+	// Parallel sessions (phase 1): the project routes of the same name, for one main session ({sid}); without
+	// {sid} they act on the default session.
+	mux.HandleFunc("GET /v1/projects/{pid}/sessions/{sid}/queue", s.getQueue)
+	mux.HandleFunc("DELETE /v1/projects/{pid}/sessions/{sid}/queue", s.clearQueue)
+	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/queue/resume", s.resumeQueue)
+	mux.HandleFunc("PATCH /v1/projects/{pid}/sessions/{sid}/queue/{qid}", s.editQueued)
+	mux.HandleFunc("DELETE /v1/projects/{pid}/sessions/{sid}/queue/{qid}", s.removeQueued)
+	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/queue/{qid}/send-now", s.sendNow)
+	mux.HandleFunc("GET /v1/projects/{pid}/sessions/{sid}/context", s.context)
+	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/compact", s.compact)
+	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/clear", s.clearSessionConversation)
+	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/rewind", s.rewind)
+	mux.HandleFunc("GET /v1/projects/{pid}/sessions/{sid}/plans/latest", s.latestPlan)
+	mux.HandleFunc("GET /v1/projects/{pid}/sessions/{sid}/export", s.exportConversation)
+	mux.HandleFunc("GET /v1/sessions", s.listAllSessions)
 	mux.HandleFunc("GET /v1/projects/{pid}/memory/sessions", s.listMemorySessions)
 	mux.HandleFunc("GET /v1/projects/{pid}/memory/sessions/{sid}", s.getMemorySession)
 	mux.HandleFunc("DELETE /v1/projects/{pid}/memory/exchanges/{eid}", s.forgetExchange)
@@ -208,6 +225,9 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("DELETE /v1/projects/{pid}/lsp/sessions/{sid}", s.deleteLSPSession)
 	s.reviewRoutes(mux)
 	s.commandRoutes(mux)
+	for _, m := range s.mounts {
+		mux.Handle(m.pattern, m.h)
+	}
 	if s.mcp != nil {
 		mux.Handle(mcp.PathPrefix, s.mcp)
 	}
@@ -228,6 +248,8 @@ func cors(next http.Handler) http.Handler {
 			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Last-Event-ID")
 			h.Set("Access-Control-Max-Age", "600")
+			// The UI reads the clock of the answers (relative times on a machine whose clock is off).
+			h.Set("Access-Control-Expose-Headers", "Date")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

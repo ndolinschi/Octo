@@ -14,7 +14,7 @@
   "metadata": {
     "user_id": "{\"session_id\":\"fixture-528\",\"device_id\":\"d\"}"
   },
-  "model": "mistralai/ministral-8b-2512",
+  "model": "qwen/qwen3.7-flash",
   "output_config": {
     "effort": "high",
     "format": {

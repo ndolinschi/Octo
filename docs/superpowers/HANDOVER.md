@@ -126,6 +126,21 @@ Nothing. The tree holds finished work only; the integration pass left it staged 
   fixed in this pass and need a full `go test -race ./...` on a quiet machine to confirm.
 - **Doc debt.** Spec and code differences: [`../ARCHITECTURE.md`](../ARCHITECTURE.md#known-contradictions).
 
+### Later (owner, 2026-11-14: "remember this, we will do it later") — Octo on iOS
+
+Not started, no spec. The owner asked whether a framework can run Octo on iOS. Answer given: Tauri 2 (the desktop
+shell's framework) builds for iOS, but only the UI can run there — iOS does not let an app start child processes, so
+the harness and router sidecars, the subscription agent CLIs, `bash`, language servers and git worktrees stay on a
+computer. Options, in the order recommended: (1) a remote client — the UI on the phone connects to a harness on the
+owner's Mac or a server (connection screen, address and token, TLS or a private network), built with Tauri 2 mobile;
+(2) a web app added to the home screen, served by the harness (`apps/web` is the stub for it) — the quickest way to
+see it on a phone; (3) the Go harness embedded as a library (gomobile) with the built-in loop only — large, and a
+reduced product. Before any of them: the UI has never been run in WebKit (every check was in Chromium); known risks
+are the CSS masks of the vendor marks, the scroll correction of lazily mounted turns, and the composer's height
+fallback. Parallel sessions and the client-side session cache fit the remote client (start on the Mac, answer
+approvals and read on the phone). Building needs a Mac with Xcode and an Apple developer account; it cannot be built
+or checked in the Linux build environment. First step when taken up: a short spec of the remote client.
+
 ## 6. Working rules
 
 **Roles.** One orchestrator session decides, writes contracts (specs with numbered acceptance criteria), briefs, verifies

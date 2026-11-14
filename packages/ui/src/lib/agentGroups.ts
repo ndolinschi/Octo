@@ -20,8 +20,11 @@ const startOf = (a: Agent) => Date.parse(a.started_at ?? a.created_at);
 export function agentGroups(agents: readonly Agent[]): { running: AgentNode[]; finished: AgentNode[] } {
   const kids = new Map<string, Agent[]>();
   for (const a of agents) if (a.parent_id) kids.set(a.parent_id, [...(kids.get(a.parent_id) ?? []), a]);
-  const root = agents.find((a) => a.parent_id === null);
-  const top = root ? (kids.get(root.id) ?? []) : agents.filter((a) => a.parent_id !== null && !agents.some((p) => p.id === a.parent_id));
+  // Parallel sessions: every main session has its own root; the agents of all of them are the project's.
+  const roots = agents.filter((a) => a.parent_id === null);
+  const top = roots.length
+    ? roots.flatMap((r) => kids.get(r.id) ?? [])
+    : agents.filter((a) => a.parent_id !== null && !agents.some((p) => p.id === a.parent_id));
   const node = (a: Agent): AgentNode & { live: boolean } => {
     const children: { agent: Agent; via: string | null }[] = [];
     let failed = 0;

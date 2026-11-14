@@ -6,11 +6,13 @@ import { useLatest } from "../../lib/hooks";
 
 const EDGE = 8;
 const GAP = 6;
+const FOCUSABLE = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 /**
  * A small non-modal panel anchored to the control that opened it (problems list, pending comments).
  * Opens above or below the anchor (flipping to fit), aligned to its start or end edge; focus moves in
- * on open and back to the anchor on close; Esc, a click outside or scrolling the page closes it.
+ * on open and back to the anchor on close; Tab and Shift+Tab cycle inside it (decision 95, `popupNav`); Esc, a click outside,
+ * focus moved elsewhere or scrolling the page closes it.
  * Enter/exit motion is the overlay one (instant when opened from the keyboard). Wrap in <Presence>.
  */
 export function Popover(props: {
@@ -108,20 +110,44 @@ export function Popover(props: {
       if (t === document || (t instanceof Node && a && t.contains(a))) onClose();
     };
     const key = (e: KeyboardEvent) => {
+      if (e.key === "Tab") return cycle(e);
       if (e.key !== "Escape") return;
       e.preventDefault();
       e.stopPropagation();
       anchor.current?.focus({ preventScroll: true });
       onClose();
     };
+    // Decision 95 (`popupNav`): Tab and Shift+Tab cycle through the panel's focusable elements; focus never leaves it while open.
+    // Only while focus is in this panel: a popup opened from it (a `Select`'s list) is portalled outside and cycles its own.
+    const cycle = (e: KeyboardEvent) => {
+      const el = ref.current;
+      if (!el || !(document.activeElement instanceof Node) || !el.contains(document.activeElement)) return;
+      const nodes = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((n) => n.tabIndex >= 0 && n.offsetParent !== null);
+      e.preventDefault();
+      if (nodes.length === 0) return;
+      const at = nodes.findIndex((n) => n === document.activeElement);
+      const next = at < 0 ? (e.shiftKey ? nodes.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + nodes.length) % nodes.length;
+      nodes[next]?.focus({ preventScroll: true });
+    };
+    // Focus that leaves anyway (a programmatic focus elsewhere) closes it. A move to nothing (the window lost focus, a row
+    // re-rendered) and a move into another popup layer (a `Select` or `Menu` opened from this panel) do not.
+    const left = (e: FocusEvent) => {
+      const to = e.relatedTarget;
+      if (!(to instanceof Element) || ref.current?.contains(to) || anchor.current?.contains(to)) return;
+      if (to.closest('[role="menu"],[role="listbox"],[role="dialog"]')) return;
+      onClose();
+    };
+    const el = ref.current;
     document.addEventListener("pointerdown", outside, true);
     document.addEventListener("scroll", scrolled, true);
     document.addEventListener("keydown", key, true);
+    el?.addEventListener("focusout", left);
     window.addEventListener("resize", onClose);
     return () => {
       document.removeEventListener("pointerdown", outside, true);
       document.removeEventListener("scroll", scrolled, true);
       document.removeEventListener("keydown", key, true);
+      el?.removeEventListener("focusout", left);
       window.removeEventListener("resize", onClose);
     };
   }, [open, onClose, anchor]);
@@ -136,7 +162,7 @@ export function Popover(props: {
       inert={!open}
       style={pos ? ({ left: pos.left, top: pos.top, "--octo-origin": pos.origin } as CSSProperties) : { left: -9999, top: 0 }}
       className={cn(
-        "octo-overlay fixed z-[60] flex max-h-[min(420px,calc(100dvh-24px))] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-lg border border-transparent bg-overlay text-sm shadow-pop focus:outline-none focus-visible:shadow-pop",
+        "octo-overlay fixed z-[60] flex max-h-[min(420px,calc(100dvh-24px))] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-xl border border-transparent bg-overlay text-sm shadow-pop focus:outline-none focus-visible:shadow-pop",
         props.className,
       )}
     >

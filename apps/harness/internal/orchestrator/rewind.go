@@ -69,6 +69,12 @@ type RewindReport struct {
 // since its last recorded change stops it: nothing is touched and the report
 // lists the files (ErrRewindConflict). With dryRun nothing is changed either way.
 func (o *Orchestrator) Rewind(ctx context.Context, pid string, messageID int64, dryRun bool) (RewindReport, error) {
+	return o.RewindSession(ctx, pid, "", messageID, dryRun)
+}
+
+// RewindSession is Rewind of one main session ("": the session the request was sent in). Only the session's own
+// changes are restored; it is refused while that session runs.
+func (o *Orchestrator) RewindSession(ctx context.Context, pid, sid string, messageID int64, dryRun bool) (RewindReport, error) {
 	rep := RewindReport{DryRun: dryRun, MessageID: messageID, Files: []RewindFile{}, Conflicts: []RewindConflict{}}
 	o.qmu.Lock()
 	defer o.qmu.Unlock()
@@ -76,16 +82,21 @@ func (o *Orchestrator) Rewind(ctx context.Context, pid string, messageID int64, 
 	if err != nil {
 		return rep, err
 	}
-	if o.Running(pid) || o.Active(pid) {
-		return rep, ErrTurnInProgress
-	}
-	orch, err := db.Orchestrator(ctx)
-	if err != nil {
-		return rep, err
-	}
 	text, role, agentID, _, err := db.MessageText(ctx, messageID)
 	if err != nil {
 		return rep, ErrNotRequest
+	}
+	own, err := db.SessionOfAgentRow(ctx, agentID)
+	if err != nil || (sid != "" && own != sid) {
+		return rep, ErrNotRequest
+	}
+	sid = own
+	if o.RunningSession(pid, sid) || o.ActiveSession(pid, sid) {
+		return rep, ErrTurnInProgress
+	}
+	orch, err := db.RootAgent(ctx, sid)
+	if err != nil {
+		return rep, err
 	}
 	visible, err := db.Messages(ctx, orch.ID)
 	if err != nil {
@@ -108,8 +119,8 @@ func (o *Orchestrator) Rewind(ctx context.Context, pid string, messageID int64, 
 	groups := map[key][]projectstore.Change{}
 	var order []key
 	for _, c := range all {
-		if c.TurnID < messageID {
-			continue
+		if c.TurnID < messageID || (c.SessionID != "" && c.SessionID != sid) {
+			continue // before the request, or another session's work
 		}
 		k := key{c.Folder, c.Path}
 		if _, seen := groups[k]; !seen {
@@ -191,7 +202,7 @@ func (o *Orchestrator) Rewind(ctx context.Context, pid string, messageID int64, 
 	for _, a := range todo {
 		rep.Files = append(rep.Files, a.f)
 	}
-	count, err := countCut(ctx, db, messageID)
+	count, err := countCut(ctx, db, sid, messageID)
 	if err != nil {
 		return rep, err
 	}
@@ -219,7 +230,7 @@ func (o *Orchestrator) Rewind(ctx context.Context, pid string, messageID int64, 
 		}
 		o.hub.Publish(pid, events.FileChanged, map[string]any{"folder": a.f.Folder, "path": a.f.Path, "source": events.SourceUser})
 	}
-	res, err := db.Rewind(ctx, messageID)
+	res, err := db.RewindIn(ctx, sid, messageID)
 	if err != nil {
 		return rep, err
 	}
@@ -229,18 +240,18 @@ func (o *Orchestrator) Rewind(ctx context.Context, pid string, messageID int64, 
 		if err := db.DeleteACPSession(ctx, orch.ID); err != nil {
 			return rep, err
 		}
-		o.resetACPSession(pid)
+		o.resetACPSession(skey(pid, sid))
 	}
-	o.hub.Publish(pid, events.ConversationRewound, map[string]any{"message_id": messageID, "request_text": text})
-	o.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid})
+	o.hub.Publish(pid, events.ConversationRewound, map[string]any{"message_id": messageID, "request_text": text, "session_id": sid})
+	o.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid, "session_id": sid})
 	return rep, nil
 }
 
 type cutCount struct{ messages, agents int }
 
 // countCut says how many messages and sub-agents a rewind to messageID would hide.
-func countCut(ctx context.Context, db *projectstore.DB, messageID int64) (cutCount, error) {
-	n, a, err := db.CountCut(ctx, messageID)
+func countCut(ctx context.Context, db *projectstore.DB, sid string, messageID int64) (cutCount, error) {
+	n, a, err := db.CountCutIn(ctx, sid, messageID)
 	return cutCount{n, a}, err
 }
 
@@ -253,12 +264,12 @@ func (o *Orchestrator) orchestratorModel(ctx context.Context, db *projectstore.D
 	return rt.models.Orchestrator
 }
 
-// resetACPSession ends the project's live ACP orchestrator process: its session
+// resetACPSession ends a main session's live ACP orchestrator process (key: skey): its session
 // holds the cut conversation and cannot be rewound, so the next turn opens a
 // new one and recaps the conversation that is left.
-func (o *Orchestrator) resetACPSession(pid string) {
+func (o *Orchestrator) resetACPSession(key string) {
 	o.acp.mu.Lock()
-	s := o.acp.sessions[pid]
+	s := o.acp.sessions[key]
 	o.acp.mu.Unlock()
 	if s == nil {
 		return

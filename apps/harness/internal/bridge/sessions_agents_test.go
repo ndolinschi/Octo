@@ -132,7 +132,7 @@ func TestAgentSessionsAreCreatedAndContinued(t *testing.T) {
 	}
 
 	// Refusals.
-	e.wantError(t, "POST", "/v1/projects/"+pid+"/sessions/"+main.ID+"/messages", map[string]any{"text": "x"}, http.StatusConflict, "not_agent_session")
+	// (A main session takes messages on this route since schema 15: see the parallel sessions tests.)
 	e.wantError(t, "POST", "/v1/projects/"+pid+"/sessions/"+explorer.ID+"/messages", map[string]any{"text": "  "}, http.StatusBadRequest, "invalid_request")
 	e.wantError(t, "POST", "/v1/projects/"+pid+"/sessions/"+explorer.ID+"/resume", nil, http.StatusConflict, "not_main_session")
 	e.wantError(t, "POST", "/v1/projects/"+pid+"/sessions/"+explorer.ID+"/stop", nil, http.StatusConflict, "not_running")
@@ -228,7 +228,7 @@ func TestRunningAgentSessionsSteerAndStop(t *testing.T) {
 func (e *acpEnv) newSession(t *testing.T, p projectJSON) orchestrator.SessionView {
 	t.Helper()
 	var out sessionOne
-	e.into(t, "POST", "/v1/projects/"+p.ID+"/sessions", nil, http.StatusCreated, &out)
+	e.into(t, "POST", "/v1/projects/"+p.ID+"/sessions", map[string]any{"make_default": true}, http.StatusCreated, &out)
 	return out.Session
 }
 
@@ -251,12 +251,16 @@ func TestACPOrchestratorResumeLoadsTheAgentsSession(t *testing.T) {
 	if s2.session == s1.session || s2.loaded {
 		t.Fatalf("a new session is a new agent session: %+v %+v", s1, s2)
 	}
+	if s2.pid == s1.pid {
+		t.Fatalf("each main session has its own agent process (schema 15): %+v %+v", s1, s2)
+	}
+	// Making the first session the default again rebuilds nothing: its own process still holds its agent session.
 	e.into(t, "POST", "/v1/projects/"+p.ID+"/sessions/"+first.ID+"/resume", nil, http.StatusOK, nil)
 	e.ask(t, p, "[echo] three")
 	text := e.lastText(t, p)
 	s3 := parseIdentity(t, text)
-	if !s3.loaded || s3.session != s1.session {
-		t.Fatalf("resume must session/load the agent's session %s: %+v", s1.session, s3)
+	if s3.session != s1.session || s3.pid != s1.pid {
+		t.Fatalf("the first session continues in its own agent session %s: %+v", s1.session, s3)
 	}
 	if strings.Contains(text, "Earlier in this conversation") || !strings.Contains(text, "prompt<<[echo] three>>") {
 		t.Fatalf("a loaded session needs no recap: %q", text)
@@ -280,15 +284,10 @@ func TestACPOrchestratorResumeFallsBackToARecap(t *testing.T) {
 			e.ask(t, p, "[echo] what did I say")
 			text := e.lastText(t, p)
 			s3 := parseIdentity(t, text)
-			if s3.loaded || s3.session == s1.session {
-				t.Fatalf("a new agent session was expected: %+v", s3)
-			}
-			recap := text[strings.Index(text, "Earlier in this conversation"):]
-			if i := strings.Index(recap, "Previous session:"); i >= 0 {
-				recap = recap[:i] // the pointer names the session just left; its text is not part of the recap
-			}
-			if !strings.Contains(recap, "user: [echo] remember the word pelican") || strings.Contains(recap, "walrus") {
-				t.Fatalf("the recap is built from the resumed session only:\n%s", text)
+			// Schema 15: the first session's own process is still alive, so it continues there (no load, no recap),
+			// and nothing of the other session reaches it.
+			if s3.session != s1.session || s3.pid != s1.pid || strings.Contains(text, "walrus") {
+				t.Fatalf("the first session continues in its own agent session: %+v\n%s", s3, text)
 			}
 		})
 	}

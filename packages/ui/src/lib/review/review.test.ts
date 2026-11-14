@@ -5,7 +5,7 @@ import { blockAt, changeBlocks, hunksToTexts, stepChange } from "./changes";
 import { groupFiles, navigableFiles, sizeChange, stepFile } from "./files";
 import { anchorProblem, commentError, commentWhere, lineCommentInput, lineInDiff, linesOf, rangeInDiff } from "./position";
 import { reviewKeyAction } from "./keys";
-import { parsePullInput } from "./pull";
+import { listFailure, parsePullInput, reviewSourceText } from "./pull";
 import { canSubmit, submitProblem, submitText, submittedText } from "./submit";
 
 function file(path: string, group: ReviewFile["group"], order: number, extra: Partial<ReviewFile> = {}): ReviewFile {
@@ -191,6 +191,8 @@ test("submit text says what is posted and where; a local review posts nothing", 
   assert.equal(submitText(gh, "comment", 1, false), "Post 1 comment to o/r#123 as you");
   assert.equal(submitText(gh, "approve", 0, false), "Approve o/r#123 as you");
   assert.equal(submitText(gh, "request_changes", 2, false), "Post 2 comments and request changes on o/r#123 as you");
+  assert.equal(submitText(gh, "comment", 1, false, 1), "Post 1 comment and 1 reply to o/r#123 as you");
+  assert.equal(submitText(gh, "comment", 0, false, 2), "Post 2 replies to o/r#123 as you");
   assert.equal(submitText(local, "comment", 3, false), "Mark 3 comments as submitted (nothing is posted)");
   assert.ok(canSubmit("approve", 0, false));
   assert.ok(!canSubmit("comment", 0, false));
@@ -234,4 +236,10 @@ test("review keys: mapped, ignored with a modifier and inside text fields, kept 
   assert.equal(reviewKeyAction(k("j", true), free), null);
   assert.equal(reviewKeyAction(k("j"), { editable: true, inMonaco: false }), null);
   assert.equal(reviewKeyAction(k("j"), { editable: true, inMonaco: true }), "next-change");
+});
+
+test("a failed list is a plain sentence; a source id loses its prefix", () => {
+  assert.equal(listFailure("git fetch failed: could not resolve host").message, "Could not reach the code host.");
+  assert.equal(reviewSourceText("github:atlas-labs/atlas-api#476"), "atlas-labs/atlas-api #476");
+  assert.equal(reviewSourceText("local:main..feat"), "main..feat");
 });

@@ -71,3 +71,22 @@ func saveCommands(ctx context.Context, db *projectstore.DB, in *[]projcfg.Comman
 	}
 	return db.SetSetting(ctx, projectstore.SettingCommands, string(b))
 }
+
+// checkSessionSettings validates a session_settings field (nil: not provided).
+func checkSessionSettings(in *projectstore.SessionsSettings) error {
+	if in == nil {
+		return nil
+	}
+	if err := in.Validate(); err != nil {
+		return invalid("%s", err.Error())
+	}
+	return nil
+}
+
+// saveSessionSettings merges a session_settings patch into the stored setting.
+func saveSessionSettings(ctx context.Context, db *projectstore.DB, in *projectstore.SessionsSettings) error {
+	if in == nil {
+		return nil
+	}
+	return db.SetSessionsSettings(ctx, db.SessionsSettings(ctx).Merge(*in))
+}

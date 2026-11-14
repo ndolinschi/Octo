@@ -7,10 +7,12 @@ import (
 	"sync"
 )
 
-// Binding is what a token grants access to: one project's orchestrator agent.
+// Binding is what a token grants access to: the root agent of one main session of a project.
 type Binding struct {
 	ProjectID string
-	// AgentID is the project agent row (the orchestrator) the ACP session runs.
+	// SessionID is the main session whose ACP process holds the token (schema 15: one process per session).
+	SessionID string
+	// AgentID is the project agent row (the session's root agent) the ACP session runs.
 	AgentID string
 }
 

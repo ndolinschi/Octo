@@ -74,11 +74,11 @@ test("sessions: transcripts, with and without a session filter", async () => {
 test("sessions: create, resume, patch, delete, stop and message", async () => {
   const s = session({ id: "ses_2", current: true });
   let r = bridgeWith(201, JSON.stringify({ session: s }));
-  assert.deepEqual(await r.bridge.createSession?.("p", "Plan B"), s);
+  assert.deepEqual(await r.bridge.createSession("p", { title: "Plan B" }), { session: s });
   assert.deepEqual([r.calls[0]?.method, r.calls[0]?.url, r.calls[0]?.body], ["POST", "http://h:1/v1/projects/p/sessions", { title: "Plan B" }]);
   r = bridgeWith(201, JSON.stringify({ session: s }));
-  await r.bridge.createSession?.("p");
-  assert.equal(r.calls[0]?.body, undefined);
+  await r.bridge.createSession("p");
+  assert.deepEqual(r.calls[0]?.body, {});
   r = bridgeWith(200, JSON.stringify({ session: s }));
   assert.deepEqual(await r.bridge.resumeSession?.("p", "ses_2"), s);
   assert.deepEqual([r.calls[0]?.method, r.calls[0]?.url], ["POST", "http://h:1/v1/projects/p/sessions/ses_2/resume"]);
@@ -89,7 +89,7 @@ test("sessions: create, resume, patch, delete, stop and message", async () => {
   assert.equal(await r.bridge.deleteSession?.("p", "ses_2"), undefined);
   assert.deepEqual([r.calls[0]?.method, r.calls[0]?.url], ["DELETE", "http://h:1/v1/projects/p/sessions/ses_2"]);
   r = bridgeWith(200, JSON.stringify({ session: s }));
-  await r.bridge.stopSession?.("p", "ses_2");
+  await r.bridge.stopSession("p", "ses_2");
   assert.deepEqual([r.calls[0]?.method, r.calls[0]?.url], ["POST", "http://h:1/v1/projects/p/sessions/ses_2/stop"]);
   r = bridgeWith(202, JSON.stringify({ outcome: "steered", session: s }));
   assert.deepEqual(await r.bridge.messageSession?.("p", "ses_2", "also pelicans", { reportToParent: true }), { outcome: "steered", session: s });

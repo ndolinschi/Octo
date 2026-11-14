@@ -1,7 +1,10 @@
+import { Play } from "lucide-react";
 import { useState } from "react";
 import type { MenuItem } from "../primitives/Menu";
 import { settingsHref } from "../../lib/route";
 import { Button } from "../primitives/Button";
+import { Glyph } from "../primitives/Glyph";
+import { IconMenu } from "../primitives/IconMenu";
 import { MenuButton } from "../primitives/MenuButton";
 import { Presence } from "../primitives/Presence";
 import { Spinner } from "../primitives/Status";
@@ -51,14 +54,24 @@ export function RunBar() {
             disabled={gone !== undefined}
             aria-busy={busy}
             onClick={() => (busy ? r.openPanel() : void r.start(c.name))}
-            className="max-md:h-10"
+            className="@max-[1024px]/rh:hidden"
           >
-            {busy && <Spinner />}
+            {/* Decision 94c: the same play glyph as the top row's pinned commands, in a slot of its own so the button keeps its width. */}
+            <span aria-hidden className="grid size-4 place-items-center">
+              {busy ? <Spinner /> : <Glyph icon={Play} size={14} />}
+            </span>
             {c.name}
           </Button>
         );
       })}
-      <MenuButton label="Run a command" text="Run" alignEnd items={items} />
+      {/* Polish step 6b (R3): the review header folds by its own width (container `rh`, `review/ReviewHeader`): below 1024 the
+          pinned commands live only in this menu, below 480 the menu is its play glyph. 28px like the header's other controls. */}
+      <span className="flex @max-[480px]/rh:hidden">
+        <MenuButton label="Run a command" text="Run" alignEnd items={items} className="h-ctl-sm!" />
+      </span>
+      <span className="flex @min-[480px]/rh:hidden">
+        <IconMenu label="Run a command" icon={Play} items={items} />
+      </span>
       <Presence show={suggest}>{suggest && <SuggestionsDialog onClose={() => setSuggest(false)} />}</Presence>
     </>
   );

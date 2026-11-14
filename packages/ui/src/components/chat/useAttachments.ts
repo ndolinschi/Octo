@@ -1,6 +1,6 @@
 import { useCallback, useState, type ClipboardEvent, type DragEvent } from "react";
 import { errorMessage } from "../../lib/format";
-import { refusal, type Attachment } from "./attachments";
+import type { Attachment } from "./attachments";
 
 let nextId = 0;
 
@@ -18,20 +18,30 @@ export function useAttachments(onImages?: (files: File[]) => void) {
       const images = onImages ? all.filter((f) => f.type.startsWith("image/")) : [];
       if (images.length) onImages?.(images);
       const list = onImages ? all.filter((f) => !f.type.startsWith("image/")) : all;
-      const notes: string[] = [];
-      for (const f of list) {
-        const why = refusal(f.name, f.type, f.size);
-        if (why) {
-          notes.push(why);
-          continue;
-        }
-        const id = `att${(nextId += 1)}`;
-        f.text().then(
-          (text) => setFiles((cur) => (cur.some((x) => x.name === f.name && x.text === text) ? cur : [...cur, { id, name: f.name, size: f.size, text }])),
-          (e: unknown) => setNote(`Couldn't read ${f.name}: ${errorMessage(e)}. Try attaching it again.`),
-        );
+      if (!list.length) {
+        setNote(null);
+        return;
       }
-      setNote(notes.length ? notes.join(" ") : null);
+      // The rules of what may be attached load on the first drop or paste (their own chunk).
+      void import("./attachmentRules").then(
+        ({ refusal }) => {
+          const notes: string[] = [];
+          for (const f of list) {
+            const why = refusal(f.name, f.type, f.size);
+            if (why) {
+              notes.push(why);
+              continue;
+            }
+            const id = `att${(nextId += 1)}`;
+            f.text().then(
+              (text) => setFiles((cur) => (cur.some((x) => x.name === f.name && x.text === text) ? cur : [...cur, { id, name: f.name, size: f.size, text }])),
+              (e: unknown) => setNote(`Couldn't read ${f.name}: ${errorMessage(e)}. Try attaching it again.`),
+            );
+          }
+          setNote(notes.length ? notes.join(" ") : null);
+        },
+        (e: unknown) => setNote(`Couldn't attach: ${errorMessage(e)}. Try again.`),
+      );
     },
     [onImages],
   );

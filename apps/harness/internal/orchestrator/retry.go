@@ -30,7 +30,7 @@ func (rt *runtime) failedRequest(ctx context.Context, orch projectstore.Agent, t
 	if err != nil || last.Role != "user" {
 		return projectstore.Message{}, false
 	}
-	if sid, err := rt.db.CurrentSessionID(c); err != nil || last.SessionID != sid {
+	if sid := rt.sessionID; sid == "" || last.SessionID != sid {
 		return projectstore.Message{}, false // the failed request belongs to another session
 	}
 	var parts []string
@@ -57,7 +57,7 @@ const (
 // approval counts, with the counts of now.
 func (rt *runtime) publishTurnState(state string, problem *usererr.Error) {
 	a, in := rt.o.Attention(rt.pid())
-	fields := map[string]any{"needs_you": a+in > 0, "approvals": a, "inputs": in, "state": state}
+	fields := map[string]any{"needs_you": a+in > 0, "approvals": a, "inputs": in, "state": state, "sessions": rt.o.SessionsAttention(rt.pid())}
 	if problem != nil {
 		fields["error"] = problem.Message
 		problem.AddTo(fields, "hint", "command", "action", "details")

@@ -4,7 +4,7 @@ Go module: `github.com/ndolinschi/Octo/apps/harness`. A thin **Anthropic Message
 
 ## Runtime shape
 
-Two shapes share the Messages loop. **`harness serve`** (the product) is a project server: the bridge (HTTP + SSE) in front of a service layer, an orchestrator that runs one turn per project, and the stores:
+Two shapes share the Messages loop. **`harness serve`** (the product) is a project server: the bridge (HTTP + SSE) in front of a service layer, an orchestrator that runs one turn per main session (several sessions of a project at once, within the running caps; `sessions.md`), and the stores:
 
 ```mermaid
 flowchart LR
@@ -73,6 +73,7 @@ flowchart TB
 | `internal/memory` | Orchestrator memory service (M1, M2): task records, memory files, search shaping, digest merge, the memory setting, limits and secret redaction; see [memory.md](./memory.md) |
 | `internal/acptrace` | Opt-in ACP wire trace: one redacted, size-capped JSON-lines file per agent process under `{data-dir}/traces/`; see [acp-orchestrator.md](./acp-orchestrator.md#diagnostics-and-the-wire-trace) |
 | `internal/diag` | The diagnostics report (`harness doctor`, `GET /v1/diagnostics`): versions, PATH, per-agent resolution and login state, the scrubbed log ring (last 200 lines) |
+| `internal/remoteaccess` | Remote access for a paired phone: runs `cloudflared` (quick tunnel) to a second loopback listener that serves the web app, pairing and the bridge API for device tokens through an allow-list, long-poll events, the device store `{data-dir}/remote/devices.json`; `/v1/remote` control routes on the main bridge; see [remote-access.md](./remote-access.md) |
 | `internal/limits` | Provider rate-limit headers remembered per model and limit kind (`GET /v1/limits`); in memory only |
 | `internal/permission` | `permission.Decide`, the one seam answering an ACP agent's permission requests (auto-approve today) |
 | `internal/fakeacp` | Scripted ACP agent for tests and demos (`examples/fakeacp` is its `main`); env switches advertise auth methods, models, `loadSession` and HTTP MCP, refuse unknown models or MCP servers; markers drive MCP tool calls (`[mcp-spawn]`), echo the prompt (`[echo]`), crash (`[crash]`) and hang (`[hang]`) |
@@ -109,7 +110,7 @@ flowchart LR
   loop --> llm[Messages API]
 ```
 
-- One **turn** per project at a time (`409 turn_in_progress`). `POST /messages` persists the user message and runs the turn in the background; progress arrives over SSE.
+- One **turn** per main session at a time; several main sessions of a project run at once (schema 15, `sessions.md`), within `session_settings.max_running` per project (default 3) and `HARNESS_MAX_RUNNING_SESSIONS` on the machine (default 6); a message beyond them waits in its session's queue (`waiting_for: "slot"`). Each session has its own root agent, queue, steer box, ACP process and MCP token; per-session state in the orchestrator is keyed by `project/session`. `POST /messages` (the default session) and `POST /sessions/{sid}/messages` persist the user message and run the turn in the background; progress arrives over SSE, each event of a session's work with its `session_id`.
 - The orchestrator thread is reloaded from `project.sqlite` every turn. If the previous turn left a `tool_use` without results (cancel/crash), a synthetic `is_error` result is stored before the new user message.
 - `spawn_agent` creates the child row (`spawn_tool_use_id` from `tools.ToolUseID(ctx)`), runs the child loop synchronously, and returns its final text. A failed or cancelled child yields an `is_error` tool result; the parent continues. Agents at `depth == max_depth` do not get `spawn_agent`.
 - Several tool calls in one assistant message run concurrently (`errgroup`); results keep call order. Parallel `spawn_agent` calls therefore run in parallel, so sibling rows appear in nondeterministic creation order.
@@ -165,7 +166,7 @@ Design: [`docs/superpowers/specs/2026-11-10-code-pane-design.md`](../../../docs/
 | Method | Path | Result |
 | --- | --- | --- |
 | GET | `/v1/projects/{pid}/files?folder=&path=` | `{ "entries": [{name, path, type: "file"\|"dir", size}] }` — one level, directories first then by name, `.git` omitted; missing path or not a directory is `404` |
-| GET | `/v1/projects/{pid}/files/content?folder=&path=` | `{folder, path, size, mtime, content}`; `mtime` is RFC 3339 with nanoseconds, UTC. `413 file_too_large` over 2 MiB, `415 binary_file` for invalid UTF-8 or NUL bytes, `400` for a directory |
+| GET | `/v1/projects/{pid}/files/content?folder=&path=` | `{folder, path, size, mtime, content}`; `mtime` is RFC 3339 with nanoseconds, UTC. `413 file_too_large` over 2 MiB, `415 binary_file` for invalid UTF-8 or NUL bytes, `400` for a directory. `&encoding=base64` returns any file (same roots, path checks and 2 MiB limit, no UTF-8 check) as `{folder, path, size, mtime, content, encoding: "base64"}` with `content` base64-encoded; the UI uses it to preview images; another `encoding` is `400` |
 | PUT | `/v1/projects/{pid}/files/content` | body `{folder, path, content, expected_mtime?}` → `{folder, path, size, mtime}`. The parent directory must exist (`404`). `409 file_changed` when `expected_mtime` is set and differs from the current mtime (a missing file counts as changed). Written via temp file + rename in the same directory; an existing file keeps its mode, new files get `0644`. Body cap 3 MiB (`413 file_too_large`) |
 
 `file.changed` (`{type, seq, folder, path, source: "user"|"agent"}`) is published on the SSE stream after a successful `PUT` (`user`) and after an agent's `write_file` call finishes without error (`agent`; the orchestrator decorates the registered tool, so the agent loop knows nothing about files).
@@ -214,7 +215,7 @@ Every Messages request from the agent loop carries up to three `cache_control: {
 | Tool | Behavior |
 | --- | --- |
 | `read_file` / `write_file` / `list_dir` | Paths must stay under `--workspace` (symlink escape rejected). |
-| `bash` | `bash -c` with cwd = workspace, 30s timeout. **Full host shell privileges** — not a container or syscall sandbox. Commands can read/write anywhere the OS user can. |
+| `bash` | `bash -c` with cwd = workspace, 30s timeout. **Full host shell privileges** — not a container or syscall sandbox. Commands can read/write anywhere the OS user can. A failed command's result (`is_error: true`) always ends with a line saying how it ended: `exit status N`, or `signal: killed` and the like (with "(timed out after 30s)" on a timeout); the output before it is cut so that line survives the result cap. The UI reads "Failed (exit N)" from it. |
 
 File tools validate paths at resolve time; `bash` does not re-validate paths used inside the command.
 
@@ -268,6 +269,17 @@ Spec: [`2026-11-11-router-harness-integration.md`](../../../docs/superpowers/spe
 **Ledger.** Every usage row gains `served_model`, `tier`, `route_trigger` (stored as the router sent it, no fixed list) and `router_request_id`. After the response body has ended the harness reads `GET /autoroute/v1/calls/{x-octo-request-id}` once, and once more after 200 ms if it was still 404. With the record, `cost_usd` is the router's figure and `cost_estimated` is true when the record's `cost_source` is `estimated`. Without it (record never ready, router old, request failed before the router answered) `cost_usd` stays empty and the usage report estimates it from `prices.toml` by the served model, marked estimated; with no price the cost is unknown (`null`), never 0. A record of `cost_usd: 0` with source `estimated` means the router knew no price and is treated the same way. Failed, rejected and cancelled requests that carry a request id get a row too (tokens from the record, else what the stream had delivered). `/v1/usage?group=model` groups by the served model, falling back to the requested one; `agent_id`, `day` and `project` groups are unchanged. Migration: `ALTER TABLE usage ADD COLUMN` for the five new columns, `project.budget_usd`, and a new `compactions` table, all when missing, so Phase A databases open unchanged.
 
 **Budget.** `PATCH /v1/projects/{id}` takes `budget_usd` (a number > 0, `null` removes it); project JSON returns `budget_usd` and `spent_usd` (the larger of the router's last report for the project, which is the header spend plus the call's cost, and the sum of the usage rows; `null` while nothing has a cost). A 402 from the router settles the agent as failed with `This project's budget is used up ($X of $Y).` (X, Y from the 402's `x-octo-spent-usd` / `x-octo-budget-usd`), the error travels up through every parent, so the turn ends with that message and no further request is made. `spawn_agent` refuses to start a sub-agent once the last known spend is at or over the budget and returns the same message as a tool error. Without a router (or one that does not announce `budget_key`) the harness enforces the budget itself: before every request it sums the project's usage rows (reported costs plus `prices.toml` estimates); unknown prices mean unknown spend and no enforcement.
+**Output cap (P2-11).** The gate runs between requests, so one long request could spend well past the budget (owner's
+re-test: $0.0011 of a $0.0005 budget). A request's cost is known only when it ends (the usage comes with the end of the
+stream), so the built-in loop bounds it before it is sent: with a budget and a `prices.toml` price for the model, a request
+asks for `max_tokens` = (budget − spent − estimated input cost) ÷ output price, never below 256 tokens and never above the
+default 8192 (`orchestrator/route.go` `outputCap`, `agent.Loop.OutputCap`). An answer that stops at that cap
+(`stop_reason: max_tokens`) ends the turn with `BudgetCut` ("…ran out during this request…; the answer was stopped
+mid-request.", code `budget_reached`); its text is kept as a `stopped` message (a tool call cut in the middle is dropped).
+The overshoot is then at most 256 output tokens plus the request's input. Without a price (or with a router whose model
+name has none) nothing is capped and the router's 402 stays the backstop. ACP agents are not capped: the agent CLI
+controls its own requests and spend; the harness sees its cost only in `usage_update` and stops at the next turn's gate
+(or at a harness tool call over MCP).
 
 **Compaction.** The router answers a compaction with `x-octo-trigger: compact` and the upstream's Messages JSON as a body, never a stream even when one was requested; it succeeded when the status is 2xx and `stop_reason` is `compaction`. The loop reads the summary from the `compaction` content block's `content` string, else the concatenated `text` blocks (`compactionSummary` in `internal/agent/compact.go`, the one function to change if the format changes). A failed compaction ends the turn with an error and leaves the history alone. On success the response is not stored as a message; the summary goes to the `compactions` table (`upto_message_id` = every message stored so far) and the loop continues with a single user message that carries the summary. The raw messages stay in `messages` for the UI. The next turn of the orchestrator rebuilds its history from the latest compaction plus the messages after it (`loadHistory`). The compaction call has its own usage row with trigger `compact`. The sink then publishes `agent.compacted` (`{agent_id, upto_message_id, summary_tokens, at}`, `summary_tokens` estimated from the summary's length) and the transcript endpoint (`GET .../agents/{aid}/messages`) returns the same markers as `compactions` beside `messages`, read from the `compactions` table.
 
@@ -338,3 +350,30 @@ Changes from the owner's second live run (findings and decisions: `docs/superpow
 - **Cancelled turns.** The text an agent had written is stored as an assistant message with `stopped: true` (the built-in loop's streamed text and an ACP agent's flushed text alike); `message.created` carries the flag and `turn.finished` says `cancelled`. A tool call that is announced without input and given it by a `tool_call_update` keeps the input: the stored `tool_use` row is rewritten and `message.updated {message}` is published (`spawn_agent` rows of an ACP orchestrator were stored as `""`).
 - **Trace.** The ACP wire trace also redacts e-mail addresses.
 - **Doctor, memory and search:** see the README ("Diagnostics") and `memory.md` ("Task records over a turn"). Schema version 5 added `agents.error_hint`, `messages.stopped`, `usage.tokens_estimated` and the `search_s` index (rebuilt from the stored documents when an older database opens).
+
+## Added 2026-11-14: durability of a running turn, the event stream, one service per data folder
+
+- **Checkpoints.** While an agent streams, its redacted partial text is written to `partials` (one row per agent) at most
+  every 500 ms, and a running turn stamps `turn_alive` every 5 s. The write runs on its own goroutine, never in the path that publishes a delta: a slow disk does not hold the stream back. Storing the message clears the row; a row older than
+  the agent's last message is ignored.
+- **Recovery on start** (`orchestrator/recover.go`, before the rows are settled): open tool calls of running agents get
+  the interruption result, a valid checkpoint becomes the assistant message (flagged `stopped`, which now means "cut
+  short" for cancelled, failed and recovered turns), the orchestrator row gets `turn_interrupted`, and the exchange is
+  recorded `failed` with `interrupted: true` and a duration up to the last sign of life. A failed stream keeps its
+  partial text too. The tables and the `exchanges.interrupted` column are additive; the schema number did not change.
+- **Event stream.** `event: heartbeat` (`data: {}`, no id) every 15 s instead of a comment; `retry: 1000` at the start.
+  Events are not replayed (`Last-Event-ID` is ignored): clients re-read after a reconnect. CORS exposes `Date`.
+- **Data-folder lock** (`internal/datalock`): `harness serve` takes an OS lock on `<data-dir>/harness.lock` before the
+  store is opened (flock on Unix; a no-share open on Windows, compiled but not run; none elsewhere) and refuses a second
+  service with `data_dir_in_use`. A killed holder leaves no stale lock.
+- **Mock model:** the `[essay]` marker gives a long answer with no tools.
+
+
+## Added 2026-11-14: remote access
+
+`internal/remoteaccess` ([remote-access.md](./remote-access.md), spec `2026-11-14-remote-access-mobile-design.md`). Off
+after every start. `bridge.NewAPI` builds the bridge's routes with no token, CORS, MCP or mounts as the inner handler of
+the tunnel listener, which authenticates device tokens itself and lets requests through by an allow-list that denies by
+default; `bridge.WithMount` puts the `/v1/remote` control routes on the main bridge behind the local token. The local
+token never works on the tunnel listener, and no loopback check counts there (every request comes from `cloudflared` on
+`127.0.0.1`). `harness doctor` and `GET /v1/diagnostics` report `cloudflared`. Event `remote.changed`.

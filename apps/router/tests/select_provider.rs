@@ -92,7 +92,7 @@ fn messages_body_type_openrouter_stripped() {
 fn messages_openrouter_folds_system_and_strips_model_marker() {
     let body = br#"{
         "type":"OPENROUTER",
-        "model":"mistralai/devstral-2512[1m]",
+        "model":"qwen/qwen3-coder-next[1m]",
         "messages":[
             {"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]},
             {"role":"system","content":"Claude Code reminder"}
@@ -102,7 +102,7 @@ fn messages_openrouter_folds_system_and_strips_model_marker() {
         resolve_messages_provider(None, body, MessagesProvider::OpenRouter).unwrap();
     assert_eq!(provider, MessagesProvider::OpenRouter);
     let v: Value = serde_json::from_slice(&out).unwrap();
-    assert_eq!(v["model"], "mistralai/devstral-2512");
+    assert_eq!(v["model"], "qwen/qwen3-coder-next");
     assert_eq!(v["system"], "Claude Code reminder");
     assert!(v["messages"]
         .as_array()

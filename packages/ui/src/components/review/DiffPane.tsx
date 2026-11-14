@@ -1,13 +1,14 @@
-import { ChevronDown, ChevronUp } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { ChevronDown, ChevronUp, CornerDownRight } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { ReviewFile, ReviewFileDiff } from "@octo/agent-client";
-import { useDelayedLoading } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import { hunksToTexts } from "../../lib/review/changes";
 import { plural, sizeChange, splitPath } from "../../lib/review/files";
 import type { Anchor } from "../../lib/review/position";
-import { Button, IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
+import { IconMenu } from "../primitives/IconMenu";
 import { Checkbox } from "../primitives/Checkbox";
-import { MenuButton } from "../primitives/MenuButton";
 import { Spinner } from "../primitives/Status";
 import { ImageDiff } from "./ImageDiff";
 import { Counts, Notice } from "./parts";
@@ -45,38 +46,65 @@ export function DiffPane(props: {
   onSelection(anchor: Anchor | null): void;
   /** The comment box, docked under the diff. */
   composer: ReactNode;
-  /** The list as a picker (narrow windows) sits above the toolbar. */
+  /** The list as a picker (page mode): it takes the file name's place in the bar. */
   picker?: ReactNode;
+  /** Page mode: previous / next file live in the bar's "⋯". */
+  onStepFile?(dir: 1 | -1): void;
+  /** Opens the file (at a line) where the review's code is: its workspace, else the project's folder. Absent: no way to open. */
+  onOpenAt?(line?: number): void;
+  /** Where `onOpenAt` opens, for the tooltip ("in the review's workspace"). */
+  openWhere?: string;
 }) {
   const f = props.file;
+  const [firstLine, setFirstLine] = useState<number | null>(null);
+  const canOpen = props.onOpenAt !== undefined && f.status !== "deleted" && !f.binary;
   const { dir, name } = splitPath(f.path);
   const loading = useDelayedLoading(props.diff.status === "loading");
   return (
     <div className="@container/diff flex min-h-0 min-w-0 flex-1 flex-col">
-      {props.picker}
-      <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-0 border-b border-line px-2">
-        <span className="flex min-w-32 flex-1 items-baseline gap-2 py-1.5 pl-1">
-          <span className="shrink-0 truncate text-sm text-fg" title={f.path}>
-            {name}
+      {/* R4 (polish step 6b): the file's bar is one 40px line with the editor bar's controls (28px, 16px glyphs, gap 4): the
+          name leads, the folder and counts are meta, then Viewed, previous / next change and "⋯". In page mode (R6) the file
+          picker takes the name's place on the same line. */}
+      <div data-diff-bar className="flex h-ctl-lg shrink-0 items-center gap-1 border-b border-line px-2 touch:h-auto touch:min-h-ctl-lg touch:py-1">
+        {props.picker ?? (
+          <span className="flex min-w-0 flex-1 items-baseline gap-2 pl-2">
+            <span className="min-w-0 shrink-0 truncate text-sm font-medium text-fg" title={f.path}>
+              {name}
+            </span>
+            <span className="min-w-0 truncate text-xs text-fg-3 @max-md/diff:hidden">{f.old_path ? `renamed from ${f.old_path}` : dir}</span>
+            <Counts added={f.added} removed={f.removed} className={f.binary ? "hidden" : "@max-xs/diff:hidden"} />
+            {props.sinceReview && <span className="shrink-0 text-xs text-warn">since your review</span>}
           </span>
-          <span className="min-w-0 truncate text-xs text-fg-3 @max-md/diff:hidden">{f.old_path ? `renamed from ${f.old_path}` : dir}</span>
-          <Counts added={f.added} removed={f.removed} className={f.binary ? "hidden" : "@max-xs/diff:hidden"} />
-          {props.sinceReview && <span className="shrink-0 text-xs text-warn">since your review</span>}
-        </span>
+        )}
         <span className="flex shrink-0 items-center gap-1">
-          <span title={f.viewed ? "Viewed (v)" : "Mark as viewed (v)"} className="px-2">
+          <span title={f.viewed ? "Viewed (v)" : "Mark as viewed (v)"} className="flex px-2">
             <Checkbox label="Viewed" checked={f.viewed} onChange={props.onViewed} />
           </span>
-          <IconButton icon={ChevronUp} label="Previous change (k)" onClick={() => props.onStepChange(-1)} className="max-md:size-10" />
-          <IconButton icon={ChevronDown} label="Next change (j)" onClick={() => props.onStepChange(1)} className="max-md:size-10" />
-          <MenuButton
+          <IconButton icon={ChevronUp} label="Previous change (k)" onClick={() => props.onStepChange(-1)} />
+          <IconButton icon={ChevronDown} label="Next change (j)" onClick={() => props.onStepChange(1)} />
+          {/* As in Changes (DiffPanel): the first changed line, opened in the editor; the line numbers of the new side open it too. */}
+          {canOpen && firstLine !== null && (
+            <IconButton
+              icon={CornerDownRight}
+              label={`Go to line ${firstLine}`}
+              title={`Go to line ${firstLine}${props.openWhere ? ` ${props.openWhere}` : ""}`}
+              onClick={() => props.onOpenAt?.(firstLine)}
+            />
+          )}
+          <IconMenu
             label="More for this file"
-            text="More"
-            alignEnd
             items={[
+              ...(props.onStepFile
+                ? [
+                    { id: "prev-file", label: "Previous file", run: () => props.onStepFile?.(-1) },
+                    { id: "next-file", label: "Next file", run: () => props.onStepFile?.(1) },
+                    { id: "sep-file", separator: true } as const,
+                  ]
+                : []),
               { id: "ws", label: "Ignore whitespace", checked: props.ignoreWhitespace, run: props.onToggleWhitespace },
               { id: "expand", label: "Show all lines", checked: props.expanded, run: props.onToggleExpanded },
               { id: "comment", label: "Comment on this file", run: props.onFileComment },
+              ...(canOpen ? [{ id: "open", label: "Open file", run: () => props.onOpenAt?.() }] : []),
             ]}
           />
         </span>
@@ -102,7 +130,7 @@ export function DiffPane(props: {
             </div>
           ) : null
         ) : (
-          <Body {...props} file={f} diff={props.diff.diff} />
+          <Body {...props} file={f} diff={props.diff.diff} onFirstLine={setFirstLine} />
         )}
       </div>
       {props.composer}
@@ -110,7 +138,7 @@ export function DiffPane(props: {
   );
 }
 
-function Body(props: Omit<Parameters<typeof DiffPane>[0], "diff"> & { diff: ReviewFileDiff }) {
+function Body(props: Omit<Parameters<typeof DiffPane>[0], "diff"> & { diff: ReviewFileDiff; onFirstLine(line: number | null): void }) {
   const { file: f, diff } = props;
   const texts = useMemo(() => hunksToTexts(diff.hunks), [diff.hunks]);
   const runs = useMemo(() => runsOf(diff.hunks), [diff.hunks]);
@@ -158,6 +186,8 @@ function Body(props: Omit<Parameters<typeof DiffPane>[0], "diff"> & { diff: Revi
       renderZone={props.renderZone}
       onAnchor={props.onAnchor}
       onSelection={props.onSelection}
+      onFirstLine={props.onFirstLine}
+      {...(props.onOpenAt && f.status !== "deleted" ? { onGoToLine: (line: number) => props.onOpenAt?.(line) } : {})}
     />
   );
 }

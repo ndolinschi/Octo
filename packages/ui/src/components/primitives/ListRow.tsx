@@ -17,7 +17,8 @@ import { MiddleText } from "./MiddleText";
  * - Interactive when it has `onClick` (a button) or `href` (a link); otherwise a static row. Roving focus: the main element
  *   carries `data-row`, so `useRowKeys` / `moveInList` work on the list; a listbox passes `role="option"` and `active`.
  * - `selected` is the standard selection (`active` fill; `aria-current`, or `aria-selected` for an option). `active` is the
- *   active-descendant highlight of a combobox list (same fill, no ARIA state: the listbox owns it).
+ *   active-descendant highlight of a combobox list (same fill, no ARIA state: the listbox owns it). Hover is the `hover` tint,
+ *   and half of it on an `option` row, so in a listbox the pointer's row never looks like the selected one (B58).
  * - Truncation: the title has priority and gives way last; `truncate="middle"` keeps the end of a path or id; the meta and
  *   description give way first. The meta never shrinks (a short time or count always shows whole) but stops at 40% of the
  *   row, where it clips with an ellipsis.
@@ -33,12 +34,16 @@ export function ListRow(props: {
   leading?: ReactNode;
   meta?: ReactNode;
   trailing?: ReactNode;
+  /** The trailing actions show at all times, not on hover/focus (the one action a row needs: Retry on a failed row). */
+  trailingShown?: boolean;
   size?: RowSize;
   selected?: boolean;
   active?: boolean;
   disabled?: boolean;
   /** A row that folds or unfolds something ("6 more", "Show fewer"): `aria-expanded`. */
   expanded?: boolean;
+  /** A `treeitem`'s depth (`aria-level`): the sidebar's project (1) and session (2) rows. */
+  level?: number;
   truncate?: "end" | "middle";
   tone?: "default" | "quiet";
   onClick?: MouseEventHandler<HTMLElement>;
@@ -56,6 +61,7 @@ export function ListRow(props: {
     ...selectionAria(props.role, selected),
     ...(disabled ? { "aria-disabled": true } : {}),
     ...(props.expanded === undefined ? {} : { "aria-expanded": props.expanded }),
+    ...(props.level === undefined ? {} : { "aria-level": props.level }),
   };
   const main = cn(
     "flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-sm px-2 text-left text-sm",
@@ -78,9 +84,11 @@ export function ListRow(props: {
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-2">
           {title}
-          {props.meta !== undefined && <span className="ml-auto max-w-[40%] shrink-0 truncate pl-1 text-xs text-fg-3">{props.meta}</span>}
+          {props.meta !== undefined && (
+            <span className={cn("ml-auto max-w-[40%] shrink-0 truncate pl-1 text-xs", selected || active ? "text-fg-2" : "text-fg-3")}>{props.meta}</span>
+          )}
         </span>
-        {twoLine && <span className="min-w-0 truncate text-xs text-fg-3">{props.description}</span>}
+        {twoLine && <span className={cn("min-w-0 truncate text-xs", selected || active ? "text-fg-2" : "text-fg-3")}>{props.description}</span>}
       </span>
     </>
   );
@@ -89,7 +97,11 @@ export function ListRow(props: {
       className={cn(
         "group flex min-w-0 items-center rounded-sm",
         rowHeight(props.size ?? "sm", twoLine),
-        selected || active ? "bg-active text-fg" : cn(props.tone === "quiet" ? "text-fg-2" : "text-fg", interactive && "hover:bg-hover"),
+        selected || active
+          ? "bg-active text-fg"
+          : // B58 (polish step 2): in a listbox the keyboard's row and the pointer's row are both shown at once, so the pointer's
+            // tint is half the hover tint there and never reads as a second selection.
+            cn(props.tone === "quiet" ? "text-fg-2" : "text-fg", interactive && (props.role === "option" ? "hover:bg-hover/50" : "hover:bg-hover")),
         disabled && "text-fg-3",
         props.className,
       )}
@@ -109,7 +121,12 @@ export function ListRow(props: {
         </div>
       )}
       {props.trailing !== undefined && (
-        <span className="flex shrink-0 items-center gap-0.5 pr-1 opacity-0 transition-opacity duration-100 group-focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100">
+        <span
+          className={cn(
+            "flex shrink-0 items-center gap-0.5 pr-1",
+            !props.trailingShown && "opacity-0 transition-opacity duration-100 group-focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100",
+          )}
+        >
           {props.trailing}
         </span>
       )}

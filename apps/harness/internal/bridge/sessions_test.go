@@ -77,7 +77,8 @@ func TestMainSessionsNewResumeArchiveDelete(t *testing.T) {
 	}
 
 	var created sessionOne
-	e.into(t, "POST", "/v1/projects/"+pid+"/sessions", map[string]string{"title": "Second thoughts"}, http.StatusCreated, &created)
+	// Schema 15: a new session becomes the default only when asked (make_default).
+	e.into(t, "POST", "/v1/projects/"+pid+"/sessions", map[string]any{"title": "Second thoughts", "make_default": true}, http.StatusCreated, &created)
 	if !created.Session.Current || created.Session.Title != "Second thoughts" || created.Session.ID == first.ID || created.Session.Exchanges != 0 {
 		t.Fatalf("created = %+v", created.Session)
 	}
@@ -147,8 +148,8 @@ func TestMainSessionsNewResumeArchiveDelete(t *testing.T) {
 	if len(viaAgent.Messages) == 0 || len(viaAgent.Messages) >= len(tr.Messages)+len(viaAgent.Messages) {
 		t.Fatalf("agent messages of session = %+v", viaAgent)
 	}
-	if len(viaAgent.Conversations) != 1 {
-		t.Fatalf("the clear that started the second session is its marker: %+v", viaAgent.Conversations)
+	if len(viaAgent.Conversations) != 0 {
+		t.Fatalf("a new session made without /clear has no carry-over marker: %+v", viaAgent.Conversations)
 	}
 
 	// Edit, archive, filter.
@@ -213,7 +214,7 @@ func TestSessionEvents(t *testing.T) {
 	var first sessionOne
 	var l = e.sessions(t, pid, "")
 	first.Session = l[0]
-	e.into(t, "POST", "/v1/projects/"+pid+"/sessions", nil, http.StatusCreated, nil)
+	e.into(t, "POST", "/v1/projects/"+pid+"/sessions", map[string]any{"make_default": true}, http.StatusCreated, nil)
 	var got []sseEvent
 	deadline := time.After(10 * time.Second)
 	for count(got, "session.created") == 0 || count(got, "session.current") == 0 {
@@ -275,7 +276,8 @@ func TestClearedSessionIsNotWorking(t *testing.T) {
 	}
 }
 
-// A turn in progress: resume and new session are 409 turn_in_progress; the working state is shown; Stop ends it.
+// A turn in progress: /clear of it is 409 turn_in_progress, a new session and a new default are not; the working
+// state is shown; Stop ends it.
 func TestSessionsWhileATurnRuns(t *testing.T) {
 	gate := make(chan struct{})
 	e := newEnv(t, gate)
@@ -306,7 +308,7 @@ func TestSessionsWhileATurnRuns(t *testing.T) {
 	collectUntilTurnFinished(t, stream)
 	first := e.sessions(t, pid, "")[0]
 	var created sessionOne
-	e.into(t, "POST", "/v1/projects/"+pid+"/sessions", nil, http.StatusCreated, &created)
+	e.into(t, "POST", "/v1/projects/"+pid+"/sessions", map[string]any{"make_default": true}, http.StatusCreated, &created)
 	close(feed) // from here the model never answers
 	<-fed
 	e.into(t, "POST", "/v1/projects/"+pid+"/messages", map[string]string{"text": "quick wait"}, http.StatusAccepted, nil)
@@ -320,13 +322,16 @@ func TestSessionsWhileATurnRuns(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	e.wantError(t, "POST", "/v1/projects/"+pid+"/sessions", nil, http.StatusConflict, "turn_in_progress")
-	e.wantError(t, "POST", "/v1/projects/"+pid+"/sessions/"+first.ID+"/resume", nil, http.StatusConflict, "turn_in_progress")
-	e.wantError(t, "DELETE", "/v1/projects/"+pid+"/sessions/"+created.Session.ID, nil, http.StatusConflict, "current_session")
+	// Schema 15: /clear of the running session is refused; a new session and making another one the default are not
+	// (nothing is stopped or rebuilt); the default and a running session cannot be deleted.
+	e.wantError(t, "POST", "/v1/projects/"+pid+"/sessions", map[string]any{"clear": true}, http.StatusConflict, "turn_in_progress")
+	e.into(t, "POST", "/v1/projects/"+pid+"/sessions/"+first.ID+"/resume", nil, http.StatusOK, nil)
+	e.wantError(t, "DELETE", "/v1/projects/"+pid+"/sessions/"+first.ID, nil, http.StatusConflict, "current_session")
+	e.wantError(t, "DELETE", "/v1/projects/"+pid+"/sessions/"+created.Session.ID, nil, http.StatusConflict, "session_running")
 	e.into(t, "POST", "/v1/projects/"+pid+"/sessions/"+created.Session.ID+"/stop", nil, http.StatusOK, nil)
 	collectUntilTurnFinished(t, stream)
 	e.wantError(t, "POST", "/v1/projects/"+pid+"/sessions/"+created.Session.ID+"/stop", nil, http.StatusConflict, "not_running")
-	if cur := current(t, e.sessions(t, pid, "")); cur.State != "stopped" {
-		t.Fatalf("a stopped turn leaves the session stopped: %+v", cur)
+	if d := e.sessionDetail(t, pid, created.Session.ID); d.Session.State != "stopped" {
+		t.Fatalf("a stopped turn leaves the session stopped: %+v", d.Session)
 	}
 }

@@ -16,16 +16,13 @@ func validMode(m *string) error {
 	return nil
 }
 
-// LatestPlan is the plan the newest plan-mode turn produced.
+// LatestPlan is the plan the newest plan-mode turn produced. A project without one answers
+// projectstore.ErrNotFound (not a 404 *Error): the bridge turns it into 200 {"plan": null}.
 func (s *Service) LatestPlan(ctx context.Context, pid string) (projectstore.Plan, error) {
 	if _, err := s.db(ctx, pid); err != nil {
 		return projectstore.Plan{}, err
 	}
-	p, err := s.turns.LatestPlan(ctx, pid)
-	if errors.Is(err, projectstore.ErrNotFound) {
-		return p, notFound("plan")
-	}
-	return p, err
+	return s.turns.LatestPlan(ctx, pid)
 }
 
 // ApprovePlan approves a plan and starts an agent turn with it pinned.
@@ -41,6 +38,8 @@ func (s *Service) ApprovePlan(ctx context.Context, pid, planID string) (projects
 		return p, msg, of(KindConflict, usererr.PlanNotPending())
 	case errors.Is(err, orchestrator.ErrTurnInProgress):
 		return p, msg, turnInProgress()
+	case errors.Is(err, orchestrator.ErrNoSlot):
+		return p, msg, slotsFull(s, pid)
 	}
 	return p, msg, err
 }
@@ -53,6 +52,11 @@ func (s *Service) Rewind(ctx context.Context, pid string, messageID int64, dryRu
 		return orchestrator.RewindReport{}, err
 	}
 	rep, err := s.turns.Rewind(ctx, pid, messageID, dryRun)
+	return rewindErr(rep, err, dryRun)
+}
+
+// rewindErr maps a rewind's refusal to the API's errors.
+func rewindErr(rep orchestrator.RewindReport, err error, dryRun bool) (orchestrator.RewindReport, error) {
 	switch {
 	case errors.Is(err, orchestrator.ErrNotRequest):
 		return rep, invalid("message_id must be the id of one of this conversation's user requests")

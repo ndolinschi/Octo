@@ -36,7 +36,7 @@ flowchart LR
 
 ## Why it exists
 
-Claude Code speaks Anthropic Messages and often sends Anthropic-only fields (`output_config`, `safeguards`, `context_management`, thinking blocks). OpenRouter Mistral / Devstral models reject those under `provider.require_parameters`, returning **404 Filter by Parameters**. Autoroute strips/hygiene-shapes the body, chooses cheaper models when the turn is easy, escalates on stall, and keeps FinOps-oriented history.
+Claude Code speaks Anthropic Messages and often sends Anthropic-only fields (`output_config`, `safeguards`, `context_management`, thinking blocks). Some OpenRouter models and providers reject those under `provider.require_parameters`, returning **404 Filter by Parameters**. Autoroute strips/hygiene-shapes the body, chooses cheaper models when the turn is easy, escalates on stall, and keeps FinOps-oriented history.
 
 ## Quick capability map
 

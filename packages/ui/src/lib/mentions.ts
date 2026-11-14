@@ -1,3 +1,5 @@
+import { OCTO_COMMAND_NAMES } from "./slash";
+
 /**
  * Decision 70: what the composer understands in the text, as spans. The highlight is a layer under the text area (the
  * same characters, transparent), so only the spans' positions matter and nothing here changes metrics.
@@ -5,14 +7,15 @@
 
 export type Span = { kind: "text" | "mention" | "command"; text: string };
 
-/** The `/` actions the composer's menu runs (`ComposerMenu`); any other `/word` stays plain. */
-export const COMMAND_NAMES: readonly string[] = ["settings", "agents", "notes", "files", "details", "comments"];
-
 const TRAILING = /[.,;:!?)\]}'"]+$/;
 const TOKEN = /(^|\s)([@/])([^\s]+)/g;
 
-/** `@path` (needs a `/` or a file extension, so a handle like `@maya` stays plain) or a known `/command`. */
-export function composerSpans(text: string): Span[] {
+/**
+ * `@path` (needs a `/` or a file extension, so a handle like `@maya` stays plain) or a known `/command` at the start of the text,
+ * the only place a command runs (`parseSlash`); a `/word` anywhere else stays plain. `commands`: the names that count (the
+ * Octo commands by default; a caller with the project's live list may pass its names).
+ */
+export function composerSpans(text: string, commands: readonly string[] = OCTO_COMMAND_NAMES): Span[] {
   const marks: { start: number; end: number; kind: "mention" | "command" }[] = [];
   for (const m of text.matchAll(TOKEN)) {
     const lead = m[1] ?? "";
@@ -22,7 +25,7 @@ export function composerSpans(text: string): Span[] {
     const start = m.index + lead.length;
     if (sigil === "@" && /[./]/.test(body.replace(/^[./~]+$/, "")) && /[\w]/.test(body)) {
       marks.push({ start, end: start + 1 + body.length, kind: "mention" });
-    } else if (sigil === "/" && COMMAND_NAMES.includes(body.toLowerCase()) && body === raw) {
+    } else if (sigil === "/" && text.slice(0, start).trim() === "" && commands.includes(body.toLowerCase()) && body === raw) {
       marks.push({ start, end: start + 1 + body.length, kind: "command" });
     }
   }

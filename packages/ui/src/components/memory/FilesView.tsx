@@ -8,6 +8,7 @@ import { formatDay, formatWhen } from "../../lib/memory/dates";
 import { draftProblem, fileDir, fileName, formatBytes, sortFiles } from "../../lib/memory/files";
 import type { Load } from "../../lib/memory/load";
 import { useApp } from "../../state/app";
+import { useBlockFloating } from "../../state/workspace/useFloatingHere";
 import { Button } from "../primitives/Button";
 import { Field } from "../primitives/Field";
 import { fileIcon } from "../primitives/fileIcons";
@@ -15,7 +16,7 @@ import { Glyph } from "../primitives/Glyph";
 import { ListDetail } from "../primitives/ListDetail";
 import { ListRow } from "../primitives/ListRow";
 import { Notice } from "../primitives/Notice";
-import { DetailHeader } from "../primitives/Panel";
+import { DetailHeader, FormActions } from "../primitives/Panel";
 import { SkeletonText } from "../primitives/Skeleton";
 import { TextArea, TextField } from "../primitives/TextField";
 import { Prose } from "../shared/Prose";
@@ -39,7 +40,7 @@ export function FilesView(props: {
   const current = files?.find((f) => f.path === props.selected) ?? null;
   if (props.load.status === "error") return <MemoryError message={props.load.message} onRetry={props.reload} />;
   if (files && sorted.length === 0)
-    return <PaneEmpty title="No memory files">Files the orchestrator writes to remember things between requests appear here.</PaneEmpty>;
+    return <PaneEmpty title="No memory files yet">Files the orchestrator writes to remember things between requests appear here.</PaneEmpty>;
   return (
     <ListDetail
       label="Files"
@@ -155,6 +156,7 @@ function FileDetail(props: { projectId: string; file: MemoryFile; now: number; o
 }
 
 function FileEditor(props: { file: MemoryFile; onCancel(): void; onSave(content: string, summary: string): Promise<void> }) {
+  useBlockFloating();
   const [content, setContent] = useState(props.file.content ?? "");
   const [summary, setSummary] = useState(props.file.summary);
   const [busy, setBusy] = useState(false);
@@ -162,8 +164,23 @@ function FileEditor(props: { file: MemoryFile; onCancel(): void; onSave(content:
   const id = useId();
   const first = useRef<HTMLInputElement>(null);
   useEffect(() => first.current?.focus(), []);
-  const problem = draftProblem(content) ?? (summary.trim() === "" ? "A file needs a one-line summary" : null);
+  const summaryProblem = summary.trim() === "" ? "A file needs a one-line summary" : null;
+  const textProblem = draftProblem(content);
+  const problem = textProblem ?? summaryProblem;
   const dirty = content !== (props.file.content ?? "") || summary !== props.file.summary;
+  const [discarding, setDiscarding] = useState(false);
+  const lastField = useRef<HTMLElement | null>(null);
+  const keepRef = useRef<HTMLButtonElement>(null);
+  // Esc and Cancel close at once when nothing changed; otherwise they ask first, in the action row.
+  const cancel = () => {
+    if (!dirty) return props.onCancel();
+    setDiscarding(true);
+    requestAnimationFrame(() => keepRef.current?.focus());
+  };
+  const keepEditing = () => {
+    setDiscarding(false);
+    requestAnimationFrame(() => (lastField.current?.isConnected ? lastField.current : first.current)?.focus());
+  };
   const save = async () => {
     setBusy(true);
     setError(null);
@@ -177,40 +194,69 @@ function FileEditor(props: { file: MemoryFile; onCancel(): void; onSave(content:
   return (
     <form
       className="flex flex-col gap-3 pt-4"
+      onFocus={(e) => {
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) lastField.current = e.target;
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          if (discarding) keepEditing();
+          else if (!busy) cancel();
+        }
+      }}
       onSubmit={(e) => {
         e.preventDefault();
         if (!problem && dirty && !busy) void save();
       }}
     >
-      <Field label="Summary" htmlFor={`${id}-s`} hint="One line; it shows in the memory index.">
-        <TextField id={`${id}-s`} value={summary} onChange={(e) => setSummary(e.target.value)} ref={first} />
+      <Field
+        label="Summary"
+        htmlFor={`${id}-s`}
+        hint={summaryProblem ? undefined : "One line; it shows in the memory index."}
+        error={summaryProblem}
+        errorId={`${id}-se`}
+      >
+        <TextField
+          id={`${id}-s`}
+          value={summary}
+          onChange={(e) => setSummary(e.target.value)}
+          ref={first}
+          aria-invalid={summaryProblem ? true : undefined}
+          aria-describedby={summaryProblem ? `${id}-se` : undefined}
+        />
       </Field>
-      <Field label="Text" htmlFor={`${id}-c`} error={problem && summary.trim() !== "" ? problem : null} errorId={`${id}-e`}>
+      <Field label="Text" htmlFor={`${id}-c`} error={textProblem} errorId={`${id}-e`}>
         <TextArea
           id={`${id}-c`}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           rows={14}
           spellCheck={false}
-          aria-describedby={`${id}-e`}
+          aria-invalid={textProblem ? true : undefined}
+          aria-describedby={textProblem ? `${id}-e` : undefined}
           className="font-mono text-xs"
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.stopPropagation();
-              props.onCancel();
-            }
-          }}
         />
       </Field>
       {error && <Notice tone="error">Could not save the file: {error}. Your text is still here; save again.</Notice>}
-      <div className="flex gap-2">
-        <Button type="submit" variant="primary" loading={busy} disabled={!!problem || !dirty}>
-          {busy ? "Saving" : "Save"}
-        </Button>
-        <Button variant="quiet" onClick={props.onCancel} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
+      {discarding ? (
+        <FormActions key="discard" note="Discard changes?" label="Discard changes">
+          <Button size="sm" variant="quiet" ref={keepRef} onClick={keepEditing}>
+            Keep editing
+          </Button>
+          <Button size="sm" variant="danger" onClick={props.onCancel}>
+            Discard
+          </Button>
+        </FormActions>
+      ) : (
+        <FormActions key="actions">
+          <Button size="sm" variant="quiet" onClick={cancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button size="sm" type="submit" variant="primary" loading={busy} disabled={!!problem || !dirty}>
+            {busy ? "Saving" : "Save"}
+          </Button>
+        </FormActions>
+      )}
     </form>
   );
 }

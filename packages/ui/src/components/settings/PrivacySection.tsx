@@ -62,7 +62,7 @@ function ReportRow({ diag, retry }: { diag: DiagLoad; retry(): void }) {
   if (diag.status === "unavailable")
     return <SettingsRow rowId="diagnostics" title="Copy diagnostic report" description="This connection does not offer diagnostics." />;
   if (diag.status === "error")
-    return <LoadErrorRow what="the diagnostic report" message={diag.message} hint="Retry once the harness is running." onRetry={retry} />;
+    return <LoadErrorRow what="the diagnostic report" message={diag.message} hint="Retry once Octo's local service is running." onRetry={retry} />;
   const problems = diag.status === "ready" ? diag.d.problems.length : 0;
   return (
     <SettingsRow
@@ -93,16 +93,16 @@ function TraceRow() {
   return (
     <SettingsRow
       rowId="trace"
-      title="Record an ACP wire trace"
+      title="Record what agents send and receive"
       htmlFor={s ? id : undefined}
-      help="One file per agent session under the data folder's traces directory, secrets removed, size-capped. Turn it on to diagnose a failing agent, then send the file with the report."
-      description={s ? "What agents send and receive, written to the data folder." : "Not available on this connection."}
+      help="One file per agent session in the data folder's traces folder (the agent protocol, ACP), secrets removed, size-capped. Turn it on to diagnose a failing agent, then send the file with the report."
+      description={s ? "Saves each agent conversation to a file in the data folder, secrets removed." : "Not available on this connection."}
       status={<SaveStatus state={saved} restart={s ? harness.needsRestart(s.id) : false} onRestart={restart} />}
       control={
         s ? (
           <Switch
             id={id}
-            label="Record an ACP wire trace"
+            label="Record what agents send and receive"
             disabled={!s.editable}
             checked={s.value === true}
             onChange={(on) => void run(() => harness.save({ set: { [s.id]: on } }))}
@@ -119,7 +119,7 @@ function DataDirRow({ dir }: { dir: string | null }) {
     <SettingsRow
       rowId="data-dir"
       title="Data folder"
-      description={dir ? <code className="font-mono text-xs break-all">{dir}</code> : "Known once the harness reports diagnostics."}
+      description={dir ? <code className="font-mono text-xs break-all">{dir}</code> : "Known once Octo's local service reports it."}
       control={
         dir ? (
           <Button size="sm" icon={copied ? Check : Copy} onClick={() => copy(dir)}>
@@ -152,8 +152,8 @@ function ChildEnvRow() {
       rowId="child-env"
       title="Environment passed to agents"
       htmlFor={id}
-      help={s.hint}
-      description="Extra variable names (or PREFIX_*) agents and tools may see."
+      help={`${s.hint ?? ""} A name ending in * (such as MY_APP_*) covers every variable that starts with it.`.trim()}
+      description="Names of extra environment variables agents and tools may see, separated by commas."
       status={<SaveStatus state={saved} />}
       control={
         <TextField
@@ -170,20 +170,5 @@ function ChildEnvRow() {
         />
       }
     />
-  );
-}
-
-export function AboutSection() {
-  const { version, demo, bridgeUrl, shell } = useApp();
-  return (
-    <SettingsGroup label="About">
-      <SettingsRow
-        rowId="version"
-        title="Harness version"
-        description={demo ? "Demo data, in memory: no harness runs." : "The harness this window is connected to."}
-        control={<span className="text-sm text-fg-2 tabular-nums">{version ?? "Unknown"}</span>}
-      />
-      <SettingsRow title="App" description={`The ${shell} app, talking to ${bridgeUrl}.`} />
-    </SettingsGroup>
   );
 }

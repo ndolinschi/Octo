@@ -12,6 +12,7 @@ const (
 	CodeProviderNotReady     = "model_unavailable"
 	CodeBudgetReached        = "budget_reached"
 	CodeTurnInProgress       = "turn_in_progress"
+	CodeTurnInterrupted      = "turn_interrupted"
 	CodeSideInProgress       = "side_in_progress"
 	CodeQueueFull            = "queue_full"
 	CodeImagesUnsupported    = "images_unsupported"
@@ -100,6 +101,24 @@ func ModelCallFailed(details string) *Error {
 	}
 }
 
+// ModelUnreachable: the connection to the model's service failed or broke off
+// in the middle of an answer (refused, reset, cut).
+func ModelUnreachable(details string) *Error {
+	return &Error{
+		Code: "model_unreachable", Message: "The connection to the model broke off.",
+		Hint: "Check the network and the provider in Settings, then try again.", Action: ActionRetry, Details: clip(details),
+	}
+}
+
+// RouterUnreachable: the same, when the model is reached through the Octo
+// router (it stopped or restarted).
+func RouterUnreachable(details string) *Error {
+	return &Error{
+		Code: "router_unreachable", Message: "The Octo router stopped answering.",
+		Hint: "Restart Octo (it starts the router again), then try again.", Action: ActionRetry, Details: clip(details),
+	}
+}
+
 // ApiKeyRejected: the provider refused the API key.
 func ApiKeyRejected(details string) *Error {
 	return &Error{
@@ -129,6 +148,18 @@ func BudgetReached(spent, budget float64) *Error {
 	return e
 }
 
+// BudgetCut: the project's budget ran out while a request was being answered; the harness capped the answer's
+// length at what the rest of the budget could buy and the answer reached that cap, so it was stopped there.
+func BudgetCut(spent, budget float64) *Error {
+	e := BudgetReached(spent, budget)
+	e.Message = "This project's budget ran out during this request; the answer was stopped mid-request."
+	if spent >= 0 && budget >= 0 {
+		e.Message = fmt.Sprintf("This project's budget ran out during this request (%s of %s); the answer was stopped mid-request.", usd(spent), usd(budget))
+	}
+	e.Hint = "What it had written is kept. Raise the budget in the project's settings to go on."
+	return e
+}
+
 // usd uses two decimals, or four for an amount under a cent so a $0.0042
 // spend does not read as $0.00.
 func usd(v float64) string {
@@ -143,6 +174,19 @@ func TurnInProgress() *Error {
 	return &Error{
 		Code: CodeTurnInProgress, Message: "Octo is already working on a request in this project.",
 		Hint: "Wait for it to finish, or stop it first.",
+	}
+}
+
+// TurnInterrupted: the harness stopped (a crash, a kill, a restart) while a
+// request was running; the turn was closed when it started again.
+func TurnInterrupted(kept bool) *Error {
+	hint := "Nothing had been written yet. Retry to run the request again."
+	if kept {
+		hint = "What it had written before the restart is kept. Retry to run the request again."
+	}
+	return &Error{
+		Code: CodeTurnInterrupted, Message: "Octo's local service restarted while this request was running.",
+		Hint: hint, Action: ActionRetry,
 	}
 }
 

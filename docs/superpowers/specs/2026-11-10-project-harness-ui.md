@@ -1767,7 +1767,7 @@ selected rows may still use `fg-2` for emphasis).
 ### Type
 
 System stack: `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`;
-mono `ui-monospace, "SF Mono", Menlo, Consolas, monospace`. No bundled fonts.
+mono `ui-monospace, "SF Mono", Menlo, Consolas, monospace`. No bundled fonts (superseded by the owner's audit, 2026-11-14: Inter is bundled; see "As built — the owner's UI audit").
 
 | Role | Size / line-height | Weight |
 | --- | --- | --- |
@@ -2879,3 +2879,694 @@ columns). Measurements and screenshots: `docs/superpowers/research/2026-11-13-pa
 - Verified: type check, eslint (0 errors), prettier, cycles, ui tests, spacing audit, width stability, frame colours on the
   dev server with `?demo=1`, dark and light at 1440x900, 900x600 and 390x700. Not verified: WebKit (`:has` is supported there
   but untested), the live harness.
+
+## As built — fixes after the UI verification of 2026-11-13
+
+Findings and ids: `docs/superpowers/research/2026-11-13-ui-verification.md`. Each batch was checked by its executor and
+again by the orchestrator with Playwright against `?demo=1` (Chromium); not verified: WebKit, a live harness, touch.
+
+- **Batch 1a.** A14: Settings → Providers under the list–detail floor opens the detail (`@max-3xl:hidden`; `max-@3xl:` was
+  not a class). A3: `Segmented` gives the first option `tabIndex 0` when no option is chosen, so a required choice can be
+  reached and made with the keyboard (checked: the Deploy settings form sent with keys only). B47: `Segmented` segments and
+  `FilterTabs` chips carry `touch-hit`. B64: `FilterTabs` counts are plain `fg-3`. B45: `ToneDot` is `inline-block` (8×8;
+  checked in Settings → Providers, not on the connect screen). A4, B17: `lib/errors/plain.ts` maps a text to "The provider
+  did not accept the key" only when it speaks of an API key; a bare 401 falls to the first plain sentence (Billing webhooks:
+  "Staging rejected the webhook signing secret (401)." with Retry); key refusals carry `action: "open_settings"`. A6: only a
+  `ContextRing` that is laid out answers Ctrl+Shift+U.
+- **Batch 1b.** A13: the note editor and the memory file editor compare every field with what they opened with; when dirty,
+  Esc or Cancel swaps the action row for "Discard changes? · Keep editing · Discard" (an `alertdialog` row, written inline in
+  both editors, no shared primitive); "Keep editing" returns focus to the field that had it; clean forms close as before.
+  B36: an empty Summary shows "A file needs a one-line summary" at the field. B35 (order only): the memory file editor's
+  actions are at the right, Cancel then Save. A12: the Add row in Knowledge wraps, so "Remember" stays inside the panel at 347
+  and 374 px. B31: a group's items are indented to the header's text line. A8: in the diff header the name takes the free
+  space and truncates; below the container's `md` the counts, the folder and Revert's label are hidden (Revert is icon-only
+  with a title). A7 (Changes half): the Changes list and the diff end with `FloatRoom`, so the last diff lines scroll clear of
+  the floating composer. Not done: the composer over Notes, Memory and other tool tabs in one-strip mode (the rest of A7, B2).
+- **Batch 1c (focus).** A1: opening the Files tool asks the tree for focus (`WorkspaceProvider.openTool` calls
+  `fv.focusTree()`), and the palette runs the chosen command after it has closed and handed focus back, so a command that
+  moves focus keeps it; Esc or a click outside only restores focus. Checked: after Ctrl+K "Show files" typing lands in the
+  filter and the waiting approval is untouched (1440×900, 390×700). **Not changed, owner's decision:** an approval card
+  still takes focus by itself and answers the single keys A / D. A2: an empty Files view that becomes visible opens its
+  group's tree column (`files/useTreeShell.ts`); the editor-bar toggle still hides it. A11: `primitives/Menu` does not return
+  focus to its trigger when the item's action already moved it; the rename field hands focus to "⋯" on Enter and Esc. A9:
+  Esc or Cancel in the review's comment box returns focus to the review, the reply box to its Reply button; a second Esc
+  still restores a maximised group (decision 78). A10: the review header's command block wraps inside a narrow group.
+  Not done: B27 (play glyph in the review header). Gates after batches 1a–1c: `tsc`, 615 unit tests, eslint (0 errors),
+  prettier, `file-open-stability` and `picker-keys` at 1440×900.
+- **Batch 2.** A5: the end of the tab strip folds to keep the tabs `TAB_MIN` each (`state/workspace/tabStrip.ts`: `endPlan`,
+  tested): first "N agents" becomes its glyph and the count (`ProjectTeam compact`; name and tooltip unchanged), then "Run"
+  becomes an icon-only menu button (`ProjectCommands compactRun`). At 390×700 the tab list is 98 px (was 25). B53, partly:
+  with three tool tabs in a side group "Run" folds first; the active tab still shows two characters ("Me…") — four need a
+  larger `TAB_MIN` or a wider minimum for the active tab, left to the owner. B2: the chips over the floating composer are
+  the new opaque `Button` variant `float` (in the gallery). A7, the rest: a tool tab that shows an editing form (note editor,
+  memory file editor, Knowledge "Add") calls `useBlockFloating()` and the floating composer is not shown while the form is
+  mounted. Still as before: over a tool tab without a form the composer covers the lower part of the panel at rest in
+  one-strip mode (the content scrolls clear through `FloatRoom`).
+
+## As built — polish trial, step 1: foundation (2026-11-13; one commit, revertable on its own)
+
+Owner: "it looks unfinished, not levelled; not premium like Cursor or the Claude Code desktop app; adapt, do not copy."
+The orchestrator's reading of 2× screenshots: outlines inside outlines, chrome as loud as content, a muddy light theme,
+widths not set by meaning. Five rules were tried on six screens in both themes; before/after pairs were read by the
+executor and by the orchestrator. **A trial: the owner has not approved the direction yet.**
+
+- **T1, type.** Measured first: chrome was already 13px and meta 12px, so little changed. The composer's text is 14px
+  (was 15), so its placeholder matches the reply; the field placeholder is plain `fg-3` (was `fg-3/60` italic, 3.3:1 —
+  finding B61). Not done: fields and field labels stay 13px.
+- **T2, sidebar rows.** An idle project is one 32px line: a 6px quiet dot, the name, the relative time right-aligned
+  ("1h"); rows that say something (Failed, Working, No requests yet) keep two lines at 40px (`lib/orchestrator.ts`
+  `projectRowLines`, tested). The time hides while the sessions chevron shows. **Departs from decision 29** (idle is a thin
+  ring): only the sidebar draws the dot; Sessions and Home still show rings.
+- **T3, one outline per level.** `primitives/Card` has no border: a card is one tone above its panel (`panel` is now an
+  alias of `raised`); inside a card code blocks and fields take the panel's tone (`.octo-in-card`). The request bubble has
+  no outline. The queue is a band inside the composer's one outline. Fields use a new `--octo-field-edge` (14 % of the
+  foreground) at rest; focus still turns the border `fg`. **Departs from decision 90c** (fields named `input-border`) and is
+  under 3:1 against the surface (WCAG 1.4.11): the field is told by edge plus recessed tone. Not done: `DelegationGroup`,
+  the live plan box and `SentComments` still draw their own frames.
+- **T4, surfaces.** Dark: window `#0b0b0b`, panel `#171717`, raised `#232323`. Light: window `#f5f5f5` (was `#ececec`),
+  raised and code `#f3f3f3`, hover 3.5 %, active 6.5 %. **Differs from the visual spec's colour table** (window `#f2f2f2`,
+  active 7 %), which the old values did not match either. Contrast of `fg`, `fg-2`, `fg-3` on every surface is at or above
+  4.5:1 except `fg-3` on raised+active in dark (4.23:1; no screen puts a selected row on a raised card).
+- **T5, widths.** Settings controls are capped at 16rem (`CONTROL_CAP`); in a provider's model list "default" is a quiet
+  badge after the name.
+- Gates: `tsc`, 617 unit tests, eslint 0 errors, prettier, `spacing-audit` total=0, `width-stability` ok, `frame-colours`
+  ok; 390×700 looked at for the conversation and the drawer. Not verified: WebKit, touch, a screen reader on the new row.
+
+### As built — fixes after the UI verification, batch 3 (conversation)
+
+- B15: `ActivityLine` is not drawn when the last step row already is the current step; `ThinkingRow` shows the done tick
+  ("Thought") once a tool call or text follows it. B16: step rows in a live turn are 8 apart (28 high, 36 pitch). B17,
+  second half: "Check again" is `loading` (keeps focus) while it runs and then says "Checked just now — still not logged
+  in" in a status line. B18: a failed sub-agent's row and the Agents row show the plain sentence of `plainError` dim (the raw
+  text in the tooltip); the row's tone is the glyph's. Not covered: the agent transcript's own text. B19: while an
+  always-allow panel is open "Allow all for this turn" (and "Allow once" on a single card) is secondary, and the toggle
+  keeps its label with `aria-expanded`, so the row does not move. B3, in part: `lib/models.ts` `readableModelId` gives an id
+  without a provider entry a readable name ("DeepSeek v4.1 Flash"); checked in the turn meta line and Usage. Not done:
+  Settings → Editor still prints `claude-haiku-5-5`. Also: Esc in "Add note" closes it and returns focus; the pending plan's
+  body lines up with its header. Checked at 1440×900, mostly dark; not at 390×700.
+
+## As built — polish step 2: the frame (2026-11-13; one commit)
+
+Owner, after step 1: "yes, continue part by part, start with the frame". Rules F1–F7 of the orchestrator's brief; pairs
+of 2× screenshots (dark and light, 1440×900; 900×600 and 390×700 for the narrow states) read by the executor and by the
+orchestrator. All x values are CSS px at 1440×900.
+
+- **F1, sidebar rhythm.** Every project row is one 32px line (40 under touch): glyph at x 24, name at x 48, a right-aligned
+  meta of one thing — idle and failed: the relative time; working: "N agents" or nothing; never started: "new"
+  (`lib/orchestrator.ts` `projectRowLines` returns `{ meta, full }`, test rewritten on purpose). The sentence ("Failed ·
+  GitHub Copilot is not logged in") is in the accessible name only: the tooltip still shows the name, because
+  `spacing-audit.mjs` finds rows by the link's `title`. Nav rows, the "Projects" caption and project rows share the height
+  and both edges; session sub-rows are 32; the sessions chevron sits over the meta column and no longer covers a name.
+  **Replaces** the two-line rows of decision 23 and of step 1's T2.
+- **F2, one idle glyph.** `lib/stateGlyph` draws idle as a quiet dot (radius 3, opacity 0.7), no ring, everywhere the glyph
+  family is used (sidebar, Home, Sessions, palette, tabs). **Revises decision 29** (idle was a thin ring). The dot's
+  contrast as a non-text mark: 4.27 dark / 3.13 light on the window.
+- **F3, top row.** The active tab's title is medium weight (an invisible medium copy keeps every tab's width, so the width
+  model of decision 83 is untouched). The end cluster is one group in the last strip: "N agents", pinned commands, Run,
+  "⋯", 28px tall, gaps 4, labels on the tabs' line. "N agents" moved from the conversation's strip to the last strip
+  (**departs from 91g**) and the divider before pinned commands is gone (**departs from 94c**; the play glyph stays). The
+  window controls sit on the sidebar's glyph column. Known cost: in a side group with many tool tabs the tabs get about
+  50px less room.
+- **F4, status bar.** Left glyph on the sidebar's glyph column, last text on the panel's right edge; empty slots take no gap.
+- **F5, Home.** The heading and the tiles share the cards' left edge; a tile with 0 is quiet, glyph included; "New project"
+  and "N more projects" are a quiet action line under the card; "N more projects" expands the whole list on Home (with
+  "Show fewer"), and Needs you / Working are never cut (B55); a project never started says "No requests yet" once (B54).
+- **F6, palette.** Project rows take their glyph and meta from the live state (a failed project shows as failed); captions
+  sit on the rows' text edge; an unselected `role="option"` row hovers at half strength (`primitives/ListRow`), so the
+  keyboard selection is the stronger one (B58).
+- **F7, narrow.** The drawer is `shell/SidebarDrawer` (a modal dialog): Tab stays inside it, Esc closes and returns focus
+  (B59). "Can't reach the harness bridge" fits a 390 window (B56).
+- Gates: `tsc`, 619 unit tests, eslint 0 errors, prettier, `spacing-audit` total=0 (2 skips, both the stale `tool-tables`
+  step), `width-stability` at 1440×900 and 900×600, `frame-colours`, `backdrop-check`, `flicker` ok; keyboard of tabs,
+  palette, sidebar and drawer checked by script. Not verified: WebKit, the macOS title bar inset, touch, a screen reader.
+
+### As built — fixes after the UI verification, batch 4 (Settings, connecting a provider)
+
+- B5: the connect steps render backtick spans as inline code (`ConnectSteps` `Rich`); a step with copy lines shows the lines
+  and a "Details" fold with the full sentence, so commands are not repeated and an environment variable is not surface prose
+  (decision 89d). Left: `KeySteps` still has an error branch "Set <ENV> in the harness's environment". B46: `Notice` (line
+  form) keeps its glyph beside the first line; text and action wrap in one column. B48: `writePref` returns whether it wrote;
+  On startup shows "Could not save. The browser's storage is full or blocked." instead of "Saved" (test). B49: the window
+  arrows are "Previous page" / "Next page"; the Settings page's "Back" has the tooltip "Back to the app". B50: after a key is
+  saved there is one message ("Saved. Applies after a restart — quit and reopen the app.") and the title says "Restart
+  needed". B51: the Defaults selects in Models are 256 wide with one left edge (1440, 1100, 900). B52, in part: the project
+  dialog says once above the model group which models cannot run; the values keep the warning tone (it comes from
+  `shared/ModelPicker`). B3, Settings part: Settings → Editor shows "Haiku 5.5". Also: no doubled dot in the refresh failure,
+  "Experimental" once, Esc disarms "Confirm remove key" before it leaves Settings, Add command opens on its first field.
+  Not done: the "Choose" dialog's first focus (needs `Checkbox` to take `data-autofocus`). Not seen in the UI: the Copilot
+  connect dialog from the model chip, `?refresh=fail`, Antigravity.
+
+## As built — polish step 3: the conversation and the composer (2026-11-13; one commit)
+
+Rules C1–C8 of the orchestrator's brief; 72 before/after pairs (dark and light; 1440×900, 900×600, 390×700) read by the
+executor, a sample by the orchestrator.
+
+- **C1, three voices.** Request and reply are content (14px, `fg`). What the agent did is one activity style (13px, `fg-2`,
+  one glyph column): "Worked for Ns" is now an `ActivityRow` that heads the turn's tool rows and opens them in place.
+  **A finished turn's tool rows are folded under that head by default** (open when a step failed) — a behaviour change that
+  **departs from 91d / 91j**; live turns are unchanged. Time stamps, the turn's meta line and counts are meta (12px, `fg-3`).
+  Not folded: delegation rounds (they link to agent sessions).
+- **C2, step rows.** The chevron sits right after the row's text; the duration stays right-aligned; every activity glyph is
+  14px; what a row opens is indented to its text line.
+- **C3, no frames inside frames.** `DelegationGroup` and the live plan are a meta caption over activity rows, no box;
+  `SentComments` and the always-allow panel are recessed tones; a block `Notice` has a tone and no outline (every block
+  notice in the app; that one-line change landed in commit `b6ac876`).
+- **C4, `Segmented` reads as a control.** The group has a recessed track (`--octo-seg-track`), the chosen segment a raised
+  chip (`--octo-seg-on`, `--octo-shadow-seg`); keys, roving tabindex and touch target unchanged; a gallery block was added.
+  **Departs from decision 33** (no track). Looked at in Settings → Appearance, the note editor, the form and the gallery;
+  not looked at in Review, Memory's Add row, the project dialog, Routing. Quiet buttons inside a card hover one step stronger.
+- **C5, form card.** One left edge for labels, fields, the Region track and the lock note; label → field 6, field → next
+  label 16; field text 14 in a conversation form.
+- **C6, composer.** Text 14; the control row's items 28 tall on one centre line with gaps of 4; the context ring is a pie
+  gauge (rim + filled wedge, amber from 80 %), no longer an arc that reads as the spinner; the top padding of a long prompt
+  stays while the text scrolls. Not done: one icon size in the row (chips 14, icon buttons 16 — fixed inside primitives).
+- **C7, markers.** Time separators use the compacted / rewound style: meta text centred on a hairline, 32 above, 16 below.
+- **C8, light.** The same states were read in light; no light-only token moved apart from the segmented and hover tokens.
+- Gates: `tsc`, 619 unit tests, eslint 0 errors, prettier, `spacing-audit` total=0 (2 skips, the stale `tool-tables` step),
+  `width-stability` (1440×900, 900×600), `frame-colours`, `flicker`, `scroll-on-send`, `picker-keys` ok; approvals, the
+  form (Region by Tab and arrows), always-allow, the head's Enter, Check again and the queue driven by script. Not verified:
+  plan approve and rewind by script, WebKit, touch, a screen reader.
+
+### As built — fixes after the UI verification, batch 5 (popup lists; decision 95a/b)
+
+- B6: one Home/End rule in `primitives/popupNav.ts` (`popupListKey`, `popupMove`, tested; the contract is in its header): in a
+  list fed by a text field (slash, mention, "+", pickers, the palette) Home/End move the caret and Ctrl/Cmd+Home/End jump to
+  the first/last row; in a list with no field (`Menu`) plain Home/End jump. B7: an open `Popover` keeps Tab and Shift+Tab
+  inside it and closes when focus leaves it (every popover: model picker, context, problems, pending comments, `Select`);
+  `Menu` moves between items on Tab; Tab accepts the active row only in the slash and mention menus. B8: `Menu` rows have the
+  16px leading slot (text at x 32) and are 40 under touch like `PopupList`, whose max height is computed from the row token
+  (9 whole rows at 390 instead of 6.3). B9: the slash and "+" menus close on window resize, as `Menu` and `Popover` do.
+  B12: the composer highlights only a command at the start of the text, from the list `slashRun` runs
+  (`OCTO_COMMAND_NAMES`); agent commands are not highlighted yet. B13: in the model picker an unverified row keeps
+  "Check again" only and shows the full name ("Use anyway" is in the connect sheet the row opens); the state text is what
+  truncates now ("Not logge…"). B10: `/remember` shows "Remembered: … Undo" from `rememberFact`'s answer (the desktop demo's
+  `withDemoMemory` never emitted `fact.remembered`); a harness that also sends the event still gives one line.
+  Checked: `picker-keys` ok, part 3's key script at 1440×900 dark and 390×700 light. Not verified: popovers other than the
+  model picker, the folder picker and the context popover; touch (a resize from an on-screen keyboard would close the menus).
+
+## As built — polish step 4: files and the editor (2026-11-13; one commit)
+
+Rules E1–E7 of the orchestrator's brief; before/after pairs in dark and light at 1440×900, 900×600 and 390×700 read by
+the executor, a sample by the orchestrator.
+
+- **E1, editor bar.** Navigation · crumbs · status words · the language server · one right-hand group of 28×28 controls
+  (16px glyphs, gap 4). Crumbs: folders `fg-3`, the file name `fg` medium; `lib/crumbs.ts` `crumbFloor` (tested) keeps
+  "… › file" readable, so the status folds before the name is cut (B21). The language server is a glyph of the app's state
+  family with its name in the tooltip (and beside it when there is room), and in words when it is not ready ("Starting…",
+  "Failed" + Retry). "Unsaved", "Saving…" and the server's failure share one slot. Preview | Source is the app's
+  `Segmented`. Not done: "Changed on disk" stays a notice line under the bar (two actions do not fit a narrow bar).
+- **E2, tree.** Indent 12 per level (was 16); root folders are 12px caption heads; names one weight, icons `fg-3`; the
+  selected row is the sidebar's selection tint; the filter sits in `PanelFilters` on the rows' edges; rows 28, 40 under
+  touch (B22).
+- **E3, E4, the surface.** The editor's background is the panel tone in dark (`#171717`, was `#141414`), so tree and editor
+  are one surface split by a hairline; the divider draws 2px on hover and drag. Line numbers `#888888` / `#707070` (one step
+  under meta, about 5:1), the active one `fg`; comments are `fg-3`; selection, find matches and the current line come from
+  tokens, no boxes; scrollbar track 8, thumb 4 (6 on hover). The syntax palette lives in `lib/codePalette.ts` (also read by
+  the conversation's code blocks: their comment colour moved too); every token is at or above 5.8:1 in both themes.
+  **Departs from** the Code pane section's listed colours, 14px tree indent and 6/8 scrollbars.
+- **E5, covers.** No file, too large, binary, an open error and "no folders" are centred `EmptyState`s with actions (Copy
+  path, Reveal in tree, Retry, Project settings) — no longer one line in a corner. Monaco's scrollbar cannot show through a
+  cover or the tree page (B20).
+- **E6, comments.** The comment card is a tone without an outline; the Pending comments popover opens on its first comment
+  and "Remove all" is the last stop, in a footer (B23; no Undo).
+- **E7, page mode.** Files / Editor are one control in one place; focus goes to the selected row (else the filter) on the
+  tree page and into the editor on the editor page.
+- The Changes and Review diffs share the theme: only the dark background, the comment and line-number greys and the
+  scrollbars moved.
+- Gates: `tsc`, 619 unit tests (+ crumbs), eslint 0 errors, prettier, `file-open-stability` at 1440×900, 900×600 and
+  390×700, `width-stability` (two sizes), `layout-shift`, `spacing-audit` total=0, `frame-colours`, `flicker` ok; tree keys,
+  divider, save, conflict, comments, Preview/Source, ghost text, LSP retry and page mode re-run by script. Not verified:
+  WebKit, touch, a screen reader.
+
+### As built — fixes after the UI verification, batch 6 (Review)
+
+- B24: the pull-request list's filters are `FilterTabs` with counts (decisions 82b, 82e). B25: thread text is the compact
+  prose scale (13/20). B26: the picker's skeleton reserves the repository-menu line and the chips reserve their count width;
+  header 56, tabs y 137 and filters y 230 are the same before and after load (side group, 1440×900). B27: "Tests" /
+  "Typecheck" in the review header carry the play glyph (the spinner in the same slot while running). B28: a file row's
+  marks moved into its title and the counts alone are the meta, so "+8 −2" is whole (`ListRow` caps `meta` at 40 % of the
+  row — anything else with many marks in `meta` can clip the same way). Focus: Esc in the Pending panel returns to its
+  button; "All pull requests" returns to the review's row in the list. B60, Review part: "atlas-labs/atlas-api #476" instead
+  of the raw source id; a failed list load is an `ErrorNotice` ("Could not reach the code host." + hint, Retry, Details).
+  Also: the base menu ticks the current base and does not offer the current branch; "(s)"; the outdated sentence is whole;
+  "Post 1 comment and 1 reply"; no "Enter" inside the open-by-number row; a shorter search placeholder.
+  Not done: the 24 pull rows are still 24 Tab stops (`ListRow` has no roving tabindex). Looked at only: `Segmented` with its
+  new track in Overview, Pending and the submit sheet (fine; the Pending track is faint in light). Not verified: 390×700, a
+  single-repository project's skeleton.
+
+## As built — polish step 5: tool panels (2026-11-13; one commit)
+
+Rules P1–P9 of the orchestrator's brief for Sessions, Memory, Notes, Usage, Agents, Details, Changes and the side question;
+228 before/after pairs (dark and light; side group and maximised at 1440×900, 900×600, 390×700) compared by the executor, a
+sample by the orchestrator.
+
+- **P1, one empty state.** `PanelEmpty` with a title is one centred block that fills the body; Agents, Notes, Usage,
+  Changes, Memory, Sessions and the side question use it (title at 37–42 % of the body's height; before 1–7 % for Notes,
+  Usage, Changes). Notes shows no footer with no notes. Limits' "no rate limits" is a section with the inline empty line.
+- **P2, one detail header and action row.** `FormActions` (in `primitives/Panel`): buttons at the right, Cancel then the
+  primary; as a confirmation the question sits at the left (`alertdialog`). The note editor, the memory file editor and the
+  note-delete confirmation use it; the note editor opens under a `DetailHeader`. A note's actions are labelled: "Edit",
+  "Pin" / "Pinned", "⋯".
+- **P3, lists as one family.** Memory → Sessions rows carry a state glyph (text at 40); Notes rows: the pin in the glyph
+  column, the description (heading marks removed) then tags on the second line, the date right-aligned (`lib/notes.ts`
+  `noteLine`, tested); Knowledge group heads 32; "Forgotten exchange" has a glyph slot; the "2 agents" fold and Details'
+  list rows are 32 (Details' label/value rows stay 28 — **revises** 95f's "As built"); a session's second line is
+  "3 exchanges · Sonnet 4" with the date at the right. Not done: Memory search hits have no glyph column; Changes rows.
+- **P4, filters.** `FilterTabs` shrinks to its column and scrolls inside it with a faded edge, the chosen chip kept in view;
+  in Sessions' split view the row no longer crosses the divider (B30).
+- **P5, side question on the frame**: `Panel` with the title, Keep / Clear at the right, left aligned at every width; the
+  caption moved to the empty state (round 2 #26, B41); Clear returns focus to the input.
+- **P6, words and numbers.** Limits say "3,998 of 4,000 left" in compact numbers and the bar shows what is spent, red only
+  under 10 % left (B43; **revises** decision 86's bar); a role's share bar is its share of the table (B44); the agent
+  transcript's crumbs are "Conversation / Security reviewer" (B42); the New session popover lists earlier sessions and
+  remembered facts under what is not carried into the context (B37, 95e). Not done: Changes headings "Turn N".
+- **P7, search.** A hit's snippet keeps the match in view; the highlight is a new `--octo-mark` token (a warm tint; text on
+  it 8.2:1 dark, 13.8:1 light; the mark against its row 1.9:1 dark, 1.3:1 light — it reads by hue; **revises** 93b's hover
+  tint) (B33). A one-column list marks no row while nothing is chosen.
+- **P8, tooltips.** Line breaks are kept; a tooltip on focus shows only after a navigation key, so opening a tool from the
+  palette shows none; an open tooltip follows its title's changes (B40, B57).
+- **P9, narrow.** Over a tool tab the floating composer rests as one 40px line and opens on a press, Tab or typing;
+  `FloatRoom` follows (56 at rest, was about 250–290). The conversation tab and the file view are unchanged. **Revises**
+  batch 2's "covers the lower part at rest".
+- In passing: Esc in a one-column detail returns to the list (`ListDetail` decides one column by the container's width,
+  B29); a new session with no request shows "No requests yet", not the previous conversation (B38, fixed in
+  `useSessionConversation`; the desktop demo's data still has no session ids).
+- Gates: `tsc`, unit tests, eslint 0 errors, prettier, `spacing-audit` total=0 (2 skips, the stale `tool-tables` step),
+  `panel-measure` (header 40, inset 16 on every tab), `width-stability` (two sizes), `frame-colours`, `flicker`,
+  `scroll-on-send` ok. Not verified: an empty Sessions list and the budget tooltip (the demo has neither), keyboard reach
+  of the queue inside the collapsed composer, WebKit, touch, a screen reader.
+
+## As built — polish step 6a: Settings (2026-11-13; one commit)
+
+Rules S1–S7 of the orchestrator's brief; 118 before/after pairs (dark and light; 1440×900, 900×600, 390×700).
+
+- **S1, one page structure.** Every section, Providers included, is one centred 880px column (`--spacing-settings-page`):
+  the page title, group captions (meta) and row labels on one left edge (x 450 at 1440; before 488 for row sections and 288
+  for Providers), each group one surface. Providers is one group — caption "N providers connected", one surface split by a
+  hairline into the list (288) and the detail, equal heights; Router is a group with a Show / Hide row.
+  **Departs from decision 59** (780px column) and from 89's "full width of the settings page".
+- **S2, one row anatomy.** Label (14/20), explanation (12/16, `fg-3`), the control on the label's line ending on the row's
+  right edge (x 1249 in every section); rows 60. `SaveStatus` sits beside the control and no longer changes the row's
+  height (60 → 60; was 66 → 86 → 66); Appearance confirms its changes. Every select is 256 wide (`SELECT_W`).
+- **S3, type roles.** The provider detail's Models / Preferred model / Roles / Billing are meta captions, not bold body
+  text (**departs from 89d's** titles).
+- **S4, nav.** ↑ / ↓ / Home / End move between sections, Enter opens; in the settings search ArrowDown goes to the results
+  and Enter opens the first. Under the floor Back and the section menu share one 40px line.
+- **S5, provider detail.** Title: mark, name, state once ("· Experimental" in the same run); the name no longer truncates
+  in a narrow pane (the action wraps under it). Models' count and age are in its caption with Refresh at the right; a stale
+  model's note follows its name. One "API key" label. "Check again" keeps focus while it runs (it is not `disabled`).
+- **S6, words.** `document.title` is "Settings · Octo"; "Record what agents send and receive" (the protocol's name in the
+  explanation); About says what the app is connected to; "Default model" in the project dialog too; Plan limits in compact
+  numbers. Not done: project names in Usage by project still truncate (the shared table).
+- **S7, narrow.** `ViewTabs` are 40 under touch; Providers in list-only mode marks no row as chosen.
+- Gates: `tsc`, eslint 0 errors, prettier, unit tests, `spacing-audit` total=0 (settings and providers scenes 0),
+  `width-stability`, `frame-colours`, `flicker`, `backdrop-check` ok; theme, On startup, provider pages, Check again, the
+  key form, Router, Back/Forward and Esc driven by script. Not driven: Refresh, the project scope menu, Commands edit /
+  choose, CSV and diagnostics copy. Open: on a 1440 window the 880 column puts a row's control far from its label.
+
+## As built — polish step 6b: Review (2026-11-13; one commit)
+
+Rules R1–R7 of the orchestrator's brief; 164 before/after pairs (dark and light; side group and maximised at 1440×900,
+900×600, page mode at 390×700).
+
+- **R1, the picker is a `Panel`** (decision 95f listed Review as not on the frame): header 40 with the title at 16 and
+  the repository menu in a new `lead` slot of `Panel` (shrinks first; nothing else in `Panel` changed), view tabs with the
+  frame's hairline, a 36 filter row (chips, then search; below 560 the search takes its own line), rows inset 8; "not
+  logged in" and empty are `PanelEmpty`. The folder menu sits at the right end of the view-tab row (**departs from 91i's**
+  one header line); below 600 "Updated …" is the refresh button's tooltip. A maximised list is capped at 880 and left
+  aligned.
+- **R2, pull rows** are `ListRow`s of two lines, 40 high (were about 72 in a side group): CI glyph · title · time at the
+  right; meta "Review requested · #482 · mira · 14 files · 8 comments" with "+1317 −986" at the right. The state word shows
+  only for New since your review, Review requested and Draft (`lib/review/pullList.ts` `pullRowLine`, tested).
+- **R3, the open review's header**: the title line (Back, title, one group of 28px actions, "Submit review" last) and one
+  meta line cut from the right. It folds by its own width, in a declared order: below 1024 pinned commands go into "Run";
+  below 720 Check out, Pending and Details go into "⋯"; below 480 Run is its glyph and Submit says "Submit · N". Height: 61
+  maximised (was about 77), 41 in a side group (was about 210, three wrapped rows). **Replaces batch 1c's wrapping (A10);
+  departs from 64/78** (Pending and Details moved from the meta line to the actions).
+- **R4, file list, diff bar, threads.** The diff bar is one 40px line on step 4's sizes ("More" became "⋯"); group heads
+  are captions; thread cards are tones on the code's left edge, capped at 720; the reply box ends with the shared action
+  row. **A bug found and fixed:** Monaco's code layer took every click on a thread in the diff, so Reply, "N more replies"
+  and Collapse could not be used with a mouse; the thread zone now sits above it and keeps focus without scrolling.
+- **R5.** The submit sheet's drafts and the Pending panel's items are rows with hairlines; the segmented track inside
+  Review is 8 % in light.
+- **R6, page mode (390×700).** The header is the title line; the file picker, Viewed, previous / next change and "⋯" share
+  one line. Code starts at y 171 (was 355); 505px of code are visible, 326 with a comment box open (were about 320 and 141).
+- **R7.** The pull list and the branch list are one Tab stop with arrow keys: `useRowKeys(ref, { roving: true })` in
+  `lib/hooks.ts`, opt-in; other callers unchanged.
+- Gates: `tsc`, unit tests, eslint 0 errors, prettier, `spacing-audit` total=0 (review scenes 0; Review is not in the
+  audit's panel-frame tab list), `width-stability` (two sizes), `frame-colours`, `flicker` ok; batch 1c's Esc and resize
+  scripts still hold; picker, branches, Pending, Details, suggest, three verdicts, check out and Run driven by script.
+  **Known and not fixed:** threads inside the diff are in Monaco's `aria-hidden` zone layer, so a screen reader cannot
+  reach them (it was so before). Not verified: WebKit, touch, a screen reader, a live `gh`.
+
+## As built — after the polish: entry bundle and cross-part leftovers (2026-11-13)
+
+- **Entry bundle.** After the fixes and six polish steps the entry measured 160.34 kB gzip (budget 158.90). It is
+  **158.07 kB** again; the budget was not raised. What had entered: the drawer and its modal hook, the composer's one-line
+  form, the roving-row hook, the top row's fold logic and smaller growth across the frame and the transcript. Now lazy and
+  warmed after first paint: `SidebarDrawer`, the agent tab's observer bar (a 40px placeholder holds its row), the start
+  failure, attachment rules and image adding (first drop, paste or picture), `ContextRing` (mounted once the context size
+  is known), `recheck`; Review's roving focus is `lib/rovingRows.ts` (`useRovingRows`; the `roving` option of `useRowKeys`
+  is gone). Tried and dropped: a lazy `FloatingComposer` (+2.4 kB through hoisted chunks), a lazy drag layer.
+- **Settings.** Row sections are 660px wide (`--spacing-settings-rows`) inside the shared 880 column, left aligned;
+  Providers keeps 880. One left edge in all ten sections (title x 450 at 1440); label to control 798 → 626.
+- **Sidebar.** An empty meta takes no column, so a long name uses the free width; the column returns while the sessions
+  chevron shows.
+- **Focus when a tool tab opens** (`lib/focus.ts` `focusSurfaceSoon`): `[data-autofocus]`, else the search field, else the
+  chosen row, else the first row, else the panel itself. Notes and Review open in their search field (were a header icon
+  and a view tab), Sessions and Changes on the first row.
+- `Checkbox` passes `data-*` through (the Choose commands dialog opens on its first box); `ModelPicker problemShown`
+  draws a value in the normal tone when the caller explains the problem (project dialog); an unverified row of the model
+  picker shows its state on a second line (40px), nothing truncates at 310; Memory search hits have a glyph column;
+  Changes headings read "Earlier request · Today 8:11 PM" instead of "Turn 60" and file rows are 32 (40 under touch);
+  `KeySteps`' refusal says the sentence plainly with the variable under Details (not seen in the browser: no demo knob);
+  the desktop demo emits `fact.remembered` and its base session's messages carry a session id.
+- The status bar's "filled box" in several screenshots was a hover state under a parked mouse pointer, not a resting
+  background: no change.
+- Not done: one glyph size in the composer's control row (needs a primitive variant).
+- Gates on the final tree: `pnpm lint` (cycles included), `pnpm format:check`, 636 UI and 42 desktop tests, the
+  production build and bundle check, `spacing-audit` total=0, `width-stability` (two sizes), `frame-colours`, `flicker`,
+  `file-open-stability` at 1440×900, 900×600 and 390×700, `picker-keys`, `scroll-on-send`, `backdrop-check`,
+  `panel-measure`, `layout-shift`. Not verified anywhere in this work: WebKit and macOS, a live harness, real agents and
+  `gh`, touch on a device, a screen reader.
+
+## As built — the owner's UI audit (2026-11-14)
+
+The owner tested `9c167c9` live (vite dev, not Tauri; 108 screenshots) and listed 20 items. What changed, by item:
+
+- **1 (P0). A `spawn_agent` refused before its agent existed span forever.** `lib/transcript.ts` `spawnStatus`: with no
+  agent the call's result decides (error → failed, or stopped when a stop wrote it; no result → pending only while the
+  turn runs). The row reads "not started" with the plain error under it; the caption counts it ("1 agent · 1 failed").
+  Demo: send "refused spawn please".
+- **2 (P0). A stopped turn read "✓ Worked for 8s … 1 failed".** `turnHead` gives "Stopped after 8s" / "Failed after 8s" /
+  "Worked for 8s" from the turn's ending; `stepState` / `isInterruption` mark a call as stopped when it has no result
+  and the agent is not running, when its error is one of the harness's interruption texts (`interruptedResult`,
+  `finishLocked`), or, in a cancelled turn, when an ACP agent answered `rejected` / `cancelled` / `interrupted`. Any
+  other error stays failed and is counted. The stopped glyph is the family's quiet dot (decision 29 has no square).
+  Demo: "slow command please", then Stop. The ACP wording is taken from the owner's report, not seen live.
+- **3.** `lib/truncate.ts`: a space at the middle cut moves to the tail as a no-break space ("Claude Code · Sonnet").
+- **4.** Model picker: list up to `min(480px, 100vh − 160px)`; providers that are not set up fold into one row
+  ("N more providers can be added"); "experimental" is a tag that never shrinks; a scrolled edge fades.
+- **5.** `Segmented`: segments 24 in a 28 track with 2px padding, track radius 8 over segment radius 6. A form row that
+  holds one is 54px (was 50).
+- **6.** Turn rail: a mark's target is 24px wide (was clipped to 12; the pointer hit nothing beside the mark) and its own
+  6px cell high, the end marks 14; the card on hover and focus adds the request's time. **Not the asked 24×16:**
+  decision 57's 6px pitch leaves no room without overlap; a larger pitch when the rail has room is the owner's call.
+- **7.** A project row goes placeholder → final glyph and never through another state (`state/orchestrators.ts`
+  `PendingState`, `isPending`). **Not done:** a skeleton in the main area on first paint (the entry bundle has 0.06 kB
+  of room).
+- **8.** `GET …/plans/latest` answers 200 `{"plan": null}` (done earlier, `internal/bridge/plans.go`).
+- **9.** `ListRow`: a selected row's meta is `text-fg-2` (palette shortcut 4.06 → 6.07 in dark; sidebar 5.75 → 8.60).
+- **10.** `ObserverBar` under 560px reads "Read-only"; the sentence is the tooltip; one line, 40px, at every width.
+- **11.** Typeface: Inter 4.1 variable, self-hosted in `packages/ui/src/assets/fonts/` (OFL, `LICENSE.txt`; `subset.sh`
+  rebuilds the eight subsets: latin, latin-ext, cyrillic, cyrillic-ext, upright and italic; optical size pinned to
+  text, `cv11` and `ss01` kept — the `@fontsource` subsets strip them). Only `inter-latin.woff2` (47.7 kB) loads at
+  start, preloaded by the desktop host (`main.tsx`); the others by `unicode-range` when such text appears. Mono and
+  Monaco unchanged. Row heights unchanged (line boxes are tokens).
+- **12.** Inline code is 0.93em (13px in 14px prose), padding `2px 4px` (the audit's 1px is off the spacing scale).
+- **13, 14.** No change: 12/20 is the code block's line only; 10px is `--radius-lg`. The composer's and the prompt
+  bubble's 14px radius became `--radius-xl` (12).
+- **15.** The streak band is drawn at device resolution, smooth, with no dither cells, fading at both ends; muted in
+  light (`lib/streak.ts`). Appearance → Backdrop Off still removes it. The owner chooses between this, none, or none
+  in light only.
+- **16.** The palette highlights substring matches (not scattered fuzzy letters); a cut row has the full text as tooltip.
+- **17–20.** The disabled Review item is focusable and says why; `TextField` has a `leading` slot (the budget's "$");
+  a login failure of an agent CLI shows the steps and the command to copy (`lib/errors/login.ts`); a host that manages
+  the harness (`managesHarness`) shows a restart screen instead of the developer's instructions when offline.
+- File-link chips stay 23px: they are inline in running text (the target-size rule's inline exception), and 24 would
+  change the paragraph's line height.
+
+Gates on the final tree: `pnpm lint` (cycles), `pnpm format:check`, 648 UI tests, agent-client and desktop tests, the
+production build, bundle 158.84 kB of 158.90, and the browser scripts (`spacing-audit` total=0, `width-stability`,
+`flicker`, `file-open-stability`, `scroll-on-send`, `layout-shift`, `picker-keys`, `frame-colours`, `backdrop-check`).
+Not verified: WebKit and macOS, the Tauri window (including whether the first frame is already Inter), fractional
+pixel ratios, a live harness and real ACP agents, a screen reader.
+
+## As built — round 3: a first-time user's walk, vendor marks, the owner's re-test (2026-11-14)
+
+Two reviewers walked the app as a person who has never seen it (first run, new project, conversation; Settings, files,
+panels, palette); the owner re-tested `75fe457` live and asked for the providers' real marks. What changed:
+
+- **Decision 72a is overridden by the owner: provider marks are the vendors' real marks.** `ProviderMark` draws a
+  `currentColor` box masked by an SVG file from `assets/providers/` (22 marks; sources, versions and licences in
+  `SOURCES.txt`: `@lobehub/icons-static-svg@1.102.0`, MIT, and `simple-icons@16.37.0`, CC0; the marks are their owners'
+  trademarks, used to identify the provider). Monochrome in the text colour. Provider rows show the provider's mark; a
+  model chip shows the agent's mark when the model runs through an agent, else the model vendor's. `router`,
+  `factory-droid` and `oh-my-pi` keep the neutral shape with an initial (no real mark found). The table and the URLs
+  are a lazy chunk. Not confirmed: that the `pi` mark is the pi coding agent's.
+- **Needs you.** A project whose turn waits on an approval or a form is "Needs you" in the sidebar, on Home and in
+  the tile, with "Waiting for your approval" / "Waiting for your answer"; waiting wins over working
+  (`lib/orchestrator.ts`); `project.attention` refreshes the summary at once. The harness sends `needs_you`,
+  `pending_approvals`, `pending_inputs` while the turn runs (checked against `harness serve` with the mock model).
+- **A stopped turn.** Its ending and duration come from the session's stored exchange after a reload
+  (`lib/storedEndings.ts`, current session only), the duration is measured to the turn's end, and the turn says
+  "stopped" once (head; rows read "stopped").
+- **One time for a project** in the sidebar and on Home (`projectWhen`); the context ring and its popover read one
+  number; a passing run says "Passed".
+- **Narrow windows (390).** The composer's row sheds labels by container query (mode < 460, model < 380, folder < 320);
+  "+", the ring and Send/Stop never shrink. The tab strip folds its end cluster from its real shortfall
+  (`stripShortfall`; an earlier `scrollWidth` version looped and blanked the app — caught by the second reviewer before
+  any commit). The strip keeps its inset under the drawer. The queue card is a header and one row per message. Over a
+  file tab the floating composer rests as one line.
+- **Decision 57 revised: the turn rail's pitch** is `clamp(floor(avail / n), 6, 16)`: targets are 24×16 when there
+  is room and fall back to 6px cells on a dense rail. Measured at 10 requests only.
+- **New project.** Unrunnable default models switch to the first runnable choice; a notice above the buttons when one
+  cannot run; the typed draft survives Esc ("Your earlier draft is back. Clear"); tiers and routing policies are
+  explained for every option; one left edge.
+- **Menus and actions.** Mode rows carry their explanation (`Menu` items take `sub`; captions are not rows); the "+"
+  menu starts with "Attach image…" and "Mention a file"; a duplicate agent command is labelled with its agent; a failed
+  helper has an always-visible "Retry" that pre-fills the composer; reply tables fill the column and fade at a
+  scrolled edge; a refusal's note is shown without code fences.
+- **The editor's context menu is the app's `Menu`** (`shared/EditorContextMenu.tsx`: Add comment, Go to definition and
+  Find references when the language server offers them, Cut, Copy, Paste, Copy path); Monaco's own menu and its F1
+  palette are off in the file editor and both diff editors. A failed language server reads "TypeScript help failed ·
+  Retry".
+- **Palette and help.** The palette searches labels and descriptions, has a Settings group (fed by the settings index
+  through a dynamic import), drops loose hits when a substring hit exists, starts with "Suggested" actions, puts
+  actions above past requests and dedupes those. New: "Change theme", "Change model", "Keyboard shortcuts", "Help".
+  `ShortcutsSheet` (lazy) lists the shortcuts that exist; it opens with "?", from the palette and from About.
+- **Settings.** One primary action for API-key providers and where to get a key; the unrunnable-defaults warning says
+  what is true and offers "Use <agent> instead" with Undo; one name, "tier"; the router described by its benefit; the
+  background service is "Octo's local service" in user-facing copy (commands, paths and "Harness version" keep the
+  word); a new Integrations section (language servers, agents, tool servers; manifest errors in plain words with the raw
+  text under Details); per-project settings use one scope menu ("Settings for") in Models, Commands, Editor, Memory
+  and Budget; a budget is stated as a total, "Saved" clears on edit, spend matches the usage table; plan limits read
+  "Anthropic API · requests — Resets in 12 min"; Usage by project uses the 880 column.
+- **First paint.** `MainSkeleton`: three static lines in the conversation column, fading in after 300 ms, while the
+  projects or a project load (owner's audit, item 7).
+- **Entry bundle 157.67 kB of 158.90.** `apps/desktop/vite.config.ts` filters already-loaded initial chunks out of the
+  preload lists written into JS (about 2.5 kB of `__vite__mapDeps`); an import cycle through `useOrchestratorComposer`
+  was broken (`chat/composerDraft.ts`); rarely used helpers moved to lazy modules (`rare.ts`, `hooksMore.ts`,
+  `statusMore.tsx`, `modelNames.ts`, `duration.ts`, `contextText.ts`).
+
+Not done: image preview in Files (needs a bridge read that returns bytes); Run folding into "⋯" under ~350px; tool tabs
+that shrink to two letters (walk B12); panels' purpose lines (B13); `ProjectWorkspace`'s load error still says "harness
+bridge". Not seen on screen by anyone: the project dialog's unrunnable notice and Routing field, the table fade, the
+"/review · agent" label (no demo state). Gates on the final tree: `pnpm lint` (cycles), `pnpm format:check`, 666 UI,
+141 client and 42 desktop tests, the layer-rule tests, `cargo test -p octo-sidecar`, the build and bundle check,
+`spacing-audit`, `flicker`, `width-stability`, `layout-shift`, `scroll-on-send`, `picker-keys`,
+`file-open-stability`. Not verified: WebKit and Tauri (including CSS masks for the marks), a live harness for the UI
+parts, real agents, touch, a screen reader.
+
+## As built — the owner's stress test (2026-11-14)
+
+The owner ran 61 chaos scenarios and a responsiveness check against a live stack (their snapshot had no round 3). What
+changed, with the report's ids. Every fix was reproduced first against a real `harness serve` with the mock model behind
+a fault-injecting proxy.
+
+- **A send that never gets an answer (A9).** "Sending…" after 1 s; the fetch is aborted after 15 s; the client then
+  reads back the conversation and the queue, and a message that did arrive is shown as sent (the harness has no
+  idempotency key); otherwise the text is kept and the notice offers Retry, which looks again before posting.
+- **A silent or broken event stream (A16, A11).** The harness's ping is a named `heartbeat` event (a comment never
+  reaches the page) and the stream starts with `retry: 1000`. The client reopens a stream that was silent for 35 s or
+  was refused (backoff 1–10 s); every reopen re-reads the project; a disagreement between the polled project list and
+  the stream about a running turn for 4 s also re-reads. After a re-read, agents that no longer run lose their live
+  parts (`settleStreams`), so a cut answer is replaced by the stored one.
+- **A first load that fails (A14).** Failures are tracked per agent and for the project; retries with backoff 1–30 s,
+  on window focus and on stream reopen; "Couldn't load the conversation · Retry" while it fails.
+- **Offline, refused, unreadable (A15, P2-3, P2-4).** A stream error checks health at once (0.4 s, was 12–14 s).
+  After the first load the workspace stays under a banner and the composer says why sending is off; the full-screen
+  state is only for a first connection. A 401 is "Octo's local service didn't accept this window" (Restart Octo in the
+  packaged app; reload and the token hint in dev); a body that is not JSON is "sent an answer that could not be read".
+- **Clock skew (P2-12).** Relative times use the offset from the service's `Date` header when it is over 30 s.
+- **Interrupted turns (P1-1).** The harness checkpoints streamed text every 500 ms and a heartbeat every 5 s; on start
+  it closes turns that were running: kept text, interruption results for open tool calls, an exchange marked
+  `interrupted`. The head reads "Interrupted after 15s — Octo's local service restarted" with Retry. When the model or
+  the router dies mid-stream the text stays above the failure card ("The connection to the model broke off." / "The
+  Octo router stopped answering.").
+- **The route decides the project (P1-4).** `resolveProjectRoute`: an id that is not in the list is re-read; a 404
+  shows "This project no longer exists" with no composer; the app opens the first project only when it starts with no
+  hash. A deleted open project is noticed through its stream (the harness emits no `project.deleted`).
+- **Ctrl+K typeahead (P2-7).** Keys typed after Ctrl+K are held until the palette's field has focus (they used to go
+  to the composer, and Enter sent them as a prompt); a held Enter runs the first row once the rows for that text exist.
+- **The composer on long input (P1-5).** The cost was layout: the tint layer copied the whole text, and Inter's
+  kerning on a 50k-character word took ~2 s per layout. The tint layer is skipped above 20k characters or with a
+  1000-character word; such text is shaped without kerning (`data-long-word`); the field sizes with
+  `field-sizing: content` where supported; the `@`/`/` trigger reads 256 characters before the caret. 100k paste
+  5.3 s → 46 ms, a keystroke 7 s → 18–32 ms (dev server). A counter from 75 % of the 1 MB body limit; over it the send
+  is refused before any request.
+- **Long conversations (P1-6, CLS).** Turns near the viewport are mounted; the rest are empty sections of their
+  measured height that keep their text findable (`hidden="until-found"`); jumps mount their target first
+  (`turnReveal`). 1000 messages: 106,560 → 4,530 nodes, scroll 18–28 → 52–56 fps, streaming 20 → 50–54 fps. Parts
+  that are already loaded render without suspending (`readyLazy`); CLS on open at 390×700 0.72 → 0.026.
+- **Smaller.** An empty paused queue shows nothing; a long project name wraps to two lines in the empty state; soft
+  line breaks are kept unless a line is 50+ characters and does not end a sentence (`lib/softBreaks.ts`; applies to
+  every Markdown render); answers' prose is 60ch wide (~83 characters; the bubble, tables, code and composer keep the
+  column) and the column is 820px when the conversation is ≥ 1240px wide; the model picker's list uses the height
+  down to 88px of margin; the budget's wording says it is checked between steps.
+- **Entry bundle 154.56 kB of 158.90**: the transcript is its own chunk (`transcriptPart`), warmed after first paint.
+
+Not reached or not verified: one long task of 139–183 ms while streaming in two of three runs (target 100 ms); Ctrl+F
+over unmounted turns was exercised only by dispatching `beforematch`; in WebKit the scroll correction when turns mount
+above the viewport and the composer's height fallback were not run; a turn killed before it wrote anything leaves two
+user messages in a row; tool rows of an interrupted turn read "error"; the real router's wording (unit test only);
+Tauri's "Restart Octo"; IME input; all numbers are from the dev server. Gates on the final tree: lint with cycles,
+format, 693 UI / 157 client / 42 desktop tests, `go test -race ./...`, `cargo test -p octo-sidecar`, the build, and
+the browser scripts including `spacing-audit` total=0.
+
+## As built — the owner's third re-test (2026-11-14)
+
+The owner re-tested `6a15218` (round 3, before the stress-test fixes) and listed new findings and a "distance to
+premium" table (G1–G15). What changed for it:
+
+- **A tool call reads as an action (G1).** The expanded body depends on the kind (`lib/toolView.ts`,
+  `components/chat/tools/`): a command shows its line with copy, the last 8 lines of output ("N earlier lines"
+  expands, 1000 at a time), and the end in words ("Exited 0 · 4s", "Failed (exit 1)"); output is never red. A read is
+  a `folder/path:lines` link. An edit shows "+N −M", "Open diff", "Go to line N" and a compact inline diff (12 rows,
+  "Show all"; a plain line list, no Monaco). Other tools get a one-line summary and key–value input. A call cut short
+  reads "Stopped by you at 9:51 AM." / "Declined … It did not run." / "Interrupted …"; the agent's or harness's own
+  refusal text is only under "Raw". A refusal's row reads "stopped", not "failed". The group summary is per kind.
+- **Changes in the conversation (G2).** Under a finished reply that changed files: "2 files changed +6 −3 · Expand
+  all · Review changes" (`chat/TurnChanges.tsx`). "Open diff" and "Review changes" open the Changes tab on that request
+  (and file) through `lib/changesFocus`; Changes shows "Showing one request · Show all" and drops the focus when it is
+  opened any other way. The Changes diff header has "Go to line N"; a line number on the modified side opens the file
+  there. Review's diff header is a separate component and has no "Go to line".
+- **Why a turn failed survives a reload (NEW-1).** A failed turn's reason is its stored error, else its own last error
+  result (`turnFailureText`), else "This request failed." with Retry; earlier failed turns have Retry. The sentence
+  "no reason was reported" is gone. (The harness now stores `error` on a failed exchange; `lib/storedEndings.ts` does
+  not read it yet.)
+- **Stop gives feedback at once (G5).** `lib/stopping.ts`: the button is disabled with "Stopping…", the live row says
+  "Stopping…", and after 5 s the composer says "Still stopping — a running command has to finish". Nothing reads as
+  stopped before the harness ends the turn.
+- **A helper waiting for the person (NEW-3)** reads "Waiting for your approval" / "…your answer" with the needs-you
+  glyph in the conversation and the Agents panel (`lib/agentWaiting.ts`). Not in Home's "Agents at work".
+- **No change of a turn after it is shown (NEW-4, G13).** Turns stay invisible until the first stored-endings read
+  answers (at most 800 ms); a head that changes later, notices and waiting rows fade in (`.octo-fade`, 120 ms).
+  Measured CLS at 1440: the long chat 0.211 → 0.000, Atlas 0.046 → 0.012; at 640–900 it was already 0.002–0.003 here
+  (the owner measured 0.16–0.24 on live data: not reproduced).
+- **Overlays and the palette (NEW-6, G12).** A hash change closes the palette, the shortcuts sheet and the New project
+  dialog. An empty query shows "Suggested" and the three projects last worked in.
+- **Turn rail (N7).** The button itself is 24px wide; targets stay 16, then at least 12 high while the height can hold
+  them (`railLayout`); 100 requests give 24×7.
+- **Vendor marks** in Integrations, Details and the Agents panel (N9).
+- **Evenness (G7–G9).** Every lucide icon draws a 1.5px stroke at every size through `--icon-stroke` and a CSS rule
+  (36 icons used outside `Glyph` drew 1.17px); inline code is 13px in 14px prose and 12px in 13px prose (no fractional
+  sizes); the radius scale is 6 / 8 / 12 and pill, with 2 and 4 for small marks — `--radius-lg` (10) is gone, surfaces
+  are 12 and rows inside them 8; Settings rows and provider details use `--spacing-card` (12).
+
+Open: the vendor marks are filled and look heavier than the line icons at 12–14px; 14px has two line heights (22 for
+prose, 20 for semibold headings); a previous failed turn's notice stays beside a send error (NEW-5 was not reproduced
+without the owner's proxy); the exit code of a built-in `bash` is parsed from its output; G10, G11, G14, G15 and the
+@-contexts of G6 are not started. Not verified: anything against a live harness; real ACP diff payloads; Details and
+the Agents panel marks in the browser; the line-number click in the Changes diff.
+
+## As built — sessions in the sidebar, the changed-code blocks, the backlog (2026-11-14)
+
+- **Decision 96 (parallel sessions, phase 2)** revises decisions 23, 26 and 63: the sidebar is a tree of projects and
+  their sessions, a tab is a session, the composer names the session it sends to. The contract and what was verified
+  are in `2026-11-14-parallel-sessions-design.md` ("As built — Phase 2").
+- **Tool group and changed code** (the owner: "the block about the changed code does not look good"). One grid for
+  every diff row: `[old][new]` number columns sized to the largest number, an 8px gap, the sign in its own 1ch column,
+  then the code; a sticky opaque gutter; quiet tints (`color-mix` of ok/err at 8–9 % on the code, 15–18 % on the
+  gutter); the code scrolls sideways under the gutter with a 24px edge fade and never wraps. A body sits on the row's
+  text edge (`bg-code-bg`, radius 8, inset 12) and ends in one action line ("Show all" left; "Open diff", "Go to line
+  N", "Raw" right) — no header band, no separate Raw row. Rows have one grammar (`callRow` in `lib/toolView.ts`): a
+  past-tense verb, the object in mono, a quiet qualifier, the state as the glyph and a quiet word; built-in and ACP
+  tools read the same. Consecutive edits of one file are one row ("Edited src/http/retry.ts · 2 edits +4 −2"). The
+  group's glyph is the worst state only when every call ended that way; problems are a dim suffix. The turn's footer
+  names up to three files and uses the same row and body. Command output is `pre-wrap` with a 16px hanging indent; the
+  command is repeated in the body only when it is long. Monaco's diff colours (Changes, Review) do not use these
+  tints yet.
+- **Usage** holds everything under the table until its three requests answer and shows a table-shaped skeleton only
+  after the delay: CLS 0.34 / 0.24 / 0.10 → 0 at 640 / 900 / 1440.
+- **Files preview images** (png, jpg, gif, webp, svg, ico, avif) from `GET …/files/content?encoding=base64` (the
+  optional bridge method `readFileBytes`; the desktop host loads its code with the first image): pixel and file size,
+  Fit | 100 %; an SVG is drawn through an `<img>` (a script inside it does not run) with Preview | Source; over 2 MiB
+  says "Too large to preview".
+- **Review's diff header** has "Go to line N" and "Open file". **Panels** (Agents, Notes, Memory, Usage, Details, Side
+  question) carry their purpose on an (i) in the header (`lib/toolPurpose.ts`); Files says it in its empty state;
+  Changes does not yet. Notes' footer is a plain sentence with the counts in its tooltip.
+- **Settings nav** is grouped under App, Models and agents, Workspace (`settings/navGroups.ts`); "Default
+  (recommended)" and "default" read "Default"; a router provider's detail shows its status, models and where its
+  settings are (not seen in a browser: no demo router).
+- **Vendor marks** are scaled by ink coverage so they sit at the weight of the 1.5px line icons (coverage 0.15–0.52 →
+  0.17–0.39).
+- Entry bundle 158.59 kB of 158.90.
+
+Not verified: images on a live harness and at 390px; the review workspace open; real ACP titles in tool rows; "+N
+more" in the footer; anything in WebKit.
+
+## As built — the phone layout mode and the fourth re-test (2026-11-14)
+
+- **Phone layout mode** (the owner: "the mobile version is too cramped"; it is the main view of the mobile web client).
+  One switch: `lib/phone.ts` `PHONE_QUERY = "(max-width: 640px) and (pointer: coarse), (max-width: 479.98px)"`, read
+  once in `OctoApp` (a host may force it with `HostCapabilities.layout`), exposed as `usePhone()` and `data-phone` on
+  `<html>`; every phone rule hangs off it and nothing changes while it is off (static desktop screens: 0 changed
+  pixels). A desktop window under 480px is in phone mode.
+  - Header: one 44px line — menu, the session title with the project as meta, a state glyph, "⋯". In a panel or file:
+    Back, the name, "⋯". The "⋯" sheet groups: this session's tabs and New session; Run; Panels; Status (changed
+    files, running commands, budget, other projects' agents, the remote indicator); Project settings; Settings.
+  - Navigation: the sidebar is a full-screen sheet with 44px rows; picking closes it.
+  - Composer: one line ("+", the field, the context ring, Send/Stop) growing to `min(120px, 20 %)`; "+" opens a sheet
+    (attach, mention, mode, model, folder); the queue is a chip that opens a sheet; no session chip. It follows the
+    visual viewport (`app/phone/useVisualViewport`) so it stays above the on-screen keyboard; safe-area insets.
+  - No title bar and no status bar. Conversation: prose 16/24, helper rows on two lines, tool bodies at full column
+    width, the diff without the old-number column, 44px buttons on cards, no turn rail, reply footers always shown.
+  - Panels and files are full-screen with Back; menus, popovers, selects and pickers are bottom sheets (the new `Sheet`
+    primitive); the palette is a full-screen search; Settings is a list of sections, then the section. Sheets, panels
+    and navigation are history entries (`lib/historyLayer.ts`): Back closes them in order. A long press shows a
+    control's description.
+  - Open: system Back inside a panel leaves the panel instead of stepping from detail to list; a panel's own title
+    repeats the header; the editor opens editable; "Rewind to here" overlaps the prompt bubble's edge.
+- **Send is disabled over the 1 MB limit** in every layout (NEW-11).
+- **A remote device** (`lib/remoteDevice.ts`, the mobile web host): entry points the harness would refuse are hidden
+  or say "Change this on your computer"; a read-only device has no Send.
+- **Fourth re-test.** A failed turn's stored `error` is read for every session a transcript shows (action from the
+  code through `ACTION_BY_CODE`, to be kept in step with the harness catalogue); the interrupted banner's hint follows
+  `kept_text`; calls and helpers of an interrupted turn read "interrupted"; first reads have a 10 s deadline
+  (`lib/deadline.ts`) with a new "didn't answer in time" state, retries at 1–30 s, on focus and on stream reopen, and
+  the hosts abort a hung GET after 12 s (the owner's "malformed" proxy mode never answered and held all six
+  connections); the palette's open/close is a small state machine (`lib/typeahead.ts`) so keys typed during a reopen
+  are delivered once; pending approvals and forms load on sync, so a helper reads "Waiting for your approval" after a
+  reload and in Home's "Agents at work"; the demo's stored endings carry `error`, `interrupted`, `kept_text`; Monaco's
+  diff uses the conversation's tints (lines 9/8 %, words 18/15 %, gutter transparent); Changes has its purpose (i); a
+  narrow model chip reads "Opus 5.5" with the agent's mark.
+- **Entry bundle 149.98 kB of 158.90**: everything the page loads at start is one chunk (`codeSplitting` group
+  `$initial` in `apps/desktop/vite.config.ts`) — the same code as ~40 preloaded chunks compressed worse.
+
+Not verified: a real phone, WebKit, the real on-screen keyboard, a screen reader; NEW-7 before the change (it did not
+reproduce here; the cause was read from the code); built-in tool rows of a real interrupted turn.
+
+## As built — neatness, minimalism, balance (2026-11-14)
+
+The owner: "Check neatness and minimalism; everything must be balanced." A measured pass over both layouts; findings
+and before/after pairs were kept in the session scratchpad.
+
+- The composer's session chip is the last chip of its control row and takes the row's free room (the composer with two
+  queued messages: about 191 → 167px at 1440); under a 480px composer it keeps its own top line (two placements, CSS
+  shows one). It cuts the title at its end (`Chip` `cut="end"`); "default" is in its name and tooltip.
+- A turn's row with a hover-only action (a helper's "Open session") puts the action where the duration is
+  (`data-row-overlay`), so durations in a delegation group end on one edge; always shown on touch.
+- A turn head's words are `fg-3`: the head is quieter than the work under it.
+- Phone: a panel's own title and a Settings section's page title are for screen readers only (the header names
+  them); "Rewind to here" sits under the bubble on touch.
+- Home's triage groups are 8px apart; the empty project's heading, note and suggestions share the composer's text
+  edge; Details' "All files" sits on the right edge; the palette lists a session that is open as a tab once.
+- Measured and left: diff tints are not stronger in light than in dark (ΔE76 light 6.1 / 7.0, dark 8.4 / 7.7).
+
+For the owner to decide: Settings row sections sit left of centre at 1440 (660px rows in the 880 column, by the earlier
+S1 decision); Usage and budget has two right edges (880 table, 660 rows); the top bar's right cluster is heavier than
+its left; the phone navigation shows row actions on every row (no hover on touch).
+
+Not looked at in this pass: the shortcuts sheet, Review with an open pull request, the offline banner, several panels
+in light. Not verified: WebKit, a real phone, a screen reader.

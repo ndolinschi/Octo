@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# A stand-in for Cloudflare's `cloudflared` in tests and in scripts/e2e-remote.sh. It never touches the network:
+# it prints what a quick tunnel prints (layout as seen from cloudflared 2024.x: a box on standard error with the URL
+# on its own line, then "Registered tunnel connection"), then waits to be stopped.
+#
+# Behaviour comes from the file "<this script>.mode" when it exists (the harness scrubs the environment of its
+# children, so no variable reaches here): url (default), nourl, crash, urlthencrash.
+# Every start appends a line to "<this script>.log"; the URL carries the start number, so a restart gets a new URL.
+# Every start also leaves a helper process in its group and records "<pid> <helper pid>" in "<this script>.pids",
+# so a test can check that the whole group was stopped.
+set -u
+self="$0"
+if [ "${1:-}" = "--version" ]; then
+  echo "cloudflared version 2025.1.0 (built 2025-01-01-0000 UTC)"
+  exit 0
+fi
+mode=url
+[ -f "$self.mode" ] && mode=$(cat "$self.mode")
+echo "$*" >>"$self.log"
+n=$(wc -l <"$self.log" | tr -d ' ')
+sleep 3600 &
+helper=$!
+echo "$$ $helper" >>"$self.pids"
+ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+url="https://fake-quick-tunnel-$n.trycloudflare.com"
+box() {
+  echo "$(ts) INF Thank you for trying Cloudflare Tunnel. Doing so, without a Cloudflare account, is a quick way to experiment and try it out. See https://developers.cloudflare.com/cloudflare-one/connections/connect-apps" >&2
+  echo "$(ts) INF Requesting new quick Tunnel on trycloudflare.com..." >&2
+  echo "$(ts) INF +--------------------------------------------------------------------------------------------+" >&2
+  echo "$(ts) INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |" >&2
+  echo "$(ts) INF |  $url                                                 |" >&2
+  echo "$(ts) INF +--------------------------------------------------------------------------------------------+" >&2
+  echo "$(ts) INF Version 2025.1.0" >&2
+}
+case "$mode" in
+  url)
+    box
+    echo "$(ts) INF Registered tunnel connection connIndex=0 connection=fake event=0 ip=127.0.0.1 location=test protocol=quic" >&2
+    wait
+    ;;
+  urlthencrash)
+    box
+    sleep 0.3
+    kill "$helper" 2>/dev/null
+    exit 1
+    ;;
+  nourl)
+    echo "$(ts) ERR failed to request quick Tunnel: Post \"https://api.trycloudflare.com/tunnel\": dial tcp: lookup api.trycloudflare.com: no such host" >&2
+    wait
+    ;;
+  crash)
+    echo "$(ts) ERR failed to connect to the edge" >&2
+    kill "$helper" 2>/dev/null
+    exit 1
+    ;;
+esac

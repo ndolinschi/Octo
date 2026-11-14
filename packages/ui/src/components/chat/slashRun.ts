@@ -16,6 +16,8 @@ export type SlashDeps = {
   openSettings(): void;
   push: ((note: NoteInput) => void) | undefined;
   rewindLast: (() => void) | undefined;
+  /** Parallel sessions: `/clear` made session `next` (the bridge is addressed to the session it cleared). */
+  onCleared?: ((next: string) => void) | undefined;
 };
 
 /** Runs an Octo slash command: false when the name is not one it knows (the text is then sent as typed). */
@@ -31,7 +33,10 @@ export async function runSlash(d: SlashDeps, name: string, args: string): Promis
       }
       case "clear":
         if (!bridge.clearConversation) return false;
-        await bridge.clearConversation(projectId);
+        {
+          const cleared = await bridge.clearConversation(projectId);
+          if (cleared.session_id && cleared.previous_session_id && cleared.session_id !== cleared.previous_session_id) d.onCleared?.(cleared.session_id);
+        }
         return true;
       case "mode": {
         const wanted = MODES.find((m: ProjectMode) => m === args.toLowerCase());
@@ -67,7 +72,12 @@ export async function runSlash(d: SlashDeps, name: string, args: string): Promis
       case "remember": {
         if (!bridge.rememberFact) return false;
         if (!args) push?.({ kind: "info", text: "Write what to keep after the command: /remember we deploy from the release branch." });
-        else await bridge.rememberFact(projectId, { text: args });
+        else {
+          // The note comes from the answer, not only from `fact.remembered`: a bridge may store the fact without the event
+          // (the desktop demo's memory layer does, B10). The provider keeps one note per fact when the event comes too.
+          const { task_id, fact } = await bridge.rememberFact(projectId, { text: args });
+          push?.({ kind: "remembered", taskId: task_id, factId: fact.id, text: fact.text, undone: false });
+        }
         return true;
       }
       case "help":

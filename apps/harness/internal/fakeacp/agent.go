@@ -86,6 +86,8 @@ type agent struct {
 	loaded  bool
 	mcpSrvs []mcpEntry
 	mcpc    *mcpClient
+	// mcpInstr is the "instructions" of the harness MCP server's initialize result.
+	mcpInstr string
 }
 
 // sid is the current session id.

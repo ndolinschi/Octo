@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
-import { composerSpans } from "../../lib/mentions";
+import { composerSpans, hasHighlights } from "../../lib/mentions";
+import { highlightable } from "../../lib/composerInput";
 
 /**
  * Decision 70: the layer under the composer's text area that tints `@file` mentions and `/commands`. It repeats the same
@@ -8,7 +9,13 @@ import { composerSpans } from "../../lib/mentions";
  */
 export function ComposerHighlight({ text, area }: { text: string; area: RefObject<HTMLTextAreaElement | null> }) {
   const layer = useRef<HTMLDivElement>(null);
-  const spans = useMemo(() => composerSpans(text), [text]);
+  // P1-5: only a text with something to tint is mirrored, and never a huge one (`highlightable`): the mirror's layout was the
+  // seconds-long freeze on a pasted log.
+  const spans = useMemo(() => {
+    if (!highlightable(text)) return null;
+    const all = composerSpans(text);
+    return hasHighlights(all) ? all : null;
+  }, [text]);
 
   // Both boxes reserve the scrollbar's width (`scrollbar-gutter: stable` on `.octo-composer-input`), so wrapping matches; the layer only follows the scroll.
   useLayoutEffect(() => {
@@ -28,9 +35,9 @@ export function ComposerHighlight({ text, area }: { text: string; area: RefObjec
       ref={layer}
       aria-hidden
       data-composer-highlight
-      className="octo-composer-input pointer-events-none absolute inset-0 overflow-hidden px-3 pt-3 wrap-anywhere whitespace-pre-wrap text-transparent"
+      className="octo-composer-input pointer-events-none absolute inset-x-0 top-3 bottom-0 overflow-hidden px-3 wrap-anywhere whitespace-pre-wrap text-transparent"
     >
-      {spans.map((s, i) =>
+      {spans?.map((s, i) =>
         s.kind === "text" ? (
           s.text
         ) : (
@@ -40,7 +47,7 @@ export function ComposerHighlight({ text, area }: { text: string; area: RefObjec
         ),
       )}
       {/* A trailing newline needs a character to take its line, as in the text area. */}
-      {text.endsWith("\n") ? "​" : null}
+      {spans && text.endsWith("\n") ? "​" : null}
     </div>
   );
 }

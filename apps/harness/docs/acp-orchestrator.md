@@ -34,9 +34,13 @@ curl -XPOST localhost:8790/v1/projects -d '{"name":"demo","folders":[{"path":"/a
 
 ## What happens
 
-- **One long-lived session per project.** The first request starts the agent process (lazily) and an ACP session at the project's
-  first folder; later requests are further `session/prompt`s on it (same process, same session id). A crashed or killed process
-  is restarted by the next request; a changed agent, model or first folder starts a new session.
+- **One long-lived session per main session (schema 15).** Each main session of a project has its own root agent and its own
+  agent process: the session's first request starts the process (lazily) and an ACP session at the project's first folder; later
+  requests of that session are further `session/prompt`s on it (same process, same session id). Two sessions of one project
+  running at once are two processes. A crashed or killed process is restarted by the session's next request; a changed agent,
+  model or first folder starts a new session. When more than the project's `max_running + 2` processes are alive, the least
+  recently used idle one is shut down (its session resumes with `session/load` or the recap). Making another session the default
+  stops nothing: each session keeps its process and its stored ACP session (on its own root agent).
 - **Resume.** The session id is stored in the project database. After a restart of the process or of the harness the harness uses
   `session/load` when the agent advertised `loadSession`; otherwise (or when the load fails) it starts a new session and puts a
   **recap** before the first prompt: the latest compaction summary if there is one, else the last 40 user/assistant texts (tool rows
@@ -50,9 +54,11 @@ curl -XPOST localhost:8790/v1/projects -d '{"name":"demo","folders":[{"path":"/a
   sub-agent's report) are served by the harness as an MCP server (`octo-harness`, Streamable HTTP, `POST /mcp/v1/projects/{pid}`
   on the bridge listener) and passed in `session/new.mcpServers`. Calls run through the same registry the built-in loop uses
   (`agent.CallTool`), so handlers, limits, budget checks, events, the agents list, usage and notes are unchanged. The endpoint
-  accepts only loopback peers, no foreign `Origin`, `POST`, and a per-session random 256-bit bearer token bound to project and
-  orchestrator agent (constant-time compare; a token of another project is `403`, an unknown or revoked one `401`); the token is
-  revoked when the session ends. Tools work only while a user request is running.
+  accepts only loopback peers, no foreign `Origin`, `POST`, and a per-process random 256-bit bearer token bound to the project,
+  the main session and that session's root agent (`mcp.Binding{ProjectID, SessionID, AgentID}`; constant-time compare; a token of
+  another project is `403`, an unknown or revoked one `401`; a binding never reaches another session's process, registry or turn:
+  the handler looks the session up by the binding, never by project-wide state); the token is revoked when the process ends. Tools
+  work only while a user request of that session is running.
   - Agent advertises `mcpCapabilities.http`: an `http` entry with the token in an `Authorization` header.
   - Otherwise: a `stdio` entry that runs this binary as `harness mcp-relay --url … --token-env OCTO_MCP_TOKEN`, a stdio-to-HTTP
     relay; the token is in the entry's `env`, never in argv.
@@ -114,6 +120,27 @@ Every way an ACP agent can fail ends the turn (orchestrator) or the sub-agent (a
 
 - `harness doctor [--data-dir D] [--json]` and `GET /v1/diagnostics` report: version, Go, OS, data dir, the PATH child processes get, the names (never values) of provider and router variables that are set, the names of the login-shell variables the desktop app forwards that child processes get (`shell_env_set`), the built-in loop and router state (base URL without credentials or query), and per agent: resolved command or "not found", each `requires` command, the login probe (doctor runs it now: exit status only, its output is discarded; the endpoint reports the cached background result), the hints, and a problems list. The endpoint adds the last 200 log lines (scrubbed of tokens, keys, passwords, URL credentials) and the trace files. A test feeds secret-looking environment, URL and log content and asserts none appears.
 - **Wire trace.** `HARNESS_ACP_TRACE=1`, or the setting of the same name (`PUT /v1/settings`, takes effect for sessions that start afterwards). One JSON-lines file per agent process under `{data-dir}/traces/` (`<time>-<agent>-<n>.jsonl`, mode 0600): `{t, dir: "client->agent" | "agent->client" | "agent-stderr" | "meta", msg | text}`. Redacted before writing: values under keys named like a secret (key, token, secret, password, credential, authorization, cookie), the value of env and header entries (`{name, value}`) with an upper-case env name or a secret-like name, `Bearer`/`Basic` credentials, the agent's environment values from the manifest, the MCP bearer token the harness issued, project secret values, and `key=value` text in free-form lines. A file is capped at 5 MB (the oldest half is dropped, with a marker line) and at most 20 files are kept. Prompt text and file contents are in the trace (it is the wire): read it before sending it.
+
+## The first `spawn_agent` call and deferred tool schemas (2026-11-14)
+
+Claude Code defers MCP tool schemas (its tool search): the model can call `spawn_agent` knowing only the tool's name. In
+the owner's wire trace the first call carried `task` and `tier` only — the two arguments the briefing named — and was
+refused; the retry, made after Claude Code attached the schema to the refusal, succeeded. What the harness does about it:
+
+- The MCP server returns `instructions` in `initialize`: every tool with its required arguments (type, enum,
+  description), the optional ones, and a full `spawn_agent` example. With a router, `tier` is optional and `auto` is offered.
+- The briefing names all four arguments (`role`, `title`, `task`, `tier`) with an example.
+- A refusal is plain text: what is missing ("Missing: role, title.") or which tier is unknown, "No sub-agent was
+  started.", each argument, and `Example arguments: {…}` as valid JSON.
+- `prompt` is accepted for `task` and `description` for `title` when the real field is empty. `tier` has no default
+  without a router.
+- An ACP tool result that is exactly one fenced code block is stored as its body (the agent's adapter adds the fence).
+- A cancelled built-in turn stores the interrupted tool call's result at the stop, not at the next request, so the
+  history and the turn's duration match what was seen live.
+
+The scripted agent replays the sequence: `[mcp-spawn-lazy]` (arguments from the instructions) and `[mcp-spawn-guess]`
+(task and tier only, then one retry from the refusal's example). Not verified: that real Claude Code shows the server
+instructions to the model while tools are deferred, and that its first call is then right.
 
 ## Not verified
 

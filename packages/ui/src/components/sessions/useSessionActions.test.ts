@@ -10,7 +10,7 @@ test("a refusal the harness described itself is shown as its own message and hin
 
 test("an older harness's bare refusal falls back to the fixed text for its code", () => {
   const e = new BridgeError(409, "current_session", "conflict");
-  assert.equal(failureText(e), "This is the current session. Resume another one first.");
+  assert.equal(failureText(e), "This is the project's default session. Make another one the default first.");
 });
 
 test("anything that is not a bridge error says try again", () => {

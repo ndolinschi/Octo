@@ -11,7 +11,8 @@ Canonical product docs for the Octo proxy (`apps/router`). Operational agent not
 | [history.md](./history.md) | SQLite history, cost accounting, observe, outcomes, persisted call records and budget spend |
 | [configuration.md](./configuration.md) | `config/*.toml` reference and env overrides (`OCTO_CONFIG`, `OCTO_HISTORY_TOKEN_KEY`, `OCTO_EXIT_ON_STDIN_CLOSE`) |
 | [status.md](./status.md) | **Works / partial / missing** — honest capability matrix |
-| [ladder-cost-check.md](./ladder-cost-check.md) | Ladder prices vs the OpenRouter catalogue (2026-11-10) |
+| [prices.md](./prices.md) | Live price table: catalogue refresh, `prices.toml` overrides and fallback, disk cache, `/health`, price source per call |
+| [ladder-cost-check.md](./ladder-cost-check.md) | Ladder prices vs the OpenRouter catalogue (2026-11-10, re-fetched 2026-11-14) |
 
 ## Archive (evidence & design notes)
 

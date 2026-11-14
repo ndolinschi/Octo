@@ -1,6 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import { createContext, useContext, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
+import { EmptyState } from "./EmptyState";
 import { IconButton } from "./IconButton";
 import { FloatRoom } from "./floatRoom";
 import { ScrollArea } from "./ScrollArea";
@@ -30,6 +31,11 @@ export function Panel(props: {
   name: string;
   title: string;
   meta?: ReactNode;
+  /**
+   * Controls that qualify the title (the review picker's repository menu): between the title and the actions, they give way
+   * first (the title keeps its width). Polish step 6b.
+   */
+  lead?: ReactNode;
   actions?: ReactNode;
   /** A problem to say once, above everything else (an action's error). */
   notice?: ReactNode;
@@ -42,10 +48,15 @@ export function Panel(props: {
   return (
     <section data-panel={props.name} aria-label={props.title} className={cn("flex h-full min-h-0 flex-col", props.className)}>
       <header data-panel-header className="flex h-ctl-lg shrink-0 items-center gap-2 px-pane">
-        <h2 data-panel-title className="flex min-w-0 flex-1 items-baseline gap-2 px-2 text-heading text-fg">
+        <h2 data-panel-title className={cn("flex min-w-0 items-baseline gap-2 px-2 text-heading text-fg", props.lead === undefined ? "flex-1" : "shrink-0")}>
           <span className="truncate">{props.title}</span>
           {props.meta !== undefined && <span className="shrink-0 text-xs font-normal text-fg-3 tabular-nums">{props.meta}</span>}
         </h2>
+        {props.lead !== undefined && (
+          <div data-panel-lead className="flex min-w-0 flex-1 items-center gap-1">
+            {props.lead}
+          </div>
+        )}
         {props.actions !== undefined && (
           <div data-panel-actions className="flex shrink-0 items-center gap-1">
             {props.actions}
@@ -97,12 +108,47 @@ export function PanelBody(props: {
   );
 }
 
-/** A short sentence in a list that has nothing to show (a filter with no match): the one inline empty line. */
-export function PanelEmpty(props: { children: ReactNode }) {
+/**
+ * P1 (polish step 5): the one empty state of a tool tab, in two forms.
+ * - With a `title`: the whole tab (or the whole body under its filter row / view tabs) has nothing to show. A composed
+ *   block (`EmptyState`) centred in the body at the frame's one position (its centre at 42 % of the free height): the title,
+ *   one line of explanation, and the action where there is one. Put it as the direct child of the `Panel` (or of a flex
+ *   column that owns the body's height), never inside a scroller.
+ * - Without a title: one dim sentence inside a list or a section that has nothing to show (a filter with no match), on the
+ *   rows' text edge.
+ */
+export function PanelEmpty(props: { title?: string; children?: ReactNode; actions?: ReactNode }) {
+  if (props.title !== undefined)
+    return (
+      <div data-panel-empty-block className="flex h-full min-h-0 flex-col">
+        <EmptyState title={props.title} actions={props.actions}>
+          {props.children}
+        </EmptyState>
+      </div>
+    );
   return (
     <p role="status" data-panel-empty className="px-2 pt-3 text-sm text-fg-3">
       {props.children}
     </p>
+  );
+}
+
+/**
+ * P2 (polish step 5): the one action row that ends every editor (a note, a memory file, "Remember something") and every
+ * inline confirmation: at the right, Cancel then the primary, small buttons 8 apart. `note` is a sentence at the left (the
+ * question of a confirmation); with it the row is an `alertdialog` named by `label`.
+ */
+export function FormActions(props: { children: ReactNode; note?: ReactNode; label?: string; className?: string }) {
+  const confirm = props.note !== undefined;
+  return (
+    <div
+      data-form-actions
+      {...(confirm ? { role: "alertdialog", "aria-label": props.label } : {})}
+      className={cn("flex min-w-0 flex-wrap items-center justify-end gap-2 text-sm", props.className)}
+    >
+      {confirm && <span className="min-w-0 flex-1 text-fg-2">{props.note}</span>}
+      {props.children}
+    </div>
   );
 }
 

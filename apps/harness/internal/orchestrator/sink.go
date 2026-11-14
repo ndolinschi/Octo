@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
@@ -23,6 +24,13 @@ type agentSink struct {
 	// partial is the text streamed since the last stored message.
 	mu      sync.Mutex
 	partial strings.Builder
+	// The checkpoint of partial in the project's database (see checkpointEvery):
+	// when it was last written, the timer of a trailing write, whether a row exists.
+	ckAt    time.Time
+	ckTimer *time.Timer
+	ckRow   bool
+	ckGen   int        // bumped when the message is stored: a write that started before it must not leave a row
+	ckWrite sync.Mutex // one checkpoint write at a time; never held together with mu by the streaming path
 	// onCleared, when set, is told how many tool results a request had cleared.
 	onCleared func(n int)
 }
@@ -43,7 +51,13 @@ func (s *agentSink) Message(ctx context.Context, role string, msg anthropic.Mess
 func (s *agentSink) store(ctx context.Context, role string, msg anthropic.MessageParam, stopped bool) (projectstore.Message, error) {
 	s.mu.Lock()
 	s.partial.Reset() // a stored message holds what was streamed so far
+	hadRow := s.stopCheckpointLocked()
 	s.mu.Unlock()
+	if hadRow {
+		// After the message, so a crash in between leaves the text twice at worst, never not at all;
+		// RecoverInterrupted ignores a checkpoint older than the agent's last message.
+		defer s.clearCheckpoint()
+	}
 	body, err := json.Marshal(agent.ContentOf(msg))
 	if err != nil {
 		return projectstore.Message{}, err
@@ -66,14 +80,27 @@ func (s *agentSink) store(ctx context.Context, role string, msg anthropic.Messag
 	return stored, nil
 }
 
+// StoppedMessage implements agent.StoppedSink: the message is stored flagged stopped (cut short).
+func (s *agentSink) StoppedMessage(ctx context.Context, role string, msg anthropic.MessageParam) error {
+	_, err := s.store(ctx, role, msg, true)
+	return err
+}
+
 // keepPartial stores the text streamed since the last stored message as an
 // assistant message flagged stopped: what a cancelled turn had written.
 func (s *agentSink) keepPartial(ctx context.Context) {
 	s.mu.Lock()
 	text := s.partial.String()
+	hadRow := s.stopCheckpointLocked()
 	s.mu.Unlock()
 	if strings.TrimSpace(text) == "" {
+		if hadRow {
+			s.clearCheckpoint()
+		}
 		return
+	}
+	if hadRow {
+		defer s.clearCheckpoint()
 	}
 	text = s.rt.redact(text)
 	if _, err := s.store(ctx, "assistant", anthropic.NewAssistantMessage(anthropic.NewTextBlock(text)), true); err != nil {
@@ -84,8 +111,109 @@ func (s *agentSink) keepPartial(ctx context.Context) {
 func (s *agentSink) TextDelta(text string) {
 	s.mu.Lock()
 	s.partial.WriteString(text)
+	s.checkpointLocked()
 	s.mu.Unlock()
 	s.rt.publish(events.MessageDelta, map[string]any{"agent_id": s.agentID, "text": text})
+}
+
+// checkpointEvery is how often the text an agent is streaming is written to
+// the project's database (projectstore/partials.go), so that a crash or a kill
+// of the harness keeps what was already on screen. Time, not size, bounds it:
+// at most two small writes a second per streaming agent however fast the
+// model writes (a write per delta would be dozens a second, each a WAL commit
+// with its fsync), and a kill loses at most the last half second of text. A
+// delta that comes sooner schedules one trailing write, so text that arrives
+// just before a pause (a slow tool call announced, the model thinking) is
+// written too.
+var checkpointEvery = 500 * time.Millisecond
+
+// beforeCheckpointWrite runs just before a checkpoint is written; a test makes it slow to stand in for a slow disk.
+var beforeCheckpointWrite = func() {}
+
+// checkpointLocked makes sure a checkpoint write is scheduled: at once when
+// the last one is old enough, else when it will be. The write itself never
+// runs here: a delta is published without waiting for the disk (a slow fsync
+// in this path held every delta back and delivered the text in one lump).
+// s.mu is held.
+func (s *agentSink) checkpointLocked() {
+	if s.rt == nil || s.rt.db == nil || s.ckTimer != nil {
+		return
+	}
+	wait := checkpointEvery - time.Since(s.ckAt)
+	if wait < 0 {
+		wait = 0
+	}
+	s.ckTimer = time.AfterFunc(wait, s.checkpointLater)
+}
+
+// checkpointLater stores partial, redacted, as the agent's checkpoint. It
+// runs on its own goroutine and holds s.mu only to read and to mark, not
+// while it writes.
+func (s *agentSink) checkpointLater() {
+	s.mu.Lock()
+	if s.ckTimer == nil {
+		s.mu.Unlock()
+		return // the message was stored meanwhile
+	}
+	s.ckTimer = nil
+	text := s.partial.String()
+	gen := s.ckGen
+	if strings.TrimSpace(text) == "" {
+		s.mu.Unlock()
+		return
+	}
+	s.ckAt = time.Now()
+	s.mu.Unlock()
+
+	s.ckWrite.Lock()
+	defer s.ckWrite.Unlock()
+	beforeCheckpointWrite()
+	c, cancel := dbCtx(context.Background())
+	err := s.rt.db.SavePartial(c, s.agentID, s.rt.redact(text))
+	cancel()
+	if err != nil {
+		s.rt.logErr("checkpoint streamed text", err)
+		return
+	}
+	s.mu.Lock()
+	stale := gen != s.ckGen
+	if !stale {
+		s.ckRow = true
+	}
+	s.mu.Unlock()
+	if stale {
+		// The message was stored while this write was on its way: the row would read as text kept after it.
+		s.clearCheckpointRow()
+	}
+}
+
+// stopCheckpointLocked cancels a scheduled checkpoint and reports whether a
+// row was written since the last stored message. s.mu is held.
+func (s *agentSink) stopCheckpointLocked() bool {
+	if s.ckTimer != nil {
+		s.ckTimer.Stop()
+		s.ckTimer = nil
+	}
+	s.ckAt = time.Time{}
+	s.ckGen++
+	had := s.ckRow
+	s.ckRow = false
+	return had
+}
+
+func (s *agentSink) clearCheckpoint() {
+	s.ckWrite.Lock()
+	defer s.ckWrite.Unlock()
+	s.clearCheckpointRow()
+}
+
+// clearCheckpointRow deletes the row; s.ckWrite is held.
+func (s *agentSink) clearCheckpointRow() {
+	c, cancel := dbCtx(context.Background())
+	defer cancel()
+	if err := s.rt.db.ClearPartial(c, s.agentID); err != nil {
+		s.rt.logErr("clear streamed-text checkpoint", err)
+	}
 }
 
 // ToolInput implements agent.ToolInputSink: the files a built-in tool call reads or changes.

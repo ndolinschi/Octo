@@ -7,7 +7,7 @@ structured form, built by one catalogue: `internal/usererr`.
 | --- | --- |
 | `message` | One plain sentence of what happened ("GitHub Copilot is not logged in."). No protocol words, no exit status. |
 | `hint` | The next step in plain words ("Log in to it in a terminal, then check again."). |
-| `command` | A copyable terminal command when there is one (`copilot auth login`). |
+| `command` | A copyable terminal command when there is one (`copilot login`). |
 | `action` | A machine code the UI turns into a button: `recheck_provider`, `connect_provider`, `retry`, `open_settings`, `update_agent`. Absent means none. |
 | `details` | The technical text (protocol names, exit status, the stderr line, method names), for a "Details" fold and the diagnostic report. |
 
@@ -65,6 +65,7 @@ the bridge writes them (`writeProblem`, `writeError`, `errorBody`). `writeError(
 | `AgentSilent`, `AgentStopped`, `AgentCrashed`, `AgentFailed`, `AgentUnavailable` | see `catalogue_agent.go` |
 | `NoProvider`, `ProviderNotConnected`, `ProviderNotSupported`, `ProviderNotWorking` | provider states (`connect_provider` / `recheck_provider`) |
 | `BudgetReached` | "This project's budget is used up ($X of $Y)." (`open_settings`) |
+| `BudgetCut` | "This project's budget ran out during this request ($X of $Y); the answer was stopped mid-request." Hint: what it had written is kept. Code `budget_reached` (`open_settings`) |
 | `TurnInProgress`, `SideInProgress`, `QueueFull`, `ImagesUnsupported`, `SteerUnsupported`, `NothingToCompact`, `CompactUnsupported`, `BuiltinLoopOff`, `NewerSchema`, `PlanNotPending`, `FileChanged`, … | `catalogue_service.go` |
 | `GitHubCLIMissing`, `GitHubCLINotLoggedIn`, `GitHubNoRemote`, `GitMissing`, `RepoMismatch`, `DirtyWorkingCopy`, `CheckoutConflict`, `FetchFailed`, … | `catalogue_review.go` |
 
@@ -74,3 +75,63 @@ Messages that only a model reads (tool results such as "spawn_agent requires rol
 `GET /v1/diagnostics`), the `unavailable_reason` of `GET /v1/plugins` (technical; the screen reads `GET /v1/providers`), memory tool errors
 and the sentences inside `Generic`-wrapped routes (their text is `details`). Manifest labels are shown as written (the Pi entry's label
 contains "ACP"). No real agent CLI was run: every case was produced by the scripted agent (`internal/fakeacp`) or a unit test.
+
+## Added 2026-11-14
+
+- `turn_interrupted` (`TurnInterrupted`, action retry): a turn that was running when the service stopped; set on start
+  by recovery.
+- `model_unreachable` (`ModelUnreachable`) and `router_unreachable` (`RouterUnreachable`): the upstream connection broke
+  (unexpected EOF, refused, reset); the router wording is used when a router is configured.
+- `request_too_large` (`RequestTooLarge`, HTTP 413): any JSON body over 1 MiB.
+- `data_dir_in_use` (`DataDirInUse`): a second service on a data folder that is in use; it stops before opening the store.
+- `agent_not_installed` is now also returned when an agent's program is missing at load, with the plugin's install line
+  (it used to read "cannot be used" and the UI added a login command).
+
+
+## Added 2026-11-14 (parallel sessions, phase 1)
+
+`catalogue_sessions.go`, with samples in `TestCatalogueWording`:
+
+| Code | Constructor | Message | Used |
+| --- | --- | --- | --- |
+| `worktree_unavailable` (409) | `WorktreeUnavailable` | "None of this project's folders is in a git repository, so a separate worktree cannot be made." | `POST /sessions` with `workspace.kind: "worktree"` (phase 1 has the shared workspace only; `details` says so) |
+| `worktree_failed` (502) | `SessionWorktreeFailed` | "The session's worktree could not be made." (`retry`, git's text as `details`) | phase 3 |
+| `workspace_not_found` (404) | `WorkspaceNotFound` | "That workspace no longer exists." | `POST /sessions` with a `workspace.id` other than `shared` |
+| `workspace_missing` (410), `workspace_dirty` (409), `workspace_in_use` (409), `apply_conflict` (409) | `WorkspaceMissing`, `WorkspaceDirty`, `WorkspaceInUse`, `ApplyConflict` | see the file | phase 3 |
+| `coordination_off` | `CoordinationOff` | "Sessions of this project do not coordinate." (`open_settings`) | phase 4 |
+| `session_slots_full` (409) | `SessionSlotsFull` | "As many sessions as allowed are running already." (`open_settings`) | a turn that cannot wait in a queue (approving a plan, `/compact` sent to an agent) while the running caps are reached; a plain message waits in its session's queue instead (`waiting_for: "slot"`) |
+
+`current_session`, `session_running`, `not_main_session`, `queue_full` and `turn_in_progress` keep their wording; `queue_full`
+is now per session (20 waiting messages of one session).
+
+## Added 2026-11-14 (owner's fourth re-test)
+
+- `turn_interrupted` has two hints (NEW-9): "What it had written before the restart is kept. Retry to run the request
+  again." only when the interrupted turn had stored assistant text; otherwise "Nothing had been written yet. Retry to run
+  the request again." (`TurnInterrupted(kept)`). The exchange carries the same fact as `kept_text` (`memory.md`).
+- `BudgetCut` (code `budget_reached`): a built-in request under a budget asks for at most the output the rest of the
+  budget buys (P2-11); an answer that reached that cap ends the turn with this message, its text kept and flagged
+  `stopped`.
+- `agent_exited_on_start` ("<Agent> stopped while starting.") is now only for an agent process that ended before it was
+  ready: during the start-up handshake or before `session/new` answered (that case used to read `agent_crashed`). An
+  agent that dies after its turn began is `agent_crashed` ("<Agent> stopped in the middle of the request.", hint "Try
+  again. Octo starts it again by itself.", action `retry`). NEW-10: an ACP orchestrator whose prompt failed because the
+  process was gone is started again and sent the request once more only when the prompt failed within a second of being
+  sent (the process had died between turns); an agent that worked on it silently and then died is no longer restarted
+  with the request sent a second time, and so no longer ends as "stopped while starting" when that restart fails.
+
+## Added 2026-11-14 (remote access)
+
+`catalogue_remote.go`; details in [remote-access.md](./remote-access.md).
+
+| Code (status) | Constructor | Message | When |
+| --- | --- | --- | --- |
+| `cloudflared_missing` (in `GET /v1/remote` `error`) | `CloudflaredMissing(install)` | "Remote access needs Cloudflare's tunnel program, and it is not installed." (command: the install line, action `retry`) | turning remote access on without `cloudflared` |
+| `tunnel_failed` (in `error`) | `TunnelFailed(tail)` | "The tunnel to Cloudflare could not be opened." (details: the last output lines) | 5 failed runs in a row, or the listener could not open |
+| `remote_ack_required` (409), `remote_off` (409) | `Remote(code)` | "Remote access has to be confirmed the first time." / "Remote access is off." | first `enable` without `acknowledge`; a pairing code while off |
+| `remote_forbidden` (403), `remote_read_only` (403) | `Remote(code)` | "A paired phone cannot do this." / "This phone can only read." | a device on a denied route / a read-only device on a send, answer or stop route |
+| `device_not_paired` (401), `device_pending` (403), `device_expired` (401) | `Remote(code)` | "This phone is not paired, or it was disconnected on the computer." / "…waiting to be allowed on the computer." / "…not used for too long and was disconnected." | unknown or revoked token (the local API token too) / not yet allowed / idle too long |
+| `pairing_code_invalid` (403), `pairing_code_expired` (403), `pairing_locked` (423), `pairing_rate_limited` (429) | `Remote(code)` | "That pairing code is not right." / "…has expired." / "Too many wrong codes were tried." / "Too many tries at once." | `POST /pair/claim` |
+| `stream_gone` (410), `query_token_refused` (401) | `Remote(code)` | "The live updates stopped." / "A token in the address is not accepted here." | long poll / `?token=` on the tunnel listener |
+
+`TestRemoteWording` holds every code to the sentence rules.

@@ -1,5 +1,5 @@
 import { Check, Clock, MessageSquarePlus, X } from "lucide-react";
-import { lazy, Suspense, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Approval, ApprovalAnswer, ApprovalOption } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { useNow } from "../../lib/hooks";
@@ -42,6 +42,8 @@ export type ApprovalCardProps = {
   onOpenAgent?(agentId: string): void;
   /** One row of a group of requests: compact (title, the command on one line, quiet actions, details fold). */
   compact?: boolean;
+  /** A compact row tells its group when its "Always allow" panel opens or closes (the panel's save is then the one primary). */
+  onAlwaysOpen?(id: string, open: boolean): void;
 };
 
 /** The countdown text of a pending approval; null when it never times out. */
@@ -81,20 +83,22 @@ function Asks({ approval, onOpenAgent }: { approval: Approval; onOpenAgent: ((id
 
 /** The three answers in the one order of decision 91c: primary, quiet alternatives, deny last. */
 function useAnswers(approval: Approval, c: ReturnType<typeof useApprovalCard>, compact = false) {
+  // While the "Always allow" panel is open its "Save rule and allow" is the primary; the plain allow steps back.
+  const quiet = compact || c.alwaysOpen;
   const options = approval.detail.options ?? [];
   const disabled = c.busy !== null;
   if (options.length > 0) {
     const allows = options.filter(isAllowOption);
     const others = options.filter((o) => !isAllowOption(o));
     return {
-      primary: allows[0] ? <OptionButton option={allows[0]} primary={!compact} busy={c.busy} onClick={() => c.choose(allows[0] as ApprovalOption)} /> : null,
+      primary: allows[0] ? <OptionButton option={allows[0]} primary={!quiet} busy={c.busy} onClick={() => c.choose(allows[0] as ApprovalOption)} /> : null,
       alternatives: allows.slice(1).map((o) => <OptionButton key={o.id} option={o} primary={false} busy={c.busy} onClick={() => c.choose(o)} />),
       destructive: others.map((o) => <OptionButton key={o.id} option={o} primary={false} busy={c.busy} onClick={() => c.choose(o)} />),
     };
   }
   return {
     primary: (
-      <ActionButton variant={compact ? "secondary" : "primary"} busy={c.busy} action="allow" disabled={disabled} onClick={() => c.act("allow")} shortcut="A">
+      <ActionButton variant={quiet ? "secondary" : "primary"} busy={c.busy} action="allow" disabled={disabled} onClick={() => c.act("allow")} shortcut="A">
         Allow once
       </ActionButton>
     ),
@@ -142,7 +146,7 @@ function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
           {answers.alternatives}
           {rule && (
             <Button variant="quiet" size="sm" disabled={disabled} aria-expanded={c.alwaysOpen} onClick={() => c.setAlwaysOpen(!c.alwaysOpen)}>
-              {c.alwaysOpen ? "Not always" : alwaysLabel(rule)}
+              {alwaysLabel(rule)}
             </Button>
           )}
           <Button
@@ -151,6 +155,7 @@ function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
             icon={MessageSquarePlus}
             aria-expanded={c.noteOpen}
             aria-controls={c.noteOpen ? noteId : undefined}
+            data-note-toggle=""
             onClick={() => c.setNoteOpen(!c.noteOpen)}
           >
             {c.noteOpen ? "No note" : "Add note"}
@@ -180,6 +185,13 @@ function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
           rows={2}
           value={c.note}
           onChange={(e) => c.setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            // Esc closes the field (the text stays) and hands focus back to "Add note".
+            e.stopPropagation();
+            c.setNoteOpen(false);
+            card.current?.querySelector<HTMLElement>("[data-note-toggle]")?.focus();
+          }}
           ref={focusOnMount}
         />
       )}
@@ -205,6 +217,12 @@ function CompactApproval(props: ApprovalCardProps) {
   });
   const answers = useAnswers(approval, c, true);
   const rule = canAlwaysAllow(approval) ? approval.suggested_rule : undefined;
+  const { onAlwaysOpen } = props;
+  const alwaysOpen = c.alwaysOpen;
+  useEffect(() => {
+    onAlwaysOpen?.(approval.id, alwaysOpen);
+    return () => onAlwaysOpen?.(approval.id, false);
+  }, [onAlwaysOpen, approval.id, alwaysOpen]);
   return (
     <section
       ref={card}
@@ -226,7 +244,7 @@ function CompactApproval(props: ApprovalCardProps) {
         {answers.alternatives}
         {rule && (
           <Button variant="quiet" size="sm" disabled={c.busy !== null} aria-expanded={c.alwaysOpen} onClick={() => c.setAlwaysOpen(!c.alwaysOpen)}>
-            {c.alwaysOpen ? "Not always" : alwaysLabel(rule)}
+            {alwaysLabel(rule)}
           </Button>
         )}
         {answers.destructive}

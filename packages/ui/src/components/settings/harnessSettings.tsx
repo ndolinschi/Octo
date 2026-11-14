@@ -4,6 +4,7 @@ import { createRequiredContext } from "../../lib/context";
 import { errorMessage } from "../../lib/format";
 import { refreshProviders } from "../../lib/providers";
 import { useApp } from "../../state/app";
+import { useHost } from "../../state/host";
 
 export type HarnessLoad = { status: "loading" } | { status: "unavailable" } | { status: "error"; message: string } | { status: "ready"; view: SettingsView };
 
@@ -23,11 +24,13 @@ export const useHarnessSettings = useRequired;
 /** The harness's settings (`harness.env`, `GET/PUT /v1/settings`), loaded once for the whole settings page. */
 export function HarnessSettingsProvider({ children }: { children: ReactNode }) {
   const { bridge, health } = useApp();
-  const [load, setLoad] = useState<HarnessLoad>(() => (bridge.getSettings ? { status: "loading" } : { status: "unavailable" }));
+  // Remote access: the settings are local only (the tunnel refuses `/v1/settings`), so a paired device does not ask.
+  const local = useHost().remoteDevice === undefined;
+  const [load, setLoad] = useState<HarnessLoad>(() => (bridge.getSettings && local ? { status: "loading" } : { status: "unavailable" }));
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!bridge.getSettings || health !== "online") return;
+    if (!bridge.getSettings || !local || health !== "online") return;
     let live = true;
     bridge.getSettings().then(
       (view) => live && setLoad({ status: "ready", view }),
@@ -36,11 +39,11 @@ export function HarnessSettingsProvider({ children }: { children: ReactNode }) {
     return () => {
       live = false;
     };
-  }, [bridge, health, attempt]);
+  }, [bridge, local, health, attempt]);
 
   const save = useCallback(
     async (update: SettingsUpdate) => {
-      if (!bridge.putSettings) throw new Error("This connection cannot change the harness's settings");
+      if (!bridge.putSettings) throw new Error("This connection cannot change the settings of Octo's local service");
       const view = await bridge.putSettings(update);
       setLoad({ status: "ready", view });
       // Keys, the router switch and default models change what can run: the pickers re-read the providers.

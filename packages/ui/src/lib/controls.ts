@@ -48,16 +48,17 @@ export const CONTROL: Record<ControlSize, ControlSpec> = {
 };
 
 /**
- * The one look of a text field (decision 90c, the majority treatment of the code base): 8px radius, `input-border`,
- * `panel` surface, 13px text (16px on touch so iOS does not zoom), and ONE focus indicator for every field primitive:
+ * The one look of a text field (decision 90c, the majority treatment of the code base): 8px radius, `field-edge` (a hairline
+ * no brighter than a card's edge: polish trial T3), `panel` surface (recessed inside a raised card), 13px text (16px on touch so
+ * iOS does not zoom), the placeholder in plain `fg-3` (was `fg-3/60` italic, 3.3:1), and ONE focus indicator for every field primitive:
  * the border becomes `fg` and the global shadow ring is switched off. Validation error: `aria-invalid` colours the border.
  */
 export const FIELD =
-  "rounded-md border border-input-border bg-panel text-sm text-fg placeholder:text-fg-3/60 placeholder:italic transition-[border-color] duration-100 focus:border-fg focus:outline-none focus-visible:shadow-none aria-invalid:border-err disabled:opacity-50 touch:text-input-touch";
+  "rounded-md border border-field-edge bg-panel text-sm text-fg placeholder:text-fg-3 transition-[border-color] duration-100 focus:border-fg focus:outline-none focus-visible:shadow-none aria-invalid:border-err disabled:opacity-50 touch:text-input-touch";
 
 /** The same focus rule for a frame that holds an input (`SearchField`): the frame reacts to `focus-within`. */
 export const FIELD_FRAME =
-  "rounded-md border border-input-border bg-panel text-sm text-fg transition-[border-color] duration-100 focus-within:border-fg touch:text-input-touch";
+  "rounded-md border border-field-edge bg-panel text-sm text-fg transition-[border-color] duration-100 focus-within:border-fg touch:text-input-touch";
 
 /** Padding of a button by look: boxed buttons (filled, bordered, danger) are a step wider than quiet text buttons. */
 export const BUTTON_PAD: Record<"boxed" | "quiet", Record<ControlSize, string>> = {

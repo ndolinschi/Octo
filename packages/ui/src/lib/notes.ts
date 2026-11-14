@@ -40,12 +40,30 @@ export function noteIndex(notes: readonly Note[]): NoteIndex {
   return { listed, more, tokens: used + tokensOf(`${more} more notes — use search_notes`.length + 1) };
 }
 
-/** The quiet footer line: what the model sees of the notes. */
-export function indexFooter(notes: readonly Note[]): string {
+/**
+ * A note's second line in a list (P3): its description in plain words — an automatic one is the note's first line, which may
+ * be a Markdown heading ("# Migrations"), shown without its marks — then its tags. The row truncates the end.
+ */
+export function noteLine(note: Pick<Note, "description" | "tags">): string {
+  const description = note.description.replace(/^\s*#{1,6}\s+/, "").trim() || "No description";
+  const tags = note.tags.map((t) => `#${t}`).join(" ");
+  return tags ? `${description} · ${tags}` : description;
+}
+
+/**
+ * The quiet footer line: what the model sees of the notes, as a person would say it (walk B13); the numbers are in `tip`
+ * (the footer's tooltip).
+ */
+export function indexFooter(notes: readonly Note[]): { text: string; tip: string } {
   const idx = noteIndex(notes);
   const count = idx.listed.length;
-  const base = `Agents see an index of ${count} ${count === 1 ? "note" : "notes"} (≈${idx.tokens.toLocaleString("en-US")} tokens); bodies are read on demand`;
-  return idx.more > 0 ? `${base}. ${idx.more} more are found by search.` : base;
+  const listed = `Agents see a list of ${count} ${count === 1 ? "note" : "notes"} (about ${idx.tokens.toLocaleString("en-US")} tokens) and read a note in full only when they need it.`;
+  if (idx.more > 0)
+    return {
+      text: "Agents see a short list of these notes, open one when it is relevant, and find the rest by searching.",
+      tip: `${listed} ${idx.more} more ${idx.more === 1 ? "is" : "are"} found by search.`,
+    };
+  return { text: "Agents see a short list of these notes and open one when it is relevant.", tip: listed };
 }
 
 export type PinState = { count: number; chars: number; canPin: boolean; reason: string };

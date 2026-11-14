@@ -106,9 +106,41 @@ func (o *Orchestrator) newRuntime(ctx context.Context, db *projectstore.DB) (*ru
 	return &runtime{o: o, db: db, info: info, models: models, folders: folders, notes: notes, mode: mode}, nil
 }
 
+// newSessionRuntime is newRuntime for a turn of one main session: the session's model and mode (when it chose
+// them) replace the project's.
+func (o *Orchestrator) newSessionRuntime(ctx context.Context, db *projectstore.DB, sid string) (*runtime, error) {
+	rt, err := o.newRuntime(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	rt.sessionID = sid
+	if model, mode, err := db.SessionModel(ctx, sid); err == nil {
+		if model != "" {
+			rt.models.Orchestrator = o.EffectiveOrchestrator(model)
+		}
+		if projectstore.ValidMode(mode) {
+			rt.mode = mode
+		}
+	}
+	return rt, nil
+}
+
 func (rt *runtime) pid() string { return rt.db.ID() }
 
+// key is the key of the runtime's main session (steer box, ACP session, turn slot).
+func (rt *runtime) key() string { return skey(rt.pid(), rt.sessionID) }
+
+// publish sends an event of the project; an event about the work of a main session carries its session_id
+// (unless the fields name one already).
 func (rt *runtime) publish(typ string, fields map[string]any) {
+	if rt.sessionID != "" {
+		if fields == nil {
+			fields = map[string]any{}
+		}
+		if _, ok := fields["session_id"]; !ok {
+			fields["session_id"] = rt.sessionID
+		}
+	}
 	rt.o.hub.Publish(rt.pid(), typ, fields)
 }
 
@@ -257,6 +289,8 @@ func (rt *runtime) runAgent(ctx context.Context, a projectstore.Agent, history [
 		Router:          rt.o.opts.Router,
 		Hints:           rt.hints(a),
 		Gate:            rt.loopGate(),
+		OutputCap:       rt.outputCap(a.Model),
+		BudgetCut:       rt.budgetCut,
 	}
 	if a.ParentID != nil {
 		loop.Steer = rt.o.steerTextsOf(a.ID) // a message the user sent to this sub-agent's session
@@ -273,8 +307,19 @@ func (rt *runtime) runAgent(ctx context.Context, a projectstore.Agent, history [
 		sink.onCleared = rt.addCleared
 	}
 	res, err := loop.Run(ctx, history)
-	if err != nil && ctx.Err() != nil {
-		sink.keepPartial(ctx) // what a cancelled turn had written is kept, flagged stopped
+	if err != nil {
+		// What a cancelled or failed turn had written is kept, flagged stopped (cut short): a
+		// stream that broke off (the provider or the router went away) keeps the text it had sent.
+		sink.keepPartial(ctx)
+		if a.ParentID != nil && ctx.Err() != nil {
+			// A stopped sub-agent's interrupted calls get their result at the stop, as the orchestrator's do
+			// (runTurn): a reload shows the stopped step, and a continuation starts from a closed transcript.
+			c, cancel := dbCtx(ctx)
+			if rerr := rt.repairDangling(c, a.ID); rerr != nil {
+				rt.logErr("close a stopped sub-agent's calls", rerr)
+			}
+			cancel()
+		}
 	}
 	return res, err
 }
@@ -352,7 +397,8 @@ func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, te
 	defer cancel()
 	if agents, err := rt.db.Agents(c); err == nil {
 		for _, a := range agents {
-			if a.ParentID != nil && a.Status == projectstore.StatusRunning {
+			// Only this session's sub-agents: other sessions' turns run at the same time.
+			if a.ParentID != nil && a.Status == projectstore.StatusRunning && (rt.sessionID == "" || a.SessionID == rt.sessionID) {
 				if r := rt.o.runOf(a.ID); r != nil && r.detached {
 					continue // continued by the user from its session: not part of this turn
 				}

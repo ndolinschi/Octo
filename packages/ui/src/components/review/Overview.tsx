@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Review, ReviewConversationItem } from "@octo/agent-client";
 import { timeAgo } from "../../lib/format";
 import { plural, totalsText } from "../../lib/review/files";
+import { reviewTarget } from "../../lib/review/submit";
 import { TheirText } from "./ExternalText";
 import { Segmented } from "../primitives/Segmented";
 import { ChecksMark, checksState } from "./parts";
@@ -24,14 +25,20 @@ function Item({ item, now }: { item: ReviewConversationItem; now: number }) {
 }
 
 /** Above the diff, on demand: the description, the conversation, the checks and the commits of the pull request. */
-export function Overview({ review }: { review: Review }) {
+export function Overview({ review, facts }: { review: Review; /** Page mode: the header's meta line is not drawn, so its facts lead here. */ facts?: string }) {
   const [now] = useState(() => Date.now());
   const conversation = review.meta.conversation ?? [];
   const checks = review.meta.checks ?? [];
   const [section, setSection] = useState<Section>("description");
   const web = review.url && /^https?:\/\//.test(review.url) ? review.url : null;
   return (
-    <section aria-label="Pull request overview" className="flex max-h-[45%] shrink-0 flex-col gap-2 overflow-y-auto border-b border-line bg-panel p-3">
+    <section aria-label="Pull request overview" className="flex max-h-[45%] shrink-0 flex-col gap-2 overflow-y-auto border-b border-line bg-panel px-4 py-3">
+      {facts !== undefined && (
+        <p className="text-xs text-fg-3">
+          <span className="font-mono">{reviewTarget(review)}</span>
+          {review.author ? ` · ${review.author}` : ""} · <span className="font-mono">{`${review.base_ref} ← ${review.head_ref}`}</span> · {facts}
+        </p>
+      )}
       {/* The facts the header does not carry (decision 64): size, checks, the link, and a large pull request's warning. */}
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-2">
         <span>{plural(review.meta.commits.length, "commit")}</span>

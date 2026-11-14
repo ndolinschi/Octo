@@ -18,7 +18,7 @@ Loader: `src/config.rs` merges known fragment names; missing files are skipped, 
 | `decision.toml` | `[decision]` | Decisions backend |
 | `history.toml` | `[history]` | SQLite path, token key, `store_payloads`, call-record / budget-spend retention |
 | `autoroute.toml` | `[autoroute]` | Ladder, sticky/stall, budget, strip/require, observe flags |
-| `prices.toml` | `[prices."<slug>"]` | USD/1M rates (four required) + optional `billed_as` |
+| `prices.toml` | `[prices."<slug>"]`, `[prices]` scalars | USD/1M rates (four required) + optional `billed_as` and `source = "manual"` (override; rows without it are fallback values under the catalogue); `[prices] refresh = "catalogue"\|"off"`, `refresh_interval_secs` (21600), `cache_file`; env `OCTO_PRICES_REFRESH`. See [prices.md](./prices.md) |
 
 Helpers (not loaded as Config fragments): `claude-code.env.example`, `experiments.env.example`.
 
@@ -52,7 +52,7 @@ Invalid `classifier_failure_tier`, `session_budget_action`, or `default_max_toke
 
 Request header `x-octo-budget-key: <key>` (autoroute routes, 1-128 printable ASCII characters) tracks spend under that key instead of the session id, so several agent sessions share one `session_budget_usd`. The header is removed before the request goes upstream. It works without a session id too; `x-octo-budget-usd` with the key lowers the budget for that key (smaller of header and `session_budget_usd`; a header budget always rejects, see [autoroute.md](./autoroute.md#harness-integration)). Spend under a key lives in memory (1 hour idle expiry) and is not restored from the database.
 
-`prices.toml` rates were verified against the OpenRouter catalogue on 2026-11-10, except the low model's input/output and cache read (0.018), which were updated on 2026-11-11 from the owner-reported catalogue figures: [ladder-cost-check.md](./ladder-cost-check.md). At startup Octo logs a warning when the ladder is not monotonic in price (a higher tier cheaper than a lower one for a 30k in / 500 out request), followed by one line saying whether `never_pay_more_for_less` is on (and which tiers it then swaps for that request shape) or off, and a warning when a ladder model has no usable price entry. A monotonic, fully priced ladder logs nothing.
+The router refreshes prices from the OpenRouter catalogue at start and every 6 h (on by default when the upstream is openrouter.ai, off for a mock upstream); `prices.toml` rows are the fallback, `source = "manual"` rows override the catalogue: [prices.md](./prices.md). The shipped fallback rows were re-copied from the catalogue on 2026-11-14: [ladder-cost-check.md](./ladder-cost-check.md). At startup Octo logs a warning when the ladder is not monotonic in price (a higher tier cheaper than a lower one for a 30k in / 500 out request), followed by one line saying whether `never_pay_more_for_less` is on (and which tiers it then swaps for that request shape) or off, and a warning when a ladder model has no usable price entry. A monotonic, fully priced ladder logs nothing.
 
 ## Environment
 

@@ -9,6 +9,23 @@ func quickAnswer(ask string) string {
 	return fmt.Sprintf("Here is a **quick** answer to \"%s\".\n\n- No delegation needed for this one.\n- Ask for a deeper pass and I will bring in sub-agents.", clip(ask, 80))
 }
 
+// essayMarker asks the orchestrator for a long answer with no tools (several paragraphs, to stream for a while).
+const essayMarker = "[essay]"
+
+func essayAnswer(ask string) string {
+	topics := []string{"where the request comes from", "what the system does with it", "how it fails", "how it recovers", "what to measure", "what to do next"}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Here is a long answer to \"%s\".\n\n", clip(ask, 80))
+	for i, t := range topics {
+		fmt.Fprintf(&b, "## Part %d: %s\n\n", i+1, t)
+		fmt.Fprintf(&b, "Paragraph %d looks at %s. The mock model writes this text slowly so that a test can watch it stream, "+
+			"interrupt it in the middle, and check what was kept. Every sentence here is deterministic, which makes the kept part easy to compare "+
+			"with what the screen showed before the interruption.\n\n", i+1, t)
+	}
+	b.WriteString("That is the end of the essay.")
+	return b.String()
+}
+
 func planningText(ask string) string {
 	return fmt.Sprintf("I will split \"%s\" into three parallel tracks: map the repository, implement the change, and review the design for risks.", clip(ask, 100))
 }

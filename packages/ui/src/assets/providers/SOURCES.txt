@@ -1,0 +1,38 @@
+Provider and vendor marks used by ProviderMark (packages/ui/src/components/primitives/ProviderMark.tsx).
+
+Each file is the vendor's own mark, taken unchanged from the source below; only the wrapper was removed (title, style, size
+attributes) and the viewBox was recentred and scaled so every mark has the same optical size beside lucide glyphs at 16 and 20.
+The scale then follows each mark's ink (2026-11-14): solid marks (codex, openrouter, qwen, claude-code, pi, cursor) are drawn
+smaller and thin ones (grok, zhipu, copilot) larger, so at 12-16px a filled mark carries about the weight of a 1.5px line icon.
+
+Sources
+  A = @lobehub/icons-static-svg 1.102.0, licence MIT
+      https://unpkg.com/@lobehub/icons-static-svg@1.102.0/icons/<file>.svg
+  B = simple-icons 16.37.0, licence CC0-1.0
+      https://cdn.jsdelivr.net/npm/simple-icons@16.37.0/icons/<file>.svg
+
+File             Source  Upstream file
+anthropic.svg    A       anthropic.svg
+antigravity.svg  A       antigravity.svg
+claude-code.svg  A       claudecode.svg
+claude.svg       A       claude.svg
+codex.svg        A       codex.svg
+copilot.svg      A       githubcopilot.svg
+cursor.svg       A       cursor.svg
+deepseek.svg     A       deepseek.svg
+devin.svg        A       devin.svg
+gemini.svg       A       gemini.svg
+goose.svg        A       goose.svg
+grok.svg         A       grok.svg
+kimi.svg         A       kimi.svg
+meta.svg         A       meta.svg
+mistral.svg      A       mistral.svg
+openai.svg       A       openai.svg
+opencode.svg     A       opencode.svg
+openrouter.svg   A       openrouter.svg
+pi.svg           A       pi.svg
+qwen.svg         A       qwen.svg
+zed.svg          B       zedindustries.svg
+zhipu.svg        A       zhipu.svg
+
+The marks are trademarks of their owners and are used only to identify the provider.

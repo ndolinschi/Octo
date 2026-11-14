@@ -1,9 +1,9 @@
 import type { MemoryExchange } from "@octo/agent-client";
-import { CircleAlert, CircleCheck, CirclePause, MessageSquareShare } from "lucide-react";
+import { CircleAlert, CircleCheck, CirclePause, Eraser, MessageSquareShare } from "lucide-react";
 import { useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { exchangeRow, metaLine, metaParts, needsFullRequest, OUTCOME_LABEL, statusNote, type Outcome } from "../../lib/memory/sessions";
-import { useModelNames } from "../../state/models";
+import { useModelNames } from "../../state/modelNames";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
 import { IconMenu } from "../primitives/IconMenu";
@@ -49,7 +49,8 @@ export function ExchangeRow(props: {
   if (e.removed) {
     return (
       <li data-exchange={e.id}>
-        <ListRow size="md" tone="quiet" title="Forgotten exchange" meta="removed" trailing={ROW_TAIL} />
+        {/* B32: the glyph column and the time column of the other exchanges, so the text edge does not jump. */}
+        <ListRow size="md" tone="quiet" leading={<Glyph icon={Eraser} size={14} />} title="Forgotten exchange" meta="removed" trailing={ROW_TAIL} />
       </li>
     );
   }

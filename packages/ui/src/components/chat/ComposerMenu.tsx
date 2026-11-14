@@ -1,8 +1,19 @@
 import type { Bridge, PluginAgent } from "@octo/agent-client";
-import { Image as ImageIcon, MessageSquare, Search, type LucideIcon } from "lucide-react";
+import { AtSign, Image as ImageIcon, MessageSquare, Search, type LucideIcon } from "lucide-react";
 import { GLYPH } from "../primitives/glyphs";
 import { Glyph } from "../primitives/Glyph";
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 import { useApp } from "../../state/app";
 import { useOptionalCode } from "../../state/code";
@@ -11,7 +22,10 @@ import type { PickerSection } from "../../lib/picker";
 import { fileIcon } from "../primitives/fileIcons";
 import { usePresence } from "../primitives/Presence";
 import { PopupList, popupOptionId, POPUP_PANEL } from "../primitives/PopupList";
-import { popupTarget } from "../primitives/popupNav";
+import { popupMove } from "../primitives/popupNav";
+import { useLatest } from "../../lib/hooks";
+import { usePhone } from "../../lib/phone";
+import { PhoneComposerSheet } from "./PhoneComposerSheet";
 
 /** What picking an entry does: text goes into the composer at the trigger (or the caret); `run` does something else. */
 export type MenuPick = { insert: string } | { run(): void };
@@ -45,9 +59,13 @@ export type ComposerMenuHandle = { onKeyDown(e: KeyboardEvent): boolean };
  * The composer's "+" menu: one searchable list above the composer (overlay, radius 10, 28px rows, 8
  * visible, the match highlighted, the selected row's hint on the right). Opened by the "+" button
  * (it then has its own search field) or by typing `/` or `@` at the start of a word (the composer's
- * text after the trigger is the query and focus stays in the composer: ↑/↓/Enter/Esc are forwarded).
+ * text after the trigger is the query and focus stays in the composer: ↑/↓/Enter/Tab/Esc are forwarded).
+ * Keys follow decision 95 (`popupNav`): both inputs are text fields, so plain Home / End move the caret and Ctrl+Home / End jump;
+ * Tab accepts the active row only as the mention menu (a completion of what is typed); in the "+" menu Tab keeps focus in its
+ * search field, the panel's only focusable element, and focus leaving the panel closes it. Resizing the window closes it, as
+ * `Menu` and `Popover` do (B9).
  * Groups appear only with entries: Files (the same loader as Filter files), Agents (available plugin
- * ACP agents), Comments (pending), Actions.
+ * ACP agents), Comments (pending), Project actions; Attach (image, mention a file) comes first.
  */
 export const ComposerMenu = forwardRef<
   ComposerMenuHandle,
@@ -66,6 +84,8 @@ export const ComposerMenu = forwardRef<
     onPick(pick: MenuPick): void;
     /** `escape`: Esc closed it (opened by the button, focus goes back to the button; after a pick or a click it goes to the text). */
     onClose(reason?: "escape"): void;
+    /** Direction 7: the mode, model and folder chips, which the phone's "+" sheet carries (the row has no room for them). */
+    chips?: ReactNode;
   }
 >(function ComposerMenu(props, handle) {
   const { bridge } = useApp();
@@ -83,6 +103,8 @@ export const ComposerMenu = forwardRef<
   const search = useRef<HTMLInputElement>(null);
   const [pos, setPos] = useState<{ left: number; bottom: number; width: number } | null>(null);
   const { onActive, onClose } = props;
+  // Direction 7: on the phone the "+" opens a sheet first (attach, mention or run, mode, model, folder); "Mention" opens this list.
+  const [sheet, setSheet] = useState(usePhone() && props.query === null);
 
   useEffect(() => {
     let alive = true;
@@ -95,7 +117,19 @@ export const ComposerMenu = forwardRef<
   useEffect(() => indexFiles?.(), [indexFiles]);
 
   const entries = useMemo(() => {
-    const out: Entry[] = [];
+    const out: Entry[] = [
+      // C6: attaching comes first, in its own clearly named group; project actions are a separate group below.
+      {
+        id: "attach:image",
+        group: "Attach",
+        label: "Attach image…",
+        hint: "Choose from disk",
+        icon: ImageIcon,
+        match: "attach image picture photo screenshot",
+        pick: { run: props.onPickImage },
+      },
+      { id: "attach:file", group: "Attach", label: "Mention a file", hint: "Type @", icon: AtSign, match: "mention file path", pick: { insert: "@" } },
+    ];
     const files = code?.loadedFiles ?? [];
     const hits = query ? files.filter((f) => `${f.folder}/${f.path}`.toLowerCase().includes(query)) : files;
     // Ranked: name matches before path matches, then shorter paths.
@@ -134,15 +168,6 @@ export const ComposerMenu = forwardRef<
       const label = `Review ${props.pendingComments} pending ${props.pendingComments === 1 ? "comment" : "comments"}`;
       out.push({ id: "comments", group: "Comments", label, hint: "Open", icon: MessageSquare, match: label, pick: { run: props.onOpenComments } });
     }
-    out.push({
-      id: "action:image",
-      group: "Actions",
-      label: "Image…",
-      hint: "Attach",
-      icon: ImageIcon,
-      match: "image picture photo screenshot",
-      pick: { run: props.onPickImage },
-    });
     if (ws) {
       const actions: [string, string, LucideIcon, () => void][] = [
         ["settings", "Project settings", GLYPH.settings, ws.openSettings],
@@ -151,7 +176,7 @@ export const ComposerMenu = forwardRef<
         ["files", "Show files", GLYPH.files, () => ws.openTool("files")],
         ["details", "Show project details", GLYPH.details, () => ws.openTool("details")],
       ];
-      for (const [id, label, icon, run] of actions) out.push({ id: `action:${id}`, group: "Actions", label, hint: "Run", icon, match: label, pick: { run } });
+      for (const [id, label, icon, run] of actions) out.push({ id: `action:${id}`, group: "Project", label, hint: "Run", icon, match: label, pick: { run } });
     }
     return query ? out.filter((e) => e.group === "Files" || e.match.toLowerCase().includes(query)) : out;
   }, [code?.loadedFiles, agents, props.pendingComments, props.onOpenComments, props.onPickImage, ws, query]);
@@ -163,47 +188,65 @@ export const ComposerMenu = forwardRef<
   useEffect(() => onActive(currentId === null ? null : optionId(currentId)));
   useEffect(() => () => onActive(null), [onActive]);
 
-  // Above its anchor, on the anchor's left edge, as wide as the composer box (up to 480px) and never past the window.
+  // Above its anchor, on the anchor's left edge, as wide as the composer box (up to 480px) and never past the window. A window
+  // resize closes it, as it closes `Menu` and `Popover` (B9): the anchor moves after the resize, so a measure on `resize` was stale.
+  const close = useLatest(onClose);
   useLayoutEffect(() => {
-    const place = () => {
-      const r = props.anchor.current?.getBoundingClientRect();
-      const b = props.box.current?.getBoundingClientRect();
-      if (!r || !b) return;
+    const r = props.anchor.current?.getBoundingClientRect();
+    const b = props.box.current?.getBoundingClientRect();
+    if (r && b) {
       const width = Math.min(b.width, 480, window.innerWidth - 16);
       const gap = props.anchor.current === props.box.current ? GAP : CHIP_GAP;
       setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)), bottom: window.innerHeight - r.top + gap, width });
-    };
-    place();
-    window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [props.anchor, props.box]);
+    }
+    const onResize = () => close.current();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [props.anchor, props.box, close]);
 
   // Opened by the button, the search field takes focus once the panel exists (it renders after `pos`).
   const placed = pos !== null;
   useEffect(() => {
-    if (props.query === null && placed) search.current?.focus();
-  }, [props.query, placed]);
+    if (props.query === null && placed && !sheet) search.current?.focus();
+  }, [props.query, placed, sheet]);
+  // Focus that leaves the "+" menu's search for anything but the menu or its button closes it (decision 95); a move to nothing
+  // (the window lost focus) does not.
+  const plus = props.query === null;
   useEffect(() => {
+    const el = panel.current;
+    if (!plus || !el) return;
+    const left = (e: FocusEvent) => {
+      const to = e.relatedTarget;
+      if (to instanceof Node && !el.contains(to) && !props.anchor.current?.contains(to)) onClose();
+    };
+    el.addEventListener("focusout", left);
+    return () => el.removeEventListener("focusout", left);
+  }, [plus, placed, onClose, props.anchor, sheet]);
+  useEffect(() => {
+    if (sheet) return;
     const outside = (e: PointerEvent) => {
       const t = e.target as Node;
       if (!panel.current?.contains(t) && !props.anchor.current?.contains(t) && !props.box.current?.contains(t)) onClose();
     };
     document.addEventListener("pointerdown", outside, true);
     return () => document.removeEventListener("pointerdown", outside, true);
-  }, [onClose, props.anchor, props.box]);
+  }, [onClose, props.anchor, props.box, sheet]);
 
   const choose = (e: Entry | undefined) => e && props.onPick(e.pick);
 
   const keys = (e: KeyboardEvent): boolean => {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      const to = popupTarget(
-        e.key,
-        entries.map((x) => x.id),
-        currentId,
-      );
-      if (to !== null) setSelected(to);
+    const to = popupMove(
+      e,
+      true,
+      entries.map((x) => x.id),
+      currentId,
+    );
+    if (to !== null) {
+      setSelected(to);
       return true;
     }
+    // In the "+" menu Tab moves focus, and the search field is the panel's only focusable element: it stays there.
+    if (e.key === "Tab" && props.query === null) return true;
     if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
       if (!current) return false;
       choose(current);
@@ -235,8 +278,27 @@ export const ComposerMenu = forwardRef<
         };
       }),
   }));
+  if (sheet)
+    return (
+      <PhoneComposerSheet
+        chips={props.chips}
+        onClose={() => onClose()}
+        onImage={() => {
+          onClose();
+          props.onPickImage();
+        }}
+        onMenu={() => setSheet(false)}
+      />
+    );
   return createPortal(
-    <div ref={panel} data-composer-menu data-state={state} style={{ left: pos.left, bottom: pos.bottom, width: pos.width }} className={POPUP_PANEL}>
+    <div
+      ref={panel}
+      data-composer-menu
+      data-inline={props.query !== null || undefined}
+      data-state={state}
+      style={{ left: pos.left, bottom: pos.bottom, width: pos.width }}
+      className={POPUP_PANEL}
+    >
       {props.query === null && (
         <div className="flex h-bar shrink-0 items-center gap-2 border-b border-line px-3">
           <Glyph icon={Search} size={14} className="shrink-0 text-fg-3" />

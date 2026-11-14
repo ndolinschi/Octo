@@ -33,7 +33,7 @@ export function ErrorNotice(props: {
   tone?: "error" | "warn" | "info";
   title?: string;
   /** "Check again" (login state re-read) for `recheck_provider`. */
-  onCheck?: (() => void) | undefined;
+  onCheck?: (() => unknown) | undefined;
   /** "Retry" for a `retry` step (send the same request again). */
   onRetry?: (() => void) | undefined;
   retrying?: boolean;
@@ -47,6 +47,20 @@ export function ErrorNotice(props: {
     ? plainStructured(props.fields)
     : plainError(props.raw, { code: props.code, agent: props.agent, hint: props.hint });
   const [open, setOpen] = useState(false);
+  // "Check again": busy while it runs (aria-busy, not disabled, so focus stays); when the notice is still here after it, say so.
+  const [checking, setChecking] = useState(false);
+  const [checked, setChecked] = useState(false);
+  const checkAgain = () => {
+    if (!props.onCheck) return;
+    setChecking(true);
+    void Promise.resolve()
+      .then(props.onCheck)
+      .catch(() => undefined)
+      .finally(() => {
+        setChecking(false);
+        setChecked(true);
+      });
+  };
   const command = p.next?.kind === "command" ? p.next.command : undefined;
   const check = (p.next?.kind === "check" || p.action === "recheck_provider") && props.onCheck;
   const retry = (p.next?.kind === "retry" || p.action === "retry") && props.onRetry;
@@ -56,7 +70,7 @@ export function ErrorNotice(props: {
   const actions = (
     <>
       {check && (
-        <Button size="sm" variant="secondary" onClick={props.onCheck}>
+        <Button size="sm" variant="secondary" loading={checking} onClick={checkAgain}>
           Check again
         </Button>
       )}
@@ -94,6 +108,11 @@ export function ErrorNotice(props: {
       <Notice tone={props.tone ?? "error"} form="block" {...(props.title ? { title: props.title } : {})} {...(command ? { command } : {})} actions={actions}>
         {p.sentence}
         {p.hint && <span className="block text-fg-3">{p.hint.replace(/`/g, "")}</span>}
+        {checked && !checking && (
+          <span role="status" className="block text-xs text-fg-3">
+            {/log(?:ged)? ?in/i.test(p.sentence) ? "Checked just now — still not logged in" : "Checked just now — nothing has changed"}
+          </span>
+        )}
         {open && details && <p className="mt-2 font-mono text-xs break-words whitespace-pre-wrap text-fg-3">{details}</p>}
       </Notice>
     </div>

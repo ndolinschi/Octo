@@ -1,11 +1,14 @@
-import { lazy, Suspense, useState } from "react";
+import { sessionRoot } from "@octo/agent-client";
+import { lazy, Suspense, useCallback, useState } from "react";
+import { resolveSessionRoute } from "../../lib/route";
+import { SessionScope } from "../../state/session";
 import { FileViewSkeleton } from "../files/EditorSkeleton";
 import { useProject } from "../../state/project";
 import { FloatRoomContext } from "../primitives/floatRoom";
 import { parseTab, type TabId } from "../../state/workspace/layout";
-import { useFloatingHere } from "../../state/workspace/useFloatingHere";
+import { FloatingBlockContext, useFloatingHere } from "../../state/workspace/useFloatingHere";
 import { ConversationView } from "../chat/ConversationView";
-import { Transcript } from "../chat/Transcript";
+import { transcriptPart } from "../chat/transcriptPart";
 import { useNow } from "../../lib/hooks";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { TranscriptSlot } from "../sessions/parts";
@@ -16,7 +19,18 @@ import type { FloatingSlot } from "../files/FileView";
 const FileView = lazy(() => import("../files/FileView").then((m) => ({ default: m.FileView })));
 
 /** What a file view renders as its floating composer: the dock, not the file feature, knows about chat. */
-const renderFloatingComposer: FloatingSlot = (onHeight) => <FloatingComposer onHeight={onHeight} />;
+const renderFloatingComposer: FloatingSlot = (onHeight, rest) => <ScopedFloatingComposer onHeight={onHeight} rest={rest} />;
+
+/** Decision 96: the floating composer sends to the session of the conversation focused last (Chat's, else a session tab's). */
+function ScopedFloatingComposer(props: { onHeight(px: number): void; rest?: boolean }) {
+  const ws = useOptionalWorkspace();
+  const { state } = useProject();
+  return (
+    <SessionScope sessionId={ws?.focusedSessionId ?? state.sessions.defaultId}>
+      <FloatingComposer onHeight={props.onHeight} rest={props.rest ?? false} />
+    </SessionScope>
+  );
+}
 
 /** The Details tab loads when it is first opened (its own chunk). */
 const DetailsPanel = lazy(() => import("../details/DetailsPanel").then((m) => ({ default: m.DetailsPanel })));
@@ -30,22 +44,28 @@ const MemoryTab = lazy(() => import("../memory/MemoryTab").then((m) => ({ defaul
 /** Sessions (project sessions): the list-detail tab and one session in a tab of its own. Their own chunks. */
 const SessionsTab = lazy(() => import("../sessions/SessionsTab").then((m) => ({ default: m.SessionsTab })));
 const SessionPane = lazy(() => import("../sessions/SessionPane").then((m) => ({ default: m.SessionPane })));
+const SessionGone = lazy(() => import("../sessions/SessionGone").then((m) => ({ default: m.SessionGone })));
+
+/** The transcript's own chunk (`transcriptPart`). */
+const Transcript = transcriptPart.Component;
 
 /** A session's conversation is drawn by the project chat's own `Transcript`; the sessions feature receives it as a slot. */
 function SessionTranscript(props: Parameters<TranscriptSlot>[0]) {
   const now = useNow(props.agent.status === "running");
   return (
-    <Transcript
-      agent={props.agent}
-      messages={props.messages}
-      now={now}
-      watched
-      speaker={props.speaker}
-      promptAuthor={props.promptAuthor}
-      hideFirstPrompt={props.hideFirstPrompt}
-      density={props.density}
-      onOpenSession={props.onOpenSession}
-    />
+    <Suspense fallback={null}>
+      <Transcript
+        agent={props.agent}
+        messages={props.messages}
+        now={now}
+        watched
+        speaker={props.speaker}
+        promptAuthor={props.promptAuthor}
+        hideFirstPrompt={props.hideFirstPrompt}
+        density={props.density}
+        onOpenSession={props.onOpenSession}
+      />
+    </Suspense>
   );
 }
 const renderSessionTranscript: TranscriptSlot = (props) => <SessionTranscript {...props} />;
@@ -69,7 +89,7 @@ export function TabView({ tab }: { tab: TabId }) {
   if (!ref || !project) return null;
   switch (ref.kind) {
     case "chat":
-      return <ConversationView agentId={project.orchestrator_agent_id} tab={tab} />;
+      return <ChatTab tab={tab} />;
     case "agent":
       return <ConversationView agentId={ref.agentId} tab={tab} />;
     case "file":
@@ -144,8 +164,47 @@ function SessionsToolTab() {
   );
 }
 
+/** Chat: the conversation of the main session the workspace shows there (decision 96), else the project's own. */
+function ChatTab({ tab }: { tab: TabId }) {
+  const ws = useOptionalWorkspace();
+  const sid = ws?.chatSessionId ?? null;
+  return <SessionConversation sessionId={sid} tab={tab} onFollow={(next) => ws?.followSession(sid, next)} />;
+}
+
+/**
+ * One main session's conversation in a tab: the shared `ConversationView` inside that session's scope (its root agent, queue,
+ * approvals, composer). `sessionId` null is the default session. A session that no longer exists says so (the project's
+ * gone state, P1-4) instead of showing another session.
+ */
+function SessionConversation(props: { sessionId: string | null; tab: TabId; onFollow(next: string): void }) {
+  const { project, state, synced, parallel } = useProject();
+  const ws = useOptionalWorkspace();
+  if (!project) return null;
+  if (parallel && resolveSessionRoute(props.sessionId, synced > 0 ? state.sessions.list : null) === "missing") {
+    const fallback = state.sessions.defaultId;
+    return (
+      <Suspense fallback={null}>
+        <SessionGone sessionId={props.sessionId} onDefault={fallback !== null ? () => ws?.followSession(props.sessionId, fallback) : undefined} />
+      </Suspense>
+    );
+  }
+  const sid = props.sessionId ?? state.sessions.defaultId;
+  const root = (sid !== null && parallel ? sessionRoot(state, sid) : "") || project.orchestrator_agent_id;
+  // Chat on "the default session" keeps one conversation (and the tab's own draft) while the default is learnt or moves.
+  return (
+    <SessionScope sessionId={sid} keyed={props.sessionId !== null} onFollow={props.onFollow}>
+      <ConversationView key={props.sessionId ?? "default"} agentId={root} tab={props.tab} />
+    </SessionScope>
+  );
+}
+
 function SessionTab({ sessionId, tab }: { sessionId: string; tab: TabId }) {
   const ws = useOptionalWorkspace();
+  const { state, parallel, synced } = useProject();
+  const known = state.sessions.list.find((x) => x.id === sessionId);
+  // A main session's own tab is its conversation (decision 96: two sessions side by side); an agent session's, its detail.
+  if (parallel && (known?.kind === "main" || (known === undefined && synced > 0)))
+    return <SessionConversation sessionId={sessionId} tab={tab} onFollow={(next) => ws?.followSession(sessionId, next)} />;
   return (
     <Suspense fallback={null}>
       <SessionPane sessionId={sessionId} renderTranscript={renderSessionTranscript} onClose={ws ? () => ws.dropTab(tab) : undefined} />
@@ -159,15 +218,20 @@ function SessionTab({ sessionId, tab }: { sessionId: string; tab: TabId }) {
  * always be scrolled above it.
  */
 function ToolView({ tab, children }: { tab: TabId; children: React.ReactNode }) {
-  const floating = useFloatingHere(tab);
+  // A form with its own input (note editor, memory file editor, "Add") takes the composer away while it is open.
+  const [forms, setForms] = useState(0);
+  const countForms = useCallback((delta: 1 | -1) => setForms((n) => n + delta), []);
+  const floating = useFloatingHere(tab) && forms === 0;
   const [height, setHeight] = useState(0);
   const room = floating && height > 0 ? height + 16 : 0;
   return (
-    <FloatRoomContext.Provider value={room}>
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        {children}
-        {floating && <FloatingComposer onHeight={setHeight} />}
-      </div>
-    </FloatRoomContext.Provider>
+    <FloatingBlockContext.Provider value={countForms}>
+      <FloatRoomContext.Provider value={room}>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {children}
+          {floating && <ScopedFloatingComposer onHeight={setHeight} />}
+        </div>
+      </FloatRoomContext.Provider>
+    </FloatingBlockContext.Provider>
   );
 }
