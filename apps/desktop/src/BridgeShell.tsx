@@ -11,8 +11,12 @@ export function BridgeShell({ choice, onRestart }: { choice: BridgeChoice; onRes
   const chrome = useWindowChrome();
   const guideY = useChromeDebug(chrome);
   const host = useMemo(() => {
-    const h: { restart?: () => void; pickFolder?: () => Promise<string | null> } = {};
-    if (onRestart) h.restart = onRestart;
+    const h: { restart?: () => void; pickFolder?: () => Promise<string | null>; managesHarness?: boolean } = {};
+    // Only the Tauri path (HostedApp) passes `onRestart`: there the shell starts and restarts the harness.
+    if (onRestart) {
+      h.restart = onRestart;
+      h.managesHarness = true;
+    }
     if (isTauri(window)) h.pickFolder = () => pickFolder();
     return Object.keys(h).length ? h : undefined;
   }, [onRestart]);

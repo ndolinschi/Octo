@@ -11,12 +11,13 @@ import { agentStack } from "../../lib/orchestratorMore";
 import { navigate } from "../../lib/route";
 import { TRIAGE_LABEL, TRIAGE_ORDER, triageGroups, type Triage } from "../../lib/triage";
 import { useApp } from "../../state/app";
+import { isPending } from "../../state/orchestrators";
 import type { Reply } from "../../state/requests";
 import { Card } from "../primitives/Card";
 import { Button } from "../primitives/Button";
 import { ListRow } from "../primitives/ListRow";
 import { SectionHeader } from "../primitives/SectionHeader";
-import { SkeletonList } from "../primitives/Skeleton";
+import { Skeleton, SkeletonList } from "../primitives/Skeleton";
 import { OrchestratorGlyph } from "../primitives/Status";
 import { STILL } from "./still";
 import type { useOverview } from "./useOverview";
@@ -135,7 +136,7 @@ function ProjectRow({
       // Decision 76: only a project that is working right now turns its arc; a needs-you row does not pulse.
       leading={
         <span className={cn("flex", state.kind !== "working" && STILL)}>
-          <OrchestratorGlyph state={state.kind} />
+          {isPending(state) ? <Skeleton shape="circle" className="size-3.5" /> : <OrchestratorGlyph state={state.kind} />}
         </span>
       }
       tip={`${project.name} — ${line}${second ? `\n${second}` : ""}`}

@@ -1,4 +1,4 @@
-import { FAIL_TRIGGER, LIVE_TRIGGER, failTurn, liveTurn } from "./live";
+import { FAIL_TRIGGER, LIVE_TRIGGER, SLOW_TRIGGER, SPAWN_REFUSED_TRIGGER, failTurn, liveTurn, slowTurn, spawnRefusedTurn } from "./live";
 import {
   BridgeError,
   type Agent,
@@ -660,7 +660,15 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       if (rec.turn) throw new BridgeError(409, "turn_in_progress", "a turn is already running");
       trace("sendMessage", text);
       startScript(rec, Date.now(), (ctx) =>
-        FAIL_TRIGGER.test(text) ? failTurn(ctx, text) : LIVE_TRIGGER.test(text) ? liveTurn(ctx, text) : genericTurn(ctx, text),
+        FAIL_TRIGGER.test(text)
+          ? failTurn(ctx, text)
+          : LIVE_TRIGGER.test(text)
+            ? liveTurn(ctx, text)
+            : SPAWN_REFUSED_TRIGGER.test(text)
+              ? spawnRefusedTurn(ctx, text)
+              : SLOW_TRIGGER.test(text)
+                ? slowTurn(ctx, text)
+                : genericTurn(ctx, text),
       );
       const orch = orchestratorOf(rec);
       const sent = [...rec.messages].reverse().find((m) => m.agent_id === orch.id && m.role === "user");

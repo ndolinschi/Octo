@@ -29,7 +29,7 @@ export function FieldsSection() {
   const [none, setNone] = useState("");
   return (
     <Section id="fields" title="Fields" note="One focus indicator for every field: the border turns fg and the shadow ring is off. Click into each to see it.">
-      <Variants label="TextField sizes (framed), invalid, disabled, bare">
+      <Variants label="TextField sizes (framed), invalid, disabled, leading sign, bare">
         {CONTROL_SIZES.map((s) => (
           <W key={s} w="w-36">
             <TextField size={s} placeholder={`size ${s}`} aria-label={`size ${s}`} />
@@ -40,6 +40,9 @@ export function FieldsSection() {
         </W>
         <W w="w-36">
           <TextField aria-label="disabled" disabled placeholder="disabled" />
+        </W>
+        <W w="w-36">
+          <TextField leading="$" inputMode="decimal" aria-label="with a leading sign" placeholder="Set budget" />
         </W>
         <span className="rounded-md border border-line px-2">
           <TextField variant="bare" aria-label="bare" placeholder="bare in a frame" className="w-36" />
@@ -80,7 +83,7 @@ export function FieldsSection() {
           <Select value={pick} onChange={setPick} options={OPTIONS} label="Tier" disabled />
         </W>
       </Variants>
-      <Variants label="Segmented (C4: a recessed track): chosen, nothing chosen yet, in a card">
+      <Variants label="Segmented (C4: a recessed track; 24px segments, the track is their tint): chosen, nothing chosen yet, in a card">
         <Segmented<string> label="Region" options={REGIONS} value={seg} onChange={setSeg} />
         <Segmented<string> label="Region, none chosen" options={REGIONS} value={none} onChange={setNone} />
         <span className="octo-in-card rounded-md bg-raised p-card">

@@ -79,9 +79,11 @@ export function ListRow(props: {
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-2">
           {title}
-          {props.meta !== undefined && <span className="ml-auto max-w-[40%] shrink-0 truncate pl-1 text-xs text-fg-3">{props.meta}</span>}
+          {props.meta !== undefined && (
+            <span className={cn("ml-auto max-w-[40%] shrink-0 truncate pl-1 text-xs", selected || active ? "text-fg-2" : "text-fg-3")}>{props.meta}</span>
+          )}
         </span>
-        {twoLine && <span className="min-w-0 truncate text-xs text-fg-3">{props.description}</span>}
+        {twoLine && <span className={cn("min-w-0 truncate text-xs", selected || active ? "text-fg-2" : "text-fg-3")}>{props.description}</span>}
       </span>
     </>
   );

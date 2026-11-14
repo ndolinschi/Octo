@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 import { useReadable } from "../../lib/errors/useReadable";
 import { projectRowLines, type OrchestratorState } from "../../lib/orchestrator";
 import { hrefFor } from "../../lib/route";
+import { isPending } from "../../state/orchestrators";
 import { ListRow } from "../primitives/ListRow";
+import { Skeleton } from "../primitives/Skeleton";
 import { OrchestratorGlyph } from "../primitives/Status";
 
 /**
@@ -40,7 +42,7 @@ export function ProjectItem(props: {
         tip={error ? `${project.name}: ${error}` : project.name}
         onClick={props.onPick}
         size="md"
-        leading={<OrchestratorGlyph state={state.kind} unseen={unseen} />}
+        leading={isPending(state) ? <Skeleton shape="circle" className="size-3.5" /> : <OrchestratorGlyph state={state.kind} unseen={unseen} />}
         title={
           <>
             {project.name}

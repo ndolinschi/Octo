@@ -5,8 +5,9 @@ import { listKeyTarget } from "../../lib/focus";
 export type Segment<T extends string | number> = { id: T; label: string; title?: string };
 
 /**
- * A segmented control (decision 33, revised by polish step 3 C4): 24px, text only, on a recessed track (`seg-track`, a tint,
- * no outline) so the unchosen state reads as a choice at rest; the chosen segment is one step up (`seg-on`, plus a whisper of
+ * A segmented control (decision 33, revised by polish step 3 C4 and audit B5): segments 24px inside a 28px track
+ * with 2px padding (the owner's audit, item 5: a form row that holds one is 54px, not 50), text only, on a tinted track
+ * (`seg-track`, a tint, no outline) so the unchosen state reads as a choice at rest; the chosen segment is one step up (`seg-on`, plus a whisper of
  * shadow in light), never an accent or a solid fill. Segments are as wide as their labels and never truncate — a panel holds
  * at most one of these, and a control that does not fit folds into a menu instead. One tab stop; ←/→ / Home / End move and
  * choose (a radio group).
@@ -40,7 +41,7 @@ export function Segmented<T extends string | number>(props: {
       tabIndex={-1}
       aria-label={props.label}
       onKeyDown={onKeyDown}
-      className={cn("flex h-chip w-fit shrink-0 gap-0.5 rounded-sm bg-seg-track p-0.5", props.className)}
+      className={cn("flex h-ctl-sm w-fit shrink-0 rounded-md bg-seg-track p-0.5", props.className)}
     >
       {props.options.map((o) => {
         const on = o.id === props.value;
@@ -54,7 +55,7 @@ export function Segmented<T extends string | number>(props: {
             title={o.title}
             onClick={() => props.onChange(o.id)}
             className={cn(
-              "touch-hit shrink-0 rounded-xs px-2 text-sm leading-5 whitespace-nowrap press-row focus-inset",
+              "touch-hit shrink-0 rounded-sm px-2 text-sm leading-5 whitespace-nowrap press-row focus-inset",
               on ? "bg-seg-on text-fg shadow-seg" : "text-fg-2 hover:bg-hover hover:text-fg",
             )}
           >

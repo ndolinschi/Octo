@@ -4,10 +4,10 @@ import { Check, Copy } from "lucide-react";
 import { markSteered } from "../../lib/v7/steer";
 import { lazy, memo, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
-import { formatDuration, formatSeparator, needsSeparator, timeAgo } from "../../lib/format";
+import { formatSeparator, needsSeparator, timeAgo } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
 import { splitComments } from "../../lib/comments";
-import { buildTurns, compactionSlots, promptText, turnWarning, type Turn } from "../../lib/transcript";
+import { buildTurns, compactionSlots, promptText, stepState, turnHead, turnWarning, type Turn, type TurnEnd } from "../../lib/transcript";
 import { agentLabelOf } from "../../lib/errors/words";
 import { useApp } from "../../state/app";
 import { parseAcp } from "../../lib/models";
@@ -36,7 +36,7 @@ const PLAN_TURNS = 5;
 /** Tool lines and delegation cards: their own chunks, fetched right after the first paint with the Markdown chunk (`AppShell`). */
 const ToolGroup = lazy(() => import("./ToolGroup").then((m) => ({ default: m.ToolGroup })));
 const DelegationGroup = lazy(() => import("./DelegationGroup").then((m) => ({ default: m.DelegationGroup })));
-import { toolState, TranscriptContext, useTranscript, type ToolResult, type TranscriptCtx } from "./transcriptContext";
+import { TranscriptContext, useTranscript, type ToolResult, type TranscriptCtx } from "./transcriptContext";
 import { proseClass } from "../primitives/Prose";
 import { ActivityLine, useBatched } from "./LiveActivity";
 import { ActivityRow } from "./ActivityRow";
@@ -134,11 +134,24 @@ export const Transcript = memo(function Transcript(props: {
             isOrchestrator && turn.prompt && needsSeparator(prev ? (prev.lastAt ?? prev.prompt?.created_at ?? null) : null, turn.prompt.created_at);
           // An earlier turn keeps its own ending (several can fail in a row); the newest one's is the banner below. A reply
           // cut by a stop is marked even when the ending was not seen live.
+          const cut = turn.items.some((it) => stoppedIds.has(Number(it.key.split(".")[0])));
           const ended: TurnOutcome | null =
             !isOrchestrator || last
               ? null
-              : ((turn.prompt ? state.turnOutcomes[turn.prompt.id] : undefined) ??
-                (turn.items.some((it) => stoppedIds.has(Number(it.key.split(".")[0]))) ? { status: "cancelled", error: null } : null));
+              : ((turn.prompt ? state.turnOutcomes[turn.prompt.id] : undefined) ?? (cut ? { status: "cancelled", error: null } : null));
+          // How the turn ended, for its head row and its steps (a stopped turn's interrupted call reads "stopped").
+          const end: TurnEnd =
+            last && running
+              ? null
+              : !last
+                ? (ended?.status ?? (cut ? "cancelled" : null))
+                : isOrchestrator
+                  ? (lastTurn?.status ?? failure?.status ?? (cut ? "cancelled" : null))
+                  : agent.status === "failed" || agent.status === "cancelled"
+                    ? agent.status
+                    : cut
+                      ? "cancelled"
+                      : null;
           return (
             <section key={turn.key} data-turn-id={turn.prompt?.id} className="flex flex-col gap-4">
               {slots.get(i)?.map((m) => (
@@ -169,6 +182,7 @@ export const Transcript = memo(function Transcript(props: {
                 plan={last && running ? plan : null}
                 startedAt={started}
                 now={last ? now : minute}
+                end={end}
                 footer={isOrchestrator}
                 usage={last ? usageLine : null}
               />
@@ -349,6 +363,8 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   plan: PlanEntry[] | null;
   startedAt: string | null;
   now: number;
+  /** How the turn ended (null while it runs or when unknown). */
+  end?: TurnEnd;
   footer?: boolean;
   /** "model · in / out" of the newest finished turn (decision 86 d). */
   usage?: string | null;
@@ -363,9 +379,12 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   const start = props.startedAt ? Date.parse(props.startedAt) : null;
   const end = turn.lastAt ? Date.parse(turn.lastAt) : null;
   const worked = !live && start !== null && end !== null && end - start >= 1000 ? end - start : null;
+  const ending = props.end ?? null;
   const toolUses = turn.items.flatMap((item) => (item.kind === "tools" ? item.uses : []));
-  const stepFailed = toolUses.some((u) => toolState(ctx, u.id) === "error");
-  const showSteps = worked === null || (stepsOpen ?? stepFailed);
+  const steps = toolUses.map((u) => stepState(ctx.results.get(u.id), ctx.agentRunning, ending));
+  // Open by default when a step failed or was stopped (the head of a stopped turn shows what the stop cut).
+  const showSteps = worked === null || (stepsOpen ?? steps.some((s) => s === "error" || s === "stopped"));
+  const head = worked === null ? null : turnHead(ending, worked, steps);
   const reply = turn.items.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n\n");
   // The newest step row above, when it already says what the activity line would: a streaming thinking row (nothing after it), a running tool group.
   const lastItem = turn.items[turn.items.length - 1];
@@ -375,7 +394,7 @@ const AssistantTurn = memo(function AssistantTurn(props: {
       ? props.thinking
         ? "thinking"
         : null
-      : lastItem.kind === "tools" && lastItem.uses.some((u) => toolState(ctx, u.id) === "running")
+      : lastItem.kind === "tools" && lastItem.uses.some((u) => stepState(ctx.results.get(u.id), ctx.agentRunning, ending) === "running")
         ? "tool"
         : null;
   const prose = proseClass(compact ? "compact" : "reading");
@@ -388,13 +407,13 @@ const AssistantTurn = memo(function AssistantTurn(props: {
         compact ? "gap-3" : "gap-4",
       )}
     >
-      {worked !== null && (
+      {head && (
         // C1: the head of the turn's activity, in the steps' own row and glyph column; it opens and folds the tool rows.
+        // It says how the turn ended: done, stopped ("Stopped after 8s") or failed; a failed step inside keeps its own tone.
         <ActivityRow
           data="head"
-          // The failed step below carries the tone (decision 91k: tone once); the head only says the turn's work is over.
-          state="done"
-          verb={<span className="tabular-nums">Worked for {formatDuration(worked)}</span>}
+          state={head.state}
+          verb={<span className="tabular-nums">{head.label}</span>}
           {...(toolUses.length > 0 ? { expands: true, open: showSteps, onOpenChange: setStepsOpen } : {})}
         />
       )}
@@ -407,7 +426,7 @@ const AssistantTurn = memo(function AssistantTurn(props: {
         if (item.kind === "tools" && !showSteps) return null;
         return (
           <Suspense key={item.key} fallback={null}>
-            {item.kind === "tools" ? <ToolGroup uses={item.uses} /> : <DelegationGroup uses={item.uses} />}
+            {item.kind === "tools" ? <ToolGroup uses={item.uses} end={ending} /> : <DelegationGroup uses={item.uses} live={live} end={ending} />}
           </Suspense>
         );
       })}

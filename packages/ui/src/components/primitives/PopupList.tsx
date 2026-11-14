@@ -1,3 +1,4 @@
+import { useScrollFade } from "../../lib/hooks";
 import { useId, useLayoutEffect, useRef, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import type { PickerRow, PickerSection } from "../../lib/picker";
@@ -11,6 +12,10 @@ const VISIBLE = 9;
  * bottom. Computed by CSS from the same tokens as the rows' `h-row` / `touch:h-ctl-lg`, so a narrow window shows whole rows.
  */
 const MAX_HEIGHT = "max-h-[calc(var(--spacing-row)*var(--popup-rows)+8px)] touch:max-h-[calc(var(--spacing-ctl-lg)*var(--popup-rows)+8px)]";
+
+/** `tall` (audit B4): up to 480px, but never past the window (160px for the field, header and footer), still whole rows (CSS `round`). */
+const TALL_HEIGHT =
+  "max-h-[calc(round(down,min(480px,100vh-160px)-8px,var(--spacing-row))+8px)] touch:max-h-[calc(round(down,min(480px,100vh-160px)-8px,var(--spacing-ctl-lg))+8px)]";
 
 /** The panel look of every popup list that floats on its own (slash and mention menus; the pickers get it from `Popover`). */
 export const POPUP_PANEL =
@@ -48,6 +53,10 @@ export function PopupList(props: {
   empty?: ReactNode;
   hintOnActive?: boolean;
   maxRows?: number;
+  /** A tall list (the model picker): grows with the window up to 480px instead of `maxRows`, its scrolling ends fade (12px). */
+  tall?: boolean;
+  /** The row's `detail` is a short tag ("experimental", "default"): a pill that never shrinks; the name truncates instead. */
+  tagDetail?: boolean;
   /** Keys that reach the list itself (focus normally stays in the field; a click may have put it here). */
   onKeyDown?(e: KeyboardEvent<HTMLDivElement>): void;
   className?: string;
@@ -57,6 +66,7 @@ export function PopupList(props: {
   const list = useRef<HTMLDivElement>(null);
   const fromPointer = useRef<string | null>(null);
   const gate = useRef(createPointerGate());
+  useScrollFade(list, "y");
   const { activeId, query = "" } = props;
   const count = props.sections.reduce((n, s) => n + s.rows.length, 0);
 
@@ -87,7 +97,7 @@ export function PopupList(props: {
         const row = props.sections.flatMap((s) => s.rows).find((r) => r.id === el.dataset.pickerRow);
         if (row && !row.disabled) props.onChoose(row);
       }}
-      className={cn("min-h-0 overflow-y-auto overscroll-contain p-1", MAX_HEIGHT, props.className)}
+      className={cn("min-h-0 overflow-y-auto overscroll-contain p-1", props.tall ? cn(TALL_HEIGHT, "octo-popup-fade") : MAX_HEIGHT, props.className)}
       style={{ "--popup-rows": props.maxRows ?? VISIBLE } as CSSProperties}
     >
       {props.sections.map((s) =>
@@ -146,6 +156,8 @@ export function PopupList(props: {
                               {/* RTL truncation keeps the end of the path visible. */}
                               <bdi>{r.detail}</bdi>
                             </span>
+                          ) : props.tagDetail ? (
+                            <span className="shrink-0 rounded-xs bg-hover px-1.5 text-xs text-fg-3">{r.detail}</span>
                           ) : (
                             // On the active row the muted detail steps up to fg-2 (fg-3 over the active fill measured 4.06:1).
                             <span className={cn("min-w-0 flex-1 shrink-[10] truncate text-xs", sub)}>{r.detail}</span>

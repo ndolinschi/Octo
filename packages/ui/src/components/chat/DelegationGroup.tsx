@@ -4,7 +4,7 @@ import { agentActivity } from "../../lib/orchestrator";
 import { agentDuration } from "../../lib/format";
 import { hrefFor } from "../../lib/route";
 import { spawnInput } from "../../lib/toolsMore";
-import type { ToolUse } from "../../lib/transcript";
+import { spawnStatus, type SpawnStatus, type ToolUse, type TurnEnd } from "../../lib/transcript";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { isTier, statusLabel, tierLabel } from "../primitives/Status";
@@ -16,14 +16,14 @@ import { IconButton } from "../primitives/IconButton";
 import { GLYPH } from "../primitives/glyphs";
 import { requestSession } from "../../state/workspace/sessionsStart";
 
-const FINISHED = new Set(["completed", "failed", "cancelled"]);
+const FINISHED = new Set<SpawnStatus>(["completed", "failed", "cancelled"]);
 
-function progress(agents: (Agent | undefined)[]): string {
-  const total = agents.length;
-  const done = agents.filter((a) => a && FINISHED.has(a.status)).length;
+function progress(statuses: SpawnStatus[]): string {
+  const total = statuses.length;
+  const done = statuses.filter((s) => FINISHED.has(s)).length;
   if (done < total) return `${done}/${total} done`;
-  const failed = agents.filter((a) => a?.status === "failed").length;
-  const cancelled = agents.filter((a) => a?.status === "cancelled").length;
+  const failed = statuses.filter((s) => s === "failed").length;
+  const cancelled = statuses.filter((s) => s === "cancelled").length;
   if (failed) return `${failed} failed`;
   if (cancelled) return "Stopped";
   return "Done";
@@ -33,11 +33,14 @@ function progress(agents: (Agent | undefined)[]): string {
  * One round of delegation, unframed: a meta caption ("3 agents · 1/3 done"), then one `ActivityRow` per
  * sub-agent (decision 91d): state glyph, role, dim title, and on the right what it does or the model, then the time.
  */
-export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
+export function DelegationGroup({ uses, live = false, end = null }: { uses: ToolUse[]; live?: boolean; end?: TurnEnd }) {
   const { state } = useProject();
+  const { results } = useTranscript();
   const agents = uses.map((u) => agentBySpawnToolUse(state, u.id));
+  // A call that failed before its agent existed (validation) settles from its result; a finished turn leaves no spinner.
+  const statuses = uses.map((u, i) => spawnStatus(agents[i]?.status, results.get(u.id), live, end));
   const caption = uses.length === 1 ? "1\u00a0agent" : `${uses.length}\u00a0agents`;
-  const status = progress(agents);
+  const status = progress(statuses);
 
   return (
     // Polish step 3, C3: no frame of its own. A meta caption ("3 agents · 1/3 done") over activity rows on the steps' glyph column.
@@ -50,7 +53,7 @@ export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
       <ul className="flex flex-col">
         {uses.map((u, i) => (
           <li key={u.id}>
-            <DelegationRow use={u} agent={agents[i]} />
+            <DelegationRow use={u} agent={agents[i]} status={statuses[i] ?? "pending"} />
           </li>
         ))}
       </ul>
@@ -60,10 +63,10 @@ export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
 
 const STATE: Record<string, ActivityState> = { running: "running", completed: "done", failed: "failed", cancelled: "stopped", pending: "running" };
 
-function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined }) {
+function DelegationRow({ use, agent, status }: { use: ToolUse; agent: Agent | undefined; status: SpawnStatus }) {
   const { projectId, state } = useProject();
   const ws = useOptionalWorkspace();
-  const { now, onOpenSession } = useTranscript();
+  const { now, onOpenSession, results } = useTranscript();
   const names = useModelNames();
   // The agent's session (project sessions): "Open session" selects it in the Sessions tab, in place when the transcript is in that tab.
   const session = agent ? state.sessions.list.find((s) => s.agent_id === agent.id) : undefined;
@@ -77,12 +80,14 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
   const role = roleText(agent?.role || input.role);
   const title = agent?.title || input.title;
   const tier = agent?.tier ?? (isTier(input.tier) ? input.tier : null);
-  const status = agent?.status ?? "pending";
   const nested = agent ? descendantCount(state, agent.id) : 0;
   const duration = agent ? agentDuration(agent, now) : null;
   const running = agent?.status === "running";
   // Through the failed-turn mapping (a raw "overloaded (529) after 3 retries" never shows); the raw text stays in the tooltip.
-  const note = status === "failed" ? (agent?.error ? plainError(agent.error).sentence : "No error details were reported.") : null;
+  // Without an agent the reason is the call's own error result (a spawn refused before the agent was created).
+  const result = results.get(use.id);
+  const raw = agent ? agent.error : result?.is_error && typeof result.content === "string" ? result.content.trim() : null;
+  const note = status === "failed" ? (raw ? plainError(raw).sentence : "No error details were reported.") : null;
   // A compact place: the served model's name alone (decision 37), the requested one in the row's tooltip.
   const served = agent ? names.served(agent) : null;
   const model = served ? served.name : tier ? tierLabel(tier) : "";
@@ -91,13 +96,15 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
       ? agentActivity(state, agent.id)
       : status === "pending"
         ? "starting"
-        : status === "failed"
-          ? "failed"
-          : status === "cancelled"
-            ? statusLabel("cancelled")
-            : model;
+        : !agent && status !== "completed"
+          ? "not started"
+          : status === "failed"
+            ? "failed"
+            : status === "cancelled"
+              ? statusLabel("cancelled")
+              : model;
   const tip =
-    (note && agent?.error ? `${note}\n\n${agent.error}` : null) ??
+    (note && raw ? `${note}\n\n${raw}` : null) ??
     (agent?.task ? `${agent.task}\n\nAlt-click opens it on the other side.` : served?.asked ? `${served.asked} → ${served.name} (chosen → served)` : undefined);
   return (
     <ActivityRow

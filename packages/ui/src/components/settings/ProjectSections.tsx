@@ -194,12 +194,13 @@ function BudgetRow({ project: p, update }: { project: Project; update(id: string
           id={id}
           inputMode="decimal"
           value={value}
-          placeholder="No budget"
+          leading="$"
+          placeholder="Set budget"
           aria-invalid={invalid || undefined}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => e.key === "Enter" && commit()}
-          className={`${CONTROL_W.sm} text-right tabular-nums max-settings:text-left`}
+          className={`${CONTROL_W.sm} tabular-nums`}
         />
       }
     />

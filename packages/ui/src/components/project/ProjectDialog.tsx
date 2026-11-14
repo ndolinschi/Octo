@@ -340,7 +340,8 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                       <TextField
                         id={`${id}-budget`}
                         inputMode="decimal"
-                        placeholder="No cap"
+                        leading="$"
+                        placeholder="Set budget"
                         value={budget}
                         aria-invalid={budgetError ? true : undefined}
                         aria-describedby={budgetError ? `${id}-budget-error` : undefined}

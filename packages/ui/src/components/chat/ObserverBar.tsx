@@ -6,8 +6,9 @@ import { Glyph } from "../primitives/Glyph";
 
 /**
  * Bottom bar of an Agent tab, in the composer's place: the transcript is read-only. The composer's box
- * (radius 12, 6px inset, 40px) on one line at every width: the note truncates (full text in the
- * tooltip), and under 360px the link shrinks to its icon (its name stays the accessible name).
+ * (radius 12, 6px inset, 40px) on one line at every width: where the sentence does not fit beside the link (a side group,
+ * a phone) the note says "Read-only" with the sentence in its tooltip, and under 360px the link shrinks to its icon (its
+ * name stays the accessible name). One line keeps the lazy bar's 40px placeholder exact.
  */
 export function ObserverBar() {
   const { projectId } = useProject();
@@ -17,7 +18,8 @@ export function ObserverBar() {
     <div role="note" className="@container/obs">
       <div className="flex h-bar items-center gap-2 rounded-xl bg-raised p-1.5 text-sm outline -outline-offset-1 outline-line">
         <p className="min-w-0 flex-1 truncate px-2 text-fg-2" title={note}>
-          {note}
+          <span className="@max-[560px]/obs:hidden">{note}</span>
+          <span className="hidden @max-[560px]/obs:inline">Read-only</span>
         </p>
         <a
           href={hrefFor(projectId)}

@@ -3,7 +3,19 @@ import type { ContentBlock, Message } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SPAWN_TOOL } from "./tools";
-import { buildTurns, latestReply, promptText, requestSummaries, compactionSlots, turnWarning, showRail } from "./transcript";
+import {
+  buildTurns,
+  latestReply,
+  promptText,
+  requestSummaries,
+  compactionSlots,
+  turnWarning,
+  showRail,
+  isInterruption,
+  stepState,
+  turnHead,
+  spawnStatus,
+} from "./transcript";
 
 let nextId = 1;
 const msg = (role: "user" | "assistant", content: ContentBlock[], at: string): Message => ({ id: nextId++, agent_id: "a", role, content, created_at: at });
@@ -202,4 +214,58 @@ test("the rail shows from five requests (decision 57)", () => {
   assert.equal(showRail(4), false);
   assert.equal(showRail(5), true);
   assert.equal(showRail(12), true);
+});
+
+const err = (content: string) => ({ content, is_error: true });
+const ok = (content: string) => ({ content, is_error: false });
+
+test("a stop's interruption: the harness's own texts unless the turn failed, an agent's cancel answer only in a stopped turn", () => {
+  // history.go interruptedResult (built-in loop, written before the next request) and acp_session.go finishLocked.
+  assert.equal(isInterruption(err("interrupted: the tool call did not complete"), "cancelled"), true);
+  assert.equal(isInterruption(err("interrupted: the tool call did not complete"), null), true);
+  assert.equal(isInterruption(err("interrupted: the tool call did not complete"), "failed"), false);
+  assert.equal(isInterruption(err("the agent stopped before this tool call finished"), "cancelled"), true);
+  // An ACP agent's answer to session/cancel (Claude Code: "rejected").
+  assert.equal(isInterruption(err("rejected"), "cancelled"), true);
+  assert.equal(isInterruption(err("rejected"), "completed"), false);
+  assert.equal(isInterruption(err("rejected"), null), false);
+  assert.equal(isInterruption(err("[Request interrupted by user for tool use]"), "cancelled"), true);
+  // A genuine failure in a stopped turn stays a failure; a success is never one.
+  assert.equal(isInterruption(err("exit status 1: tests failed"), "cancelled"), false);
+  assert.equal(isInterruption(ok("rejected"), "cancelled"), false);
+});
+
+test("a tool call's state from its result, the agent's run and the turn's ending", () => {
+  assert.equal(stepState(undefined, true, null), "running");
+  assert.equal(stepState(undefined, false, "cancelled"), "stopped");
+  assert.equal(stepState(ok("12 passed"), false, "cancelled"), "done");
+  assert.equal(stepState(err("rejected"), false, "cancelled"), "stopped");
+  assert.equal(stepState(err("rejected"), false, "completed"), "error");
+  assert.equal(stepState(err("exit status 2"), false, "cancelled"), "error");
+  assert.equal(stepState(err("the agent stopped before this tool call finished"), false, "failed"), "error");
+});
+
+test("the head of a finished turn says how it ended", () => {
+  assert.deepEqual(turnHead("completed", 8_000), { state: "done", label: "Worked for 8s" });
+  assert.deepEqual(turnHead("cancelled", 8_400), { state: "stopped", label: "Stopped after 8s" });
+  assert.deepEqual(turnHead("failed", 75_000), { state: "failed", label: "Failed after 1m 15s" });
+  // Unknown ending (an earlier turn after a reload): a stopped step means the turn was cut.
+  assert.deepEqual(turnHead(null, 8_000, ["done", "stopped"]), { state: "stopped", label: "Stopped after 8s" });
+  assert.deepEqual(turnHead(null, 8_000, ["done", "error"]), { state: "done", label: "Worked for 8s" });
+});
+
+test("a delegation without an agent settles from its result; a finished turn never leaves it pending", () => {
+  const refused = err("spawn_agent requires role, title and task, and tier if given (auto|fast|balanced|deep)");
+  assert.equal(spawnStatus(undefined, refused, true, null), "failed");
+  assert.equal(spawnStatus(undefined, refused, false, "completed"), "failed");
+  assert.equal(spawnStatus(undefined, ok("report"), false, "completed"), "completed");
+  assert.equal(spawnStatus(undefined, undefined, true, null), "pending");
+  assert.equal(spawnStatus(undefined, undefined, false, "cancelled"), "cancelled");
+  assert.equal(spawnStatus(undefined, undefined, false, null), "cancelled");
+  assert.equal(spawnStatus(undefined, undefined, false, "failed"), "failed");
+  assert.equal(spawnStatus(undefined, err("rejected"), false, "cancelled"), "cancelled");
+  // With an agent, its own status wins.
+  assert.equal(spawnStatus("running", undefined, true, null), "running");
+  assert.equal(spawnStatus("failed", err("sub-agent failed: x"), false, "completed"), "failed");
+  assert.equal(spawnStatus("cancelled", err("sub-agent stopped by the user"), false, "completed"), "cancelled");
 });

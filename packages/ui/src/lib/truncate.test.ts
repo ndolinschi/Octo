@@ -16,3 +16,17 @@ test("the tail is a third of a medium label", () => {
   assert.equal(split.tail.length, 5);
   assert.equal(split.head + split.tail, "abcdefghijklmnopq");
 });
+
+test("a space at the cut stays visible: it opens the tail as a no-break space", () => {
+  const visible = (s: { head: string; tail: string }) => (s.head + s.tail).replace(/ /g, " ");
+  for (const text of ["Claude Code · Sonnet", "Claude Code · Sonnet 5.5", "Claude Code · Opus 5.5 · 58k in / 2.8k out", "Claude Code · Opus"]) {
+    const split = middleSplit(text);
+    assert.ok(split, text);
+    assert.equal(visible(split), text);
+    // Neither span has a collapsible space at the cut.
+    assert.doesNotMatch(split.head, /\s$/u, text);
+    assert.doesNotMatch(split.tail, /^ /, text);
+  }
+  assert.deepEqual(middleSplit("Claude Code · Sonnet"), { head: "Claude Code ·", tail: " Sonnet" });
+  assert.deepEqual(middleSplit("Claude Code · Opus 5.5 · 58k in / 2.8k out"), { head: "Claude Code · Opus 5.5 · 58k in /", tail: " 2.8k out" });
+});

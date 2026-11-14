@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { requestTitle } from "../../lib/comments";
-import { formatDuration } from "../../lib/format";
+import { formatDuration, timeAgo } from "../../lib/format";
 import type { RequestSummary } from "../../lib/transcript";
 import { useNav, useNavState } from "../../state/nav";
 
@@ -15,6 +15,11 @@ function firstWords(text: string, n = 6): string {
 /** Decision 57: ticks 6px apart; the rail takes at most 60% of the conversation's height, then scrolls. */
 const PITCH = 6;
 const MAX_SHARE = 0.6;
+/**
+ * The rail's padding above the first tick and below the last: their targets reach 14px tall (8 + 6). Between ticks
+ * each target is its own 6px cell, the part of the rail nearest its tick, so a dense rail has no overlapping targets.
+ */
+const EDGE = 8;
 
 /**
  * The request rail (decision 57): one tick per request, 6px apart, in the conversation's left padding (never over the
@@ -37,14 +42,14 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
   const n = requests.length;
   const avail = Math.max(PITCH * 3, Math.floor(maxHeight * MAX_SHARE));
   const pitch = PITCH;
-  const height = Math.min(avail, pitch * n);
+  const height = Math.min(avail, pitch * n) + 2 * EDGE;
 
   // The request in view stays inside a scrolling rail.
   const currentIndex = requests.findIndex((r) => r.id === current);
   useLayoutEffect(() => {
     const el = list.current;
     if (!el || currentIndex < 0 || el.scrollHeight <= el.clientHeight) return;
-    el.scrollTop = currentIndex * pitch + pitch / 2 - el.clientHeight / 2;
+    el.scrollTop = EDGE + currentIndex * pitch + pitch / 2 - el.clientHeight / 2;
   }, [currentIndex, pitch]);
 
   // The card is centred on its marker, then clamped inside the rail's box (never under the header).
@@ -53,7 +58,7 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
     const el = list.current;
     const c = card.current;
     if (!el || !c || shownIndex < 0) return;
-    const centre = shownIndex * pitch + pitch / 2 - el.scrollTop;
+    const centre = EDGE + shownIndex * pitch + pitch / 2 - el.scrollTop;
     const h = c.getBoundingClientRect().height;
     setCardTop(Math.round(centre - h / 2));
   }, [shownIndex, pitch]);
@@ -70,7 +75,8 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
 
   return (
     <div data-rail className="relative">
-      <ul ref={list} aria-label="Requests in this conversation" className="flex flex-col overflow-hidden" style={{ height }}>
+      {/* 24 wide like the targets (the scrolling list clipped them to the 12px tick before); placed by its right edge, the ticks keep their place. */}
+      <ul ref={list} aria-label="Requests in this conversation" className="flex w-6 flex-col items-end overflow-hidden py-2" style={{ height }}>
         {requests.map((req, i) => {
           const active = req.id === current;
           return (
@@ -94,8 +100,13 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
                   setShown(req.id);
                 }}
                 onBlur={() => setShown((s) => (s === req.id ? null : s))}
-                // Decision 36: 24px wide (it grows leftwards, away from the column) × the pitch (24 while the rail fits).
-                className="group/mark relative flex h-full w-3 items-center justify-end before:absolute before:inset-y-0 before:right-0 before:w-6 before:content-[''] focus-visible:shadow-none focus-visible:after:absolute focus-visible:after:-inset-x-1 focus-visible:after:-inset-y-0.5 focus-visible:after:rounded-2xs focus-visible:after:shadow-[0_0_0_1px_var(--octo-focus)] focus-visible:after:content-['']"
+                // Decision 36: 24px wide (it grows leftwards, away from the column) × its cell; the end ticks reach into the rail's padding (14 tall).
+                className={cn(
+                  "group/mark relative flex h-full w-3 items-center justify-end before:absolute before:inset-y-0 before:right-0 before:w-6 before:content-['']",
+                  i === 0 && "before:-top-2",
+                  i === n - 1 && "before:-bottom-2",
+                  "focus-visible:shadow-none focus-visible:after:absolute focus-visible:after:-inset-x-1 focus-visible:after:-inset-y-0.5 focus-visible:after:rounded-2xs focus-visible:after:shadow-[0_0_0_1px_var(--octo-focus)] focus-visible:after:content-['']",
+                )}
               >
                 <span
                   aria-hidden
@@ -122,6 +133,9 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
           <p className="line-clamp-3 wrap-anywhere whitespace-pre-wrap text-fg">{requestTitle(r.text).replace(/\n\s*\n+/g, "\n")}</p>
           <p className={cn("mt-1 flex gap-2 text-xs tabular-nums", r.state === "failed" ? "text-err" : "text-fg-3")}>
             <span>{STATE_TEXT[r.state]}</span>
+            <time dateTime={new Date(r.startedAt).toISOString()} className="text-fg-3">
+              {timeAgo(new Date(r.startedAt).toISOString(), now)}
+            </time>
             {duration !== null && duration >= 1000 && <span className="text-fg-3">{formatDuration(duration)}</span>}
           </p>
         </div>

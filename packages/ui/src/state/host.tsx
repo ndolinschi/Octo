@@ -10,6 +10,8 @@ export type HostCapabilities = {
   theme?: "dark" | "light";
   /** Restarts the harness (and the shell's other sidecars), for settings that apply after a restart (decision 59). */
   restart?(): void;
+  /** The shell starts and stops the harness itself (the packaged app): the offline screen then has no developer commands. */
+  managesHarness?: boolean;
 };
 
 const HostContext = createContext<HostCapabilities>({});

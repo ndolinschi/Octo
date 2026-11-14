@@ -2,9 +2,9 @@ import { lazy, Suspense } from "react";
 
 import { cn } from "../../lib/cn";
 import { acpCall, toolMeta } from "../../lib/tools";
-import type { ToolUse } from "../../lib/transcript";
+import { stepState, type StepState, type ToolUse, type TurnEnd } from "../../lib/transcript";
 import { ActivityRow, type ActivityState } from "./ActivityRow";
-import { toolState, useTranscript, type ToolState } from "./transcriptContext";
+import { useTranscript } from "./transcriptContext";
 
 /** A tool call's input and result load with the first one opened (their own chunk: links, tables, diff colours). */
 const ToolDetailLazy = lazy(() => import("./ToolDetail").then((m) => ({ default: m.ToolDetail })));
@@ -67,16 +67,16 @@ function summarize(uses: ToolUse[]): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** One activity row per run of tool calls (decision 91d); collapsed by default. */
-export function ToolGroup({ uses }: { uses: ToolUse[] }) {
+/** One activity row per run of tool calls (decision 91d); collapsed by default. `end`: how the turn ended (a stop's call reads "stopped"). */
+export function ToolGroup({ uses, end = null }: { uses: ToolUse[]; end?: TurnEnd }) {
   const ctx = useTranscript();
-  const rows = uses.map((use) => ({ use, state: toolState(ctx, use.id) }));
+  const rows = uses.map((use) => ({ use, state: stepState(ctx.results.get(use.id), ctx.agentRunning, end) }));
   const running = rows.some((r) => r.state === "running");
   const errors = rows.filter((r) => r.state === "error").length;
   const [only] = uses;
   const single = uses.length === 1 ? only : undefined;
   const meta = single ? toolMeta(single.name, single.input) : null;
-  const state: ActivityState = running ? "running" : errors > 0 ? "failed" : rows.some((r) => r.state === "interrupted") ? "stopped" : "done";
+  const state: ActivityState = running ? "running" : errors > 0 ? "failed" : rows.some((r) => r.state === "stopped") ? "stopped" : "done";
   return (
     <ActivityRow
       state={state}
@@ -86,11 +86,11 @@ export function ToolGroup({ uses }: { uses: ToolUse[] }) {
           <span className="flex min-w-0 items-baseline gap-1.5">
             {meta.arg && <Arg use={single} text={meta.arg} />}
             {meta.folder && <span className="shrink-0">in {meta.folder}</span>}
-            {errors > 0 && <span className="shrink-0">failed</span>}
+            {errors > 0 ? <span className="shrink-0">failed</span> : state === "stopped" && <span className="shrink-0">stopped</span>}
           </span>
-        ) : errors > 0 ? (
-          `${errors} failed`
-        ) : undefined
+        ) : (
+          [errors > 0 ? `${errors} failed` : "", rows.some((r) => r.state === "stopped") ? "stopped" : ""].filter(Boolean).join(" · ") || undefined
+        )
       }
     >
       {single ? <ToolDetail use={single} /> : rows.map((r) => <ToolRow key={r.use.id} use={r.use} state={r.state} />)}
@@ -98,9 +98,9 @@ export function ToolGroup({ uses }: { uses: ToolUse[] }) {
   );
 }
 
-function ToolRow({ use, state }: { use: ToolUse; state: ToolState }) {
+function ToolRow({ use, state }: { use: ToolUse; state: StepState }) {
   const meta = toolMeta(use.name, use.input);
-  const row: ActivityState = state === "running" ? "running" : state === "error" ? "failed" : state === "interrupted" ? "stopped" : "done";
+  const row: ActivityState = state === "running" ? "running" : state === "error" ? "failed" : state;
   return (
     <ActivityRow
       state={row}
@@ -109,7 +109,7 @@ function ToolRow({ use, state }: { use: ToolUse; state: ToolState }) {
         <span className="flex min-w-0 items-baseline gap-1.5">
           {meta.arg && <Arg use={use} text={meta.arg} />}
           {meta.folder && <span className="shrink-0">in {meta.folder}</span>}
-          {state === "interrupted" && <span className="shrink-0">no result</span>}
+          {state === "stopped" && <span className="shrink-0">stopped</span>}
         </span>
       }
     >

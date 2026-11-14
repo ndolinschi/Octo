@@ -67,7 +67,21 @@ export function Sidebar(props: {
         <div className="flex shrink-0 flex-col">
           <NavRow icon={House} label="Home" onClick={() => navigate(null)} current={props.home} disabled={!projects?.length} />
           <NavRow icon={Search} label="Search" onClick={props.onSearch} shortcut={{ hint: `${MOD}K`, keys: "Control+K Meta+K" }} />
-          <NavRow icon={GitPullRequest} label="Review" onClick={props.onReview} disabled={props.activeProjectId === null} />
+          {props.activeProjectId === null ? (
+            // Unavailable on Home: a focusable wrapper carries the reason (a disabled button gets no focus or tooltip).
+            <span
+              role="button"
+              aria-disabled="true"
+              tabIndex={0}
+              aria-label="Review, unavailable: open a project first"
+              title="Open a project first"
+              className="rounded-sm focus-inset"
+            >
+              <NavRow icon={GitPullRequest} label="Review" onClick={props.onReview} disabled />
+            </span>
+          ) : (
+            <NavRow icon={GitPullRequest} label="Review" onClick={props.onReview} />
+          )}
           <NavRow icon={Plus} label="New project" onClick={props.onNewProject} disabled={!canCreate} />
         </div>
 

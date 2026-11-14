@@ -162,7 +162,7 @@
 @theme {
   /* The sidebar becomes a drawer below this width (`max-drawer:` variant). Mirrors DRAWER_BELOW in lib/constants.ts; a test keeps them equal. */
   --breakpoint-drawer: 1000px;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --text-xs: 12px;
   --text-xs--line-height: 16px;
@@ -854,8 +854,8 @@
 
 /* Streak (decision 32, third pass; supersedes 21/21b and the glow of decision 12): a thin white-hot line with a
    long-tail glow and grain everywhere, on the start screens only — Home, the empty project (behind its whole group),
-   the no-projects hero. The canvas is drawn at 2px cells (3 above a 1600px window) and scaled with `pixelated`; it
-   overhangs by 12px (the drift that used it was removed by decision 50: a backdrop never moves). Its
+   the no-projects hero. The canvas is drawn at one buffer pixel per device pixel (capped at 2x), smooth, with no
+   dither cells (owner's audit, item 15); it overhangs by 12px (the drift that used it was removed by decision 50: a backdrop never moves). Its
    colours are the looks in `lib/streak.ts`. */
 /* Decision 91a: the streak is a band at the top of its panel, never behind content: `--octo-band-h` tall (the screens keep
    that area free), its lower edge fading out. */
@@ -872,7 +872,7 @@
   left: -12px;
   top: -12px;
   max-width: none;
-  image-rendering: pixelated;
+  image-rendering: auto;
   opacity: 0;
   transition-property: opacity;
   transition-duration: 240ms;
@@ -1009,7 +1009,7 @@
 
 /* composer — decision 62: one container (radius 14, raised, a hairline that brightens on focus), 15px text. */
 .octo-composer {
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   outline: 1px solid var(--octo-line);
   outline-offset: -1px;
   transition: outline-color 100ms;
@@ -1105,7 +1105,7 @@
   }
   [data-conv] [data-prompt] > [data-bubble] {
     max-width: 86%;
-    border-radius: 14px;
+    border-radius: var(--radius-xl);
   }
   [data-conv] .octo-prose {
     overflow-wrap: anywhere;
@@ -1498,3 +1498,118 @@
   min-width: 0;
 }
 /* end cross-part leftovers */
+
+/* audit B: inline code at 0.93em (13px in 14px prose, 12px in 13px prose; the compact prose pins 12px in Prose.css); a tall
+   popup list fades its scrolling ends by 12px (the data-fade attribute comes from useScrollFade, like fade-y). */
+.octo-prose :not(pre) > code {
+  font-size: 0.93em;
+}
+.octo-popup-fade[data-fade~="start"] {
+  mask-image: linear-gradient(to bottom, transparent, #000 12px);
+}
+.octo-popup-fade[data-fade~="end"] {
+  mask-image: linear-gradient(to top, transparent, #000 12px);
+}
+.octo-popup-fade[data-fade~="start"][data-fade~="end"] {
+  mask-image: linear-gradient(to bottom, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+}
+
+/* audit C: typeface. Inter 4.1 (OFL-1.1, `assets/fonts/LICENSE.txt`), bundled: the app runs offline and the UI never fetches
+   a font from the network. Variable weight (100–900), the text optical size; one woff2 per unicode-range subset (Latin,
+   Latin Extended, Cyrillic, Cyrillic Extended; upright and italic), so a page fetches only the subsets its text uses — the
+   Latin upright file (48 kB) on first paint, which the host preloads. `font-display: swap`: the system stack shows until it
+   arrives, never invisible text. The files are cut from the official release by `assets/fonts/subset.sh`.
+   Features: cv11 (single-storey a) and ss01 (open digits) for a calmer, rounder texture at 12–14px; `calt` and kerning stay
+   on (Inter's defaults); tabular figures come from the existing `tabular-nums` utilities (tnum is kept in the subset).
+   Tracking follows Inter's dynamic metrics: none at 12–14px, slightly negative from the 16px title up. The mono stack is
+   unchanged (Monaco keeps its own font setting). Another host gets all of this by importing `@octo/ui/styles.css`; it may
+   preload `@octo/ui/assets/fonts/inter-latin.woff2` as the desktop host does (apps/desktop/src/main.tsx). */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-latin.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2199, U+21A9, U+21B5,
+    U+21E7, U+2212, U+2215, U+2303, U+2318, U+2325, U+232B, U+238B, U+2713, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-latin-ext.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-cyrillic.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-cyrillic-ext.woff2") format("woff2");
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-italic-latin.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2199, U+21A9, U+21B5,
+    U+21E7, U+2212, U+2215, U+2303, U+2318, U+2325, U+232B, U+238B, U+2713, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-italic-latin-ext.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-italic-cyrillic.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-italic-cyrillic-ext.woff2") format("woff2");
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@layer base {
+  body {
+    font-feature-settings: "cv11", "ss01";
+  }
+  code,
+  kbd,
+  pre,
+  samp {
+    font-feature-settings: normal;
+  }
+}
+@theme {
+  --text-title--letter-spacing: -0.011em;
+  --text-display--letter-spacing: -0.017em;
+  --text-figure--letter-spacing: -0.019em;
+}
+/* end audit C: typeface */

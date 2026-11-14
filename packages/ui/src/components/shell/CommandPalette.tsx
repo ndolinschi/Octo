@@ -10,20 +10,22 @@ import { useNav } from "../../state/nav";
 import { hitRow } from "../../lib/requestSearch";
 import { useRequests } from "../../state/requests";
 import { useRequestSearch } from "../../state/requestSearch";
+import { Highlight } from "../primitives/Highlight";
 import { ListRow } from "../primitives/ListRow";
 import { usePresence } from "../primitives/Presence";
 import { SearchField } from "../primitives/SearchField";
 import { SectionHeader } from "../primitives/SectionHeader";
+import { Skeleton } from "../primitives/Skeleton";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { agentGlyph, orchestratorGlyph, type GlyphState } from "../../lib/stateGlyph";
 import { projectRowLines } from "../../lib/orchestrator";
-import { useOrchestrators } from "../../state/orchestrators";
+import { isPending, useOrchestrators } from "../../state/orchestrators";
 import { useModal } from "../primitives/useModal";
 import { popupListKey } from "../primitives/popupNav";
 
 export type PaletteAction = { id: string; label: string; hint?: string; shortcut?: string; run(): void };
 
-type Item = { id: string; label: string; detail?: string | undefined; shortcut?: string | undefined; glyph?: GlyphState; run(): void };
+type Item = { id: string; label: string; detail?: string | undefined; shortcut?: string | undefined; glyph?: GlyphState; pending?: true; run(): void };
 type Group = { title: string; items: Item[] };
 
 /** Rows per group with an empty query, and when filtering. */
@@ -120,7 +122,9 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
             label: p.name,
             // Finding C / polish step 2 (F6): the project's real state (a failed one shows its glyph, not idle) and the sidebar's meta.
             detail: projectRowLines(orchestrators.get(p.id) ?? { kind: "idle", at: p.updated_at }, now, p.updated_at).meta ?? undefined,
-            glyph: orchestratorGlyph((orchestrators.get(p.id) ?? { kind: "idle" as const }).kind),
+            ...(isPending(orchestrators.get(p.id) ?? { kind: "new" })
+              ? { pending: true as const }
+              : { glyph: orchestratorGlyph((orchestrators.get(p.id) ?? { kind: "idle" as const }).kind) }),
             run: go(() => navigate(p.id)),
           })),
           (i) => i.label,
@@ -276,8 +280,11 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
                     size="md"
                     selected={i === current}
                     onClick={item.run}
-                    leading={item.glyph ? <StateGlyph state={item.glyph} box={16} /> : <span />}
-                    title={item.label}
+                    leading={
+                      item.glyph ? <StateGlyph state={item.glyph} box={16} /> : item.pending ? <Skeleton shape="circle" className="size-3.5" /> : <span />
+                    }
+                    title={<Highlight text={item.label} query={query} />}
+                    tip={item.label}
                     meta={item.shortcut ?? item.detail}
                   />
                 );

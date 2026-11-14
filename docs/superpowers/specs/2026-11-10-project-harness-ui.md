@@ -1767,7 +1767,7 @@ selected rows may still use `fg-2` for emphasis).
 ### Type
 
 System stack: `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`;
-mono `ui-monospace, "SF Mono", Menlo, Consolas, monospace`. No bundled fonts.
+mono `ui-monospace, "SF Mono", Menlo, Consolas, monospace`. No bundled fonts (superseded by the owner's audit, 2026-11-14: Inter is bundled; see "As built — the owner's UI audit").
 
 | Role | Size / line-height | Weight |
 | --- | --- | --- |
@@ -3249,3 +3249,55 @@ Rules R1–R7 of the orchestrator's brief; 164 before/after pairs (dark and ligh
   `file-open-stability` at 1440×900, 900×600 and 390×700, `picker-keys`, `scroll-on-send`, `backdrop-check`,
   `panel-measure`, `layout-shift`. Not verified anywhere in this work: WebKit and macOS, a live harness, real agents and
   `gh`, touch on a device, a screen reader.
+
+## As built — the owner's UI audit (2026-11-14)
+
+The owner tested `9c167c9` live (vite dev, not Tauri; 108 screenshots) and listed 20 items. What changed, by item:
+
+- **1 (P0). A `spawn_agent` refused before its agent existed span forever.** `lib/transcript.ts` `spawnStatus`: with no
+  agent the call's result decides (error → failed, or stopped when a stop wrote it; no result → pending only while the
+  turn runs). The row reads "not started" with the plain error under it; the caption counts it ("1 agent · 1 failed").
+  Demo: send "refused spawn please".
+- **2 (P0). A stopped turn read "✓ Worked for 8s … 1 failed".** `turnHead` gives "Stopped after 8s" / "Failed after 8s" /
+  "Worked for 8s" from the turn's ending; `stepState` / `isInterruption` mark a call as stopped when it has no result
+  and the agent is not running, when its error is one of the harness's interruption texts (`interruptedResult`,
+  `finishLocked`), or, in a cancelled turn, when an ACP agent answered `rejected` / `cancelled` / `interrupted`. Any
+  other error stays failed and is counted. The stopped glyph is the family's quiet dot (decision 29 has no square).
+  Demo: "slow command please", then Stop. The ACP wording is taken from the owner's report, not seen live.
+- **3.** `lib/truncate.ts`: a space at the middle cut moves to the tail as a no-break space ("Claude Code · Sonnet").
+- **4.** Model picker: list up to `min(480px, 100vh − 160px)`; providers that are not set up fold into one row
+  ("N more providers can be added"); "experimental" is a tag that never shrinks; a scrolled edge fades.
+- **5.** `Segmented`: segments 24 in a 28 track with 2px padding, track radius 8 over segment radius 6. A form row that
+  holds one is 54px (was 50).
+- **6.** Turn rail: a mark's target is 24px wide (was clipped to 12; the pointer hit nothing beside the mark) and its own
+  6px cell high, the end marks 14; the card on hover and focus adds the request's time. **Not the asked 24×16:**
+  decision 57's 6px pitch leaves no room without overlap; a larger pitch when the rail has room is the owner's call.
+- **7.** A project row goes placeholder → final glyph and never through another state (`state/orchestrators.ts`
+  `PendingState`, `isPending`). **Not done:** a skeleton in the main area on first paint (the entry bundle has 0.06 kB
+  of room).
+- **8.** `GET …/plans/latest` answers 200 `{"plan": null}` (done earlier, `internal/bridge/plans.go`).
+- **9.** `ListRow`: a selected row's meta is `text-fg-2` (palette shortcut 4.06 → 6.07 in dark; sidebar 5.75 → 8.60).
+- **10.** `ObserverBar` under 560px reads "Read-only"; the sentence is the tooltip; one line, 40px, at every width.
+- **11.** Typeface: Inter 4.1 variable, self-hosted in `packages/ui/src/assets/fonts/` (OFL, `LICENSE.txt`; `subset.sh`
+  rebuilds the eight subsets: latin, latin-ext, cyrillic, cyrillic-ext, upright and italic; optical size pinned to
+  text, `cv11` and `ss01` kept — the `@fontsource` subsets strip them). Only `inter-latin.woff2` (47.7 kB) loads at
+  start, preloaded by the desktop host (`main.tsx`); the others by `unicode-range` when such text appears. Mono and
+  Monaco unchanged. Row heights unchanged (line boxes are tokens).
+- **12.** Inline code is 0.93em (13px in 14px prose), padding `2px 4px` (the audit's 1px is off the spacing scale).
+- **13, 14.** No change: 12/20 is the code block's line only; 10px is `--radius-lg`. The composer's and the prompt
+  bubble's 14px radius became `--radius-xl` (12).
+- **15.** The streak band is drawn at device resolution, smooth, with no dither cells, fading at both ends; muted in
+  light (`lib/streak.ts`). Appearance → Backdrop Off still removes it. The owner chooses between this, none, or none
+  in light only.
+- **16.** The palette highlights substring matches (not scattered fuzzy letters); a cut row has the full text as tooltip.
+- **17–20.** The disabled Review item is focusable and says why; `TextField` has a `leading` slot (the budget's "$");
+  a login failure of an agent CLI shows the steps and the command to copy (`lib/errors/login.ts`); a host that manages
+  the harness (`managesHarness`) shows a restart screen instead of the developer's instructions when offline.
+- File-link chips stay 23px: they are inline in running text (the target-size rule's inline exception), and 24 would
+  change the paragraph's line height.
+
+Gates on the final tree: `pnpm lint` (cycles), `pnpm format:check`, 648 UI tests, agent-client and desktop tests, the
+production build, bundle 158.84 kB of 158.90, and the browser scripts (`spacing-audit` total=0, `width-stability`,
+`flicker`, `file-open-stability`, `scroll-on-send`, `layout-shift`, `picker-keys`, `frame-colours`, `backdrop-check`).
+Not verified: WebKit and macOS, the Tauri window (including whether the first frame is already Inter), fractional
+pixel ratios, a live harness and real ACP agents, a screen reader.

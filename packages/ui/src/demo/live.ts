@@ -16,6 +16,36 @@ export async function failTurn(ctx: Ctx, prompt: string): Promise<void> {
   });
 }
 
+/** Demo-only: "refused spawn" — a `spawn_agent` call the harness refuses before any agent exists (an error result, no agent). */
+export const SPAWN_REFUSED_TRIGGER = /refused spawn/i;
+
+export async function spawnRefusedTurn(ctx: Ctx, prompt: string): Promise<void> {
+  await turn(ctx, prompt, async (c, orch) => {
+    await act(c, orch, [
+      {
+        name: "spawn_agent",
+        input: { role: "Security reviewer", title: "Review the auth flow", task: "Read src/auth and list risky spots." },
+        result: "spawn_agent requires role, title, task and tier (fast|balanced|deep)",
+        error: true,
+        ms: 300,
+      },
+    ]);
+    await say(c, orch, "The sub-agent could not start: the delegation was missing its tier. I can retry with one, or do the review myself.");
+  });
+}
+
+/** Demo-only: "slow command" — an ACP-style turn whose last command runs a minute; Stop answers it "rejected" (an error result). */
+export const SLOW_TRIGGER = /slow command/i;
+
+export async function slowTurn(ctx: Ctx, prompt: string): Promise<void> {
+  await turn(ctx, prompt, async (c, orch) => {
+    await act(c, orch, [{ name: "read_file", input: { path: "README.md" }, result: "# Atlas", ms: 500 }]);
+    await act(c, orch, [{ name: "bash", input: { command: "ls nope" }, result: "ls: nope: No such file or directory", error: true, ms: 500 }]);
+    await act(c, orch, [{ name: "bash", input: { command: "python3 count.py" }, result: "60", ms: 60_000, onCancel: "rejected" }]);
+    await say(c, orch, "It printed 60.");
+  });
+}
+
 export async function liveTurn(ctx: Ctx, prompt: string): Promise<void> {
   await turn(ctx, prompt, async (c, orch) => {
     const rec = c.rec;

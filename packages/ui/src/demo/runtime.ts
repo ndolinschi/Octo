@@ -12,7 +12,16 @@ import { errorMessage } from "../lib/format";
 export type Ctx = { rec: ProjectRecord; t: number; signal: { cancelled: boolean } };
 
 /** `content` (write_file only) is what the demo file system receives when the call succeeds. */
-export type ToolSpec = { name: string; input: Record<string, unknown>; result: string; ms?: number; error?: boolean; content?: string };
+export type ToolSpec = {
+  name: string;
+  input: Record<string, unknown>;
+  result: string;
+  ms?: number;
+  error?: boolean;
+  content?: string;
+  /** Stopped while it runs: the error result an ACP agent answers `session/cancel` with ("rejected"); absent: no result, like the built-in loop. */
+  onCancel?: string;
+};
 
 export type ChildSpec = {
   role: string;
@@ -120,7 +129,22 @@ export async function act(ctx: Ctx, agentId: string, tools: ToolSpec[], text?: s
     ctx.rec.activeTools.set(u.id, { agentId, name: u.spec.name });
     emit(ctx.rec, { type: "tool.started", agent_id: agentId, tool_use_id: u.id, name: u.spec.name });
   }
-  await sleep(ctx, Math.max(...tools.map((t) => t.ms ?? 600)));
+  try {
+    await sleep(ctx, Math.max(...tools.map((t) => t.ms ?? 600)));
+  } catch (e) {
+    const cut = uses.filter((u) => u.spec.onCancel !== undefined);
+    if (e === CANCELLED && cut.length) {
+      ctx.t = Math.max(ctx.t, Date.now());
+      for (const u of cut) emit(ctx.rec, { type: "tool.finished", agent_id: agentId, tool_use_id: u.id, is_error: true });
+      addMessage(
+        ctx,
+        agentId,
+        "user",
+        cut.map((u) => ({ type: "tool_result" as const, tool_use_id: u.id, content: u.spec.onCancel ?? "", is_error: true })),
+      );
+    }
+    throw e;
+  }
   for (const u of uses) {
     ctx.rec.activeTools.delete(u.id);
     emit(ctx.rec, { type: "tool.finished", agent_id: agentId, tool_use_id: u.id, is_error: Boolean(u.spec.error) });

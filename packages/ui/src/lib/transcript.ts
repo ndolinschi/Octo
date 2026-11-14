@@ -1,6 +1,6 @@
 import type { ContentBlock, Message } from "@octo/agent-client";
 import { harnessTool, SPAWN_TOOL } from "./toolName";
-import { excerpt } from "./format";
+import { excerpt, formatDuration } from "./format";
 
 export type ToolUse = Extract<ContentBlock, { type: "tool_use" }>;
 
@@ -65,6 +65,69 @@ export function buildTurns(messages: Message[]): Turn[] {
     });
   }
   return turns;
+}
+
+/** How a finished turn ended; null while it runs or when nothing says (an earlier turn after a reload). */
+export type TurnEnd = "completed" | "failed" | "cancelled" | null;
+type Result = { content: unknown; is_error: boolean };
+
+/**
+ * The results the harness writes for a call a stop cut short (apps/harness/internal/orchestrator): the built-in loop's
+ * `interruptedResult` (history.go, stored before the next request for a call left without a result) and an ACP
+ * orchestrator's close of a call still open when its turn ended in an error or a cancel (acp_session.go `finishLocked`).
+ */
+const HARNESS_INTERRUPTED = /^(interrupted: the tool call did not complete|the agent stopped before this tool call finished)\.?$/i;
+/** What an ACP agent itself answers for the call `session/cancel` interrupted ("rejected" from Claude Code, and the like). */
+const AGENT_INTERRUPTED = /^(rejected|cancell?ed|interrupted)\b|tool use was rejected|interrupted by (the )?user/i;
+
+const resultText = (r: Result) => (typeof r.content === "string" ? r.content.trim() : "");
+
+/**
+ * Whether an error result is a stop's doing rather than a failure: the harness's own interruption texts unless the turn is
+ * known to have failed; an agent's cancel answer only in a turn that was stopped.
+ */
+export function isInterruption(result: Result, end: TurnEnd): boolean {
+  if (!result.is_error) return false;
+  const text = resultText(result);
+  if (HARNESS_INTERRUPTED.test(text)) return end !== "failed";
+  return end === "cancelled" && AGENT_INTERRUPTED.test(text);
+}
+
+export type StepState = "running" | "done" | "error" | "stopped";
+
+/** A tool call's state: no result runs while the agent runs and was stopped otherwise; an error result a stop wrote is stopped. */
+export function stepState(result: Result | undefined, running: boolean, end: TurnEnd): StepState {
+  if (!result) return running ? "running" : "stopped";
+  if (!result.is_error) return "done";
+  return isInterruption(result, end) ? "stopped" : "error";
+}
+
+/**
+ * The head row of a finished turn ("Worked for 8s"): a stopped turn says "Stopped after 8s" with the stopped glyph, a
+ * failed one "Failed after 8s" with the failed glyph. An unknown ending with a stopped step reads as stopped (the harness
+ * writes an interruption result only after a cancel or a crash).
+ */
+export function turnHead(end: TurnEnd, ms: number, steps: readonly StepState[] = []): { state: "done" | "failed" | "stopped"; label: string } {
+  const ending = end ?? (steps.includes("stopped") ? "cancelled" : "completed");
+  const time = formatDuration(ms);
+  if (ending === "cancelled") return { state: "stopped", label: `Stopped after ${time}` };
+  if (ending === "failed") return { state: "failed", label: `Failed after ${time}` };
+  return { state: "done", label: `Worked for ${time}` };
+}
+
+export type SpawnStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+
+/**
+ * A delegation row's status. With its agent, the agent's own; without one (the call failed before the agent was created,
+ * or the turn ended first) it comes from the call's result: an error is failed (or stopped when a stop wrote it), a
+ * success is completed; no result is pending only while the turn runs, then failed in a failed turn and stopped otherwise.
+ * A finished turn never leaves a spinner.
+ */
+export function spawnStatus(agent: Exclude<SpawnStatus, "pending"> | "idle" | undefined, result: Result | undefined, live: boolean, end: TurnEnd): SpawnStatus {
+  if (agent) return agent === "idle" ? "completed" : agent;
+  if (result) return result.is_error ? (isInterruption(result, end) ? "cancelled" : "failed") : "completed";
+  if (live) return "pending";
+  return end === "failed" ? "failed" : "cancelled";
 }
 
 export type RequestState = "done" | "working" | "failed" | "stopped";

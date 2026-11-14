@@ -1,11 +1,31 @@
 import type { ErrorFields } from "@octo/agent-client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { errorMessage } from "../../lib/format";
+import { loginSteps, withLoginSteps, type LoginSteps } from "../../lib/errors/login";
 import { isStructured, plainError } from "../../lib/errors/plain";
+import { useActivity } from "../../state/activity";
 import { useProject } from "../../state/project";
 import { Notice } from "../primitives/Notice";
 import { ErrorNotice } from "../shared/ErrorNotice";
 import { runRetry, splitHint } from "./outcome";
+
+/** The login command of the agent `id` from the plugin list, while it is not logged in (an agent row keeps no `command`). */
+function useLoginSteps(id: string | undefined, wanted: boolean): LoginSteps | null {
+  const activity = useActivity();
+  const [steps, setSteps] = useState<LoginSteps | null>(null);
+  useEffect(() => {
+    if (!id || !wanted) return;
+    let alive = true;
+    activity.plugins().then(
+      (plugins) => alive && setSteps(loginSteps(plugins.flatMap((p) => p.agents).find((a) => a.id === id))),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [activity, id, wanted]);
+  return steps;
+}
 
 /**
  * The notice under a failed or stopped turn (decision 94b) with its Retry. A chunk of its own, warmed right after first
@@ -26,6 +46,9 @@ export function TurnBanner(props: {
   const [busy, setBusy] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   const failed = props.status === "failed";
+  // Only a recheck-the-login failure needs the command (the harness's own `command` always wins).
+  const steps = useLoginSteps(props.providerId, failed && props.fields?.action === "recheck_provider" && !props.fields.command);
+  const fields = withLoginSteps(props.fields, steps);
   const retryText = props.retryText;
 
   const retry = async () => {
@@ -41,8 +64,8 @@ export function TurnBanner(props: {
       </div>
     );
   }
-  const structured = { message: (props.error ?? "").trim(), ...props.fields };
-  const legacy = splitHint(props.error, props.fields?.hint);
+  const structured = { message: (props.error ?? "").trim(), ...fields };
+  const legacy = splitHint(props.error, fields?.hint);
   const check = props.onCheck
     ? async () => {
         const ready = await props.onCheck?.();
