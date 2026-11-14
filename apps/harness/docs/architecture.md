@@ -354,7 +354,7 @@ Changes from the owner's second live run (findings and decisions: `docs/superpow
 ## Added 2026-11-14: durability of a running turn, the event stream, one service per data folder
 
 - **Checkpoints.** While an agent streams, its redacted partial text is written to `partials` (one row per agent) at most
-  every 500 ms, and a running turn stamps `turn_alive` every 5 s. Storing the message clears the row; a row older than
+  every 500 ms, and a running turn stamps `turn_alive` every 5 s. The write runs on its own goroutine, never in the path that publishes a delta: a slow disk does not hold the stream back. Storing the message clears the row; a row older than
   the agent's last message is ignored.
 - **Recovery on start** (`orchestrator/recover.go`, before the rows are settled): open tool calls of running agents get
   the interruption result, a valid checkpoint becomes the assistant message (flagged `stopped`, which now means "cut

@@ -29,6 +29,8 @@ type agentSink struct {
 	ckAt    time.Time
 	ckTimer *time.Timer
 	ckRow   bool
+	ckGen   int        // bumped when the message is stored: a write that started before it must not leave a row
+	ckWrite sync.Mutex // one checkpoint write at a time; never held together with mu by the streaming path
 	// onCleared, when set, is told how many tool results a request had cleared.
 	onCleared func(n int)
 }
@@ -125,45 +127,64 @@ func (s *agentSink) TextDelta(text string) {
 // written too.
 var checkpointEvery = 500 * time.Millisecond
 
-// checkpointLocked writes the streamed text now when the last write is old
-// enough, else makes sure one trailing write is scheduled. s.mu is held.
+// beforeCheckpointWrite runs just before a checkpoint is written; a test makes it slow to stand in for a slow disk.
+var beforeCheckpointWrite = func() {}
+
+// checkpointLocked makes sure a checkpoint write is scheduled: at once when
+// the last one is old enough, else when it will be. The write itself never
+// runs here: a delta is published without waiting for the disk (a slow fsync
+// in this path held every delta back and delivered the text in one lump).
+// s.mu is held.
 func (s *agentSink) checkpointLocked() {
-	if s.rt == nil || s.rt.db == nil {
+	if s.rt == nil || s.rt.db == nil || s.ckTimer != nil {
 		return
 	}
-	if wait := checkpointEvery - time.Since(s.ckAt); wait > 0 {
-		if s.ckTimer == nil {
-			s.ckTimer = time.AfterFunc(wait, s.checkpointLater)
-		}
-		return
+	wait := checkpointEvery - time.Since(s.ckAt)
+	if wait < 0 {
+		wait = 0
 	}
-	s.writeCheckpointLocked()
+	s.ckTimer = time.AfterFunc(wait, s.checkpointLater)
 }
 
+// checkpointLater stores partial, redacted, as the agent's checkpoint. It
+// runs on its own goroutine and holds s.mu only to read and to mark, not
+// while it writes.
 func (s *agentSink) checkpointLater() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.ckTimer == nil {
+		s.mu.Unlock()
 		return // the message was stored meanwhile
 	}
 	s.ckTimer = nil
-	s.writeCheckpointLocked()
-}
-
-// writeCheckpointLocked stores partial, redacted, as the agent's checkpoint. s.mu is held.
-func (s *agentSink) writeCheckpointLocked() {
 	text := s.partial.String()
+	gen := s.ckGen
 	if strings.TrimSpace(text) == "" {
+		s.mu.Unlock()
 		return
 	}
 	s.ckAt = time.Now()
+	s.mu.Unlock()
+
+	s.ckWrite.Lock()
+	defer s.ckWrite.Unlock()
+	beforeCheckpointWrite()
 	c, cancel := dbCtx(context.Background())
-	defer cancel()
-	if err := s.rt.db.SavePartial(c, s.agentID, s.rt.redact(text)); err != nil {
+	err := s.rt.db.SavePartial(c, s.agentID, s.rt.redact(text))
+	cancel()
+	if err != nil {
 		s.rt.logErr("checkpoint streamed text", err)
 		return
 	}
-	s.ckRow = true
+	s.mu.Lock()
+	stale := gen != s.ckGen
+	if !stale {
+		s.ckRow = true
+	}
+	s.mu.Unlock()
+	if stale {
+		// The message was stored while this write was on its way: the row would read as text kept after it.
+		s.clearCheckpointRow()
+	}
 }
 
 // stopCheckpointLocked cancels a scheduled checkpoint and reports whether a
@@ -174,12 +195,20 @@ func (s *agentSink) stopCheckpointLocked() bool {
 		s.ckTimer = nil
 	}
 	s.ckAt = time.Time{}
+	s.ckGen++
 	had := s.ckRow
 	s.ckRow = false
 	return had
 }
 
 func (s *agentSink) clearCheckpoint() {
+	s.ckWrite.Lock()
+	defer s.ckWrite.Unlock()
+	s.clearCheckpointRow()
+}
+
+// clearCheckpointRow deletes the row; s.ckWrite is held.
+func (s *agentSink) clearCheckpointRow() {
 	c, cancel := dbCtx(context.Background())
 	defer cancel()
 	if err := s.rt.db.ClearPartial(c, s.agentID); err != nil {

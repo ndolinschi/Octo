@@ -21,3 +21,10 @@ func SetTurnAliveEveryForTest(d time.Duration) (restore func()) {
 	turnAliveEvery = d
 	return func() { turnAliveEvery = old }
 }
+
+// SetBeforeCheckpointWrite makes every checkpoint write wait first (a slow disk) and returns the undo.
+func SetBeforeCheckpointWrite(f func()) (restore func()) {
+	old := beforeCheckpointWrite
+	beforeCheckpointWrite = f
+	return func() { beforeCheckpointWrite = old }
+}
