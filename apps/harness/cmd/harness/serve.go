@@ -36,6 +36,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/providers"
+	"github.com/ndolinschi/Octo/apps/harness/internal/remoteaccess"
 	"github.com/ndolinschi/Octo/apps/harness/internal/review"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/settings"
@@ -80,6 +81,7 @@ func serveConfig(args []string) (config.Config, string, error) {
 	promptCaching := fs.Bool("prompt-caching", true, "Send cache_control breakpoints (or HARNESS_PROMPT_CACHING, default true); disable for gateways that reject them")
 	noBuiltin := fs.Bool("no-builtin-plugins", false, "Do not load the plugins embedded in the binary (or HARNESS_NO_BUILTIN_PLUGINS=1)")
 	exitOnStdin := fs.Bool("exit-on-stdin-close", false, "Shut down gracefully when standard input reaches EOF (or HARNESS_EXIT_ON_STDIN_CLOSE=1); for a parent that may die without stopping us")
+	remoteWebDir := fs.String("remote-web-dir", "", "Built mobile web app served to paired devices (or HARNESS_REMOTE_WEB_DIR)")
 	noAPIToken := fs.Bool("no-api-token", false, "Do not require the API token on /v1 routes (or HARNESS_NO_API_TOKEN=1); for tests and scripts that have not been updated")
 	var remoteBases multiFlag
 	fs.Var(&remoteBases, "remote", "Remote tool server base URL (repeatable; sub-agents only)")
@@ -123,6 +125,12 @@ func serveConfig(args []string) (config.Config, string, error) {
 	}
 	if *noAPIToken {
 		cfg.NoAPIToken = true
+	}
+	if *remoteWebDir != "" {
+		// Read by setupRemote like the variable it stands for.
+		if err := os.Setenv(remoteaccess.EnvWebDir, *remoteWebDir); err != nil {
+			return config.Config{}, "", err
+		}
 	}
 	if len(remoteBases) > 0 {
 		cfg.RemoteBases = remoteBases
@@ -338,16 +346,27 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	})
 	baseCtx, cancelRequests := context.WithCancel(context.Background())
 	defer cancelRequests()
+	files := project.NewFiles(store, hub)
+	bridgeOpts := []bridge.Option{
+		bridge.WithReviews(reviews), bridge.WithCommands(cmds),
+		bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo),
+		bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
+		bridge.WithDiagnostics(func() any {
+			ok, why := builtin()
+			return diagnostics(cfg, pluginReg, octo, ok, why, logRing, nil)
+		}),
+	}
+	// Remote access (spec 2026-11-14-remote-access-mobile-design.md): off at every start; its control routes live
+	// on this bridge behind the local token, its own listener opens only when the owner turns it on.
+	remote, err := setupRemote(ctx, cfg, svc, notes, files, hub, bridgeOpts)
+	if err != nil {
+		return err
+	}
+	defer remote.Close()
 	srv := &http.Server{
-		Handler: bridge.New(svc, notes, project.NewFiles(store, hub),
-			bridge.WithAPIToken(apiToken),
-			bridge.WithMCP(orch.MCPHandler(bridge.Version)), bridge.WithReviews(reviews), bridge.WithCommands(cmds),
-			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo),
-			bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
-			bridge.WithDiagnostics(func() any {
-				ok, why := builtin()
-				return diagnostics(cfg, pluginReg, octo, ok, why, logRing, nil)
-			})),
+		Handler: bridge.New(svc, notes, files, append(bridgeOpts,
+			bridge.WithAPIToken(apiToken), bridge.WithMCP(orch.MCPHandler(bridge.Version)),
+			bridge.WithMount("/v1/remote", remote.ControlHandler()), bridge.WithMount("/v1/remote/", remote.ControlHandler()))...),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}
@@ -363,6 +382,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	}
 
 	slog.Info("shutting down")
+	remote.Close()
 	cancelRequests()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

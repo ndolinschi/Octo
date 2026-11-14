@@ -43,6 +43,7 @@ type Server struct {
 	picker      picker
 	defaultOrch func() string // the orchestrator a project without a choice runs now
 	apiToken    string        // required on /v1 routes when set (WithAPIToken)
+	mounts      []mount       // extra handlers behind the token and CORS (WithMount)
 }
 
 // PluginSource is the read-only plugin view GET /v1/plugins serves.
@@ -224,6 +225,9 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("DELETE /v1/projects/{pid}/lsp/sessions/{sid}", s.deleteLSPSession)
 	s.reviewRoutes(mux)
 	s.commandRoutes(mux)
+	for _, m := range s.mounts {
+		mux.Handle(m.pattern, m.h)
+	}
 	if s.mcp != nil {
 		mux.Handle(mcp.PathPrefix, s.mcp)
 	}

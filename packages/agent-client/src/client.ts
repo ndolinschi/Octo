@@ -1,5 +1,5 @@
 import { RARE_METHODS, type RareMethod } from "./rareNames";
-import { remoteAccessApi, type RemoteAccessApi } from "./remoteAccess";
+import type { RemoteAccessApi } from "./remoteAccess";
 import type { CommandRun, CommandSuggestion, StartedCommandRun } from "./commands";
 import type {
   ListPullRequestsParams,
@@ -350,8 +350,8 @@ export interface Bridge {
   pickFolder?(start?: string): Promise<PickFolderResult>;
   /** R1: the diagnostics report (versions, PATH, per-agent resolution and login state, last 200 log lines). */
   getDiagnostics?(): Promise<Diagnostics>;
-  /** Remote access: the computer's `/v1/remote` control routes (local token only). Optional; HTTP only. */
-  remote?: RemoteAccessApi;
+  /** Remote access: the computer's `/v1/remote` control routes (local token only), loaded on first use. Optional; HTTP only. */
+  remoteAccess?(): Promise<RemoteAccessApi>;
   /**
    * Decision 53: every provider (API key, router, agent CLIs) with its state and models. Optional: a harness that
    * predates `GET /v1/providers` answers 404, and the UI then derives the list from the config and the plugins.
@@ -844,7 +844,7 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
     listProviders: () => request("GET", "/v1/providers") as Promise<ProvidersResponse>,
-    remote: remoteAccessApi(request),
+    remoteAccess: async () => (await import("./remoteAccess")).remoteAccessApi(request),
     refreshProviderModels: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/refresh-models`), id),
     recheckProvider: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/recheck`), id),
     setProviderCustomModels: async (id, models) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/custom-models`, { models }), id),

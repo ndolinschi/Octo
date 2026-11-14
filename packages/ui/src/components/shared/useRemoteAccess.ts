@@ -8,7 +8,7 @@ export type RemoteLoad = { status: "unavailable" } | { status: "loading" } | { s
 /**
  * Remote access as the computer sees it (spec 2026-11-14 remote access, section 7): `GET /v1/remote`, read again every
  * `pollMs` while the page is visible (faster while the tunnel starts), and `run(action)` for the control calls, each of
- * which answers the whole status. The bridge's `remote` member is optional: a host or a demo without it is "unavailable".
+ * which answers the whole status. The bridge's `remoteAccess` member is optional: a host or a demo without it is "unavailable".
  */
 export function useRemoteAccess(pollMs: number): {
   load: RemoteLoad;
@@ -18,8 +18,9 @@ export function useRemoteAccess(pollMs: number): {
   run(action: (api: RemoteAccessApi) => Promise<RemoteStatus>): Promise<boolean>;
   retry(): void;
 } {
-  const api = useApp().bridge.remote;
-  const [load, setLoad] = useState<RemoteLoad>(() => (api ? { status: "loading" } : { status: "unavailable" }));
+  const loader = useApp().bridge.remoteAccess;
+  const [api, setApi] = useState<RemoteAccessApi | undefined>(undefined);
+  const [load, setLoad] = useState<RemoteLoad>(() => (loader ? { status: "loading" } : { status: "unavailable" }));
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -32,6 +33,18 @@ export function useRemoteAccess(pollMs: number): {
       live.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!loader) return;
+    let stopped = false;
+    loader().then(
+      (a) => !stopped && setApi(() => a),
+      (e: unknown) => !stopped && setLoad({ status: "error", message: errorMessage(e).replace(/\.$/, "") }),
+    );
+    return () => {
+      stopped = true;
+    };
+  }, [loader]);
 
   useEffect(() => {
     if (!api) return;

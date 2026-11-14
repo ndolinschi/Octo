@@ -475,8 +475,9 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
   });
 
   const { refuse: refuseModels, ...providerMethods } = demoProviders();
+  const remote = createDemoRemote();
   const bridge: Bridge = {
-    remote: createDemoRemote(),
+    remoteAccess: () => Promise.resolve(remote),
     // Providers, settings and diagnostics (decisions 53, 59): `?providers=none` shows the connect screen.
     ...providerMethods,
     health: async () => (await delay(), { ok: true, version: "demo" }),

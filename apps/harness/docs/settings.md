@@ -93,6 +93,13 @@ If a file written earlier names an `acp:` agent that is no longer available, `ha
 
 The bridge has no global event stream, only one per project (`GET /v1/projects/{pid}/events`). After a `PUT` that changed something, the harness publishes `{ "type": "settings.changed", "seq": n, "ids": ["HARNESS_MODEL_FAST"] }` on **every** project stream (each with that stream's own `seq`). Only ids, never values; nothing is published for a request that changed nothing. On receipt a client refetches `GET /v1/settings` and `GET /v1/config`.
 
+## Remote access
+
+The `HARNESS_REMOTE_*` variables (the tunnel program, the listener address, the web app's folder or dev proxy, what a
+paired device may do, device expiry, auto-off) are read from the environment or `harness.env` at start and are **not**
+in this list: no API, from the computer or from a device, can change them. Remote access itself is switched with
+`/v1/remote/enable|disable` and is off after every start. Table and defaults: [remote-access.md](./remote-access.md#settings-environment-or-harnessenv-not-editable-through-the-api).
+
 ## Bridge API token
 
 `HARNESS_API_TOKEN` and `HARNESS_NO_API_TOKEN` are not settings: they are read from the process environment only (the settings screen neither shows nor sets them). The settings routes are `/v1` routes like the rest and need the token. Details: the harness README, "Bridge API token".

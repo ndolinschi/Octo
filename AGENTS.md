@@ -12,7 +12,7 @@ This repository is an **apps-directory monorepo**. Applications live under `apps
 
 **System overview** (parts, process diagram, data locations, main flows, where to look, every environment variable, status, specs index): [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md). **Current state and next steps:** [`docs/superpowers/HANDOVER.md`](./docs/superpowers/HANDOVER.md).
 
-Future **web** host: [`apps/web/`](./apps/web/) (stub). Do not invent other shared packages until something is actually shared twice.
+**Web** host: [`apps/web/`](./apps/web/) — the mobile web client (`@octo/web`): the same UI, served by the harness through Remote access (`apps/harness/docs/remote-access.md`, spec `2026-11-14-remote-access-mobile-design.md`). Do not invent other shared packages until something is actually shared twice.
 
 ## Layout
 

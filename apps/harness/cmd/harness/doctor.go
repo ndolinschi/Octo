@@ -14,6 +14,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/diag"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
+	"github.com/ndolinschi/Octo/apps/harness/internal/remoteaccess"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
@@ -28,6 +29,8 @@ func diagnostics(cfg config.Config, reg *plugins.Registry, octo *router.Router, 
 	if octo != nil {
 		in.RouterOn, in.RouterCaps = octo.Enabled(), octo.Capabilities()
 	}
+	cf := remoteaccess.FindCloudflared(context.Background(), os.Getenv(remoteaccess.EnvCloudflared))
+	in.Cloudflared = &diag.CloudflaredReport{Found: cf.Found, Path: cf.Path, Version: cf.Version, Install: cf.Install}
 	for _, t := range tune {
 		t(&in)
 	}

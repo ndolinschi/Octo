@@ -40,13 +40,14 @@ export default tseslint.config(
       "apps/router/**",
       "apps/desktop/src-tauri/**",
       "apps/desktop/vite.config.ts",
+      "apps/web/vite.config.ts",
       "**/*.{js,mjs,cjs}",
     ],
   },
 
   // ---- Language rules ----
   {
-    files: ["packages/*/src/**/*.{ts,tsx}", "apps/desktop/src/**/*.{ts,tsx}"],
+    files: ["packages/*/src/**/*.{ts,tsx}", "apps/desktop/src/**/*.{ts,tsx}", "apps/web/src/**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.strictTypeChecked, ...tseslint.configs.stylisticTypeChecked],
     languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } },
     linterOptions: { reportUnusedDisableDirectives: "error" },
@@ -82,7 +83,7 @@ export default tseslint.config(
 
   // ---- React and accessibility (UI and the host) ----
   {
-    files: [`${UI}/**/*.{ts,tsx}`, "apps/desktop/src/**/*.{ts,tsx}"],
+    files: [`${UI}/**/*.{ts,tsx}`, "apps/desktop/src/**/*.{ts,tsx}", "apps/web/src/**/*.{ts,tsx}"],
     languageOptions: { globals: globals.browser },
     plugins: { "react-hooks": reactHooks, "jsx-a11y": jsxA11y },
     rules: {

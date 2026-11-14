@@ -119,3 +119,19 @@ is now per session (20 waiting messages of one session).
   process was gone is started again and sent the request once more only when the prompt failed within a second of being
   sent (the process had died between turns); an agent that worked on it silently and then died is no longer restarted
   with the request sent a second time, and so no longer ends as "stopped while starting" when that restart fails.
+
+## Added 2026-11-14 (remote access)
+
+`catalogue_remote.go`; details in [remote-access.md](./remote-access.md).
+
+| Code (status) | Constructor | Message | When |
+| --- | --- | --- | --- |
+| `cloudflared_missing` (in `GET /v1/remote` `error`) | `CloudflaredMissing(install)` | "Remote access needs Cloudflare's tunnel program, and it is not installed." (command: the install line, action `retry`) | turning remote access on without `cloudflared` |
+| `tunnel_failed` (in `error`) | `TunnelFailed(tail)` | "The tunnel to Cloudflare could not be opened." (details: the last output lines) | 5 failed runs in a row, or the listener could not open |
+| `remote_ack_required` (409), `remote_off` (409) | `Remote(code)` | "Remote access has to be confirmed the first time." / "Remote access is off." | first `enable` without `acknowledge`; a pairing code while off |
+| `remote_forbidden` (403), `remote_read_only` (403) | `Remote(code)` | "A paired phone cannot do this." / "This phone can only read." | a device on a denied route / a read-only device on a send, answer or stop route |
+| `device_not_paired` (401), `device_pending` (403), `device_expired` (401) | `Remote(code)` | "This phone is not paired, or it was disconnected on the computer." / "…waiting to be allowed on the computer." / "…not used for too long and was disconnected." | unknown or revoked token (the local API token too) / not yet allowed / idle too long |
+| `pairing_code_invalid` (403), `pairing_code_expired` (403), `pairing_locked` (423), `pairing_rate_limited` (429) | `Remote(code)` | "That pairing code is not right." / "…has expired." / "Too many wrong codes were tried." / "Too many tries at once." | `POST /pair/claim` |
+| `stream_gone` (410), `query_token_refused` (401) | `Remote(code)` | "The live updates stopped." / "A token in the address is not accepted here." | long poll / `?token=` on the tunnel listener |
+
+`TestRemoteWording` holds every code to the sentence rules.

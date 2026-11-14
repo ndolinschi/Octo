@@ -1,39 +1,18 @@
-import { Smartphone } from "lucide-react";
-import { settingsHref } from "../../lib/route";
+import { lazy, Suspense } from "react";
 import { useApp } from "../../state/app";
-import { Glyph } from "../primitives/Glyph";
-import { indicatorText } from "../shared/remoteText";
-import { useRemoteAccess } from "../shared/useRemoteAccess";
-import { StatusButton } from "./StatusButton";
 
-const POLL_MS = 10_000;
+const View = lazy(() => import("./RemoteIndicatorView").then((m) => ({ default: m.RemoteIndicatorView })));
 
 /**
- * The status bar's remote-access item (spec 2026-11-14 remote access, section 7): shown only while remote access is on (or
- * failed), with the number of devices seen in the last minute, "allow?" when a phone waits for the computer's answer. A
- * `full`-access project driven from a phone is therefore never invisible here. Opens Settings → Remote access. Not on the
- * phone itself (the web shell), which may not read these routes.
+ * The status bar's remote-access item (`RemoteIndicatorView`), loaded after the first paint so it costs the entry bundle
+ * nothing. Only where the bridge has the control routes, and never on the phone itself (the web shell may not read them).
  */
 export function RemoteIndicator() {
-  const { shell } = useApp();
-  if (shell === "web") return null;
-  return <Indicator />;
-}
-
-function Indicator() {
-  const { load } = useRemoteAccess(POLL_MS);
-  if (load.status !== "ready") return null;
-  const text = indicatorText(load.s);
-  if (!text) return null;
+  const { shell, bridge } = useApp();
+  if (shell === "web" || !bridge.remoteAccess) return null;
   return (
-    <StatusButton
-      data-remote-indicator
-      title="Remote access is on: paired phones can reach this computer. Open its settings."
-      {...(load.s.state === "error" ? { warning: "err" as const } : {})}
-      onClick={() => (window.location.hash = settingsHref("remote"))}
-    >
-      <Glyph icon={Smartphone} size={14} />
-      {text}
-    </StatusButton>
+    <Suspense fallback={null}>
+      <View />
+    </Suspense>
   );
 }

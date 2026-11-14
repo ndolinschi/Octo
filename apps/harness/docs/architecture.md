@@ -73,6 +73,7 @@ flowchart TB
 | `internal/memory` | Orchestrator memory service (M1, M2): task records, memory files, search shaping, digest merge, the memory setting, limits and secret redaction; see [memory.md](./memory.md) |
 | `internal/acptrace` | Opt-in ACP wire trace: one redacted, size-capped JSON-lines file per agent process under `{data-dir}/traces/`; see [acp-orchestrator.md](./acp-orchestrator.md#diagnostics-and-the-wire-trace) |
 | `internal/diag` | The diagnostics report (`harness doctor`, `GET /v1/diagnostics`): versions, PATH, per-agent resolution and login state, the scrubbed log ring (last 200 lines) |
+| `internal/remoteaccess` | Remote access for a paired phone: runs `cloudflared` (quick tunnel) to a second loopback listener that serves the web app, pairing and the bridge API for device tokens through an allow-list, long-poll events, the device store `{data-dir}/remote/devices.json`; `/v1/remote` control routes on the main bridge; see [remote-access.md](./remote-access.md) |
 | `internal/limits` | Provider rate-limit headers remembered per model and limit kind (`GET /v1/limits`); in memory only |
 | `internal/permission` | `permission.Decide`, the one seam answering an ACP agent's permission requests (auto-approve today) |
 | `internal/fakeacp` | Scripted ACP agent for tests and demos (`examples/fakeacp` is its `main`); env switches advertise auth methods, models, `loadSession` and HTTP MCP, refuse unknown models or MCP servers; markers drive MCP tool calls (`[mcp-spawn]`), echo the prompt (`[echo]`), crash (`[crash]`) and hang (`[hang]`) |
@@ -367,3 +368,12 @@ Changes from the owner's second live run (findings and decisions: `docs/superpow
   service with `data_dir_in_use`. A killed holder leaves no stale lock.
 - **Mock model:** the `[essay]` marker gives a long answer with no tools.
 
+
+## Added 2026-11-14: remote access
+
+`internal/remoteaccess` ([remote-access.md](./remote-access.md), spec `2026-11-14-remote-access-mobile-design.md`). Off
+after every start. `bridge.NewAPI` builds the bridge's routes with no token, CORS, MCP or mounts as the inner handler of
+the tunnel listener, which authenticates device tokens itself and lets requests through by an allow-list that denies by
+default; `bridge.WithMount` puts the `/v1/remote` control routes on the main bridge behind the local token. The local
+token never works on the tunnel listener, and no loopback check counts there (every request comes from `cloudflared` on
+`127.0.0.1`). `harness doctor` and `GET /v1/diagnostics` report `cloudflared`. Event `remote.changed`.

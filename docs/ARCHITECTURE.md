@@ -315,6 +315,7 @@ flags beat both. Test-only variables (`OCTO_FAKEACP_*`) are left out.
 | `HARNESS_OCTO_KEY` (flag `--octo-key`) | harness | empty | Sent as `x-octo-key` |
 | `HARNESS_DATA_DIR` (flag `--data-dir`) | harness | `./data/harness` | Not settable from `harness.env` |
 | `--addr` | `harness serve` | `127.0.0.1:8790` | Flag only |
+| `HARNESS_REMOTE_CLOUDFLARED`, `HARNESS_REMOTE_ADDR`, `HARNESS_REMOTE_WEB_DIR` (flag `--remote-web-dir`), `HARNESS_REMOTE_WEB_PROXY`, `HARNESS_REMOTE_ALLOW`, `HARNESS_REMOTE_DEVICE_IDLE_DAYS`, `HARNESS_REMOTE_IDLE_OFF_HOURS` | harness (remote access) | `cloudflared` on PATH, `127.0.0.1:0`, none, none, `send,answer,stop`, `30`, `8` | Not settings (no API changes them); see `apps/harness/docs/remote-access.md` |
 | `HARNESS_MODEL_ORCHESTRATOR`, `_FAST`, `_BALANCED`, `_DEEP` | harness (settings, apply at once) | the built-in tier table `BuiltinModels` in `internal/config/config.go` | A model id, or `acp:<agent>[/<model>]` |
 | `HARNESS_MAX_TURNS` (flag `--max-turns`) | harness | `25` | Loop iterations per agent |
 | `HARNESS_STREAM` | harness | `true` | |
@@ -447,6 +448,7 @@ written in the file, shortened.
 | `2026-11-12-parity-backlog.md` | Features to add after the OpenCode and Cursor comparison (B1–B13) | B1–B7 and B11–B13 built; B8–B10 not built |
 | `2026-11-12-project-sessions-design.md` | Main sessions that can be continued, agent sessions made accessible, the Sessions tab | Harness (schema 13) and UI built; not verified with a real agent |
 | `2026-11-14-parallel-sessions-design.md` | Parallel sessions in a project: every main session addressable and running at once, worktrees, coordination tools between sessions, memory modes, the sidebar tree and its three views | Phases 1 (harness) and 2 (client and UI) built; phases 3–5 (worktrees, coordination, memory modes) not built |
+| `2026-11-14-remote-access-mobile-design.md` | Remote access for a phone: Cloudflare quick tunnel run by the harness, second listener with an allow-list, pairing and device tokens, long-poll events, the `apps/web` client, Settings → Remote access | Phase 1 built and verified with a fake `cloudflared`; a real tunnel, phone and WebKit not verified |
 
 ### Research (`docs/superpowers/research/`)
 

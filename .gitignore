@@ -19,6 +19,7 @@ apps/harness/octo-harness
 apps/harness/octo-mockllm
 node_modules/
 apps/desktop/dist/
+apps/web/dist/
 .pnpm-store/
 
 # Local agent worktrees (never committed)
