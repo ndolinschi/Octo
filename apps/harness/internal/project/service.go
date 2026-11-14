@@ -204,6 +204,10 @@ func NewService(store *projectstore.Store, hub *events.Hub, turns Turns, default
 	for _, o := range opts {
 		o(s)
 	}
+	if st, ok := turns.(SessionTurns); ok {
+		// The project's orchestrator_agent_id is the default session's root: a new default republishes the project.
+		st.OnDefaultChanged(s.announceProject)
+	}
 	return s
 }
 
@@ -353,6 +357,9 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	if err := checkReview(in.Review); err != nil {
 		return Project{}, err
 	}
+	if err := checkSessionSettings(in.SessionSettings); err != nil {
+		return Project{}, err
+	}
 	memJSON := ""
 	if in.Memory != nil {
 		if err := in.Memory.Validate(); err != nil {
@@ -381,6 +388,9 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 		return Project{}, err
 	}
 	if err := saveReview(ctx, db, in.Review); err != nil {
+		return Project{}, err
+	}
+	if err := saveSessionSettings(ctx, db, in.SessionSettings); err != nil {
 		return Project{}, err
 	}
 	return s.load(ctx, db)
@@ -453,6 +463,9 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 	if err := checkReview(in.Review); err != nil {
 		return Project{}, err
 	}
+	if err := checkSessionSettings(in.SessionSettings); err != nil {
+		return Project{}, err
+	}
 	if in.Memory != nil {
 		if err := in.Memory.Validate(); err != nil {
 			return Project{}, invalid("%s", err.Error())
@@ -474,6 +487,14 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 	}
 	if err := saveReview(ctx, db, in.Review); err != nil {
 		return Project{}, err
+	}
+	if err := saveSessionSettings(ctx, db, in.SessionSettings); err != nil {
+		return Project{}, err
+	}
+	if in.SessionSettings != nil {
+		if st, ok := s.turns.(SessionTurns); ok {
+			st.Reschedule() // a higher cap lets waiting messages start now
+		}
 	}
 	p, err := s.load(ctx, db)
 	if err != nil {

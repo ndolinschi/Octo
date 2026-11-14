@@ -4,7 +4,7 @@ Go module: `github.com/ndolinschi/Octo/apps/harness`. A thin **Anthropic Message
 
 ## Runtime shape
 
-Two shapes share the Messages loop. **`harness serve`** (the product) is a project server: the bridge (HTTP + SSE) in front of a service layer, an orchestrator that runs one turn per project, and the stores:
+Two shapes share the Messages loop. **`harness serve`** (the product) is a project server: the bridge (HTTP + SSE) in front of a service layer, an orchestrator that runs one turn per main session (several sessions of a project at once, within the running caps; `sessions.md`), and the stores:
 
 ```mermaid
 flowchart LR
@@ -109,7 +109,7 @@ flowchart LR
   loop --> llm[Messages API]
 ```
 
-- One **turn** per project at a time (`409 turn_in_progress`). `POST /messages` persists the user message and runs the turn in the background; progress arrives over SSE.
+- One **turn** per main session at a time; several main sessions of a project run at once (schema 15, `sessions.md`), within `session_settings.max_running` per project (default 3) and `HARNESS_MAX_RUNNING_SESSIONS` on the machine (default 6); a message beyond them waits in its session's queue (`waiting_for: "slot"`). Each session has its own root agent, queue, steer box, ACP process and MCP token; per-session state in the orchestrator is keyed by `project/session`. `POST /messages` (the default session) and `POST /sessions/{sid}/messages` persist the user message and run the turn in the background; progress arrives over SSE, each event of a session's work with its `session_id`.
 - The orchestrator thread is reloaded from `project.sqlite` every turn. If the previous turn left a `tool_use` without results (cancel/crash), a synthetic `is_error` result is stored before the new user message.
 - `spawn_agent` creates the child row (`spawn_tool_use_id` from `tools.ToolUseID(ctx)`), runs the child loop synchronously, and returns its final text. A failed or cancelled child yields an `is_error` tool result; the parent continues. Agents at `depth == max_depth` do not get `spawn_agent`.
 - Several tool calls in one assistant message run concurrently (`errgroup`); results keep call order. Parallel `spawn_agent` calls therefore run in parallel, so sibling rows appear in nondeterministic creation order.

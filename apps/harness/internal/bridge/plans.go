@@ -11,7 +11,7 @@ import (
 // latestPlan answers GET /v1/projects/{pid}/plans/latest: 200 {"plan": {...}}, or 200 {"plan": null} when the project
 // has no plan yet (not a 404, so a browser does not log a failed request for every project without one).
 func (s *Server) latestPlan(w http.ResponseWriter, r *http.Request) {
-	p, err := s.svc.LatestPlan(r.Context(), r.PathValue("pid"))
+	p, err := s.svc.LatestSessionPlan(r.Context(), r.PathValue("pid"), r.PathValue("sid"))
 	if errors.Is(err, projectstore.ErrNotFound) {
 		writeJSON(w, http.StatusOK, map[string]any{"plan": nil})
 		return
@@ -40,7 +40,7 @@ func (s *Server) rewind(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	rep, err := s.svc.Rewind(r.Context(), r.PathValue("pid"), in.MessageID, in.DryRun)
+	rep, err := s.svc.RewindSession(r.Context(), r.PathValue("pid"), r.PathValue("sid"), in.MessageID, in.DryRun)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -50,7 +50,7 @@ func (s *Server) rewind(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) compact(w http.ResponseWriter, r *http.Request) {
 	// An ACP orchestrator that advertises a compact command gets "/compact" as a turn.
-	msg, sent, err := s.svc.CompactViaAgent(r.Context(), r.PathValue("pid"))
+	msg, sent, err := s.svc.CompactViaAgentSession(r.Context(), r.PathValue("pid"), r.PathValue("sid"))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -59,7 +59,7 @@ func (s *Server) compact(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusAccepted, map[string]any{"sent_to_agent": true, "message": msg})
 		return
 	}
-	res, err := s.svc.Compact(r.Context(), r.PathValue("pid"))
+	res, err := s.svc.CompactSession(r.Context(), r.PathValue("pid"), r.PathValue("sid"))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -72,7 +72,7 @@ func (s *Server) exportConversation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "format must be md")
 		return
 	}
-	name, md, err := s.svc.ExportMarkdown(r.Context(), r.PathValue("pid"))
+	name, md, err := s.svc.ExportSessionMarkdown(r.Context(), r.PathValue("pid"), r.PathValue("sid"))
 	if err != nil {
 		writeErr(w, err)
 		return

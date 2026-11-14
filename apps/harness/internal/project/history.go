@@ -20,17 +20,22 @@ func (s *Service) Compact(ctx context.Context, pid string) (orchestrator.Compact
 		return orchestrator.CompactResult{}, err
 	}
 	res, err := s.turns.Compact(ctx, pid)
+	return res, compactErr(err)
+}
+
+// compactErr maps a compaction's refusal to the API's errors.
+func compactErr(err error) error {
 	switch {
 	case errors.Is(err, orchestrator.ErrTurnInProgress):
-		return res, turnInProgress()
+		return turnInProgress()
 	case errors.Is(err, orchestrator.ErrNothingToCompact):
-		return res, of(KindConflict, usererr.NothingToCompact())
+		return of(KindConflict, usererr.NothingToCompact())
 	case errors.Is(err, orchestrator.ErrCompactUnsupported):
-		return res, of(KindConflict, usererr.CompactUnsupported(err.Error()))
+		return of(KindConflict, usererr.CompactUnsupported(err.Error()))
 	case orchestrator.IsNoBuiltinLoop(err):
-		return res, of(KindConflict, usererr.BuiltinLoopOff(err.Error()))
+		return of(KindConflict, usererr.BuiltinLoopOff(err.Error()))
 	}
-	return res, err
+	return err
 }
 
 // ExportMarkdown renders the orchestrator's conversation as Markdown: each request a
@@ -39,6 +44,11 @@ func (s *Service) Compact(ctx context.Context, pid string) (orchestrator.Compact
 // hidden by a rewind are not part of it. Stored secrets are replaced by their
 // redaction marker.
 func (s *Service) ExportMarkdown(ctx context.Context, pid string) (name, md string, err error) {
+	return s.ExportSessionMarkdown(ctx, pid, "")
+}
+
+// ExportSessionMarkdown is ExportMarkdown of one main session ("": the default).
+func (s *Service) ExportSessionMarkdown(ctx context.Context, pid, sid string) (name, md string, err error) {
 	db, err := s.db(ctx, pid)
 	if err != nil {
 		return "", "", err
@@ -47,9 +57,9 @@ func (s *Service) ExportMarkdown(ctx context.Context, pid string) (name, md stri
 	if err != nil {
 		return "", "", err
 	}
-	orch, err := db.Orchestrator(ctx)
+	orch, err := db.RootAgent(ctx, sid)
 	if err != nil {
-		return "", "", err
+		return "", "", sessionErr(err)
 	}
 	msgs, err := db.Messages(ctx, orch.ID)
 	if err != nil {
@@ -240,15 +250,14 @@ func (s *Service) SearchRequests(ctx context.Context, q string, limit int) ([]Se
 		if err != nil {
 			continue
 		}
-		orch, err := db.Orchestrator(ctx)
-		if err != nil {
-			continue
-		}
 		for _, h := range hits {
 			if h.Title != "user" {
 				continue
 			}
-			if _, _, agentID, _, err := db.MessageText(ctx, h.MessageID); err != nil || agentID != orch.ID {
+			// A request of any main session (each has its own root agent), not a sub-agent's task.
+			if _, _, agentID, _, err := db.MessageText(ctx, h.MessageID); err != nil {
+				continue
+			} else if a, err := db.Agent(ctx, agentID); err != nil || a.ParentID != nil {
 				continue
 			}
 			all = append(all, ranked{SearchHit{ProjectID: id, ProjectName: info.Name, MessageID: h.MessageID, Snippet: memory.Snippet(h.Body, terms), Date: h.Date}, h.Exact})

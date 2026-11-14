@@ -121,7 +121,7 @@ func (o *Orchestrator) agentCommandNamed(rt *runtime, name string) bool {
 	if !ok || name == "" {
 		return false
 	}
-	cmds, known := o.acp.lookup(rt.pid()).commandsOf(id)
+	cmds, known := o.acp.lookup(rt.key()).commandsOf(id)
 	return known && slices.ContainsFunc(cmds, func(c acp.Command) bool { return c.Name == name })
 }
 
@@ -148,7 +148,8 @@ func (o *Orchestrator) SlashCommands(ctx context.Context, pid string) (SlashRepo
 				agent.Label = a.Label
 			}
 		}
-		cmds, known := o.acp.lookup(pid).commandsOf(id)
+		sid, _ := db.DefaultSessionID(ctx)
+		cmds, known := o.acp.lookup(skey(pid, sid)).commandsOf(id)
 		agent.Pending = !known
 		if known {
 			agent.Commands = cmds

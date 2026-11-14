@@ -16,7 +16,7 @@ func lastRowOf(col string) string {
 
 var agentCols = `id, parent_id, depth, role, title, task, model, tier, status, result, error,
 	spawn_tool_use_id, input_tokens, output_tokens, created_at, started_at, finished_at,
-	context_used, context_size, route_reason, route_band, route_request_id, route_choice, ` + lastRowOf("u.served_model") + `, ` + lastRowOf("u.tier") + `, plan_json, error_hint`
+	context_used, context_size, route_reason, route_band, route_request_id, route_choice, ` + lastRowOf("u.served_model") + `, ` + lastRowOf("u.tier") + `, plan_json, error_hint, session_id`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -28,7 +28,7 @@ func (d *DB) scanAgent(r scanner) (Agent, error) {
 	var served, routed, rReason, rBand, rReq, rChoice, plan, errHint sql.NullString
 	err := r.Scan(&a.ID, &parent, &a.Depth, &a.Role, &a.Title, &a.Task, &a.Model, &tier, &a.Status,
 		&result, &errText, &spawn, &a.InputTokens, &a.OutputTokens, &a.CreatedAt, &started, &finished, &ctxUsed, &ctxSize,
-		&rReason, &rBand, &rReq, &rChoice, &served, &routed, &plan, &errHint)
+		&rReason, &rBand, &rReq, &rChoice, &served, &routed, &plan, &errHint, &a.SessionID)
 	if err != nil {
 		return a, err
 	}
@@ -83,12 +83,17 @@ func (d *DB) CreateAgent(ctx context.Context, in NewAgent) (Agent, error) {
 	if in.Route != nil {
 		route = *in.Route
 	}
+	sid := in.SessionID
+	if sid == "" && in.ParentID != nil {
+		// A sub-agent works in the session of the agent that spawned it.
+		_ = d.sql.QueryRowContext(ctx, `SELECT session_id FROM agents WHERE id = ?`, *in.ParentID).Scan(&sid)
+	}
 	_, err := d.sql.ExecContext(ctx,
 		`INSERT INTO agents (id, parent_id, depth, role, title, task, model, tier, status, spawn_tool_use_id, created_at, started_at,
-			route_reason, route_band, route_request_id, route_choice)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			route_reason, route_band, route_request_id, route_choice, session_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, in.ParentID, in.Depth, in.Role, in.Title, in.Task, in.Model, tier, string(in.Status), in.SpawnToolUseID, now, started,
-		nullable(route.Reason), nullable(route.Band), nullable(route.RequestID), nullable(route.Choice))
+		nullable(route.Reason), nullable(route.Band), nullable(route.RequestID), nullable(route.Choice), sid)
 	if err != nil {
 		return Agent{}, err
 	}
@@ -123,13 +128,28 @@ func (d *DB) Agents(ctx context.Context) ([]Agent, error) {
 	return out, rows.Err()
 }
 
-// Orchestrator returns the project's root agent.
+// Orchestrator returns the root agent of the project's default session (schema 15: every main session has
+// its own root; the default's is the project's original orchestrator row).
 func (d *DB) Orchestrator(ctx context.Context) (Agent, error) {
-	a, err := d.scanAgent(d.sql.QueryRowContext(ctx, `SELECT `+agentCols+` FROM agents WHERE parent_id IS NULL`))
-	if err == sql.ErrNoRows {
-		return a, ErrNotFound
+	return d.RootAgent(ctx, "")
+}
+
+// Roots lists the root agents of the project (one per main session that has run), oldest first.
+func (d *DB) Roots(ctx context.Context) ([]Agent, error) {
+	rows, err := d.sql.QueryContext(ctx, `SELECT `+agentCols+` FROM agents WHERE parent_id IS NULL AND rewound_at IS NULL ORDER BY rowid`)
+	if err != nil {
+		return nil, err
 	}
-	return a, err
+	defer rows.Close()
+	out := []Agent{}
+	for rows.Next() {
+		a, err := d.scanAgent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 func (d *DB) UpdateAgent(ctx context.Context, id string, p AgentPatch) (Agent, error) {
@@ -176,9 +196,9 @@ func (d *DB) RecoverInterrupted(ctx context.Context) error {
 		return err
 	}
 	// Queued messages survive a restart but never run on their own after one:
-	// the turn they waited for was cut short.
+	// the turn they waited for was cut short. Each session's queue is paused on its own.
 	_, err := d.sql.ExecContext(ctx,
-		`UPDATE project SET queue_paused = 1 WHERE EXISTS (SELECT 1 FROM queue)`)
+		`UPDATE sessions SET queue_paused = 1 WHERE kind = 'main' AND EXISTS (SELECT 1 FROM queue q WHERE q.session_id = sessions.id)`)
 	return err
 }
 

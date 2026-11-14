@@ -38,6 +38,8 @@ func (s *Service) ApprovePlan(ctx context.Context, pid, planID string) (projects
 		return p, msg, of(KindConflict, usererr.PlanNotPending())
 	case errors.Is(err, orchestrator.ErrTurnInProgress):
 		return p, msg, turnInProgress()
+	case errors.Is(err, orchestrator.ErrNoSlot):
+		return p, msg, slotsFull(s, pid)
 	}
 	return p, msg, err
 }
@@ -50,6 +52,11 @@ func (s *Service) Rewind(ctx context.Context, pid string, messageID int64, dryRu
 		return orchestrator.RewindReport{}, err
 	}
 	rep, err := s.turns.Rewind(ctx, pid, messageID, dryRun)
+	return rewindErr(rep, err, dryRun)
+}
+
+// rewindErr maps a rewind's refusal to the API's errors.
+func rewindErr(rep orchestrator.RewindReport, err error, dryRun bool) (orchestrator.RewindReport, error) {
 	switch {
 	case errors.Is(err, orchestrator.ErrNotRequest):
 		return rep, invalid("message_id must be the id of one of this conversation's user requests")

@@ -24,7 +24,7 @@ const digestAsk = "\n\nThis is a bookkeeping request from the harness, not from 
 // conversation. The session's digestMu keeps the next turn from starting its
 // prompt while this one is open.
 func (rt *runtime) askACPDigest(ctx context.Context, w memory.TurnWork) (*memory.Digest, error) {
-	s := rt.o.acp.session(rt.pid())
+	s := rt.o.acp.session(rt.key())
 	s.digestMu.Lock()
 	defer s.digestMu.Unlock()
 	s.mu.Lock()

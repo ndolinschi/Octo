@@ -25,6 +25,8 @@ type ExchangeInput struct {
 	TaskID            string
 	// Interrupted: the harness stopped while the turn ran (Status is failed).
 	Interrupted bool
+	// Error is why a failed turn failed (nil otherwise); its texts are redacted here.
+	Error *projectstore.ExchangeError
 }
 
 func (s *Service) now() time.Time {
@@ -46,6 +48,9 @@ func (s *Service) RecordExchange(ctx context.Context, in ExchangeInput) (project
 		Status: in.Status, StartedAt: projectstore.Stamp(in.StartedAt), DurationMS: in.Duration.Milliseconds(), Model: in.Model,
 		Files: cleanFiles(in.Files), Agents: cleanList(in.Agents, 120), Tokens: in.Tokens, CostUSD: in.CostUSD, TaskID: in.TaskID,
 		Interrupted: in.Interrupted,
+	}
+	if in.Error != nil {
+		e.Error = &projectstore.ExchangeError{Code: in.Error.Code, Message: s.redact(in.Error.Message), Hint: s.redact(in.Error.Hint)}
 	}
 	e, sess, err := s.DB.RecordExchange(ctx, e, projectstore.SessionGap)
 	if err == nil {
@@ -79,11 +84,17 @@ type Carry struct {
 // until its first request) so a boundary can name it. reason is "clear" (the /clear command, with its Carry)
 // or "rewind". Idempotent: with an empty session already open it does nothing.
 func (s *Service) StartSession(ctx context.Context, reason string, carry ...Carry) (Boundary, error) {
+	return s.StartSessionFrom(ctx, "", reason, carry...)
+}
+
+// StartSessionFrom is StartSession for one main session ("": the default): that session ends and a new one with
+// its own root agent follows it (the default when the ended one was).
+func (s *Service) StartSessionFrom(ctx context.Context, from, reason string, carry ...Carry) (Boundary, error) {
 	var c Carry
 	if len(carry) > 0 {
 		c = carry[0]
 	}
-	prev, cur, err := s.DB.StartNewSession(ctx, reason, s.redact(c.Summary), c.Source, s.now())
+	prev, cur, err := s.DB.StartNewSessionFrom(ctx, from, reason, s.redact(c.Summary), c.Source, s.now())
 	if err != nil {
 		return Boundary{}, err
 	}

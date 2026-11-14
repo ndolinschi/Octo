@@ -68,8 +68,13 @@ type cmdMessages struct {
 
 func (e *acpEnv) transcript(t *testing.T, p projectJSON) cmdMessages {
 	t.Helper()
+	return e.transcriptOf(t, p, e.defaultRoot(t, p))
+}
+
+func (e *acpEnv) transcriptOf(t *testing.T, p projectJSON, root string) cmdMessages {
+	t.Helper()
 	var m cmdMessages
-	e.into(t, "GET", "/v1/projects/"+p.ID+"/agents/"+p.OrchestratorAgentID+"/messages", nil, http.StatusOK, &m)
+	e.into(t, "GET", "/v1/projects/"+p.ID+"/agents/"+root+"/messages", nil, http.StatusOK, &m)
 	return m
 }
 
@@ -179,6 +184,7 @@ func TestClearOfAnACPOrchestratorAsksTheAgentForASummary(t *testing.T) {
 	e.ask(t, p, "[echo] first")
 	first := parseIdentity(t, e.lastText(t, p))
 	e.ask(t, p, "[echo] second")
+	oldRoot := e.defaultRoot(t, p)
 	before := e.transcript(t, p)
 
 	ch := e.subscribe(t, p.ID)
@@ -196,14 +202,18 @@ func TestClearOfAnACPOrchestratorAsksTheAgentForASummary(t *testing.T) {
 	if count(evs, "conversation.cleared") != 1 || indexOf(evs, "context.updated") < 0 {
 		t.Fatalf("events = %+v", evs)
 	}
-	// The summary prompt is not a user turn, and nothing is deleted.
+	// The summary prompt is not a user turn, and nothing is deleted: the old session keeps its transcript on its
+	// root; the new default session has its own root, which starts with the marker (schema 15).
+	if old := e.transcriptOf(t, p, oldRoot); len(old.Messages) != len(before.Messages) {
+		t.Fatalf("messages %d -> %d", len(before.Messages), len(old.Messages))
+	}
 	after := e.transcript(t, p)
-	if len(after.Messages) != len(before.Messages) {
-		t.Fatalf("messages %d -> %d", len(before.Messages), len(after.Messages))
+	if e.defaultRoot(t, p) == oldRoot || len(after.Messages) != 0 {
+		t.Fatalf("the new session: root %s, %d messages", e.defaultRoot(t, p), len(after.Messages))
 	}
 	if len(after.Conversations) != 1 || after.Conversations[0].ConversationID != res.ConversationID ||
 		after.Conversations[0].Label != "New session · earlier: [echo] first" || after.Conversations[0].SummarySource != "agent" ||
-		!strings.Contains(after.Conversations[0].Summary, "Agent summary") || after.Conversations[0].UptoMessageID != before.Messages[len(before.Messages)-1].ID {
+		!strings.Contains(after.Conversations[0].Summary, "Agent summary") || after.Conversations[0].UptoMessageID != 0 {
 		t.Fatalf("conversations = %+v", after.Conversations)
 	}
 	// The agent's commands are pending again until its new session starts.
@@ -233,7 +243,7 @@ func TestClearOfAnACPOrchestratorAsksTheAgentForASummary(t *testing.T) {
 		t.Fatal("an old request is found by search after /clear")
 	}
 	status, md := e.do(t, "GET", "/v1/projects/"+p.ID+"/export?format=md", nil)
-	if status != http.StatusOK || !strings.Contains(string(md), "New session · earlier: [echo] first") || !strings.Contains(string(md), "[echo] first") {
+	if status != http.StatusOK || !strings.Contains(string(md), "New session · earlier: [echo] first") || !strings.Contains(string(md), "[echo] third") {
 		t.Fatalf("export: %d %s", status, md)
 	}
 	// A clear during a turn is refused.
@@ -311,7 +321,8 @@ func TestSlashCommandsAndClearOfTheBuiltInLoop(t *testing.T) {
 	e.into(t, "GET", "/v1/projects/"+pid, nil, http.StatusOK, &p)
 	var m cmdMessages
 	e.into(t, "GET", "/v1/projects/"+pid+"/agents/"+p.OrchestratorAgentID+"/messages", nil, http.StatusOK, &m)
-	if len(m.Conversations) != 1 || len(m.Messages) < 4 {
+	// The new default session's root starts with the marker; the old session kept its messages on its own root.
+	if len(m.Conversations) != 1 || len(m.Messages) != 0 {
 		t.Fatalf("transcript = %d messages, conversations %+v", len(m.Messages), m.Conversations)
 	}
 	// The context report starts over: no compaction time, the history is the carry-over only.

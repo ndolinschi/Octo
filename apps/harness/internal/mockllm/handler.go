@@ -12,11 +12,12 @@ func jsonUnmarshal(raw json.RawMessage, v any) error { return json.Unmarshal(raw
 // New returns a deterministic Anthropic-compatible Messages server. delay is
 // the pause between streamed chunks.
 func New(delay time.Duration, opts ...Option) http.Handler {
-	m := &server{style: StyleAnthropic, now: time.Now, cache: &cacheStore{}}
+	m := &server{style: StyleAnthropic, now: time.Now, cache: &cacheStore{}, holds: NewHolds()}
 	for _, o := range opts {
 		o(m)
 	}
 	mux := http.NewServeMux()
+	m.holdRoutes(mux)
 	mux.HandleFunc("POST /v1/messages", func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 16<<20))
 		var req request
@@ -28,11 +29,19 @@ func New(delay time.Duration, opts ...Option) http.Handler {
 			return
 		}
 		rep := plan(&req)
+		var hold func() bool
+		if name, ok := holdName(&req); ok {
+			rep = reply{Text: "Held reply (mock model): " + clip(req.Messages[req.lastUserTextIndex()].text(), 200)}
+			hold = func() bool { return m.holds.wait(r.Context(), name) }
+		}
 		u := usage(&req, rep)
 		u.CacheRead, u.CacheWrite, u.Input = m.cache.account(body, u.Input)
 		m.setRateLimits(w.Header())
 		if req.Stream {
-			streamReply(w, r, &req, rep, u, delay)
+			streamReplyHeld(w, r, &req, rep, u, delay, hold)
+			return
+		}
+		if hold != nil && !hold() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

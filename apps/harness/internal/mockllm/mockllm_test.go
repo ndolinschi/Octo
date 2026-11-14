@@ -2,10 +2,12 @@ package mockllm
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func post(t *testing.T, body string) map[string]any {
@@ -98,5 +100,45 @@ func TestSideQuestionScript(t *testing.T) {
 	text := final["content"].([]any)[0].(map[string]any)["text"].(string)
 	if len(toolNames(final)) != 0 || !strings.Contains(text, "what is here?") || !strings.Contains(text, "nothing was changed") {
 		t.Fatalf("final = %v", final["content"])
+	}
+}
+
+// The [hold:NAME] marker keeps a streamed reply open after its first words until Release(NAME).
+func TestHoldMarkerWaitsForRelease(t *testing.T) {
+	h := NewHolds()
+	srv := httptest.NewServer(New(0, WithHolds(h)))
+	defer srv.Close()
+	body := `{"model":"m","stream":true,"max_tokens":10,"messages":[{"role":"user","content":"please [hold:a] now"}],"tools":[{"name":"save_note","input_schema":{}}]}`
+	done := make(chan string)
+	go func() {
+		resp, err := http.Post(srv.URL+"/v1/messages", "application/json", strings.NewReader(body))
+		if err != nil {
+			done <- err.Error()
+			return
+		}
+		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		done <- string(b)
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for h.Waiting("a") == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the reply was never held")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	select {
+	case <-done:
+		t.Fatal("the held reply ended before its release")
+	case <-time.After(100 * time.Millisecond):
+	}
+	h.Release("a")
+	select {
+	case out := <-done:
+		if !strings.Contains(out, "Held reply") || !strings.Contains(out, "message_stop") {
+			t.Fatalf("reply = %s", out)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the released reply did not finish")
 	}
 }

@@ -271,6 +271,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Prices:          priceTable,
 		Windows:         cfg.ContextWindows,
 		ACPIdle:         cfg.ACPIdle,
+		MaxRunning:      cfg.MaxRunningSessions,
 		ApprovalTimeout: approvalTimeout,
 		MemoryDigest:    true,
 

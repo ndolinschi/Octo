@@ -55,14 +55,90 @@ func (o *Orchestrator) ResolveApproval(pid, id string, r approval.Resolution) er
 
 // publishAttention announces how many things wait for the user in a project
 // (approvals and open forms), so a client can show "needs you".
+// The event also lists, per main session that has anything waiting, its counts (sessions).
 func (o *Orchestrator) publishAttention(pid string) {
 	a, in := o.approvals.Count(pid), o.inputs.Count(pid)
-	o.hub.Publish(pid, events.ProjectAttention, map[string]any{"needs_you": a+in > 0, "approvals": a, "inputs": in})
+	o.hub.Publish(pid, events.ProjectAttention, map[string]any{"needs_you": a+in > 0, "approvals": a, "inputs": in,
+		"sessions": o.SessionsAttention(pid)})
 }
 
 // Attention returns the counts publishAttention announces.
 func (o *Orchestrator) Attention(pid string) (approvals, inputs int) {
 	return o.approvals.Count(pid), o.inputs.Count(pid)
+}
+
+// SessionAttention counts what waits for the person in one main session: its approvals and open forms.
+func (o *Orchestrator) SessionAttention(pid, sid string) (approvals, inputs int) {
+	for _, a := range o.approvals.List(pid) {
+		if a.SessionID == sid {
+			approvals++
+		}
+	}
+	for _, f := range o.inputs.List(pid) {
+		if f.SessionID == sid {
+			inputs++
+		}
+	}
+	return approvals, inputs
+}
+
+// SessionNeed is one main session's entry of project.attention: what waits for the person there, and whether
+// its last turn failed.
+type SessionNeed struct {
+	SessionID string `json:"session_id"`
+	NeedsYou  bool   `json:"needs_you"`
+	Approvals int    `json:"approvals"`
+	Inputs    int    `json:"inputs"`
+	Failed    bool   `json:"failed"`
+}
+
+// SessionsAttention lists the main sessions that need the person (approvals, forms) or whose last turn failed.
+func (o *Orchestrator) SessionsAttention(pid string) []SessionNeed {
+	by := map[string]*SessionNeed{}
+	var order []string
+	get := func(sid string) *SessionNeed {
+		if n := by[sid]; n != nil {
+			return n
+		}
+		by[sid] = &SessionNeed{SessionID: sid}
+		order = append(order, sid)
+		return by[sid]
+	}
+	for _, a := range o.approvals.List(pid) {
+		if a.SessionID != "" {
+			n := get(a.SessionID)
+			n.Approvals++
+			n.NeedsYou = true
+		}
+	}
+	for _, f := range o.inputs.List(pid) {
+		if f.SessionID != "" {
+			n := get(f.SessionID)
+			n.Inputs++
+			n.NeedsYou = true
+		}
+	}
+	ctx, cancel := dbCtx(context.Background())
+	defer cancel()
+	if db, err := o.store.Get(ctx, pid); err == nil {
+		if roots, err := db.Roots(ctx); err == nil {
+			for _, r := range roots {
+				if r.SessionID != "" && rootFailed(r) && !o.ActiveSession(pid, r.SessionID) {
+					get(r.SessionID).Failed = true
+				}
+			}
+		}
+	}
+	out := make([]SessionNeed, 0, len(order))
+	for _, sid := range order {
+		out = append(out, *by[sid])
+	}
+	return out
+}
+
+// rootFailed: a root agent's last turn failed (its error, not a warning, stays on the row until the next request).
+func rootFailed(a projectstore.Agent) bool {
+	return a.Status == projectstore.StatusFailed || (a.Error != nil && *a.Error != "" && !strings.HasPrefix(*a.Error, "warning:"))
 }
 
 // supervised reads the project's access mode now (a change applies to the
@@ -90,7 +166,7 @@ func (rt *runtime) ask(ctx context.Context, agentID, label string, ap approval.A
 	if rt.savedRuleAllows(ctx, ap.Tool, ap.Detail) {
 		return true, ""
 	}
-	ap.AgentID, ap.AgentLabel, ap.TurnID = agentID, label, rt.turnID
+	ap.AgentID, ap.AgentLabel, ap.TurnID, ap.SessionID = agentID, label, rt.turnID, rt.sessionID
 	rt.activity(agentID, activity.WaitingApproval, "Waiting for your approval", "")
 	res := m.Request(ctx, rt.pid(), ap)
 	rt.activity(agentID, activity.Thinking, "Thinking", "")

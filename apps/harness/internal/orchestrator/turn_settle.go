@@ -65,7 +65,7 @@ func (rt *runtime) turnWork(status projectstore.AgentStatus, reply string) memor
 		w.Changed = files
 	}
 	if started != "" {
-		if agents, err := rt.db.SubAgentTitles(ctx, started); err == nil {
+		if agents, err := rt.db.SubAgentTitlesIn(ctx, started, rt.sessionID); err == nil {
 			w.SubAgents = agents
 		}
 	}

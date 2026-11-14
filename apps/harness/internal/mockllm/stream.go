@@ -67,6 +67,8 @@ type sseWriter struct {
 	f     http.Flusher
 	r     *http.Request
 	delay time.Duration
+	// hold, when set, is called once after the first text chunk was sent ([hold] marker).
+	hold func() bool
 }
 
 func (s *sseWriter) event(name string, data map[string]any) bool {
@@ -95,6 +97,12 @@ func (s *sseWriter) pause() bool {
 }
 
 func streamReply(w http.ResponseWriter, r *http.Request, req *request, rep reply, u usageNumbers, delay time.Duration) {
+	streamReplyHeld(w, r, req, rep, u, delay, nil)
+}
+
+// streamReplyHeld is streamReply that, with hold, waits after the first text chunk until hold returns (false:
+// the reply is abandoned, the client went away).
+func streamReplyHeld(w http.ResponseWriter, r *http.Request, req *request, rep reply, u usageNumbers, delay time.Duration, hold func() bool) {
 	f, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "api_error", "streaming unsupported")
@@ -102,7 +110,7 @@ func streamReply(w http.ResponseWriter, r *http.Request, req *request, rep reply
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	s := &sseWriter{w: w, f: f, r: r, delay: delay}
+	s := &sseWriter{w: w, f: f, r: r, delay: delay, hold: hold}
 	start := u.json()
 	start["output_tokens"] = 1
 	ok = s.event("message_start", map[string]any{"type": "message_start", "message": map[string]any{
@@ -140,6 +148,13 @@ func (s *sseWriter) textBlock(idx int, text string) bool {
 		if !s.pause() || !s.event("content_block_delta", map[string]any{"type": "content_block_delta", "index": idx,
 			"delta": map[string]any{"type": "text_delta", "text": chunk}}) {
 			return false
+		}
+		if s.hold != nil {
+			h := s.hold
+			s.hold = nil
+			if !h() {
+				return false
+			}
 		}
 	}
 	return s.event("content_block_stop", map[string]any{"type": "content_block_stop", "index": idx})

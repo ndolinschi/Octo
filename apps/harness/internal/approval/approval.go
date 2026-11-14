@@ -74,6 +74,8 @@ type Detail struct {
 type Approval struct {
 	ID      string `json:"id"`
 	AgentID string `json:"agent_id"`
+	// SessionID is the main session whose turn asks (schema 15: approvals are tagged with their session).
+	SessionID string `json:"session_id,omitempty"`
 	// AgentLabel names the agent: its role, or the plugin id of an ACP agent.
 	AgentLabel string `json:"agent_label"`
 	TurnID     int64  `json:"turn_id"`

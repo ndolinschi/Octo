@@ -382,7 +382,9 @@ aid11=$(curl -fsS "$BASE/v1/projects/$PB11" | jget 'd["orchestrator_agent_id"]')
 curl -fsS "$BASE/v1/projects/$PB11/agents/$aid11/messages" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
-assert len(d["messages"])>=2 and len(d["conversations"])==1 and d["conversations"][0]["label"].startswith("New session"), d["conversations"]' || fail "no new-session marker"
+# Schema 15: /clear starts a new default session with its own root agent; it holds no message yet and starts with the
+# marker (the old session keeps its messages on its own root).
+assert len(d["messages"])==0 and len(d["conversations"])==1 and d["conversations"][0]["label"].startswith("New session"), d["conversations"]' || fail "no new-session marker"
 curl -fsS "$BASE/v1/search?q=narwhal" | grep -q "$PB11" || fail "an old request is not found after /clear"
 curl -fsS "$BASE/v1/projects/$PB11/export?format=md" | grep -q 'New session' || fail "export has no new-session marker"
 fact=$(post POST "/v1/projects/$PB11/facts" '{"text":"narwhals are not unicorns","kind":"fact"}')
@@ -557,7 +559,8 @@ agent_continued() { is_state "$1" "$2" idle && curl -fsS "$BASE/v1/projects/$1/s
 last_answer() { curl -fsS "$BASE/v1/projects/$1/sessions/$2" | jget 'd["exchanges"][-1]["answer"]'; }
 post POST "/v1/projects/$PS1/messages" '{"text":"[ctx] alpha one"}' >/dev/null; idle "$PS1"
 S1A=$(cur_session "$PS1")
-S1B=$(post POST "/v1/projects/$PS1/sessions" '{"title":"Beta"}' | jget 'd["session"]["id"]')
+# Schema 15: a new session becomes the default only with make_default.
+S1B=$(post POST "/v1/projects/$PS1/sessions" '{"title":"Beta","make_default":true}' | jget 'd["session"]["id"]')
 [ "$(cur_session "$PS1")" = "$S1B" ] || fail "the new session is not current"
 post POST "/v1/projects/$PS1/messages" '{"text":"[ctx] beta two"}' >/dev/null; idle "$PS1"
 last_answer "$PS1" "$S1B" | grep -q 'beta two' || fail "the new session's answer lacks its own request"
@@ -588,14 +591,16 @@ waitfor "the continued agent" agent_continued "$PS1" "$AS"
 sleep 0.5
 post POST "/v1/projects/$PS1/messages" '{"text":"[ctx] what came back"}' >/dev/null; idle "$PS1"
 last_answer "$PS1" "$S1A" | grep -q 'Results the user collected' || fail "the report did not reach the orchestrator's next turn"
-[ "$(http_code POST "/v1/projects/$PS1/sessions/$S1A/messages" '{"text":"x"}')" = 409 ] || fail "message to a main session was not refused"
-# Stop: an ACP orchestrator's running turn, through its session; resume and new session refuse meanwhile.
+# Schema 15: a main session takes messages on its own route.
+[ "$(http_code POST "/v1/projects/$PS1/sessions/$S1B/messages" '{"text":"quick to beta"}')" = 202 ] || fail "message to a main session was refused"
+idle "$PS1"
+# Stop: an ACP orchestrator's running turn, through its session; /clear of it refuses meanwhile.
 PS1A=$(newproject s1a full ',"models":{"orchestrator":"acp:scripted"}')
 post POST "/v1/projects/$PS1A/messages" '{"text":"[echo] first"}' >/dev/null; idle "$PS1A"
 S1C=$(cur_session "$PS1A")
 post POST "/v1/projects/$PS1A/messages" '{"text":"[hang] stuck"}' >/dev/null
 waitfor "the ACP turn to run" is_state "$PS1A" "$S1C" working
-[ "$(curl -s -X POST "$BASE/v1/projects/$PS1A/sessions" | jget 'd["error"]["code"]')" = turn_in_progress ] || fail "new session while running"
+[ "$(curl -s -X POST "$BASE/v1/projects/$PS1A/clear" | jget 'd["error"]["code"]')" = turn_in_progress ] || fail "clear while running"
 [ "$(http_code POST "/v1/projects/$PS1A/sessions/$S1C/stop")" = 200 ] || fail "stop"
 idle "$PS1A"
 [ "$(curl -fsS "$BASE/v1/projects/$PS1A/sessions/$S1C" | jget 'd["session"]["state"]')" = stopped ] || fail "session not stopped"

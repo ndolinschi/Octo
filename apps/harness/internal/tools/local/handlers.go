@@ -22,6 +22,9 @@ const bashTimeout = 30 * time.Second
 
 var bashTrustWarn sync.Once
 
+// bashWaitDelay is how long a cancelled command's output pipes may stay open before Run returns anyway.
+const bashWaitDelay = 500 * time.Millisecond
+
 func bashHandler(rs *rootSet) tools.Handler {
 	return func(ctx context.Context, input json.RawMessage) (string, bool, error) {
 		bashTrustWarn.Do(func() {
@@ -49,6 +52,9 @@ func bashHandler(rs *rootSet) tools.Handler {
 		runCtx, cancel := context.WithTimeout(ctx, bashTimeout)
 		defer cancel()
 		cmd := exec.CommandContext(runCtx, "bash", "-c", in.Command)
+		killGroupOnCancel(cmd)
+		// Whatever still holds the output pipes after the cancel does not keep the call open.
+		cmd.WaitDelay = bashWaitDelay
 		cmd.Dir = dir
 		// Same allow-list as plugin processes: no provider keys or other secrets.
 		cmd.Env = childenv.Build(os.Environ(), extra)

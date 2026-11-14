@@ -34,9 +34,13 @@ curl -XPOST localhost:8790/v1/projects -d '{"name":"demo","folders":[{"path":"/a
 
 ## What happens
 
-- **One long-lived session per project.** The first request starts the agent process (lazily) and an ACP session at the project's
-  first folder; later requests are further `session/prompt`s on it (same process, same session id). A crashed or killed process
-  is restarted by the next request; a changed agent, model or first folder starts a new session.
+- **One long-lived session per main session (schema 15).** Each main session of a project has its own root agent and its own
+  agent process: the session's first request starts the process (lazily) and an ACP session at the project's first folder; later
+  requests of that session are further `session/prompt`s on it (same process, same session id). Two sessions of one project
+  running at once are two processes. A crashed or killed process is restarted by the session's next request; a changed agent,
+  model or first folder starts a new session. When more than the project's `max_running + 2` processes are alive, the least
+  recently used idle one is shut down (its session resumes with `session/load` or the recap). Making another session the default
+  stops nothing: each session keeps its process and its stored ACP session (on its own root agent).
 - **Resume.** The session id is stored in the project database. After a restart of the process or of the harness the harness uses
   `session/load` when the agent advertised `loadSession`; otherwise (or when the load fails) it starts a new session and puts a
   **recap** before the first prompt: the latest compaction summary if there is one, else the last 40 user/assistant texts (tool rows
@@ -50,9 +54,11 @@ curl -XPOST localhost:8790/v1/projects -d '{"name":"demo","folders":[{"path":"/a
   sub-agent's report) are served by the harness as an MCP server (`octo-harness`, Streamable HTTP, `POST /mcp/v1/projects/{pid}`
   on the bridge listener) and passed in `session/new.mcpServers`. Calls run through the same registry the built-in loop uses
   (`agent.CallTool`), so handlers, limits, budget checks, events, the agents list, usage and notes are unchanged. The endpoint
-  accepts only loopback peers, no foreign `Origin`, `POST`, and a per-session random 256-bit bearer token bound to project and
-  orchestrator agent (constant-time compare; a token of another project is `403`, an unknown or revoked one `401`); the token is
-  revoked when the session ends. Tools work only while a user request is running.
+  accepts only loopback peers, no foreign `Origin`, `POST`, and a per-process random 256-bit bearer token bound to the project,
+  the main session and that session's root agent (`mcp.Binding{ProjectID, SessionID, AgentID}`; constant-time compare; a token of
+  another project is `403`, an unknown or revoked one `401`; a binding never reaches another session's process, registry or turn:
+  the handler looks the session up by the binding, never by project-wide state); the token is revoked when the process ends. Tools
+  work only while a user request of that session is running.
   - Agent advertises `mcpCapabilities.http`: an `http` entry with the token in an `Authorization` header.
   - Otherwise: a `stdio` entry that runs this binary as `harness mcp-relay --url … --token-env OCTO_MCP_TOKEN`, a stdio-to-HTTP
     relay; the token is in the entry's `env`, never in argv.

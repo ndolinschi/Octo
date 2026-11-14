@@ -86,3 +86,19 @@ contains "ACP"). No real agent CLI was run: every case was produced by the scrip
 - `agent_not_installed` is now also returned when an agent's program is missing at load, with the plugin's install line
   (it used to read "cannot be used" and the UI added a login command).
 
+
+## Added 2026-11-14 (parallel sessions, phase 1)
+
+`catalogue_sessions.go`, with samples in `TestCatalogueWording`:
+
+| Code | Constructor | Message | Used |
+| --- | --- | --- | --- |
+| `worktree_unavailable` (409) | `WorktreeUnavailable` | "None of this project's folders is in a git repository, so a separate worktree cannot be made." | `POST /sessions` with `workspace.kind: "worktree"` (phase 1 has the shared workspace only; `details` says so) |
+| `worktree_failed` (502) | `SessionWorktreeFailed` | "The session's worktree could not be made." (`retry`, git's text as `details`) | phase 3 |
+| `workspace_not_found` (404) | `WorkspaceNotFound` | "That workspace no longer exists." | `POST /sessions` with a `workspace.id` other than `shared` |
+| `workspace_missing` (410), `workspace_dirty` (409), `workspace_in_use` (409), `apply_conflict` (409) | `WorkspaceMissing`, `WorkspaceDirty`, `WorkspaceInUse`, `ApplyConflict` | see the file | phase 3 |
+| `coordination_off` | `CoordinationOff` | "Sessions of this project do not coordinate." (`open_settings`) | phase 4 |
+| `session_slots_full` (409) | `SessionSlotsFull` | "As many sessions as allowed are running already." (`open_settings`) | a turn that cannot wait in a queue (approving a plan, `/compact` sent to an agent) while the running caps are reached; a plain message waits in its session's queue instead (`waiting_for: "slot"`) |
+
+`current_session`, `session_running`, `not_main_session`, `queue_full` and `turn_in_progress` keep their wording; `queue_full`
+is now per session (20 waiting messages of one session).

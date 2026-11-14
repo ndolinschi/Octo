@@ -115,9 +115,24 @@ export type ProjectSummary = {
   pending_inputs?: number;
   /** "needs_you" while an approval or a form waits; "failed" when the last turn failed and nothing waits; else "none". */
   attention?: ProjectAttentionKind;
+  /** Parallel sessions (schema 15): the project's main sessions (not archived) by live state. */
+  sessions?: ProjectSessionsSummary;
+};
+
+/** Parallel sessions: counts of a project's main sessions (absent on an older harness). */
+export type ProjectSessionsSummary = { total: number; running: number; queued: number; needs_you: number; failed: number };
+
+/** Parallel sessions: the project's sessions setting (`PATCH /projects/{id}` `session_settings`). */
+export type SessionSettings = {
+  /** Main sessions of the project running turns at once (1-8, default 3). */
+  max_running: number;
+  default_workspace: "shared" | "worktree";
+  coordination: "workspace" | "project" | "off";
 };
 
 export type Project = ProjectSummary & {
+  /** Parallel sessions (absent on an older harness). */
+  session_settings?: SessionSettings;
   instructions: string;
   folders: Folder[];
   models: Models;
@@ -150,6 +165,8 @@ export type Project = ProjectSummary & {
 };
 
 export type Agent = {
+  /** Parallel sessions (schema 15): the main session the agent works in (a root agent's own; a sub-agent's root's). */
+  session_id?: string;
   /** The latest plan an ACP agent published (absent on a harness that predates plans). */
   plan?: PlanEntry[] | null;
   id: string;
@@ -515,6 +532,11 @@ export type SessionCreatedEvent = { type: "session.created"; seq: number; sessio
 export type SessionUpdatedEvent = { type: "session.updated"; seq: number; session?: ProjectSession; session_id?: string; deleted?: boolean };
 /** Another main session became the current one (resume, new session, /clear). */
 export type SessionCurrentEvent = { type: "session.current"; seq: number; session_id: string; previous_session_id: string };
+/**
+ * Parallel sessions: another main session became the default (published before `session.current`, its old name). Not in
+ * `BridgeEvent` yet: the reducer takes it with the parallel-sessions client work (phase 2).
+ */
+export type SessionDefaultEvent = { type: "session.default"; seq: number; session_id: string; previous_session_id: string };
 export type ConversationClearedEvent = {
   type: "conversation.cleared";
   seq: number;
@@ -1037,6 +1059,9 @@ export type QueuedMessage = {
   mode?: ProjectMode;
   /** Parity B12: ids of the attached images. */
   attachments?: string[];
+  /** Parallel sessions: the main session it waits in, and what for (its turn, or a free slot under the running caps). */
+  session_id?: string;
+  waiting_for?: "turn" | "slot";
 };
 
 // --- parity B3, B5, B6, B7 -------------------------------------------------------------------------------------
@@ -1103,7 +1128,7 @@ export type RememberKind = "fact" | "decision" | "preference" | "todo";
 
 /** A past request found by `searchRequests`. */
 export type RequestHit = { project_id: string; project_name: string; message_id: number; snippet: string; date: string };
-export type QueueState = { paused: boolean; messages: QueuedMessage[] };
+export type QueueState = { paused: boolean; messages: QueuedMessage[]; session_id?: string };
 /** What POST .../messages answers: the started turn's message, or (a turn is running) the queued one. */
 export type SendResult = { message: Message; queued?: undefined } | { queued: QueuedMessage; message?: undefined };
 
@@ -1120,6 +1145,8 @@ export type ApprovalOption = { id: string; label: string; kind: "allow_once" | "
 export type Approval = {
   id: string;
   agent_id: string;
+  /** Parallel sessions: the main session whose turn asks. */
+  session_id?: string;
   /** The agent's role, or the plugin id of an ACP agent. */
   agent_label: string;
   turn_id: number;
@@ -1164,6 +1191,8 @@ export type InputField = {
 export type InputRequest = {
   id: string;
   agent_id: string;
+  /** Parallel sessions: the main session whose turn asks. */
+  session_id?: string;
   agent_label: string;
   turn_id: number;
   title: string;
@@ -1338,11 +1367,15 @@ export type MemoryExchange = {
   removed?: boolean;
   /** The harness stopped (a crash, a kill, a restart) while this turn ran; `status` is `failed`, `answer` what had been written. */
   interrupted?: boolean;
+  /** Schema 15: why a failed turn failed (the catalogue's code, message and hint); absent otherwise and on older records. */
+  error?: { code: string; message: string; hint?: string };
 };
 export type MemorySessionDetail = { session: MemorySession; exchanges: MemoryExchange[] };
 
 // --- Project sessions -----------------------------------------------------------------------------------------
 export type ProjectSessionKind = "main" | "agent";
+// A schema-15 harness also sends "queued" (a main session whose message waits for a free slot); the state union takes
+// it with the parallel-sessions UI (phase 2), whose views map every state.
 export type ProjectSessionState = "working" | "waiting" | "idle" | "failed" | "stopped";
 /**
  * A session of the project: a conversation with the orchestrator (`main`) or the session of one sub-agent (`agent`,
@@ -1365,9 +1398,22 @@ export type ProjectSession = {
   /** Agent sessions a main session started. */
   children: number;
   current: boolean;
+  /** Parallel sessions (schema 15): the main session that takes what is sent to the project without a session (`current` is its old name). */
+  default?: boolean;
   archived: boolean;
   /** The summary a `/clear` wrote when it ended this main session. */
   summary?: string;
+  /** Parallel sessions, main sessions only: its root agent, workspace, memory mode, mode ("" = the project's), queue and what waits for the person. */
+  root_agent_id?: string;
+  workspace?: { id: string; kind: "shared" | "worktree"; title: string; branch?: string };
+  memory?: "on" | "read" | "off";
+  memory_inherited?: boolean;
+  mode?: string;
+  queued?: number;
+  queue_paused?: boolean;
+  needs_you?: boolean;
+  pending_approvals?: number;
+  pending_inputs?: number;
   /**
    * A message can be sent now. Main session: it is the current one (its messages go through `sendOrQueueMessage`);
    * agent session: `messageSession` is accepted (steered while it runs, continued after it finished).

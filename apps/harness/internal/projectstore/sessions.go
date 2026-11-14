@@ -65,18 +65,41 @@ type Exchange struct {
 	// Interrupted: the harness stopped (a crash, a kill, a restart) while the turn ran; Status is failed and
 	// the turn was closed when the harness started again. Answer is what had been written before.
 	Interrupted bool `json:"interrupted,omitempty"`
+	// Error says why a failed turn failed (schema 15; absent for other outcomes and for turns recorded before).
+	Error *ExchangeError `json:"error,omitempty"`
+}
+
+// ExchangeError is the catalogue error a failed turn ended with: what the conversation shows after a reload.
+type ExchangeError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Hint    string `json:"hint,omitempty"`
+}
+
+func encodeExchangeError(e *ExchangeError) string {
+	if e == nil {
+		return ""
+	}
+	b, _ := json.Marshal(e)
+	return string(b)
 }
 
 const exchangeCols = `id, session_id, turn_id, message_id, request, answer, answer_truncated, status, started_at, duration_ms, model,
-	files_json, agents_json, input_tokens, output_tokens, cost_usd, task_id, removed, interrupted`
+	files_json, agents_json, input_tokens, output_tokens, cost_usd, task_id, removed, interrupted, error_json`
 
 func scanExchange(sc interface{ Scan(...any) error }) (Exchange, error) {
 	var e Exchange
-	var files, agents string
+	var files, agents, errJSON string
 	var cost sql.NullFloat64
 	if err := sc.Scan(&e.ID, &e.SessionID, &e.TurnID, &e.MessageID, &e.Request, &e.Answer, &e.AnswerTruncated, &e.Status, &e.StartedAt,
-		&e.DurationMS, &e.Model, &files, &agents, &e.Tokens.Input, &e.Tokens.Output, &cost, &e.TaskID, &e.Removed, &e.Interrupted); err != nil {
+		&e.DurationMS, &e.Model, &files, &agents, &e.Tokens.Input, &e.Tokens.Output, &cost, &e.TaskID, &e.Removed, &e.Interrupted, &errJSON); err != nil {
 		return e, err
+	}
+	if errJSON != "" {
+		var x ExchangeError
+		if json.Unmarshal([]byte(errJSON), &x) == nil {
+			e.Error = &x
+		}
 	}
 	_ = json.Unmarshal([]byte(files), &e.Files)
 	_ = json.Unmarshal([]byte(agents), &e.Agents)
@@ -166,9 +189,9 @@ func recordExchange(ctx context.Context, tx txer, e Exchange, gap time.Duration,
 	case err == nil:
 		e.ID, e.SessionID = id, sid
 		if _, err := tx.ExecContext(ctx, `UPDATE exchanges SET message_id=?, request=?, answer=?, answer_truncated=?, status=?, started_at=?, duration_ms=?,
-			model=?, files_json=?, agents_json=?, input_tokens=?, output_tokens=?, cost_usd=?, task_id=?, interrupted=? WHERE id=?`,
+			model=?, files_json=?, agents_json=?, input_tokens=?, output_tokens=?, cost_usd=?, task_id=?, interrupted=?, error_json=? WHERE id=?`,
 			e.MessageID, e.Request, e.Answer, e.AnswerTruncated, e.Status, e.StartedAt, e.DurationMS, e.Model, string(files), string(agents),
-			e.Tokens.Input, e.Tokens.Output, cost, e.TaskID, e.Interrupted, id); err != nil {
+			e.Tokens.Input, e.Tokens.Output, cost, e.TaskID, e.Interrupted, encodeExchangeError(e.Error), id); err != nil {
 			return e, Session{}, err
 		}
 	case errors.Is(err, sql.ErrNoRows):
@@ -177,9 +200,9 @@ func recordExchange(ctx context.Context, tx txer, e Exchange, gap time.Duration,
 			return e, Session{}, err
 		}
 		e.ID, e.SessionID = NewID("exc"), sid
-		if _, err := tx.ExecContext(ctx, `INSERT INTO exchanges (`+exchangeCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)`,
+		if _, err := tx.ExecContext(ctx, `INSERT INTO exchanges (`+exchangeCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)`,
 			e.ID, sid, e.TurnID, e.MessageID, e.Request, e.Answer, e.AnswerTruncated, e.Status, e.StartedAt, e.DurationMS, e.Model,
-			string(files), string(agents), e.Tokens.Input, e.Tokens.Output, cost, e.TaskID, e.Interrupted); err != nil {
+			string(files), string(agents), e.Tokens.Input, e.Tokens.Output, cost, e.TaskID, e.Interrupted, encodeExchangeError(e.Error)); err != nil {
 			return e, Session{}, err
 		}
 	default:
@@ -269,52 +292,70 @@ func (d *DB) CloseSession(ctx context.Context, reason string) error {
 	return err
 }
 
-// StartNewSession is the boundary of /clear (and of a rewind that cut every request): it ends the latest
-// session, recording the reason and the summary that was carried over, and opens an empty session the next
-// exchange joins and names. It answers the id of the session that ended ("" when the project had none) and
-// of the new one. It is idempotent: with an empty session already open it changes nothing, and previous is
-// then the newest session before it that holds an exchange.
+// StartNewSession is StartNewSessionFrom for the default session.
 func (d *DB) StartNewSession(ctx context.Context, reason, summary, source string, now time.Time) (previous, current string, err error) {
+	return d.StartNewSessionFrom(ctx, "", reason, summary, source, now)
+}
+
+// StartNewSessionFrom is the boundary of /clear in a main session (and of a rewind that cut every request): it
+// ends that session ("": the default), recording the reason and the summary that was carried over, and opens an
+// empty session the next exchange joins and names. The new session gets its own root agent (role, model and
+// tier of the old one's), the old one's workspace and memory mode, and is the default when the old one was. It
+// answers the id of the session that ended and of the new one. With the session still empty and open nothing
+// changes: current is that session and previous the newest other session that holds an exchange.
+func (d *DB) StartNewSessionFrom(ctx context.Context, from, reason, summary, source string, now time.Time) (previous, current string, err error) {
+	from, err = d.orDefault(ctx, from)
+	if err != nil {
+		return "", "", err
+	}
+	root, err := d.RootAgent(ctx, from) // links a root to an old session first (outside the transaction: one connection)
+	if err != nil {
+		return "", "", err
+	}
 	tx, err := d.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return "", "", err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var sid string
-	var closed bool
+	var closed, isDefault bool
 	var held int
-	err = tx.QueryRowContext(ctx, `SELECT id, closed, (SELECT COUNT(*) FROM exchanges x WHERE x.session_id = sessions.id)
-		FROM sessions WHERE kind = 'main' ORDER BY current DESC, started_at DESC, rowid DESC LIMIT 1`).Scan(&sid, &closed, &held)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		// Nothing ran yet.
-	case err != nil:
+	var workspace, memory string
+	err = tx.QueryRowContext(ctx, `SELECT closed, current, workspace_id, memory_mode, (SELECT COUNT(*) FROM exchanges x WHERE x.session_id = sessions.id)
+		FROM sessions WHERE id = ? AND kind = 'main'`, from).Scan(&closed, &isDefault, &workspace, &memory, &held)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", ErrNotFound
+	}
+	if err != nil {
 		return "", "", err
-	case !closed && held == 0:
-		current = sid
-		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET current = (id = ?) WHERE kind = 'main'`, sid); err != nil {
-			return "", "", err
-		}
-		err = tx.QueryRowContext(ctx, `SELECT s.id FROM sessions s WHERE s.id != ? AND EXISTS (SELECT 1 FROM exchanges e WHERE e.session_id = s.id)
-			ORDER BY s.started_at DESC, s.rowid DESC LIMIT 1`, sid).Scan(&previous)
+	}
+	if !closed && held == 0 {
+		err = tx.QueryRowContext(ctx, `SELECT s.id FROM sessions s WHERE s.id != ? AND s.kind = 'main' AND EXISTS (SELECT 1 FROM exchanges e WHERE e.session_id = s.id)
+			ORDER BY s.started_at DESC, s.rowid DESC LIMIT 1`, from).Scan(&previous)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return "", "", err
 		}
-		return previous, current, tx.Commit()
-	default:
-		previous = sid
-		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET closed = 1, reason = CASE WHEN closed = 0 THEN ? ELSE reason END,
-			summary = CASE WHEN summary = '' THEN ? ELSE summary END, summary_source = CASE WHEN summary = '' THEN ? ELSE summary_source END WHERE id = ?`,
-			reason, summary, source, sid); err != nil {
-			return "", "", err
-		}
+		return previous, from, tx.Commit()
+	}
+	previous = from
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET closed = 1, reason = CASE WHEN closed = 0 THEN ? ELSE reason END,
+		summary = CASE WHEN summary = '' THEN ? ELSE summary END, summary_source = CASE WHEN summary = '' THEN ? ELSE summary_source END WHERE id = ?`,
+		reason, summary, source, from); err != nil {
+		return "", "", err
 	}
 	current = NewID("ses")
 	at := Stamp(now)
-	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET current = 0 WHERE kind = 'main'`); err != nil {
+	newRoot := NewID("agt")
+	if _, err := tx.ExecContext(ctx, `INSERT INTO agents (id, parent_id, depth, role, title, task, model, tier, status, created_at, session_id)
+		VALUES (?, NULL, 0, ?, ?, '', ?, ?, 'idle', ?, ?)`, newRoot, root.Role, root.Title, root.Model, tierValue(root.Tier), at, current); err != nil {
 		return "", "", err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions (id, title, started_at, ended_at, closed, reason, current) VALUES (?, '', ?, ?, 0, '', 1)`, current, at, at); err != nil {
+	if isDefault {
+		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET current = 0 WHERE kind = 'main'`); err != nil {
+			return "", "", err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions (id, title, started_at, ended_at, closed, reason, current, workspace_id, memory_mode, root_agent_id)
+		VALUES (?, '', ?, ?, 0, '', ?, ?, ?, ?)`, current, at, at, isDefault, workspace, memory, newRoot); err != nil {
 		return "", "", err
 	}
 	return previous, current, tx.Commit()
@@ -441,10 +482,17 @@ func (d *DB) SessionOfTurn(ctx context.Context, turnID int64) (string, error) {
 // started: the agents' own requests and the router's classifier calls, not the
 // side calls (digest, completion). Flat-rate rows add tokens but no cost.
 func (d *DB) TurnUsage(ctx context.Context, since string) (Tokens, *float64, error) {
+	return d.TurnUsageIn(ctx, since, "")
+}
+
+// TurnUsageIn is TurnUsage for the agents of one main session ("": every agent), so turns of parallel
+// sessions do not count each other's requests.
+func (d *DB) TurnUsageIn(ctx context.Context, since, sid string) (Tokens, *float64, error) {
 	var t Tokens
 	var cost sql.NullFloat64
 	err := d.sql.QueryRowContext(ctx, `SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0),
-		SUM(CASE WHEN flat_rate = 0 THEN cost_usd END) FROM usage WHERE created_at >= ? AND (role IS NULL OR role = ?)`, since, RoleRoute).
+		SUM(CASE WHEN flat_rate = 0 THEN cost_usd END) FROM usage WHERE created_at >= ? AND (role IS NULL OR role = ?)
+		AND (? = '' OR agent_id IN (SELECT id FROM agents WHERE session_id = ?))`, since, RoleRoute, sid, sid).
 		Scan(&t.Input, &t.Output, &cost)
 	if cost.Valid {
 		v := cost.Float64
@@ -456,7 +504,13 @@ func (d *DB) TurnUsage(ctx context.Context, since string) (Tokens, *float64, err
 // SubAgentTitles lists the titles of the sub-agents created since a turn
 // started (the rewound ones excluded), in creation order.
 func (d *DB) SubAgentTitles(ctx context.Context, since string) ([]string, error) {
-	rows, err := d.sql.QueryContext(ctx, `SELECT title FROM agents WHERE parent_id IS NOT NULL AND created_at >= ? AND rewound_at IS NULL ORDER BY rowid`, since)
+	return d.SubAgentTitlesIn(ctx, since, "")
+}
+
+// SubAgentTitlesIn is SubAgentTitles for the sub-agents of one main session ("": all).
+func (d *DB) SubAgentTitlesIn(ctx context.Context, since, sid string) ([]string, error) {
+	rows, err := d.sql.QueryContext(ctx, `SELECT title FROM agents WHERE parent_id IS NOT NULL AND created_at >= ? AND rewound_at IS NULL
+		AND (? = '' OR session_id = ?) ORDER BY rowid`, since, sid, sid)
 	if err != nil {
 		return nil, err
 	}

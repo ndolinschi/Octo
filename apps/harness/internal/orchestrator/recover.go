@@ -12,8 +12,8 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
-// RecoverInterrupted closes the turn a previous process left running in the
-// project (it crashed, was killed or the machine went down) before the store
+// RecoverInterrupted closes the turns a previous process left running in the
+// project's main sessions (it crashed, was killed or the machine went down) before the store
 // settles the agents' rows (projectstore.DB.RecoverInterrupted), so that the
 // transcript and the next request see the turn ended rather than dangling:
 //
@@ -45,21 +45,21 @@ func (o *Orchestrator) RecoverInterrupted(ctx context.Context, db *projectstore.
 		return err
 	}
 	rt := &runtime{o: o, db: db}
-	var orch *projectstore.Agent
+	var roots []projectstore.Agent // one per main session whose turn was cut (schema 15: sessions run at once)
 	running := []projectstore.Agent{}
 	lastAt := map[string]string{} // the newest message of each running agent, before anything is added
-	end := ""
-	for i, a := range agents {
+	ends := map[string]string{}   // per main session: the last sign of life of its turn
+	for _, a := range agents {
 		if a.Status != projectstore.StatusRunning {
 			continue
 		}
 		if a.ParentID == nil {
-			orch = &agents[i]
+			roots = append(roots, a)
 		}
 		running = append(running, a)
 		if m, err := db.LastMessage(ctx, a.ID); err == nil {
 			lastAt[a.ID] = m.CreatedAt
-			end = max(end, m.CreatedAt)
+			ends[a.SessionID] = max(ends[a.SessionID], m.CreatedAt)
 		}
 	}
 	if len(running) == 0 {
@@ -86,29 +86,32 @@ func (o *Orchestrator) RecoverInterrupted(ctx context.Context, db *projectstore.
 		if _, err := sink.store(ctx, "assistant", anthropic.NewAssistantMessage(anthropic.NewTextBlock(text)), true); err != nil {
 			return err
 		}
-		end = max(end, p.UpdatedAt)
+		if a, err := db.Agent(ctx, p.AgentID); err == nil {
+			ends[a.SessionID] = max(ends[a.SessionID], p.UpdatedAt)
+		}
 	}
-	if orch == nil {
-		return nil
+	// Each main session's turn is closed on its own: its root idle with the interruption, its exchange recorded.
+	for _, orch := range roots {
+		req, ok := interruptedRequest(ctx, db, orch)
+		if !ok {
+			continue
+		}
+		end := max(ends[orch.SessionID], req.CreatedAt)
+		if alive > end {
+			end = alive // still at work when it last said so (a long tool call writes nothing)
+		}
+		p := usererr.TurnInterrupted()
+		idle := projectstore.StatusIdle
+		patch := projectstore.AgentPatch{Status: &idle, Error: &p.Message, ErrorHint: &p.Hint, FinishedAt: &end}
+		if _, err := db.UpdateAgent(ctx, orch.ID, patch); err != nil {
+			return err
+		}
+		srt := &runtime{o: o, db: db, sessionID: orch.SessionID}
+		srt.turnID, srt.request = req.ID, messageText(req)
+		ended, _ := time.Parse(time.RFC3339Nano, end)
+		o.recordExchangeEnded(srt, orch.ID, projectstore.ExchangeFailed, "", ended, true, p)
+		slog.Info("closed a turn the previous process left running", "project", db.ID(), "session", orch.SessionID, "request", req.ID, "agents", len(running))
 	}
-	req, ok := interruptedRequest(ctx, db, *orch)
-	if !ok {
-		return nil
-	}
-	end = max(end, req.CreatedAt)
-	if alive > end {
-		end = alive // still at work when it last said so (a long tool call writes nothing)
-	}
-	p := usererr.TurnInterrupted()
-	idle := projectstore.StatusIdle
-	patch := projectstore.AgentPatch{Status: &idle, Error: &p.Message, ErrorHint: &p.Hint, FinishedAt: &end}
-	if _, err := db.UpdateAgent(ctx, orch.ID, patch); err != nil {
-		return err
-	}
-	rt.turnID, rt.request = req.ID, messageText(req)
-	ended, _ := time.Parse(time.RFC3339Nano, end)
-	o.recordExchangeEnded(rt, orch.ID, projectstore.ExchangeFailed, "", ended, true)
-	slog.Info("closed a turn the previous process left running", "project", db.ID(), "request", req.ID, "agents", len(running))
 	return nil
 }
 

@@ -538,4 +538,34 @@ session shares its workspace, so the answers are not empty.
 
 ## As built
 
-Nothing built yet.
+### Phase 1 — harness: every main session addressable and concurrent (2026-11-14)
+
+Built: schema 15 with the back-fill and the `project.sqlite.pre-v15` backup; one root agent per main session; the
+default session; per-session messages, cancel, queue, approvals, forms, context, compact, clear, rewind and plans; the
+project-level routes act on the default session (`POST /cancel?all=true` stops all); per-session turn slot, queue, steer
+box, ACP process and MCP token (bound to project, session and root); the caps `max_running` (project, default 3) and
+`HARNESS_MAX_RUNNING_SESSIONS` (machine, default 6) with the `queued` state and `waiting_for: "slot"`; `session_id` on
+session-scoped events; `GET /v1/sessions`; recovery per session; the mock model's `[hold:NAME]` marker;
+`apps/harness/scripts/e2e-sessions.sh`. Acceptance criteria 1–13 pass (tests named in `apps/harness/docs/sessions.md`
+and the phase report: `migrate_v15_test.go`, `parallel_sessions_test.go`, `mcp_binding_internal_test.go`, the e2e
+script; the migration was also run on a database made by the previous binary, which then refuses the migrated file).
+
+Deviations: a `/clear` (and a rewind that cuts every request) makes a new session with a new root, so
+`orchestrator_agent_id` changes when the default changes and the old continuous transcript across clears is gone; the
+project setting is exposed as `session_settings` (the summary counts keep `sessions`); `memory.new_sessions` is not
+written and every session's memory mode is `on` (phase 5); `POST /side {session_id}` is not built; at the cap, a plan
+approval or `/compact` answers 409 `session_slots_full` instead of queueing; worktree requests answer 409
+`worktree_unavailable` (phase 3); agent-client has only optional type additions (`queued` and `session.default` are
+sent by the harness but not yet in the client's unions — phase 2).
+
+Also in this change: Stop during a built-in sub-agent's `bash` now ends the turn at once (the command runs in its own
+process group and the group is killed on cancel; a stopped sub-agent's open calls get the interruption result at the
+stop); a failed exchange carries `error {code, message, hint?}` so a reloaded conversation can say why a turn failed.
+
+Not verified: the existing UI in a browser against this harness (API level only: `e2e-v7.sh`,
+`e2e-acp-orchestrator.sh`, `e2e-sessions.sh`) — its "New session" button now creates a non-default session and its
+handler of `session.current` relies on `project.updated`; two real Claude Code sessions at once; real models with the
+per-session MCP tokens. `e2e-parity.sh` stops at "no plan must be 404", which the previous binary also fails (the
+route answers 200 `{"plan": null}` since 2026-11-13); with that line skipped it passes.
+
+Phases 2–5 (criteria 14–37): not built.

@@ -67,7 +67,7 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	s := rt.o.acp.session(rt.pid())
+	s := rt.o.acp.session(rt.key())
 	s.digestMu.Lock() // a digest prompt of the last turn may still be open in the session
 	s.digestMu.Unlock()
 	handler := newACPSession(rt, orch.ID, target.agent.ID, orch.Model)
@@ -189,8 +189,11 @@ func (s *orchSession) beginTurn(ctx context.Context, cancel context.CancelFunc, 
 		s.mu.Lock()
 		s.closeLocked()
 		s.mu.Unlock()
+		return fresh, err
 	}
-	return fresh, err
+	// One process per running or recently used session: beyond max_running + 2 the least recently used idle one goes.
+	s.h.trim(rt.pid(), rt.o.projectCap(ctx, rt.db)+2)
+	return fresh, nil
 }
 
 func (s *orchSession) endTurn() {
@@ -215,7 +218,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 	if err != nil {
 		return false, startFailure(t, err)
 	}
-	token := s.h.tokens.Issue(mcp.Binding{ProjectID: rt.pid(), AgentID: orch.ID})
+	token := s.h.tokens.Issue(mcp.Binding{ProjectID: rt.pid(), SessionID: rt.sessionID, AgentID: orch.ID})
 	client.TraceHide(token)
 	s.mu.Lock()
 	s.client, s.token, s.pluginID, s.model, s.cwd, s.sessID = client, token, ag.ID, t.recorded(), cwd, ""
@@ -579,9 +582,9 @@ func (o *Orchestrator) LiveMCPTokens() int { return o.acp.tokens.Live() }
 type mcpBackend struct{ o *Orchestrator }
 
 func (b mcpBackend) session(bind mcp.Binding) (*orchSession, error) {
-	s := b.o.acp.lookup(bind.ProjectID)
+	s := b.o.acp.lookup(skey(bind.ProjectID, bind.SessionID))
 	if s == nil {
-		return nil, errors.New("no ACP orchestrator session for this project")
+		return nil, errors.New("no ACP orchestrator session for this project session")
 	}
 	return s, nil
 }

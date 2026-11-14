@@ -99,6 +99,15 @@ project/notes.go|invalid|title must not be empty
 project/notes.go|notFound|note
 project/notes.go|notFound|note 
 project/notes.go|notFound|project
+project/parallel.go|invalid|from_session_id needs clear: true
+project/parallel.go|invalid|kind must be main
+project/parallel.go|invalid|limit must be an integer from 1 to 200
+project/parallel.go|invalid|memory must be on, read or off
+project/parallel.go|invalid|memory must be project, on, read or off
+project/parallel.go|invalid|memory, model and mode are settings of a main session
+project/parallel.go|invalid|text is required
+project/parallel.go|invalid|workspace.kind must be shared or worktree
+project/parallel.go|notFound|session
 project/plans.go|Error.Message|some files changed outside the harness since their last recorded change; nothing was changed
 project/plans.go|invalid|message_id must be the id of one of this conversation's user requests
 project/plans.go|invalid|mode must be %q, %q or %q
@@ -119,7 +128,7 @@ project/sessions.go|invalid|archived must be true, false or all
 project/sessions.go|invalid|kind must be main or agent
 project/sessions.go|invalid|limit must be an integer from 1 to 200
 project/sessions.go|invalid|send title and/or archived
-project/sessions.go|invalid|state must be working, waiting, idle, failed or stopped
+project/sessions.go|invalid|state must be working, waiting, queued, idle, failed or stopped
 project/sessions.go|invalid|text is too long
 project/sessions.go|invalid|text must not be empty
 project/sessions.go|invalid|title is at most 200 characters

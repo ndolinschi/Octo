@@ -134,21 +134,29 @@ func TestClearCarriesASummaryAndDropsTheHistory(t *testing.T) {
 			}
 		}
 	}
-	// Nothing was deleted: transcript, search and export still have it.
+	// Nothing was deleted: the old session keeps its transcript (on its own root agent, schema 15), search finds it,
+	// and the new default session (its own root, the project's orchestrator_agent_id now) starts with the marker.
 	after, _ := r.svc.Messages(ctx, pid, orch.ID)
-	if len(after) < len(before)+2 {
-		t.Fatalf("messages %d -> %d", len(before), len(after))
+	if len(after) != len(before) {
+		t.Fatalf("old session's messages %d -> %d", len(before), len(after))
+	}
+	p, _ := r.svc.Get(ctx, pid)
+	if p.OrchestratorAgentID == orch.ID {
+		t.Fatal("the new default session kept the old root agent")
+	}
+	if next, _ := r.svc.Messages(ctx, pid, p.OrchestratorAgentID); len(next) != 2 {
+		t.Fatalf("new session's messages = %d", len(next))
 	}
 	hits, err := r.svc.SearchRequests(ctx, "zebra", 10)
 	if err != nil || len(hits) == 0 {
 		t.Fatalf("an old request is still found: %+v %v", hits, err)
 	}
 	_, md, err := r.svc.ExportMarkdown(ctx, pid)
-	if err != nil || !strings.Contains(md, "zebra crossing") || !strings.Contains(md, "New session \u00b7 earlier: quick question about the zebra") {
+	if err != nil || !strings.Contains(md, "otters") || !strings.Contains(md, "New session \u00b7 earlier: quick question about the zebra") {
 		t.Fatalf("export (%v):\n%s", err, md)
 	}
-	convs, err := r.svc.Conversations(ctx, pid, orch.ID)
-	if err != nil || len(convs) != 1 || convs[0].ConversationID != res.ConversationID || convs[0].UptoMessageID != before[len(before)-1].ID ||
+	convs, err := r.svc.Conversations(ctx, pid, p.OrchestratorAgentID)
+	if err != nil || len(convs) != 1 || convs[0].ConversationID != res.ConversationID || convs[0].UptoMessageID != 0 ||
 		convs[0].SummarySource != "model" || !strings.Contains(convs[0].Summary, res.Summary) {
 		t.Fatalf("conversations = %+v %v", convs, err)
 	}

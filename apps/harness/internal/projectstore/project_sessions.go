@@ -7,20 +7,41 @@ import (
 	"strings"
 )
 
-// Session kinds and states (project sessions, schema 13).
+// Session kinds and states (project sessions, schema 13; queued: schema 15).
 const (
 	KindMain  = "main"
 	KindAgent = "agent"
 
 	SessionWorking = "working"
 	SessionWaiting = "waiting"
+	SessionQueued  = "queued"
 	SessionIdle    = "idle"
 	SessionFailed  = "failed"
 	SessionStopped = "stopped"
 )
 
-// ErrSessionCurrent: the session is the project's current main session, which cannot be archived or deleted.
-var ErrSessionCurrent = errors.New("projectstore: the session is current")
+// Memory modes of a main session (schema 15; only "on" changes behaviour before memory modes are built).
+const (
+	MemoryOn   = "on"
+	MemoryRead = "read"
+	MemoryOff  = "off"
+)
+
+// ValidMemoryMode reports whether m is a memory mode.
+func ValidMemoryMode(m string) bool { return m == MemoryOn || m == MemoryRead || m == MemoryOff }
+
+// ErrSessionCurrent: the session is the project's default (formerly "current") main session, which cannot be
+// archived or deleted.
+var ErrSessionCurrent = errors.New("projectstore: the session is the default")
+
+// SessionWorkspace names the workspace a main session's files are in (schema 15: always the shared one until
+// worktrees are built).
+type SessionWorkspace struct {
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	Title  string `json:"title"`
+	Branch string `json:"branch,omitempty"`
+}
 
 // SessionInfo is a session of the project as the sessions API shows it. A main session is a conversation with
 // the orchestrator; an agent session is the session of one sub-agent, linked to the main session whose turn
@@ -38,32 +59,47 @@ type SessionInfo struct {
 	LastActivityAt  string `json:"last_activity_at"`
 	Exchanges       int    `json:"exchanges"`
 	Children        int    `json:"children"`
-	Current         bool   `json:"current"`
-	Archived        bool   `json:"archived"`
+	// Default: the main session that takes what is sent to the project without a session. Current is its old
+	// name, kept with the same value for one release.
+	Default  bool `json:"default"`
+	Current  bool `json:"current"`
+	Archived bool `json:"archived"`
 	// Summary is the summary a /clear wrote when it ended a main session ("" otherwise).
 	Summary string `json:"summary,omitempty"`
+	// Main sessions (schema 15): the root agent that runs it ("" until its first turn for a session made before
+	// schema 15 without messages), its workspace, memory mode, mode ("": the project's) and queue.
+	RootAgentID     string            `json:"root_agent_id,omitempty"`
+	Workspace       *SessionWorkspace `json:"workspace,omitempty"`
+	Memory          string            `json:"memory,omitempty"`
+	MemoryInherited bool              `json:"memory_inherited,omitempty"`
+	Mode            string            `json:"mode"`
+	Queued          int               `json:"queued"`
+	QueuePaused     bool              `json:"queue_paused"`
 }
 
 const infoSelect = `SELECT s.id, s.kind, s.parent_session_id, s.agent_id, s.turn_id, s.title, s.state,
 	COALESCE(NULLIF(s.model, ''), (SELECT x.model FROM exchanges x WHERE x.session_id = s.id AND x.removed = 0 ORDER BY x.started_at DESC, x.rowid DESC LIMIT 1),
-		(SELECT a.model FROM agents a WHERE a.parent_id IS NULL AND s.current = 1 LIMIT 1), ''),
+		(SELECT a.model FROM agents a WHERE a.id = s.root_agent_id), ''),
 	s.started_at, s.ended_at, s.current, s.archived, s.summary,
 	(SELECT COUNT(*) FROM exchanges x WHERE x.session_id = s.id AND x.removed = 0),
 	(SELECT COUNT(*) FROM sessions c WHERE c.parent_session_id = s.id AND c.kind = 'agent'
 		AND EXISTS (SELECT 1 FROM agents a WHERE a.id = c.agent_id AND a.rewound_at IS NULL)),
-	COALESCE((SELECT x.status FROM exchanges x WHERE x.session_id = s.id AND x.removed = 0 ORDER BY x.started_at DESC, x.rowid DESC LIMIT 1), '')
+	COALESCE((SELECT x.status FROM exchanges x WHERE x.session_id = s.id AND x.removed = 0 ORDER BY x.started_at DESC, x.rowid DESC LIMIT 1), ''),
+	s.root_agent_id, s.workspace_id, s.memory_mode, s.mode, s.queue_paused, (SELECT COUNT(*) FROM queue q WHERE q.session_id = s.id)
 	FROM sessions s`
 
 func scanInfo(sc interface{ Scan(...any) error }) (SessionInfo, error) {
 	var i SessionInfo
-	var last string
+	var last, workspace string
 	if err := sc.Scan(&i.ID, &i.Kind, &i.ParentSessionID, &i.AgentID, &i.TurnID, &i.Title, &i.State, &i.Model, &i.StartedAt, &i.LastActivityAt,
-		&i.Current, &i.Archived, &i.Summary, &i.Exchanges, &i.Children, &last); err != nil {
+		&i.Current, &i.Archived, &i.Summary, &i.Exchanges, &i.Children, &last,
+		&i.RootAgentID, &workspace, &i.Memory, &i.Mode, &i.QueuePaused, &i.Queued); err != nil {
 		return i, err
 	}
 	if i.Title == "" {
 		i.Title = "New session"
 	}
+	i.Default = i.Current
 	if i.Kind == KindMain {
 		switch last {
 		case ExchangeFailed:
@@ -73,6 +109,17 @@ func scanInfo(sc interface{ Scan(...any) error }) (SessionInfo, error) {
 		default:
 			i.State = SessionIdle
 		}
+		if workspace == "" {
+			workspace = SharedWorkspace
+		}
+		i.Workspace = &SessionWorkspace{ID: workspace, Kind: "shared", Title: "Main checkout"}
+		if i.Memory == "" {
+			i.Memory = MemoryOn
+		}
+		// Every project's default for new sessions is "on" until memory modes are built (spec section 5).
+		i.MemoryInherited = i.Memory == MemoryOn
+	} else {
+		i.Memory, i.Mode, i.RootAgentID = "", "", ""
 	}
 	return i, nil
 }
@@ -101,7 +148,7 @@ func ensureCurrentMain(ctx context.Context, x txer) (string, error) {
 	return "", err
 }
 
-// isOrchestrator says whether the agent row is the project's root agent (unknown ids are not).
+// isOrchestrator says whether the agent row is a root agent (unknown ids are not).
 func isOrchestrator(ctx context.Context, x txer, agentID string) bool {
 	var root bool
 	if err := x.QueryRowContext(ctx, `SELECT parent_id IS NULL FROM agents WHERE id = ?`, agentID).Scan(&root); err != nil {
@@ -110,17 +157,228 @@ func isOrchestrator(ctx context.Context, x txer, agentID string) bool {
 	return root
 }
 
-// scopeSession is the main session the orchestrator's conversation is read from ("" for any other agent).
+// sessionOfRoot is the main session a root agent runs (schema 15), else the default session (a root that was
+// never linked: a database written before the back-fill could link it).
+func sessionOfRoot(ctx context.Context, x txer, agentID string) (string, error) {
+	var sid string
+	err := x.QueryRowContext(ctx, `SELECT id FROM sessions WHERE kind = 'main' AND root_agent_id = ? ORDER BY rowid LIMIT 1`, agentID).Scan(&sid)
+	if err == nil {
+		return sid, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	return ensureCurrentMain(ctx, x)
+}
+
+// scopeSession is the main session a root agent's conversation is read from ("" for any other agent).
 func (d *DB) scopeSession(ctx context.Context, agentID string) (string, error) {
 	if !isOrchestrator(ctx, d.sql, agentID) {
 		return "", nil
 	}
+	return sessionOfRoot(ctx, d.sql, agentID)
+}
+
+// CurrentSessionID is the id of the default main session (created when the project has none yet).
+func (d *DB) CurrentSessionID(ctx context.Context) (string, error) {
 	return ensureCurrentMain(ctx, d.sql)
 }
 
-// CurrentSessionID is the id of the current main session (created when the project has none yet).
-func (d *DB) CurrentSessionID(ctx context.Context) (string, error) {
+// DefaultSessionID is CurrentSessionID under its schema-15 name.
+func (d *DB) DefaultSessionID(ctx context.Context) (string, error) {
 	return ensureCurrentMain(ctx, d.sql)
+}
+
+// SessionOfAgentRow is the main session an agent works in (agents.session_id; the default for an agent that has none).
+func (d *DB) SessionOfAgentRow(ctx context.Context, agentID string) (string, error) {
+	var sid string
+	err := d.sql.QueryRowContext(ctx, `SELECT session_id FROM agents WHERE id = ?`, agentID).Scan(&sid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if sid == "" {
+		return ensureCurrentMain(ctx, d.sql)
+	}
+	return sid, nil
+}
+
+// RootAgent returns the root agent of a main session ("": the default session). A session that has none yet (made
+// before schema 15 and never run) gets one now, copied from the default's root (role, model, tier). ErrNotFound
+// for an unknown or agent session.
+func (d *DB) RootAgent(ctx context.Context, sid string) (Agent, error) {
+	if sid == "" {
+		var err error
+		if sid, err = ensureCurrentMain(ctx, d.sql); err != nil {
+			return Agent{}, err
+		}
+	}
+	var kind, root string
+	err := d.sql.QueryRowContext(ctx, `SELECT kind, root_agent_id FROM sessions WHERE id = ?`, sid).Scan(&kind, &root)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && kind != KindMain) {
+		return Agent{}, ErrNotFound
+	}
+	if err != nil {
+		return Agent{}, err
+	}
+	if root != "" {
+		a, err := d.Agent(ctx, root)
+		if err == nil || !errors.Is(err, ErrNotFound) {
+			return a, err
+		}
+	}
+	return d.linkRoot(ctx, sid)
+}
+
+// linkRoot gives a main session its root agent: the project's only unlinked root when there is one (a database
+// whose orchestrator was created before the session existed), else a new row copied from another root.
+func (d *DB) linkRoot(ctx context.Context, sid string) (Agent, error) {
+	var id string
+	err := d.sql.QueryRowContext(ctx, `SELECT a.id FROM agents a WHERE a.parent_id IS NULL AND a.session_id = ''
+		AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.root_agent_id = a.id) ORDER BY a.rowid LIMIT 1`).Scan(&id)
+	switch {
+	case err == nil:
+	case errors.Is(err, sql.ErrNoRows):
+		var role, model string
+		var tier sql.NullString
+		if err := d.sql.QueryRowContext(ctx, `SELECT role, model, tier FROM agents WHERE parent_id IS NULL ORDER BY rowid LIMIT 1`).Scan(&role, &model, &tier); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				role = OrchestratorRole
+			} else {
+				return Agent{}, err
+			}
+		}
+		var t *Tier
+		if tier.Valid {
+			v := Tier(tier.String)
+			t = &v
+		}
+		a, err := d.CreateAgent(ctx, NewAgent{Role: role, Model: model, Tier: t, Status: StatusIdle, SessionID: sid})
+		if err != nil {
+			return Agent{}, err
+		}
+		id = a.ID
+	default:
+		return Agent{}, err
+	}
+	if _, err := d.sql.ExecContext(ctx, `UPDATE agents SET session_id = ? WHERE id = ?`, sid, id); err != nil {
+		return Agent{}, err
+	}
+	if _, err := d.sql.ExecContext(ctx, `UPDATE sessions SET root_agent_id = ? WHERE id = ?`, id, sid); err != nil {
+		return Agent{}, err
+	}
+	return d.Agent(ctx, id)
+}
+
+// NewMainSession is what POST /sessions creates: a main session with its own root agent (model copied from the
+// default's root unless given), in the shared workspace, made the default only with makeDefault. It returns the
+// session and the one that was the default before ("" when it did not change).
+type NewMainSession struct {
+	Title       string
+	Model       string
+	Mode        string
+	Memory      string
+	WorkspaceID string
+	MakeDefault bool
+}
+
+// CreateMainSession creates a main session (see NewMainSession).
+func (d *DB) CreateMainSession(ctx context.Context, in NewMainSession) (info SessionInfo, previous string, err error) {
+	def, err := d.RootAgent(ctx, "")
+	if err != nil {
+		return SessionInfo{}, "", err
+	}
+	model := in.Model
+	if model == "" {
+		model = def.Model
+	}
+	memory := in.Memory
+	if !ValidMemoryMode(memory) {
+		memory = MemoryOn
+	}
+	ws := in.WorkspaceID
+	if ws == "" {
+		ws = SharedWorkspace
+	}
+	sid, now := NewID("ses"), Now()
+	titled := 0
+	if in.Title != "" {
+		titled = 1
+	}
+	tx, err := d.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return SessionInfo{}, "", err
+	}
+	defer func() { _ = tx.Rollback() }()
+	cur, err := ensureCurrentMain(ctx, tx)
+	if err != nil {
+		return SessionInfo{}, "", err
+	}
+	root := NewID("agt")
+	if _, err := tx.ExecContext(ctx, `INSERT INTO agents (id, parent_id, depth, role, title, task, model, tier, status, created_at, session_id)
+		VALUES (?, NULL, 0, ?, ?, '', ?, ?, 'idle', ?, ?)`, root, def.Role, def.Title, model, tierValue(def.Tier), now, sid); err != nil {
+		return SessionInfo{}, "", err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions (id, title, started_at, ended_at, closed, reason, kind, current, title_edited,
+		workspace_id, memory_mode, mode, root_agent_id, model) VALUES (?, ?, ?, ?, 0, '', 'main', 0, ?, ?, ?, ?, ?, ?)`,
+		sid, in.Title, now, now, titled, ws, memory, in.Mode, root, in.Model); err != nil {
+		return SessionInfo{}, "", err
+	}
+	if in.MakeDefault {
+		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET current = (id = ?) WHERE kind = 'main'`, sid); err != nil {
+			return SessionInfo{}, "", err
+		}
+		previous = cur
+	}
+	if err := tx.Commit(); err != nil {
+		return SessionInfo{}, "", err
+	}
+	if err := d.Touch(ctx); err != nil {
+		return SessionInfo{}, "", err
+	}
+	info, err = d.SessionInfoOf(ctx, sid)
+	return info, previous, err
+}
+
+func tierValue(t *Tier) any {
+	if t == nil {
+		return nil
+	}
+	return string(*t)
+}
+
+// SetSessionSettings changes what a main session runs with from its next turn: model ("" keeps it; sessions.model),
+// mode ("" is the project's; nil keeps it) and memory mode (nil keeps it).
+func (d *DB) SetSessionSettings(ctx context.Context, sid string, model string, mode, memory *string) error {
+	set := newSetter()
+	if mode != nil {
+		set.add("mode", *mode)
+	}
+	if memory != nil {
+		set.add("memory_mode", *memory)
+	}
+	if mode != nil || memory != nil {
+		if err := set.exec(ctx, d.sql, "sessions", "id = ? AND kind = 'main'", sid); err != nil {
+			return err
+		}
+	}
+	if model != "" {
+		if _, err := d.sql.ExecContext(ctx, `UPDATE sessions SET model = ? WHERE id = ? AND kind = 'main'`, model, sid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SessionModel is the orchestrator model chosen for a main session ("": the project's).
+func (d *DB) SessionModel(ctx context.Context, sid string) (model, mode string, err error) {
+	err = d.sql.QueryRowContext(ctx, `SELECT model, mode FROM sessions WHERE id = ? AND kind = 'main'`, sid).Scan(&model, &mode)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", ErrNotFound
+	}
+	return model, mode, err
 }
 
 // SessionInfoOf returns one session; ErrNotFound when there is none.
@@ -150,10 +408,11 @@ type SessionFilter struct {
 	Limit                  int
 }
 
-// ListSessions lists sessions newest first (by start). A main session that holds no exchange is listed only
-// while it is current; agent sessions of rewound agents are left out.
+// ListSessions lists sessions newest first (by start). A main session that holds no exchange is listed while it
+// is the default or has a root agent (it was made addressable: schema 15); agent sessions of rewound agents are
+// left out.
 func (d *DB) ListSessions(ctx context.Context, f SessionFilter) ([]SessionInfo, error) {
-	where := []string{`(s.kind = 'main' AND (s.current = 1 OR EXISTS (SELECT 1 FROM exchanges x WHERE x.session_id = s.id))
+	where := []string{`(s.kind = 'main' AND (s.current = 1 OR s.root_agent_id != '' OR EXISTS (SELECT 1 FROM exchanges x WHERE x.session_id = s.id))
 		OR s.kind = 'agent' AND EXISTS (SELECT 1 FROM agents a WHERE a.id = s.agent_id AND a.rewound_at IS NULL))`}
 	var args []any
 	if f.Kind == KindMain || f.Kind == KindAgent {
@@ -242,6 +501,12 @@ func (d *DB) SetCurrentSession(ctx context.Context, id string) (previous string,
 		return "", err
 	}
 	return previous, tx.Commit()
+}
+
+// UnarchiveSession takes a main session out of the archive (a message sent to it does).
+func (d *DB) UnarchiveSession(ctx context.Context, id string) error {
+	_, err := d.sql.ExecContext(ctx, `UPDATE sessions SET archived = 0 WHERE id = ? AND archived = 1`, id)
+	return err
 }
 
 // PatchSession edits a session's title (the person's title is kept when the first request would rename it)
@@ -393,10 +658,15 @@ func (d *DB) DeleteSession(ctx context.Context, id string) ([]string, error) {
 			return nil, err
 		}
 	}
+	// The session's own root agent is hidden like a rewound one (its messages go with the session's).
+	if _, err := tx.ExecContext(ctx, `UPDATE agents SET rewound_at = ? WHERE id = (SELECT root_agent_id FROM sessions WHERE id = ?)
+		AND rewound_at IS NULL AND NOT EXISTS (SELECT 1 FROM sessions o WHERE o.id != ? AND o.root_agent_id = agents.id)`, Now(), id, id); err != nil {
+		return nil, err
+	}
 	for _, q := range []string{
 		`DELETE FROM exchanges WHERE session_id = ?`, `DELETE FROM messages WHERE session_id = ?`,
 		`DELETE FROM compactions WHERE session_id = ?`, `DELETE FROM session_reports WHERE session_id = ?`,
-		`DELETE FROM sessions WHERE id = ?`,
+		`DELETE FROM queue WHERE session_id = ?`, `DELETE FROM sessions WHERE id = ?`,
 	} {
 		if _, err := tx.ExecContext(ctx, q, id); err != nil {
 			return nil, err
@@ -450,11 +720,10 @@ func (d *DB) SessionMessages(ctx context.Context, id string) ([]Message, error) 
 	if info.Kind == KindAgent {
 		return d.Messages(ctx, info.AgentID)
 	}
-	orch, err := d.Orchestrator(ctx)
-	if err != nil {
-		return nil, err
+	if info.RootAgentID == "" {
+		return []Message{}, nil // never ran since schema 15 and held no messages before it
 	}
-	all, err := d.Messages(ctx, orch.ID)
+	all, err := d.Messages(ctx, info.RootAgentID)
 	if err != nil {
 		return nil, err
 	}

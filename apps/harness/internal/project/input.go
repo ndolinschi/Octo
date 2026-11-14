@@ -47,6 +47,9 @@ type Input struct {
 	Commands *[]projcfg.Command `json:"commands"`
 	// Review is the project's review configuration; a patch replaces it as a whole (missing fields take their defaults).
 	Review *projcfg.ReviewConfig `json:"review"`
+	// SessionSettings is the sessions setting (max_running 1-8, default_workspace, coordination); a patch sets the
+	// fields it carries.
+	SessionSettings *projectstore.SessionsSettings `json:"session_settings"`
 }
 
 // OptionalFloat distinguishes an absent JSON field from an explicit null.

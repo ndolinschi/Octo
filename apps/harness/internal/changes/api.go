@@ -50,10 +50,12 @@ type FileChangeSummary struct {
 
 // TurnChanges is everything one turn changed.
 type TurnChanges struct {
-	TurnID  int64               `json:"turn_id"`
-	Files   []FileChangeSummary `json:"files"`
-	Added   int                 `json:"added"`
-	Removed int                 `json:"removed"`
+	TurnID int64 `json:"turn_id"`
+	// SessionID is the main session the turn ran in (schema 15).
+	SessionID string              `json:"session_id,omitempty"`
+	Files     []FileChangeSummary `json:"files"`
+	Added     int                 `json:"added"`
+	Removed   int                 `json:"removed"`
 }
 
 // Detail is one change with its content.
@@ -94,7 +96,7 @@ func Summarize(ctx context.Context, db *projectstore.DB, list []projectstore.Cha
 		}
 		tc := byTurn[k.turn]
 		if tc == nil {
-			tc = &TurnChanges{TurnID: k.turn, Files: []FileChangeSummary{}}
+			tc = &TurnChanges{TurnID: k.turn, SessionID: groups[k][0].SessionID, Files: []FileChangeSummary{}}
 			byTurn[k.turn] = tc
 			turns = append(turns, k.turn)
 		}

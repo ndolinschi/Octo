@@ -152,9 +152,18 @@ func (e *acpEnv) messages(t *testing.T, p projectJSON, agentID string) []apiMess
 }
 
 // lastText is all the assistant text of the orchestrator's latest turn, in order.
+// defaultRoot is the root agent of the project's default session now (schema 15: a /clear or a new default
+// session changes it; p.OrchestratorAgentID is what it was when p was read).
+func (e *acpEnv) defaultRoot(t *testing.T, p projectJSON) string {
+	t.Helper()
+	var cur projectJSON
+	e.into(t, "GET", "/v1/projects/"+p.ID, nil, http.StatusOK, &cur)
+	return cur.OrchestratorAgentID
+}
+
 func (e *acpEnv) lastText(t *testing.T, p projectJSON) string {
 	t.Helper()
-	msgs := e.messages(t, p, p.OrchestratorAgentID)
+	msgs := e.messages(t, p, e.defaultRoot(t, p))
 	start := 0
 	for i, m := range msgs {
 		if m.Role == "user" && len(m.Content) > 0 && m.Content[0].Type == "text" {

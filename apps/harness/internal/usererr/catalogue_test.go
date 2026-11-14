@@ -95,6 +95,16 @@ func samples() map[string]*Error {
 		"TitleTaken":          TitleTaken(),
 		"CommandNameTaken":    CommandNameTaken(),
 		"BranchMissing":       BranchMissing(),
+
+		"WorktreeUnavailable":   WorktreeUnavailable("no folder is in a git repository"),
+		"SessionWorktreeFailed": SessionWorktreeFailed("fatal: a branch named 'octo/x-1a2b' already exists"),
+		"WorkspaceNotFound":     WorkspaceNotFound("wsp_1"),
+		"WorkspaceMissing":      WorkspaceMissing("/data/projects/p/worktrees/wsp_1/atlas"),
+		"WorkspaceDirty":        WorkspaceDirty("src/a.go, src/b.go"),
+		"WorkspaceInUse":        WorkspaceInUse(),
+		"ApplyConflict":         ApplyConflict("src/a.go"),
+		"CoordinationOff":       CoordinationOff(),
+		"SessionSlotsFull":      SessionSlotsFull(3),
 	}
 }
 

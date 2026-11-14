@@ -35,6 +35,7 @@ type server struct {
 	reqs  atomic.Int64
 	now   func() time.Time
 	cache *cacheStore
+	holds *Holds
 }
 
 type quota struct {

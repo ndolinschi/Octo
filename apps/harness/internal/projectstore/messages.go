@@ -39,7 +39,7 @@ func (d *DB) AppendMessageCommand(ctx context.Context, agentID, role string, con
 	defer func() { _ = tx.Rollback() }()
 	sid := ""
 	if isOrchestrator(ctx, tx, agentID) {
-		if sid, err = ensureCurrentMain(ctx, tx); err != nil {
+		if sid, err = sessionOfRoot(ctx, tx, agentID); err != nil {
 			return Message{}, err
 		}
 	} else if _, err := tx.ExecContext(ctx, `UPDATE sessions SET ended_at = ? WHERE kind = 'agent' AND agent_id = ?`, now, agentID); err != nil {

@@ -17,9 +17,9 @@ import (
 const DefaultACPIdle = 30 * time.Minute
 
 // acpHost owns the long-lived ACP sessions of ACP-run orchestrators: at most
-// one per project, started lazily by the first turn, kept between turns,
-// restarted when the process dies and closed when idle, on project delete and
-// on shutdown.
+// one per main session (keyed by skey), started lazily by the session's first
+// turn, kept between turns, restarted when the process dies and closed when
+// idle, when too many of a project's are alive, on project delete and on shutdown.
 type acpHost struct {
 	idle   time.Duration
 	tokens *mcp.Tokens
@@ -35,12 +35,12 @@ func newACPHost(idle time.Duration) *acpHost {
 	return &acpHost{idle: idle, tokens: mcp.NewTokens(), sessions: map[string]*orchSession{}}
 }
 
-// orchSession is one project's orchestrator session. mu guards every field;
-// turns of a project never overlap (the orchestrator's claim), but MCP calls
+// orchSession is one main session's orchestrator process. mu guards every field;
+// turns of a session never overlap (the orchestrator's claim), but MCP calls
 // from the agent and the idle reaper run concurrently with them.
 type orchSession struct {
-	h   *acpHost
-	pid string
+	h        *acpHost
+	pid, sid string
 
 	// digestMu is held while a digest prompt (memory M6) is open in the live session;
 	// the next turn waits for it before it prompts.
@@ -93,21 +93,67 @@ type orchSession struct {
 	lastUsed time.Time
 }
 
-func (h *acpHost) session(pid string) *orchSession {
+func (h *acpHost) session(key string) *orchSession {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	s := h.sessions[pid]
+	s := h.sessions[key]
 	if s == nil {
-		s = &orchSession{h: h, pid: pid}
-		h.sessions[pid] = s
+		pid, sid := splitKey(key)
+		s = &orchSession{h: h, pid: pid, sid: sid}
+		h.sessions[key] = s
 	}
 	return s
 }
 
-func (h *acpHost) lookup(pid string) *orchSession {
+func (h *acpHost) lookup(key string) *orchSession {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.sessions[pid]
+	return h.sessions[key]
+}
+
+// trim shuts down the least recently used idle processes of a project while more than limit are alive (the
+// sessions resume with session/load or the recap next time).
+func (h *acpHost) trim(pid string, limit int) {
+	h.mu.Lock()
+	var mine []*orchSession
+	for k, s := range h.sessions {
+		if ofProject(k, pid) {
+			mine = append(mine, s)
+		}
+	}
+	h.mu.Unlock()
+	type idle struct {
+		s    *orchSession
+		used time.Time
+	}
+	alive, candidates := 0, []idle{}
+	for _, s := range mine {
+		s.mu.Lock()
+		if s.aliveLocked() {
+			alive++
+			if !s.busy {
+				candidates = append(candidates, idle{s, s.lastUsed})
+			}
+		}
+		s.mu.Unlock()
+	}
+	for alive > limit && len(candidates) > 0 {
+		oldest := 0
+		for i, c := range candidates {
+			if c.used.Before(candidates[oldest].used) {
+				oldest = i
+			}
+		}
+		c := candidates[oldest]
+		candidates = append(candidates[:oldest], candidates[oldest+1:]...)
+		c.s.mu.Lock()
+		if c.s.aliveLocked() && !c.s.busy {
+			slog.Info("too many acp orchestrator processes in the project; shutting the least recently used down", "project", pid, "session", c.s.sid)
+			c.s.closeLocked()
+			alive--
+		}
+		c.s.mu.Unlock()
+	}
 }
 
 // alive reports whether the process is running and its connection is up.
@@ -150,18 +196,22 @@ func (o *Orchestrator) CloseProject(projectID string) {
 	o.inputs.Forget(projectID)
 	o.secrets.Forget(projectID)
 	o.acp.mu.Lock()
-	s := o.acp.sessions[projectID]
-	delete(o.acp.sessions, projectID)
+	var mine []*orchSession
+	for k, s := range o.acp.sessions {
+		if ofProject(k, projectID) {
+			mine = append(mine, s)
+			delete(o.acp.sessions, k)
+		}
+	}
 	o.acp.mu.Unlock()
-	if s == nil {
-		return
+	for _, s := range mine {
+		s.mu.Lock()
+		if s.turnCancel != nil {
+			s.turnCancel()
+		}
+		s.closeLocked()
+		s.mu.Unlock()
 	}
-	s.mu.Lock()
-	if s.turnCancel != nil {
-		s.turnCancel()
-	}
-	s.closeLocked()
-	s.mu.Unlock()
 }
 
 // closeAll ends every ACP orchestrator process (shutdown).
@@ -205,9 +255,9 @@ func (h *acpHost) reap(ctx context.Context) {
 	}
 }
 
-// warning is the standing warning of the project's ACP session ("" when none).
-func (h *acpHost) warning(pid string) *usererr.Error {
-	s := h.lookup(pid)
+// warning is the standing warning of a main session's ACP process (nil when none).
+func (h *acpHost) warning(key string) *usererr.Error {
+	s := h.lookup(key)
 	if s == nil {
 		return nil
 	}

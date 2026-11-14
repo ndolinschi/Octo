@@ -54,10 +54,14 @@ func sessionUser(u *usererr.Error) *SessionError {
 // that take a message, whether one can be sent now and why not.
 type SessionView struct {
 	projectstore.SessionInfo
-	// CanMessage: a message can be sent to this session now (a main session: it is the current one, whose
-	// messages go through the project's message route). MessageBlocked says why not.
+	// CanMessage: a message can be sent to this session now (POST /sessions/{sid}/messages). MessageBlocked says
+	// why not.
 	CanMessage     bool          `json:"can_message"`
 	MessageBlocked *SessionError `json:"message_blocked,omitempty"`
+	// Main sessions: what waits for the person in this session (approvals and forms of its turns).
+	NeedsYou         bool `json:"needs_you"`
+	PendingApprovals int  `json:"pending_approvals"`
+	PendingInputs    int  `json:"pending_inputs"`
 }
 
 // agentRun is a sub-agent run the user can stop and, while it is a built-in one, steer.
@@ -149,16 +153,21 @@ func (o *Orchestrator) steerTextsOf(agentID string) func(context.Context) []stri
 func (o *Orchestrator) SessionView(ctx context.Context, db *projectstore.DB, info projectstore.SessionInfo) SessionView {
 	v := SessionView{SessionInfo: info}
 	if info.Kind == projectstore.KindMain {
-		if info.Current {
-			v.CanMessage = true
-			if o.Active(db.ID()) {
-				v.State = projectstore.SessionWorking
-				if a, i := o.Attention(db.ID()); a+i > 0 {
-					v.State = projectstore.SessionWaiting
-				}
+		v.PendingApprovals, v.PendingInputs = o.SessionAttention(db.ID(), info.ID)
+		v.NeedsYou = v.PendingApprovals+v.PendingInputs > 0
+		switch {
+		case o.ActiveSession(db.ID(), info.ID):
+			v.State = projectstore.SessionWorking
+			if v.NeedsYou {
+				v.State = projectstore.SessionWaiting
 			}
+		case info.Queued > 0 && !info.QueuePaused:
+			v.State = projectstore.SessionQueued
+		}
+		if blocked := o.mainMessageBlock(ctx, db, info); blocked != nil {
+			v.MessageBlocked = blocked
 		} else {
-			v.MessageBlocked = sessionErr("not_current", "", "")
+			v.CanMessage = true
 		}
 		return v
 	}
@@ -168,6 +177,22 @@ func (o *Orchestrator) SessionView(ctx context.Context, db *projectstore.DB, inf
 		v.CanMessage = true
 	}
 	return v
+}
+
+// mainMessageBlock says why a main session cannot take a message (nil: it can): only when the orchestrator it
+// runs on needs the built-in loop and that is unavailable.
+func (o *Orchestrator) mainMessageBlock(ctx context.Context, db *projectstore.DB, info projectstore.SessionInfo) *SessionError {
+	why := o.builtinOff()
+	if why == "" {
+		return nil
+	}
+	c, cancel := dbCtx(ctx)
+	defer cancel()
+	rt, err := o.newSessionRuntime(c, db, info.ID)
+	if err != nil || rt.isACPOrchestrator() {
+		return nil
+	}
+	return sessionErr("builtin_loop_unavailable", "", why)
 }
 
 // agentMessageBlock says why a message cannot be sent to an agent session now (nil: it can).
@@ -234,53 +259,107 @@ func (rt *runtime) registerAgentSession(ctx context.Context, a projectstore.Agen
 	rt.o.hub.Publish(rt.pid(), events.SessionCreated, map[string]any{"session": rt.o.SessionView(c, rt.db, info)})
 }
 
-// ---- new session, resume ----
+// ---- new session, default ----
 
-// NewSession starts a new main session with an optional title: the same as /clear (the old one is summarised and
-// kept), then the title. ErrTurnInProgress while a turn runs.
+// NewSessionInput is POST /sessions (spec 2026-11-14 section 8): a main session, not the default unless
+// MakeDefault; with FromSessionID and Clear it is /clear of that session.
+type NewSessionInput struct {
+	Title       string
+	Memory      string // "project", "on", "read", "off" ("": project)
+	Model       string
+	Mode        string
+	MakeDefault bool
+	FromSession string
+	Clear       bool
+}
+
+// NewSession starts a new main session with an optional title, made the default: the same as /clear of the
+// default session (the old one is summarised and kept), then the title. ErrTurnInProgress while that session runs.
 func (o *Orchestrator) NewSession(ctx context.Context, pid, title string) (SessionView, error) {
-	res, err := o.Clear(ctx, pid)
-	if err != nil {
-		return SessionView{}, err
-	}
+	return o.CreateSession(ctx, pid, NewSessionInput{Title: title, Clear: true, MakeDefault: true})
+}
+
+// CreateSession creates a main session. Without Clear it is empty (no carry-over), in the shared workspace, with
+// the memory mode asked for (the project's default for "project" or ""), the default only with MakeDefault.
+// With Clear it is /clear of FromSession ("": the default): the session gets that session's carry-over, workspace
+// and memory mode, and is the default when that one was.
+func (o *Orchestrator) CreateSession(ctx context.Context, pid string, in NewSessionInput) (SessionView, error) {
 	db, err := o.store.Get(ctx, pid)
 	if err != nil {
 		return SessionView{}, err
 	}
-	if t := strings.TrimSpace(title); t != "" {
-		if _, err := db.PatchSession(ctx, res.SessionID, &t, nil); err != nil {
+	var sid string
+	if in.Clear {
+		res, err := o.ClearSession(ctx, pid, in.FromSession)
+		if err != nil {
 			return SessionView{}, err
 		}
-		o.publishSession(ctx, db, res.SessionID, false)
+		sid = res.SessionID
+		if sid == "" {
+			if sid, err = db.DefaultSessionID(ctx); err != nil {
+				return SessionView{}, err
+			}
+		}
+		if t := strings.TrimSpace(in.Title); t != "" {
+			if _, err := db.PatchSession(ctx, sid, &t, nil); err != nil {
+				return SessionView{}, err
+			}
+		}
+		if in.Model != "" || in.Mode != "" {
+			if err := db.SetSessionSettings(ctx, sid, in.Model, optional(in.Mode), nil); err != nil {
+				return SessionView{}, err
+			}
+		}
+		if in.MakeDefault {
+			if _, err := o.SetDefaultSession(ctx, pid, sid); err != nil {
+				return SessionView{}, err
+			}
+		}
+		o.publishSession(ctx, db, sid, false)
+	} else {
+		memory := in.Memory
+		if memory == "" || memory == "project" {
+			memory = projectstore.MemoryOn // every project's memory.new_sessions is "on" until memory modes are built
+		}
+		info, prev, err := db.CreateMainSession(ctx, projectstore.NewMainSession{
+			Title: strings.TrimSpace(in.Title), Model: in.Model, Mode: in.Mode, Memory: memory, MakeDefault: in.MakeDefault,
+		})
+		if err != nil {
+			return SessionView{}, err
+		}
+		sid = info.ID
+		if root, err := db.Agent(ctx, info.RootAgentID); err == nil {
+			o.hub.Publish(pid, events.AgentCreated, map[string]any{"agent": root, "session_id": sid})
+		}
+		o.publishSession(ctx, db, sid, true)
+		if prev != "" && prev != sid {
+			o.defaultChanged(ctx, db, prev, sid)
+		}
 	}
-	info, err := db.SessionInfoOf(ctx, res.SessionID)
+	info, err := db.SessionInfoOf(ctx, sid)
 	if err != nil {
 		return SessionView{}, err
 	}
 	return o.SessionView(ctx, db, info), nil
 }
 
-// ResumeSession makes an earlier main session the current one: the context is rebuilt from that session's
-// stored messages (built-in loop: its last compaction or carry-over and what follows), an ACP orchestrator
-// continues the agent's own session with session/load when the agent advertises it and else gets a new agent
-// session with a recap built from this session. ErrTurnInProgress while a turn runs.
+func optional(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// ResumeSession is the old name of SetDefaultSession (POST /sessions/{sid}/resume is an alias of /default).
 func (o *Orchestrator) ResumeSession(ctx context.Context, pid, sid string) (SessionView, error) {
-	if o.baseCtx.Err() != nil {
-		return SessionView{}, ErrShuttingDown
-	}
-	_, cancel := context.WithCancel(o.baseCtx)
-	defer cancel()
-	if o.Active(pid) || !o.claim(pid, cancel) {
-		return SessionView{}, ErrTurnInProgress
-	}
-	defer func() {
-		o.release(pid)
-		o.qmu.Lock()
-		defer o.qmu.Unlock()
-		if db, err := o.store.Get(context.Background(), pid); err == nil {
-			o.startNext(db)
-		}
-	}()
+	return o.SetDefaultSession(ctx, pid, sid)
+}
+
+// SetDefaultSession makes a main session the default: what is sent to the project without a session goes to it
+// from now on. Nothing is stopped or rebuilt (every session keeps its own root agent, conversation and ACP
+// session); an archived session is unarchived. ErrNotFound for an unknown session, not_main_session for an agent
+// session.
+func (o *Orchestrator) SetDefaultSession(ctx context.Context, pid, sid string) (SessionView, error) {
 	db, err := o.store.Get(ctx, pid)
 	if err != nil {
 		return SessionView{}, err
@@ -292,63 +371,49 @@ func (o *Orchestrator) ResumeSession(ctx context.Context, pid, sid string) (Sess
 	if info.Kind != projectstore.KindMain {
 		return SessionView{}, sessionErr("not_main_session", "", "kind is agent")
 	}
-	if info.Current {
-		return o.SessionView(ctx, db, info), nil
-	}
-	orch, err := db.Orchestrator(ctx)
-	if err != nil {
-		return SessionView{}, err
-	}
-	rt, err := o.newRuntime(ctx, db)
-	if err != nil {
-		return SessionView{}, err
-	}
-	isACP := plugins.IsACPRef(rt.models.Orchestrator)
-	if isACP {
-		// Keep the agent's session of the session being left, then point the orchestrator row at the one of the target.
-		cur, err := db.CurrentSessionID(ctx)
+	if !info.Default {
+		if _, err := db.RootAgent(ctx, sid); err != nil { // a session from before schema 15 gets its root now
+			return SessionView{}, err
+		}
+		prev, err := db.SetCurrentSession(ctx, sid)
 		if err != nil {
 			return SessionView{}, err
 		}
-		if st, ok, err := db.ACPSession(ctx, orch.ID); err == nil && ok {
-			if err := db.SetSessionACP(ctx, cur, projectstore.SessionACP{Agent: st.PluginAgent, Model: st.Model, SessionID: st.SessionID}); err != nil {
-				return SessionView{}, err
-			}
-		}
-		if kept, ok, err := db.SessionACPOf(ctx, sid); err != nil {
-			return SessionView{}, err
-		} else if ok {
-			err = db.SaveACPSession(ctx, projectstore.ACPSession{AgentID: orch.ID, PluginAgent: kept.Agent, Model: kept.Model, SessionID: kept.SessionID})
-			if err != nil {
-				return SessionView{}, err
-			}
-		} else if err := db.DeleteACPSession(ctx, orch.ID); err != nil {
-			return SessionView{}, err
-		}
-		o.resetACPSession(pid)
-		if s := o.acp.lookup(pid); s != nil {
-			s.forgetCommands()
-		}
-	}
-	prev, err := db.SetCurrentSession(ctx, sid)
-	if err != nil {
-		return SessionView{}, err
-	}
-	if err := db.ResetContext(ctx, orch.ID); err != nil {
-		return SessionView{}, err
-	}
-	o.hub.Publish(pid, events.SessionCurrent, map[string]any{"session_id": sid, "previous_session_id": prev})
-	o.publishSession(ctx, db, prev, false)
-	o.publishSession(ctx, db, sid, false)
-	o.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid})
-	if isACP {
-		o.hub.Publish(pid, events.SlashCommandsUpdated, map[string]any{"project_id": pid})
+		o.defaultChanged(ctx, db, prev, sid)
 	}
 	info, err = db.SessionInfoOf(ctx, sid)
 	if err != nil {
 		return SessionView{}, err
 	}
 	return o.SessionView(ctx, db, info), nil
+}
+
+// OnDefaultChanged sets what is called after a project's default session changed (the project service
+// republishes the project, whose orchestrator_agent_id is the default session's root).
+func (o *Orchestrator) OnDefaultChanged(f func(pid string)) {
+	o.mu.Lock()
+	o.defaultHook = f
+	o.mu.Unlock()
+}
+
+// defaultChanged announces a new default session: session.default, then session.current (its old name), both
+// sessions, the context, and the project.
+func (o *Orchestrator) defaultChanged(ctx context.Context, db *projectstore.DB, prev, sid string) {
+	pid := db.ID()
+	o.hub.Publish(pid, events.SessionDefault, map[string]any{"session_id": sid, "previous_session_id": prev})
+	o.hub.Publish(pid, events.SessionCurrent, map[string]any{"session_id": sid, "previous_session_id": prev})
+	if prev != "" {
+		o.publishSession(ctx, db, prev, false)
+	}
+	o.publishSession(ctx, db, sid, false)
+	o.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid, "session_id": sid})
+	o.hub.Publish(pid, events.SlashCommandsUpdated, map[string]any{"project_id": pid})
+	o.mu.Lock()
+	hook := o.defaultHook
+	o.mu.Unlock()
+	if hook != nil {
+		hook(pid)
+	}
 }
 
 // keepAgentSession remembers the ACP session a sub-agent opened, so its session can be continued later.
@@ -364,11 +429,14 @@ func (rt *runtime) keepAgentSession(ctx context.Context, agentID, plugin, model,
 	}
 }
 
-// noteACPSession remembers the agent session an ACP orchestrator opened for the current main session.
+// noteACPSession remembers the agent session an ACP orchestrator opened for the turn's main session.
 func (rt *runtime) noteACPSession(ctx context.Context, plugin, model, sessionID string) {
 	c, cancel := dbCtx(ctx)
 	defer cancel()
-	sid, err := rt.db.CurrentSessionID(c)
+	sid, err := rt.sessionID, error(nil)
+	if sid == "" {
+		sid, err = rt.db.DefaultSessionID(c)
+	}
 	if err == nil {
 		err = rt.db.SetSessionACP(c, sid, projectstore.SessionACP{Agent: plugin, Model: model, SessionID: sessionID})
 	}
@@ -379,8 +447,8 @@ func (rt *runtime) noteACPSession(ctx context.Context, plugin, model, sessionID 
 
 // ---- stop, message ----
 
-// StopSession stops what a session runs: the project's running turn (the current main session) or one
-// sub-agent. A session that is not running is a SessionError not_running.
+// StopSession stops what a session runs: a main session's running turn (its queue is paused by the cancel) or
+// one sub-agent. A session that is not running is a SessionError not_running.
 func (o *Orchestrator) StopSession(ctx context.Context, pid, sid string) (SessionView, error) {
 	db, err := o.store.Get(ctx, pid)
 	if err != nil {
@@ -391,8 +459,8 @@ func (o *Orchestrator) StopSession(ctx context.Context, pid, sid string) (Sessio
 		return SessionView{}, err
 	}
 	switch {
-	case info.Kind == projectstore.KindMain && info.Current && o.Active(pid):
-		o.Cancel(pid)
+	case info.Kind == projectstore.KindMain && o.ActiveSession(pid, sid):
+		_ = o.CancelSession(ctx, pid, sid)
 	case info.Kind == projectstore.KindAgent && o.runOf(info.AgentID) != nil:
 		o.runOf(info.AgentID).cancel()
 	default:
@@ -630,9 +698,12 @@ func (rt *runtime) runACPLoaded(ctx context.Context, child projectstore.Agent, t
 func (rt *runtime) pendingReportNote(ctx context.Context, orchID string) string {
 	c, cancel := dbCtx(ctx)
 	defer cancel()
-	sid, err := rt.db.CurrentSessionID(c)
-	if err != nil {
-		return ""
+	sid := rt.sessionID
+	if sid == "" {
+		var err error
+		if sid, err = rt.db.DefaultSessionID(c); err != nil {
+			return ""
+		}
 	}
 	reports, err := rt.db.TakeSessionReports(c, sid)
 	if err != nil || len(reports) == 0 {
