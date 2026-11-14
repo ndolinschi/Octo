@@ -18,14 +18,16 @@ The catalogue publishes no cache-write price for any of them; `cache_write` stay
 
 ## Other rows in `prices.toml` (not in the ladder)
 
+The Mistral rows were replaced on 2026-11-13 with cheap non-Mistral tool-calling models of the same size class (the owner no longer uses Mistral).
+
 | Model | Catalogue in / out / cache read | Before | After | 30k in / 500 out |
 | --- | --- | --- | --- | --- |
-| `mistralai/mistral-nemo` | 0.029 / 0.03 / none | all 0.0 | 0.029 / 0.03 / 0.0 | 885 |
-| `mistralai/ministral-8b-2512` | 0.15 / 0.15 / 0.015 | all 0.0 | 0.15 / 0.15 / 0.015 | 4,575 |
-| `mistralai/mistral-small-3.1-24b-instruct` | 0.351 / 0.555 / none | all 0.0 | 0.351 / 0.555 / 0.0 | 10,807 |
-| `mistralai/mistral-small-3.2-24b-instruct` | 0.10 / 0.30 / 0.01 | all 0.0 | 0.10 / 0.30 / 0.01 | 3,150 |
+| `meta-llama/llama-3.1-8b-instruct` | 0.02 / 0.04 / none (2026-11-13) | new row | 0.02 / 0.04 / 0.0 | 620 |
+| `qwen/qwen3.7-flash` | 0.03 / 0.13 / 0.006 (2026-11-13) | new row | 0.03 / 0.13 / 0.006 | 965 |
+| `qwen/qwen3-32b` | 0.08 / 0.28 / none (2026-11-13) | new row | 0.08 / 0.28 / 0.0 | 2,540 |
+| `google/gemma-4-26b-a4b-it` | 0.0675 / 0.225 / 0.0375 (2026-11-13) | new row | 0.0675 / 0.225 / 0.0375 | 2,138 |
 | `deepseek/deepseek-v4-flash` | 0.091 / 0.182 / 0.0182 | all 0.0 | 0.091 / 0.182 / 0.0182 | 2,821 |
-| `mistralai/devstral-2512` | 0.40 / 2.00 / 0.04 | all 0.0 | 0.40 / 2.00 / 0.04 | 13,000 |
+| `qwen/qwen3-coder-next` | 0.12 / 0.80 / 0.07 (2026-11-13) | new row | 0.12 / 0.80 / 0.07 | 4,000 |
 
 `typesafe/jev-1.13` (the classifier) has no `prices.toml` row; the catalogue lists the JEV router with dynamic pricing (`-1`), so no fixed rate exists. Classifier cost comes from the reported `usage.cost`.
 

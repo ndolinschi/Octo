@@ -615,7 +615,7 @@ pub fn shape(plan: ShapePlan<'_>) -> ShapeResult {
 }
 
 /// Claude Code may put `role: system` inside `messages[]` (even after tool_result).
-/// OpenRouter/Mistral reject that; fold those entries into top-level `system`.
+/// Some OpenRouter providers reject that; fold those entries into top-level `system`.
 pub fn fold_in_message_system(body: &mut Value) {
     let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) else {
         return;

@@ -60,21 +60,21 @@ fn fold_in_message_system_after_tool_result() {
 #[test]
 fn strip_claude_code_model_marker_before_lookup() {
     assert_eq!(
-        strip_model_marker("mistralai/devstral-2512[1m]"),
-        "mistralai/devstral-2512"
+        strip_model_marker("qwen/qwen3-coder-next[1m]"),
+        "qwen/qwen3-coder-next"
     );
     assert_eq!(
-        bare_id("~mistralai/devstral-2512[1m]"),
-        "mistralai/devstral-2512"
+        bare_id("~qwen/qwen3-coder-next[1m]"),
+        "qwen/qwen3-coder-next"
     );
-    let body = json!({"model": "mistralai/devstral-2512[1m]"});
+    let body = json!({"model": "qwen/qwen3-coder-next[1m]"});
     assert_eq!(
         preferred_model(&body).as_deref(),
-        Some("mistralai/devstral-2512")
+        Some("qwen/qwen3-coder-next")
     );
     assert_eq!(
-        with_model(&body, "mistralai/devstral-2512[1m]")["model"],
-        "mistralai/devstral-2512"
+        with_model(&body, "qwen/qwen3-coder-next[1m]")["model"],
+        "qwen/qwen3-coder-next"
     );
 }
 
@@ -137,7 +137,7 @@ fn housekeeping_fixture_title_session() {
 #[test]
 fn server_tool_modes_helpers() {
     let body = json!({
-        "model": "mistralai/devstral-2512",
+        "model": "qwen/qwen3-coder-next",
         "tools": [
             {"type": "web_search_20250305"},
             {"name": "Bash", "input_schema": {"type": "object"}}
@@ -145,9 +145,9 @@ fn server_tool_modes_helpers() {
     });
     assert_eq!(server_tool_types(&body), vec!["web_search_20250305"]);
     let online = with_online_suffix(&body);
-    assert_eq!(online["model"], "mistralai/devstral-2512:online");
+    assert_eq!(online["model"], "qwen/qwen3-coder-next:online");
     let again = with_online_suffix(&online);
-    assert_eq!(again["model"], "mistralai/devstral-2512:online");
+    assert_eq!(again["model"], "qwen/qwen3-coder-next:online");
     let passthrough = body.clone();
     assert_eq!(passthrough["model"], body["model"]);
 }
@@ -1299,19 +1299,19 @@ fn shape_strips_anthropic_only_fields_that_break_openrouter() {
     });
     let result = shape(ShapePlan::new(
         &body,
-        "mistralai/devstral-2512",
+        "qwen/qwen3-coder-next",
         Some("claude-sonnet-4-5"),
         None,
     ));
     let shaped = result.body;
     assert!(
         shaped.get("output_config").is_none(),
-        "output_config + require_parameters 404s OpenRouter Mistral"
+        "output_config + require_parameters 404s on OpenRouter"
     );
     assert!(shaped.get("safeguards").is_none());
     assert!(
         shaped.get("context_management").is_none(),
-        "context_management is unsupported on devstral and present only on 404 call 528"
+        "context_management is unsupported upstream and present only on 404 call 528"
     );
     assert_eq!(
         result.stripped,
@@ -1322,7 +1322,7 @@ fn shape_strips_anthropic_only_fields_that_break_openrouter() {
         ]
     );
     assert_eq!(shaped["provider"]["require_parameters"], true);
-    assert_eq!(shaped["model"], "mistralai/devstral-2512");
+    assert_eq!(shaped["model"], "qwen/qwen3-coder-next");
     let meta = RouteMeta::from_plan("unset".into(), "high".into(), Some("classify"))
         .with_stripped(&result.stripped);
     assert_eq!(meta.trigger, "classify");
@@ -1335,12 +1335,12 @@ fn shape_strips_anthropic_only_fields_that_break_openrouter() {
 #[test]
 fn shape_call_528_fixture_strips_proven_keys_keeps_rest() {
     let fixture: serde_json::Value =
-        serde_json::from_str(include_str!("fixtures/call_528_devstral_404.json")).unwrap();
+        serde_json::from_str(include_str!("fixtures/call_528_coder_404.json")).unwrap();
     let before = fixture.clone();
     let result = shape(ShapePlan::new(
         &fixture,
-        "mistralai/devstral-2512",
-        Some("mistralai/devstral-2512"),
+        "qwen/qwen3-coder-next",
+        Some("qwen/qwen3-coder-next"),
         None,
     ));
     let shaped = result.body;
@@ -1382,7 +1382,7 @@ fn shape_call_528_fixture_strips_proven_keys_keeps_rest() {
         .iter()
         .all(|m| m["role"] != "system"));
     assert!(shaped.get("system").is_some());
-    assert_eq!(shaped["model"], "mistralai/devstral-2512");
+    assert_eq!(shaped["model"], "qwen/qwen3-coder-next");
 }
 
 #[test]
@@ -1393,7 +1393,7 @@ fn shape_call_530_fixture_only_strips_output_config() {
     let strip = default_strip_fields();
     let result = shape(ShapePlan {
         body: &fixture,
-        model: "mistralai/ministral-8b-2512",
+        model: "qwen/qwen3.7-flash",
         previous_model: None,
         models: None,
         provider_order: &[],
@@ -1503,7 +1503,7 @@ fn shape_default_config_preserves_existing_fixtures_except_strip_keys() {
         let model = fixture
             .get("model")
             .and_then(|v| v.as_str())
-            .unwrap_or("mistralai/ministral-8b-2512");
+            .unwrap_or("qwen/qwen3.7-flash");
         let result = shape(ShapePlan::new(&fixture, model, None, None));
         let shaped = result.body;
         for key in strip {
@@ -1533,7 +1533,7 @@ fn shape_merges_provider_pin_without_dropping_require_parameters() {
         "tools": [{"name": "Bash"}],
         "messages": [{"role": "user", "content": "hi"}]
     });
-    let order = vec!["Mistral".to_string()];
+    let order = vec!["Parasail".to_string()];
     let pinned = shape(ShapePlan {
         body: &body,
         model: "m",
@@ -1547,7 +1547,7 @@ fn shape_merges_provider_pin_without_dropping_require_parameters() {
     })
     .body;
     assert_eq!(pinned["provider"]["require_parameters"], true);
-    assert_eq!(pinned["provider"]["order"], json!(["Mistral"]));
+    assert_eq!(pinned["provider"]["order"], json!(["Parasail"]));
     assert_eq!(pinned["provider"]["allow_fallbacks"], false);
 
     let with_client = json!({
@@ -1585,7 +1585,7 @@ fn require_parameters_replaces_string_provider_with_object() {
     let body = json!({
         "model": "m",
         "messages": [{"role": "user", "content": "hi"}],
-        "provider": "mistral"
+        "provider": "parasail"
     });
     let shaped = shape(ShapePlan {
         body: &body,
