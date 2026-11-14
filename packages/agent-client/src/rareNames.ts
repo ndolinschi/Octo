@@ -98,6 +98,21 @@ export const RARE_METHODS = [
   "submitInput",
   "getSessionTranscript",
   "stopSide",
+  "setDefaultSession",
+  "listAllSessions",
+  "sendSessionMessage",
+  "getSessionQueue",
+  "editSessionQueued",
+  "removeSessionQueued",
+  "clearSessionQueue",
+  "resumeSessionQueue",
+  "sendSessionQueuedNow",
+  "getSessionContext",
+  "compactSession",
+  "clearSession",
+  "rewindSession",
+  "getSessionLatestPlan",
+  "exportSession",
 ] as const;
 
 export type RareMethod = (typeof RARE_METHODS)[number];

@@ -21,6 +21,7 @@ import { Spinner } from "../primitives/Status";
 import { TextField } from "../primitives/TextField";
 import { Markdown } from "../shared/Markdown";
 import { ModelPicker } from "../shared/ModelPicker";
+import { PanelPurpose } from "../shared/PanelPurpose";
 
 const TAB = toolTab("side");
 /** The input's id: `Ctrl/Cmd+;` and the "+" picker focus it when the pane opens. */
@@ -124,6 +125,7 @@ export function SidePanel() {
       <Panel
         name="side"
         title="Side question"
+        lead={<PanelPurpose tool="side" />}
         {...(list.length > 0 || pending
           ? {
               actions: (

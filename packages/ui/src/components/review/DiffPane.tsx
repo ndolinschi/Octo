@@ -1,5 +1,5 @@
-import { ChevronDown, ChevronUp } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { ChevronDown, ChevronUp, CornerDownRight } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { ReviewFile, ReviewFileDiff } from "@octo/agent-client";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { hunksToTexts } from "../../lib/review/changes";
@@ -50,8 +50,14 @@ export function DiffPane(props: {
   picker?: ReactNode;
   /** Page mode: previous / next file live in the bar's "⋯". */
   onStepFile?(dir: 1 | -1): void;
+  /** Opens the file (at a line) where the review's code is: its workspace, else the project's folder. Absent: no way to open. */
+  onOpenAt?(line?: number): void;
+  /** Where `onOpenAt` opens, for the tooltip ("in the review's workspace"). */
+  openWhere?: string;
 }) {
   const f = props.file;
+  const [firstLine, setFirstLine] = useState<number | null>(null);
+  const canOpen = props.onOpenAt !== undefined && f.status !== "deleted" && !f.binary;
   const { dir, name } = splitPath(f.path);
   const loading = useDelayedLoading(props.diff.status === "loading");
   return (
@@ -76,6 +82,15 @@ export function DiffPane(props: {
           </span>
           <IconButton icon={ChevronUp} label="Previous change (k)" onClick={() => props.onStepChange(-1)} />
           <IconButton icon={ChevronDown} label="Next change (j)" onClick={() => props.onStepChange(1)} />
+          {/* As in Changes (DiffPanel): the first changed line, opened in the editor; the line numbers of the new side open it too. */}
+          {canOpen && firstLine !== null && (
+            <IconButton
+              icon={CornerDownRight}
+              label={`Go to line ${firstLine}`}
+              title={`Go to line ${firstLine}${props.openWhere ? ` ${props.openWhere}` : ""}`}
+              onClick={() => props.onOpenAt?.(firstLine)}
+            />
+          )}
           <IconMenu
             label="More for this file"
             items={[
@@ -89,6 +104,7 @@ export function DiffPane(props: {
               { id: "ws", label: "Ignore whitespace", checked: props.ignoreWhitespace, run: props.onToggleWhitespace },
               { id: "expand", label: "Show all lines", checked: props.expanded, run: props.onToggleExpanded },
               { id: "comment", label: "Comment on this file", run: props.onFileComment },
+              ...(canOpen ? [{ id: "open", label: "Open file", run: () => props.onOpenAt?.() }] : []),
             ]}
           />
         </span>
@@ -114,7 +130,7 @@ export function DiffPane(props: {
             </div>
           ) : null
         ) : (
-          <Body {...props} file={f} diff={props.diff.diff} />
+          <Body {...props} file={f} diff={props.diff.diff} onFirstLine={setFirstLine} />
         )}
       </div>
       {props.composer}
@@ -122,7 +138,7 @@ export function DiffPane(props: {
   );
 }
 
-function Body(props: Omit<Parameters<typeof DiffPane>[0], "diff"> & { diff: ReviewFileDiff }) {
+function Body(props: Omit<Parameters<typeof DiffPane>[0], "diff"> & { diff: ReviewFileDiff; onFirstLine(line: number | null): void }) {
   const { file: f, diff } = props;
   const texts = useMemo(() => hunksToTexts(diff.hunks), [diff.hunks]);
   const runs = useMemo(() => runsOf(diff.hunks), [diff.hunks]);
@@ -170,6 +186,8 @@ function Body(props: Omit<Parameters<typeof DiffPane>[0], "diff"> & { diff: Revi
       renderZone={props.renderZone}
       onAnchor={props.onAnchor}
       onSelection={props.onSelection}
+      onFirstLine={props.onFirstLine}
+      {...(props.onOpenAt && f.status !== "deleted" ? { onGoToLine: (line: number) => props.onOpenAt?.(line) } : {})}
     />
   );
 }

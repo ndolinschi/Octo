@@ -76,7 +76,16 @@ export function readableModelId(id: string): string {
 
 /** The label of an agent's model: a name the user typed is kept as typed, anything else is made readable. */
 export function agentModelLabel(m: { id: string; label: string; source?: string }): string {
-  return m.source === "custom" ? m.id : modelLabel(m);
+  return m.source === "custom" ? m.id : tidyAgentLabel(modelLabel(m));
+}
+
+/**
+ * G14: an agent's remark in its model's label is not part of the name — "Default (recommended)" reads "Default", a bare
+ * "default" reads "Default" — so Settings and the pickers print "Claude Code · Default", like every other model.
+ */
+export function tidyAgentLabel(label: string): string {
+  const t = label.replace(/\s*\((?:recommended|default)\)\s*$/i, "").trim() || label;
+  return t === "default" ? "Default" : t;
 }
 
 /**

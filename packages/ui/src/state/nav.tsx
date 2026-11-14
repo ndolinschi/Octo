@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { createRequiredContext } from "../lib/context";
-import type { ToolTab } from "./workspace/layout";
+import type { Layout, TabId, ToolTab } from "./workspace/layout";
 
 /** A request (orchestrator user message) in one project. */
 export type TurnRef = { projectId: string; messageId: number };
@@ -13,16 +13,32 @@ export type ToolRequest = { projectId: string; tool: "usage"; scope: "project" |
 /** One palette row offered by the open workspace (tabs and tab actions). */
 export type WorkspaceCommand = { id: string; label: string; detail?: string; shortcut?: string; run(): void };
 
+/** What the palette's workspace rows need from the open workspace (`workspace/paletteCommands`). */
+export type PaletteWorkspace = {
+  layout: Layout;
+  narrow: boolean;
+  openTool(tool: ToolTab): void;
+  openPicker(): void;
+  canMoveToOtherSide(tab: TabId): boolean;
+  moveToOtherSide(tab: TabId): void;
+  canSplitRight(tab: TabId): boolean;
+  splitRight(tab: TabId): void;
+  requestClose(tabs: TabId[]): void;
+  closeOthers(tab: TabId): void;
+  equalize(): void;
+  activate(tab: TabId): void;
+};
+
 /** What the open project workspace lets the shell (palette) do. */
 export type WorkspaceApi = {
   openAgent(agentId: string): void;
   focusChat(): void;
   /** Opens (or focuses) a tool tab, e.g. the sidebar's Review row. */
   openTool(tool: ToolTab): void;
-  /** Tab actions that apply now (move, split, close…). */
-  actions(): WorkspaceCommand[];
-  /** One row per open tab. */
-  tabs(): WorkspaceCommand[];
+  /** Decision 96: a main session in a tab of its own (the sidebar's "Open in new tab"). */
+  openSession(sessionId: string): void;
+  /** The workspace as it is now, for the palette's tab actions and tab rows (`workspace/paletteCommands`). */
+  current(): PaletteWorkspace;
 };
 
 /**

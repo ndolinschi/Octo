@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { triageGroups, triageOf } from "./triage";
+import { sessionTriageOf, triageGroups, triageOf } from "./triage";
 
 test("triageOf", () => {
   assert.equal(triageOf({ kind: "needs", error: null, at: null }, true), "needs");
@@ -26,4 +26,15 @@ test("triageGroups sorts each group by recency", () => {
     ["c"],
   );
   assert.deepEqual(g.working, []);
+});
+
+test("decision 96: sessions triage by their own state; only a project's newest finished session is ready to review", () => {
+  assert.equal(sessionTriageOf({ state: "waiting" }, false, false), "needs");
+  assert.equal(sessionTriageOf({ state: "idle", needs_you: true }, false, false), "needs");
+  assert.equal(sessionTriageOf({ state: "failed" }, false, false), "needs");
+  assert.equal(sessionTriageOf({ state: "queued" }, false, false), "working");
+  assert.equal(sessionTriageOf({ state: "working" }, true, true), "working");
+  assert.equal(sessionTriageOf({ state: "idle" }, true, true), "review");
+  assert.equal(sessionTriageOf({ state: "stopped" }, true, false), "idle");
+  assert.equal(sessionTriageOf({ state: "idle" }, false, true), "idle");
 });

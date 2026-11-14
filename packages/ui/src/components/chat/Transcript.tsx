@@ -24,6 +24,7 @@ import type { StoredEndingLookup } from "../../lib/storedEndings";
 import { useStopping } from "../../lib/stopping";
 import { hasLongWord } from "../../lib/composerInput";
 import { useApp } from "../../state/app";
+import { useSessionScope } from "../../state/session";
 import { useProject } from "../../state/project";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
@@ -572,7 +573,8 @@ const NO_ENDINGS: StoredEndingLookup = () => undefined;
 function useStoredEndings(enabled: boolean, refresh: string): { lookup: StoredEndingLookup; settled: boolean } {
   const { bridge } = useApp();
   const { projectId, state } = useProject();
-  const sessionId = state.sessions.currentId;
+  // The conversation's own session (decision 96), else the project's default one.
+  const sessionId = useSessionScope()?.sessionId ?? state.sessions.currentId;
   const [lookup, setLookup] = useState<StoredEndingLookup>(() => NO_ENDINGS);
   // NEW-4: the first answer (or its failure, or the wait running out) lets the turns mount, so a turn's head is laid out once
   // with its stored ending instead of changing ("Stopped after…") under the reader. Later reads never hold the turns back.
@@ -582,7 +584,9 @@ function useStoredEndings(enabled: boolean, refresh: string): { lookup: StoredEn
   useEffect(() => {
     if (!enabled || !sessionId || !bridge.getSession) return;
     let alive = true;
-    const done = () => alive && setLoaded(true);
+    // Settled even when this read is left behind (a turn started meanwhile: a new session's first request is sent while its
+    // empty conversation reads its endings), or the turns would stay held back for good.
+    const done = () => setLoaded(true);
     const wait = window.setTimeout(done, ENDINGS_WAIT_MS);
     Promise.all([bridge.getSession(projectId, sessionId), import("../../lib/storedEndings")])
       .then(

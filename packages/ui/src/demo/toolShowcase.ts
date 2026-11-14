@@ -3,8 +3,9 @@ import { writeDemoFile } from "./store";
 
 /**
  * retest3 G1/G2: one turn with every kind of tool call the transcript renders — a command with long output, a failed
- * command, a read, a built-in edit and an ACP edit with real diffs, a stopped command, a declined call and unknown
- * tools — so each body can be seen (Atlas API, its first request). The edits' changes are recorded in `v7.ts`.
+ * command, a read, two edits of one file (one row, one diff) with a long line, a new file, an edit whose line numbers cross
+ * 99 → 100, an ACP edit and an ACP delete, a stopped command, a declined call and unknown tools — so each body can be seen
+ * (Atlas API, its first request). The changes of retry.ts and client.ts are recorded in `v7.ts`.
  */
 export const SHOWCASE_PROMPT = "Run the API tests and lint, then raise the HTTP retry limit to 5 and log each retry.";
 
@@ -46,7 +47,7 @@ const OLD_LOOP = `      if (!retryable(e) || attempt >= opts.retries) throw e;
       await sleep(opts.baseMs * 2 ** attempt);`;
 const NEW_LOOP = `      if (!retryable(e) || attempt >= opts.retries) throw e;
       const delay = opts.baseMs * 2 ** attempt;
-      log.warn({ attempt: attempt + 1, of: opts.retries, delay }, "retrying request");
+      log.warn({ attempt: attempt + 1, of: opts.retries, delay, reason: describe(e) }, "retrying the request after a network error or a 5xx answer from the upstream");
       await sleep(delay);`;
 export const RETRY_AFTER = RETRY_BEFORE.replace(OLD_EDIT, NEW_EDIT)
   .replace(OLD_LOOP, NEW_LOOP)
@@ -54,6 +55,50 @@ export const RETRY_AFTER = RETRY_BEFORE.replace(OLD_EDIT, NEW_EDIT)
     `import { setTimeout as sleep } from "node:timers/promises";`,
     `import { setTimeout as sleep } from "node:timers/promises";\nimport { log } from "../log";`,
   );
+
+/** A route table long enough that an edit near its end crosses from two-digit to three-digit line numbers. */
+const RESOURCES = ["accounts", "members", "invites", "projects", "tokens", "invoices", "plans", "webhooks", "events", "exports", "imports"];
+const ROUTE_LINES = RESOURCES.flatMap((r) => [
+  `  { method: "GET", path: "/v1/${r}", handler: ${r}.list },`,
+  `  { method: "POST", path: "/v1/${r}", handler: ${r}.create },`,
+  `  { method: "GET", path: "/v1/${r}/:id", handler: ${r}.get },`,
+  `  { method: "PATCH", path: "/v1/${r}/:id", handler: ${r}.update },`,
+  `  { method: "DELETE", path: "/v1/${r}/:id", handler: ${r}.remove },`,
+  `  { method: "GET", path: "/v1/${r}/:id/history", handler: ${r}.history },`,
+  `  { method: "POST", path: "/v1/${r}/:id/restore", handler: ${r}.restore },`,
+  `  { method: "GET", path: "/v1/${r}/export", handler: ${r}.exportAll },`,
+]);
+const OLD_ROUTES = `  { method: "GET", path: "/v1/health", handler: health.check },
+  { method: "GET", path: "/v1/ready", handler: health.ready },
+  { method: "GET", path: "/v1/live", handler: health.live },
+  { method: "GET", path: "/v1/version", handler: health.version },
+  { method: "GET", path: "/v1/metrics", handler: health.metrics },`;
+const NEW_ROUTES = `  { method: "GET", path: "/v1/health", handler: health.check },
+  { method: "GET", path: "/v1/ready", handler: health.ready },
+  // Upstream calls retry on network errors and 5xx answers; this reports how often.
+  { method: "GET", path: "/v1/health/retries", handler: health.retries },
+  { method: "GET", path: "/v1/live", handler: health.live },
+  { method: "GET", path: "/v1/version", handler: health.version },
+  { method: "GET", path: "/v1/metrics", handler: health.metrics },`;
+export const ROUTES_BEFORE = [
+  `import type { Route } from "./router";`,
+  `import * as handlers from "../handlers";`,
+  "",
+  "const { health, ...rest } = handlers;",
+  "",
+  "export const routes: Route[] = [",
+  ...ROUTE_LINES,
+  OLD_ROUTES,
+  "];",
+  "",
+].join("\n");
+const ROUTES_AFTER = ROUTES_BEFORE.replace(OLD_ROUTES, NEW_ROUTES);
+
+const LOG_FILE = `import pino from "pino";
+
+/** The service's one logger: JSON lines on stdout, the level from LOG_LEVEL (info by default). */
+export const log = pino({ level: process.env.LOG_LEVEL ?? "info" });
+`;
 
 export const CLIENT_BEFORE = `import { withRetry } from "./retry";
 
@@ -128,6 +173,7 @@ export async function toolShowcaseTurn(ctx: Ctx): Promise<void> {
   const root = "/Users/maya/code/atlas-api";
   writeDemoFile(ctx.rec, "atlas-api", "src/http/retry.ts", RETRY_BEFORE, "user", ctx.t);
   writeDemoFile(ctx.rec, "atlas-api", "src/http/client.ts", CLIENT_BEFORE, "user", ctx.t);
+  writeDemoFile(ctx.rec, "atlas-api", "src/http/routes.ts", ROUTES_BEFORE, "user", ctx.t);
   await turn(ctx, SHOWCASE_PROMPT, async (c, orch) => {
     await act(c, orch, [{ name: "bash", input: { folder: "atlas-api", command: "pnpm test -- --reporter=verbose" }, result: TEST_OUTPUT, ms: 4200 }]);
     await act(c, orch, [{ name: "bash", input: { folder: "atlas-api", command: "pnpm lint" }, result: LINT_OUTPUT, error: true, ms: 2600 }]);
@@ -167,6 +213,28 @@ export async function toolShowcaseTurn(ctx: Ctx): Promise<void> {
       },
     ]);
     writeDemoFile(c.rec, "atlas-api", "src/http/retry.ts", RETRY_AFTER, "agent", c.t);
+    // toolpolish: a new file, an edit whose line numbers cross 99 → 100, and a file an ACP agent deleted.
+    await act(c, orch, [
+      { name: "write_file", input: { folder: "atlas-api", path: "src/log.ts", content: LOG_FILE }, result: "wrote src/log.ts", ms: 200 },
+      {
+        name: "edit",
+        input: { folder: "atlas-api", path: "src/http/routes.ts", old_string: OLD_ROUTES, new_string: NEW_ROUTES },
+        result: "edited src/http/routes.ts",
+        ms: 300,
+      },
+      {
+        name: "delete",
+        input: {
+          title: "Delete src/http/legacyRetry.ts",
+          raw_input: { file_path: `${root}/src/http/legacyRetry.ts` },
+          locations: [{ path: `${root}/src/http/legacyRetry.ts` }],
+        },
+        result: "",
+        ms: 200,
+      },
+    ]);
+    writeDemoFile(c.rec, "atlas-api", "src/log.ts", LOG_FILE, "agent", c.t);
+    writeDemoFile(c.rec, "atlas-api", "src/http/routes.ts", ROUTES_AFTER, "agent", c.t);
     await act(c, orch, [
       {
         name: "edit",

@@ -144,6 +144,23 @@ const need = async (page, locator, what, timeout = 8000) => {
   }
 };
 
+/** Files tool, then a file by its tree path ("folder/dir/file"), expanding only the folders that are closed. */
+async function openTreePath(page, path) {
+  await tool(page, "Show files");
+  const tree = page.getByRole("tree", { name: "Project files" }).filter({ visible: true }).first();
+  await tree.waitFor({ timeout: 8000 });
+  const parts = path.split("/");
+  for (let i = 1; i < parts.length; i++) {
+    const row = tree.locator(`[role="treeitem"][data-path="${parts.slice(0, i).join("/")}"]`).first();
+    if ((await row.count()) && (await row.getAttribute("aria-expanded")) === "false") {
+      await row.click({ timeout: 8000 });
+      await page.waitForTimeout(400);
+    }
+  }
+  await tree.locator(`[role="treeitem"][data-path="${path}"]`).first().click({ timeout: 8000 });
+  await page.waitForTimeout(1500);
+}
+
 /* ---------- groups ---------- */
 
 export const GROUPS = {
@@ -1459,12 +1476,11 @@ export const GROUPS = {
     },
     {
       name: "sidebar-expanded",
-      text: "The sidebar: a project with several sessions expanded under its row (its five latest, then 'All sessions').",
+      text: "The sidebar's tree (decision 96): a project open to its sessions (its five latest and any at work, then 'Show all (N)').",
       sizes: "one",
       run: async (page, env) => {
         await boot(page, env);
-        await page.getByRole("button", { name: "Show recent sessions" }).first().click({ force: true, timeout: 10000 });
-        await need(page, page.getByRole("list", { name: "Recent sessions" }), "recent sessions under the project");
+        await need(page, page.getByRole("tree").getByRole("group").first(), "sessions under an open project");
         await page.waitForTimeout(400);
       },
     },
@@ -1767,6 +1783,94 @@ export const GROUPS = {
         await need(page, page.getByRole("group", { name: "Providers" }), "providers list");
         await page.getByRole("group", { name: "Providers" }).locator("[data-row]").first().click();
         await page.waitForTimeout(700);
+      },
+    },
+  ],
+  /* ---------- states built in the week of 2026-11-10 (backlog) ---------- */
+  "week-states": [
+    {
+      name: "shortcuts-sheet",
+      text: "Atlas API: the keyboard shortcuts sheet (palette → Keyboard shortcuts, or ?).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await palette(page, "Keyboard shortcuts");
+        await need(page, page.getByRole("dialog"), "shortcuts sheet");
+        await page.waitForTimeout(500);
+      },
+    },
+    {
+      name: "settings-integrations",
+      text: "Settings → Integrations: the plugins, their language servers, agents and tool servers.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env, "demo=1", "#/settings/integrations");
+        await need(page, page.locator("[data-settings]"), "settings page");
+        await page.waitForTimeout(900);
+      },
+    },
+    {
+      name: "image-preview",
+      text: "Files: atlas-web/public/logo.png previewed (pixel and file size, Fit | 100 %).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await openTreePath(page, "atlas-web/public/logo.png");
+        await need(page, page.locator("[data-image-preview] img"), "image preview");
+      },
+    },
+    {
+      name: "image-preview-svg",
+      text: "Files: an SVG shown as a picture, with the Preview | Source switch.",
+      sizes: "one",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await openTreePath(page, "atlas-web/public/mark.svg");
+        await need(page, page.locator("[data-image-preview] img"), "SVG preview");
+      },
+    },
+    {
+      name: "tool-showcase-expanded",
+      text: "Atlas API, its first request: every kind of tool call, each row opened.",
+      sizes: "one",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        const turn = page.locator("[data-turn-key]").first();
+        await turn.scrollIntoViewIfNeeded();
+        const rows = turn.locator('[data-activity-row] [aria-expanded="false"]:not([aria-haspopup])');
+        for (let i = 0; i < 12 && (await rows.count()); i++) {
+          await rows.first().click({ timeout: 4000 });
+          await page.waitForTimeout(200);
+        }
+        await need(page, page.locator("[data-tool-body]"), "an opened tool call");
+        await page.keyboard.press("Escape");
+        await turn.scrollIntoViewIfNeeded();
+      },
+    },
+    {
+      name: "turn-changes-expanded",
+      text: "Atlas API: a turn's changed-files line opened to its rows and a diff.",
+      sizes: "one",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        const line = page.locator("[data-turn-changes]").first();
+        await line.scrollIntoViewIfNeeded();
+        await line.getByRole("button").nth(1).click({ timeout: 8000 });
+        await page.waitForTimeout(800);
+      },
+    },
+    {
+      name: "project-gone",
+      text: "A project address that no longer exists (deleted in another window): the place says so, with the way Home.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env, "demo=1", "#/p/prj_gone");
+        await need(page, page.getByText(/no longer exists/), "project-gone state", 10000);
       },
     },
   ],

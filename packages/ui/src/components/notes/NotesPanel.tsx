@@ -16,6 +16,7 @@ import { SearchField } from "../primitives/SearchField";
 import { NoteDetail } from "./NoteDetail";
 import { NoteEditor } from "./NoteEditor";
 import { useNoteDoc } from "./useNoteDoc";
+import { PanelPurpose } from "../shared/PanelPurpose";
 
 type Mode = { kind: "view" } | { kind: "edit" } | { kind: "new" };
 
@@ -119,6 +120,7 @@ export function NotesPanel() {
       <Panel
         name="notes"
         title="Notes"
+        lead={<PanelPurpose tool="notes" />}
         notice={problem ? <Notice tone="error">{problem}</Notice> : undefined}
         actions={
           <>
@@ -134,7 +136,7 @@ export function NotesPanel() {
           </>
         }
         // An empty project has nothing to index: no footer then (B4).
-        {...(state.notes.length > 0 ? { footer: indexFooter(state.notes) } : {})}
+        {...(state.notes.length > 0 ? { footer: <NotesFooter notes={state.notes} /> } : {})}
       >
         {empty ? (
           <PanelEmpty title="No notes yet">Decisions and facts saved while working appear here, and agents read them when they are relevant.</PanelEmpty>
@@ -198,4 +200,10 @@ function NoteRow(props: { note: Note; now: number; active: boolean; onPick(): vo
       trailing={<span aria-hidden className="size-6" />}
     />
   );
+}
+
+/** The index line in plain words; the counts are its tooltip (walk B13). */
+function NotesFooter({ notes }: { notes: Parameters<typeof indexFooter>[0] }) {
+  const { text, tip } = indexFooter(notes);
+  return <span title={tip}>{text}</span>;
 }

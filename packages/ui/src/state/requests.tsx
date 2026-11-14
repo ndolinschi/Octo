@@ -8,7 +8,8 @@ import { errorMessage } from "../lib/format";
 import { createRequiredContext } from "../lib/context";
 
 /** One user message of a project's orchestrator thread. */
-export type Request = { id: number; text: string; created_at: string };
+/** `session_id`: the main session the request was made in (parallel sessions), when the harness says. */
+export type Request = { id: number; text: string; created_at: string; session_id?: string };
 
 /** The first line of the orchestrator's latest reply (Home, decision 23). */
 export type Reply = { text: string; at: string };
@@ -22,7 +23,6 @@ type Entry = { updatedAt: string; requests: Request[] | null; reply: Reply | nul
 class RequestStore {
   private entries = new Map<string, Entry>();
   private listeners = new Set<() => void>();
-  private orchestrators = new Map<string, string>();
   /** Home asks for every project at once: at most 4 loads in flight. */
   private limiter = new Limiter(4);
   constructor(private bridge: Bridge) {}
@@ -56,15 +56,12 @@ class RequestStore {
 
   private async read(project: ProjectSummary) {
     try {
-      let orchestrator = this.orchestrators.get(project.id);
-      if (!orchestrator) {
-        orchestrator = (await this.bridge.getProject(project.id)).orchestrator_agent_id;
-        this.orchestrators.set(project.id, orchestrator);
-      }
+      // The default session's root: read each time (it moves when another session becomes the default, decision 96).
+      const orchestrator = (await this.bridge.getProject(project.id)).orchestrator_agent_id;
       const messages = await this.bridge.listMessages(project.id, orchestrator);
       const requests = messages
         .filter((m) => m.role === "user")
-        .map((m) => ({ id: m.id, text: requestTitle(promptText(m)).trim(), created_at: m.created_at }))
+        .map((m) => ({ id: m.id, text: requestTitle(promptText(m)).trim(), created_at: m.created_at, ...(m.session_id ? { session_id: m.session_id } : {}) }))
         .filter((r) => r.text)
         .reverse();
       this.set(project.id, { updatedAt: project.updated_at, requests, reply: latestReply(messages), error: null, loading: false });

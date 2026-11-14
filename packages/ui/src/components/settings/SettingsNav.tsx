@@ -1,4 +1,4 @@
-import { ArrowLeft, Blocks, Brain, Cpu, Gauge, Info, Palette, Plug, Settings, Shield, SquareCode, Terminal, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Blocks, Brain, Cpu, Gauge, Info, Palette, Plug, Settings, Shield, Smartphone, SquareCode, Terminal, type LucideIcon } from "lucide-react";
 import { useRef, type KeyboardEvent } from "react";
 import { useRowKeys } from "../../lib/hooksMore";
 import { settingsHref } from "../../lib/route";
@@ -6,7 +6,11 @@ import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
 import { ScrollArea } from "../primitives/ScrollArea";
 import { SearchField } from "../primitives/SearchField";
-import { SECTIONS, type SectionId } from "./settingsIndex";
+import { cn } from "../../lib/cn";
+import { navGroups } from "./navGroups";
+import type { SectionId } from "./settingsIndex";
+
+const GROUPS = navGroups();
 
 const GLYPHS: Record<SectionId, LucideIcon> = {
   general: Settings,
@@ -19,6 +23,7 @@ const GLYPHS: Record<SectionId, LucideIcon> = {
   memory: Brain,
   commands: Terminal,
   privacy: Shield,
+  remote: Smartphone,
   about: Info,
 };
 
@@ -41,16 +46,24 @@ export function SettingsNav(props: {
         <ListRow size="md" tone="quiet" title="Back" tip="Back to the app" leading={<Glyph icon={ArrowLeft} size={16} />} onClick={props.onBack} />
         <SearchField label="Search settings" value={props.query} onChange={props.onQuery} onKeyDown={props.onSearchKey} />
         <ScrollArea ref={sections} className="flex min-h-0 flex-1 flex-col">
-          {SECTIONS.map((s) => (
-            <ListRow
-              key={s.id}
-              size="md"
-              title={s.label}
-              leading={<Glyph icon={GLYPHS[s.id]} size={16} />}
-              href={settingsHref(s.id)}
-              selected={!props.searching && s.id === props.section}
-              onClick={() => props.onQuery("")}
-            />
+          {/* G14: three quiet groups. A caption is a 32px row with its text on the rows' text edge (the sidebar's "Projects"). */}
+          {GROUPS.map((g, i) => (
+            <div key={g.title} role="group" aria-labelledby={`settings-nav-${i}`} className={cn("flex flex-col", i > 0 && "mt-2")}>
+              <h2 id={`settings-nav-${i}`} className="flex h-row-nav shrink-0 items-center pl-8 text-xs text-fg-3">
+                {g.title}
+              </h2>
+              {g.sections.map((s) => (
+                <ListRow
+                  key={s.id}
+                  size="md"
+                  title={s.label}
+                  leading={<Glyph icon={GLYPHS[s.id]} size={16} />}
+                  href={settingsHref(s.id)}
+                  selected={!props.searching && s.id === props.section}
+                  onClick={() => props.onQuery("")}
+                />
+              ))}
+            </div>
           ))}
         </ScrollArea>
       </div>

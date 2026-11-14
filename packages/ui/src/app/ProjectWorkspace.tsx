@@ -49,7 +49,7 @@ const CHAT_SLOTS: ChatSlots = {
 };
 
 /** One project: header row, then the dock of tab groups. */
-export function ProjectWorkspace(props: { agentId: string | null; onLost(): void }) {
+export function ProjectWorkspace(props: { agentId: string | null; sessionId?: string | null; onLost(): void }) {
   const [settings, setSettings] = useState(false);
   const openSettings = useCallback(() => setSettings(true), []);
   const { projectId, live, loadError, project } = useProject();
@@ -62,7 +62,7 @@ export function ProjectWorkspace(props: { agentId: string | null; onLost(): void
   return (
     // The file-view state sits above the workspace: the dock's width floors read each group's tree column (decision 94a).
     <FileViewProvider projectId={projectId}>
-      <WorkspaceProvider routeAgentId={props.agentId} onSettings={openSettings}>
+      <WorkspaceProvider routeAgentId={props.agentId} routeSessionId={props.sessionId ?? null} onSettings={openSettings}>
         <Files>
           <ChatSlotsProvider value={CHAT_SLOTS}>
             <Suspense fallback={null}>

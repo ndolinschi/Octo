@@ -28,6 +28,9 @@ import { CodeEditor } from "./CodeEditor";
 import { EditorStatus } from "./EditorStatus";
 import { CompletionStatus } from "./editor/completion/CompletionStatus";
 import { fileIcon, isMarkdown } from "../primitives/fileIcons";
+import { fileSizeLabel, imageType, isSvg } from "../../lib/imagePreview";
+import { TOOL_PURPOSE } from "../../lib/toolPurpose";
+import { ImagePreview } from "./ImagePreview";
 /** The Markdown preview loads with the first Markdown file (its own chunk). */
 const MarkdownPreview = lazy(() => import("./MarkdownPreview").then((m) => ({ default: m.MarkdownPreview })));
 import { TreeColumn } from "./TreeColumn";
@@ -59,6 +62,8 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   const file = fileKey ? code.file(fileKey) : undefined;
   const { folder, path } = fileKey ? splitKey(fileKey) : { folder: "", path: "" };
   const markdown = fileKey !== null && isMarkdown(path);
+  // SVG is text that is also a picture: Preview | Source like Markdown, the same remembered choice (walk B15).
+  const svg = fileKey !== null && isSvg(path);
   const [mode, setMode] = useTabMemory(tab, MD_MODE, "preview");
   const floating = useFloatingHere(tab);
   const [floatHeight, setFloatHeight] = useState(0);
@@ -127,7 +132,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   const ready = file?.status === "ready" && !opening;
   let cover: ReactNode = null;
   if (!fileKey) {
-    cover = code.folders.length ? <Cover title="No file open">Pick a file in the tree, or filter the tree by name.</Cover> : <NoFolders />;
+    cover = code.folders.length ? <Cover title="No file open">{TOOL_PURPOSE.files} Filter the tree by name to find one.</Cover> : <NoFolders />;
   } else if (!ready) {
     cover = <Message file={file} folder={folder} path={path} showLoading={opening} />;
   } else if (markdown && mode === "preview") {
@@ -135,6 +140,19 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
       <Suspense fallback={null}>
         <MarkdownPreview file={file} bottomRoom={bottomRoom} onOpen={openHere} />
       </Suspense>
+    );
+  } else if (svg && mode === "preview" && project) {
+    cover = (
+      <ImagePreview
+        key={file.key}
+        projectId={project.id}
+        folder={folder}
+        path={path}
+        sizeHint={undefined}
+        svgText={code.buffers.value(file.key) ?? file.content}
+        fallback={null}
+        actions={null}
+      />
     );
   }
   const body = (
@@ -204,7 +222,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
         )}
         <span data-file-actions className="flex shrink-0 items-center gap-1 empty:hidden">
           {fileKey && <CompletionStatus fileKey={fileKey} compact={compact} />}
-          {markdown && file?.status === "ready" && <ModeToggle mode={mode} onChange={setMode} />}
+          {(markdown || svg) && file?.status === "ready" && <ModeToggle label={svg ? "Image view" : "Markdown view"} mode={mode} onChange={setMode} />}
           {fileKey && <MoreMenu tab={tab} folder={folder} path={path} />}
           {!page && (
             <IconButton
@@ -445,10 +463,10 @@ function Sep() {
 }
 
 /** Preview | Source for Markdown (remembered per tab): the app's `Segmented` (a track, the chosen one raised). */
-function ModeToggle({ mode, onChange }: { mode: Mode; onChange(m: Mode): void }) {
+function ModeToggle({ label, mode, onChange }: { label: string; mode: Mode; onChange(m: Mode): void }) {
   return (
     <Segmented
-      label="Markdown view"
+      label={label}
       options={[
         { id: "preview", label: "Preview" },
         { id: "source", label: "Source" },
@@ -510,6 +528,7 @@ function MoreMenu({ tab, folder, path }: { tab: TabId; folder: string; path: str
 
 function Message({ file, folder, path, showLoading }: { file: OpenFile | undefined; folder: string; path: string; showLoading: boolean }) {
   const code = useCode();
+  const projectId = useProject().project?.id;
   const [, copy] = useCopy();
   const name = path.slice(path.lastIndexOf("/") + 1);
   if (showLoading || !file || file.status === "loading" || file.status === "ready") {
@@ -541,19 +560,24 @@ function Message({ file, folder, path, showLoading }: { file: OpenFile | undefin
       </Button>
     </span>
   );
+  const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const listedSize = code.dirs[fileKeyOf(folder, parent)]?.entries.find((e) => e.path === path)?.size;
   if (file.status === "too_large") {
+    const image = imageType(path) !== null;
     return (
-      <Cover title="Too large to open here" actions={actions}>
-        {name} is larger than 2 MiB.
+      <Cover title={image ? "Too large to preview" : "Too large to open here"} actions={actions}>
+        {name} is {listedSize !== undefined ? `${fileSizeLabel(listedSize)}; the limit is 2 MB` : "larger than 2 MB"}.
       </Cover>
     );
   }
   if (file.status === "binary") {
-    return (
+    const notice = (
       <Cover title="Binary file" actions={actions}>
         {name} can't be shown as text.
       </Cover>
     );
+    if (imageType(path) === null || !projectId) return notice;
+    return <ImagePreview key={file.key} projectId={projectId} folder={folder} path={path} sizeHint={listedSize} fallback={notice} actions={actions} />;
   }
   return (
     <Cover title={`Couldn't open ${name}`} tone="err" actions={actions}>

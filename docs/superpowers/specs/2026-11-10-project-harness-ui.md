@@ -3469,3 +3469,39 @@ prose, 20 for semibold headings); a previous failed turn's notice stays beside a
 without the owner's proxy); the exit code of a built-in `bash` is parsed from its output; G10, G11, G14, G15 and the
 @-contexts of G6 are not started. Not verified: anything against a live harness; real ACP diff payloads; Details and
 the Agents panel marks in the browser; the line-number click in the Changes diff.
+
+## As built — sessions in the sidebar, the changed-code blocks, the backlog (2026-11-14)
+
+- **Decision 96 (parallel sessions, phase 2)** revises decisions 23, 26 and 63: the sidebar is a tree of projects and
+  their sessions, a tab is a session, the composer names the session it sends to. The contract and what was verified
+  are in `2026-11-14-parallel-sessions-design.md` ("As built — Phase 2").
+- **Tool group and changed code** (the owner: "the block about the changed code does not look good"). One grid for
+  every diff row: `[old][new]` number columns sized to the largest number, an 8px gap, the sign in its own 1ch column,
+  then the code; a sticky opaque gutter; quiet tints (`color-mix` of ok/err at 8–9 % on the code, 15–18 % on the
+  gutter); the code scrolls sideways under the gutter with a 24px edge fade and never wraps. A body sits on the row's
+  text edge (`bg-code-bg`, radius 8, inset 12) and ends in one action line ("Show all" left; "Open diff", "Go to line
+  N", "Raw" right) — no header band, no separate Raw row. Rows have one grammar (`callRow` in `lib/toolView.ts`): a
+  past-tense verb, the object in mono, a quiet qualifier, the state as the glyph and a quiet word; built-in and ACP
+  tools read the same. Consecutive edits of one file are one row ("Edited src/http/retry.ts · 2 edits +4 −2"). The
+  group's glyph is the worst state only when every call ended that way; problems are a dim suffix. The turn's footer
+  names up to three files and uses the same row and body. Command output is `pre-wrap` with a 16px hanging indent; the
+  command is repeated in the body only when it is long. Monaco's diff colours (Changes, Review) do not use these
+  tints yet.
+- **Usage** holds everything under the table until its three requests answer and shows a table-shaped skeleton only
+  after the delay: CLS 0.34 / 0.24 / 0.10 → 0 at 640 / 900 / 1440.
+- **Files preview images** (png, jpg, gif, webp, svg, ico, avif) from `GET …/files/content?encoding=base64` (the
+  optional bridge method `readFileBytes`; the desktop host loads its code with the first image): pixel and file size,
+  Fit | 100 %; an SVG is drawn through an `<img>` (a script inside it does not run) with Preview | Source; over 2 MiB
+  says "Too large to preview".
+- **Review's diff header** has "Go to line N" and "Open file". **Panels** (Agents, Notes, Memory, Usage, Details, Side
+  question) carry their purpose on an (i) in the header (`lib/toolPurpose.ts`); Files says it in its empty state;
+  Changes does not yet. Notes' footer is a plain sentence with the counts in its tooltip.
+- **Settings nav** is grouped under App, Models and agents, Workspace (`settings/navGroups.ts`); "Default
+  (recommended)" and "default" read "Default"; a router provider's detail shows its status, models and where its
+  settings are (not seen in a browser: no demo router).
+- **Vendor marks** are scaled by ink coverage so they sit at the weight of the 1.5px line icons (coverage 0.15–0.52 →
+  0.17–0.39).
+- Entry bundle 158.59 kB of 158.90.
+
+Not verified: images on a live harness and at 390px; the review workspace open; real ACP titles in tool rows; "+N
+more" in the footer; anything in WebKit.

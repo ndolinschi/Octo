@@ -1,4 +1,5 @@
 import { Check, CircleX } from "lucide-react";
+import { ancestorsOf } from "@octo/agent-client";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent } from "react";
@@ -95,7 +96,10 @@ export function FloatingComposer({ onHeight, rest = false }: { onHeight?(px: num
     const list = requestSummaries(buildTurns(messages), running, state.lastTurn?.status ?? null);
     return list[list.length - 1] ?? null;
   }, [messages, running, state.lastTurn?.status]);
-  const agentsRunning = state.agentOrder.filter((id) => id !== orchestratorId && state.agents[id]?.status === "running").length;
+  // This session's agents only (decision 96: another session's work is not this composer's).
+  const agentsRunning = state.agentOrder.filter(
+    (id) => id !== orchestratorId && state.agents[id]?.status === "running" && (!orchestratorId || ancestorsOf(state, id).some((a) => a.id === orchestratorId)),
+  ).length;
 
   let turn: React.ReactNode = null;
   if (last?.state === "working") {

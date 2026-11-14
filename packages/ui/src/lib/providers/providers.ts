@@ -1,5 +1,5 @@
 import type { Provider, ProvidersResponse } from "@octo/agent-client";
-import { agentModelLabel, displayId, modelLabel, modelName } from "../models";
+import { agentModelLabel, displayId, modelLabel, modelName, readableModelId, tidyAgentLabel } from "../models";
 
 export const isReady = (p: Pick<Provider, "state">): boolean => p.state === "ready";
 
@@ -12,7 +12,7 @@ export function chipLabel(value: string, list: ProvidersResponse | null): string
     const agent = agents.find((p) => p.id === id);
     if (agent && model) {
       const known = agent.models.find((m) => m.id === model);
-      return `${agent.label} · ${known ? agentModelLabel(known) : displayId(model)}`;
+      return `${agent.label} · ${known ? agentModelLabel(known) : tidyAgentLabel(readableModelId(model))}`;
     }
     return modelName(value, agents);
   }

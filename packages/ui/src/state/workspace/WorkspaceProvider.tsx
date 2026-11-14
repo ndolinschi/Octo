@@ -2,9 +2,10 @@ import { focusSoon, focusSurfaceSoon } from "../../lib/focus";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMediaQuery, useLatest } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
-import { loadPref, numberCodec, PREFS, usePersistentState, writePref } from "../../lib/storage";
-import { useNav, type WorkspaceApi, type WorkspaceCommand } from "../nav";
+import { loadPref, numberCodec, PREFS, usePersistentState, writePref, type Codec } from "../../lib/storage";
+import { useNav, type WorkspaceApi } from "../nav";
 import { useProject } from "../project";
+import { sessionRoot } from "@octo/agent-client";
 import { hasQueuedSession } from "./sessionsStart";
 import * as L from "./layout";
 import type { Layout, TabId, ToolTab } from "./layout";
@@ -33,7 +34,6 @@ import { type FileKey, keyFolder } from "../../lib/files";
 
 /** Modifier as shown in shortcut hints. */
 export { MOD_LABEL as MOD } from "../../lib/keys";
-import { MOD_LABEL } from "../../lib/keys";
 
 /** Where a dragged tab lands. */
 export type DropTarget =
@@ -61,6 +61,17 @@ export type WorkspaceValue = {
   watched: TabId | null;
   /** Agent of the conversation last focused (for the agents tree selection). */
   currentAgentId: string | null;
+  /**
+   * Parallel sessions (decision 96): the main session the conversation tab (Chat) shows — the route's, else the one it showed
+   * last, else null (the project's default session).
+   */
+  chatSessionId: string | null;
+  /** The main session of the conversation focused last (Chat's or a session tab's): where the floating composer sends. */
+  focusedSessionId: string | null;
+  /** Shows main session `sessionId`: its own tab when one is open, else in the conversation tab. */
+  showSession(sessionId: string): void;
+  /** `/clear` in the conversation of session `from` made session `to`: the tab that showed `from` shows `to`. */
+  followSession(from: string | null, to: string): void;
   /** Decision 68: the state of each project command's run tab, by lowercase name (only running and failed are listed). Set by the commands feature. */
   runStatuses: Readonly<Record<string, "running" | "failed">>;
   setRunStatuses(statuses: Readonly<Record<string, "running" | "failed">>): void;
@@ -165,13 +176,50 @@ function conversationOf(tab: TabId): string | null | undefined {
   return undefined;
 }
 
+/** The session of a conversation tab: Chat's (`chat`), a session tab's id; undefined for any other tab. */
+function sessionOf(tab: TabId, chat: string | null): string | null | undefined {
+  const ref = L.parseTab(tab);
+  if (ref?.kind === "chat") return chat;
+  if (ref?.kind === "session") return ref.sessionId;
+  return undefined;
+}
+
+/** A session id as plain text; nothing stored is null. */
+const SESSION_CODEC: Codec<string | null> = { parse: (raw) => (raw && raw.trim() !== "" ? raw : null), stringify: (v) => v ?? "" };
+
 /**
  * The dock of one project: tab groups, what is open where, persistence, routing and the
  * keyboard shortcuts. Layout operations are the pure functions in `layout.ts`.
  */
-export function WorkspaceProvider({ routeAgentId, onSettings, children }: { routeAgentId: string | null; onSettings(): void; children: ReactNode }) {
+export function WorkspaceProvider({
+  routeAgentId,
+  routeSessionId = null,
+  onSettings,
+  children,
+}: {
+  routeAgentId: string | null;
+  routeSessionId?: string | null;
+  onSettings(): void;
+  children: ReactNode;
+}) {
   const nav = useNav();
-  const { projectId, project, state, clearSide } = useProject();
+  const { projectId, project, state, clearSide, synced } = useProject();
+  // Decision 96: `#/p/<pid>/s/<sid>` shows that session; `#/p/<pid>` the one shown last here, else the default.
+  const [picked, setChatSessionState] = useState<{ id: string | null; stored: boolean }>(() =>
+    routeSessionId !== null ? { id: routeSessionId, stored: false } : { id: loadPref(PREFS.lastSession(projectId), SESSION_CODEC), stored: true },
+  );
+  // A session shown from storage (not asked for by the route) that no longer exists: the default session instead.
+  const storedGone = picked.stored && picked.id !== null && synced > 0 && !state.sessions.list.some((x) => x.id === picked.id);
+  const chatSession = storedGone ? null : picked.id;
+  const chatSessionRef = useLatest(chatSession);
+  const setChatSession = useCallback(
+    (sid: string | null) => {
+      chatSessionRef.current = sid;
+      setChatSessionState({ id: sid, stored: false });
+      writePref(PREFS.lastSession(projectId), SESSION_CODEC.stringify(sid));
+    },
+    [projectId, chatSessionRef],
+  );
   const [layout, setLayout] = usePersistentState(PREFS.layout(projectId), L.layoutCodec, { debounceMs: PERSIST_LAYOUT_MS });
   const layoutRef = useRef(layout);
   const [dockWidth, setDockWidth] = useState(0);
@@ -208,8 +256,8 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
 
   /** Applies a layout; when the focused tab is a conversation its route goes into the URL. */
   const commit = useCallback(
-    (next: Layout, options: { route?: boolean; focusTab?: TabId } = {}) => {
-      if (next === layoutRef.current && !options.focusTab) return;
+    (next: Layout, options: { route?: boolean; focusTab?: TabId; force?: boolean } = {}) => {
+      if (next === layoutRef.current && !options.focusTab && !options.force) return;
       layoutRef.current = next;
       setLayout(next);
       // Focus leaving the maximised group (a tool opened elsewhere) or the group going away ends it, for good.
@@ -222,16 +270,17 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       const active = L.focusedGroup(next).active;
       if (!cycling.current) mru.current = mruTouch(mru.current, active);
       const agent = conversationOf(active);
-      if (agent === undefined) return;
+      const session = sessionOf(active, chatSessionRef.current);
+      if (agent === undefined && session === undefined) return;
       setLastConversation(active);
       if (options.route === false) return;
-      const hash = hrefFor(projectId, agent);
+      const hash = agent ? hrefFor(projectId, agent) : hrefFor(projectId, null, session ?? null);
       if (window.location.hash !== hash) {
-        selfNav.current = agent ?? "";
+        selfNav.current = agent ? `a:${agent}` : session ? `s:${session}` : "";
         window.location.hash = hash;
       }
     },
-    [projectId, setLayout],
+    [projectId, setLayout, chatSessionRef],
   );
 
   /** Opens a tab in the side group, creating it right of Chat's group (`fraction` of the row) when there is none. */
@@ -314,6 +363,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     [commit, narrowRef],
   );
 
+  const chatRoot = chatSession ? sessionRoot(state, chatSession) : "";
   const value = useMemo<WorkspaceValue>(() => {
     const isVisible = (tab: TabId) => {
       const g = L.groupOf(layout, tab);
@@ -326,7 +376,25 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       narrow,
       floorOf: (groupId) => floors[layout.groups.findIndex((g) => g.id === groupId)] ?? 0,
       watched: isVisible(lastConversation) ? lastConversation : null,
-      currentAgentId: agentOf === undefined ? null : (agentOf ?? project?.orchestrator_agent_id ?? null),
+      // Chat's agent is its session's root (decision 96), else the project's default orchestrator.
+      currentAgentId: agentOf === undefined ? null : (agentOf ?? (chatRoot || (project?.orchestrator_agent_id ?? null))),
+      chatSessionId: chatSession,
+      focusedSessionId: sessionOf(lastConversation, chatSession) ?? chatSession,
+      showSession: (sessionId) => {
+        const current = layoutRef.current;
+        const tab = L.sessionTab(sessionId);
+        if (L.groupOf(current, tab)) return commit(L.activate(current, tab));
+        setChatSession(sessionId);
+        // Chat may be active already: the route changes all the same (it names the session).
+        commit(L.activate(current, L.CHAT), { force: true });
+      },
+      followSession: (from, to) => {
+        const current = layoutRef.current;
+        const tab = from === null ? null : L.sessionTab(from);
+        if (tab && L.groupOf(current, tab)) return commit(L.replace(current, tab, L.sessionTab(to)));
+        setChatSession(to);
+        commit(L.activate(current, L.CHAT), { force: true });
+      },
       focusRequest,
       maximised,
       runStatuses,
@@ -527,6 +595,9 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     fileFraction,
     projectId,
     project,
+    chatRoot,
+    chatSession,
+    setChatSession,
     layout,
     narrow,
     floors,
@@ -557,25 +628,55 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   const agentsLoaded = project !== null && state.agentOrder.length > 0;
   // On mount without an agent route the stored layout's active tabs stand (a reload keeps what was showing);
   // a later navigation to the project's bare route shows the orchestrator.
-  const handled = useRef<string | null>(routeAgentId === null ? "" : null);
+  const routeKey = routeAgentId ? `a:${routeAgentId}` : routeSessionId ? `s:${routeSessionId}` : "";
+  const handled = useRef<string | null>(routeAgentId === null && routeSessionId === null ? "" : null);
+  const sessionsKnown = synced > 0 || state.sessions.list.length > 0;
   useEffect(() => {
-    const key = routeAgentId ?? "";
-    if (handled.current === key) return;
-    if (selfNav.current === key) {
+    if (handled.current === routeKey) return;
+    if (selfNav.current === routeKey) {
       selfNav.current = null;
-      handled.current = key;
+      handled.current = routeKey;
+      return;
+    }
+    if (routeSessionId) {
+      const current = layoutRef.current;
+      const tab = L.sessionTab(routeSessionId);
+      if (L.groupOf(current, tab)) {
+        handled.current = routeKey;
+        return commit(L.activate(current, tab), { route: false });
+      }
+      // An agent session has its own tab; a main session (or one not in the list yet: the gone state says so) is Chat's.
+      if (!sessionsKnown) return;
+      handled.current = routeKey;
+      const known = state.sessions.list.find((x) => x.id === routeSessionId);
+      if (known?.kind === "agent") return value.openSession(routeSessionId);
+      setChatSession(routeSessionId);
+      commit(L.activate(current, L.CHAT), { route: false });
       return;
     }
     if (!routeAgentId) {
-      handled.current = key;
+      handled.current = routeKey;
       commit(L.activate(layoutRef.current, L.CHAT), { route: false });
       return;
     }
     if (!agentsLoaded) return;
-    handled.current = key;
+    handled.current = routeKey;
     if (state.agents[routeAgentId]) openAgent(routeAgentId, { route: false });
     else window.location.replace(hrefFor(projectId));
-  }, [routeAgentId, agentsLoaded, state.agents, projectId, commit, openAgent]);
+  }, [
+    routeKey,
+    routeAgentId,
+    routeSessionId,
+    agentsLoaded,
+    sessionsKnown,
+    state.agents,
+    state.sessions.list,
+    projectId,
+    commit,
+    openAgent,
+    setChatSession,
+    value,
+  ]);
 
   /* ---------- a tool asked for before this workspace mounted (Home → Usage) ---------- */
 
@@ -617,50 +718,12 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   /* ---------- palette ---------- */
 
   useEffect(() => {
-    const label = (tab: TabId) => tabButton(document, tab)?.dataset.label ?? tab;
     const api: WorkspaceApi = {
       openAgent: (id) => valueRef.current.openAgent(id),
       focusChat: () => valueRef.current.focusChat(),
       openTool: (tool) => valueRef.current.openTool(tool),
-      actions: () => {
-        const ws = valueRef.current;
-        const active = L.focusedGroup(layoutRef.current).active;
-        const name = label(active);
-        const out: WorkspaceCommand[] = [
-          { id: "tool-sessions", label: "Show sessions", detail: "conversations and agent sessions", run: () => ws.openTool("sessions") },
-          { id: "tool-agents", label: "Show agents", run: () => ws.openTool("agents") },
-          { id: "tool-notes", label: "Show notes", run: () => ws.openTool("notes") },
-          { id: "tool-files", label: "Show files", run: () => ws.openTool("files") },
-          { id: "tool-details", label: "Show project details", run: () => ws.openTool("details") },
-          { id: "tool-changes", label: "Show changes", detail: "what the agents changed", run: () => ws.openTool("changes") },
-          { id: "tool-review", label: "Review a pull request", detail: "pick one, read it, comment, submit", run: () => ws.openTool("review") },
-          { id: "tool-memory", label: "Show memory", detail: "what the project remembers", run: () => ws.openTool("memory") },
-          { id: "tool-usage", label: "Show usage", detail: "tokens, cost, limits", run: () => ws.openTool("usage") },
-          { id: "tool-side", label: "Ask a side question", detail: "not added to the conversation", shortcut: `${MOD_LABEL};`, run: () => ws.openTool("side") },
-          { id: "new-tab", label: "Open a tab…", detail: "tools, files, agents", shortcut: `${MOD_LABEL}T`, run: () => ws.openPicker() },
-        ];
-        if (ws.canMoveToOtherSide(active))
-          out.push({ id: "move", label: "Move tab to the other side", detail: name, shortcut: `${MOD_LABEL}\\`, run: () => ws.moveToOtherSide(active) });
-        if (ws.canSplitRight(active)) out.push({ id: "split", label: "Split right", detail: name, run: () => ws.splitRight(active) });
-        if (L.closable(active)) out.push({ id: "close", label: "Close tab", detail: name, shortcut: `${MOD_LABEL}W`, run: () => ws.requestClose([active]) });
-        if (L.allTabs(layoutRef.current).length > 1)
-          out.push({ id: "close-others", label: "Close other tabs", detail: name, run: () => ws.closeOthers(active) });
-        if (layoutRef.current.groups.length > 1 && !ws.narrow) out.push({ id: "equalize", label: "Make groups equal width", run: () => ws.equalize() });
-        return out;
-      },
-      tabs: () => {
-        const groups = layoutRef.current.groups;
-        const side = (i: number) => (groups.length === 1 ? undefined : i === 0 ? "left" : i === groups.length - 1 ? "right" : "middle");
-        return groups.flatMap((g, i) => {
-          const where = side(i);
-          return g.tabs.map((t) => ({
-            id: `tab:${t}`,
-            label: label(t),
-            ...(where === undefined ? {} : { detail: where }),
-            run: () => valueRef.current.activate(t),
-          }));
-        });
-      },
+      openSession: (id) => valueRef.current.openSession(id),
+      current: () => valueRef.current,
     };
     nav.setWorkspace(api);
     return () => nav.setWorkspace(null);

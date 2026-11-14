@@ -35,7 +35,11 @@ import type {
   MemorySearchResult,
   MemorySession,
   MemorySessionDetail,
+  CreatedSession,
+  GlobalSession,
   ProjectSession,
+  ProjectMode,
+  SendResult,
   ProjectSessionDetail,
   SessionMessageResult,
   Task,
@@ -209,10 +213,12 @@ export function createRareMethods({
    * (the notice's Retry) looks once more before it posts.
    */
   const unconfirmed = new Map<string, { text: string; since: number }>();
-  const post = async (id: string, payload: Record<string, unknown>) => {
+  /** Where a send goes: the project (its default session) or one main session (`sid`). */
+  const messagesPath = (id: string, sid?: string) => (sid === undefined ? `${p(id)}/messages` : `${p(id)}/sessions/${encodeURIComponent(sid)}/messages`);
+  const post = async (id: string, payload: Record<string, unknown>, sid?: string) => {
     const Abort = (globalThis as { AbortController?: new () => { signal: AbortSignalLike; abort(): void } }).AbortController;
     const ctl = Abort ? new Abort() : undefined;
-    const call = request("POST", `${p(id)}/messages`, payload, ctl?.signal);
+    const call = request("POST", messagesPath(id, sid), payload, ctl?.signal);
     let timer: unknown;
     try {
       return await Promise.race([
@@ -229,16 +235,25 @@ export function createRareMethods({
       timers.clearTimeout(timer);
     }
   };
-  /** `{ message }` or `{ queued }` when the harness stored this text at or after `since` (same machine, same clock). */
-  const stored = async (id: string, text: string, since: number): Promise<unknown> => {
+  /**
+   * `{ message }` or `{ queued }` when the harness stored this text at or after `since` (same machine, same clock): in the
+   * project's default conversation, or in main session `sid` (its root agent's messages and its own queue).
+   */
+  const stored = async (id: string, text: string, since: number, sid?: string): Promise<unknown> => {
     const after = (at: string) => Date.parse(at) >= since - 1000;
     const look = async () => {
-      const project = (await request("GET", p(id))) as Project;
-      const body = await request("GET", `${p(id)}/agents/${encodeURIComponent(project.orchestrator_agent_id)}/messages`);
+      let root: string;
+      if (sid === undefined) root = ((await request("GET", p(id))) as Project).orchestrator_agent_id;
+      else {
+        const detail = await request("GET", `${p(id)}/sessions/${encodeURIComponent(sid)}`);
+        root = isRecord(detail) && isRecord(detail.session) && typeof detail.session.root_agent_id === "string" ? detail.session.root_agent_id : "";
+      }
+      const body = root === "" ? null : await request("GET", `${p(id)}/agents/${encodeURIComponent(root)}/messages`);
       const messages = isRecord(body) && Array.isArray(body.messages) ? (body.messages as Message[]) : [];
       const message = messages.find((m) => m.role === "user" && after(m.created_at) && m.content.some((b) => b.type === "text" && b.text === text));
       if (message) return { message };
-      const queue = (await request("GET", `${p(id)}/queue`)) as QueueState | undefined;
+      const queue = (await request("GET", sid === undefined ? `${p(id)}/queue` : `${p(id)}/sessions/${encodeURIComponent(sid)}/queue`)) as
+        QueueState | undefined;
       const queued = queue?.messages.find((m) => m.text === text && after(m.created_at));
       return queued ? { queued } : null;
     };
@@ -250,26 +265,75 @@ export function createRareMethods({
       timers.clearTimeout(timer);
     }
   };
-  const send = async (id: string, payload: Record<string, unknown>): Promise<unknown> => {
+  const send = async (id: string, payload: Record<string, unknown>, sid?: string): Promise<unknown> => {
     const text = String(payload.text);
-    const prior = unconfirmed.get(id);
-    unconfirmed.delete(id);
+    // One unconfirmed send per conversation: the project's default one, or each main session's.
+    const key = sid === undefined ? id : `${id}\u0001${sid}`;
+    const prior = unconfirmed.get(key);
+    unconfirmed.delete(key);
     if (prior?.text === text) {
-      const found = await stored(id, text, prior.since);
+      const found = await stored(id, text, prior.since, sid);
       if (found) return found;
     }
     const since = timers.now();
     try {
-      return await post(id, payload);
+      return await post(id, payload, sid);
     } catch (e) {
       if (!(e instanceof BridgeError) || e.code !== "timeout") throw e;
-      const found = await stored(id, text, since);
+      const found = await stored(id, text, since, sid);
       if (found) return found;
-      unconfirmed.set(id, { text, since });
+      unconfirmed.set(key, { text, since });
       throw new BridgeError(0, "timeout", "Octo's local service didn't answer in time.", {
         action: "retry",
         hint: "Your text is kept. Retry looks in the conversation first, so nothing is sent twice.",
       });
+    }
+  };
+  /** The body of a send that may queue: a mode and attachments only when given. */
+  const sendPayload = (text: string, opts: { mode?: ProjectMode; attachments?: string[] } | undefined) => {
+    const payload: Record<string, unknown> = { text };
+    if (opts?.mode) payload.mode = opts.mode;
+    if (opts?.attachments && opts.attachments.length > 0) payload.attachments = opts.attachments;
+    return payload;
+  };
+  /** `{ message }` or `{ queued, waiting_for? }` from a send's answer. */
+  const sent = (body: unknown): SendResult => {
+    if (isRecord(body) && isRecord(body.queued)) {
+      const w = body.waiting_for;
+      return w === "turn" || w === "slot" ? { queued: body.queued as QueuedMessage, waiting_for: w } : { queued: body.queued as QueuedMessage };
+    }
+    if (isRecord(body) && isRecord(body.message)) return { message: body.message as unknown as Message };
+    throw new BridgeError(0, "invalid_response", 'missing "message" or "queued" in response');
+  };
+  /** `{ session, message?, queued?, waiting_for? }` of `POST /sessions` and `POST /sessions/{sid}/clear`. */
+  const created = (body: unknown): CreatedSession => {
+    if (!isRecord(body) || !isRecord(body.session)) throw new BridgeError(0, "invalid_response", 'missing "session" in response');
+    return body as unknown as CreatedSession;
+  };
+  const s = (id: string, sid: string) => `${p(id)}/sessions/${encodeURIComponent(sid)}`;
+  const exportFrom = async (path: string): Promise<BlobLike> => {
+    const doFetch = binaryFetch();
+    const headers: Record<string, string> = {};
+    if (token !== "") headers.Authorization = `Bearer ${token}`;
+    let res: FetchResponseLike;
+    try {
+      res = await doFetch(`${base}${path}`, { method: "GET", headers });
+    } catch (e) {
+      throw new BridgeError(0, "network_error", e instanceof Error ? e.message : String(e));
+    }
+    if (!res.ok) throw fail(res.status, await res.text());
+    const type = res.headers?.get("Content-Type") ?? "text/markdown";
+    const Blob = (globalThis as { Blob?: new (parts: unknown[], init?: { type?: string }) => BlobLike }).Blob;
+    if (!Blob) throw new BridgeError(0, "no_blob", "this environment has no Blob");
+    return new Blob([res.arrayBuffer ? await res.arrayBuffer() : await res.text()], { type });
+  };
+  const latestPlan = async (path: string) => {
+    try {
+      // `{"plan": null}` is "no plan"; an older harness answered 404 `not_found` instead.
+      return await unwrap<Plan | null>(request("GET", path), "plan");
+    } catch (e) {
+      if (e instanceof BridgeError && e.status === 404 && e.code === "not_found") return null;
+      throw e;
     }
   };
 
@@ -296,15 +360,8 @@ export function createRareMethods({
       if (!isRecord(body) || !isRecord(body.message)) throw new BridgeError(0, "invalid_response", 'missing "message" in response');
       return body.message as unknown as Message;
     },
-    sendOrQueueMessage: async (id, text, opts) => {
-      const payload: Record<string, unknown> = { text };
-      if (opts?.mode) payload.mode = opts.mode;
-      if (opts?.attachments && opts.attachments.length > 0) payload.attachments = opts.attachments;
-      const body = await send(id, payload);
-      if (isRecord(body) && isRecord(body.queued)) return { queued: body.queued as QueuedMessage };
-      if (isRecord(body) && isRecord(body.message)) return { message: body.message as unknown as Message };
-      throw new BridgeError(0, "invalid_response", 'missing "message" or "queued" in response');
-    },
+    sendOrQueueMessage: async (id, text, opts) => sent(await send(id, sendPayload(text, opts))),
+    sendSessionMessage: async (id, sid, text, opts) => sent(await send(id, sendPayload(text, opts), sid)),
     cancelTurn: async (id) => {
       await request("POST", `${p(id)}/cancel`);
     },
@@ -325,15 +382,7 @@ export function createRareMethods({
     },
     getUsage: (params) => request("GET", `/v1/usage${usageQuery(params)}`) as Promise<UsageReport>,
     getLimits: () => unwrap<Limit[]>(request("GET", "/v1/limits"), "limits"),
-    getLatestPlan: async (id) => {
-      try {
-        // `{"plan": null}` is "no plan"; an older harness answered 404 `not_found` instead.
-        return await unwrap<Plan | null>(request("GET", `${p(id)}/plans/latest`), "plan");
-      } catch (e) {
-        if (e instanceof BridgeError && e.status === 404 && e.code === "not_found") return null;
-        throw e;
-      }
-    },
+    getLatestPlan: (id) => latestPlan(`${p(id)}/plans/latest`),
     approvePlan: (id, planId) => request("POST", `${p(id)}/plans/${encodeURIComponent(planId)}/approve`) as Promise<{ plan: Plan; message: Message }>,
     rewind: (id, input) => request("POST", `${p(id)}/rewind`, input) as Promise<RewindReport>,
     compactNow: (id) => request("POST", `${p(id)}/compact`) as Promise<CompactResult | CompactSentToAgent>,
@@ -456,8 +505,38 @@ export function createRareMethods({
       await request("DELETE", `${p(id)}/memory/exchanges/${encodeURIComponent(eid)}`);
     },
     getSession: (id, sid) => request("GET", `${p(id)}/sessions/${encodeURIComponent(sid)}`) as Promise<ProjectSessionDetail>,
-    createSession: (id, title) => unwrap<ProjectSession>(request("POST", `${p(id)}/sessions`, title === undefined ? undefined : { title }), "session"),
-    resumeSession: (id, sid) => unwrap<ProjectSession>(request("POST", `${p(id)}/sessions/${encodeURIComponent(sid)}/resume`), "session"),
+    createSession: async (id, input) => created(await request("POST", `${p(id)}/sessions`, input ?? {})),
+    setDefaultSession: (id, sid) => unwrap<ProjectSession>(request("POST", `${s(id, sid)}/default`), "session"),
+    resumeSession: (id, sid) => unwrap<ProjectSession>(request("POST", `${s(id, sid)}/resume`), "session"),
+    listAllSessions: (params) => {
+      const q: string[] = [];
+      if (params?.kind !== undefined) q.push(`kind=${params.kind}`);
+      if (params?.state !== undefined) q.push(`state=${params.state}`);
+      if (params?.archived !== undefined) q.push(`archived=${params.archived}`);
+      if (params?.limit !== undefined) q.push(`limit=${params.limit}`);
+      if (params?.before !== undefined) q.push(`before=${encodeURIComponent(params.before)}`);
+      return unwrap<GlobalSession[]>(request("GET", `/v1/sessions${q.length ? `?${q.join("&")}` : ""}`), "sessions");
+    },
+    getSessionQueue: (id, sid) => request("GET", `${s(id, sid)}/queue`) as Promise<QueueState>,
+    editSessionQueued: (id, sid, qid, text) => request("PATCH", `${s(id, sid)}/queue/${encodeURIComponent(qid)}`, { text }) as Promise<QueuedMessage>,
+    removeSessionQueued: async (id, sid, qid) => {
+      await request("DELETE", `${s(id, sid)}/queue/${encodeURIComponent(qid)}`);
+    },
+    clearSessionQueue: async (id, sid) => {
+      await request("DELETE", `${s(id, sid)}/queue`);
+    },
+    resumeSessionQueue: async (id, sid) => {
+      await request("POST", `${s(id, sid)}/queue/resume`);
+    },
+    sendSessionQueuedNow: async (id, sid, qid, opts) => {
+      await request("POST", `${s(id, sid)}/queue/${encodeURIComponent(qid)}/send-now`, opts?.interrupt ? { interrupt: true } : undefined);
+    },
+    getSessionContext: (id, sid) => request("GET", `${s(id, sid)}/context`) as Promise<ContextOverview | ContextBreakdown>,
+    compactSession: (id, sid) => request("POST", `${s(id, sid)}/compact`) as Promise<CompactResult | CompactSentToAgent>,
+    clearSession: async (id, sid) => created(await request("POST", `${s(id, sid)}/clear`)),
+    rewindSession: (id, sid, input) => request("POST", `${s(id, sid)}/rewind`, input) as Promise<RewindReport>,
+    getSessionLatestPlan: (id, sid) => latestPlan(`${s(id, sid)}/plans/latest`),
+    exportSession: (id, sid) => exportFrom(`${s(id, sid)}/export?format=md`),
     patchSession: (id, sid, patch) => unwrap<ProjectSession>(request("PATCH", `${p(id)}/sessions/${encodeURIComponent(sid)}`, patch), "session"),
     deleteSession: async (id, sid) => {
       await request("DELETE", `${p(id)}/sessions/${encodeURIComponent(sid)}`);
@@ -530,22 +609,7 @@ export function createRareMethods({
       const body = await request("POST", `${p(id)}/queue/${encodeURIComponent(qid)}/send-now`);
       return { steered: isRecord(body) && body.steered === true };
     },
-    exportConversation: async (id) => {
-      const doFetch = binaryFetch();
-      const headers: Record<string, string> = {};
-      if (token !== "") headers.Authorization = `Bearer ${token}`;
-      let res: FetchResponseLike;
-      try {
-        res = await doFetch(`${base}${p(id)}/export?format=md`, { method: "GET", headers });
-      } catch (e) {
-        throw new BridgeError(0, "network_error", e instanceof Error ? e.message : String(e));
-      }
-      if (!res.ok) throw fail(res.status, await res.text());
-      const type = res.headers?.get("Content-Type") ?? "text/markdown";
-      const Blob = (globalThis as { Blob?: new (parts: unknown[], init?: { type?: string }) => BlobLike }).Blob;
-      if (!Blob) throw new BridgeError(0, "no_blob", "this environment has no Blob");
-      return new Blob([res.arrayBuffer ? await res.arrayBuffer() : await res.text()], { type });
-    },
+    exportConversation: (id) => exportFrom(`${p(id)}/export?format=md`),
     resolveApproval: async (id, aid, answer) => {
       await request("POST", `${p(id)}/approvals/${encodeURIComponent(aid)}`, answer);
     },

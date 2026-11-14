@@ -446,7 +446,7 @@ written in the file, shortened.
 | `2026-11-11-bots-design.md` | Standing autonomous agents with permissions | Draft for the owner; not built |
 | `2026-11-12-parity-backlog.md` | Features to add after the OpenCode and Cursor comparison (B1–B13) | B1–B7 and B11–B13 built; B8–B10 not built |
 | `2026-11-12-project-sessions-design.md` | Main sessions that can be continued, agent sessions made accessible, the Sessions tab | Harness (schema 13) and UI built; not verified with a real agent |
-| `2026-11-14-parallel-sessions-design.md` | Parallel sessions in a project: every main session addressable and running at once, worktrees, coordination tools between sessions, memory modes, the sidebar tree and its three views | Phase 1 (harness) built; phases 2–5 not built |
+| `2026-11-14-parallel-sessions-design.md` | Parallel sessions in a project: every main session addressable and running at once, worktrees, coordination tools between sessions, memory modes, the sidebar tree and its three views | Phases 1 (harness) and 2 (client and UI) built; phases 3–5 (worktrees, coordination, memory modes) not built |
 
 ### Research (`docs/superpowers/research/`)
 

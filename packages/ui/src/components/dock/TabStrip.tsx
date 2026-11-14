@@ -120,6 +120,7 @@ export function TabStrip(props: {
     state,
     projectName: project?.name,
     orchestratorId: project?.orchestrator_agent_id,
+    chatSessionId: ws.chatSessionId,
     file: code.file,
     comments: (key: FileKey) => counts?.get(key) ?? 0,
     runStatus: (name: string) => ws.runStatuses[name.toLowerCase()] ?? null,

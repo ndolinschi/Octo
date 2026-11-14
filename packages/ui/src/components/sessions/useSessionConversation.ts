@@ -20,21 +20,26 @@ type Read = { key: string; messages: Message[]; boundary?: string } | { key: str
  */
 export function useSessionConversation(session: ProjectSession): SessionConversation {
   const { bridge } = useApp();
-  const { projectId, project, state, ensureMessages } = useProject();
+  const { projectId, project, state, ensureMessages, parallel } = useProject();
   const orchestrator = project ? state.agents[project.orchestrator_agent_id] : undefined;
-  const live: Agent | undefined = session.kind === "agent" ? (session.agent_id ? state.agents[session.agent_id] : undefined) : orchestrator;
-  // A main session that is not current is history: it never streams, whatever the orchestrator is doing for the current one.
+  // Parallel sessions: every main session is its own root's conversation, live like the default one.
+  const root = parallel && session.kind === "main" && session.root_agent_id ? state.agents[session.root_agent_id] : undefined;
+  const live: Agent | undefined = session.kind === "agent" ? (session.agent_id ? state.agents[session.agent_id] : undefined) : (root ?? orchestrator);
+  const own = root !== undefined || session.kind === "agent" || session.current;
+  // Before parallel sessions, a main session that is not current is history: it never streams, whatever the orchestrator is
+  // doing for the current one.
   const agent = useMemo<Agent>(() => {
-    if (session.kind === "main") return { ...(live ?? placeholderAgent(session, projectId)), status: session.current ? (live?.status ?? "idle") : "idle" };
+    if (session.kind === "main") return { ...(live ?? placeholderAgent(session, projectId)), status: own ? (live?.status ?? "idle") : "idle" };
     return live ?? placeholderAgent(session, projectId);
-  }, [session, live, projectId]);
+  }, [session, live, projectId, own]);
   const liveMessages = live ? state.messages[live.id] : undefined;
-  const liveList = live !== undefined && (session.kind === "agent" || session.current) ? liveMessages : undefined;
+  const liveList = live !== undefined && own ? liveMessages : undefined;
   const useLive = liveList !== undefined;
   const agentId = live?.id;
+  const ownRoot = root !== undefined;
   useEffect(() => {
-    if (session.kind === "agent" && agentId) ensureMessages(agentId);
-  }, [session.kind, agentId, ensureMessages]);
+    if ((session.kind === "agent" || ownRoot) && agentId) ensureMessages(agentId);
+  }, [session.kind, ownRoot, agentId, ensureMessages]);
 
   const stamp = [session.id, session.last_activity_at, session.state, session.exchanges].join("|");
   const mine = session.id + "|";
@@ -65,7 +70,7 @@ export function useSessionConversation(session: ProjectSession): SessionConversa
     // session started, so a new empty session shows "No requests yet", not the conversation it followed.
     const since = Date.parse(session.started_at);
     const ofThis = (m: Message) => m.session_id === session.id || (m.session_id === undefined && !(Date.parse(m.created_at) < since));
-    const messages = session.kind === "main" ? liveList.filter(ofThis) : liveList;
+    const messages = session.kind === "main" && !ownRoot ? liveList.filter(ofThis) : liveList;
     const boundary = read && "messages" in read && read.key.startsWith(mine) ? read.boundary : undefined;
     return { status: "ok", agent, messages, ...(boundary ? { boundary } : {}) };
   }

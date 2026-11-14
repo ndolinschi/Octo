@@ -3,7 +3,7 @@ import { MessageSquareShare } from "lucide-react";
 import { useState } from "react";
 import { formatTokens } from "../../lib/format";
 import { EMPTY_FIRST_LINE, EMPTY_SESSION_LINE } from "../../lib/sessions/carry";
-import { canDelete, detailLine, earlierSession, hasNoRequests, isWorking, parentOf } from "../../lib/sessions/model";
+import { canDelete, detailLine, earlierSession, hasNoRequests, isDefaultSession, isWorking, parentOf } from "../../lib/sessions/model";
 import { roleText } from "../../lib/orchestrator";
 import { useModelNames } from "../../state/modelNames";
 import { useProject } from "../../state/project";
@@ -58,7 +58,9 @@ export function SessionDetail(props: {
 
   const openRequest = () => {
     if (!s.turn_id) return;
-    ws?.focusChat();
+    // The request is in the conversation of the session that started the agent (decision 96: that session's tab).
+    if (parent && ws) ws.showSession(parent.id);
+    else ws?.focusChat();
     nav.requestTurn({ projectId, messageId: s.turn_id });
   };
   return (
@@ -74,7 +76,8 @@ export function SessionDetail(props: {
           setRenaming(false);
           void actions.rename(s.id, title);
         }}
-        onResume={() => void actions.resume(s.id)}
+        onMakeDefault={() => void actions.makeDefault(s.id)}
+        onOpen={s.kind === "main" && ws ? () => ws.showSession(s.id) : undefined}
         onArchive={(next) => void actions.archive(s.id, next)}
         canDelete={canDelete(props.list, s)}
         onDelete={() => {
@@ -89,8 +92,8 @@ export function SessionDetail(props: {
           session={s}
           agent={agent}
           fallbackTask={firstUserText(conversation.status === "ok" ? conversation.messages : [])}
-          startedBy={parent ? (parent.current ? orchestratorName : parent.title) : orchestratorName}
-          canOpenRequest={parent?.current === true && Boolean(s.turn_id)}
+          startedBy={parent ? (isDefaultSession(parent) ? orchestratorName : parent.title) : orchestratorName}
+          canOpenRequest={parent !== undefined && Boolean(s.turn_id)}
           onOpenRequest={openRequest}
           onOpenParent={parent && props.onSelect ? () => props.onSelect?.(parent.id) : undefined}
         />
@@ -141,7 +144,12 @@ export function SessionDetail(props: {
         {s.kind === "agent" ? (
           <SessionComposer key={`${s.id}:${s.can_message}`} session={s} actions={actions} />
         ) : (
-          <MainFooter session={s} busy={actions.busy} onResume={() => void actions.resume(s.id)} onOpenConversation={() => ws?.focusChat()} />
+          <MainFooter
+            session={s}
+            busy={actions.busy}
+            onMakeDefault={() => void actions.makeDefault(s.id)}
+            onOpenConversation={() => (ws ? ws.showSession(s.id) : undefined)}
+          />
         )}
       </footer>
       {confirm && <DeleteSessionDialog session={s} actions={actions} onClose={() => setConfirm(false)} onDeleted={props.onGone} />}
@@ -149,22 +157,25 @@ export function SessionDetail(props: {
   );
 }
 
-function MainFooter(props: { session: ProjectSession; busy: string | null; onResume(): void; onOpenConversation(): void }) {
-  if (props.session.current) {
-    return (
-      <div className="flex min-w-0 items-center gap-2">
-        <QuietLine>This is the project's current session. Continue it in the conversation.</QuietLine>
-        <Button variant="quiet" size="sm" icon={MessageSquareShare} className="ml-auto shrink-0" onClick={props.onOpenConversation}>
-          Open conversation
-        </Button>
-      </div>
-    );
-  }
+/** Decision 96: every main session is open; "Open" shows its conversation (where it continues), "Make default" moves where unaddressed messages go. */
+function MainFooter(props: { session: ProjectSession; busy: string | null; onMakeDefault(): void; onOpenConversation(): void }) {
+  const isDefault = isDefaultSession(props.session);
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <QuietLine>{props.session.archived ? "Archived. Resume it to continue." : "Resume this session to continue it."}</QuietLine>
-      <Button variant="primary" size="sm" className="ml-auto shrink-0" loading={props.busy === "resume"} onClick={props.onResume}>
-        Resume
+      <QuietLine>
+        {isDefault
+          ? "The project's default session: messages sent to the project go here."
+          : props.session.archived
+            ? "Archived. Open it to continue; a message brings it back."
+            : "Open it to continue this session."}
+      </QuietLine>
+      {!isDefault && (
+        <Button variant="quiet" size="sm" className="ml-auto shrink-0" loading={props.busy === "resume"} onClick={props.onMakeDefault}>
+          Make default
+        </Button>
+      )}
+      <Button variant="primary" size="sm" icon={MessageSquareShare} className={isDefault ? "ml-auto shrink-0" : "shrink-0"} onClick={props.onOpenConversation}>
+        Open
       </Button>
     </div>
   );

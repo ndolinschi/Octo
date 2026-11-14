@@ -3,6 +3,7 @@ import test from "node:test";
 import type { BridgeConfig, Plugin, ProviderList, SettingsView } from "@octo/agent-client";
 import { deriveProviders } from "./derive";
 import { canRun, chipLabel } from "./providers";
+import { tidyAgentLabel } from "../models";
 import { API_PROVIDER, ROUTER_PROVIDER, connectAction, providerOf, stateText } from "./providersMore";
 import { extraReason } from "./reasons";
 
@@ -119,6 +120,11 @@ const list: ProviderList = deriveProviders({ config: config(), plugins, settings
 test("chipLabel names agent models as 'Agent · Model'", () => {
   assert.equal(chipLabel("acp:claude-code/claude-opus-5-5", list), "Claude Code · Opus 5.5");
   assert.equal(chipLabel("acp:claude-code", list), "Claude Code");
+  // G14: an agent's own remark is not part of the name; an unlisted "default" reads like a name.
+  assert.equal(tidyAgentLabel("Default (recommended)"), "Default");
+  assert.equal(tidyAgentLabel("default"), "Default");
+  assert.equal(tidyAgentLabel("Opus 5.5"), "Opus 5.5");
+  assert.equal(chipLabel("acp:claude-code/default", list).endsWith("· Default"), true);
   assert.equal(chipLabel("claude-haiku-5-5", list), "Haiku 5.5");
   assert.equal(chipLabel("openai/gpt-x", list), "gpt-x");
   assert.equal(chipLabel("acp:claude-code/claude-opus-5-5", null), "Claude Code · Opus 5.5");

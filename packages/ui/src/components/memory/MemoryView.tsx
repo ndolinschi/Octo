@@ -11,6 +11,7 @@ import { SearchResults } from "./SearchResults";
 import { SessionsView } from "./SessionsView";
 import { useMemorySearch } from "./useMemorySearch";
 import { useMemoryFiles, useTasks } from "./useMemory";
+import { PanelPurpose } from "../shared/PanelPurpose";
 
 export type MemoryTab = "sessions" | "knowledge" | "files";
 
@@ -81,6 +82,7 @@ export function MemoryView(props: {
       <Panel
         name="memory"
         title="Memory"
+        lead={<PanelPurpose tool="memory" />}
         filters={
           <PanelFilters>
             <SearchField

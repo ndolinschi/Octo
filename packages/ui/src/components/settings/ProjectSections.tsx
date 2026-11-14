@@ -3,6 +3,7 @@ import { useEffect, useId, useState, type ReactNode } from "react";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { errorMessage } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import { modelName } from "../../lib/models";
 import { canRun, useProviders } from "../../lib/providers";
 import { remainingText } from "../../lib/usage";
@@ -224,12 +225,20 @@ function useAllTimeCost(): Record<string, number | null> {
 export function UsageSection({ projectId }: { projectId: string | null }) {
   const { details, update, retry } = useProjectDetails();
   const cost = useAllTimeCost();
+  // Re-test 4 (CLS 0.30 at 640px): the table's rows, the limits and the budget arrive at different times. Everything under
+  // the table waits (mounted, hidden) until all three have answered, then appears at once, so nothing on screen moves;
+  // a slow load shows a placeholder at the bottom, which nothing follows.
+  const [usageSettled, setUsageSettled] = useState(false);
+  const [limitsSettled, setLimitsSettled] = useState(false);
+  const below = usageSettled && limitsSettled && details.status !== "loading";
+  const slow = useDelayedLoading(!below);
   return (
     <>
-      <UsageByProject />
+      <UsageByProject holdFooter={!below} onSettled={setUsageSettled} />
+      {!below && slow && usageSettled && <SkeletonList count={2} size="lg" twoLine className="max-w-settings-rows" />}
       {/* Round 3: the table takes the 880 column (project names); the row groups keep their reading measure. */}
-      <div className="flex max-w-settings-rows flex-col gap-6">
-        <Limits />
+      <div hidden={!below} className="flex max-w-settings-rows flex-col gap-6">
+        <Limits onSettled={setLimitsSettled} />
         <PerProject
           label="Budget"
           rowId="budget"
@@ -290,7 +299,7 @@ function BudgetRow({ project: p, update, usage }: { project: Project; update: Up
 
 type LimitsLoad = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; limits: Limit[] };
 
-function Limits() {
+function Limits({ onSettled }: { onSettled(settled: boolean): void }) {
   const { bridge } = useApp();
   const [load, setLoad] = useState<LimitsLoad>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -298,13 +307,21 @@ function Limits() {
   useEffect(() => {
     let live = true;
     bridge.getLimits().then(
-      (limits) => live && setLoad({ status: "ready", limits }),
-      (e: unknown) => live && setLoad({ status: "error", message: errorMessage(e).replace(/\.$/, "") }),
+      (limits) => {
+        if (!live) return;
+        setLoad({ status: "ready", limits });
+        onSettled(true);
+      },
+      (e: unknown) => {
+        if (!live) return;
+        setLoad({ status: "error", message: errorMessage(e).replace(/\.$/, "") });
+        onSettled(true);
+      },
     );
     return () => {
       live = false;
     };
-  }, [bridge, attempt]);
+  }, [bridge, attempt, onSettled]);
   return (
     <SettingsGroup label="Plan limits" id="row-limits">
       {load.status === "loading" && <SkeletonList count={1} size="lg" twoLine />}

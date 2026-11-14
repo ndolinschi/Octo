@@ -1,4 +1,3 @@
-import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { cn } from "../../../lib/cn";
 import { resolveFolder, type FilePosition } from "../../../lib/files";
@@ -12,80 +11,102 @@ import { useProject } from "../../../state/project";
 import { useOptionalWorkspace } from "../../../state/workspace/WorkspaceProvider";
 import { requestChangesFocus } from "../../../lib/changesFocus";
 import { Button } from "../../primitives/Button";
-import { IconButton } from "../../primitives/IconButton";
 
 /*
- * retest3 G1: the pieces every tool body shares — one frame (the code background, one radius, one inset), a quiet
- * disclosure, a copy button, the "Raw" view and the way a body opens a file at a line.
+ * retest3 G1 (toolpolish): the pieces every tool body shares. The row above a body is its header (the verb, the file or command,
+ * +N −M); the body is one frame directly under the row's text edge — the code background, radius 8 (`rounded-md`), a 12px
+ * inset, hairlines between its parts, never a filled band — and ends in one action line: a quiet lead on the left ("Exited 0 ·
+ * 4s", "Show all") and the actions on the right ("Open diff", "Go to line 12", "Raw"). Raw opens under that line, in the frame.
  */
 
 /** One radius and one inset for every tool body. */
-export const FRAME = "min-w-0 overflow-hidden rounded-md bg-code-bg text-xs";
+const FRAME = "min-w-0 overflow-hidden rounded-md bg-code-bg text-xs";
 export const INSET = "px-3 py-2";
 
-/** A quiet text toggle ("Show all 64 lines", "Raw"): chevron + words, no fill at rest. */
-export function Disclosure(props: { open: boolean; onToggle(): void; children: ReactNode; className?: string; controls?: string }) {
+/** What "Raw" shows: the call as the agent sent it and the result as it came back. */
+export type RawCall = { input: string; result: string | null };
+
+/** A tool body: its content, then the action line (lead · actions · Raw), then the raw call when opened. */
+export function BodyFrame(props: { kind: string; children?: ReactNode; lead?: ReactNode; actions?: ReactNode; raw: RawCall | null }) {
+  const [raw, setRaw] = useState(false);
+  const content = props.children !== undefined && props.children !== null && props.children !== false;
+  return (
+    <div data-tool-body={props.kind} className={FRAME}>
+      {props.children}
+      <div className={cn("flex min-h-8 min-w-0 flex-wrap items-center gap-x-3 px-3 py-1 text-fg-3", content && "border-t border-line")}>
+        {props.lead !== undefined && props.lead !== null && props.lead !== false && (
+          <span className="flex min-w-0 items-center gap-1.5 tabular-nums">{props.lead}</span>
+        )}
+        <span className="ml-auto flex shrink-0 items-center gap-4">
+          {props.actions}
+          {props.raw && (
+            <TextAction
+              onClick={() => setRaw((r) => !r)}
+              pressed={raw}
+              title={raw ? "Hide the call as sent and its result" : "Show the call as sent and its result"}
+            >
+              Raw
+            </TextAction>
+          )}
+        </span>
+      </div>
+      {raw && props.raw && (
+        <div data-tool-raw className={cn("flex flex-col gap-2 border-t border-line", INSET)}>
+          {props.raw.input && <RawBlock label="Input" text={props.raw.input} />}
+          {props.raw.result !== null && <RawBlock label="Result" text={props.raw.result || "(empty)"} />}
+          {!props.raw.input && props.raw.result === null && <span className="text-fg-3">Nothing was recorded for this call.</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A quiet text toggle ("Show content"): words only, no fill at rest; its text sits on the inset. */
+export function Disclosure(props: { open: boolean; onToggle(): void; children: ReactNode; controls?: string }) {
   return (
     <Button
       variant="quiet"
       size="xs"
-      icon={props.open ? ChevronDown : ChevronRight}
       aria-expanded={props.open}
       {...(props.controls ? { "aria-controls": props.controls } : {})}
       onClick={props.onToggle}
-      className={cn("-ml-1 text-fg-3", props.className)}
+      className="-mx-2 text-fg-3"
     >
       {props.children}
     </Button>
   );
 }
 
-/** A quiet text action in a body's footer row ("Open diff", "Go to line 12"). */
-export function TextAction(props: { onClick(): void; children: ReactNode; title?: string; label?: string }) {
+/** A quiet text action in a body's action line ("Open diff", "Go to line 12"); its text sits on the inset. */
+export function TextAction(props: { onClick(): void; children: ReactNode; title?: string; label?: string; pressed?: boolean }) {
   return (
     <Button
       variant="quiet"
       size="xs"
       onClick={props.onClick}
+      {...(props.pressed !== undefined ? { "aria-pressed": props.pressed } : {})}
       {...(props.title ? { title: props.title } : {})}
       {...(props.label ? { "aria-label": props.label } : {})}
-      className="-mx-1 text-fg-3"
+      className={cn("-mx-2", props.pressed ? "text-fg" : "text-fg-3")}
     >
       {props.children}
     </Button>
   );
 }
 
-export function CopyButton({ text, label }: { text: string; label: string }) {
+/** "Copy command" in an action line; "Copied" for a moment after. */
+export function CopyAction({ text, label }: { text: string; label: string }) {
   const [copied, copy] = useCopy();
-  return <IconButton icon={copied ? Check : Copy} label={copied ? "Copied" : label} size="xs" className="shrink-0" onClick={() => copy(text)} />;
+  return <TextAction onClick={() => copy(text)}>{copied ? "Copied" : label}</TextAction>;
 }
 
-/** "+12 −3" in the diff tones. */
+/** "+12 −3" in the diff tones (the only colour a change carries outside its tinted rows); a side that is 0 is left out. */
 export function Counts({ added, removed, className }: { added: number; removed: number; className?: string }) {
   return (
     <span className={cn("inline-flex shrink-0 gap-1.5 text-xs tabular-nums", className)}>
-      <span className="text-ok">+{added}</span>
-      <span className="text-err">−{removed}</span>
+      {(added > 0 || removed === 0) && <span className="text-ok">+{added}</span>}
+      {removed > 0 && <span className="text-err">−{removed}</span>}
     </span>
-  );
-}
-
-/** The call as the agent sent it and the result as it came back, for people who want them (never the default view). */
-export function Raw({ input, result }: { input: string; result: string | null }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div data-tool-raw>
-      <Disclosure open={open} onToggle={() => setOpen((o) => !o)}>
-        Raw
-      </Disclosure>
-      {open && (
-        <div className="mt-1 flex flex-col gap-2">
-          {input && <RawBlock label="Input" text={input} />}
-          {result !== null && <RawBlock label="Result" text={result || "(empty)"} />}
-        </div>
-      )}
-    </div>
   );
 }
 

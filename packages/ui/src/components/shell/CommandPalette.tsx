@@ -11,6 +11,7 @@ import { useMediaQuery } from "../../lib/hooks";
 import { takeTypeahead } from "../../lib/typeahead";
 import { useApp } from "../../state/app";
 import { useNav } from "../../state/nav";
+import { workspaceActions, workspaceTabs } from "../../state/workspace/paletteCommands";
 import { hitRow } from "../../lib/requestSearch";
 import { useRequests } from "../../state/requests";
 import { useRequestSearch } from "../../state/requestSearch";
@@ -24,6 +25,8 @@ import { StateGlyph } from "../primitives/StateGlyph";
 import { agentGlyph, orchestratorGlyph, type GlyphState } from "../../lib/stateGlyph";
 import { projectRowLines } from "../../lib/orchestrator";
 import { isPending, useOrchestrators } from "../../state/orchestrators";
+import { useSessionIndex } from "../../state/sessionIndex";
+import { mainSessions, sessionGlyph, sessionMeta, sessionTitle } from "../../lib/sessions/tree";
 import { useModal } from "../primitives/useModal";
 import { popupListKey } from "../primitives/popupNav";
 
@@ -107,6 +110,7 @@ export function CommandPalette(props: {
   const baseId = useId();
   const openProject = projects?.find((p) => p.id === props.openProjectId);
   const orchestrators = useOrchestrators(projects);
+  const sessionIndex = useSessionIndex(projects);
   const { requests } = useRequests(openProject, true);
   const pastHits = useRequestSearch(query);
   const { onClose } = props;
@@ -114,7 +118,7 @@ export function CommandPalette(props: {
   // The workspace's tabs and tab actions, as they are when the palette opens.
   const [workspace] = useState(() => {
     const api = nav.workspace();
-    return api ? { api, tabs: api.tabs(), actions: api.actions() } : null;
+    return api ? { api, tabs: workspaceTabs(api.current()), actions: workspaceActions(api.current()) } : null;
   });
 
   useModal(panel, onClose);
@@ -231,7 +235,8 @@ export function CommandPalette(props: {
                   detail: formatRelative(r.created_at, now),
                   run: go(() => {
                     nav.requestTurn({ projectId: pid, messageId: r.id });
-                    navigate(pid);
+                    // Decision 96: the request opens in its own session's conversation.
+                    navigate(pid, null, r.session_id ?? null);
                   }),
                 },
               ]
@@ -265,8 +270,31 @@ export function CommandPalette(props: {
         })
       : [];
     const tabRows: Item[] = workspace ? workspace.tabs.map((t) => ({ ...t, run: go(t.run) })) : [];
+    // Decision 96: every main session (title, project, state glyph), and "New session in <project>".
+    const sessionRows: Item[] = mainSessions(sessionIndex.all).map((s) => ({
+      id: `ses:${s.id}`,
+      label: sessionTitle(s),
+      detail: [s.project_name, sessionMeta(s, now)].filter(Boolean).join(" · "),
+      search: s.project_name,
+      glyph: sessionGlyph(s),
+      run: go(() => navigate(s.project_id, null, s.id)),
+    }));
+    const newSessions: Item[] = (projects ?? []).map((p) => ({
+      id: `n:${p.id}`,
+      label: `New session in ${p.name}`,
+      search: "new session start conversation",
+      run: go(() => {
+        void bridge.createSession(p.id).then(
+          ({ session }) => navigate(p.id, null, session.id),
+          // Not made (offline, refused): the sidebar's "+" says why; here nothing changes.
+          () => undefined,
+        );
+      }),
+    }));
     // One real (substring) hit anywhere drops every loose letter-by-letter hit: "key" is not "Knock every yellow".
-    const strict = [tabRows, projectRows, loaded, agentRows, actions, settingRows].some((l) => l.some((i) => fieldScore(q, i.label, i.search ?? i.detail).sub));
+    const strict = [tabRows, projectRows, sessionRows, loaded, agentRows, actions, newSessions, settingRows].some((l) =>
+      l.some((i) => fieldScore(q, i.label, i.search ?? i.detail).sub),
+    );
     const rank = (items: Item[]) => rankMatches(q, items, (i) => [i.label, i.search ?? i.detail], LIMIT, strict);
     const past = pastHits
       .filter((h) => fresh(h.project_id, hitRow(h).label))
@@ -283,7 +311,8 @@ export function CommandPalette(props: {
       ? [
           { title: "Tabs", items: rank(tabRows) },
           { title: "Projects", items: rank(projectRows) },
-          { title: "Actions", items: rank(actions) },
+          { title: "Sessions", items: rank(sessionRows) },
+          { title: "Actions", items: rank([...actions, ...newSessions]) },
           { title: "Settings", items: rank(settingRows) },
           { title: "Requests", items: [...rank(loaded), ...past] },
           { title: "Agents", items: rank(agentRows) },
@@ -315,6 +344,8 @@ export function CommandPalette(props: {
     themePref,
     setThemePref,
     settings,
+    bridge,
+    sessionIndex.all,
   ]);
 
   const flat = groups.flatMap((g) => g.items);

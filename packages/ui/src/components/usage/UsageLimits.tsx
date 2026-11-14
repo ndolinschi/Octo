@@ -3,6 +3,7 @@ import type { Limit } from "@octo/agent-client";
 import { useMemo } from "react";
 import { cn } from "../../lib/cn";
 import { useNow, usePageVisible } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import { toolTab } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { isStale, limitKindLabel, observedLabel, remainingShare, remainingText, resetLabel, sortLimits, spentShare } from "../../lib/usage";
@@ -73,7 +74,11 @@ export function UsageLimits() {
   // Decision 36: nothing polls or ticks while the Usage tab is hidden (it stays mounted) or the page is.
   const pageVisible = usePageVisible();
   const shown = ws.isVisible(toolTab("usage")) && pageVisible;
-  const { limits, agents } = useLimits(shown);
+  const { limits, agents, agentsRead } = useLimits(shown);
+  // Re-test 4 (layout shift): the external-agents section under the limits waits until both lists have answered, so the
+  // limits arriving never push it down; the placeholder shows only for a slow answer (no flash).
+  const settled = limits.status !== "loading" && agentsRead;
+  const slow = useDelayedLoading(!settled);
   const now = useNow(true, undefined, !shown);
   const groups = useMemo(() => {
     if (limits.status !== "ok") return [];
@@ -83,13 +88,13 @@ export function UsageLimits() {
   }, [limits]);
   return (
     <>
-      {limits.status === "loading" && <SkeletonList count={4} size="md" />}
-      {limits.status === "error" && (
+      {!settled && slow && <SkeletonList count={4} size="md" />}
+      {settled && limits.status === "error" && (
         <Notice form="block" tone="error" title="Couldn't read limits">
           {limits.message}. Check that the harness is running, then reopen this tab.
         </Notice>
       )}
-      {limits.status === "ok" && groups.length === 0 && (
+      {settled && limits.status === "ok" && groups.length === 0 && (
         // P1: a section with nothing to show says so in the frame's one empty line, under its caption like the others.
         <InfoSection title="Rate limits" labelId="usage-limits-none">
           <div data-limits-empty>
@@ -101,23 +106,26 @@ export function UsageLimits() {
           </div>
         </InfoSection>
       )}
-      {groups.map(([provider, rows]) => (
-        <InfoSection key={provider} title={provider} labelId={`usage-limits-${provider}`}>
-          {rows.map((l) => (
-            <LimitRow key={`${l.model}/${l.kind}`} limit={l} now={now} />
-          ))}
-        </InfoSection>
-      ))}
-      <InfoSection title="Plan limits for external agents" labelId="usage-plan-limits">
-        {agents.map((a) => (
-          <ListRow key={a.id} leading={<Glyph icon={GLYPH.agent} size={14} />} title={a.label} meta="ACP agent" tone="quiet" />
+      {settled &&
+        groups.map(([provider, rows]) => (
+          <InfoSection key={provider} title={provider} labelId={`usage-limits-${provider}`}>
+            {rows.map((l) => (
+              <LimitRow key={`${l.model}/${l.kind}`} limit={l} now={now} />
+            ))}
+          </InfoSection>
         ))}
-        <p className="px-2 pt-1 text-xs text-fg-3">
-          {agents.length
-            ? "Plan limits (five-hour, weekly) are shown by each agent's own CLI; Octo's local service cannot read them."
-            : "No external agents are available."}
-        </p>
-      </InfoSection>
+      {settled && (
+        <InfoSection title="Plan limits for external agents" labelId="usage-plan-limits">
+          {agents.map((a) => (
+            <ListRow key={a.id} leading={<Glyph icon={GLYPH.agent} size={14} />} title={a.label} meta="ACP agent" tone="quiet" />
+          ))}
+          <p className="px-2 pt-1 text-xs text-fg-3">
+            {agents.length
+              ? "Plan limits (five-hour, weekly) are shown by each agent's own CLI; Octo's local service cannot read them."
+              : "No external agents are available."}
+          </p>
+        </InfoSection>
+      )}
     </>
   );
 }

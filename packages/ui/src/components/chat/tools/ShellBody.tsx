@@ -3,18 +3,29 @@ import { cn } from "../../../lib/cn";
 import { formatDuration } from "../../../lib/format";
 import { exitLabel, spanMs, splitLines, tailLines } from "../../../lib/toolView";
 import type { StepState } from "../../../lib/transcript";
-import { CopyButton, Disclosure, FRAME, INSET } from "./parts";
+import { BodyFrame, CopyAction, Disclosure, TextAction, type RawCall } from "./parts";
 
 /** Lines of output shown under a command before "Show all"; then at most this many at a time ("Show more"). */
 const TAIL = 8;
 const PAGE = 1000;
+/** A command longer than this (or on several lines) is written out in the body: the row shows only its start. */
+const LONG_COMMAND = 72;
 
 /**
- * retest3 G1: a command as an action with its outcome — the command line (mono, wrapped, copy), the last lines of its output in a
- * quiet block (all of it on demand, a page at a time), then the exit in words and how long it ran. Output is never coloured as an
- * error; only the exit of a command that failed is.
+ * retest3 G1 (toolpolish): a command as an action with its outcome — the row says the command; the body is its output's last
+ * lines (wrapped like a terminal, columns kept: mono, `pre-wrap`), the earlier lines on demand at the top, and one action line:
+ * the exit in words and how long it ran on the left, "Copy command" and "Raw" on the right. A long or multi-line command is
+ * written out first. Output is never coloured as an error; only the exit of a command that failed is.
  */
-export function ShellBody(props: { command: string; output: string | null; state: StepState; start: string | null; end: string | null; stopped?: string }) {
+export function ShellBody(props: {
+  command: string;
+  output: string | null;
+  state: StepState;
+  start: string | null;
+  end: string | null;
+  stopped?: string;
+  raw: RawCall;
+}) {
   const { command, output, state } = props;
   const [shown, setShown] = useState(0);
   const tail = useMemo(() => tailLines(output ?? "", TAIL), [output]);
@@ -22,55 +33,63 @@ export function ShellBody(props: { command: string; output: string | null; state
   const lines = all ? all.slice(0, shown) : tail.lines;
   const ms = spanMs(props.start, props.end);
   const exit = props.stopped ?? exitLabel(state, output ?? "");
+  const long = command.includes("\n") || command.length > LONG_COMMAND;
+  const empty = output !== null && splitLines(output).length === 0 && state === "done";
   return (
-    <div data-tool-body="shell" className={FRAME}>
-      <div className={cn("flex min-w-0 items-start gap-2", INSET)}>
-        <span aria-hidden className="shrink-0 font-mono leading-5 text-fg-3 select-none">
-          $
-        </span>
-        <code className="min-w-0 flex-1 font-mono leading-5 break-words whitespace-pre-wrap text-fg">{command}</code>
-        <span className="-my-0.5 shrink-0">
-          <CopyButton text={command} label="Copy command" />
-        </span>
-      </div>
-      {lines.length > 0 && (
-        <div className="border-t border-line">
-          {!all && tail.hidden > 0 && (
-            <div className="px-3 pt-1">
-              <Disclosure open={false} onToggle={() => setShown(Math.min(tail.total, PAGE))}>
-                {tail.hidden} earlier line{tail.hidden === 1 ? "" : "s"}
-              </Disclosure>
-            </div>
+    <BodyFrame
+      kind="shell"
+      raw={props.raw}
+      lead={
+        <>
+          <span className={cn(state === "error" && "text-err")}>{exit}</span>
+          {ms !== null && state !== "running" && !props.stopped && <span>· {formatDuration(ms)}</span>}
+          {empty && <span>· no output</span>}
+        </>
+      }
+      actions={
+        <>
+          {all && shown < all.length && (
+            <TextAction onClick={() => setShown((n) => Math.min(all.length, n + PAGE))}>Show more ({all.length - shown} left)</TextAction>
           )}
-          <pre
-            data-tool-output
-            className={cn(
-              "px-3 font-mono leading-5 break-words whitespace-pre-wrap text-fg-2",
-              all ? "max-h-96 overflow-y-auto py-1" : "py-2",
-              !all && tail.hidden > 0 && "pt-0",
-            )}
-          >
-            {lines.join("\n")}
-          </pre>
-          {all && (
-            <div className="flex items-center gap-3 px-3 pb-1">
-              {shown < all.length && (
-                <Disclosure open={false} onToggle={() => setShown((n) => Math.min(all.length, n + PAGE))}>
-                  Show more ({all.length - shown} lines left)
-                </Disclosure>
+          {all && <TextAction onClick={() => setShown(0)}>Show the last {TAIL}</TextAction>}
+          <CopyAction text={command} label="Copy command" />
+        </>
+      }
+    >
+      {(long || lines.length > 0) && (
+        <>
+          {long && (
+            <pre className={cn("px-3 py-2 font-mono leading-5 break-words whitespace-pre-wrap text-fg", lines.length > 0 && "border-b border-line")}>
+              <span aria-hidden className="text-fg-3 select-none">
+                ${" "}
+              </span>
+              {command}
+            </pre>
+          )}
+          {lines.length > 0 && (
+            <div>
+              {!all && tail.hidden > 0 && (
+                <div className="px-3 pt-1">
+                  <Disclosure open={false} onToggle={() => setShown(Math.min(tail.total, PAGE))}>
+                    Show {tail.hidden} earlier line{tail.hidden === 1 ? "" : "s"}
+                  </Disclosure>
+                </div>
               )}
-              <Disclosure open onToggle={() => setShown(0)}>
-                Show the last {TAIL} lines
-              </Disclosure>
+              <pre
+                data-tool-output
+                className={cn("octo-out px-3 font-mono leading-5 text-fg-2", all ? "max-h-96 overflow-y-auto py-2" : "py-2", !all && tail.hidden > 0 && "pt-0")}
+              >
+                {/* A line per block so a wrapped line hangs under its own start (columns of test output stay readable). */}
+                {lines.map((l, i) => (
+                  <span key={i} className="octo-out-line">
+                    {l || " "}
+                  </span>
+                ))}
+              </pre>
             </div>
           )}
-        </div>
+        </>
       )}
-      <div className={cn("flex items-center gap-1.5 border-t border-line tabular-nums", INSET)}>
-        <span className={cn(state === "error" ? "text-err" : "text-fg-3")}>{exit}</span>
-        {ms !== null && state !== "running" && !props.stopped && <span className="text-fg-3">· {formatDuration(ms)}</span>}
-        {output !== null && splitLines(output).length === 0 && state === "done" && <span className="text-fg-3">· no output</span>}
-      </div>
-    </div>
+    </BodyFrame>
   );
 }

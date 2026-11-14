@@ -37,14 +37,21 @@ test("the index of 100 notes fits 1 500 tokens: pinned first, then recent reads,
   assert.equal(idx.listed[1]?.id, "nte_020");
   assert.ok(idx.more > 0 && idx.listed.length + idx.more === 100);
   assert.ok(idx.tokens <= 1500, String(idx.tokens));
-  assert.match(indexFooter(notes), /^Agents see an index of \d+ notes \(≈[\d,]+ tokens\); bodies are read on demand\. \d+ more are found by search\.$/);
+  const footer = indexFooter(notes);
+  assert.match(footer.text, /find the rest by searching\.$/);
+  assert.doesNotMatch(footer.text, /\d/);
+  assert.match(
+    footer.tip,
+    /^Agents see a list of \d+ notes \(about [\d,]+ tokens\) and read a note in full only when they need it\. \d+ more are found by search\.$/,
+  );
 });
 
 test("a few notes are all listed", () => {
   const idx = noteIndex(hundred.slice(0, 5));
   assert.equal(idx.more, 0);
   assert.equal(idx.listed.length, 5);
-  assert.match(indexFooter(hundred.slice(0, 1)), /index of 1 note \(/);
+  assert.match(indexFooter(hundred.slice(0, 1)).tip, /a list of 1 note \(/);
+  assert.equal(indexFooter(hundred.slice(0, 1)).text, "Agents see a short list of these notes and open one when it is relevant.");
 });
 
 test("pin limits: three notes, 2 000 characters together", () => {

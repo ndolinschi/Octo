@@ -26,6 +26,8 @@ export type QueueListProps = {
   steerUnsupported?: boolean;
   onResume(): Promise<void>;
   onClear(): Promise<void>;
+  /** Decision 96: the messages wait for a free slot under the running caps ("Waiting for a free slot (3 sessions running)"). */
+  waiting?: string | null | undefined;
 };
 
 type Pending = { kind: "remove" | "send" | "stop"; id: string } | { kind: "resume" | "clear" } | null;
@@ -101,7 +103,11 @@ export function QueueList(props: QueueListProps) {
           ) : undefined
         }
       >
-        {props.paused ? `${queueCountLabel(count)} · paused after a failed or stopped turn` : queueCountLabel(count)}
+        {props.paused
+          ? `${queueCountLabel(count)} · paused after a failed or stopped turn`
+          : props.waiting
+            ? `${queueCountLabel(count)} · ${props.waiting}`
+            : queueCountLabel(count)}
       </SectionHeader>
       {props.paused && (
         <div className="flex min-h-ctl-sm flex-wrap items-center gap-2 pr-0.5 pl-2">

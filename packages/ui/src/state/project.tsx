@@ -1,6 +1,8 @@
 import {
   emptyProjectState,
+  hasParallelSessions,
   retryDelay,
+  sessionRoot,
   type BridgeEvent,
   type Note,
   type NoteDocument,
@@ -11,6 +13,7 @@ import {
   type ProjectMode,
   type ProjectSession,
   type ProjectState,
+  type SendResult,
 } from "@octo/agent-client";
 import { rewoundLabel } from "../lib/compact";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
@@ -37,7 +40,14 @@ type ProjectValue = {
   synced: number;
   state: ProjectState;
   live: LiveStatus;
+  /** The default session's turn runs (inside a `SessionScope`: that session's). */
   running: boolean;
+  /** Parallel sessions (schema 15): the harness addresses each main session; a conversation is one session's. */
+  parallel: boolean;
+  /** A message to main session `sessionId` (it starts its turn or waits in its queue), with the same read-back as `send`. */
+  sendIn(sessionId: string, text: string, opts?: { mode?: ProjectMode; attachments?: string[] }): Promise<SendResult>;
+  /** Stops main session `sessionId`'s turn (and pauses its queue). */
+  cancelIn(sessionId: string): Promise<void>;
   reload(): Promise<void>;
   ensureMessages(agentId: string): void;
   /** `mode` (parity B3) overrides the project's default for this message only. */
@@ -45,8 +55,8 @@ type ProjectValue = {
   cancel(): Promise<void>;
   /** The texts `message.steered` named this session: those user messages landed in a running turn (parity B6). */
   steered: readonly string[];
-  /** The conversation was cut by a rewind (parity B5): apply it now rather than waiting for the event. */
-  applyRewind(messageId: number, label: string): void;
+  /** The conversation was cut by a rewind (parity B5): apply it now rather than waiting for the event. `root`: the rewound session's root. */
+  applyRewind(messageId: number, label: string, root?: string): void;
   update(patch: Partial<ProjectInput>): Promise<Project>;
   createNote(input: NoteInput): Promise<NoteDocument>;
   updateNote(id: string, patch: NotePatch): Promise<NoteDocument>;
@@ -120,17 +130,19 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
   );
 
   const sessionsRef = useLatest(state.sessions);
+  const stateRef = useLatest(state);
   const orchestratorRef = useRef<string | null>(null);
   /** `session.current`: the conversation shows the new current session (resumed: only its messages; the newest: all, with markers). */
   const showSession = useCallback(
     (currentId: string) => {
       const agentId = orchestratorRef.current;
-      if (!agentId) return;
+      // Parallel sessions: every session is its own root's conversation; nothing is swapped in place.
+      if (!agentId || hasParallelSessions(stateRef.current)) return;
       // The event may arrive before the list has the session: `transcriptSession` then reads an older list and shows everything.
       const sessionId = transcriptSession(sessionsRef.current.list, currentId);
       void fetchMessages(agentId, sessionId === undefined ? {} : { sessionId });
     },
-    [fetchMessages, sessionsRef],
+    [fetchMessages, sessionsRef, stateRef],
   );
 
   const syncAll = useCallback(async () => {
@@ -148,8 +160,10 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       dispatch({ type: "agents", agents });
       dispatch({ type: "notes", notes });
       if (sessions) dispatch({ type: "sessions", sessions });
-      // A resumed (older) session stays what the conversation shows after a reload or reconnect.
-      const resumed = sessions ? transcriptSession(sessions, sessions.find((s) => s.kind === "main" && s.current)?.id ?? null) : undefined;
+      // A resumed (older) session stays what the conversation shows after a reload or reconnect (before parallel sessions only:
+      // since then each session is its own root's messages).
+      const parallel = sessions?.some((s) => s.kind === "main" && s.default !== undefined) ?? false;
+      const resumed = sessions && !parallel ? transcriptSession(sessions, sessions.find((s) => s.kind === "main" && s.current)?.id ?? null) : undefined;
       const ids = new Set([p.orchestrator_agent_id, ...loaded.current]);
       await Promise.all([...ids].map((id) => fetchMessages(id, id === p.orchestrator_agent_id && resumed !== undefined ? { sessionId: resumed } : undefined)));
       // A11: what the stream missed is in the stored messages now; streamed text of a turn that ended goes.
@@ -196,7 +210,15 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
         if (event.type === "project.updated") setProject(event.project);
         if (event.type === "message.steered") setSteered((s) => [...s, event.text]);
         if (event.type === "conversation.rewound") {
-          dispatch({ type: "rewound", messageId: event.message_id, label: rewoundLabel(false), at: new Date().toISOString(), soft: true });
+          const root = event.session_id ? sessionRoot(stateRef.current, event.session_id) : "";
+          dispatch({
+            type: "rewound",
+            messageId: event.message_id,
+            label: rewoundLabel(false),
+            at: new Date().toISOString(),
+            soft: true,
+            ...(root ? { root } : {}),
+          });
           void syncAll();
         }
         // The client's reducer keeps only the position of a compaction; a manual one also carries its label and size.
@@ -212,7 +234,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
     void syncAll();
     return unsubscribe;
     // `epoch`: a new subscription (and a full re-read) when the polled summary and the stream disagree.
-  }, [bridge, projectId, syncAll, refreshProjects, showSession, probe, epoch]);
+  }, [bridge, projectId, syncAll, refreshProjects, showSession, probe, epoch, stateRef]);
 
   // The sidebar and Home read the open project's orchestrator state from its live agents (decision 23).
   const activity = useActivity();
@@ -227,15 +249,24 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
     );
   }, [activity, projectId, state.agents, state.agentOrder]);
   useEffect(() => () => activity.setLiveAgents(projectId, null), [activity, projectId]);
+  // The sidebar's tree lists the open project's sessions live from this stream (decision 96).
+  const sessionList = state.sessions.list;
+  useEffect(() => {
+    if (sessionList.length > 0) activity.setLiveSessions(projectId, sessionList);
+  }, [activity, projectId, sessionList]);
+  useEffect(() => () => activity.setLiveSessions(projectId, null), [activity, projectId]);
 
   const orchestrator = project ? state.agents[project.orchestrator_agent_id] : undefined;
   const running = orchestrator?.status === "running" || (project?.status === "running" && !orchestrator);
+  const parallel = hasParallelSessions(state);
+  // Any session at work (the polled summary's `running` means that since parallel sessions).
+  const anyRunning = parallel ? Object.values(state.agents).some((a) => a.parent_id === null && a.status === "running") || running : running;
 
   // A16: the polled project list says whether a turn runs. When it disagrees with what the stream told us for a while, the
   // stream is suspect (half-open, or an event was lost): open a new one and re-read. Once per disagreement, so a project
   // whose summary counts a sub-agent's work as running costs one re-read, not a loop.
   const summary = projects?.find((x) => x.id === projectId);
-  const disagree = project !== null && summary !== undefined && (summary.status === "running") !== running;
+  const disagree = project !== null && summary !== undefined && (summary.status === "running") !== anyRunning;
   useEffect(() => {
     if (!disagree) return;
     const id = window.setTimeout(() => setEpoch((n) => n + 1), SUMMARY_DISAGREE_MS);
@@ -252,6 +283,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       state,
       live,
       running,
+      parallel,
       reload: syncAll,
       ensureMessages: (agentId) => {
         if (!loaded.current.has(agentId)) void fetchMessages(agentId);
@@ -272,8 +304,20 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
         void refreshProjects();
       },
       cancel: () => bridge.cancelTurn(projectId),
+      sendIn: async (sessionId, text, opts) => {
+        const root = sessionRoot(state, sessionId);
+        const busy = root !== "" && state.agents[root]?.status === "running";
+        if (!busy) dispatch({ type: "clearTurn", sessionId });
+        const sent = await bridge.sendSessionMessage(projectId, sessionId, text, opts);
+        if (sent.message) dispatch({ type: "messages", agentId: sent.message.agent_id, messages: [sent.message] });
+        if (!busy) void refreshProjects();
+        return sent;
+      },
+      cancelIn: async (sessionId) => {
+        await bridge.stopSession(projectId, sessionId);
+      },
       steered,
-      applyRewind: (messageId, label) => dispatch({ type: "rewound", messageId, label, at: new Date().toISOString() }),
+      applyRewind: (messageId, label, root) => dispatch({ type: "rewound", messageId, label, at: new Date().toISOString(), ...(root ? { root } : {}) }),
       update: async (patch) => {
         const next = await bridge.updateProject(projectId, patch);
         setProject(next);
@@ -320,7 +364,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
         };
       },
     }),
-    [projectId, project, loadFailures, synced, state, live, running, syncAll, fetchMessages, bridge, steered, showSession, refreshProjects],
+    [projectId, project, loadFailures, synced, state, live, running, parallel, syncAll, fetchMessages, bridge, steered, showSession, refreshProjects],
   );
 
   return <ProjectContextProvider value={value}>{children}</ProjectContextProvider>;

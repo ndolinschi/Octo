@@ -42,6 +42,8 @@ export function ListRow(props: {
   disabled?: boolean;
   /** A row that folds or unfolds something ("6 more", "Show fewer"): `aria-expanded`. */
   expanded?: boolean;
+  /** A `treeitem`'s depth (`aria-level`): the sidebar's project (1) and session (2) rows. */
+  level?: number;
   truncate?: "end" | "middle";
   tone?: "default" | "quiet";
   onClick?: MouseEventHandler<HTMLElement>;
@@ -59,6 +61,7 @@ export function ListRow(props: {
     ...selectionAria(props.role, selected),
     ...(disabled ? { "aria-disabled": true } : {}),
     ...(props.expanded === undefined ? {} : { "aria-expanded": props.expanded }),
+    ...(props.level === undefined ? {} : { "aria-level": props.level }),
   };
   const main = cn(
     "flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-sm px-2 text-left text-sm",

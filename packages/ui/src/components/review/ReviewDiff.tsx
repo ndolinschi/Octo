@@ -46,6 +46,10 @@ export function ReviewDiff(props: {
   onSelection(anchor: Anchor | null): void;
   /** Called once the diff is computed and shown. */
   onReady?(): void;
+  /** The first changed line on the new side (null until the diff is computed, or when nothing changed), for "Go to line". */
+  onFirstLine?(line: number | null): void;
+  /** A click on a line number of the new side: open the file there. */
+  onGoToLine?(line: number): void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [mod, setMod] = useState<ReviewMonaco | null>(null);
@@ -125,12 +129,33 @@ export function ReviewDiff(props: {
     const original = mod.monaco.editor.createModel(props.before, undefined, uri("before"));
     const modified = mod.monaco.editor.createModel(props.after, undefined, uri("after"));
     const old = editor.getModel();
+    latest.current.onFirstLine?.(null);
     editor.setModel({ original, modified });
     editor.getModifiedEditor().setScrollLeft(0);
     editor.getOriginalEditor().setScrollLeft(0);
     old?.original.dispose();
     old?.modified.dispose();
-  }, [mod, editor, props.path, props.before, props.after]);
+  }, [mod, editor, props.path, props.before, props.after, latest]);
+
+  // "Go to line" (as in Changes): the first changed line of the new side, and its line numbers open the file there.
+  useEffect(() => {
+    if (!mod || !editor) return;
+    const report = () => {
+      const changes = editor.getLineChanges();
+      const first = changes?.find((c) => c.modifiedEndLineNumber > 0) ?? changes?.[0];
+      if (changes) latest.current.onFirstLine?.(first ? Math.max(1, first.modifiedStartLineNumber) : null);
+    };
+    const sub = editor.onDidUpdateDiff(report);
+    report();
+    const down = editor.getModifiedEditor().onMouseDown((e) => {
+      const line = e.target.position?.lineNumber;
+      if (e.target.type === mod.monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS && line) latest.current.onGoToLine?.(line);
+    });
+    return () => {
+      sub.dispose();
+      down.dispose();
+    };
+  }, [mod, editor, latest]);
 
   // The "+" in the gutter and the selection, one set of listeners per side.
   useEffect(() => {

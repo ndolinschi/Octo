@@ -26,12 +26,23 @@ export type HttpOnlyMethod =
   | "listSessions"
   | "getSession"
   | "getSessionTranscript"
-  | "createSession"
   | "resumeSession"
   | "patchSession"
   | "deleteSession"
-  | "stopSession"
   | "messageSession"
+  | "getSessionQueue"
+  | "editSessionQueued"
+  | "removeSessionQueued"
+  | "clearSessionQueue"
+  | "resumeSessionQueue"
+  | "sendSessionQueuedNow"
+  | "getSessionContext"
+  | "compactSession"
+  | "clearSession"
+  | "rewindSession"
+  | "getSessionLatestPlan"
+  | "exportSessionUrl"
+  | "exportSession"
   | "sendOrQueueMessage"
   | "getQueue"
   | "editQueued"
@@ -132,6 +143,12 @@ export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "getUsage",
   "getLimits",
   "listLanguageServers",
+  // Parallel sessions: what every host must forward (the per-session queue, context and plan routes are HTTP only).
+  "createSession",
+  "setDefaultSession",
+  "stopSession",
+  "sendSessionMessage",
+  "listAllSessions",
 ];
 
 type Rec = Record<string, unknown>;

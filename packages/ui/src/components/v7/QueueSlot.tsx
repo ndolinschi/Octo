@@ -24,7 +24,7 @@ export function QueueSlot(props: QueueSlotProps) {
 
 function Live({ onCount }: QueueSlotProps) {
   const { bridge } = useApp();
-  const { projectId, project, synced } = useProject();
+  const { projectId, project, synced, state } = useProject();
   const [queue, setQueue] = useState<QueueState>({ paused: false, messages: [] });
   useEffect(() => {
     let alive = true;
@@ -42,11 +42,17 @@ function Live({ onCount }: QueueSlotProps) {
     if (e.type === "queue.updated") setQueue({ paused: e.paused, messages: e.messages });
   });
   const count = queue.messages.length;
+  // Decision 96: a message waiting for a slot says so, with how many of the project's sessions run now.
+  const running = Object.values(state.agents).filter((a) => a.parent_id === null && a.status === "running").length;
+  const waiting = queue.messages.some((m) => m.waiting_for === "slot")
+    ? `Waiting for a free slot (${running} ${running === 1 ? "session" : "sessions"} running)`
+    : null;
   useEffect(() => onCount?.(count), [onCount, count]);
 
   return (
     <QueueList
       paused={queue.paused}
+      waiting={waiting}
       messages={queue.messages}
       onRemove={(id) => bridge.removeQueued?.(projectId, id) ?? Promise.resolve()}
       onSendNow={async (id) => void (await bridge.steerQueued?.(projectId, id))}

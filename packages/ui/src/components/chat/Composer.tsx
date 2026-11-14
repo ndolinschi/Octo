@@ -27,6 +27,7 @@ import { withAttachments } from "./attachments";
 import type { ComposerMenuHandle, MenuPick } from "./ComposerMenu";
 import { modeNote } from "../../lib/modes";
 import { FolderChip, ModelChip } from "./ComposerChips";
+import type { ComposerSession } from "./SessionChip";
 import type { ComposerMode } from "./composerMode";
 import type { QueuedMessage } from "./ComposerPills";
 import { useAttachments } from "./useAttachments";
@@ -56,6 +57,8 @@ const RoutingLine = lazy(() => import("./RoutingLine").then((m) => ({ default: m
 const SlashMenu = lazy(() => import("./SlashMenu").then((m) => ({ default: m.SlashMenu })));
 /** The context gauge shows once the harness reports the context's size (after the project's state loads): warmed after first paint. */
 const ContextRing = lazy(() => import("./ContextRing").then((m) => ({ default: m.ContextRing })));
+/** Decision 96: the session chip at the top of the box (its own chunk; its row is reserved meanwhile, so nothing moves). */
+const SessionChip = lazy(() => import("./SessionChip").then((m) => ({ default: m.SessionChip })));
 const ComposerHighlight = lazy(() => import("./ComposerHighlight").then((m) => ({ default: m.ComposerHighlight })));
 
 export type ComposerHandle = {
@@ -102,6 +105,8 @@ export type ComposerProps = {
   floating?: boolean;
   /** A popover of the composer opened or closed (the conversation hides "Jump to latest" meanwhile, decision 56). */
   onOverlay?(open: boolean): void;
+  /** Decision 96: the main session it sends to (parallel sessions); absent before them. */
+  session?: ComposerSession | null | undefined;
 };
 
 const noCount = () => undefined;
@@ -480,6 +485,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {...attach.dropProps}
           className={cn("octo-composer @container/composer relative isolate flex flex-col bg-raised", disabled && "opacity-80")}
         >
+          {props.session && (
+            <div data-composer-session className="flex min-w-0 px-1.5 pt-1.5">
+              <Suspense fallback={<span aria-hidden className="h-ctl-sm" />}>
+                <SessionChip session={props.session} bare={false} disabled={false} onOpenChange={onChip} />
+              </Suspense>
+            </div>
+          )}
           {slots?.queue?.({ onCount: noCount })}
           {(pics.images.length > 0 || attach.files.length > 0 || props.queue.items.length > 0 || pendingComments > 0) && (
             <Suspense fallback={null}>
@@ -498,7 +510,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             Message the orchestrator
           </label>
           {/* C6: the top padding sits outside the scrolling text, so a long prompt never scrolls it away. */}
-          <div data-composer-pad className="relative pt-3">
+          <div data-composer-pad className={cn("relative", props.session ? "pt-1" : "pt-3")}>
             <Suspense fallback={null}>
               <ComposerHighlight text={text} area={area} />
             </Suspense>

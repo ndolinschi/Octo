@@ -9,7 +9,8 @@ import { errorMessage } from "../lib/format";
  * time is already in the past complete instantly (back-filling history), later steps
  * wait in real time and stream events to subscribers.
  */
-export type Ctx = { rec: ProjectRecord; t: number; signal: { cancelled: boolean } };
+/** `root`: the root agent of the main session the turn runs in (parallel sessions); absent: the project's default session. */
+export type Ctx = { rec: ProjectRecord; t: number; signal: { cancelled: boolean }; root?: string };
 
 /** `content` (write_file only) is what the demo file system receives when the call succeeds. */
 export type ToolSpec = {
@@ -263,11 +264,30 @@ export async function delegate(ctx: Ctx, parentId: string, children: ChildSpec[]
   );
 }
 
-/** One orchestrator turn: user prompt, scripted body, then status bookkeeping. */
+/** Whether `agentId` works under root `rootId` (it, or a descendant). */
+function under(rec: ProjectRecord, agentId: string, rootId: string): boolean {
+  const seen = new Set<string>();
+  let a = rec.agents.find((x) => x.id === agentId);
+  while (a && !seen.has(a.id)) {
+    if (a.id === rootId) return true;
+    seen.add(a.id);
+    const parent = a.parent_id;
+    a = parent === null ? undefined : rec.agents.find((x) => x.id === parent);
+  }
+  return false;
+}
+
+/**
+ * One orchestrator turn: user prompt, scripted body, then status bookkeeping. It runs in the main session of `ctx.root`
+ * (default: the project's default session); turns of different sessions run side by side, each one's events carry its
+ * `session_id` (the root's), and a stop or a failure touches only that session's agents.
+ */
 export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestratorId: string) => Promise<void>): Promise<void> {
   const rec = ctx.rec;
-  const orch = orchestratorOf(rec);
-  rec.turn = ctx.signal;
+  const orch = ctx.root ? agentById(rec, ctx.root) : orchestratorOf(rec);
+  const scoped = orch.session_id ? { session_id: orch.session_id } : {};
+  (rec.turns ??= new Map()).set(orch.id, ctx.signal);
+  if (orch.id === rec.project.orchestrator_agent_id) rec.turn = ctx.signal;
   const asked = addMessage(ctx, orch.id, "user", [{ type: "text", text: prompt }]);
   updateAgent(ctx, orch.id, { status: "running", started_at: iso(ctx), finished_at: null });
   rec.project.status = "running";
@@ -285,24 +305,28 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
     // A cancel happens now; a scripted failure in the past keeps its own time.
     if (status === "cancelled") ctx.t = Math.max(ctx.t, Date.now());
     for (const a of rec.agents) {
-      if (a.status === "running" && a.parent_id !== null) {
+      if (a.status === "running" && a.parent_id !== null && under(rec, a.id, orch.id)) {
         updateAgent(ctx, a.id, { status: "cancelled", error: "Cancelled by user", finished_at: iso(ctx) });
       }
     }
-    rec.streaming.clear();
-    rec.activeTools.clear();
+    for (const id of [...rec.streaming.keys()]) if (under(rec, id, orch.id)) rec.streaming.delete(id);
+    for (const [id, t] of [...rec.activeTools]) if (under(rec, t.agentId, orch.id)) rec.activeTools.delete(id);
   }
   // Like the harness: a failed turn leaves the orchestrator `failed` with its error ("Needs you"); otherwise idle.
   updateAgent(ctx, orch.id, status === "failed" ? { status: "failed", error, finished_at: iso(ctx) } : { status: "idle", error: null, finished_at: iso(ctx) });
-  rec.project.status = "idle";
-  rec.turn = null;
-  (rec.endings ??= []).push({
-    turn_id: asked.id,
-    status: status === "cancelled" ? "stopped" : status,
-    started_at: asked.created_at,
-    duration_ms: Math.max(0, ctx.t - Date.parse(asked.created_at)),
-  });
+  rec.turns.delete(orch.id);
+  if (rec.turn === ctx.signal) rec.turn = null;
+  (rec.lastStatus ??= new Map()).set(orch.id, status);
+  if (rec.turns.size === 0) rec.project.status = "idle";
+  if (orch.id === rec.project.orchestrator_agent_id)
+    (rec.endings ??= []).push({
+      turn_id: asked.id,
+      status: status === "cancelled" ? "stopped" : status,
+      started_at: asked.created_at,
+      duration_ms: Math.max(0, ctx.t - Date.parse(asked.created_at)),
+    });
   touch(ctx);
   emit(rec, { type: "project.updated", project: clone(rec.project) });
-  emit(rec, { type: "turn.finished", status, error, ...(hint ? { hint } : {}) });
+  emit(rec, { type: "turn.finished", status, error, ...(hint ? { hint } : {}), ...scoped, agent_id: orch.id });
+  rec.afterTurn?.(orch.id);
 }

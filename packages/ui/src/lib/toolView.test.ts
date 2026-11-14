@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  callRow,
   callSummary,
   callTimes,
   commandOf,
@@ -8,14 +9,16 @@ import {
   exitLabel,
   firstChangedLine,
   foldedRows,
+  groupProblems,
+  groupState,
   groupSummary,
+  mergeRuns,
   inputPairs,
   isRefusal,
   lineDiff,
   parseAcpDiff,
   placeRows,
   previewRows,
-  readLabel,
   readTarget,
   resultCount,
   stoppedLine,
@@ -79,10 +82,9 @@ test("commands: the command line and the exit in words", () => {
 test("reads: path and lines", () => {
   const r = readTarget("read_file", { folder: "api", path: "src/x.ts", offset: 1, limit: 40 });
   assert.deepEqual(r, { path: "src/x.ts", folder: "api", start: 1, end: 40 });
-  assert.equal(r && readLabel(r), "src/x.ts:1–40");
   const acp = readTarget("read", { title: "Read x", locations: [{ path: "/a/x.ts", line: 12 }] });
-  assert.equal(acp && readLabel(acp), "/a/x.ts:12");
-  assert.equal(readLabel({ path: "x", start: null, end: null }), "x");
+  assert.equal(acp?.path, "/a/x.ts");
+  assert.equal(acp?.start, 12);
 });
 
 test("lineDiff numbers lines and keeps common ends as context", () => {
@@ -197,4 +199,61 @@ test("groupSummary: one phrase per kind, built-in and ACP together", () => {
     "Ran 3 commands, read 1 file, ran 2 searches, edited 2 files, called 1 tool",
   );
   assert.equal(groupSummary([{ name: "save_note", input: { title: "a" } }]), "Saved 1 note");
+});
+
+test("groupSummary counts files for reads and edits: two edits of one file are one file", () => {
+  assert.equal(
+    groupSummary([
+      { name: "edit", input: { path: "a.ts", old_string: "x", new_string: "y" } },
+      { name: "edit", input: { path: "a.ts", old_string: "p", new_string: "q" } },
+      { name: "edit", input: { title: "Edit b.ts", raw_input: { file_path: "/r/b.ts" } } },
+      { name: "bash", input: { command: "ls" } },
+      { name: "bash", input: { command: "ls" } },
+    ]),
+    "Edited 2 files, ran 2 commands",
+  );
+});
+
+test("callRow: one grammar for built-in and ACP calls of a kind", () => {
+  const locate = (p: string) => (p.startsWith("/r/") ? { folder: "api", path: p.slice(3) } : null);
+  const row = (name: string, input: unknown) => {
+    const r = callRow(name, input, locate);
+    return [r.verb, r.object, r.mono, r.qualifier, r.folder].join("|");
+  };
+  assert.equal(row("bash", { folder: "api", command: "pnpm test\necho" }), "Ran|pnpm test|true||api");
+  assert.equal(row("execute", { title: "Run git push", raw_input: { command: "git push" } }), "Ran|git push|true||");
+  assert.equal(row("read_file", { folder: "api", path: "./src/x.ts" }), "Read|src/x.ts|true||api");
+  assert.equal(row("read", { title: "Read x", locations: [{ path: "/r/src/x.ts" }] }), "Read|src/x.ts|true||api");
+  assert.equal(row("edit", { folder: "api", path: "src/x.ts", old_string: "a", new_string: "b" }), "Edited|src/x.ts|true||api");
+  assert.equal(row("edit", { title: "Edit src/x.ts", raw_input: { file_path: "/r/src/x.ts" } }), "Edited|src/x.ts|true||api");
+  assert.equal(row("write_file", { folder: "api", path: "src/new.ts", content: "" }), "Wrote|src/new.ts|true||api");
+  assert.equal(row("delete", { title: "Delete src/old.ts", locations: [{ path: "/r/src/old.ts" }] }), "Deleted|src/old.ts|true||api");
+  assert.equal(
+    row("search", { title: "Search for withRetry in src", raw_input: { pattern: "withRetry", path: "/r/src" } }),
+    "Searched for|withRetry|true|in src|api",
+  );
+  assert.equal(row("search", { title: "Search for withRetry in src" }), "Searched for|withRetry|true|in src|");
+  assert.equal(row("grep", { pattern: "TODO", path: "src" }), "Searched for|TODO|true|in src|");
+  // Words stay in the UI face, quoted; a named tool says which.
+  assert.equal(row("search_issues", { query: "retry limit" }), "Searched for|“retry limit”|false|with search_issues|");
+  assert.equal(row("fetch", { title: "Fetch https://x.dev", raw_input: { url: "https://x.dev" } }), "Fetched|https://x.dev|true||");
+  assert.equal(row("save_note", { title: "Plan" }), "Saved note|Plan|false||");
+  assert.equal(row("mystery", { a: "b" }), "Called|mystery|true||");
+  assert.equal(row("think", { title: "Thinking about the plan" }), "Thinking about the plan||false||");
+});
+
+test("mergeRuns: consecutive calls with one key merge; a call between them splits the run", () => {
+  const key = (s: string) => (s.startsWith("e:") ? s : "");
+  assert.deepEqual(mergeRuns(["e:a", "e:a", "r", "e:a", "e:b", "e:b"], key), [["e:a", "e:a"], ["r"], ["e:a"], ["e:b", "e:b"]]);
+  assert.deepEqual(mergeRuns(["r", "r"], key), [["r"], ["r"]]);
+});
+
+test("groupState: the worst state only when every call ended that way; problems as a quiet suffix", () => {
+  assert.equal(groupState(["done", "error", "stopped", "stopped"]), "done");
+  assert.equal(groupState(["done", "running"]), "running");
+  assert.equal(groupState(["stopped", "stopped"]), "stopped");
+  assert.equal(groupState(["error", "error"]), "error");
+  assert.equal(groupState(["error", "stopped"]), "error");
+  assert.equal(groupProblems(["done", "error", "stopped", "stopped"]), "1 failed · 2 stopped");
+  assert.equal(groupProblems(["done"]), "");
 });

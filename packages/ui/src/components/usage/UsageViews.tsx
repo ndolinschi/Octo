@@ -9,8 +9,8 @@ import { useModelNames } from "../../state/modelNames";
 import { useProject } from "../../state/project";
 import { DayBars } from "../primitives/DayBars";
 import { Notice } from "../primitives/Notice";
-import { SkeletonList } from "../primitives/Skeleton";
-import { UsageTable, type UsageTableRow } from "../shared/UsageTable";
+import { UsageTable, UsageTableSkeleton, type UsageTableRow } from "../shared/UsageTable";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import type { Load, UsageData } from "./useUsage";
 
 /** Height of the daily chart (px). */
@@ -21,8 +21,10 @@ export function dayLabel(key: string): string {
 }
 
 /** Loading / error / empty, in one place for the views. */
-function UsageState({ load, empty, children }: { load: Load<UsageData>; empty: boolean; children: React.ReactNode }) {
-  if (load.status === "loading") return <SkeletonList count={6} size="md" />;
+function UsageState({ load, empty, first, children }: { load: Load<UsageData>; empty: boolean; first: string; children: React.ReactNode }) {
+  // Re-test 4: a slow answer shows the table's own shape (real row height); a fast one shows nothing until the rows come.
+  const slow = useDelayedLoading(load.status === "loading");
+  if (load.status === "loading") return slow ? <UsageTableSkeleton first={first} rows={4} /> : null;
   if (load.status === "error")
     return (
       <Notice form="block" tone="error" title="Couldn't read usage">
@@ -62,7 +64,7 @@ export function UsageByModel({ load, view }: { load: Load<UsageData>; view: Usag
     return { rows: rows.map((r) => ({ ...r, nested: r.roles })), unplaced };
   }, [data, name, state.agents, view.roles, view.scope]);
   return (
-    <UsageState load={load} empty={!data || !hasUsage(data.models)}>
+    <UsageState load={load} first="Model" empty={!data || !hasUsage(data.models)}>
       <UsageTable
         first="Model"
         label={`Tokens per model, ${periodText(view.period).toLowerCase()}`}
@@ -89,7 +91,7 @@ export function UsageByAgent({ load, view }: { load: Load<UsageData>; view: Usag
   }, [data, view.scope]);
   const first = view.scope === "project" ? "Agent" : "Project";
   return (
-    <UsageState load={load} empty={!data || !hasUsage(data.breakdown)}>
+    <UsageState load={load} first={first} empty={!data || !hasUsage(data.breakdown)}>
       <UsageTable
         first={first}
         label={`Tokens per ${first.toLowerCase()}`}
@@ -108,7 +110,7 @@ export function UsageByDay({ load, view, now }: { load: Load<UsageData>; view: U
   const days = useMemo(() => fillDays(data?.days ?? null, span, now), [data, span, now]);
   const rows = useMemo(() => (data ? usageRows(data.days.buckets, (b) => dayLabel(b.key), "key-desc") : []), [data]);
   return (
-    <UsageState load={load} empty={!data || !hasUsage(data.days)}>
+    <UsageState load={load} first="Day" empty={!data || !hasUsage(data.days)}>
       <section aria-label="Tokens per day" className="px-2 pt-1">
         {daysWithData(days) >= 2 ? (
           <DayBars

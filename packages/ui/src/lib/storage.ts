@@ -42,6 +42,12 @@ export const PREFS = {
   startup: key("startup"),
   /** Motion (Settings → Appearance): `"system" | "reduced"` as plain text. */
   motion: key("motion"),
+  /** What the sidebar lists (Settings → General, decision 96): `"tree" | "projects" | "sessions"` as plain text. */
+  sidebarView: key("sidebarView"),
+  /** The sidebar tree's project rows the person opened or closed: `{ [projectId]: boolean }`. */
+  sidebarOpen: key("sidebarOpen"),
+  /** The main session a project's conversation tab showed last (decision 96: `#/p/<pid>` opens it), as plain text. */
+  lastSession: (projectId: string) => key(`lastSession.${projectId}`),
 } as const;
 
 /** How a value is stored. `parse` never throws: missing, malformed or foreign text becomes a valid (default) value. */
@@ -134,3 +140,6 @@ export function usePersistentState<T>(
   }, [k, value, debounceMs, codecRef]);
   return [value, set];
 }
+
+/** Decision 96: what the sidebar lists (Settings → General → "Sidebar shows") — projects with their sessions (default), projects only, or sessions only. */
+export const sidebarViewCodec = choiceCodec(["tree", "projects", "sessions"] as const, "tree");

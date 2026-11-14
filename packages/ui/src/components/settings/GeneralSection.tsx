@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { PREFS, usePersistentState, writePref } from "../../lib/storage";
+import { PREFS, sidebarViewCodec, usePersistentState, writePref } from "../../lib/storage";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { Segmented } from "../primitives/Segmented";
@@ -14,6 +14,8 @@ import type { Backdrop, ThemePref } from "../../state/app";
 export function GeneralSection() {
   const [startup, setStartup] = usePersistentState(PREFS.startup, startupCodec);
   const [saved, run] = useSave();
+  const [view, setView] = usePersistentState(PREFS.sidebarView, sidebarViewCodec);
+  const [savedView, runView] = useSave();
   return (
     <>
       <SettingsGroup label="Startup">
@@ -34,6 +36,29 @@ export function GeneralSection() {
                 void run(async () => {
                   if (!writePref(PREFS.startup, startupCodec.stringify(v))) throw new Error("Could not save. The browser's storage is full or blocked");
                   setStartup(v);
+                })
+              }
+            />
+          }
+        />
+        <SettingsRow
+          rowId="sidebar-view"
+          title="Sidebar shows"
+          description="Projects with their sessions, projects only (a project opens its default session), or every session by latest activity."
+          status={<SaveStatus state={savedView} />}
+          control={
+            <Segmented
+              label="Sidebar shows"
+              options={[
+                { id: "tree", label: "Projects and sessions" },
+                { id: "projects", label: "Projects" },
+                { id: "sessions", label: "Sessions" },
+              ]}
+              value={view}
+              onChange={(v) =>
+                void runView(async () => {
+                  if (!writePref(PREFS.sidebarView, sidebarViewCodec.stringify(v))) throw new Error("Could not save. The browser's storage is full or blocked");
+                  setView(v);
                 })
               }
             />

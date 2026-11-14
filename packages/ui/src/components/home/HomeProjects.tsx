@@ -1,4 +1,4 @@
-import type { ProjectSummary } from "@octo/agent-client";
+import type { GlobalSession, ProjectSummary } from "@octo/agent-client";
 import { Plus } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
@@ -18,6 +18,9 @@ import { ListRow } from "../primitives/ListRow";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { Skeleton, SkeletonList } from "../primitives/Skeleton";
 import { OrchestratorGlyph } from "../primitives/Status";
+import { StateGlyph } from "../primitives/StateGlyph";
+import { sessionGlyph, sessionMeta, sessionTitle } from "../../lib/sessions/tree";
+import { sessionStateWord } from "../../lib/sessions/model";
 import { STILL } from "./still";
 import type { useOverview } from "./useOverview";
 
@@ -36,16 +39,21 @@ function secondLine(state: OrchestratorState, reply: Reply | null | undefined, l
 }
 
 type Item = { project: ProjectSummary; state: OrchestratorState; triage: Triage };
+/** Decision 96: a session in Home's needs-you, working or ready-to-review group. */
+export type SessionItem = { session: GlobalSession; triage: Triage };
 
 /** The grouped project list (decision 26): needs you, working, ready to review, idle; rows are `ListRow`s on the shared scale. */
 export function Projects({
   items,
+  sessions = null,
   data,
   now,
   filter,
   onNewProject,
 }: {
   items: Item[];
+  /** With parallel sessions: the session rows of the groups before Idle (Idle lists `items`). */
+  sessions?: readonly SessionItem[] | null;
   data: ReturnType<typeof useOverview>;
   now: number;
   filter: Triage | null;
@@ -61,18 +69,22 @@ export function Projects({
     const by = triageGroups(items.map((x) => ({ project: x.project, triage: x.triage })));
     const stateOf = new Map(items.map((x) => [x.project.id, x.state]));
     const limit = filter || all ? Infinity : PROJECT_ROWS;
-    const out: { triage: Triage; rows: { p: ProjectSummary; s: OrchestratorState }[] }[] = [];
+    const out: { triage: Triage; rows: { p: ProjectSummary; s: OrchestratorState }[]; sessions: GlobalSession[] }[] = [];
     let used = 0;
     for (const t of TRIAGE_ORDER) {
       if (filter && t !== filter) continue;
+      const own = (sessions ?? []).filter((x) => x.triage === t).map((x) => x.session);
       const rows = NEVER_CUT.includes(t) ? by[t] : by[t].slice(0, Math.max(0, limit - used));
-      used += rows.length;
-      if (rows.length) out.push({ triage: t, rows: rows.map((p) => ({ p, s: stateOf.get(p.id) ?? ({ kind: "idle", at: p.updated_at } as const) })) });
+      const cutSessions = NEVER_CUT.includes(t) ? own : own.slice(0, Math.max(0, limit - used));
+      used += rows.length + cutSessions.length;
+      if (rows.length || cutSessions.length)
+        out.push({ triage: t, sessions: cutSessions, rows: rows.map((p) => ({ p, s: stateOf.get(p.id) ?? ({ kind: "idle", at: p.updated_at } as const) })) });
     }
     return out;
-  }, [items, filter, all]);
-  const shown = groups.reduce((n, g) => n + g.rows.length, 0);
-  const rest = (filter ? items.filter((x) => x.triage === filter).length : items.length) - shown;
+  }, [items, sessions, filter, all]);
+  const shown = groups.reduce((n, g) => n + g.rows.length + g.sessions.length, 0);
+  const total = items.length + (sessions?.length ?? 0);
+  const rest = (filter ? items.filter((x) => x.triage === filter).length + (sessions ?? []).filter((x) => x.triage === filter).length : total) - shown;
   return (
     <div className="flex flex-col gap-1">
       <Card padding="sm">
@@ -86,6 +98,9 @@ export function Projects({
               <SectionHeader inset as="h2">
                 {TRIAGE_LABEL[g.triage]}
               </SectionHeader>
+              {g.sessions.map((s) => (
+                <SessionRow key={s.id} session={s} now={now} />
+              ))}
               {g.rows.map(({ p, s }) => (
                 <ProjectRow key={p.id} project={p} state={s} reply={data.replies.get(p.id)} loaded={data.replies.has(p.id)} now={now} />
               ))}
@@ -105,6 +120,31 @@ export function Projects({
         )}
       </div>
     </div>
+  );
+}
+
+/** Decision 96 (criterion 36): a session row of Home — its glyph, title, the project as meta and its state in words. */
+function SessionRow({ session, now }: { session: GlobalSession; now: number }) {
+  const title = sessionTitle(session);
+  const state = sessionStateWord(session);
+  const when = sessionMeta(session, now);
+  return (
+    <ListRow
+      size="lg"
+      title={title}
+      description={`${session.project_name} · ${state}`}
+      meta={when ?? undefined}
+      leading={
+        <span className={cn("flex -translate-y-2", session.state !== "working" && STILL)}>
+          <StateGlyph state={sessionGlyph(session)} size={14} box={16} label />
+        </span>
+      }
+      tip={`${title} — ${session.project_name}: ${state}`}
+      onClick={() => {
+        navigate(session.project_id, null, session.id);
+        focusSoon(visibleComposer, { timeout: 3000 });
+      }}
+    />
   );
 }
 

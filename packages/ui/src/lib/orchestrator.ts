@@ -30,7 +30,9 @@ export function orchestratorState(
   attention?: ProjectAttentionKind,
   waiting?: Waiting,
 ): OrchestratorState {
-  const root = agents.find((a) => a.parent_id === null);
+  // Parallel sessions: one root per main session; the one at work, else the default's (listed first), speaks for the project.
+  const roots = agents.filter((a) => a.parent_id === null);
+  const root = roots.find((a) => a.status === "running") ?? roots[0];
   // Pending work wins over working: a turn that waits on an approval or a form is still running at the harness.
   const pendingWork = waitingOn(attention, waiting);
   if (pendingWork) return { kind: "needs", error: null, at: null, waiting: pendingWork };

@@ -1,6 +1,7 @@
-import { warmBridgeClient, type ProjectSummary } from "@octo/agent-client";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { warmBridgeClient } from "@octo/agent-client";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../lib/cn";
+import { loadPref, PREFS, sidebarViewCodec } from "../lib/storage";
 import { useEscape, useLatest, useMediaQuery } from "../lib/hooks";
 import { holdTypeahead, takeTypeahead } from "../lib/typeahead";
 import { focusSoon, visibleComposer } from "../lib/focus";
@@ -18,6 +19,7 @@ import { Presence } from "../components/primitives/Presence";
 import type { PaletteAction } from "../components/shell/CommandPalette";
 import { Panel } from "../components/shell/Panel";
 import { MainSkeleton } from "../components/shell/MainSkeleton";
+import { SkeletonList } from "../components/primitives/Skeleton";
 import { Sidebar } from "../components/shell/Sidebar";
 import { TitleBar } from "../components/shell/TitleBar";
 import { StatusBar } from "../components/status/StatusBar";
@@ -58,7 +60,13 @@ const ConnectScreen = lazy(() => import("../components/providers/ConnectScreen")
 const LeaveDialog = lazy(() => import("../components/shell/DiscardDialogs").then((m) => ({ default: m.LeaveDialog })));
 /** The sidebar as a drawer exists only under the drawer breakpoint: its own chunk (with the modal hook), warmed after first paint. */
 const SidebarDrawer = lazy(() => import("../components/shell/SidebarDrawer").then((m) => ({ default: m.SidebarDrawer })));
-const SidebarSessions = lazy(() => import("../components/sessions/SidebarSessions").then((m) => ({ default: m.SidebarSessions })));
+/**
+ * Decision 96: the sidebar's tree of projects and sessions (and the flat sessions list) is its own chunk, asked for as soon as
+ * this module runs, so it is in long before the project list arrives from the service.
+ */
+const loadTree = () => import("../components/sessions/SessionTree");
+const treeChunk = loadTree().catch(() => undefined);
+const SessionTree = lazy(() => treeChunk.then((m) => m ?? loadTree()).then((m) => ({ default: m.SessionTree })));
 
 export function AppShell() {
   return (
@@ -81,11 +89,19 @@ function Shell() {
     (next, current) => current.projectId !== null && next.projectId !== current.projectId && nav.unsavedCount() > 0,
   );
   const drawerMode = useMediaQuery(DRAWER_QUERY);
+
   const [inlineOpen, setInlineOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   // Decision 59: Settings is a page at `#/settings/<section>`; "Back" returns to the hash it was opened from.
   const settings = useSettingsSection();
+  // Decision 96: what the sidebar lists (Settings → General); read again whenever the settings page opens or closes (the
+  // sidebar is hidden while it is open).
+  const inSettings = settings !== null;
+  const view = useMemo(() => {
+    void inSettings;
+    return loadPref(PREFS.sidebarView, sidebarViewCodec);
+  }, [inSettings]);
   const beforeSettings = useRef("#/");
   // The project open in the app, kept while Settings is on screen (its route has no project): Models opens its project tab on it.
   const [openProject, setOpenProject] = useState<string | null>(route.projectId);
@@ -163,7 +179,7 @@ function Shell() {
   }, [health, projects, firstId, route.projectId]);
 
   // The drawer closes on navigation and whenever the window grows out of drawer mode.
-  useEffect(() => setDrawerOpen(false), [route.projectId, route.agentId, drawerMode]);
+  useEffect(() => setDrawerOpen(false), [route.projectId, route.agentId, route.sessionId, drawerMode]);
   useEscape(drawerMode && drawerOpen && !palette, () => setDrawerOpen(false));
 
   // The first assistant message must not flash as plain text before Markdown arrives: fetch that chunk right after first
@@ -182,6 +198,7 @@ function Shell() {
       void import("../components/chat/ComposerPills").catch(() => undefined);
       void import("../components/shell/SidebarDrawer").catch(() => undefined);
       void import("../components/chat/ContextRing").catch(() => undefined);
+      void import("../components/chat/SessionChip").catch(() => undefined);
     };
     if (Reflect.has(window, "requestIdleCallback")) {
       const id = window.requestIdleCallback(warm, { timeout: 500 });
@@ -294,6 +311,21 @@ function Shell() {
     );
 
   const drawerShown = drawerMode && drawerOpen;
+  const tree =
+    view === "projects" ? undefined : (
+      <Suspense fallback={<SkeletonList count={3} size="lg" twoLine className="mt-4" />}>
+        <SessionTree
+          mode={view === "sessions" ? "sessions" : "tree"}
+          activeProjectId={route.projectId}
+          activeSessionId={route.sessionId}
+          agentRoute={route.agentId !== null}
+          unseen={unseen}
+          canCreate={health === "online"}
+          onNewProject={newProject}
+          onPick={() => setDrawerOpen(false)}
+        />
+      </Suspense>
+    );
   const sidebarProps = {
     activeProjectId: route.projectId,
     home: route.projectId === null && (projects?.length ?? 0) > 0,
@@ -307,12 +339,7 @@ function Shell() {
     onSettings: () => openSettings(),
     // Picking a project closes the drawer even when it is the one already open (the route does not change then).
     onPick: () => setDrawerOpen(false),
-    // A project with several sessions expands to its recent ones (lazy chunk: the row costs nothing until the list loads).
-    projectExtra: (p: ProjectSummary, active: boolean) => (
-      <Suspense fallback={null}>
-        <SidebarSessions projectId={p.id} updatedAt={p.updated_at} active={active} onPick={() => setDrawerOpen(false)} />
-      </Suspense>
-    ),
+    tree,
   };
 
   const actions: PaletteAction[] = [
@@ -366,7 +393,7 @@ function Shell() {
                       <MemoryRoute />
                     </Suspense>
                   ) : (
-                    <ProjectWorkspace agentId={route.agentId} onLost={onProjectLost} />
+                    <ProjectWorkspace agentId={route.agentId} sessionId={route.sessionId} onLost={onProjectLost} />
                   )}
                 </ProjectProvider>
               ) : (

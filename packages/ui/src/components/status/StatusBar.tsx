@@ -4,6 +4,7 @@ import { useApp } from "../../state/app";
 import { navigate } from "../../lib/route";
 import { Spinner } from "../primitives/Status";
 import { StateGlyph } from "../primitives/StateGlyph";
+import { RemoteIndicator } from "./RemoteIndicator";
 import { StatusButton } from "./StatusButton";
 
 /**
@@ -35,6 +36,7 @@ export function StatusBar(props: { home: boolean; startRef(el: HTMLElement | nul
           </StatusButton>
         )}
         <div ref={props.endRef} className="flex items-center gap-1 empty:hidden" />
+        <RemoteIndicator />
         {connection && (
           <StatusButton title={connection.hint} onClick={retry} disabled={health === "checking"}>
             {health === "checking" ? <Spinner size={12} /> : <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-err" />}

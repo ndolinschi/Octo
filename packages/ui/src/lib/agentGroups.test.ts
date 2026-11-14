@@ -63,3 +63,14 @@ test("foldLine", () => {
   assert.deepEqual(foldLine({ total: 5, failed: 1 }), { text: "5 agents", failed: "1 failed" });
   assert.deepEqual(foldLine({ total: 1, failed: 0 }), { text: "1 agent", failed: null });
 });
+
+test("parallel sessions: the sub-agents of every root (each main session's) are listed", () => {
+  const two = [
+    agent({ id: "r1" }),
+    agent({ id: "r2" }),
+    agent({ id: "c1", parent_id: "r1", status: "running" }),
+    agent({ id: "c2", parent_id: "r2", status: "completed" }),
+  ];
+  const g = agentGroups(two);
+  assert.deepEqual([g.running.map((n) => n.agent.id), g.finished.map((n) => n.agent.id)], [["c1"], ["c2"]]);
+});

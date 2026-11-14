@@ -2,6 +2,8 @@ Provider and vendor marks used by ProviderMark (packages/ui/src/components/primi
 
 Each file is the vendor's own mark, taken unchanged from the source below; only the wrapper was removed (title, style, size
 attributes) and the viewBox was recentred and scaled so every mark has the same optical size beside lucide glyphs at 16 and 20.
+The scale then follows each mark's ink (2026-11-14): solid marks (codex, openrouter, qwen, claude-code, pi, cursor) are drawn
+smaller and thin ones (grok, zhipu, copilot) larger, so at 12-16px a filled mark carries about the weight of a 1.5px line icon.
 
 Sources
   A = @lobehub/icons-static-svg 1.102.0, licence MIT

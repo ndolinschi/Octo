@@ -13,7 +13,7 @@ import { ProviderKey } from "./ProviderKey";
 import { ProviderModels } from "./ProviderModels";
 import { useHarnessSettings } from "./harnessSettings";
 import { CONTROL_CAP } from "./parts";
-import { ProviderTitle, SectionTitle } from "./ProviderParts";
+import { ProviderTitle, RouterFacts, SectionTitle } from "./ProviderParts";
 
 /**
  * Decision 89 d, in this order: title row (mark, name, state, the state's one action), the reason with the commands to run,
@@ -40,6 +40,13 @@ export function ProviderDetail({ provider: p, onRouter }: { provider: Provider; 
     setChecked(true);
   };
   const connect = () => onRouter?.();
+  const [rechecking, setRechecking] = useState(false);
+  const recheckRouter = async () => {
+    setRechecking(true);
+    // A failed read keeps the list as it was; the providers page shows its own error for it.
+    await refreshProviders(bridge).catch(() => undefined);
+    setRechecking(false);
+  };
   const reason = reasonLine(p);
   const restartNeeded = p.kind === "api" && harness.needsRestart(SETTING_IDS.anthropicApiKey);
   return (
@@ -67,6 +74,7 @@ export function ProviderDetail({ provider: p, onRouter }: { provider: Provider; 
         {p.kind === "api" && <ProviderKey />}
         {(p.models.length > 0 || p.state === "ready") && p.kind !== "router" && <ProviderModels provider={p} />}
         {p.kind === "agent" && p.state === "ready" && <AgentPrefs agent={p} />}
+        {p.kind === "router" && <RouterFacts provider={p} checking={rechecking} onCheck={() => void recheckRouter()} onSettings={onRouter} />}
         {p.state !== "not_installed" && p.state !== "not_connected" && (
           <section className="flex flex-col gap-1">
             <SectionTitle>Billing</SectionTitle>

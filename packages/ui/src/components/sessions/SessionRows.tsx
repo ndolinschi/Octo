@@ -26,7 +26,9 @@ export function SessionRows(props: {
   /** The "⋯" of a row: Resume, Archive and Delete. Without it rows only reserve the room. */
   menu?: {
     list: readonly ProjectSession[];
+    /** "Open": a main session's conversation (decision 96). */
     onResume(session: ProjectSession): void;
+    onMakeDefault?(session: ProjectSession): void;
     onArchive(session: ProjectSession, archived: boolean): void;
     onDelete(session: ProjectSession): void;
   };
@@ -37,8 +39,13 @@ export function SessionRows(props: {
     const menu = props.menu;
     const items: MenuItem[] = [];
     if (menu) {
-      if (s.kind === "main" && !s.current) items.push({ id: "resume", label: "Resume", run: () => menu.onResume(s) });
-      if (!s.current) items.push({ id: "archive", label: s.archived ? "Unarchive" : "Archive", run: () => menu.onArchive(s, !s.archived) });
+      const isDefault = s.kind === "main" && (s.default ?? s.current);
+      if (s.kind === "main") items.push({ id: "open", label: "Open", run: () => menu.onResume(s) });
+      if (s.kind === "main" && !isDefault && menu.onMakeDefault) {
+        const make = menu.onMakeDefault;
+        items.push({ id: "default", label: "Make default", run: () => make(s) });
+      }
+      if (!isDefault) items.push({ id: "archive", label: s.archived ? "Unarchive" : "Archive", run: () => menu.onArchive(s, !s.archived) });
       if (canDelete(menu.list, s)) items.push({ id: "delete", label: "Delete", run: () => menu.onDelete(s) });
     }
     return (

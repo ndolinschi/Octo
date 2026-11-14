@@ -19,6 +19,7 @@ import { HarnessSettingsProvider } from "./harnessSettings";
 import { ModelsSection } from "./ModelsSection";
 import { SettingsActionsProvider, type SettingsActions } from "./pageContext";
 import { PrivacySection } from "./PrivacySection";
+import { RemoteAccessSection } from "./RemoteAccessSection";
 import { EditorSection, MemorySection, UsageSection } from "./ProjectSections";
 import { ProvidersSection } from "./ProvidersSection";
 import { SettingsGroup, SettingsRow } from "./parts";
@@ -43,6 +44,7 @@ const CONTENT: Record<SectionId, (projectId: string | null) => ReactNode> = {
   memory: (projectId) => <MemorySection projectId={projectId} />,
   commands: (projectId) => <CommandsSection projectId={projectId} />,
   privacy: () => <PrivacySection />,
+  remote: () => <RemoteAccessSection />,
   about: () => <AboutPage />,
 };
 

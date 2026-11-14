@@ -4,7 +4,10 @@ import { cn } from "../../lib/cn";
 import { useNow } from "../../lib/hooks";
 import type { GlyphState } from "../../lib/stateGlyph";
 import { STREAK_BAND } from "../../lib/streakPresets";
-import { TRIAGE_LABEL, TRIAGE_ORDER, triageOf, type Triage } from "../../lib/triage";
+import { sessionTriageOf, TRIAGE_LABEL, TRIAGE_ORDER, triageOf, type Triage } from "../../lib/triage";
+import { loadPref, PREFS, sidebarViewCodec } from "../../lib/storage";
+import { useSessionIndex } from "../../state/sessionIndex";
+import type { SessionItem } from "./HomeProjects";
 import { useApp } from "../../state/app";
 import { Card } from "../primitives/Card";
 import { ListRow } from "../primitives/ListRow";
@@ -26,13 +29,28 @@ export function Home({ onNewProject, unseen }: { onNewProject(): void; onSearch(
   const data = useOverview();
   const now = useNow(true, CLOCK_MINUTE_MS);
   const [filter, setFilter] = useState<Triage | null>(null);
+  // Decision 96 (criterion 36): needs you, working and ready to review list sessions with their project; Idle lists the projects
+  // with nothing in those groups. In the "Projects" sidebar view Home stays as it was (projects only).
+  const index = useSessionIndex(data.projects);
+  const [byProjects] = useState(() => loadPref(PREFS.sidebarView, sidebarViewCodec) === "projects");
+  const sessions = useMemo<SessionItem[] | null>(() => {
+    if (byProjects || !index.loaded || index.all.length === 0) return null;
+    const newest = new Map<string, string>();
+    for (const s of index.all) if (!s.archived && !newest.has(s.project_id)) newest.set(s.project_id, s.id);
+    return index.all
+      .filter((s) => !s.archived)
+      .map((s) => ({ session: s, triage: sessionTriageOf(s, unseen.has(s.project_id), newest.get(s.project_id) === s.id) }))
+      .filter((x) => x.triage !== "idle");
+  }, [byProjects, index, unseen]);
   const triaged = useMemo(
     () =>
-      (data.projects ?? []).map((p) => {
+      (data.projects ?? []).flatMap((p) => {
         const s = data.orchestrators.get(p.id) ?? ({ kind: "idle", at: p.updated_at } as const);
-        return { project: p, state: s, triage: triageOf(s, unseen.has(p.id)) };
+        // With sessions, a project shows as a row only in Idle: when none of its sessions is in another group.
+        if (sessions) return sessions.some((x) => x.session.project_id === p.id) ? [] : [{ project: p, state: s, triage: "idle" as const }];
+        return [{ project: p, state: s, triage: triageOf(s, unseen.has(p.id)) }];
       }),
-    [data.projects, data.orchestrators, unseen],
+    [data.projects, data.orchestrators, unseen, sessions],
   );
   const count = data.projects?.length ?? 0;
   return (
@@ -50,9 +68,9 @@ export function Home({ onNewProject, unseen }: { onNewProject(): void; onSearch(
               {count > 0 && <span className="octo-lead">{count === 1 ? "One project. " : `${count} projects. `}</span>}
               What should we work on?
             </h1>
-            <TriageRow items={triaged} loading={data.projects === null} value={filter} onChange={setFilter} />
+            <TriageRow items={[...triaged, ...(sessions ?? [])]} loading={data.projects === null} value={filter} onChange={setFilter} />
           </div>
-          <Projects items={triaged} data={data} now={now} filter={filter} onNewProject={onNewProject} />
+          <Projects items={triaged} sessions={sessions} data={data} now={now} filter={filter} onNewProject={onNewProject} />
           <TeamCard projects={data.projects} agents={data.agents} />
         </div>
       </div>

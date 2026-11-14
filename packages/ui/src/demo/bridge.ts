@@ -1,3 +1,4 @@
+import { createDemoRemote } from "./remote";
 import {
   APPROVAL_TRIGGER,
   FAIL_TRIGGER,
@@ -22,11 +23,12 @@ import {
   type ProjectSummary,
   type SideMessage,
   type CompactionMarker,
+  type FileBytesReader,
 } from "@octo/agent-client";
 import { basename } from "../lib/format";
 import { atlasHistory } from "./atlas";
 import { backgroundTurn, docsHistory } from "./extra";
-import { ensureSeeded, listDemoFiles, readDemoFile, writeDemo } from "./files";
+import { ensureSeeded, listDemoFiles, readDemoFile, readDemoFileBytes, writeDemo } from "./files";
 import { genericTurn } from "./generic";
 import { infraAcpTurn, ledgerShowcase, pastHistory } from "./history";
 import { demoLanguageServers, demoPlugins } from "./plugins";
@@ -139,8 +141,26 @@ function dedupeFolders(folders: { path: string; label?: string }[]): Project["fo
   });
 }
 
-function startScript(rec: ProjectRecord, t: number, script: (ctx: Ctx) => Promise<void>): void {
-  void script({ rec, t, signal: { cancelled: false } });
+function startScript(rec: ProjectRecord, t: number, script: (ctx: Ctx) => Promise<void>, root?: string): void {
+  void script({ rec, t, signal: { cancelled: false }, ...(root ? { root } : {}) });
+}
+
+/** The scripted turn a message starts (the demo triggers: fail, live, spawn refused, slow, approval, stubborn, else generic). */
+function scriptFor(text: string): (ctx: Ctx) => Promise<void> {
+  return (ctx) =>
+    FAIL_TRIGGER.test(text)
+      ? failTurn(ctx, text)
+      : LIVE_TRIGGER.test(text)
+        ? liveTurn(ctx, text)
+        : SPAWN_REFUSED_TRIGGER.test(text)
+          ? spawnRefusedTurn(ctx, text)
+          : SLOW_TRIGGER.test(text)
+            ? slowTurn(ctx, text)
+            : APPROVAL_TRIGGER.test(text)
+              ? approvalTurn(ctx, text)
+              : STUBBORN_TRIGGER.test(text)
+                ? stubbornTurn(ctx, text)
+                : genericTurn(ctx, text);
 }
 
 function seed(): ProjectRecord[] {
@@ -456,6 +476,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
 
   const { refuse: refuseModels, ...providerMethods } = demoProviders();
   const bridge: Bridge = {
+    remote: createDemoRemote(),
     // Providers, settings and diagnostics (decisions 53, 59): `?providers=none` shows the connect screen.
     ...providerMethods,
     health: async () => (await delay(), { ok: true, version: "demo" }),
@@ -692,21 +713,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const rec = get(id);
       if (rec.turn) throw new BridgeError(409, "turn_in_progress", "a turn is already running");
       trace("sendMessage", text);
-      startScript(rec, Date.now(), (ctx) =>
-        FAIL_TRIGGER.test(text)
-          ? failTurn(ctx, text)
-          : LIVE_TRIGGER.test(text)
-            ? liveTurn(ctx, text)
-            : SPAWN_REFUSED_TRIGGER.test(text)
-              ? spawnRefusedTurn(ctx, text)
-              : SLOW_TRIGGER.test(text)
-                ? slowTurn(ctx, text)
-                : APPROVAL_TRIGGER.test(text)
-                  ? approvalTurn(ctx, text)
-                  : STUBBORN_TRIGGER.test(text)
-                    ? stubbornTurn(ctx, text)
-                    : genericTurn(ctx, text),
-      );
+      startScript(rec, Date.now(), scriptFor(text));
       const orch = orchestratorOf(rec);
       const sent = [...rec.messages].reverse().find((m) => m.agent_id === orch.id && m.role === "user");
       if (!sent) throw new BridgeError(500, "internal", "message not recorded");
@@ -717,6 +724,33 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const rec = get(id);
       if (rec.turn) rec.turn.cancelled = true;
     },
+    // Parallel sessions: the base bridge runs a session's turn on its root agent (the sessions layer, `sessions.ts`, owns the
+    // session list, the queues and the running cap, and sends the default session's messages through the project route).
+    sendSessionMessage: async (id, sid, text) => {
+      await delay();
+      const rec = get(id);
+      const root = rec.agents.find((a) => a.parent_id === null && a.session_id === sid);
+      if (!root) throw new BridgeError(404, "not_found", "session not found");
+      if (rec.turns?.has(root.id)) throw new BridgeError(409, "turn_in_progress", "a turn is already running");
+      trace("sendSessionMessage", text);
+      startScript(rec, Date.now(), scriptFor(text), root.id);
+      const sent = [...rec.messages].reverse().find((m) => m.agent_id === root.id && m.role === "user");
+      if (!sent) throw new BridgeError(500, "internal", "message not recorded");
+      return { message: clone(sent) };
+    },
+    stopSession: async (id, sid) => {
+      await delay();
+      throw new BridgeError(404, "not_found", `no session ${sid} in ${id}`);
+    },
+    createSession: async (id) => {
+      await delay();
+      throw new BridgeError(404, "not_found", `no sessions in ${id}`);
+    },
+    setDefaultSession: async (id, sid) => {
+      await delay();
+      throw new BridgeError(404, "not_found", `no session ${sid} in ${id}`);
+    },
+    listAllSessions: async () => (await delay(), []),
     listNotes: async (id) => (await delay(), clone(get(id).notes.map(listed))),
     getNote: async (id, noteId) => {
       await delay();
@@ -846,9 +880,17 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       };
     },
   };
-  return withDemoSide(
+  const wrapped = withDemoSide(
     withDemoSlash(withDemoCommands(withDemoReview(withDemoSessions(withDemoParity(withDemoV7(bridge, records), records), records), records), records), records),
     records,
     sideModeFromUrl(),
   );
+  // The optional byte read (`fileBytesReader` in @octo/agent-client): image previews in Files.
+  const readFileBytes: FileBytesReader["readFileBytes"] = async (id, folder, path) => {
+    await delay();
+    await ensureSeeded(get(id));
+    return readDemoFileBytes(get(id), folder, path);
+  };
+  const withBytes: Bridge & FileBytesReader = { ...wrapped, readFileBytes };
+  return withBytes;
 }

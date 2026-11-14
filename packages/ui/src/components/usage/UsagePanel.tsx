@@ -14,6 +14,7 @@ import { UsageLimits } from "./UsageLimits";
 import { UsageByAgent, UsageByDay, UsageByModel, usageEmpty } from "./UsageViews";
 import { useUsageReports } from "./useUsage";
 import { ViewTabs } from "../primitives/ViewTabs";
+import { PanelPurpose } from "../shared/PanelPurpose";
 
 const TAB = toolTab("usage");
 
@@ -42,7 +43,12 @@ export function UsagePanel() {
   ];
   return (
     <div data-usage className="h-full min-h-0">
-      <Panel name="usage" title="Usage" views={<ViewTabs label="Usage" options={items} value={view.segment} onChange={(segment) => setView({ segment })} />}>
+      <Panel
+        name="usage"
+        title="Usage"
+        lead={<PanelPurpose tool="usage" />}
+        views={<ViewTabs label="Usage" options={items} value={view.segment} onChange={(segment) => setView({ segment })} />}
+      >
         {/* The table needs a wider measure than the label / value rows of Limits; both stay left-aligned on the frame's inset. */}
         <div className="flex h-full min-h-0 flex-col">
           {view.segment !== "limits" && (

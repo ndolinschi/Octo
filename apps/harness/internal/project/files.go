@@ -2,6 +2,7 @@ package project
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"log/slog"
 	"os"
@@ -103,6 +104,28 @@ func (f *Files) Read(ctx context.Context, pid, folder, path string) (FileContent
 		return FileContent{}, fileErr(err)
 	}
 	return FileContent{FileStat: stat(folder, info), Content: text}, nil
+}
+
+// FileBytes is a file's content as base64, for files that are not text
+// (image previews); Encoding is always "base64".
+type FileBytes struct {
+	FileStat
+	Content  string `json:"content"`
+	Encoding string `json:"encoding"`
+}
+
+// ReadBytes is Read for any file: same roots, path checks and size limit, no
+// UTF-8 check, content base64-encoded.
+func (f *Files) ReadBytes(ctx context.Context, pid, folder, path string) (FileBytes, error) {
+	root, err := f.root(ctx, pid, folder)
+	if err != nil {
+		return FileBytes{}, err
+	}
+	data, info, err := files.ReadBytes(root, path)
+	if err != nil {
+		return FileBytes{}, fileErr(err)
+	}
+	return FileBytes{FileStat: stat(folder, info), Content: base64.StdEncoding.EncodeToString(data), Encoding: "base64"}, nil
 }
 
 // Write saves content; expectedMTime, when set, guards against lost updates.

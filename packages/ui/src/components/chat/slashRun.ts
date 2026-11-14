@@ -16,6 +16,8 @@ export type SlashDeps = {
   openSettings(): void;
   push: ((note: NoteInput) => void) | undefined;
   rewindLast: (() => void) | undefined;
+  /** Parallel sessions: `/clear` made session `next` (the bridge is addressed to the session it cleared). */
+  onCleared?: ((next: string) => void) | undefined;
 };
 
 /** Runs an Octo slash command: false when the name is not one it knows (the text is then sent as typed). */
@@ -31,7 +33,10 @@ export async function runSlash(d: SlashDeps, name: string, args: string): Promis
       }
       case "clear":
         if (!bridge.clearConversation) return false;
-        await bridge.clearConversation(projectId);
+        {
+          const cleared = await bridge.clearConversation(projectId);
+          if (cleared.session_id && cleared.previous_session_id && cleared.session_id !== cleared.previous_session_id) d.onCleared?.(cleared.session_id);
+        }
         return true;
       case "mode": {
         const wanted = MODES.find((m: ProjectMode) => m === args.toLowerCase());

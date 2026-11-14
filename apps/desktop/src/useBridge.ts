@@ -7,10 +7,16 @@ import type { BridgeChoice } from "./bridgeChoice";
  * `@octo/ui/demo` with `import()`, so a normal start never downloads it, and the hook returns null until it is in.
  */
 export function useBridge(choice: BridgeChoice): Bridge | null {
-  const http = useMemo(
-    () => (choice.kind === "http" ? createHttpBridge({ baseUrl: choice.baseUrl, ...(choice.token ? { token: choice.token } : {}) }) : null),
-    [choice],
-  );
+  const http = useMemo(() => {
+    if (choice.kind !== "http") return null;
+    const options = { baseUrl: choice.baseUrl, ...(choice.token ? { token: choice.token } : {}) };
+    // Image previews in Files read bytes through `readFileBytes` (an optional method the UI looks for). Its code loads
+    // with the first image, not with the app.
+    const bridge = createHttpBridge(options);
+    const readFileBytes = async (projectId: string, folder: string, path: string) =>
+      (await import("@octo/agent-client/fileBytes")).withFileBytes(bridge, options).readFileBytes(projectId, folder, path);
+    return Object.assign(bridge, { readFileBytes });
+  }, [choice]);
   const [demo, setDemo] = useState<Bridge | null>(null);
   useEffect(() => {
     if (choice.kind !== "demo") return;

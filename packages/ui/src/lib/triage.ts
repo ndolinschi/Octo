@@ -22,3 +22,18 @@ export function triageGroups<T extends { id: string; updated_at: string }>(items
   for (const k of TRIAGE_ORDER) out[k].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
   return out;
 }
+
+/**
+ * Decision 96: a main session's triage group on Home. Waiting for the person or failed needs you; working or waiting for a
+ * slot works; the newest finished session of a project with unseen activity is ready to review; the rest is idle (its project
+ * shows in Idle, collapsed).
+ */
+export function sessionTriageOf(
+  s: { state: "working" | "waiting" | "queued" | "idle" | "failed" | "stopped"; needs_you?: boolean },
+  unseen: boolean,
+  newest: boolean,
+): Triage {
+  if (s.state === "waiting" || s.needs_you === true || s.state === "failed") return "needs";
+  if (s.state === "working" || s.state === "queued") return "working";
+  return unseen && newest ? "review" : "idle";
+}

@@ -1,4 +1,4 @@
-import type { MemoryExchange, MemorySession, MemorySessionDetail, Message, ProjectSession } from "@octo/agent-client";
+import type { MemoryExchange, MemorySession, MemorySessionDetail } from "@octo/agent-client";
 
 /**
  * Demo sessions for `?demo=1` (orchestrator memory M4): four sessions of different ages with several exchanges, a
@@ -229,91 +229,4 @@ export function forget(d: DemoSessions, id: string): boolean {
   if (!e) return false;
   Object.assign(e, { removed: true, request: "", answer: "", files: [], agents: [] });
   return true;
-}
-
-/**
- * The memory sessions as the project sessions of the harness (schema 13): each is a main session, the open one is current
- * (it can take a message, the others say "Resume this session"). `children` is filled by the caller (agent sessions).
- */
-export function mainSessions(d: DemoSessions, children: number): ProjectSession[] {
-  // States for the demo: the newest other sessions rest in different ways (idle, stopped, waiting for an answer).
-  const others = listSessions(d, 200).filter((m) => !m.open && !d.archived?.has(m.id));
-  const REST = ["idle", "stopped", "waiting"] as const;
-  return listSessions(d, 200).map((m) => {
-    const failed = m.exchanges > 0 && d.exchanges.filter((e) => e.session_id === m.id).at(-1)?.status === "failed";
-    const at = others.findIndex((o) => o.id === m.id);
-    return {
-      id: m.id,
-      kind: "main" as const,
-      title: m.title,
-      state: failed ? ("failed" as const) : m.open || at < 0 ? ("idle" as const) : (REST[at] ?? ("idle" as const)),
-      model: "claude-sonnet-4",
-      started_at: m.started_at,
-      last_activity_at: m.ended_at,
-      exchanges: m.exchanges,
-      children: m.open ? children : 0,
-      current: m.open,
-      archived: d.archived?.has(m.id) ?? false,
-      ...(m.summary ? { summary: m.summary } : {}),
-      can_message: m.open,
-      ...(m.open ? {} : { message_blocked: { code: "not_current", message: "Resume this session to continue it" } }),
-    };
-  });
-}
-
-/** One main session's requests and answers as the messages of the orchestrator's conversation (for its transcript). */
-export function sessionMessages(d: DemoSessions, id: string, agentId: string): Message[] {
-  let n = 100;
-  return d.exchanges
-    .filter((e) => e.session_id === id && !e.removed)
-    .flatMap((e) => [
-      {
-        id: (n += 1),
-        agent_id: agentId,
-        role: "user" as const,
-        content: [{ type: "text" as const, text: e.request }],
-        created_at: e.started_at,
-        session_id: id,
-      },
-      ...(e.answer
-        ? [
-            {
-              id: (n += 1),
-              agent_id: agentId,
-              role: "assistant" as const,
-              content: [{ type: "text" as const, text: e.answer }],
-              created_at: new Date(Date.parse(e.started_at) + e.duration_ms).toISOString(),
-              session_id: id,
-              ...(e.status === "stopped" ? { stopped: true } : {}),
-            },
-          ]
-        : []),
-    ]);
-}
-
-/** Deletes a session with its exchanges; false when there is no such session. */
-export function removeSession(d: DemoSessions, id: string): boolean {
-  const at = d.sessions.findIndex((s) => s.id === id);
-  if (at < 0) return false;
-  d.sessions.splice(at, 1);
-  d.exchanges = d.exchanges.filter((e) => e.session_id !== id);
-  d.archived?.delete(id);
-  return true;
-}
-
-/** Makes `id` the open session (resuming it, or a new one just added); false when there is no such session. */
-export function makeCurrent(d: DemoSessions, id: string): boolean {
-  if (!d.sessions.some((s) => s.id === id)) return false;
-  for (const s of d.sessions) s.open = s.id === id;
-  d.archived?.delete(id);
-  return true;
-}
-
-/** A new empty main session, made current (what `POST /sessions` and `/clear` do). */
-export function addSession(d: DemoSessions, title: string, now: number): MemorySession {
-  const at = new Date(now).toISOString();
-  const session: MemorySession = { id: `ses_${d.sessions.length + 1}`, title, started_at: at, ended_at: at, exchanges: 0, open: false };
-  d.sessions.push(session);
-  makeCurrent(d, session.id);
-  return session;
 }

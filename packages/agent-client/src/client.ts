@@ -1,4 +1,5 @@
 import { RARE_METHODS, type RareMethod } from "./rareNames";
+import { remoteAccessApi, type RemoteAccessApi } from "./remoteAccess";
 import type { CommandRun, CommandSuggestion, StartedCommandRun } from "./commands";
 import type {
   ListPullRequestsParams,
@@ -42,6 +43,10 @@ import type {
   MemorySessionsParams,
   ProjectSession,
   ProjectSessionDetail,
+  AllSessionsParams,
+  CreatedSession,
+  GlobalSession,
+  NewSessionInput,
   SessionMessageResult,
   SessionsParams,
   Task,
@@ -345,6 +350,8 @@ export interface Bridge {
   pickFolder?(start?: string): Promise<PickFolderResult>;
   /** R1: the diagnostics report (versions, PATH, per-agent resolution and login state, last 200 log lines). */
   getDiagnostics?(): Promise<Diagnostics>;
+  /** Remote access: the computer's `/v1/remote` control routes (local token only). Optional; HTTP only. */
+  remote?: RemoteAccessApi;
   /**
    * Decision 53: every provider (API key, router, agent CLIs) with its state and models. Optional: a harness that
    * predates `GET /v1/providers` answers 404, and the UI then derives the list from the config and the plugins.
@@ -416,13 +423,14 @@ export interface Bridge {
   getChange?(projectId: string, changeId: number): Promise<ChangeDetail>;
   /** Writes the content before the change back; 409 `file_changed` when the file moved on, 409 `revert_unavailable` without a stored original. */
   revertChange?(projectId: string, changeId: number): Promise<RevertResult>;
-  listApprovals?(projectId: string): Promise<Approval[]>;
+  /** Pending approvals; `sessionId` keeps one main session's (`?session=`). */
+  listApprovals?(projectId: string, opts?: { sessionId?: string }): Promise<Approval[]>;
   resolveApproval?(projectId: string, approvalId: string, answer: ApprovalAnswer): Promise<void>;
   /** The project's saved "always allow" rules (parity B4), oldest first. */
   listApprovalRules?(projectId: string): Promise<ApprovalRule[]>;
   /** Removes a rule: requests it covered are asked about again. 404 `not_found` for an unknown id. */
   deleteApprovalRule?(projectId: string, ruleId: string): Promise<void>;
-  listInputs?(projectId: string): Promise<InputRequest[]>;
+  listInputs?(projectId: string, opts?: { sessionId?: string }): Promise<InputRequest[]>;
   /** Submits or skips an open form. Secret values go to the harness's secret store and are never echoed. */
   submitInput?(projectId: string, inputId: string, answer: InputAnswer): Promise<void>;
   listSecrets?(projectId: string): Promise<SecretInfo[]>;
@@ -448,16 +456,45 @@ export interface Bridge {
   listSessions?(projectId: string, params?: SessionsParams): Promise<ProjectSession[]>;
   getSession?(projectId: string, sessionId: string): Promise<ProjectSessionDetail>;
   getSessionTranscript?(projectId: string, sessionId: string): Promise<Transcript>;
-  /** A new main session, made current (like `/clear`); 409 `turn_in_progress` while a turn runs. */
-  createSession?(projectId: string, title?: string): Promise<ProjectSession>;
-  /** Makes a main session current; 409 `turn_in_progress`, `not_main_session`. */
+  /**
+   * Parallel sessions: a new main session (not the default unless `make_default`; with `from_session_id` and `clear` it is
+   * `/clear` of that session); `text` sends its first message. 404 `workspace_not_found`, 409 `worktree_unavailable`,
+   * 409 `turn_in_progress` (clear of a running session).
+   */
+  createSession(projectId: string, input?: NewSessionInput): Promise<CreatedSession>;
+  /** Makes a main session the default (where unaddressed messages go); nothing stops or rebuilds. 409 `not_main_session`. */
+  setDefaultSession(projectId: string, sessionId: string): Promise<ProjectSession>;
+  /** The old name of {@link setDefaultSession} (`POST /sessions/{sid}/resume`). */
   resumeSession?(projectId: string, sessionId: string): Promise<ProjectSession>;
-  /** Title and/or archive flag; 409 `current_session` when archiving the current one. */
+  /** Title and/or archive flag; 409 `current_session` when archiving the default one. */
   patchSession?(projectId: string, sessionId: string, patch: { title?: string; archived?: boolean }): Promise<ProjectSession>;
-  /** 409 `current_session`, `session_running`. */
+  /** 409 `current_session` (the default), `session_running`. */
   deleteSession?(projectId: string, sessionId: string): Promise<void>;
-  /** Stops the project's running turn (current main session) or one sub-agent; 409 `not_running`. */
-  stopSession?(projectId: string, sessionId: string): Promise<ProjectSession>;
+  /** Stops a main session's running turn (pausing its queue) or one sub-agent; 409 `not_running`. */
+  stopSession(projectId: string, sessionId: string): Promise<ProjectSession>;
+  /**
+   * A message to a main session: it starts that session's turn, or waits in its queue (`waiting_for`: its own turn, or a
+   * free slot under the running caps). The same timeout and read-back as `sendOrQueueMessage`. 409 `queue_full`.
+   */
+  sendSessionMessage(projectId: string, sessionId: string, text: string, opts?: { mode?: ProjectMode; attachments?: string[] }): Promise<SendResult>;
+  /** `GET /v1/sessions`: main sessions across projects, newest activity first, each with its project. */
+  listAllSessions(params?: AllSessionsParams): Promise<GlobalSession[]>;
+  /** One main session's queue (the project routes of the same name act on the default session). */
+  getSessionQueue?(projectId: string, sessionId: string): Promise<QueueState>;
+  editSessionQueued?(projectId: string, sessionId: string, queueId: string, text: string): Promise<QueuedMessage>;
+  removeSessionQueued?(projectId: string, sessionId: string, queueId: string): Promise<void>;
+  clearSessionQueue?(projectId: string, sessionId: string): Promise<void>;
+  resumeSessionQueue?(projectId: string, sessionId: string): Promise<void>;
+  sendSessionQueuedNow?(projectId: string, sessionId: string, queueId: string, opts?: { interrupt?: boolean }): Promise<void>;
+  /** One main session's context report, compaction, rewind, latest plan and export (the project routes act on the default). */
+  getSessionContext?(projectId: string, sessionId: string): Promise<ContextOverview | ContextBreakdown>;
+  compactSession?(projectId: string, sessionId: string): Promise<CompactResult | CompactSentToAgent>;
+  /** `/clear` of one session: the answer is the new session (the default when the cleared one was). */
+  clearSession?(projectId: string, sessionId: string): Promise<CreatedSession>;
+  rewindSession?(projectId: string, sessionId: string, input: { message_id: number; dry_run?: boolean }): Promise<RewindReport>;
+  getSessionLatestPlan?(projectId: string, sessionId: string): Promise<Plan | null>;
+  exportSessionUrl?(projectId: string, sessionId: string): string;
+  exportSession?(projectId: string, sessionId: string): Promise<BlobLike>;
   /** A message to a sub-agent's session; 409 `steer_unsupported`, `not_continuable`, `not_running`, `builtin_loop_unavailable`, `not_agent_session`. */
   messageSession?(projectId: string, sessionId: string, text: string, opts?: { reportToParent?: boolean }): Promise<SessionMessageResult>;
   /*
@@ -577,6 +614,7 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "session.created",
   "session.updated",
   "session.current",
+  "session.default",
   "fact.remembered",
   "fact.forgotten",
   "side.delta",
@@ -735,6 +773,7 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   const memoryPath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
 
   const p = (id: string) => `/v1/projects/${encodeURIComponent(id)}`;
+  const sessionQuery = (o: { sessionId?: string } | undefined) => (o?.sessionId ? `?session=${encodeURIComponent(o.sessionId)}` : "");
   const fileQuery = (folder: string, path: string) => `folder=${encodeURIComponent(folder)}&path=${encodeURIComponent(path)}`;
 
   let rare: Promise<Pick<Bridge, RareMethod>> | undefined;
@@ -789,8 +828,9 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     readFile: (id, folder, path) => request("GET", `${p(id)}/files/content?${fileQuery(folder, path)}`) as Promise<FileContent>,
     getQueue: (id) => request("GET", `${p(id)}/queue`) as Promise<QueueState>,
     exportConversationUrl: (id) => `${base}${p(id)}/export?format=md`,
-    listApprovals: (id) => unwrap<Approval[]>(request("GET", `${p(id)}/approvals`), "approvals"),
-    listInputs: (id) => unwrap<InputRequest[]>(request("GET", `${p(id)}/inputs`), "inputs"),
+    listApprovals: (id, o) => unwrap<Approval[]>(request("GET", `${p(id)}/approvals${sessionQuery(o)}`), "approvals"),
+    listInputs: (id, o) => unwrap<InputRequest[]>(request("GET", `${p(id)}/inputs${sessionQuery(o)}`), "inputs"),
+    exportSessionUrl: (id, sid) => `${base}${p(id)}/sessions/${encodeURIComponent(sid)}/export?format=md`,
     reviewFileRawUrl: (id, rid, path, side) => `${base}${p(id)}/reviews/${encodeURIComponent(rid)}/files/${memoryPath(path)}?raw=${side}`,
     listSessions: (id, params) => {
       const q: string[] = [];
@@ -804,6 +844,7 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
     listProviders: () => request("GET", "/v1/providers") as Promise<ProvidersResponse>,
+    remote: remoteAccessApi(request),
     refreshProviderModels: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/refresh-models`), id),
     recheckProvider: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/recheck`), id),
     setProviderCustomModels: async (id, models) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/custom-models`, { models }), id),

@@ -10,6 +10,7 @@ import { hrefFor } from "../../lib/route";
 import { useChatSlots } from "../../state/chatSlots";
 import { useProject } from "../../state/project";
 import { CHAT, type TabId } from "../../state/workspace/layout";
+import { useSessionScope } from "../../state/session";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { roleName as baseRoleName } from "../../lib/orchestrator";
 import { useNav, useNavState } from "../../state/nav";
@@ -98,7 +99,9 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const anyRunning = state.agentOrder.some((id) => state.agents[id]?.status === "running");
   const now = useNow(anyRunning);
   const memory = ws?.memory;
-  const saved = memory?.get(tab, SCROLL_MEMORY);
+  // Decision 96: where the reader was is the session's own (Chat shows one session after another).
+  const spot = useSessionScope()?.memoryKey ?? tab;
+  const saved = memory?.get(spot, SCROLL_MEMORY);
   const scroll = useStickToBottom<HTMLDivElement>(
     [messages, streaming, agent?.status, agentId],
     saved ? saved.atBottom : isOrchestrator || agent?.status === "running",
@@ -203,12 +206,12 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
     restored.current = true;
     // Read now, not at render: the instance this one replaces saves its position in its cleanup, which runs in the
     // same commit after this render (a moved tab).
-    const at = memory?.get(tab, SCROLL_MEMORY);
+    const at = memory?.get(spot, SCROLL_MEMORY);
     if (at && !at.atBottom) {
       scroll.release();
       el.scrollTop = at.top;
     }
-  }, [messages, memory, tab, scroll]);
+  }, [messages, memory, spot, scroll]);
   // Opening a file narrows the conversation and the text re-wraps: keep the reader's place (decision 60). The scroller only
   // exists once there are messages, so the tracker is bound again when that changes.
   useScrollAnchor(scroll.ref, "article, article :is(p, li, pre, h1, h2, h3, h4, blockquote, tr)", messages === undefined ? 0 : messages.length === 0 ? 1 : 2);
@@ -218,9 +221,9 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
     const ref = scroll.ref;
     return () => {
       const el = ref.current;
-      if (el && memory) memory.set(tab, SCROLL_MEMORY, { top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight <= 2 });
+      if (el && memory) memory.set(spot, SCROLL_MEMORY, { top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight <= 2 });
     };
-  }, [memory, tab, scroll.ref]);
+  }, [memory, spot, scroll.ref]);
 
   // A14: a first load that fails says so, with Retry, while it is retried with backoff. (The project itself failing is
   // `ProjectWorkspace`'s notice.)

@@ -21,7 +21,7 @@ import {
 import { stepState, type ToolUse, type TurnEnd } from "../../lib/transcript";
 import { HighlightedCode } from "../shared/Markdown";
 import { EditBody } from "./tools/EditBody";
-import { FRAME, INSET, Raw, useCallTimes } from "./tools/parts";
+import { BodyFrame, INSET, useCallTimes, type RawCall } from "./tools/parts";
 import { ReadBody } from "./tools/ReadBody";
 import { ShellBody } from "./tools/ShellBody";
 import { useTranscript } from "./transcriptContext";
@@ -34,11 +34,11 @@ const Pairs = lazy(() => import("../shared/DataTable").then((m) => ({ default: m
 const RESULT_CAP = 200;
 
 /**
- * The opened tool call (retest3 G1): an action with its outcome, by kind — a command with its output tail and exit, a read as
- * `path:lines`, an edit as a compact diff, anything else as a summary and a key–value view. A call a stop or a refusal cut short is
- * one plain line; what the agent or the harness answered stays under "Raw".
+ * The opened tool call (retest3 G1, toolpolish): an action with its outcome, by kind — a command's output tail and exit, a read's
+ * lines, an edit's inline diff (a run of edits of one file as one diff), anything else as a key–value view. A call a stop or a
+ * refusal cut short is one plain line. Every body ends in one action line with "Raw" (what the agent sent and got back).
  */
-export function ToolDetail({ use, end = null }: { use: ToolUse; end?: TurnEnd }) {
+export function ToolDetail({ use, more = [], end = null }: { use: ToolUse; more?: readonly ToolUse[]; end?: TurnEnd }) {
   const ctx = useTranscript();
   const result = ctx.results.get(use.id);
   const state = viewState(stepState(result, ctx.agentRunning, end), result);
@@ -47,60 +47,67 @@ export function ToolDetail({ use, end = null }: { use: ToolUse; end?: TurnEnd })
   const output = result ? result.content : null;
   const stopped = state === "stopped" ? stoppedLine(result, end, clockTime(times.end)) : null;
   const failed = state === "error" ? (output ?? "").trim() || "The tool reported an error with no message." : null;
-  const raw = <Raw input={rawInput(use.name, use.input)} result={output} />;
-
-  const body = (() => {
-    if (kind === "shell") {
-      const command = commandOf(use.name, use.input);
-      if (command)
-        return (
-          <ShellBody command={command} output={stopped ? null : output} state={state} start={times.start} end={times.end} {...(stopped ? { stopped } : {})} />
-        );
-    }
-    if (stopped) return <Stopped text={stopped} />;
-    if (kind === "read") {
-      const target = readTarget(use.name, use.input);
-      if (target) return <ReadBody target={target} content={output} failed={failed} />;
-    }
-    if (kind === "edit") {
-      const view = editView(use.name, use.input, output ?? "");
-      if (view) return <EditBody view={view} start={times.start} failed={failed} />;
-    }
-    return <OtherBody use={use} kind={kind} output={output} failed={failed} />;
-  })();
-
-  return (
-    <div data-tool-detail className="flex min-w-0 flex-col gap-1">
-      {body}
-      <div className="pl-2">{raw}</div>
-    </div>
+  const uses = useMemo(() => [use, ...more], [use, more]);
+  const raw = useMemo(
+    () => ({
+      input: uses.map((u) => rawInput(u.name, u.input)).join("\n\n"),
+      result: uses.length === 1 ? output : uses.map((u) => ctx.results.get(u.id)?.content ?? "").join("\n\n"),
+    }),
+    [uses, output, ctx.results],
   );
-}
-
-/** A call cut short: the one line, quiet (never the error tone). */
-function Stopped({ text }: { text: string }) {
-  return (
-    <div data-tool-body="stopped" className={cn(FRAME, INSET, "text-fg-2")}>
-      {text}
-    </div>
+  const views = useMemo(
+    () =>
+      kind === "edit"
+        ? uses.flatMap((u) => {
+            const v = editView(u.name, u.input, ctx.results.get(u.id)?.content ?? "");
+            return v ? [v] : [];
+          })
+        : [],
+    [kind, uses, ctx.results],
   );
+
+  if (kind === "shell") {
+    const command = commandOf(use.name, use.input);
+    if (command)
+      return (
+        <ShellBody
+          command={command}
+          output={stopped ? null : output}
+          state={state}
+          start={times.start}
+          end={times.end}
+          raw={raw}
+          {...(stopped ? { stopped } : {})}
+        />
+      );
+  }
+  if (stopped) return <BodyFrame kind="stopped" raw={raw} lead={<span className="text-fg-2">{stopped}</span>} />;
+  if (kind === "read") {
+    const target = readTarget(use.name, use.input);
+    if (target) return <ReadBody target={target} content={output} failed={failed} raw={raw} />;
+  }
+  if (kind === "edit" && views.length > 0) return <EditBody views={views} start={times.start} failed={failed} raw={raw} />;
+  // An ACP delete: the row names the file; the body says what happened (the path and the empty result stay under Raw).
+  if (use.name === "delete" && acpCall(use.name, use.input) && !failed) return <BodyFrame kind="delete" raw={raw} lead={<span>The file was deleted.</span>} />;
+  return <OtherBody use={use} kind={kind} output={output} failed={failed} raw={raw} />;
 }
 
 /** Search, fetch and unknown tools: one summary line, the input as key–value rows, the result (a table when tabular, decision 44). */
-function OtherBody({ use, kind, output, failed }: { use: ToolUse; kind: ToolKind; output: string | null; failed: string | null }) {
+function OtherBody({ use, kind, output, failed, raw }: { use: ToolUse; kind: ToolKind; output: string | null; failed: string | null; raw: RawCall }) {
   const code = useOptionalCode();
   const shorten = (path: string) => {
     const hit = code && path.startsWith("/") ? locateInProject(code.folders, path) : null;
     return hit ? `${hit.folder}/${hit.path}` : path;
   };
+  // The row already says what was looked for: the action line keeps only how many results came back.
   const summary = callSummary(kind, use.name, use.input, failed ? null : output, shorten);
+  const count = /· (\d+ results?)$/.exec(summary)?.[1] ?? "";
   const pairs = useMemo(() => inputPairs(use.name, use.input), [use.name, use.input]);
   const acp = acpCall(use.name, use.input);
   return (
-    <div data-tool-body="other" className={FRAME}>
-      {summary && <p className={cn(INSET, "text-fg-2")}>{summary}</p>}
+    <BodyFrame kind="other" raw={raw} lead={count ? <span>{count}</span> : output !== null && !output.trim() && !failed && <span>No output</span>}>
       {pairs.length > 0 && (
-        <dl className={cn("grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1", INSET, summary && "border-t border-line")}>
+        <dl className={cn("grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1", INSET)}>
           {pairs.map((p) => (
             <div key={p.key} className="contents">
               <dt className="text-fg-3">{p.key}</dt>
@@ -110,12 +117,12 @@ function OtherBody({ use, kind, output, failed }: { use: ToolUse; kind: ToolKind
         </dl>
       )}
       {failed ? (
-        <p className={cn(INSET, "border-t border-line text-err")}>{failed}</p>
+        <p className={cn(INSET, pairs.length > 0 && "border-t border-line", "text-err")}>{failed}</p>
       ) : (
-        output !== null && <ResultView body={output} bordered={Boolean(summary) || pairs.length > 0} />
+        output !== null && output.trim() !== "" && <ResultView body={output} bordered={pairs.length > 0} />
       )}
-      {!summary && pairs.length === 0 && output === null && !failed && <p className={cn(INSET, "text-fg-3")}>{acp ? acp.title : use.name}: no input.</p>}
-    </div>
+      {pairs.length === 0 && output === null && !failed && <p className={cn(INSET, "text-fg-3")}>{acp ? acp.title : use.name}: no input.</p>}
+    </BodyFrame>
   );
 }
 
@@ -151,9 +158,7 @@ function ResultView({ body, bordered }: { body: string; bordered: boolean }) {
           <HighlightedCode code={lines.slice(0, RESULT_CAP).join("\n")} lang={looksLikeDiff(body) ? "diff" : undefined} />
           {lines.length > RESULT_CAP && `\n… ${lines.length - RESULT_CAP} more lines (Raw has them all)`}
         </pre>
-      ) : (
-        <p className={cn(INSET, "text-fg-3")}>No output.</p>
-      )}
+      ) : null}
     </div>
   );
 }

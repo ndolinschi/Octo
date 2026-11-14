@@ -27,6 +27,7 @@ import type { DiffZone, Marked, RevealRequest, ReviewMonaco } from "./ReviewDiff
 import { SubmitSheet } from "./SubmitSheet";
 import { ThreadCard, type ThreadActions } from "./ThreadCard";
 import { useCheckout } from "./useCheckout";
+import { useCode } from "../../state/code";
 import { useFileDiff, useReview, type ReviewData } from "./useReview";
 import { useReviewActions } from "./useReviewActions";
 import { useReviewKeys } from "./useReviewKeys";
@@ -92,6 +93,7 @@ function Ready(props: {
   const actions = useReviewActions(api, reviewId, props.patch, props.reload);
   const threads = useThreads(api, reviewId);
   const checkout = useCheckout(api, review);
+  const code = useCode();
   const [now] = useState(() => Date.now());
   const threadList = useMemo<ReviewThread[]>(() => (threads.load.status === "ready" ? threads.load.data.threads : []), [threads.load]);
   const unresolved = threads.load.status === "ready" ? unresolvedTotal(threads.load.data.unresolved_by_path) : 0;
@@ -385,6 +387,9 @@ function Ready(props: {
               }}
               composer={composerEl}
               {...(pickerEl ? { picker: pickerEl, onStepFile: (dir: 1 | -1) => stepFileBy(dir) } : {})}
+              // The review's code: its read-only worktree while it is the project's workspace, else the project's folder.
+              onOpenAt={(line) => code.openFile(checkout.inWorkspace ? "@review" : review.folder, file.path, line ? { line, column: 1 } : undefined)}
+              openWhere={checkout.inWorkspace ? "in the review's workspace" : `in ${review.folder}`}
             />
             {hint && (
               <p role="status" className={cn("shrink-0 border-t border-line px-4 py-1.5 text-xs text-fg-2")}>

@@ -13,6 +13,7 @@ import { draftOf } from "./composerDraft";
 import type { QueuedMessage } from "./ComposerPills";
 import { slot, type TabMemory } from "../../state/workspace/tabMemory";
 import type { TabId } from "../../state/workspace/layout";
+import { useSessionScope } from "../../state/session";
 
 /** Composers sharing a draft key (the Chat tab's and the floating one) hear each other's edits. */
 type Listener = () => void;
@@ -75,9 +76,12 @@ function useQueue(memory: TabMemory | undefined, tab: TabId) {
  */
 export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "comments"> & { commentCount: number } {
   const { health, config, bridge } = useApp();
-  const { project, state, running, send, cancel, live, update } = useProject();
+  const { project, state, running, send, cancel, live, update, projectId } = useProject();
   const comments = useOptionalComments();
   const memory = useOptionalWorkspace()?.memory;
+  // Decision 96: a session's draft and local queue are its own, wherever its composer is (its tab, Chat, the floating one).
+  const scope = useSessionScope();
+  const key = scope?.memoryKey ?? tab;
   const [pending, setPending] = useState<string | null>(null);
   const [pendingTier, setPendingTier] = useState<TierPolicy | null>(null);
   // Parity B3: the mode chosen for the next message only; it resets once that message is sent.
@@ -87,8 +91,8 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   const orchestrator = orchestratorId ? state.agents[orchestratorId] : undefined;
   const messages = orchestratorId ? state.messages[orchestratorId] : undefined;
   const current = pending ?? project?.models.orchestrator ?? null;
-  const queue = useQueue(memory, tab);
-  const draft = useMemo(() => (memory ? draftOf(memory, tab) : undefined), [memory, tab]);
+  const queue = useQueue(memory, key);
+  const draft = useMemo(() => (memory ? draftOf(memory, key) : undefined), [memory, key]);
   const lastRequest = useMemo(() => {
     for (let i = (messages?.length ?? 0) - 1; i >= 0; i--) {
       const m = messages?.[i];
@@ -144,7 +148,19 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   const loop = config?.builtin_loop;
   const acp = (current ?? "").startsWith("acp:");
   const noKey = loop?.available === false && !acp;
+  // Criterion 34: the session this composer sends to, on the box itself.
+  const session = scope && state.sessions.list.length > 0 ? scope.session : undefined;
+  const ws = useOptionalWorkspace();
+  const sessionChip = scope
+    ? {
+        title: session?.title.trim() || "New session",
+        isDefault: scope.isDefault,
+        onMakeDefault: () => void bridge.setDefaultSession(projectId, scope.sessionId).catch(() => undefined),
+        onShowAll: () => ws?.openTool("sessions"),
+      }
+    : null;
   return {
+    session: sessionChip,
     running,
     // P2-3: the conversation stays on screen while the service is away; the composer says why it is off.
     disabledReason:

@@ -4,6 +4,7 @@ import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { useNow } from "../../lib/hooks";
 import { FILTERS, filterCounts, parentOf, toggleOpen, visibleNodes, type SessionFilter } from "../../lib/sessions/model";
 import { useApp } from "../../state/app";
+import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { useProject } from "../../state/project";
 import { onSessionRequest, peekQueuedSession, takeQueuedSession } from "../../state/workspace/sessionsStart";
 import { Button } from "../primitives/Button";
@@ -29,6 +30,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
   const { state, projectId } = useProject();
   const list = state.sessions.list;
   const actions = useSessionActions();
+  const ws = useOptionalWorkspace();
   const now = useNow(false, CLOCK_MINUTE_MS);
   const [asked] = useState(() => peekQueuedSession(projectId));
   // The request is now this tab's: clear it (also what a tab that mounts again must not see).
@@ -82,6 +84,8 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
             loading={actions.busy === "create"}
             onCreate={() =>
               void actions.create().then((created) => {
+                // Decision 96: "New session" makes and opens a session; the default stays where it is.
+                if (created) ws?.showSession(created.id);
                 if (!created) return;
                 setSelected(created.id);
                 setFilter("all");
@@ -138,7 +142,8 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
                   onToggle={(s) => setOpen((cur) => toggleOpen(cur, s.id))}
                   menu={{
                     list,
-                    onResume: (s) => void actions.resume(s.id),
+                    onResume: (s) => (ws ? ws.showSession(s.id) : undefined),
+                    onMakeDefault: (s) => void actions.makeDefault(s.id),
                     onArchive: (s, archived) => void actions.archive(s.id, archived),
                     onDelete: (s) => {
                       actions.clear();

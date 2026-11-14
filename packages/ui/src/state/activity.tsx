@@ -1,4 +1,4 @@
-import type { Agent, Bridge, Message, Plugin, ProjectSummary } from "@octo/agent-client";
+import type { Agent, Bridge, Message, Plugin, ProjectSession, ProjectSummary } from "@octo/agent-client";
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { useApp } from "./app";
 import { createRequiredContext } from "../lib/context";
@@ -116,6 +116,23 @@ export class ActivityStore {
   peekAgents(project: ProjectSummary): Agent[] | undefined {
     const hit = this.agents.get(project.id);
     return hit?.stamp === project.updated_at ? hit.value : undefined;
+  }
+
+  /** Parallel sessions: the open project's main sessions as its stream sees them (newer than any list read). */
+  private openSessions = new Map<string, ProjectSession[]>();
+  setLiveSessions(projectId: string, list: ProjectSession[] | null) {
+    if (list) this.openSessions.set(projectId, list);
+    else this.openSessions.delete(projectId);
+    this.changed();
+  }
+  liveSessions(projectId: string): ProjectSession[] | undefined {
+    return this.openSessions.get(projectId);
+  }
+  /** Something outside the project's stream changed the sessions (the sidebar's menu): their readers read again. */
+  sessionsRound = 0;
+  refreshSessions() {
+    this.sessionsRound += 1;
+    this.changed();
   }
 
   private pluginList: Promise<Plugin[]> | null = null;

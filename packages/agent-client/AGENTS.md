@@ -5,15 +5,16 @@ reducer, a message-port bridge for embedded hosts, and language-server sessions.
 
 ## Structure (imports go down this list only)
 
-| File | Role |
-| --- | --- |
-| `types.ts` | Wire types: `Project`, `Agent`, `Message`, events, files, plugins, usage, limits. No imports |
-| `state.ts` | Pure reducer over bridge events: `applyEvent`, `withAgents`, `withMessages` |
-| `bridge.ts` | `resolveBridgeUrl` (`VITE_HARNESS_BRIDGE_URL`, then `HARNESS_BRIDGE_URL`, default `http://127.0.0.1:8790`) |
-| `client.ts` | The `Bridge` interface and `createHttpBridge`: fetch + EventSource, reconnect, error mapping |
-| `lspChannel.ts`, `lspSession.ts` | Language-server sessions over POST + SSE |
-| `messageProtocol.ts` → `messageClient.ts`, `messageServer.ts`, `messageBridge.ts` | The same `Bridge` over a `MessagePort`, with a method allow-list |
-| `index.ts` | The public API |
+| File                                                                              | Role                                                                                                       |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `types.ts`                                                                        | Wire types: `Project`, `Agent`, `Message`, events, files, plugins, usage, limits. No imports               |
+| `state.ts`                                                                        | Pure reducer over bridge events: `applyEvent`, `withAgents`, `withMessages`                                |
+| `bridge.ts`                                                                       | `resolveBridgeUrl` (`VITE_HARNESS_BRIDGE_URL`, then `HARNESS_BRIDGE_URL`, default `http://127.0.0.1:8790`) |
+| `client.ts`                                                                       | The `Bridge` interface and `createHttpBridge`: fetch + EventSource, reconnect, error mapping               |
+| `sessionBridge.ts`                                                                | `sessionBridge`: a `Bridge` addressed to one main session (parallel sessions)                              |
+| `lspChannel.ts`, `lspSession.ts`                                                  | Language-server sessions over POST + SSE                                                                   |
+| `messageProtocol.ts` → `messageClient.ts`, `messageServer.ts`, `messageBridge.ts` | The same `Bridge` over a `MessagePort`, with a method allow-list                                           |
+| `index.ts`                                                                        | The public API                                                                                             |
 
 The API contract is the harness spec:
 [`docs/superpowers/specs/2026-11-10-project-harness-design.md`](../../docs/superpowers/specs/2026-11-10-project-harness-design.md)
@@ -24,7 +25,11 @@ packaging, memory), with the exact HTTP shapes in `apps/harness/docs/` (`v7.md`,
 Members of `Bridge` added after the first harness version are **optional** (`getSettings?`, `putSettings?`,
 `getDiagnostics?`, the v7 queue, changes, approvals, forms and secrets methods, `getTurnContext?`, the memory methods
 `listTasks?`, `listMemory?`, `getMemoryFile?`, `putMemoryFile?`, `deleteMemoryFile?`, `searchMemory?`, M4: `listMemorySessions?`, `getMemorySession?`, `forgetExchange?`): a host or the
-demo bridge may omit them and callers must check before calling. The reducer folds the matching events
+demo bridge may omit them and callers must check before calling. Parallel sessions (2026-11-14) made five members
+required (every host forwards them, `BRIDGE_METHODS`): `createSession`, `setDefaultSession`, `stopSession`,
+`sendSessionMessage`, `listAllSessions`; the per-session queue, context, compact, clear, rewind, plan and export routes are
+optional and HTTP only. `sessionBridge(bridge, sid)` (`sessionBridge.ts`) is the same `Bridge` addressed to one main
+session; the reducer keeps one `SessionSlice` per main session (`sessions.byId`) and `scopeState` reads a session's view. The reducer folds the matching events
 (`queue.updated`, `approval.*`, `input.*`, `change.recorded`, `project.attention`, `secrets.changed`, `task.updated`,
 `memory.updated`); `settings.changed` only advances `lastSeq` (a host refetches the settings itself).
 

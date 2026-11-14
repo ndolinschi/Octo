@@ -13,6 +13,7 @@ export const SECTIONS = [
   { id: "memory", label: "Memory" },
   { id: "commands", label: "Commands and review" },
   { id: "privacy", label: "Privacy and data" },
+  { id: "remote", label: "Remote access" },
   { id: "about", label: "About" },
 ] as const;
 
@@ -33,6 +34,13 @@ export type IndexedRow = { section: SectionId; id: string; title: string; descri
 
 export const SETTINGS_INDEX: readonly IndexedRow[] = [
   { section: "general", id: "startup", title: "On startup", description: "What the app shows when it opens", keywords: "launch open home last project" },
+  {
+    section: "general",
+    id: "sidebar-view",
+    title: "Sidebar shows",
+    description: "Projects and sessions, projects, or sessions",
+    keywords: "sidebar tree sessions projects view list",
+  },
   {
     section: "general",
     id: "bridge",
@@ -166,6 +174,14 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
     description: "Variables agents and tools may see",
     keywords: "env allow list variables",
   },
+  {
+    section: "remote",
+    id: "remote",
+    title: "Remote access",
+    description: "Reach this computer from your phone through Cloudflare",
+    keywords: "phone mobile tunnel cloudflare cloudflared remote pair qr devices",
+  },
+  { section: "remote", id: "remote-add", title: "Pair a phone", description: "A QR code and a code that work once", keywords: "add device pairing qr code" },
   { section: "about", id: "version", title: "Version", description: "Octo's local service and the app", keywords: "about build" },
   { section: "about", id: "shortcuts", title: "Keyboard shortcuts", description: "Every shortcut in one list", keywords: "keys hotkeys help" },
 ];

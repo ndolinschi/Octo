@@ -578,4 +578,29 @@ is); with a budget and a price, each request's `max_tokens` is capped by what th
 an answer cut there ends the turn with `budget_reached`, text kept; a failed built-in `bash` result always ends with
 `exit status N`. Details: `apps/harness/docs/{sessions,errors,memory,architecture}.md`. Not verified live.
 
-Phases 2–5 (criteria 14–37): not built.
+### Phase 2 — client and UI (2026-11-14)
+
+Built. Client: the session types, required and optional methods, `sessionBridge` (a bridge scoped to one session),
+per-session slices in the reducer (`byId`, `defaultId`, `scopeState`, events routed by `session_id`). Workspace:
+`SessionScope` re-provides the project and the bridge for one session, so the conversation, composer, queue, approvals,
+context ring and rewind needed no session arguments; Chat shows a variable session and a `session:<sid>` tab is that
+session's live conversation; route `#/p/<pid>/s/<sid>` with a gone state. Sidebar: a tree (`role="tree"`, one tab
+stop, arrows, Home/End, a letter to jump, the row menu on Shift+F10) of projects and their sessions — the 5 newest plus
+any working, waiting or queued, then "Show all (N)"; "Sidebar shows" in Settings → General with three views (Projects
+and sessions, Projects, Sessions); `NewSessionPopover` (a title; a project select in the Sessions view); the composer's
+session chip; Home's triage by session; the palette's Sessions group; the Sessions tab with Open and Make default; the
+demo with parallel sessions. Criteria 32, 33, 35, 36 pass; 34 partly (the worktree branch is phase 3).
+
+Choices where the spec was open: no new tab kind (Chat is pinned and shows a variable session); the project row's
+chevron and "+" sit at the right, on hover or focus; the flat view's meta is the project name; the popover has no
+workspace or memory controls yet. Gaps: per-session Changes, the status bar's workspace item, the project Settings
+"Sessions" section and coordination rows wait for their phases; when a harness lacks a per-session route the scoped
+bridge falls back to the project route (the default session); `approval.resolved`, `input.resolved` and
+`change.recorded` carry no `session_id`; `POST /sessions/{sid}/clear` answers `{session}` only.
+
+Verified against a real `harness serve` with the mock model: two sessions of one project streaming side by side, a
+message to a busy session queued only there, stop one, `/clear` in a non-default session, the cap of 1 ("Waiting for a
+free slot"), `kill -9` with two running sessions (both read "Interrupted…"), a deleted open session (gone state); and
+on the demo. Not verified: WebKit and Tauri, real agents, touch, a screen reader, "Stopping…" live.
+
+Phases 3–5 (criteria 14–31, 37): not built.

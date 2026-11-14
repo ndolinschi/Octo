@@ -868,6 +868,105 @@ const STATES = [
       await settle(page, 400);
     },
   },
+  // States built in the week of 2026-11-10 (scenario entries only; the rules are unchanged).
+  {
+    id: "shortcuts-sheet",
+    viewports: HOME_VPS,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await page.keyboard.press("Control+k");
+      try {
+        await page.getByRole("dialog", { name: "Command palette" }).waitFor({ timeout: T });
+      } catch {
+        skip("Ctrl+K did not open the command palette");
+      }
+      await page.keyboard.type("Keyboard shortcuts");
+      await settle(page, 400);
+      await page.keyboard.press("Enter");
+      try {
+        await page.getByRole("dialog").first().waitFor({ timeout: T });
+      } catch {
+        skip("the shortcuts sheet did not open");
+      }
+      await settle(page, 600);
+    },
+  },
+  {
+    id: "image-preview",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await clickTool(page, "Show files");
+      const tree = page.getByRole("tree", { name: "Project files" }).filter({ visible: true }).first();
+      // A folder's root row is open from the start (its data-path is the absolute path); only "public" needs opening.
+      for (const dir of ["atlas-web/public"]) {
+        const row = tree.locator(`[role="treeitem"][data-path="${dir}"]`).first();
+        try {
+          await row.waitFor({ timeout: T });
+        } catch {
+          skip(`${dir} not in the file tree`);
+        }
+        if ((await row.getAttribute("aria-expanded")) === "false") await row.click({ timeout: T });
+        await settle(page, 300);
+      }
+      await tree.locator('[role="treeitem"][data-path="atlas-web/public/logo.png"]').first().click({ timeout: T });
+      try {
+        await page.locator("[data-image-preview] img").first().waitFor({ timeout: T });
+      } catch {
+        skip("the image preview did not render");
+      }
+      await settle(page, 400);
+    },
+  },
+  {
+    id: "tool-showcase-expanded",
+    viewports: CHAT_VPS,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await waitChat(page);
+      const turn = page.locator("[data-turn-key]").first();
+      if (!(await turn.count())) skip("no turn in Atlas API");
+      await turn.scrollIntoViewIfNeeded();
+      const rows = turn.locator('[data-activity-row] [aria-expanded="false"]:not([aria-haspopup])');
+      for (let i = 0; i < 12 && (await rows.count()); i++) {
+        await rows.first().click({ timeout: T });
+        await settle(page, 150);
+      }
+      if (!(await page.locator("[data-tool-body]").count())) skip("no tool call opened");
+      await settle(page, 500);
+    },
+  },
+  {
+    id: "turn-changes-expanded",
+    viewports: CHAT_VPS,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await waitChat(page);
+      const line = page.locator("[data-turn-changes]").first();
+      if (!(await line.count())) skip("no per-turn changes line");
+      await line.scrollIntoViewIfNeeded();
+      await line.getByRole("button").nth(1).click({ timeout: T });
+      await settle(page, 700);
+    },
+  },
+  {
+    id: "project-gone",
+    viewports: HOME_VPS,
+    async run(page) {
+      await page.evaluate(() => {
+        window.location.hash = "#/p/prj_gone";
+      });
+      try {
+        await page
+          .getByText(/no longer exists/)
+          .first()
+          .waitFor({ timeout: T });
+      } catch {
+        skip("the project-gone state did not render");
+      }
+      await settle(page, 400);
+    },
+  },
   {
     // v7 components in every state (demo-only page; the route is read at render, so the page reloads on it)
     id: "v7-gallery",

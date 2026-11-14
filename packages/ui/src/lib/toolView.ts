@@ -151,12 +151,6 @@ export function readTarget(name: string, input: unknown): ReadTarget | null {
   return { path, folder: str(rec(input).folder), start, end: start !== null && limit !== null && limit > 0 ? start + limit - 1 : null };
 }
 
-/** "src/x.ts:1–40", "src/x.ts:12", "src/x.ts". */
-export function readLabel(t: Pick<ReadTarget, "path" | "start" | "end">): string {
-  if (t.start === null) return t.path;
-  return t.end !== null && t.end !== t.start ? `${t.path}:${t.start}–${t.end}` : `${t.path}:${t.start}`;
-}
-
 // --- edits -------------------------------------------------------------------------------------------------------------
 
 export type DiffRow = { kind: "add" | "del" | "context"; text: string; old: number | null; new: number | null };
@@ -384,10 +378,103 @@ export function rawInput(name: string, input: unknown): string {
   return JSON.stringify(v, null, 2);
 }
 
-/** A collapsed row's verb for an ACP command ("git push" reads "Ran git push", "Run x" reads "Ran x"). */
-export function acpCommandRow(title: string): { verb: string; arg: string } {
-  const t = title.trim();
-  return { verb: "Ran", arg: t.replace(/^run\s+/i, "") };
+// --- the collapsed row: one grammar for every call ----------------------------------------------------------------------
+
+/**
+ * A collapsed call row: a past-tense verb (UI face), the object (`mono` for a path, a command, a pattern; words stay in the UI
+ * face), an optional quiet qualifier ("in src", "with search_issues"), the folder it ran in, and the file it touched (for
+ * merging edits). Built-in and ACP calls of one kind read the same.
+ */
+export type CallRow = { verb: string; object: string; mono: boolean; qualifier: string; folder: string; path: string };
+
+/** A path or a project-relative place for an absolute path an ACP agent reported (null when it is outside the project). */
+export type Locate = (path: string) => { folder: string; path: string } | null;
+
+/** Code-like text (no spaces, or a path) is set in mono; a phrase of words is not. */
+export const isCodeLike = (text: string) => !/\s/.test(text.trim()) || /[/\\]/.test(text.split(" ")[0] ?? "");
+
+const ACP_VERB: Record<string, string> = { read: "Read", edit: "Edited", delete: "Deleted", move: "Moved", fetch: "Fetched" };
+
+export function callRow(name: string, input: unknown, locate: Locate = () => null): CallRow {
+  const args = callArgs(name, input);
+  const acp = acpCall(name, input);
+  const where = (raw: string): { folder: string; path: string } => {
+    const hit = raw.startsWith("/") || /^[A-Za-z]:[\\/]/.test(raw) ? locate(raw) : null;
+    return hit ?? { folder: str(rec(input).folder), path: raw.replace(/^\.\//, "") };
+  };
+  const row = (verb: string, object: string, more: Partial<CallRow> = {}): CallRow => ({
+    verb,
+    object,
+    mono: object !== "" && isCodeLike(object),
+    qualifier: "",
+    folder: str(rec(input).folder),
+    path: "",
+    ...more,
+  });
+  const kind = toolKind(name, input);
+  if (kind === "shell") {
+    const command = commandOf(name, input).split("\n")[0] ?? "";
+    return row("Ran", command, { mono: true });
+  }
+  if (kind === "read" || kind === "edit" || (acp && (name === "delete" || name === "move"))) {
+    const raw = callPath(name, input) || (acp ? acp.title.replace(/^\S+\s+/, "") : "");
+    const at = where(raw);
+    const verb = acp ? (ACP_VERB[name] ?? "Edited") : name === "write_file" ? "Wrote" : name === "read_file" ? "Read" : "Edited";
+    return row(verb, at.path, { mono: true, folder: at.folder, path: at.path });
+  }
+  if (kind === "search") {
+    if (name === "list_dir") return row("Listed", where(str(args.path) || ".").path, { mono: true });
+    const titled = acp ? /^search(?:ed)?\s+(?:for\s+)?(.+?)(?:\s+in\s+(\S+))?$/i.exec(acp.title.trim()) : null;
+    const what = str(args.pattern) || str(args.query) || str(args.q) || str(args.glob) || titled?.[1] || "";
+    const at = where(str(args.path) || titled?.[2] || "");
+    const place = at.path;
+    const known = acp !== null || name === "grep" || name === "glob";
+    const qualifier = place ? `in ${place}` : known ? "" : `with ${name}`;
+    const mono = isCodeLike(what);
+    return row("Searched for", mono ? what : `“${what}”`, { mono, qualifier, folder: at.folder });
+  }
+  if (kind === "fetch") {
+    const url = str(args.url) || (acp ? acp.title.replace(/^fetch(?:ed)?\s+/i, "") : "");
+    return row("Fetched", url, { mono: true });
+  }
+  if (acp) return row(acp.title.trim() || "Tool call", "", { folder: "" });
+  if (name === "save_note") return row("Saved note", str(args.title), { mono: false });
+  if (name === "delete_note") return row("Deleted note", str(args.title) || str(args.id), { mono: false });
+  return row("Called", name, { mono: true });
+}
+
+/**
+ * Runs of consecutive edits of one file become one row ("Edited src/x.ts · 2 edits"); every other call is its own row. `key` is
+ * the file an edit touched ("" for a call that is not a mergeable edit).
+ */
+export function mergeRuns<T>(items: readonly T[], key: (item: T) => string): T[][] {
+  const out: T[][] = [];
+  for (const item of items) {
+    const k = key(item);
+    const last = out.at(-1);
+    const first = last?.[0];
+    if (k && last && first !== undefined && key(first) === k) last.push(item);
+    else out.push([item]);
+  }
+  return out;
+}
+
+/**
+ * The group row's glyph: the turn's worst state only when it matters to the person — running while any call runs; failed or
+ * stopped only when every call did; otherwise done, with the problems as a quiet suffix (`groupProblems`).
+ */
+export function groupState(states: readonly StepState[]): StepState {
+  if (states.some((s) => s === "running")) return "running";
+  if (states.length > 0 && states.every((s) => s === "error")) return "error";
+  if (states.length > 0 && states.every((s) => s === "stopped" || s === "error")) return states.some((s) => s === "error") ? "error" : "stopped";
+  return "done";
+}
+
+/** "1 failed · 2 stopped" (empty when nothing went wrong). */
+export function groupProblems(states: readonly StepState[]): string {
+  const failed = states.filter((s) => s === "error").length;
+  const stopped = states.filter((s) => s === "stopped").length;
+  return [failed ? `${failed} failed` : "", stopped ? `${stopped} stopped` : ""].filter(Boolean).join(" · ");
 }
 
 type Msg = { created_at: string; content: readonly { type: string; id?: string; tool_use_id?: string }[] };
@@ -448,16 +535,31 @@ function groupKey(name: string, input: unknown): string {
   return kind === "shell" ? "command" : kind;
 }
 
+/** The file a call names (a built-in call's `path`, an ACP call's `raw_input` path or first location); "" when it names none. */
+export function callPath(name: string, input: unknown): string {
+  const args = callArgs(name, input);
+  return str(args.path) || str(args.file_path) || acpCall(name, input)?.locations[0]?.path || "";
+}
+
+/** Kinds whose count is of files: two edits of one file are "edited 1 file". */
+const BY_FILE = new Set(["read", "edit", "write", "delete", "move"]);
+
 /**
  * The summary of a run of tool calls, built-in and ACP alike ("Ran 3 commands, read 1 file, edited 2 files"): one phrase per
- * kind of action, in the order they first ran (an ACP command and a built-in one are both commands).
+ * kind of action, in the order they first ran (an ACP command and a built-in one are both commands). Reads and edits count
+ * files, not calls.
  */
 export function groupSummary(uses: readonly { name: string; input: unknown }[]): string {
   const counts = new Map<string, number>();
-  for (const u of uses) {
+  const seen = new Set<string>();
+  uses.forEach((u, i) => {
     const key = groupKey(u.name, u.input);
+    const path = BY_FILE.has(key) ? callPath(u.name, u.input) : "";
+    const id = `${key}\u0001${path || `#${i}`}`;
+    if (seen.has(id)) return;
+    seen.add(id);
     counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
+  });
   const text = [...counts]
     .map(([key, n]) => {
       const [verb, one, many] = GROUP[key] ?? GROUP.other ?? ["called", "tool", "tools"];

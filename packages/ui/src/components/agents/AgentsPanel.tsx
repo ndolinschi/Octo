@@ -22,6 +22,7 @@ import { ProviderMark } from "../primitives/ProviderMark";
 import { Panel, PanelBody, PanelEmpty } from "../primitives/Panel";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { StateGlyph } from "../primitives/StateGlyph";
+import { PanelPurpose } from "../shared/PanelPurpose";
 
 const AGENTS_TAB = toolTab("agents");
 const EXPANDED = slot("expanded", isBooleanRecord);
@@ -102,7 +103,12 @@ export function AgentsPanel() {
   const empty = groups.running.length + groups.finished.length === 0;
   return (
     <div data-agents className="h-full min-h-0">
-      <Panel name="agents" title="Agents" meta={groups.running.length > 0 ? `${groups.running.length} running` : undefined}>
+      <Panel
+        name="agents"
+        title="Agents"
+        lead={<PanelPurpose tool="agents" />}
+        meta={groups.running.length > 0 ? `${groups.running.length} running` : undefined}
+      >
         {empty ? (
           <PanelEmpty
             title="No agents yet"

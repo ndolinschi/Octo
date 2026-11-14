@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { EXPERIMENTAL_TIP, stateText, type Tone } from "../../lib/providers";
+import { modelName } from "../../lib/models";
+import { Button } from "../primitives/Button";
 import type { Provider } from "@octo/agent-client";
 import { ProviderMark } from "../primitives/ProviderMark";
 import { SectionHeader } from "../primitives/SectionHeader";
@@ -38,5 +40,39 @@ export function ProviderTitle({ provider, tone, stateLabel }: { provider: Provid
         </span>
       </span>
     </div>
+  );
+}
+
+/**
+ * G14: the router's detail had only "Billing" to say. What the provider list does know about it: its state in a sentence, the
+ * models it lists, where its settings are (the Router group below), and "Check again" (reads the provider list anew).
+ */
+export function RouterFacts(props: { provider: Provider; checking: boolean; onCheck(): void; onSettings?: (() => void) | undefined }) {
+  const p = props.provider;
+  const n = p.models.length;
+  const models =
+    n > 0 ? `${n} ${n === 1 ? "model" : "models"} listed${p.default_model ? `; ${modelName(p.default_model)} when none is named` : ""}.` : "No models listed.";
+  return (
+    <section className="flex flex-col gap-1">
+      <SectionTitle
+        aside={
+          <Button variant="quiet" size="sm" aria-busy={props.checking} onClick={() => !props.checking && props.onCheck()}>
+            {props.checking ? "Checking…" : "Check again"}
+          </Button>
+        }
+      >
+        Status
+      </SectionTitle>
+      <p className="text-sm text-fg-2">{p.state === "ready" ? "Ready: Octo's model requests go through the router." : `${stateText(p.state)}.`}</p>
+      <p className="text-sm text-fg-2">{models}</p>
+      <p className="text-sm text-fg-2">
+        Its switch and upstream key are under Router, below.
+        {props.onSettings && (
+          <Button variant="link" size="sm" className="ml-1" onClick={props.onSettings}>
+            Router settings
+          </Button>
+        )}
+      </p>
+    </section>
   );
 }

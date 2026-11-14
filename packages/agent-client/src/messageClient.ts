@@ -149,6 +149,11 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     getUsage: (params) => call("getUsage", params === undefined ? [] : [params]),
     getLimits: () => call("getLimits", []),
     listLanguageServers: (id) => call("listLanguageServers", [id]),
+    createSession: (id, input) => call("createSession", input === undefined ? [id] : [id, input]),
+    setDefaultSession: (id, sid) => call("setDefaultSession", [id, sid]),
+    stopSession: (id, sid) => call("stopSession", [id, sid]),
+    sendSessionMessage: (id, sid, text, opts) => call("sendSessionMessage", opts === undefined ? [id, sid, text] : [id, sid, text, opts]),
+    listAllSessions: (params) => call("listAllSessions", params === undefined ? [] : [params]),
     openLanguageServer: (projectId, serverId) => {
       const id = nextId++;
       return new Promise<LanguageServerSession>((resolve, reject) => {

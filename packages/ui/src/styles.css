@@ -391,6 +391,40 @@
   }
 }
 
+/* Decision 96: the sidebar tree's row actions (a project's "+" and chevron, a session's "⋯") appear on hover and focus, where
+   the row's meta is; the meta gives way to them. Always shown on touch and in the drawer, where there is no hover. */
+[data-tree-row] > [data-tree-actions] {
+  opacity: 0;
+  transition: opacity 100ms;
+}
+[data-tree-row]:is(:hover, :focus-within) > [data-tree-actions] {
+  opacity: 1;
+}
+[data-tree-row]:is(:hover, :focus-within) [data-tree-meta] {
+  visibility: hidden;
+}
+/* The title gives way to the actions instead of running under them: a project row has two (56px with the inset), a session one. */
+[data-tree-project]:is(:hover, :focus-within) [data-row] {
+  padding-right: 56px;
+}
+[data-tree-row]:not([data-tree-project]):is(:hover, :focus-within) [data-row] {
+  padding-right: 32px;
+}
+@media (pointer: coarse), (max-width: 767.98px) {
+  [data-tree-row] > [data-tree-actions] {
+    opacity: 1;
+  }
+  [data-tree-row] [data-tree-meta] {
+    visibility: hidden;
+  }
+  [data-tree-project] [data-row] {
+    padding-right: 56px;
+  }
+  [data-tree-row]:not([data-tree-project]) [data-row] {
+    padding-right: 32px;
+  }
+}
+
 /* Under the pinned prompt: 8px of panel, then an ease-in fade (content reappears from ~0%, so a line passing
    under the pin has no visible cut edge; multi-stop, no band). */
 .octo-pin-fade {
@@ -1734,52 +1768,107 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
    compact 13px prose (Prose.css); code blocks and tables 12px. Line boxes are the parent's, so the swap from 0.93em changes no
    height. */
 
-/* retest3: toolcalls — the inline diff of an edit call and of a turn's changed files (G1/G2): +/− tints over the code background,
-   line numbers in the gutter (a new-side number opens the file at that line), the sign column, a gap row for folded lines. */
-.octo-diff-row[data-kind="add"] {
-  background: color-mix(in srgb, var(--octo-ok) 12%, transparent);
+/* retest3: toolcalls (toolpolish) — the inline diff of an edit call and of a turn's changed files. One grid for every row:
+   [old no.][new no.][sign][code], number columns as wide as the diff's largest number (`--diff-digits`, set by DiffPreview),
+   12px inset, 8px between columns, the sign in its own 1ch. Changed rows: a quiet tint on the code, a stronger one on the
+   gutter cell (opaque, so the sticky gutter hides code scrolled under it); only the tint carries the colour (numbers and signs
+   stay fg-3). Code never wraps: the code area scrolls sideways under the fixed gutter and fades at an edge with more. */
+.octo-diff {
+  --diff-gap: 8px;
+  --diff-gutter-w: calc(12px + 1ch + var(--diff-gap));
+  --diff-add: color-mix(in srgb, var(--octo-ok) 9%, transparent);
+  --diff-del: color-mix(in srgb, var(--octo-err) 8%, transparent);
+  --diff-add-gutter: color-mix(in srgb, var(--octo-ok) 18%, var(--octo-code-bg));
+  --diff-del-gutter: color-mix(in srgb, var(--octo-err) 15%, var(--octo-code-bg));
 }
-.octo-diff-row[data-kind="del"] {
-  background: color-mix(in srgb, var(--octo-err) 9%, transparent);
+.octo-diff[data-numbered] {
+  --diff-gutter-w: calc(12px + 2 * var(--diff-digits) + 1ch + 3 * var(--diff-gap));
+}
+.octo-diff:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--octo-focus);
+}
+.octo-diff[data-fade~="end"] {
+  mask-image: linear-gradient(to left, transparent, #000 24px);
+}
+.octo-diff[data-fade~="start"] {
+  mask-image: linear-gradient(to right, #000 var(--diff-gutter-w), transparent var(--diff-gutter-w), #000 calc(var(--diff-gutter-w) + 24px));
+}
+.octo-diff[data-fade~="start"][data-fade~="end"] {
+  mask-image: linear-gradient(
+    to right,
+    #000 var(--diff-gutter-w),
+    transparent var(--diff-gutter-w),
+    #000 calc(var(--diff-gutter-w) + 24px),
+    #000 calc(100% - 24px),
+    transparent
+  );
+}
+.octo-diff-rows {
+  width: max-content;
+  min-width: 100%;
+  padding-block: 4px;
+}
+.octo-diff-row {
+  display: flex;
+}
+.octo-diff-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--diff-gap);
+  padding-inline: 12px var(--diff-gap);
+  background: var(--octo-code-bg);
+  color: var(--octo-fg-3);
+  user-select: none;
 }
 .octo-diff-num {
-  flex-shrink: 0;
-  box-sizing: content-box;
-  padding-inline: 4px;
-  text-align: right;
-  color: var(--octo-fg-3);
-  opacity: 0.8;
-  user-select: none;
+  display: inline-flex;
+  justify-content: flex-end;
+  width: var(--diff-digits);
   font-variant-numeric: tabular-nums;
 }
-.octo-diff-num:first-child {
-  padding-inline-start: 8px;
+.octo-diff-sign {
+  width: 1ch;
+  text-align: center;
 }
-.octo-diff-num + .octo-diff-num {
-  padding-inline-start: 2px;
+.octo-diff-code {
+  padding-inline-end: 12px;
+  white-space: pre;
+  color: var(--octo-fg);
+}
+.octo-diff-row[data-kind="gap"] .octo-diff-code {
+  color: var(--octo-fg-3);
+}
+.octo-diff-row[data-kind="add"] {
+  background: var(--diff-add);
+}
+.octo-diff-row[data-kind="del"] {
+  background: var(--diff-del);
+}
+.octo-diff-row[data-kind="add"] .octo-diff-gutter {
+  background: var(--diff-add-gutter);
+}
+.octo-diff-row[data-kind="del"] .octo-diff-gutter {
+  background: var(--diff-del-gutter);
+}
+/* A command's output: wrapped like a terminal (`pre-wrap`, long words broken), each line hanging 2ch under its own start. */
+.octo-out-line {
+  display: block;
+  padding-inline-start: 16px;
+  text-indent: -16px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 .octo-diff-go {
   cursor: pointer;
 }
 .octo-diff-go:hover {
   color: var(--octo-link);
-  opacity: 1;
-  text-decoration: underline;
 }
 .octo-diff-go:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--octo-focus);
-}
-.octo-diff-sign {
-  flex-shrink: 0;
-  width: 2ch;
-  padding-inline-start: 4px;
-  color: var(--octo-fg-3);
-  user-select: none;
-}
-.octo-diff-row[data-kind="add"] .octo-diff-sign {
-  color: var(--octo-ok);
-}
-.octo-diff-row[data-kind="del"] .octo-diff-sign {
-  color: var(--octo-err);
 }
