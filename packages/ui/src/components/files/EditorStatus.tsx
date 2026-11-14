@@ -65,11 +65,11 @@ export function EditorStatus({
           aria-label={`Language server: ${status.label}, ${STATE_TEXT[status.state]}`}
           title={status.error ? `${status.label}: ${status.error}` : `${status.label} (language server), ${STATE_TEXT[status.state]}`}
           data-lsp-state={status.state}
-          className={cn(
-            "flex h-7 min-w-0 shrink items-center gap-1.5",
-            compact && shownState === "ready" ? "w-7 shrink-0 justify-center" : "px-1",
-            hideReady && shownState !== "starting" && !broken && "sr-only",
-          )}
+          className={
+            hideReady && shownState !== "starting" && !broken
+              ? "sr-only"
+              : cn("flex h-7 min-w-0 shrink items-center gap-1.5", compact && shownState === "ready" ? "w-7 shrink-0 justify-center" : "px-1")
+          }
         >
           {shownState && <StateGlyph state={GLYPH[shownState]} />}
           <span aria-hidden className={cn("max-w-[200px] min-w-0 truncate", compact && shownState === "ready" && "hidden")}>
