@@ -137,3 +137,43 @@ func TestServerRefusesNonLoopbackPeers(t *testing.T) {
 		}
 	}
 }
+
+type instructed struct {
+	backend
+	text string
+}
+
+func (b *instructed) Instructions(bind mcp.Binding) string {
+	if b.text == "" {
+		return ""
+	}
+	return b.text + " for " + bind.ProjectID
+}
+
+func TestInitializeCarriesBackendInstructions(t *testing.T) {
+	tokens, b := mcp.NewTokens(), &instructed{text: "spawn_agent takes role, title, task and tier"}
+	srv := httptest.NewServer(mcp.NewServer(tokens, b, "1"))
+	t.Cleanup(srv.Close)
+	tok := tokens.Issue(mcp.Binding{ProjectID: "p1", AgentID: "a1"})
+	_, body := post(t, srv.URL+mcp.Path("p1"), tok, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`)
+	var got struct {
+		Result struct {
+			Instructions *string `json:"instructions"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(body), &got); err != nil || got.Result.Instructions == nil ||
+		*got.Result.Instructions != "spawn_agent takes role, title, task and tier for p1" {
+		t.Fatalf("initialize = %s (%v)", body, err)
+	}
+
+	b.text = ""
+	if _, body := post(t, srv.URL+mcp.Path("p1"), tok, `{"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}`); strings.Contains(body, "instructions") {
+		t.Errorf("empty instructions must be left out: %s", body)
+	}
+	// A backend without the extension: no field either (TestServerProtocol's backend).
+	srv2, tokens2, _ := rig(t)
+	tok2 := tokens2.Issue(mcp.Binding{ProjectID: "p"})
+	if _, body := post(t, srv2.URL+mcp.Path("p"), tok2, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`); strings.Contains(body, "instructions") {
+		t.Errorf("a backend without instructions: %s", body)
+	}
+}

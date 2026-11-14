@@ -30,6 +30,16 @@ const (
 	// MarkerMCPSpawnHang is MarkerMCPSpawn with a task that makes the sub-agent hang until it is cancelled
 	// (a test stops the turn while the sub-agent runs).
 	MarkerMCPSpawnHang = "[mcp-spawn-hang]"
+	// MarkerMCPSpawnLazy plays Claude Code with MCP tool search: it calls
+	// spawn_agent knowing only the tool's name (no tools/list), with the
+	// arguments the server's initialize instructions show in their example (else
+	// the guess task + tier), wraps a failed result in a Markdown fence as Claude
+	// Code's ACP adapter does, retries once with the arguments the refusal's
+	// example shows, and reports "lazy-spawn first=ok|refused retry=...".
+	MarkerMCPSpawnLazy = "[mcp-spawn-lazy]"
+	// MarkerMCPSpawnGuess is MarkerMCPSpawnLazy ignoring the server's
+	// instructions: the first call is the guess (the owner's live run).
+	MarkerMCPSpawnGuess = "[mcp-spawn-guess]"
 	// MarkerEcho makes the agent answer with pid, session and the prompt it got.
 	MarkerEcho = "[echo]"
 	// MarkerBlocks answers with the content blocks of the prompt: "blocks=image:image/png:1234,text".
@@ -207,6 +217,10 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		a.mu.Unlock()
 		a.say(fmt.Sprintf("pid=%d session=%s loaded=%v prompt<<%s>>", os.Getpid(), a.sid(), loaded, prompt))
 		return "end_turn"
+	case has(MarkerMCPSpawnLazy):
+		return a.mcpSpawnLazy(ctx, true)
+	case has(MarkerMCPSpawnGuess):
+		return a.mcpSpawnLazy(ctx, false)
 	case has(MarkerMCPSpawnBuiltin):
 		return a.mcpSpawn(ctx, true, "Report that you are ready.")
 	case has(MarkerMCPSpawnHang):

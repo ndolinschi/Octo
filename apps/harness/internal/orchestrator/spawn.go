@@ -22,13 +22,26 @@ const ToolSpawnAgent = "spawn_agent"
 const spawnDescription = "Delegate a task to a new sub-agent with a fresh context. It runs to completion and " +
 	"its final report is returned as this tool's result. Calls made in the same message run in parallel."
 
+// spawnDescriptionFor names the required arguments in the description too.
+func spawnDescriptionFor(routed bool) string {
+	if routed {
+		return spawnDescription + " Requires role, title and task; tier is optional (auto by default)."
+	}
+	return spawnDescription + " Requires role, title, task and tier."
+}
+
 type spawnInput struct {
 	Role  string `json:"role"`
 	Title string `json:"title"`
 	Task  string `json:"task"`
 	Tier  string `json:"tier"`
 	Agent string `json:"agent"`
-	Model string `json:"model"`
+	// Prompt and Description are accepted for task and title when those are
+	// empty: the names an agent guesses when it calls the tool before loading
+	// its schema (Claude Code's own Task tool takes description and prompt).
+	Prompt      string `json:"prompt"`
+	Description string `json:"description"`
+	Model       string `json:"model"`
 	// Env maps environment variable names to secret references for an
 	// external agent's process.
 	Env map[string]string `json:"env"`
@@ -41,7 +54,7 @@ func (rt *runtime) spawnDef(parent projectstore.Agent) (tools.Def, error) {
 	}
 	return tools.Def{
 		Name:        ToolSpawnAgent,
-		Description: spawnDescription,
+		Description: spawnDescriptionFor(rt.routeEnabled()),
 		InputSchema: schema,
 		Handle: func(ctx context.Context, input json.RawMessage) (string, bool, error) {
 			return rt.spawn(ctx, parent, input)
@@ -57,6 +70,12 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		return "invalid spawn_agent input: " + err.Error(), true, nil
 	}
 	in.Role, in.Title, in.Task = strings.TrimSpace(in.Role), strings.TrimSpace(in.Title), strings.TrimSpace(in.Task)
+	if in.Task == "" {
+		in.Task = strings.TrimSpace(in.Prompt)
+	}
+	if in.Title == "" {
+		in.Title = strings.TrimSpace(in.Description)
+	}
 	routed := rt.routeEnabled()
 	if in.Tier == "" && routed {
 		in.Tier = TierAuto // the default while the router can choose
@@ -68,10 +87,7 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 	}
 	tier := projectstore.Tier(in.Tier)
 	if in.Role == "" || in.Title == "" || in.Task == "" || !(auto || tier.Valid()) {
-		if routed {
-			return "spawn_agent requires role, title and task, and tier if given (auto|fast|balanced|deep)", true, nil
-		}
-		return "spawn_agent requires role, title, task and tier (fast|balanced|deep)", true, nil
+		return spawnRefusal(in, routed), true, nil
 	}
 	// A delegation refused for budget reasons before the sub-agent starts still
 	// gets its row, settled as failed with the reason, so the delegation does not

@@ -115,6 +115,27 @@ Every way an ACP agent can fail ends the turn (orchestrator) or the sub-agent (a
 - `harness doctor [--data-dir D] [--json]` and `GET /v1/diagnostics` report: version, Go, OS, data dir, the PATH child processes get, the names (never values) of provider and router variables that are set, the names of the login-shell variables the desktop app forwards that child processes get (`shell_env_set`), the built-in loop and router state (base URL without credentials or query), and per agent: resolved command or "not found", each `requires` command, the login probe (doctor runs it now: exit status only, its output is discarded; the endpoint reports the cached background result), the hints, and a problems list. The endpoint adds the last 200 log lines (scrubbed of tokens, keys, passwords, URL credentials) and the trace files. A test feeds secret-looking environment, URL and log content and asserts none appears.
 - **Wire trace.** `HARNESS_ACP_TRACE=1`, or the setting of the same name (`PUT /v1/settings`, takes effect for sessions that start afterwards). One JSON-lines file per agent process under `{data-dir}/traces/` (`<time>-<agent>-<n>.jsonl`, mode 0600): `{t, dir: "client->agent" | "agent->client" | "agent-stderr" | "meta", msg | text}`. Redacted before writing: values under keys named like a secret (key, token, secret, password, credential, authorization, cookie), the value of env and header entries (`{name, value}`) with an upper-case env name or a secret-like name, `Bearer`/`Basic` credentials, the agent's environment values from the manifest, the MCP bearer token the harness issued, project secret values, and `key=value` text in free-form lines. A file is capped at 5 MB (the oldest half is dropped, with a marker line) and at most 20 files are kept. Prompt text and file contents are in the trace (it is the wire): read it before sending it.
 
+## The first `spawn_agent` call and deferred tool schemas (2026-11-14)
+
+Claude Code defers MCP tool schemas (its tool search): the model can call `spawn_agent` knowing only the tool's name. In
+the owner's wire trace the first call carried `task` and `tier` only — the two arguments the briefing named — and was
+refused; the retry, made after Claude Code attached the schema to the refusal, succeeded. What the harness does about it:
+
+- The MCP server returns `instructions` in `initialize`: every tool with its required arguments (type, enum,
+  description), the optional ones, and a full `spawn_agent` example. With a router, `tier` is optional and `auto` is offered.
+- The briefing names all four arguments (`role`, `title`, `task`, `tier`) with an example.
+- A refusal is plain text: what is missing ("Missing: role, title.") or which tier is unknown, "No sub-agent was
+  started.", each argument, and `Example arguments: {…}` as valid JSON.
+- `prompt` is accepted for `task` and `description` for `title` when the real field is empty. `tier` has no default
+  without a router.
+- An ACP tool result that is exactly one fenced code block is stored as its body (the agent's adapter adds the fence).
+- A cancelled built-in turn stores the interrupted tool call's result at the stop, not at the next request, so the
+  history and the turn's duration match what was seen live.
+
+The scripted agent replays the sequence: `[mcp-spawn-lazy]` (arguments from the instructions) and `[mcp-spawn-guess]`
+(task and tier only, then one retry from the refusal's example). Not verified: that real Claude Code shows the server
+instructions to the model while tools are deferred, and that its first call is then right.
+
 ## Not verified
 
 Everything above was exercised only against the scripted agent (`internal/fakeacp`) over a real stdio pipe, a real HTTP bridge and

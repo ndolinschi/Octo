@@ -294,6 +294,45 @@ func TestCancelMarksTreeCancelled(t *testing.T) {
 	}
 }
 
+func TestCancelStoresTheInterruptedResultAtTheStop(t *testing.T) {
+	started := make(chan struct{})
+	var once sync.Once
+	r := newRig(t, fakeLLM(func(w http.ResponseWriter, hr *http.Request, req fakeReq) {
+		if req.isOrchestrator() {
+			respond(w, "tool_use", spawnBlock("t1", "a"))
+			return
+		}
+		once.Do(func() { close(started) })
+		<-hr.Context().Done()
+	}))
+	pid := r.project(t, 2)
+	st := r.run(t, pid, "go", func() {
+		select {
+		case <-started:
+		case <-time.After(10 * time.Second):
+			t.Fatal("child never started")
+		}
+		r.orch.Cancel(pid)
+	})
+	if st != "cancelled" {
+		t.Fatalf("status = %s, want cancelled", st)
+	}
+	db, err := r.store.Get(context.Background(), pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	orch, _ := db.Orchestrator(context.Background())
+	msgs, err := db.Messages(context.Background(), orch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := msgs[len(msgs)-1]
+	if last.Role != "user" || len(last.Content) != 1 || last.Content[0].Type != "tool_result" ||
+		*last.Content[0].ToolUseID != "t1" || !*last.Content[0].IsError || *last.Content[0].Content != "interrupted: the tool call did not complete" {
+		t.Fatalf("last message = %s %+v, want the interrupted result of t1", last.Role, last.Content)
+	}
+}
+
 func TestConcurrentTurnRejected(t *testing.T) {
 	gate := make(chan struct{})
 	r := newRig(t, fakeLLM(func(w http.ResponseWriter, hr *http.Request, req fakeReq) {

@@ -212,3 +212,21 @@ picker's "Not connected" row offer "Check again" and "Use anyway" with one line 
 Built: rules 1 to 6 as written above. `plugins.Registry.Fresh` / `Recheck` (synchronous probe, joined with one in flight, `FreshProbeAge` 5 s), `NegativeProbeInterval` 15 s, `providers.Service.CheckFresh` / `Recheck`, `POST /v1/providers/{id}/recheck`, `can_force` on `model_unavailable`, `force_unverified` on project create and patch, probe reports with `rule`, `exit_status`, `duration_ms`, `dir`, `env_names` and `harness doctor --show-probe-output`, `__CF_USER_TEXT_ENCODING` in the child-environment allow-list. Exit 0 now always wins over `notLoggedInPattern` (a logged-out Grok, which exits 0 printing "You are not authenticated.", reads as unchecked). A built-in agent's probe runs in the user's home. Also built: `verified` / `experimental`, `unsupported` / `not_supported`, `startHint` and the start-up failure message for rejected launch arguments (`acp.ExitError` carries the first stderr line). UI: "Check again" (spinner, calls recheck) and "Use anyway" (only for `not_logged_in`, one dim line) in the connect sheet, the model picker's "Not set up" rows and the refused-switch notice; Settings → Agents "Check again" rechecks; a dim "experimental" word; a `not_supported` row only says why. Demo bridge: `?recheck=ok` makes "Check again" succeed for a logged-out agent; "Use anyway" works either way.
 
 Verified: unit and HTTP tests with the scripted agent and fake probe scripts (logged out, log in, request passes; force path; not_installed and not_supported not forceable; doctor output; child environment; usage-error launch with an `sh` script, no real CLI). Not verified: the real `grok models` exit status and output on the owner's machine; whether the desktop shell's environment carries every variable of rule 6 on macOS (update 2026-11-13: the sidecar now forwards an allow-list of login-shell variables, see the packaging spec's "As built — login-shell environment"; verified with fake shells only; `harness doctor` lists the names child processes get); the UI in a browser.
+
+### As built — first `spawn_agent` call, stop, change tracking (2026-11-14, harness)
+
+From the owner's live run with Claude Code as the orchestrator (wire traces): the first `spawn_agent` call was refused
+because Claude Code defers MCP tool schemas and the model guessed the arguments from the briefing, which named only
+`task` and `tier`. Now the MCP `initialize` result carries `instructions` built from the live tool schemas, the briefing
+names all four arguments with an example, the refusal is plain text that names what is missing and ends with example
+arguments, `prompt` / `description` are accepted for `task` / `title`, and a tool result that is one fenced block is
+stored without the fence. `tier` stays required without a router. A cancelled built-in turn stores the interrupted
+call's result at the stop (`runTurn` calls `repairDangling` before `finishTurn`). `changes.Tracker` indexes a file with
+the size and mtime read before its content, not after: a write that landed between the read and the stat was never
+recorded (the cause of the flaky `TestBashChangesAreRecorded`). The Copilot login command is `copilot login`.
+Details: `apps/harness/docs/acp-orchestrator.md`.
+
+Verified: Go tests with the scripted agent (`[mcp-spawn-lazy]`, `[mcp-spawn-guess]`), a deterministic tracker test,
+a real `harness serve` with the mock model for the cancel (12 s turn stored as 12 s, interruption results at the stop
+time), `gofmt`, `go vet`, `go test -race ./...`. Not verified: real Claude Code showing the instructions to the model
+and getting the first call right; other agents as orchestrator; the UI reload against a live harness.

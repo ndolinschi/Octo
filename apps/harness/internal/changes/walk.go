@@ -25,6 +25,8 @@ type stamp struct {
 	mtime int64
 }
 
+func stampOf(fi fs.FileInfo) stamp { return stamp{fi.Size(), fi.ModTime().UnixNano()} }
+
 // list returns the regular files under root (slash paths relative to it) with
 // size and mtime, and whether the walk stopped at MaxFiles.
 func list(ctx context.Context, root string) (map[string]stamp, bool) {

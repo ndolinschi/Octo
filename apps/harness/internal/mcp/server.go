@@ -1,7 +1,8 @@
 // Package mcp is a small MCP (Model Context Protocol) server: Streamable HTTP
 // (POST only, JSON responses) exposing tools supplied by a Backend, guarded by
 // per-session bearer tokens, loopback only. It implements what a tool-calling
-// client needs: initialize, ping, tools/list and tools/call.
+// client needs: initialize (with the backend's instructions, if it has any),
+// ping, tools/list and tools/call.
 package mcp
 
 import (
@@ -48,6 +49,15 @@ type Backend interface {
 	// Call runs a tool. A tool-level failure is (text, true, nil); err is for
 	// failures of the call itself (ErrUnknownTool, no active turn...).
 	Call(ctx context.Context, b Binding, name string, args json.RawMessage) (text string, isError bool, err error)
+}
+
+// Instructor is an optional Backend extension: text for the "instructions"
+// field of the initialize result. MCP clients put a server's instructions into
+// the model's system prompt, also when they load the tools' schemas only on
+// demand (Claude Code's tool search), so they are the place to say what the
+// tools take. "" leaves the field out.
+type Instructor interface {
+	Instructions(b Binding) string
 }
 
 // Server is the http.Handler.
@@ -137,11 +147,17 @@ func (s *Server) dispatch(ctx context.Context, b Binding, req rpcRequest) (any, 
 				version = v
 			}
 		}
-		return map[string]any{
+		result := map[string]any{
 			"protocolVersion": version,
 			"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
 			"serverInfo":      map[string]string{"name": ServerName, "version": s.version},
-		}, nil
+		}
+		if in, ok := s.backend.(Instructor); ok {
+			if text := in.Instructions(b); text != "" {
+				result["instructions"] = text
+			}
+		}
+		return result, nil
 	case "ping":
 		return map[string]any{}, nil
 	case "tools/list":

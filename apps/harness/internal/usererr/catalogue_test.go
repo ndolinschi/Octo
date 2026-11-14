@@ -20,7 +20,7 @@ import (
 func samples() map[string]*Error {
 	const long = "exit status 1: acp initialize: JSON-RPC session/new failed (stderr: boom)"
 	return map[string]*Error{
-		"AgentNotLoggedIn":       AgentNotLoggedIn("GitHub Copilot", "copilot auth login", long),
+		"AgentNotLoggedIn":       AgentNotLoggedIn("GitHub Copilot", "copilot login", long),
 		"AgentNotInstalled":      AgentNotInstalled("GitHub Copilot", "npm install -g @github/copilot", long),
 		"AgentLaunchRejected":    AgentLaunchRejected("Antigravity", "agy", "unexpected argument 'acp'", "Update agy."),
 		"AgentExitedDuringStart": AgentExitedDuringStart("Claude Code", long),
@@ -199,9 +199,9 @@ func filterOut(in []string, suffix string) []string {
 }
 
 func TestFieldsAndFallback(t *testing.T) {
-	e := AgentNotLoggedIn("GitHub Copilot", "copilot auth login", "run it once")
+	e := AgentNotLoggedIn("GitHub Copilot", "copilot login", "run it once")
 	f := e.Fields()
-	if f["message"] != "GitHub Copilot is not logged in." || f["command"] != "copilot auth login" || f["action"] != "recheck_provider" || f["details"] != "run it once" || f["hint"] == "" {
+	if f["message"] != "GitHub Copilot is not logged in." || f["command"] != "copilot login" || f["action"] != "recheck_provider" || f["details"] != "run it once" || f["hint"] == "" {
 		t.Fatalf("fields = %v", f)
 	}
 	if _, ok := TurnInProgress().Fields()["action"]; ok {

@@ -383,6 +383,17 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 		status, problem = projectstore.StatusFailed, describe(err)
 		slog.Error("turn failed", "project", rt.pid(), "err", err)
 	}
+	if status == projectstore.StatusCancelled && !rt.isACPOrchestrator() {
+		// The calls the stop interrupted get their result now, at the stop, not
+		// before the next request: a reload then shows the stopped step and
+		// the turn's end as it was seen live. (An ACP turn closes its open
+		// calls itself, acp_session.go finishLocked.)
+		c, cancel := dbCtx(context.Background())
+		if err := rt.repairDangling(c, orch.ID); err != nil {
+			rt.logErr("close interrupted tool calls", err)
+		}
+		cancel()
+	}
 	if status == projectstore.StatusCompleted && rt.isACPOrchestrator() {
 		// A notice, not a failure: the session works without harness tools.
 		notice = o.acp.warning(rt.pid())

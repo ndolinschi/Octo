@@ -140,9 +140,10 @@ const spawnTierAutoDescription = "Who does the task. auto (the default): the rou
 // becomes optional (its default).
 func spawnSchemaFor(agents []plugins.Agent, auto bool) (json.RawMessage, error) {
 	props := map[string]any{
-		"role":  map[string]any{"type": "string", "description": "Specialist role, e.g. Code explorer"},
-		"title": map[string]any{"type": "string", "description": "Short task title"},
-		"task":  map[string]any{"type": "string", "description": "Self-contained brief including the expected report format"},
+		"role":  map[string]any{"type": "string", "description": "Specialist role of the sub-agent, e.g. Code explorer"},
+		"title": map[string]any{"type": "string", "description": "Short task title, e.g. Count lines of main.go"},
+		"task": map[string]any{"type": "string", "description": "Self-contained brief including the expected report format " +
+			"(the sub-agent sees nothing else)"},
 		"tier": map[string]any{
 			"type": "string", "enum": []string{"fast", "balanced", "deep"}, "description": "Model tier by task difficulty",
 		},

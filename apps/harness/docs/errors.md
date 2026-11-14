@@ -7,7 +7,7 @@ structured form, built by one catalogue: `internal/usererr`.
 | --- | --- |
 | `message` | One plain sentence of what happened ("GitHub Copilot is not logged in."). No protocol words, no exit status. |
 | `hint` | The next step in plain words ("Log in to it in a terminal, then check again."). |
-| `command` | A copyable terminal command when there is one (`copilot auth login`). |
+| `command` | A copyable terminal command when there is one (`copilot login`). |
 | `action` | A machine code the UI turns into a button: `recheck_provider`, `connect_provider`, `retry`, `open_settings`, `update_agent`. Absent means none. |
 | `details` | The technical text (protocol names, exit status, the stderr line, method names), for a "Details" fold and the diagnostic report. |
 

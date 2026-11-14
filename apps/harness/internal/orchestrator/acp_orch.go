@@ -477,6 +477,7 @@ func (rt *runtime) acpBriefing() string {
 	b.WriteString(`
 Harness tools: the harness gives you an MCP server named "octo-harness" with spawn_agent, write_note, read_note, search_notes, save_note, delete_note, list_dir and the memory tools (task_update, memory, memory_search, recall_message).
 - Keep your own context small; delegate self-contained work with spawn_agent. A sub-agent sees none of this conversation, so each task brief must be self-contained and say what report you expect. Its final report is returned as the tool result.
+- ` + rt.spawnArgsGuidance() + `
 - ` + rt.tierGuidance() + ` Issue several spawn_agent calls in one message to run independent sub-tasks in parallel.
 - Notes are your durable memory, shown to you as an index of descriptions: open a note with read_note only when its description is relevant, and use search_notes before saying you do not know. Record durable intent, decisions and facts with write_note (a one-line description you write, then the body in Markdown); delete stale notes with delete_note. Keep notes short.
 - Your own file and shell tools work only inside the project folders.
