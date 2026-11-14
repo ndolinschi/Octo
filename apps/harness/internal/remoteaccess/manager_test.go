@@ -3,6 +3,7 @@ package remoteaccess
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -150,10 +151,11 @@ func TestDisableStopsTheProcessGroupAndListener(t *testing.T) {
 	st := r.on()
 	pids := readPids(t, r.bin)
 	r.m.Disable()
+	// Disable has signalled the whole group; the helper is not our child, so its exit is not waited for: it is gone a
+	// moment later (on a loaded CI runner the check ran before the kernel had delivered the signal).
 	for _, p := range pids {
-		if alive(p) {
-			t.Errorf("process %d still runs after disable", p)
-		}
+		p := p
+		eventually(t, fmt.Sprintf("process %d gone after disable", p), func() bool { return !alive(p) })
 	}
 	if s := r.m.Status(); s.State != StateOff || s.Listen != "" {
 		t.Fatalf("status %+v", s)
