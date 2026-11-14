@@ -130,7 +130,7 @@ pub(in crate::auto) fn record(plan: RecordPlan<'_>) -> Recorded {
     let parsed = plan.asked.parsed.as_ref();
     let usage = crate::history::usage_from_output(&plan.asked.response_body);
     let resolved =
-        crate::history::resolve_cost(&usage, Some("typesafe/jev-1.13"), plan.history.prices());
+        crate::history::resolve_cost(&usage, Some("typesafe/jev-1.13"), &plan.history.prices());
     let cost = resolved.cost.or(plan.asked.cost);
     let cost_source = if resolved.cost.is_none() && plan.asked.cost.is_some() {
         "reported"

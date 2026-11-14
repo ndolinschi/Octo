@@ -74,7 +74,7 @@ flowchart TD
   rates -->|no| none
 ```
 
-Reported cost (BYOK upstream, then OpenRouter `usage.cost`) wins; the `prices.toml` estimate is used only when none is reported. `cost_source` records which one was used, and `estimated_cost_micros` is stored either way so the two can be compared.
+Reported cost (BYOK upstream, then OpenRouter `usage.cost`) wins; the price-table estimate (the live table: `source = "manual"` rows, then the OpenRouter catalogue, then `prices.toml` fallback rows; [prices.md](./prices.md)) is used only when none is reported. The autoroute call record (`GET /autoroute/v1/calls/{id}`) names the row's origin in `price_source` (`manual`, `catalogue@YYYY-MM-DD`, `fallback`); the `calls` table has no such column. `cost_source` records which one was used, and `estimated_cost_micros` is stored either way so the two can be compared.
 
 Token semantics for the estimate: Anthropic Messages usage (`input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`) reports `input_tokens` as the **uncached** count, so cache reads and writes are added on top. OpenAI/OpenRouter chat usage (`prompt_tokens`, `prompt_tokens_details.cached_tokens`) reports `prompt_tokens` as the **total** including cache reads, so cache reads are subtracted from the input rate and billed at `cache_read`. The stored `input_tokens` column holds whichever number the vendor reported.
 
@@ -84,7 +84,7 @@ At the first request of a session after a restart, session spend is restored fro
 
 Money is stored as **integer micro-dollars** (`CostMicros`). Failed / no-usage rows stay honest zeros with `cost_source = "none"`.
 
-Rows in `prices.toml` that are all `0.0` skip the estimate (`!any_nonzero()`). The shipped rates were checked against the OpenRouter catalogue on 2026-11-10 ([ladder-cost-check.md](./ladder-cost-check.md)); `cache_write` stays `0.0` where the catalogue publishes no price.
+Rows in `prices.toml` that are all `0.0` skip the estimate (`!any_nonzero()`). The shipped rates were re-copied from the OpenRouter catalogue on 2026-11-14 ([ladder-cost-check.md](./ladder-cost-check.md)); `cache_write` stays `0.0` where the catalogue publishes no price. With catalogue refresh on, they are only the fallback.
 
 ## Caveats
 

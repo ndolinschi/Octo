@@ -86,7 +86,7 @@ Operational defaults live under **`config/`** (one focused TOML file per area), 
 | `config/decision.toml` | `[decision]` backend |
 | `config/history.toml` | `[history]` — SQLite path, optional token HMAC key, `store_payloads` (default true), retention for call records and budget spend (`calls_max_age_days`, `calls_max_rows`, `budget_spend_max_age_days`, `prune_interval_secs`) |
 | `config/autoroute.toml` | `[autoroute]` — ladder, `never_pay_more_for_less` (price rule), stall/sticky, budget, housekeeping trim, optional `provider_order`, `strip_fields`, `require_parameters`, `background_*`, `server_tool_mode`; `[autoroute.route]` — delegation routing (`classifier_timeout_ms`, `prefer_flat_rate_for_hard`, nominal tokens) |
-| `config/prices.toml` | `[prices."<slug>"]` — USD/1M token rates (all four required for estimate) + optional `billed_as` |
+| `config/prices.toml` | `[prices."<slug>"]` — USD/1M token rates (all four required for estimate) + optional `billed_as`, `source = "manual"` (override); other rows are the fallback under the OpenRouter catalogue the router refreshes itself (`[prices] refresh`, `OCTO_PRICES_REFRESH=off` in tests/e2e; [docs/prices.md](./docs/prices.md)) |
 
 - **Default load:** merge present files in `./config/` (known fragment names; missing files are skipped). Run with cwd = `apps/router`.
 - **`OCTO_CONFIG`:** path to another **`config/`** directory or a single legacy **`config.toml`** file (monolithic override).

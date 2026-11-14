@@ -42,7 +42,7 @@ fn table(low: Option<f64>, mid: Option<f64>, high: Option<f64>) -> PriceTable {
 
 fn tiers_with(low: Option<f64>, mid: Option<f64>, high: Option<f64>) -> Tiers {
     let mut tiers = Tiers::new("low-model".into(), "mid-model".into(), "high-model".into());
-    tiers.prices = table(low, mid, high);
+    tiers.prices = table(low, mid, high).into();
     tiers
 }
 
@@ -113,7 +113,8 @@ fn a_zero_rate_row_counts_as_unpriced() {
         ("low-model".into(), price(9.0, 9.0)),
         ("mid-model".into(), price(5.0, 5.0)),
         ("high-model".into(), price(0.0, 0.0)),
-    ]);
+    ])
+    .into();
     assert_eq!(tiers.price_swap("low", None, shape()), Some("mid"));
 }
 
@@ -148,7 +149,8 @@ fn the_request_shape_decides_the_comparison() {
         ("low-model".into(), price(1.0, 100.0)),
         ("mid-model".into(), price(10.0, 1.0)),
         ("high-model".into(), price(50.0, 50.0)),
-    ]);
+    ])
+    .into();
     let input_heavy = RequestShape {
         input_tokens: 100_000,
         output_tokens: 10,
@@ -725,9 +727,9 @@ fn the_shipped_ladder_is_inverted_and_the_rule_serves_everything_at_high() {
     let tiers = state.auto.tiers();
     assert_eq!(tiers.price_swap("low", None, shape()), Some("high"));
     assert_eq!(tiers.price_swap("mid", None, shape()), Some("high"));
-    assert_eq!(tiers.blended_cost_micros("low", shape()), Some(1813));
+    assert_eq!(tiers.blended_cost_micros("low", shape()), Some(1622));
     assert_eq!(tiers.blended_cost_micros("mid", shape()), Some(4800));
-    assert_eq!(tiers.blended_cost_micros("high", shape()), Some(430));
+    assert_eq!(tiers.blended_cost_micros("high", shape()), Some(1390));
 }
 
 #[test]

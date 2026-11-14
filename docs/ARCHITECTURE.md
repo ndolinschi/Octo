@@ -324,6 +324,7 @@ flags beat both. Test-only variables (`OCTO_FAKEACP_*`) are left out.
 | `HARNESS_PLUGINS_DIR` (flag `--plugins-dir`, repeatable) | harness | none | Path list |
 | `HARNESS_NO_BUILTIN_PLUGINS` (flag `--no-builtin-plugins`) | harness | `false` | **Every harness started by a test sets `1`** |
 | `HARNESS_MAX_RUNNING_SESSIONS` | harness | `6` | Sessions that may run a turn at once across all projects (1–32); a project's own cap is `session_settings.max_running` (default 3) |
+| `OCTO_PRICES_REFRESH` | router | unset | `off` or `catalogue`; beats `[prices] refresh` in `prices.toml`. Unset: the router refreshes prices from the OpenRouter catalogue only when its upstream URLs point at openrouter.ai (every 6 h, cache in `prices-catalogue.json` beside the history database). See `apps/router/docs/prices.md` |
 | `HARNESS_ACP_IDLE` | harness | `30m` | Idle ACP orchestrator session shutdown |
 | `HARNESS_ROUTE_TIMEOUT` | harness | `2500ms` | The route call of `tier: auto` |
 | `HARNESS_DEFAULT_ACCESS` | harness | `full` | `supervised` or `full`; the UI shows approval cards, the default is still `full` |

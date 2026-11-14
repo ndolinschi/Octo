@@ -82,7 +82,10 @@ pub struct Config {
     pub autoroute_session_budget_action: String,
     pub autoroute_never_pay_more_for_less: bool,
     pub autoroute_route: crate::auto::RoutePolicy,
+    /// `prices.toml` rows: `source = "manual"` rows are overrides, the rest are fallback values.
     pub prices: crate::history::PriceTable,
+    /// `[prices]` scalar keys: catalogue refresh settings.
+    pub price_refresh: crate::prices::RefreshSettings,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -106,7 +109,7 @@ struct ConfigFile {
     #[serde(default)]
     autoroute: AutorouteSection,
     #[serde(default)]
-    prices: std::collections::HashMap<String, PriceRow>,
+    prices: Map<String, Value>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -530,6 +533,8 @@ struct PriceRow {
     output: Option<f64>,
     #[serde(default)]
     billed_as: Option<String>,
+    #[serde(default)]
+    source: Option<String>,
 }
 
 fn default_autoroute_low_model() -> String {
@@ -748,6 +753,7 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
     if file.autoroute.default_max_tokens == 0 {
         return Err(ConfigError::InvalidAutorouteDefaultMaxTokens);
     }
+    let (prices, price_refresh) = prices_from_section(file.prices)?;
     for key in &file.autoroute.strip_fields {
         if crate::auto::PROTECTED_STRIP_FIELDS
             .iter()
@@ -813,36 +819,89 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
         autoroute_session_budget_action: file.autoroute.session_budget_action,
         autoroute_never_pay_more_for_less: file.autoroute.never_pay_more_for_less,
         autoroute_route: file.autoroute.route,
-        prices: {
-            use crate::history::{ModelPrice, PriceTable};
-            let rows = file
-                .prices
-                .into_iter()
-                .map(|(slug, row)| {
-                    let rates_complete = row.input.is_some()
-                        && row.cache_read.is_some()
-                        && row.cache_write.is_some()
-                        && row.output.is_some();
-                    (
-                        slug,
-                        ModelPrice {
-                            input: row.input.unwrap_or(0.0),
-                            cache_read: row.cache_read.unwrap_or(0.0),
-                            cache_write: row.cache_write.unwrap_or(0.0),
-                            output: row.output.unwrap_or(0.0),
-                            billed_as: row.billed_as,
-                            rates_complete,
-                        },
-                    )
-                })
-                .collect();
-            PriceTable::new(rows)
-        },
+        prices,
+        price_refresh,
     })
+}
+
+/// Splits the `[prices]` table: sub-tables are model rows, scalar keys are refresh settings.
+fn prices_from_section(
+    section: Map<String, Value>,
+) -> Result<(crate::history::PriceTable, crate::prices::RefreshSettings), ConfigError> {
+    use crate::history::{ModelPrice, PriceSource, PriceTable};
+    let mut settings = crate::prices::RefreshSettings::default();
+    let mut rows = Vec::new();
+    for (key, value) in section {
+        match (key.as_str(), value) {
+            (_, Value::Table(table)) => {
+                let row: PriceRow = Value::Table(table).try_into().map_err(|source| {
+                    ConfigError::InvalidPriceRow {
+                        slug: key.clone(),
+                        source: Box::new(source),
+                    }
+                })?;
+                let source = match row.source.as_deref() {
+                    None | Some("fallback") => PriceSource::Fallback,
+                    Some("manual") => PriceSource::Manual,
+                    Some(other) => {
+                        return Err(ConfigError::InvalidPriceSource {
+                            slug: key,
+                            value: other.to_string(),
+                        })
+                    }
+                };
+                let rates_complete = row.input.is_some()
+                    && row.cache_read.is_some()
+                    && row.cache_write.is_some()
+                    && row.output.is_some();
+                let price = ModelPrice {
+                    input: row.input.unwrap_or(0.0),
+                    cache_read: row.cache_read.unwrap_or(0.0),
+                    cache_write: row.cache_write.unwrap_or(0.0),
+                    output: row.output.unwrap_or(0.0),
+                    billed_as: row.billed_as,
+                    rates_complete,
+                };
+                rows.push((key, price, source));
+            }
+            ("refresh", Value::String(mode)) => {
+                settings.refresh = Some(
+                    crate::prices::RefreshMode::parse(&mode)
+                        .ok_or(ConfigError::InvalidPriceRefresh { value: mode })?,
+                );
+            }
+            ("refresh_interval_secs", Value::Integer(secs)) if secs > 0 => {
+                settings.interval_secs = secs as u64;
+            }
+            ("cache_file", Value::String(path)) => {
+                settings.cache_file = (!path.trim().is_empty()).then_some(path);
+            }
+            (_, value) => {
+                return Err(ConfigError::InvalidPriceSetting {
+                    key,
+                    value: value.to_string(),
+                })
+            }
+        }
+    }
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok((PriceTable::with_sources(rows), settings))
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
+    #[error("invalid price row prices.{slug:?}")]
+    InvalidPriceRow {
+        slug: String,
+        #[source]
+        source: Box<toml::de::Error>,
+    },
+    #[error("invalid prices.{slug:?}.source {value:?}; expected manual or fallback")]
+    InvalidPriceSource { slug: String, value: String },
+    #[error("invalid prices.refresh {value:?}; expected catalogue or off")]
+    InvalidPriceRefresh { value: String },
+    #[error("invalid prices.{key} = {value}; expected refresh = \"catalogue\"|\"off\", refresh_interval_secs = <seconds > 0>, cache_file = \"<path>\", or a [prices.\"<slug>\"] row")]
+    InvalidPriceSetting { key: String, value: String },
     #[error("failed to read config at {path}")]
     Read {
         path: PathBuf,

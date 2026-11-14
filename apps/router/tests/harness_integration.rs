@@ -1314,6 +1314,7 @@ fn estimate_ratio_needs_a_reported_cost_and_a_gap_over_25_percent() {
         is_byok: None,
         upstream_provider: None,
         estimate_basis_differs: false,
+        price_source: None,
     };
     assert_eq!(
         estimate_ratio(&resolved(2500, Some(1000), CostSource::OpenRouter)),

@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crate::history::{blended_cost_micros, PriceTable};
+use crate::history::{blended_cost_micros, LivePrices, PriceTable};
 use crate::providers::openrouter::OpenRouterModels;
 
 use super::jev::Complexity;
@@ -110,7 +110,8 @@ pub struct Tiers {
     pub retry_after_max_secs: u64,
     pub session_budget_action: BudgetAction,
     pub never_pay_more_for_less: bool,
-    pub prices: PriceTable,
+    /// The live price table: a catalogue refresh is seen by the next decision (each decision reads one snapshot).
+    pub prices: LivePrices,
     pub route: super::delegate::RoutePolicy,
 }
 
@@ -141,13 +142,17 @@ impl Tiers {
             retry_after_max_secs: 10,
             session_budget_action: BudgetAction::Downgrade,
             never_pay_more_for_less: true,
-            prices: PriceTable::default(),
+            prices: LivePrices::default(),
             route: super::delegate::RoutePolicy::default(),
         }
     }
 
     pub fn blended_cost_micros(&self, band: &str, shape: RequestShape) -> Option<u128> {
-        let price = self.prices.get(&self.slug(band))?;
+        self.blended_in(&self.prices.snapshot(), band, shape)
+    }
+
+    fn blended_in(&self, prices: &PriceTable, band: &str, shape: RequestShape) -> Option<u128> {
+        let price = prices.get(&self.slug(band))?;
         if !price.rates_complete || (price.input <= 0.0 && price.output <= 0.0) {
             return None;
         }
@@ -159,10 +164,11 @@ impl Tiers {
     }
 
     pub fn cheapest_band(&self, shape: RequestShape) -> Option<&'static str> {
+        let prices = self.prices.snapshot();
         let costs = [
-            ("low", self.blended_cost_micros("low", shape)?),
-            ("mid", self.blended_cost_micros("mid", shape)?),
-            ("high", self.blended_cost_micros("high", shape)?),
+            ("low", self.blended_in(&prices, "low", shape)?),
+            ("mid", self.blended_in(&prices, "mid", shape)?),
+            ("high", self.blended_in(&prices, "high", shape)?),
         ];
         costs
             .into_iter()
@@ -198,12 +204,13 @@ impl Tiers {
             .and_then(|max| BANDS.iter().position(|band| *band == max))
             .unwrap_or(BANDS.len() - 1)
             .max(start);
-        let mut best = (start, self.blended_cost_micros(decided, shape)?);
+        let prices = self.prices.snapshot();
+        let mut best = (start, self.blended_in(&prices, decided, shape)?);
         for (index, band) in BANDS.iter().enumerate().take(end + 1).skip(start + 1) {
             if !allow(band) {
                 continue;
             }
-            if let Some(cost) = self.blended_cost_micros(band, shape) {
+            if let Some(cost) = self.blended_in(&prices, band, shape) {
                 if cost < best.1 {
                     best = (index, cost);
                 }

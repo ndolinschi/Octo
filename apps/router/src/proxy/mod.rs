@@ -45,6 +45,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tracing::error!(%err, "failed to build application state");
         err
     })?;
+    let price_refresh = crate::prices::start(&config, &state.prices, state.auto.tiers());
     for warning in crate::auto::ladder_warnings(state.auto.tiers()) {
         tracing::warn!("{warning}");
     }
@@ -57,7 +58,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     {
         Ok(history) => {
             state.history = history
-                .with_prices(config.prices.clone())
+                .with_prices(state.prices.live())
                 .with_store_payloads(config.history_store_payloads)
                 .with_retention(retention_from(&config));
             state
@@ -104,6 +105,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
+    if let Some(task) = price_refresh {
+        task.abort();
+    }
     history.drain().await;
     Ok(())
 }

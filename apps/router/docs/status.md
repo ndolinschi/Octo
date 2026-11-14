@@ -68,7 +68,7 @@ pie showData
 | Insert backpressure | 32 slots, 5s, then **drop** | Missing rows under burst (warn includes `session_id`) | verification F3 |
 | Stream fail after headers | Client may see truncated body; history keeps header status | Warn logs session; recon by status alone can miss truncation | AGENTS.md |
 | `session_budget_usd` | **0 (disabled)** | **No spend limit of any kind until set**: nothing is downgraded or refused, so cost is bounded only by the client. Set it (and pick `session_budget_action`) to enable | `autoroute.toml` |
-| Ladder price order | **Inverted by the published prices** | At the catalogue prices `high` is the cheapest model and `low`/`mid` dearer; the ladder order is by capability and was not changed. `never_pay_more_for_less` (default on) serves the cheapest tier at or above the decided one, so low and mid requests are served by `high` for a typical shape; the start-up warning says so | [ladder-cost-check.md](./ladder-cost-check.md), `tests/price_rule.rs` |
+| Ladder price order | **Inverted by the published prices** (re-checked 2026-11-14: 1,622 / 4,800 / 1,390 micro-USD per 30k/500) | At the catalogue prices `high` is the cheapest model and `low`/`mid` dearer; the ladder order is by capability and was not changed. `never_pay_more_for_less` (default on) serves the cheapest tier at or above the decided one, so low and mid requests are served by `high` for a typical shape; the start-up warning says so | [ladder-cost-check.md](./ladder-cost-check.md), `tests/price_rule.rs` |
 | Budget key state | Spend per `x-octo-budget-key` is persisted (`budget_spend`) and restored on the key's first request after a restart; pruned after 90 idle days by default | A kill within milliseconds of a call finishing loses that call's record and spend increment | `ledger.rs`, `tests/call_persistence.rs` |
 | Toolless compaction | Requests with no `tools[]` keep no session state | An oversized toolless request can still be compacted on every call | `route.rs` |
 | Dropped-stream tokens | Estimated from streamed bytes / 4 | Approximate; the reported figure replaces it when the vendor sent one | `history/payload/common.rs` |
@@ -78,6 +78,7 @@ pie showData
 | Chat autoroute compact | No Messages compact API | Chat overflow ≠ messages compact | `allow_compact: !chat` |
 | Text-as-tool-call | Detect + **next-turn** escalate | Mid-tier can emit Agent JSON as text this turn | [debug/text-tool-call](./debug/2026-11-06-text-tool-call.md) |
 | `prices.toml` zeros | Rows left at `0.0` skip the estimate | Fall through to reported cost, else `none`; `minimax-m3.1-flash` keeps the peak rate (the catalogue halves it off-peak) | `prices.toml` |
+| Catalogue price refresh | **Built 2026-11-14** | Prices refreshed from the OpenRouter catalogue at start and every 6 h, cached beside the history DB; `prices.toml` = fallback + `source = "manual"` overrides; `/health` `prices`, `price_source` per call record. Live fetch checked once by the agent; estimates vs real billed costs not verified | [prices.md](./prices.md), `tests/price_catalogue.rs` |
 | `provider_order` Mistral | Prefers Mistral endpoint | Hard-fail if Mistral down and fallbacks false | ratelim / text-tool docs |
 | Filter-by-Parameters | Strip list tuned for known keys | New Anthropic-only fields → 404 again | [experiments/ratelim](./experiments/2026-11-06-ratelim.md) |
 

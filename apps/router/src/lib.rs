@@ -1,6 +1,7 @@
 pub mod auto;
 pub mod config;
 pub mod history;
+pub mod prices;
 pub mod providers;
 pub mod proxy;
 pub mod routes;

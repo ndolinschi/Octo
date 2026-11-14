@@ -79,7 +79,7 @@ fn shell_written_directory_gets_prices_ladder_and_provider_settings() {
         assert!(price.rates_complete, "{slug}");
     }
     let low = config.prices.get(&config.autoroute_low_model).unwrap();
-    assert_eq!(low.cache_read, 0.018);
+    assert_eq!(low.cache_read, 0.001014);
 }
 
 #[test]
