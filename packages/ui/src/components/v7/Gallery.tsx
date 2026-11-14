@@ -113,7 +113,7 @@ function FormDemo({ request, fails = false, initial = null }: { request: InputRe
   const [answered, setAnswered] = useState<AnsweredInput | null>(initial);
   const submit = async (_id: string, _answer: InputAnswer) => {
     await wait(400);
-    if (fails) throw new Error("the harness is not reachable");
+    if (fails) throw new Error("Octo's local service is not reachable");
   };
   return (
     <InputFormCard
@@ -164,7 +164,7 @@ function Queue() {
   const props = { onRemove: noop, onSendNow: noop, onStopAndSend: noop, onResume: noop, onClear: noop };
   const failing = async () => {
     await wait(200);
-    throw new Error("the harness did not answer");
+    throw new Error("Octo's local service did not answer");
   };
   return (
     <Section id="queue" title="Message queue">

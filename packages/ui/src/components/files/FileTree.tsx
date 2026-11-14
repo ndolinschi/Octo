@@ -9,7 +9,7 @@ import { useOptionalComments } from "../../state/comments";
 import { CommentCount, commentsDescription } from "./CommentCount";
 import { fileIcon } from "../primitives/fileIcons";
 import { Highlight } from "../primitives/Highlight";
-import { useDelayedLoading } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import { Spinner } from "../primitives/Status";
 
 type NodeRow = { id: string; kind: "dir" | "file"; folder: string; path: string; name: string; level: number; expanded: boolean; title: string };

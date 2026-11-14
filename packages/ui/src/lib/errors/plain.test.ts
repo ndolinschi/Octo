@@ -3,7 +3,7 @@ import test from "node:test";
 import { agentLabelOf, allPlainStrings, commandOf, JARGON, plainError, stripJargon } from "./plain";
 
 const RAW = [
-  "ACP agent GitHub Copilot could not start: not logged in (exit status 1). Run `copilot auth login` in a terminal, then reopen this list.",
+  "ACP agent GitHub Copilot could not start: not logged in (exit status 1). Run `copilot login` in a terminal, then reopen this list.",
   "ACP agent Claude Code refused the harness's MCP server (method not supported); this request ran without harness tools (spawn_agent, notes).",
   "JSON-RPC error -32601: session/new not found",
   "agent exited with status 2: stderr: panic in session/prompt",
@@ -28,9 +28,9 @@ test("no produced string contains protocol vocabulary", () => {
 });
 
 test("a login failure names the agent and offers the command from the hint", () => {
-  const p = plainError(RAW[0] ?? "", { agent: "GitHub Copilot", hint: "Run `copilot auth login` in a terminal." });
+  const p = plainError(RAW[0] ?? "", { agent: "GitHub Copilot", hint: "Run `copilot login` in a terminal." });
   assert.equal(p.sentence, "GitHub Copilot is not logged in.");
-  assert.deepEqual(p.next, { kind: "command", command: "copilot auth login" });
+  assert.deepEqual(p.next, { kind: "command", command: "copilot login" });
   assert.match(p.details, /exit status 1/);
 });
 
@@ -56,7 +56,7 @@ test("unknown text falls back to its first sentence, stripped", () => {
 test("agent labels and commands", () => {
   assert.equal(agentLabelOf("claude-code"), "Claude Code");
   assert.equal(agentLabelOf("my-agent"), "My Agent");
-  assert.equal(commandOf("Run `copilot auth login` first"), "copilot auth login");
+  assert.equal(commandOf("Run `copilot login` first"), "copilot login");
   assert.equal(commandOf(null), null);
 });
 
@@ -69,4 +69,10 @@ test("a bare 401 in free text is not the provider key; a key refusal is, with th
   assert.equal(key.sentence, "The provider did not accept the key. Check it in Settings.");
   assert.equal(key.action, "open_settings");
   assert.equal(plainError("whatever", { code: "unauthorized" }).action, "open_settings");
+});
+
+test("a refused call's note has no code fences or backticks", () => {
+  const p = plainError("```\nspawn_agent refused: tier `deep` is not allowed here\n```");
+  assert.ok(!p.sentence.includes("`"), p.sentence);
+  assert.ok(p.details.includes("```"));
 });

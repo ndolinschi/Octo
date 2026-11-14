@@ -1,6 +1,6 @@
-import { ArrowLeft, Brain, Cpu, Gauge, Info, Palette, Plug, Settings, Shield, SquareCode, Terminal, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Blocks, Brain, Cpu, Gauge, Info, Palette, Plug, Settings, Shield, SquareCode, Terminal, type LucideIcon } from "lucide-react";
 import { useRef, type KeyboardEvent } from "react";
-import { useRowKeys } from "../../lib/hooks";
+import { useRowKeys } from "../../lib/hooksMore";
 import { settingsHref } from "../../lib/route";
 import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
@@ -14,6 +14,7 @@ const GLYPHS: Record<SectionId, LucideIcon> = {
   providers: Plug,
   models: Cpu,
   editor: SquareCode,
+  integrations: Blocks,
   usage: Gauge,
   memory: Brain,
   commands: Terminal,

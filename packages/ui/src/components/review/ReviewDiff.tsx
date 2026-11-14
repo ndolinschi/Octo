@@ -3,10 +3,12 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { MonacoApi } from "../../lib/buffers";
 import { errorMessage } from "../../lib/format";
-import { useDelayedLoading, useLatest } from "../../lib/hooks";
+import { useLatest } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import type { ChangeBlock } from "../../lib/review/changes";
 import { commentableRuns, type Anchor, type LineRun, type Side } from "../../lib/review/position";
 import { DIFF_FLASH_MS } from "../../lib/v7/changes";
+import { EditorContextMenu } from "../shared/EditorContextMenu";
 import { Spinner } from "../primitives/Status";
 
 /** What the diff needs from the editor chunk; the dock passes the files feature's loader (Monaco is a value only there). */
@@ -91,6 +93,7 @@ export function ReviewDiff(props: {
       enableSplitViewResizing: false,
       useInlineViewWhenSpaceIsLimited: false,
       ariaLabel: "Diff",
+      contextmenu: false,
     });
     setEditor(ed);
     return () => {
@@ -286,6 +289,8 @@ export function ReviewDiff(props: {
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={host} className="absolute inset-0" />
+      {editor && <EditorContextMenu editor={editor.getModifiedEditor()} path={props.path} />}
+      {editor && <EditorContextMenu editor={editor.getOriginalEditor()} path={props.path} />}
       {failed && (
         <p role="alert" className="absolute inset-x-0 top-6 px-6 text-center text-sm text-err">
           The diff viewer did not load: {failed}. Reload the window to try again.

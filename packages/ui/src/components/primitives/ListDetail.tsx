@@ -1,7 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import { useReducer, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { useRowKeys } from "../../lib/hooks";
+import { useRowKeys } from "../../lib/hooksMore";
 import { escapeTarget, paneReducer } from "../../lib/listDetail";
 import { Button } from "./Button";
 import { DetailBackContext } from "./Panel";

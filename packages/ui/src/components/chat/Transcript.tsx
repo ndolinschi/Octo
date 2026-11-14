@@ -7,7 +7,19 @@ import { cn } from "../../lib/cn";
 import { formatSeparator, needsSeparator, timeAgo } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
 import { splitComments } from "../../lib/comments";
-import { buildTurns, compactionSlots, promptText, stepState, turnHead, turnWarning, type Turn, type TurnEnd } from "../../lib/transcript";
+import {
+  buildTurns,
+  compactionSlots,
+  promptText,
+  stepState,
+  turnDurationMs,
+  turnHead,
+  turnWarning,
+  type StoredEnding,
+  type Turn,
+  type TurnEnd,
+} from "../../lib/transcript";
+import type { StoredEndingLookup } from "../../lib/storedEndings";
 import { agentLabelOf } from "../../lib/errors/words";
 import { useApp } from "../../state/app";
 import { parseAcp } from "../../lib/models";
@@ -88,6 +100,9 @@ export const Transcript = memo(function Transcript(props: {
   const isOrchestrator = agent.parent_id === null;
   const lastTurn = isOrchestrator ? state.lastTurn : null;
   const lastPrompt = turns[turns.length - 1]?.prompt ?? null;
+  // B4: how each request ended as the harness stored it, so a stopped turn reads the same after a reload as it did live.
+  const storedEndingOf = useStoredEndings(isOrchestrator && !running, `${turns.length}:${state.lastTurn?.status ?? ""}`);
+  const storedLast = isOrchestrator ? storedEndingOf(lastPrompt) : undefined;
   const markers = state.compactions[agent.id];
   const slots = useMemo(
     () =>
@@ -105,7 +120,9 @@ export const Transcript = memo(function Transcript(props: {
       ? { status: lastTurn.status, error: lastTurn.error, ...errorFieldsOf(lastTurn) }
       : isOrchestrator && (agent.status === "failed" || (agent.error && !turnWarning(agent.error)))
         ? { status: "failed" as const, error: agent.error, ...(agent.error_hint ? { hint: agent.error_hint } : {}) }
-        : null;
+        : !lastTurn && storedLast?.status === "cancelled"
+          ? { status: "cancelled" as const, error: null }
+          : null;
   const usageLine = useTurnLine(agent, isOrchestrator, running);
   const login = useLoginHint(isOrchestrator && failure ? agent.model : null);
   const { bridge } = useApp();
@@ -135,10 +152,12 @@ export const Transcript = memo(function Transcript(props: {
           // An earlier turn keeps its own ending (several can fail in a row); the newest one's is the banner below. A reply
           // cut by a stop is marked even when the ending was not seen live.
           const cut = turn.items.some((it) => stoppedIds.has(Number(it.key.split(".")[0])));
+          const stored = isOrchestrator ? storedEndingOf(turn.prompt) : undefined;
           const ended: TurnOutcome | null =
             !isOrchestrator || last
               ? null
-              : ((turn.prompt ? state.turnOutcomes[turn.prompt.id] : undefined) ?? (cut ? { status: "cancelled", error: null } : null));
+              : ((turn.prompt ? state.turnOutcomes[turn.prompt.id] : undefined) ??
+                (stored ? { status: stored.status, error: null } : cut ? { status: "cancelled", error: null } : null));
           // How the turn ended, for its head row and its steps (a stopped turn's interrupted call reads "stopped").
           const end: TurnEnd =
             last && running
@@ -146,7 +165,7 @@ export const Transcript = memo(function Transcript(props: {
               : !last
                 ? (ended?.status ?? (cut ? "cancelled" : null))
                 : isOrchestrator
-                  ? (lastTurn?.status ?? failure?.status ?? (cut ? "cancelled" : null))
+                  ? (lastTurn?.status ?? failure?.status ?? stored?.status ?? (cut ? "cancelled" : null))
                   : agent.status === "failed" || agent.status === "cancelled"
                     ? agent.status
                     : cut
@@ -181,6 +200,8 @@ export const Transcript = memo(function Transcript(props: {
                 thinking={last && running ? thinking : ""}
                 plan={last && running ? plan : null}
                 startedAt={started}
+                finishedAt={last ? agent.finished_at : null}
+                stored={stored}
                 now={last ? now : minute}
                 end={end}
                 footer={isOrchestrator}
@@ -191,7 +212,8 @@ export const Transcript = memo(function Transcript(props: {
                   <PlanForTurn turnId={turn.prompt.id} onKeepEditing={props.onKeepEditing} />
                 </Suspense>
               )}
-              {ended && ended.status !== "completed" && (
+              {/* C5: a stopped earlier turn says so once, in its head; only a failure keeps its notice. */}
+              {ended?.status === "failed" && (
                 <Suspense fallback={null}>
                   <TurnBanner status={ended.status} error={ended.error} retryText={null} fields={errorFieldsOf(ended)} agent={agentName} />
                 </Suspense>
@@ -225,7 +247,13 @@ export const Transcript = memo(function Transcript(props: {
             </Suspense>
           </div>
         )}
-        {failure && !running && (
+        {failure?.status === "cancelled" && !running && (
+          // C5: the head already says "Stopped after 8s"; the notice keeps only what to do next.
+          <p data-turn-outcome="cancelled" className="text-sm text-fg-3">
+            Send a message to continue.
+          </p>
+        )}
+        {failure?.status === "failed" && !running && (
           <Suspense fallback={null}>
             <TurnBanner
               status={failure.status}
@@ -362,6 +390,10 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   thinking: string;
   plan: PlanEntry[] | null;
   startedAt: string | null;
+  /** The agent's `finished_at`, for its latest turn: where a stopped or failed turn's time ends (B4). */
+  finishedAt?: string | null | undefined;
+  /** The turn's stored exchange (its duration), when the harness has one. */
+  stored?: StoredEnding | undefined;
   now: number;
   /** How the turn ended (null while it runs or when unknown). */
   end?: TurnEnd;
@@ -377,8 +409,8 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   const empty = turn.items.length === 0 && !streaming && !props.thinking;
   if (empty && !live) return null;
   const start = props.startedAt ? Date.parse(props.startedAt) : null;
-  const end = turn.lastAt ? Date.parse(turn.lastAt) : null;
-  const worked = !live && start !== null && end !== null && end - start >= 1000 ? end - start : null;
+  const ms = turnDurationMs(start, { live, lastAt: turn.lastAt, finishedAt: props.finishedAt, stored: props.stored });
+  const worked = ms !== null && ms >= 1000 ? ms : null;
   const ending = props.end ?? null;
   const toolUses = turn.items.flatMap((item) => (item.kind === "tools" ? item.uses : []));
   const steps = toolUses.map((u) => stepState(ctx.results.get(u.id), ctx.agentRunning, ending));
@@ -440,6 +472,33 @@ const AssistantTurn = memo(function AssistantTurn(props: {
     </article>
   );
 });
+
+const NO_ENDINGS: StoredEndingLookup = () => undefined;
+
+/**
+ * B4: each request's ending as the harness stored it (the current session's exchanges: stopped, failed or completed, and how
+ * long it worked), read when no turn runs and again when one ends (`refresh`). Nothing without project sessions. The lookup
+ * (`lib/storedEndings`) is its own chunk, fetched with the session.
+ */
+function useStoredEndings(enabled: boolean, refresh: string): StoredEndingLookup {
+  const { bridge } = useApp();
+  const { projectId, state } = useProject();
+  const sessionId = state.sessions.currentId;
+  const [lookup, setLookup] = useState<StoredEndingLookup>(() => NO_ENDINGS);
+  useEffect(() => {
+    if (!enabled || !sessionId || !bridge.getSession) return;
+    let alive = true;
+    Promise.all([bridge.getSession(projectId, sessionId), import("../../lib/storedEndings")]).then(
+      ([d, m]) => alive && setLookup(() => m.storedEndingLookup(d.exchanges)),
+      // Unreadable: the turns keep what the transcript itself says.
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [enabled, sessionId, bridge, projectId, refresh]);
+  return lookup;
+}
 
 /**
  * Muted row under a finished orchestrator reply: copy it, when it finished, and the usage. Every segment is `whitespace-nowrap`

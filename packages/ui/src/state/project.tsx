@@ -159,7 +159,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
           dispatch({ type: "compactions", agentId, markers: [{ ...marker, label: "history compacted" }] });
         }
         if (event.type === "session.current") showSession(event.session_id);
-        if (event.type === "turn.finished" || event.type === "project.updated") void refreshProjects();
+        if (event.type === "turn.finished" || event.type === "project.updated" || event.type === "project.attention") void refreshProjects();
         for (const observe of observers.current) observe(event);
       },
     });

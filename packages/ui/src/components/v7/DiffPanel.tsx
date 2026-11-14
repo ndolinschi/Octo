@@ -1,7 +1,7 @@
 import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink, Pilcrow, Undo2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { useDelayedLoading } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import { kindLabel, kindLetter, splitPath, type DiffLayout } from "../../lib/v7/changes";
 import { Button, IconButton } from "../primitives/Button";
 import { FloatRoom } from "../primitives/floatRoom";

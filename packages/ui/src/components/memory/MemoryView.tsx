@@ -48,7 +48,9 @@ export function MemoryView(props: {
   const searching = query.trim() !== "";
 
   if (!bridge.listTasks && !bridge.listMemory && !bridge.listMemorySessions) {
-    return <PaneEmpty title="This harness has no memory">Update the harness to see sessions, what is remembered and memory files here.</PaneEmpty>;
+    return (
+      <PaneEmpty title="This version of Octo's local service has no memory">Update it to see sessions, what is remembered and memory files here.</PaneEmpty>
+    );
   }
 
   const open = (t: HitTarget) => {

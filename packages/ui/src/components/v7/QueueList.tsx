@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Clock, CircleStop, CornerDownLeft, MoreHorizontal, Pause, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Clock, CircleStop, CornerDownLeft, Info, MoreHorizontal, Pause, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { QueuedMessage } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
@@ -86,7 +86,19 @@ export function QueueList(props: QueueListProps) {
   const count = messages.length;
   return (
     <section aria-label={queueCountLabel(count)} className="@container/queue flex min-w-0 flex-col border-b border-line p-1 text-sm">
-      <SectionHeader inset level="caption" as="h3">
+      {/* Round 3: narrow — the sentence is one info glyph's tooltip in the header (it took three lines of the card at 390). */}
+      <SectionHeader
+        inset
+        level="caption"
+        as="h3"
+        aside={
+          view.shown.length > 0 ? (
+            <span data-steer-reason={unsupported ? "" : undefined} className="inline-flex">
+              <IconButton icon={Info} size="xs" label={unsupported ? STEER_REASON : "Sent one by one when this turn ends."} />
+            </span>
+          ) : undefined
+        }
+      >
         {props.paused ? (messages.length ? `${queueCountLabel(count)} · paused after a failed or stopped turn` : "Queue paused") : queueCountLabel(count)}
       </SectionHeader>
       {props.paused && (
@@ -102,11 +114,6 @@ export function QueueList(props: QueueListProps) {
             </Button>
           )}
         </div>
-      )}
-      {view.shown.length > 0 && (
-        <p data-steer-reason={unsupported ? "" : undefined} className="px-2 pb-1 text-xs text-fg-3">
-          {unsupported ? STEER_REASON : "Sent one by one when this turn ends."}
-        </p>
       )}
       {view.shown.length > 0 && (
         <ul className="flex flex-col">
@@ -130,7 +137,7 @@ export function QueueList(props: QueueListProps) {
                       <>
                         <span className="flex gap-0.5 @max-[480px]/queue:hidden">
                           {!unsupported && <IconButton icon={CornerDownLeft} size="xs" label="Send now" disabled={pending !== null} onClick={sendNow} />}
-                          <IconButton icon={CircleStop} size="xs" label="Stop and send" disabled={pending !== null} onClick={stopSend} />
+                          <IconButton icon={CircleStop} size="xs" label="Stop this turn and send it now" disabled={pending !== null} onClick={stopSend} />
                           <IconButton icon={X} size="xs" label="Remove from queue" disabled={pending !== null} onClick={remove} />
                         </span>
                         <span className="hidden @max-[480px]/queue:inline-flex">
@@ -139,7 +146,7 @@ export function QueueList(props: QueueListProps) {
                             disabled={pending !== null}
                             items={[
                               ...(unsupported ? [] : [{ id: "now", label: "Send now", run: sendNow }]),
-                              { id: "stop", label: "Stop and send", run: stopSend },
+                              { id: "stop", label: "Stop this turn and send it now", run: stopSend },
                               { id: "remove", label: "Remove from queue", run: remove },
                             ]}
                           />

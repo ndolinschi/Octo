@@ -18,7 +18,11 @@ export type ChangesTabProps = Pick<ChangesViewProps, "loadMonaco" | "focusTurn" 
 export function ChangesTab(props: ChangesTabProps) {
   const { bridge } = useApp();
   if (!bridge.listChanges || !bridge.getChange || !bridge.revertChange) {
-    return <p className="p-6 text-center text-sm text-fg-2">This harness does not record changes. Update the harness to review what agents changed.</p>;
+    return (
+      <p className="p-6 text-center text-sm text-fg-2">
+        This version of Octo's local service does not record changes. Update it to review what agents changed.
+      </p>
+    );
   }
   return <Live {...props} />;
 }
@@ -33,8 +37,8 @@ function Live(props: ChangesTabProps) {
   const api = useMemo<ChangesApi>(
     () => ({
       listChanges: () => bridge.listChanges?.(projectId) ?? Promise.resolve([]),
-      getChange: (id) => bridge.getChange?.(projectId, id) ?? Promise.reject(new Error("The harness cannot show this change")),
-      revertChange: (id) => bridge.revertChange?.(projectId, id) ?? Promise.reject(new Error("The harness cannot revert this change")),
+      getChange: (id) => bridge.getChange?.(projectId, id) ?? Promise.reject(new Error("Octo's local service cannot show this change")),
+      revertChange: (id) => bridge.revertChange?.(projectId, id) ?? Promise.reject(new Error("Octo's local service cannot revert this change")),
     }),
     [bridge, projectId],
   );

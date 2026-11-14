@@ -3301,3 +3301,69 @@ production build, bundle 158.84 kB of 158.90, and the browser scripts (`spacing-
 `flicker`, `file-open-stability`, `scroll-on-send`, `layout-shift`, `picker-keys`, `frame-colours`, `backdrop-check`).
 Not verified: WebKit and macOS, the Tauri window (including whether the first frame is already Inter), fractional
 pixel ratios, a live harness and real ACP agents, a screen reader.
+
+## As built — round 3: a first-time user's walk, vendor marks, the owner's re-test (2026-11-14)
+
+Two reviewers walked the app as a person who has never seen it (first run, new project, conversation; Settings, files,
+panels, palette); the owner re-tested `75fe457` live and asked for the providers' real marks. What changed:
+
+- **Decision 72a is overridden by the owner: provider marks are the vendors' real marks.** `ProviderMark` draws a
+  `currentColor` box masked by an SVG file from `assets/providers/` (22 marks; sources, versions and licences in
+  `SOURCES.txt`: `@lobehub/icons-static-svg@1.102.0`, MIT, and `simple-icons@16.37.0`, CC0; the marks are their owners'
+  trademarks, used to identify the provider). Monochrome in the text colour. Provider rows show the provider's mark; a
+  model chip shows the agent's mark when the model runs through an agent, else the model vendor's. `router`,
+  `factory-droid` and `oh-my-pi` keep the neutral shape with an initial (no real mark found). The table and the URLs
+  are a lazy chunk. Not confirmed: that the `pi` mark is the pi coding agent's.
+- **Needs you.** A project whose turn waits on an approval or a form is "Needs you" in the sidebar, on Home and in
+  the tile, with "Waiting for your approval" / "Waiting for your answer"; waiting wins over working
+  (`lib/orchestrator.ts`); `project.attention` refreshes the summary at once. The harness sends `needs_you`,
+  `pending_approvals`, `pending_inputs` while the turn runs (checked against `harness serve` with the mock model).
+- **A stopped turn.** Its ending and duration come from the session's stored exchange after a reload
+  (`lib/storedEndings.ts`, current session only), the duration is measured to the turn's end, and the turn says
+  "stopped" once (head; rows read "stopped").
+- **One time for a project** in the sidebar and on Home (`projectWhen`); the context ring and its popover read one
+  number; a passing run says "Passed".
+- **Narrow windows (390).** The composer's row sheds labels by container query (mode < 460, model < 380, folder < 320);
+  "+", the ring and Send/Stop never shrink. The tab strip folds its end cluster from its real shortfall
+  (`stripShortfall`; an earlier `scrollWidth` version looped and blanked the app — caught by the second reviewer before
+  any commit). The strip keeps its inset under the drawer. The queue card is a header and one row per message. Over a
+  file tab the floating composer rests as one line.
+- **Decision 57 revised: the turn rail's pitch** is `clamp(floor(avail / n), 6, 16)`: targets are 24×16 when there
+  is room and fall back to 6px cells on a dense rail. Measured at 10 requests only.
+- **New project.** Unrunnable default models switch to the first runnable choice; a notice above the buttons when one
+  cannot run; the typed draft survives Esc ("Your earlier draft is back. Clear"); tiers and routing policies are
+  explained for every option; one left edge.
+- **Menus and actions.** Mode rows carry their explanation (`Menu` items take `sub`; captions are not rows); the "+"
+  menu starts with "Attach image…" and "Mention a file"; a duplicate agent command is labelled with its agent; a failed
+  helper has an always-visible "Retry" that pre-fills the composer; reply tables fill the column and fade at a
+  scrolled edge; a refusal's note is shown without code fences.
+- **The editor's context menu is the app's `Menu`** (`shared/EditorContextMenu.tsx`: Add comment, Go to definition and
+  Find references when the language server offers them, Cut, Copy, Paste, Copy path); Monaco's own menu and its F1
+  palette are off in the file editor and both diff editors. A failed language server reads "TypeScript help failed ·
+  Retry".
+- **Palette and help.** The palette searches labels and descriptions, has a Settings group (fed by the settings index
+  through a dynamic import), drops loose hits when a substring hit exists, starts with "Suggested" actions, puts
+  actions above past requests and dedupes those. New: "Change theme", "Change model", "Keyboard shortcuts", "Help".
+  `ShortcutsSheet` (lazy) lists the shortcuts that exist; it opens with "?", from the palette and from About.
+- **Settings.** One primary action for API-key providers and where to get a key; the unrunnable-defaults warning says
+  what is true and offers "Use <agent> instead" with Undo; one name, "tier"; the router described by its benefit; the
+  background service is "Octo's local service" in user-facing copy (commands, paths and "Harness version" keep the
+  word); a new Integrations section (language servers, agents, tool servers; manifest errors in plain words with the raw
+  text under Details); per-project settings use one scope menu ("Settings for") in Models, Commands, Editor, Memory
+  and Budget; a budget is stated as a total, "Saved" clears on edit, spend matches the usage table; plan limits read
+  "Anthropic API · requests — Resets in 12 min"; Usage by project uses the 880 column.
+- **First paint.** `MainSkeleton`: three static lines in the conversation column, fading in after 300 ms, while the
+  projects or a project load (owner's audit, item 7).
+- **Entry bundle 157.67 kB of 158.90.** `apps/desktop/vite.config.ts` filters already-loaded initial chunks out of the
+  preload lists written into JS (about 2.5 kB of `__vite__mapDeps`); an import cycle through `useOrchestratorComposer`
+  was broken (`chat/composerDraft.ts`); rarely used helpers moved to lazy modules (`rare.ts`, `hooksMore.ts`,
+  `statusMore.tsx`, `modelNames.ts`, `duration.ts`, `contextText.ts`).
+
+Not done: image preview in Files (needs a bridge read that returns bytes); Run folding into "⋯" under ~350px; tool tabs
+that shrink to two letters (walk B12); panels' purpose lines (B13); `ProjectWorkspace`'s load error still says "harness
+bridge". Not seen on screen by anyone: the project dialog's unrunnable notice and Routing field, the table fade, the
+"/review · agent" label (no demo state). Gates on the final tree: `pnpm lint` (cycles), `pnpm format:check`, 666 UI,
+141 client and 42 desktop tests, the layer-rule tests, `cargo test -p octo-sidecar`, the build and bundle check,
+`spacing-audit`, `flicker`, `width-stability`, `layout-shift`, `scroll-on-send`, `picker-keys`,
+`file-open-stability`. Not verified: WebKit and Tauri (including CSS masks for the marks), a live harness for the UI
+parts, real agents, touch, a screen reader.

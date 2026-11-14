@@ -14,6 +14,8 @@ function firstWords(text: string, n = 6): string {
 
 /** Decision 57: ticks 6px apart; the rail takes at most 60% of the conversation's height, then scrolls. */
 const PITCH = 6;
+/** Round 3: with room (few requests) the pitch grows to 16px so each target is 24x16; a dense rail shrinks back to PITCH. */
+const MAX_PITCH = 16;
 const MAX_SHARE = 0.6;
 /**
  * The rail's padding above the first tick and below the last: their targets reach 14px tall (8 + 6). Between ticks
@@ -41,7 +43,7 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
   const tabStop = focus ?? current ?? requests[requests.length - 1]?.id;
   const n = requests.length;
   const avail = Math.max(PITCH * 3, Math.floor(maxHeight * MAX_SHARE));
-  const pitch = PITCH;
+  const pitch = Math.min(MAX_PITCH, Math.max(PITCH, Math.floor(avail / Math.max(1, n))));
   const height = Math.min(avail, pitch * n) + 2 * EDGE;
 
   // The request in view stays inside a scrolling rail.

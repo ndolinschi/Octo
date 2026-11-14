@@ -1,7 +1,9 @@
 import type { Agent, ProjectSummary } from "@octo/agent-client";
 import { useMemo, useRef } from "react";
-import { agentDuration, formatDuration } from "../../lib/format";
-import { useNow, useRowKeys } from "../../lib/hooks";
+import { formatDuration } from "../../lib/format";
+import { agentDuration } from "../../lib/duration";
+import { useNow } from "../../lib/hooks";
+import { useRowKeys } from "../../lib/hooksMore";
 import { roleText, runningAgents } from "../../lib/orchestrator";
 import { navigate } from "../../lib/route";
 import { Card } from "../primitives/Card";

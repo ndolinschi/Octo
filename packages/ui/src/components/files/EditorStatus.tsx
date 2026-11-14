@@ -2,7 +2,7 @@ import { CircleAlert, CircleX, Info } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "../../lib/cn";
-import { useDelayedLoading } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import type { EditorIntel, Problem, ProblemSeverity } from "../../lsp/hub";
 import { Button } from "../primitives/Button";
 import { ListRow } from "../primitives/ListRow";
@@ -10,11 +10,38 @@ import { Popover } from "../primitives/Popover";
 import { Presence } from "../primitives/Presence";
 import { StateGlyph } from "../primitives/StateGlyph";
 import type { GlyphState } from "../../lib/stateGlyph";
-import { type FileKey } from "../../lib/files";
+import { splitKey, type FileKey } from "../../lib/files";
+import { languageOfPath } from "../../lib/languages";
 
 const STATE_TEXT = { starting: "starting…", ready: "ready", failed: "failed", stopped: "stopped" } as const;
 /** The server's state in the app's one glyph family (polish step 4, E1): ready is the quiet idle dot. */
 const GLYPH = { starting: "working", ready: "idle", failed: "failed", stopped: "failed" } as const satisfies Record<keyof typeof STATE_TEXT, GlyphState>;
+
+const LANGUAGE: Record<string, string> = {
+  typescript: "TypeScript",
+  javascript: "JavaScript",
+  go: "Go",
+  python: "Python",
+  rust: "Rust",
+  yaml: "YAML",
+  json: "JSON",
+  toml: "TOML",
+  markdown: "Markdown",
+  css: "CSS",
+  html: "HTML",
+  shellscript: "Shell",
+  java: "Java",
+  ruby: "Ruby",
+  c: "C",
+  cpp: "C++",
+  csharp: "C#",
+};
+
+/** The file's language as a person says it ("TypeScript"); empty when the extension says nothing. */
+export function languageName(path: string): string {
+  const id = languageOfPath(path);
+  return id ? (LANGUAGE[id] ?? "") : "";
+}
 
 const ICON: Record<ProblemSeverity, { icon: typeof CircleX; className: string; label: string }> = {
   error: { icon: CircleX, className: "text-err", label: "Error" },
@@ -50,6 +77,9 @@ export function EditorStatus({
   if (!status && !notice) return null;
   const shownState = status?.state === "starting" && !starting ? null : status?.state;
   const broken = status?.state === "failed" || status?.state === "stopped";
+  // "TypeScript help failed" reads as the helper failing, never the file (a bare "Failed" beside the name did).
+  const language = languageName(splitKey(fileKey).path);
+  const help = language ? `${language} help` : "Language help";
 
   return (
     <>
@@ -62,24 +92,42 @@ export function EditorStatus({
       {status && (
         <span
           role="status"
-          aria-label={`Language server: ${status.label}, ${STATE_TEXT[status.state]}`}
-          title={status.error ? `${status.label}: ${status.error}` : `${status.label} (language server), ${STATE_TEXT[status.state]}`}
+          aria-label={`${help} (language server ${status.label}): ${STATE_TEXT[status.state]}`}
+          title={
+            status.error
+              ? `${help} ${STATE_TEXT[status.state]}. ${status.label}: ${status.error}`
+              : `${help} is ${STATE_TEXT[status.state]} (language server ${status.label})`
+          }
           data-lsp-state={status.state}
           className={
             hideReady && shownState !== "starting" && !broken
               ? "sr-only"
-              : cn("flex h-7 min-w-0 shrink items-center gap-1.5", compact && shownState === "ready" ? "w-7 shrink-0 justify-center" : "px-1")
+              : cn(
+                  "flex h-7 min-w-0 shrink items-center gap-1.5",
+                  broken && hideReady && "shrink-0",
+                  compact && shownState === "ready" ? "w-7 shrink-0 justify-center" : "px-1",
+                )
           }
         >
           {shownState && <StateGlyph state={GLYPH[shownState]} />}
           <span aria-hidden className={cn("max-w-[200px] min-w-0 truncate", compact && shownState === "ready" && "hidden")}>
-            {!compact && status.label}
-            {shownState && shownState !== "ready" && (
-              <span className={cn(broken && "text-err")}>
-                {compact ? STATE_TEXT[shownState].replace(/^./, (c) => c.toUpperCase()) : ` ${STATE_TEXT[shownState]}`}
+            {broken ? (
+              <span className="text-err">
+                <span className="sm:hidden">Help</span>
+                <span className="max-sm:hidden">{help}</span> {STATE_TEXT[status.state]}
               </span>
+            ) : (
+              <>
+                {!compact && status.label}
+                {shownState === "starting" && ` ${STATE_TEXT.starting}`}
+              </>
             )}
           </span>
+        </span>
+      )}
+      {status && broken && (
+        <span aria-hidden className="shrink-0">
+          ·
         </span>
       )}
       {status && broken && (

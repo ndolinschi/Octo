@@ -12,7 +12,7 @@ export function isTextFile(name: string, type: string): boolean {
 
 /** Why a file was not attached, as said under the composer; null when it can be. */
 export function refusal(name: string, type: string, size: number): string | null {
-  if (type.startsWith("image/")) return `${name} is an image. Images can't be sent yet: the harness takes text only.`;
+  if (type.startsWith("image/")) return `${name} is an image. Images can't be sent yet: Octo's local service takes text only.`;
   if (!isTextFile(name, type)) return `${name} isn't a text file, so it can't be attached.`;
   if (size > ATTACH_MAX_BYTES) return `${name} is larger than 256 KB. Attach a smaller file or mention its path with @.`;
   return null;

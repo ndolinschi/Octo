@@ -2,8 +2,9 @@ import type * as Monaco from "monaco-editor";
 import { useEffect, useRef, useState } from "react";
 import type { MonacoApi } from "../../lib/buffers";
 import { errorMessage } from "../../lib/format";
-import { useDelayedLoading } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import { DIFF_FLASH_MS, type DiffLayout } from "../../lib/v7/changes";
+import { EditorContextMenu } from "../shared/EditorContextMenu";
 import { Spinner } from "../primitives/Status";
 import { DiffComments, type LineComment } from "./DiffComments";
 
@@ -72,6 +73,7 @@ export function DiffEditor(props: {
       diffWordWrap: "off",
       renderMarginRevertIcon: false,
       ariaLabel: "Diff",
+      contextmenu: false,
     });
     setEditor(ed);
     return () => {
@@ -141,6 +143,8 @@ export function DiffEditor(props: {
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={host} className="absolute inset-0" />
+      {editor && <EditorContextMenu editor={editor.getModifiedEditor()} path={props.path} />}
+      {editor && <EditorContextMenu editor={editor.getOriginalEditor()} path={props.path} />}
       {mod && editor && props.onAddComment && (
         <DiffComments monaco={mod.monaco} editor={editor} path={props.path} commented={props.commented} onAdd={props.onAddComment} />
       )}

@@ -22,7 +22,7 @@ import {
   shareRows,
   sortLimits,
 } from "./usage";
-import { contextText } from "./usageView";
+import { contextText } from "./contextText";
 
 const NOW = Date.parse("2026-11-10T15:00:00Z");
 const bucket = (key: string, n: number, p: Partial<UsageBucket> = {}): UsageBucket => ({

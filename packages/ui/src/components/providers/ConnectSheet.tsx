@@ -68,7 +68,7 @@ export function ConnectSheet({ target, onClose, onUseAnyway }: { target: string;
           Couldn&apos;t check the providers. {providers.message.replace(/\.$/, "")}. Check that the harness is running.
         </Notice>
       )}
-      {list && !provider && <p className="text-sm text-fg-2">The harness does not list this provider any more. Close this and pick another one.</p>}
+      {list && !provider && <p className="text-sm text-fg-2">Octo's local service does not list this provider any more. Close this and pick another one.</p>}
       {provider?.kind === "agent" && <AgentSteps provider={provider} />}
       {provider && provider.kind !== "agent" && <KeySteps provider={provider} upstream={target === ROUTER_UPSTREAM} />}
     </Dialog>

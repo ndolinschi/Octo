@@ -115,6 +115,26 @@ export function turnHead(end: TurnEnd, ms: number, steps: readonly StepState[] =
   return { state: "done", label: `Worked for ${time}` };
 }
 
+/** How a request ended as the harness stored it (its exchange): status, start and duration (`lib/storedEndings`). */
+export type StoredEnding = { status: Exclude<TurnEnd, null>; startedAt: number; ms: number };
+
+/**
+ * How long a finished turn worked (B4), to the turn's end rather than to its last item (a stop or a failure can come long after
+ * the last message): the stored exchange's duration; else, for the agent's latest turn, the agent's `finished_at` (it is set
+ * when the turn ends, live and after a reload); else the last message. Null while it runs or when nothing says.
+ */
+export function turnDurationMs(
+  start: number | null,
+  opts: { live: boolean; lastAt: string | null; finishedAt?: string | null | undefined; stored?: StoredEnding | undefined },
+): number | null {
+  if (opts.live || start === null) return null;
+  if (opts.stored) return opts.stored.ms;
+  const finished = opts.finishedAt ? Date.parse(opts.finishedAt) : NaN;
+  const last = opts.lastAt ? Date.parse(opts.lastAt) : NaN;
+  const end = !Number.isNaN(finished) && finished >= start ? Math.max(finished, Number.isNaN(last) ? finished : last) : last;
+  return Number.isNaN(end) ? null : end - start;
+}
+
 export type SpawnStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
 /**

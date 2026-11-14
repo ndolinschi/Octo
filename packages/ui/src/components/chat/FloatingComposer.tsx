@@ -24,7 +24,8 @@ import { useOrchestratorComposer } from "./useOrchestratorComposer";
  *
  * P9 (polish step 5): over a tool tab (Sessions, Memory, Notes, Usage, Agents, Details, Changes, side question) it rests in
  * its one-line form, the text line and send, so the panel under it stays readable; the status chips, the queue and the
- * composer's own chips show while focus is inside it (or in a menu it opened). Over a file it stays whole. The room it
+ * composer's own chips show while focus is inside it (or in a menu it opened). Over a file it stays whole, except on a phone-width
+ * file bar (`rest`, one strip), where it rests the same way. The room it
  * reports follows the form it is in, so `FloatRoom` keeps the last row clear either way.
  */
 /** Menus and popovers the composer opens are portalled out of it: focus inside one still counts as inside the composer. */
@@ -33,7 +34,7 @@ const OWN_FOCUS_MS = 500;
 
 const POPUPS = '[role="listbox"], [role="menu"], [role="dialog"]';
 
-export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) {
+export function FloatingComposer({ onHeight, rest = false }: { onHeight?(px: number): void; rest?: boolean }) {
   const ws = useWorkspace();
   const { project, state, running, ensureMessages } = useProject();
   const composer = useOrchestratorComposer(CHAT);
@@ -41,7 +42,8 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
   // Only a tool tab's host provides the forms counter: that is where the composer rests collapsed.
   const overTool = useContext(FloatingBlockContext) !== null;
   const [focused, setFocused] = useState(false);
-  const collapsed = overTool && !focused;
+  // `rest`: a file view on a phone-width bar (one strip) rests it too: the whole form would cover a third of the file.
+  const collapsed = (overTool || rest) && !focused;
   // Focus the app hands back by itself (the palette closing, a tab opening) leaves it at rest: only the person's own
   // focus opens it — a press, Tab or Shift+Tab, or typing into the line.
   const tabAt = useRef(0);

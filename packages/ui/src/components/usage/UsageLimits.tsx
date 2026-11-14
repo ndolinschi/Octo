@@ -13,7 +13,7 @@ import { ListRow } from "../primitives/ListRow";
 import { Notice } from "../primitives/Notice";
 import { PanelEmpty } from "../primitives/Panel";
 import { SkeletonList } from "../primitives/Skeleton";
-import { modelLabel } from "../primitives/Status";
+import { modelLabel } from "../primitives/statusMore";
 import { useLimits } from "./useUsage";
 
 /** Below this share remaining, the bar turns `err` (colour means state): only a limit nearly used up is red. */
@@ -114,7 +114,7 @@ export function UsageLimits() {
         ))}
         <p className="px-2 pt-1 text-xs text-fg-3">
           {agents.length
-            ? "Plan limits (five-hour, weekly) are shown by each agent's own CLI; the harness cannot read them."
+            ? "Plan limits (five-hour, weekly) are shown by each agent's own CLI; Octo's local service cannot read them."
             : "No external agents are available."}
         </p>
       </InfoSection>

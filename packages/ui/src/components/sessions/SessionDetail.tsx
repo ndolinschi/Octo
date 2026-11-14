@@ -5,7 +5,7 @@ import { formatTokens } from "../../lib/format";
 import { EMPTY_FIRST_LINE, EMPTY_SESSION_LINE } from "../../lib/sessions/carry";
 import { canDelete, detailLine, earlierSession, hasNoRequests, isWorking, parentOf } from "../../lib/sessions/model";
 import { roleText } from "../../lib/orchestrator";
-import { useModelNames } from "../../state/models";
+import { useModelNames } from "../../state/modelNames";
 import { useProject } from "../../state/project";
 import { useNav } from "../../state/nav";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";

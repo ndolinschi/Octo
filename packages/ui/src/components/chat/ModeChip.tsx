@@ -30,6 +30,7 @@ export function ModeChip(props: ChipProps & { value: ProjectMode; isDefault: boo
         disabled={props.disabled}
         aria-haspopup="menu"
         aria-keyshortcuts="Shift+Tab"
+        data-chip="mode"
         onClick={() => setOpen(!open)}
       />
       <Presence show={pos !== null} exitMs={0}>
@@ -41,7 +42,7 @@ export function ModeChip(props: ChipProps & { value: ProjectMode; isDefault: boo
             above
             onClose={() => setOpen(false)}
             items={[
-              ...MODES.map((m) => ({ id: m, label: MODE_LABEL[m], title: MODE_DETAIL[m], checked: m === props.value, run: () => props.onChoose(m) })),
+              ...MODES.map((m) => ({ id: m, label: MODE_LABEL[m], sub: MODE_DETAIL[m], checked: m === props.value, run: () => props.onChoose(m) })),
               { id: "sep", separator: true as const },
               { id: "default", label: `Make ${MODE_LABEL[props.value]} the project's default`, disabled: props.isDefault, run: props.onMakeDefault },
             ]}

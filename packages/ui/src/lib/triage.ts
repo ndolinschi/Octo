@@ -5,7 +5,10 @@ export type Triage = "needs" | "working" | "review" | "idle";
 export const TRIAGE_ORDER: readonly Triage[] = ["needs", "working", "review", "idle"];
 export const TRIAGE_LABEL: Record<Triage, string> = { needs: "Needs you", working: "Working", review: "Ready to review", idle: "Idle" };
 
-/** A project's triage group: a failed turn needs you; a running turn works; finished work not yet seen is ready to review. */
+/**
+ * A project's triage group: an approval or a form waiting, or a failed turn, needs you (pending work wins over working: the
+ * turn that waits still runs); a running turn works; finished work not yet seen is ready to review.
+ */
 export function triageOf(state: OrchestratorState, unseen: boolean): Triage {
   if (state.kind === "needs") return "needs";
   if (state.kind === "working") return "working";

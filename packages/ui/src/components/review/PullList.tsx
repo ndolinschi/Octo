@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { refusalRepoChoices, repoMenu, type OpenReviewInput, type PullRequestFilter, type PullRequestRow, type ReviewSummary } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { errorMessage, timeAgo } from "../../lib/format";
-import { useRowKeys } from "../../lib/hooks";
+import { useRowKeys } from "../../lib/hooksMore";
 import { useRovingRows } from "../../lib/rovingRows";
 import type { ReviewApi } from "../../lib/review/api";
 import { plural } from "../../lib/review/files";

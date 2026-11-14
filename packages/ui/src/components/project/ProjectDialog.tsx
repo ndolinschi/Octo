@@ -3,7 +3,7 @@ import { budgetState, parseBudget, TIER_POLICIES } from "../../lib/modelsMore";
 import { ModelPicker } from "../shared/ModelPicker";
 import { Segmented } from "../primitives/Segmented";
 import { ChevronDown, ChevronRight, FolderOpen, Plus, X } from "lucide-react";
-import { lazy, Suspense, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { Presence } from "../primitives/Presence";
 
 /** The folder picker loads with the first folder field opened (its own chunk). */
@@ -13,7 +13,7 @@ import { useId, useState, type FormEvent } from "react";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
 import { folderName, labelsForFolders } from "../../lib/folderPick";
-import { canRun, chipLabel, useProviders } from "../../lib/providers";
+import { canRun, choosable, chipLabel, useProviders } from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { Button, IconButton } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
@@ -34,6 +34,13 @@ const MODEL_FIELDS: { key: "orchestrator" | "fast" | "balanced" | "deep"; label:
 
 const FALLBACK_MODELS: Models = { orchestrator: "", fast: "", balanced: "", deep: "" };
 
+/**
+ * B3: what was typed in "New project" survives Esc, Cancel and a click outside until Create succeeds or "Clear" is pressed
+ * (this tab only, in memory: nothing is written anywhere).
+ */
+type Draft = { name: string; nameTouched: boolean; description: string; instructions: string; folders: FolderRow[] };
+const draftStore: { draft: Draft | null } = { draft: null };
+
 function isAbsolute(path: string) {
   return path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith("\\\\");
 }
@@ -43,16 +50,20 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   const providers = useProviders(bridge);
   const editing = Boolean(props.project);
   const initialModels = props.project?.models ?? config?.default_models ?? FALLBACK_MODELS;
-  const [name, setName] = useState(props.project?.name ?? "");
+  const kept = editing ? null : draftStore.draft;
+  const [hadDraft, setHadDraft] = useState(kept !== null);
+  const [name, setName] = useState(props.project?.name ?? kept?.name ?? "");
   /** The name follows the first folder until the person types one (decision 71). */
-  const [nameTouched, setNameTouched] = useState(editing);
-  const [description, setDescription] = useState(props.project?.description ?? "");
-  const [instructions, setInstructions] = useState(props.project?.instructions ?? "");
+  const [nameTouched, setNameTouched] = useState(editing || (kept?.nameTouched ?? false));
+  const [description, setDescription] = useState(props.project?.description ?? kept?.description ?? "");
+  const [instructions, setInstructions] = useState(props.project?.instructions ?? kept?.instructions ?? "");
   const [folders, setFolders] = useState<FolderRow[]>(() => {
-    const rows = props.project?.folders.map((f, i) => ({ key: i, path: f.path })) ?? [];
+    const rows = props.project?.folders.map((f, i) => ({ key: i, path: f.path })) ?? kept?.folders ?? [];
     return rows.length ? rows : [{ key: 0, path: "" }];
   });
   const [models, setModels] = useState<Models>(initialModels);
+  /** A model the person chose is never replaced by the default that can run. */
+  const modelsTouched = useRef(editing);
   const [maxDepth, setMaxDepth] = useState(props.project?.max_depth ?? config?.default_max_depth ?? 3);
   const [budget, setBudget] = useState(props.project?.budget_usd ? String(props.project.budget_usd) : "");
   const [policy, setPolicy] = useState<TierPolicy>(props.project?.models.tier_policy ?? "auto");
@@ -67,6 +78,17 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
         ),
       ]
     : [];
+  // B2: a new project starts on models that can run when one is connected (never over a choice the person made).
+  const ready = providers.status === "ready" ? providers.list : null;
+  useEffect(() => {
+    if (!ready || modelsTouched.current) return;
+    const first = choosable(ready)[0]?.value;
+    if (!first) return;
+    modelsTouched.current = true;
+    setModels(
+      (cur) => Object.fromEntries(Object.entries(cur).map(([k, v]) => [k, typeof v === "string" && v !== "" && !canRun(ready, v) ? first : v])) as Models,
+    );
+  }, [ready]);
   const [advanced, setAdvanced] = useState(false);
   /** The folder row whose picker opens by itself ("Add folder"). */
   const [openFolderKey, setOpenFolderKey] = useState<number | null>(null);
@@ -75,6 +97,26 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const id = useId();
+  const live = useRef<Draft>({ name, nameTouched, description, instructions, folders });
+  live.current = { name, nameTouched, description, instructions, folders };
+  const created = useRef(false);
+  useEffect(
+    () => () => {
+      if (!editing && !created.current)
+        draftStore.draft =
+          live.current.name || live.current.description || live.current.instructions || live.current.folders.some((f) => f.path) ? live.current : null;
+    },
+    [editing],
+  );
+  const clearDraft = () => {
+    draftStore.draft = null;
+    setHadDraft(false);
+    setName("");
+    setNameTouched(false);
+    setDescription("");
+    setInstructions("");
+    setFolders([{ key: 0, path: "" }]);
+  };
 
   const filled = folders.filter((f) => f.path.trim());
   const badPath = filled.find((f) => !isAbsolute(f.path.trim()));
@@ -114,6 +156,8 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
     // A budget is set or changed; an emptied field removes it (PATCH only: a new project simply has none).
     const budgetPatch = budgetValue !== null ? { budget_usd: budgetValue } : props.project?.budget_usd ? { budget_usd: null } : {};
     try {
+      created.current = true;
+      draftStore.draft = null;
       await props.onSubmit({
         name: name.trim(),
         description: description.trim(),
@@ -128,6 +172,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
         ...budgetPatch,
       });
     } catch (err) {
+      created.current = false;
       setError(errorMessage(err));
       setBusy(false);
     }
@@ -181,6 +226,14 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
       }
     >
       <form id={id} onSubmit={submit} noValidate className="@container flex flex-col gap-5">
+        {hadDraft && (
+          <p className="-mb-2 flex items-center gap-1.5 text-xs text-fg-3">
+            Your earlier draft is back.
+            <Button variant="link" tone="quiet" onClick={clearDraft}>
+              Clear
+            </Button>
+          </p>
+        )}
         <div className="grid gap-3">
           <Field label="Name" htmlFor={`${id}-name`} error={nameError} errorId={`${id}-name-error`}>
             <TextField
@@ -291,10 +344,11 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
             iconEnd={advanced ? ChevronDown : ChevronRight}
             aria-expanded={advanced}
             onClick={() => setAdvanced((a) => !a)}
-            className="-ml-2"
+            className="-ml-3"
           >
             Models and delegation
           </Button>
+          <p className="text-xs text-fg-3">Which models do the work, how deep helper agents may go, and an optional spending cap.</p>
           {advanced && (
             <div className="mt-3 grid gap-3">
               {/* The same notice as Settings → Models: said once above the group, not by the tone of each value. */}
@@ -304,6 +358,10 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                   provider in Settings → Providers.
                 </Notice>
               )}
+              <p className="text-xs text-fg-3">
+                Fast is the cheapest and quickest, for simple work. Balanced suits most tasks. Deep costs the most and thinks hardest, for the difficult parts.
+                Helper agents get the tier that fits their task.
+              </p>
               <div className="grid gap-3 @min-[520px]/dialog:grid-cols-2">
                 {MODEL_FIELDS.map((m) => (
                   // Decision 27 / ACP in the UI: a model, a tier's model or an ACP agent on a subscription; any other id by typing it.
@@ -316,13 +374,27 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                       value={models[m.key]}
                       // The notice above the group says the problem once (B52).
                       problemShown={providers.status === "ready" && unrunnable.length > 0}
-                      onChoose={(v) => setModels((cur) => ({ ...cur, [m.key]: v }))}
+                      onChoose={(v) => {
+                        modelsTouched.current = true;
+                        setModels((cur) => ({ ...cur, [m.key]: v }));
+                      }}
                     />
                   </Field>
                 ))}
               </div>
               {router && (
-                <Field label="Routing" hint={TIER_POLICIES.find((p) => p.value === policy)?.detail}>
+                <Field
+                  label="Routing"
+                  hint={
+                    <span className="grid gap-0.5">
+                      {TIER_POLICIES.map((p) => (
+                        <span key={p.value}>
+                          <span className={p.value === policy ? "text-fg-2" : undefined}>{p.label}:</span> {p.detail}
+                        </span>
+                      ))}
+                    </span>
+                  }
+                >
                   <Segmented<TierPolicy>
                     label="Routing policy"
                     value={policy}
@@ -395,6 +467,19 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
           )}
         </div>
         {props.project && <ApprovalRules projectId={props.project.id} />}
+        {/* B2: the same warning as inside the section, so it is not hidden while the section is folded. */}
+        {!advanced && providers.status === "ready" && unrunnable.length > 0 && (
+          <Notice
+            tone="warn"
+            action={
+              <Button variant="link" onClick={() => setAdvanced(true)}>
+                Choose models
+              </Button>
+            }
+          >
+            {unrunnable.join(", ")} can't run yet: {unrunnable.length > 1 ? "their providers are" : "its provider is"} not connected.
+          </Notice>
+        )}
         {error && (
           <p role="alert" className="text-sm text-err">
             {error}
@@ -472,7 +557,8 @@ function AddFolder(props: { first: boolean; current: string[]; onChoose(path: st
         icon={Plus}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className={props.first ? undefined : "text-fg-2"}
+        // The glyph of the first button sits on the fields' left edge (C3): its 12px padding is pulled out.
+        className={props.first ? "-ml-3" : "text-fg-2"}
         onClick={() => setOpen((o) => !o)}
       >
         {props.first ? "Choose a folder…" : "Add folder"}

@@ -1,7 +1,10 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
+import { contextView } from "../../lib/contextView";
 import { formatTokens } from "../../lib/format";
 import { MOD_LABEL } from "../../lib/keys";
+import { useApp } from "../../state/app";
+import { useProject } from "../../state/project";
 import { Button } from "../primitives/Button";
 import { Presence } from "../primitives/Presence";
 
@@ -17,10 +20,33 @@ const C = 2 * Math.PI * R;
  * passes 50% (warn colour from 80%), and a real button: click, Enter or Ctrl/Cmd+Shift+U open the popover — the headline, one
  * stacked bar and a list by category, cached vs. uncached input of the last request, "Compact now" (when the bridge can),
  * and "Open context details". An agent that manages its own context says so. Not rendered while a number is unknown.
+ *
+ * B5: the ring and its popover show one number. The ring reads the same context overview the popover reads (again on
+ * `context.updated`) and hands its numbers to the popover; the composer's last-turn numbers stand in until it is in, or when
+ * the bridge has no overview.
  */
-export function ContextRing({ used, size }: { used: number | null | undefined; size: number | null | undefined }) {
+export function ContextRing(props: { used: number | null | undefined; size: number | null | undefined }) {
   const button = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const { bridge } = useApp();
+  const { projectId, onEvent } = useProject();
+  const [overview, setOverview] = useState<{ used: number; size: number | null } | null>(null);
+  const load = useCallback(() => {
+    if (!bridge.getContextOverview) return;
+    bridge.getContextOverview(projectId).then(
+      (raw) => {
+        const v = contextView(raw);
+        setOverview({ used: v.used, size: v.window });
+      },
+      // Unreadable: the last turn's numbers stay.
+      () => undefined,
+    );
+  }, [bridge, projectId]);
+  // Read again when the last turn's numbers move (a turn ended) and on `context.updated`.
+  useEffect(load, [load, props.used]);
+  useEffect(() => onEvent((e) => e.type === "context.updated" && load()), [onEvent, load]);
+  const used = overview ? overview.used : props.used;
+  const size = overview?.size ?? props.size;
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "u") {

@@ -30,7 +30,7 @@ function useSettingsView() {
     };
   }, [bridge]);
   const save = async (update: SettingsUpdate) => {
-    if (!bridge.putSettings) throw new Error("This connection cannot change the harness's settings");
+    if (!bridge.putSettings) throw new Error("This connection cannot change Octo's settings");
     const view = await bridge.putSettings(update);
     setLoad({ status: "ready", view });
     await refreshProviders(bridge);
@@ -52,6 +52,26 @@ export function Rich({ text }: { text: string }) {
         ),
       )}
     </>
+  );
+}
+
+/** Where to get a key, for the keys we know (the harness sends no URL): plain link text, opened outside the app. */
+const KEY_PAGES: Record<string, { href: string; host: string }> = {
+  api: { href: "https://console.anthropic.com/settings/keys", host: "console.anthropic.com" },
+  router: { href: "https://openrouter.ai/keys", host: "openrouter.ai" },
+};
+
+export function KeyLink({ kind }: { kind: string }) {
+  const page = KEY_PAGES[kind];
+  if (!page) return null;
+  return (
+    <p className="text-xs text-fg-3">
+      Get a key at{" "}
+      <a href={page.href} target="_blank" rel="noreferrer noopener" className="text-link underline-offset-2 hover:underline">
+        {page.host}
+      </a>
+      {kind === "router" ? " or your router's provider." : "."}
+    </p>
   );
 }
 
@@ -140,11 +160,11 @@ export function KeySteps({ provider, upstream }: { provider: Provider; upstream:
       // Decision 89 d: the sentence in plain words; the variable to set is under "Details", like the agents' steps.
       <div role={load.status === "error" ? "alert" : undefined} className="flex flex-col gap-1">
         <p className="text-sm text-fg-2">
-          {load.status === "error" ? `${load.message}. ` : ""}This connection cannot set keys: the harness accepts them only from this machine. Set the key
-          where the harness runs.
+          {load.status === "error" ? `${load.message}. ` : ""}This connection cannot set keys: Octo's local service accepts them only from this computer. Set
+          the key on the computer it runs on.
         </p>
         <Details
-          text={`Set \`${provider.kind === "api" ? SETTING_IDS.anthropicApiKey : SETTING_IDS.routerUpstreamKey}\` in the harness's environment, then restart it.`}
+          text={`Set \`${provider.kind === "api" ? SETTING_IDS.anthropicApiKey : SETTING_IDS.routerUpstreamKey}\` in the environment of Octo's local service, then restart it.`}
         />
       </div>
     );
@@ -176,9 +196,10 @@ export function KeySteps({ provider, upstream }: { provider: Provider; upstream:
           onSave={(value) => settings.save({ set: { [keyId]: value } })}
         />
       )}
+      {key?.editable !== false && <KeyLink kind={keyId === SETTING_IDS.anthropicApiKey ? "api" : "router"} />}
       {restart && (
         <p role="status" className="flex flex-wrap items-center gap-x-2 text-xs text-warn">
-          Saved. The harness applies keys and the router switch after a restart.
+          Saved. Keys and the router switch apply after a restart.
           {host.restart ? (
             <Button variant="link" size="xs" onClick={host.restart}>
               Restart now

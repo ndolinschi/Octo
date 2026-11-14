@@ -7,6 +7,7 @@ import { Select } from "../primitives/Select";
 import { SkeletonList } from "../primitives/Skeleton";
 import { CommandDialog, GlobsDialog, OfferedDialog } from "./CommandDialogs";
 import { LoadErrorRow, SaveStatus, SELECT_W, SettingsGroup, SettingsRow } from "./parts";
+import { ScopeRow, useProjectScope } from "./scope";
 import { useProjectDetails } from "./useProjectDetails";
 import { useSave } from "./useSave";
 
@@ -26,9 +27,10 @@ const DEFAULT_REVIEW: ReviewConfig = { commands: [], mechanical_globs: [], prefe
  * offered, which paths fold as mechanical, one column or side by side. One project at a time; the harness validates, the
  * form says why before it saves.
  */
-export function CommandsSection() {
+export function CommandsSection({ projectId }: { projectId: string | null }) {
   const { details, update, retry } = useProjectDetails();
-  const [pick, setPick] = useState<string | null>(null);
+  // B10: the same scope menu as Models, Editor, Memory and Budget (hooks before the early returns).
+  const { sorted, project, choose } = useProjectScope(details.status === "ready" ? details.projects : [], projectId);
   if (details.status === "loading")
     return (
       <SettingsGroup label="Commands">
@@ -38,7 +40,7 @@ export function CommandsSection() {
   if (details.status === "error")
     return (
       <SettingsGroup label="Commands">
-        <LoadErrorRow what="projects" message={details.message} hint="Check that the harness is running, then retry." onRetry={retry} />
+        <LoadErrorRow what="projects" message={details.message} hint="Check that Octo's local service is running, then retry." onRetry={retry} />
       </SettingsGroup>
     );
   if (details.projects.length === 0)
@@ -47,39 +49,12 @@ export function CommandsSection() {
         <SettingsRow title="No projects yet" description="Each project gets its own commands and review settings here." />
       </SettingsGroup>
     );
-  const project = details.projects.find((p) => p.id === pick) ?? details.projects[0];
   if (!project) return null;
   return (
     <>
-      {details.projects.length > 1 && (
-        <SettingsGroup label="Project">
-          <ProjectPick projects={details.projects} value={project.id} onChange={setPick} />
-        </SettingsGroup>
-      )}
+      <ScopeRow projects={sorted} value={project.id} onChange={choose} description="Commands and review settings belong to one project." />
       <ProjectCommands key={project.id} project={project} update={update} />
     </>
-  );
-}
-
-function ProjectPick(props: { projects: readonly Project[]; value: string; onChange(id: string): void }) {
-  const id = useId();
-  return (
-    <SettingsRow
-      title="Settings for"
-      htmlFor={id}
-      description="Commands belong to one project."
-      control={
-        <div className={SELECT_W}>
-          <Select
-            id={id}
-            label="Settings for"
-            value={props.value}
-            options={props.projects.map((p) => ({ value: p.id, label: p.name }))}
-            onChange={props.onChange}
-          />
-        </div>
-      }
-    />
   );
 }
 

@@ -48,7 +48,7 @@ export function addImages(files: readonly File[], sink: ImageSink): void {
         const shown = URL.createObjectURL(blob);
         urls.current.add(shown);
         patch(id, { url: shown, bytes: blob.size, name });
-        if (!bridge.uploadAttachment) throw new Error("This harness cannot take images");
+        if (!bridge.uploadAttachment) throw new Error("This version of Octo's local service cannot take images");
         const att = await bridge.uploadAttachment(projectId, new Uint8Array(await blob.arrayBuffer()), { name });
         patch(id, { state: "ready", attachmentId: att.id });
       } catch (e) {

@@ -24,7 +24,7 @@ const PLUGINS: Plugin[] = [
         default_model: "claude-sonnet-5-5",
         hint: "Run `claude login` in a terminal.",
       },
-      { id: "copilot", label: "GitHub Copilot", available: true, logged_in: false, hint: "Run `copilot auth login` in a terminal, then reopen this list." },
+      { id: "copilot", label: "GitHub Copilot", available: true, logged_in: false, hint: "Run `copilot login` in a terminal, then reopen this list." },
     ],
     tool_servers: [],
     errors: [],

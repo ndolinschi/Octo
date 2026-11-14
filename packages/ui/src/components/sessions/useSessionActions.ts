@@ -59,7 +59,7 @@ export function useSessionActions() {
 
   const api = useMemo(() => {
     const need = <T>(method: T | undefined): T => {
-      if (method === undefined) throw new Error("This harness does not support sessions.");
+      if (method === undefined) throw new Error("This version of Octo's local service does not support sessions.");
       return method;
     };
     return {

@@ -63,7 +63,16 @@ export function ownerProviders(apiReady: boolean): Provider[] {
     agent("grok", "Grok", "ready", { models: numbered("grok", 4), default_model: "grok-1" }),
     agent("codex", "Codex", "ready"),
     agent("opencode", "OpenCode", "ready", { models: numbered("opencode-model", 12), default_model: "opencode-model-1" }),
-    agent("antigravity", "Antigravity", "ready", { experimental: true }),
+    agent("antigravity", "Antigravity", "ready", {
+      experimental: true,
+      models: named(["antigravity-gemini-4-computer-use-preview"]),
+      default_model: "antigravity-gemini-4-computer-use-preview",
+    }),
+    agent("gemini", "Gemini 4 Computer Use", "ready", {
+      experimental: true,
+      models: named(["gemini-4-computer-use-preview"]),
+      default_model: "gemini-4-computer-use-preview",
+    }),
     agent("cursor", "Cursor", "not_installed"),
     agent("devin", "Devin CLI", "not_installed"),
     agent("factory-droid", "Factory Droid", "not_installed"),

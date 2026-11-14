@@ -75,7 +75,7 @@ function OpenForm(props: InputFormCardProps) {
         <p className="flex items-start gap-2 text-xs text-fg-3">
           <Glyph icon={Lock} size={14} className="mt-px shrink-0" />
           <span>
-            Sent to the harness, not to the model.
+            Sent to Octo's local service, not to the model.
             {hasSecret && " Secrets are stored for this project; the agent only learns that they were provided."}
           </span>
         </p>

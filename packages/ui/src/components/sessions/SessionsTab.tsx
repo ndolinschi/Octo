@@ -62,7 +62,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
   const picked = selected !== null ? (list.find((s) => s.id === selected) ?? null) : null;
 
   if (!bridge.listSessions) {
-    return <PanelEmpty title="This harness has no sessions">Update the harness to see the project's sessions here.</PanelEmpty>;
+    return <PanelEmpty title="This version of Octo's local service has no sessions">Update it to see the project's sessions here.</PanelEmpty>;
   }
   // Counts only where they answer a question (what works now, what is archived): five counts do not fit the list column.
   const options: Filter<SessionFilter>[] = FILTERS.map((f) => ({

@@ -47,7 +47,7 @@ export function useApprovalCard(props: {
       } catch (e) {
         // 404: someone else (another window, the timer, a cancel) answered first; the card closes as resolved elsewhere.
         if (codeOf(e) === "not_found") onResolved({ decision: "deny", by: "elsewhere" });
-        else setError(ruleError(codeOf(e)) ?? `Your answer did not reach the harness: ${errorMessage(e)}. Try again.`);
+        else setError(ruleError(codeOf(e)) ?? `Your answer did not reach Octo's local service: ${errorMessage(e)}. Try again.`);
       } finally {
         inFlight.current = false;
         setBusy(null);

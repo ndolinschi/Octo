@@ -442,6 +442,11 @@
 .octo-fade {
   animation: octo-fade-in 120ms ease-out both;
 }
+/* A loading placeholder (MainSkeleton): the same fade, after 300ms, so a fast load (switching projects takes about 240ms
+   in the demo) never shows it. */
+.octo-fade-late {
+  animation: octo-fade-in 120ms ease-out 300ms both;
+}
 @keyframes octo-fade-in {
   from {
     opacity: 0;
@@ -1613,3 +1618,63 @@
   --text-figure--letter-spacing: -0.019em;
 }
 /* end audit C: typeface */
+
+/* round 3: narrow — the composer's control row sheds by the composer's own width (container queries, not the window): the
+   model chip's label truncates first (it shrinks), then goes icon-only; the mode chip goes icon-only before it; the folder
+   chip last. "+", the context ring and Send / Stop never shrink. The accessible names keep the labels. */
+[data-composer-row] [data-model-picker] {
+  flex-shrink: 1;
+}
+@container composer (width < 460px) {
+  [data-composer-row] [data-chip="mode"] {
+    width: var(--spacing-ctl-sm);
+    justify-content: center;
+    padding-inline: 0;
+  }
+  [data-composer-row] [data-chip="mode"] [data-chip-label] {
+    display: none;
+  }
+}
+@container composer (width < 380px) {
+  [data-composer-row] [data-model-picker] {
+    flex-shrink: 0;
+    width: var(--spacing-ctl-sm);
+    justify-content: center;
+    padding-inline: 0;
+  }
+  [data-composer-row] [data-model-picker] [data-chip-label] {
+    display: none;
+  }
+}
+@container composer (width < 320px) {
+  [data-composer-row] [data-chip="folder"] {
+    width: var(--spacing-ctl-sm);
+    justify-content: center;
+    padding-inline: 0;
+  }
+  [data-composer-row] [data-chip="folder"] [data-chip-label] {
+    display: none;
+  }
+}
+
+/* round 3: words (B8): a table fills its column, a table wider than it fades at the edge that has more (the scrollbar stays),
+   and an unbroken token in a cell breaks instead of stretching the table. */
+.octo-table-frame {
+  width: 100%;
+}
+.octo-table-scroll[data-fade~="end"] {
+  mask-image: linear-gradient(to left, transparent, #000 24px);
+}
+.octo-table-scroll[data-fade~="start"] {
+  mask-image: linear-gradient(to right, transparent, #000 24px);
+}
+.octo-table-scroll[data-fade~="start"][data-fade~="end"] {
+  mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+}
+.octo-table td {
+  overflow-wrap: anywhere;
+}
+.octo-table td code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

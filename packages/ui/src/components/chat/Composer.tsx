@@ -11,7 +11,7 @@ import { Presence } from "../primitives/Presence";
 import { withAttachments } from "./attachments";
 import type { ComposerMenuHandle, MenuPick } from "./ComposerMenu";
 import { modeNote } from "../../lib/modes";
-import { FolderChip, ModelChip, useShedLabels } from "./ComposerChips";
+import { FolderChip, ModelChip } from "./ComposerChips";
 import type { ComposerMode } from "./composerMode";
 import type { QueuedMessage } from "./ComposerPills";
 import { useAttachments } from "./useAttachments";
@@ -91,14 +91,11 @@ const TRIGGER = /(^|\s)([/@])([^\s/@]*)$/;
 
 type MenuState = { mode: "button" } | { mode: "inline"; start: number; query: string };
 
-/** Chips that can shed their label (mode, folder, model); at most four controls before send (decision 91e). */
-const SHEDDABLE = 3;
-
 /**
  * The composer (decision 62): one container (radius 14, raised, hairline that brightens on focus;
  * no glow, decision 87). Inside: the pills (queued messages, line comments, attached files), the text area
- * (1–10 lines), and the control row — "+", the model / folder / tier chips (labels shed tier → folder → model when
- * narrow), the context ring and one round button that is Send, Stop, or Queue.
+ * (1–10 lines), and the control row — "+", the model / folder / tier chips (labels shed by container width,
+ * round 3: narrow: mode, then model, then folder), the context ring and one round button that is Send, Stop, or Queue.
  */
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(props, handle) {
   const { text, setText, area, place } = useComposerText(props.draft);
@@ -117,7 +114,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [chipOpen, setChipOpen] = useState(0);
   const box = useRef<HTMLFormElement>(null);
   const plus = useRef<HTMLButtonElement>(null);
-  const row = useRef<HTMLDivElement>(null);
   const menuRef = useRef<ComposerMenuHandle>(null);
   const slashRef = useRef<SlashMenuHandle>(null);
   const [slash, setSlash] = useState<{ query: string } | null>(null);
@@ -155,7 +151,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const pendingComments = props.comments?.count ?? 0;
   const hasContent = text.trim().length > 0 || attach.files.length > 0 || pics.images.length > 0 || pendingComments > 0;
   const canSend = !disabled && !sending && !pics.busy && hasContent;
-  const shed = useShedLabels(row, SHEDDABLE, `${props.model?.value}|${props.folders.length}|${props.tier?.value}|${props.mode?.value}`);
 
   const outgoing = () => withAttachments(text.trim(), attach.files);
   const queue = () => {
@@ -408,7 +403,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             }
           }}
           {...attach.dropProps}
-          className={cn("octo-composer relative isolate flex flex-col bg-raised", disabled && "opacity-80")}
+          className={cn("octo-composer @container/composer relative isolate flex flex-col bg-raised", disabled && "opacity-80")}
         >
           {slots?.queue?.({ onCount: noCount })}
           {(pics.images.length > 0 || attach.files.length > 0 || props.queue.items.length > 0 || pendingComments > 0) && (
@@ -458,7 +453,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className="octo-composer-input relative block w-full resize-none overscroll-contain bg-transparent px-3 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
             />
           </div>
-          <div ref={row} data-composer-row className="flex h-10 min-w-0 items-center gap-1 px-1.5 pb-1.5">
+          <div data-composer-row className="flex h-10 min-w-0 items-center gap-1 px-1.5 pb-1.5">
             <IconButton
               ref={plus}
               icon={Plus}
@@ -477,7 +472,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   isDefault={props.mode.isDefault}
                   onChoose={props.mode.choose}
                   onMakeDefault={() => void props.mode?.makeDefault().catch(() => undefined)}
-                  bare={shed >= 1}
+                  bare={false}
                   disabled={disabled}
                   onOpenChange={onChip}
                 />
@@ -498,12 +493,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     </Suspense>
                   ) : undefined
                 }
-                bare={shed >= 3}
+                bare={false}
                 disabled={disabled}
                 onOpenChange={onChip}
               />
             )}
-            <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={shed >= 2} disabled={disabled} onOpenChange={onChip} />
+            <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={false} disabled={disabled} onOpenChange={onChip} />
             <span className="min-w-0 flex-1" />
             {props.context.used && props.context.size ? (
               <Suspense fallback={null}>

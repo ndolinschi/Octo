@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { emptyProjectState, type Agent } from "@octo/agent-client";
-import { roleText, agentActivity, lastTeam, orchestratorState, projectRowLines, runningAgents, stateLine, teamRoles } from "./orchestrator";
+import {
+  roleText,
+  agentActivity,
+  lastTeam,
+  liveOrchestratorState,
+  orchestratorState,
+  projectRowLines,
+  projectWhen,
+  runningAgents,
+  stateLine,
+  teamRoles,
+} from "./orchestrator";
 import { agentDisplayName, agentStack, teamLine } from "./orchestratorMore";
 
 const NOW = Date.parse("2026-11-10T12:00:00Z");
@@ -61,6 +72,37 @@ test("the harness's attention decides when present: failed needs, none does not 
   assert.equal(orchestratorState([ok], "idle", "failed").kind, "needs");
   assert.equal(orchestratorState([root({ status: "failed", error: "x" })], "idle", "none").kind, "idle");
   assert.equal(orchestratorState([root({ status: "failed", error: "x" })], "running", "failed").kind, "working");
+});
+
+test("an approval or a form that waits needs the user, and wins over working (A1)", () => {
+  const busy = [root({ status: "running" }), agent({ id: "a", status: "running" })];
+  const approval = orchestratorState(busy, "running", "needs_you", { approvals: 1, inputs: 1 });
+  assert.deepEqual(approval, { kind: "needs", error: null, at: null, waiting: "approval" });
+  assert.equal(stateLine(approval, NOW), "Waiting for your approval");
+  const form = orchestratorState(busy, "running", "needs_you", { approvals: 0, inputs: 2 });
+  assert.equal(stateLine(form, NOW), "Waiting for your answer");
+  // Counts alone (the live `project.attention` event carries no kind) and the kind alone both say so.
+  assert.equal(orchestratorState([root()], "idle", undefined, { approvals: 0, inputs: 1 }).kind, "needs");
+  assert.equal(orchestratorState([root()], "idle", "needs_you").kind, "needs");
+  assert.equal(orchestratorState(busy, "running", "none", { approvals: 0, inputs: 0 }).kind, "working");
+  assert.deepEqual(projectRowLines(form, NOW, "2026-11-10T11:58:00Z"), { meta: "2m", full: "Waiting for your answer" });
+});
+
+test("the open project's live attention counts decide what waits", () => {
+  const state = emptyProjectState();
+  state.agents = { root: root({ status: "running" }) };
+  state.agentOrder = ["root"];
+  state.attention = { needs_you: true, approvals: 1, inputs: 0 };
+  assert.equal(stateLine(liveOrchestratorState(state, "running"), NOW), "Waiting for your approval");
+  state.attention = { needs_you: false, approvals: 0, inputs: 0 };
+  assert.equal(liveOrchestratorState(state, "running").kind, "working");
+});
+
+test("the sidebar and Home show one time per project (B6)", () => {
+  assert.equal(projectWhen(orchestratorState([root()], "idle"), NOW, "2026-11-08T12:00:00Z"), "1h");
+  assert.equal(projectWhen({ kind: "idle", at: null }, NOW, "2026-11-10T11:58:00Z"), "2m");
+  assert.equal(projectWhen({ kind: "new" }, NOW, "2026-11-08T12:00:00Z"), "new");
+  assert.equal(projectWhen({ kind: "working", agents: [] }, NOW, "2026-11-08T12:00:00Z"), null);
 });
 
 test("idle shows how long since the last turn ended", () => {

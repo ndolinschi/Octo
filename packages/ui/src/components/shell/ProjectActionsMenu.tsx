@@ -45,14 +45,12 @@ export default function ProjectActionsMenu(props: {
           ? [
               {
                 id: "tokens",
-                label: `${formatTokens(total)} tokens used`,
+                caption: `${formatTokens(total)} tokens used`,
                 title: `${total.toLocaleString()} tokens used in this project (${tokens.input.toLocaleString()} in, ${tokens.output.toLocaleString()} out)`,
-                disabled: true,
-                run: () => undefined,
               },
             ]
           : []),
-        ...(budget && budget.tone === "fg-3" ? [{ id: "budget", label: `Budget: ${budget.text}`, disabled: true, run: () => undefined }] : []),
+        ...(budget && budget.tone === "fg-3" ? [{ id: "budget", caption: `Budget: ${budget.text}` }] : []),
         ...(openProjectInEditor
           ? [{ id: "editor", label: "Open in editor", disabled: project.folders.length === 0, run: () => openProjectInEditor(project.id) }]
           : []),

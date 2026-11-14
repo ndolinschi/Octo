@@ -60,7 +60,7 @@ export function useInputForm(props: {
       } catch (e) {
         const message = errorMessage(e);
         const named = fieldsInError(message, request.fields);
-        if (named.length) setErrors(Object.fromEntries(named.map((id) => [id, "The harness refused this value"])));
+        if (named.length) setErrors(Object.fromEntries(named.map((id) => [id, "Octo's local service refused this value"])));
         setError(`The form was not sent: ${message}. Fix the marked fields or try again.`);
       } finally {
         setBusy(null);

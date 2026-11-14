@@ -294,8 +294,9 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         label: r.label,
         lead: <ProviderMark id={r.providerId} label={r.label} className="text-fg-3" />,
         trailing: <Glyph icon={ChevronRight} size={14} className="-mr-0.5 shrink-0 text-fg-3" />,
+        // With the "experimental" tag beside the name there is no room for the default model on the same line: it is the second line.
         ...(r.experimental ? { detail: "experimental" } : {}),
-        ...(r.detail ? { hint: r.detail } : {}),
+        ...(r.detail ? (r.experimental ? { sub: r.detail } : { hint: r.detail }) : {}),
       };
     const lead = isCurrent(r) ? <Glyph icon={Check} size={14} className="text-fg" /> : null;
     if (r.kind === "default") return { ...base, label: r.label, lead, ...(r.detail ? { hint: r.detail } : {}) };

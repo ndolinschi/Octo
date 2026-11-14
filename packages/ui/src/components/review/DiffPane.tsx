@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import type { ReviewFile, ReviewFileDiff } from "@octo/agent-client";
-import { useDelayedLoading } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import { hunksToTexts } from "../../lib/review/changes";
 import { plural, sizeChange, splitPath } from "../../lib/review/files";
 import type { Anchor } from "../../lib/review/position";

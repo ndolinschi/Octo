@@ -1,5 +1,5 @@
 import type { Bridge, PluginAgent } from "@octo/agent-client";
-import { Image as ImageIcon, MessageSquare, Search, type LucideIcon } from "lucide-react";
+import { AtSign, Image as ImageIcon, MessageSquare, Search, type LucideIcon } from "lucide-react";
 import { GLYPH } from "../primitives/glyphs";
 import { Glyph } from "../primitives/Glyph";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
@@ -52,7 +52,7 @@ export type ComposerMenuHandle = { onKeyDown(e: KeyboardEvent): boolean };
  * search field, the panel's only focusable element, and focus leaving the panel closes it. Resizing the window closes it, as
  * `Menu` and `Popover` do (B9).
  * Groups appear only with entries: Files (the same loader as Filter files), Agents (available plugin
- * ACP agents), Comments (pending), Actions.
+ * ACP agents), Comments (pending), Project actions; Attach (image, mention a file) comes first.
  */
 export const ComposerMenu = forwardRef<
   ComposerMenuHandle,
@@ -100,7 +100,19 @@ export const ComposerMenu = forwardRef<
   useEffect(() => indexFiles?.(), [indexFiles]);
 
   const entries = useMemo(() => {
-    const out: Entry[] = [];
+    const out: Entry[] = [
+      // C6: attaching comes first, in its own clearly named group; project actions are a separate group below.
+      {
+        id: "attach:image",
+        group: "Attach",
+        label: "Attach image…",
+        hint: "Choose from disk",
+        icon: ImageIcon,
+        match: "attach image picture photo screenshot",
+        pick: { run: props.onPickImage },
+      },
+      { id: "attach:file", group: "Attach", label: "Mention a file", hint: "Type @", icon: AtSign, match: "mention file path", pick: { insert: "@" } },
+    ];
     const files = code?.loadedFiles ?? [];
     const hits = query ? files.filter((f) => `${f.folder}/${f.path}`.toLowerCase().includes(query)) : files;
     // Ranked: name matches before path matches, then shorter paths.
@@ -139,15 +151,6 @@ export const ComposerMenu = forwardRef<
       const label = `Review ${props.pendingComments} pending ${props.pendingComments === 1 ? "comment" : "comments"}`;
       out.push({ id: "comments", group: "Comments", label, hint: "Open", icon: MessageSquare, match: label, pick: { run: props.onOpenComments } });
     }
-    out.push({
-      id: "action:image",
-      group: "Actions",
-      label: "Image…",
-      hint: "Attach",
-      icon: ImageIcon,
-      match: "image picture photo screenshot",
-      pick: { run: props.onPickImage },
-    });
     if (ws) {
       const actions: [string, string, LucideIcon, () => void][] = [
         ["settings", "Project settings", GLYPH.settings, ws.openSettings],
@@ -156,7 +159,7 @@ export const ComposerMenu = forwardRef<
         ["files", "Show files", GLYPH.files, () => ws.openTool("files")],
         ["details", "Show project details", GLYPH.details, () => ws.openTool("details")],
       ];
-      for (const [id, label, icon, run] of actions) out.push({ id: `action:${id}`, group: "Actions", label, hint: "Run", icon, match: label, pick: { run } });
+      for (const [id, label, icon, run] of actions) out.push({ id: `action:${id}`, group: "Project", label, hint: "Run", icon, match: label, pick: { run } });
     }
     return query ? out.filter((e) => e.group === "Files" || e.match.toLowerCase().includes(query)) : out;
   }, [code?.loadedFiles, agents, props.pendingComments, props.onOpenComments, props.onPickImage, ws, query]);

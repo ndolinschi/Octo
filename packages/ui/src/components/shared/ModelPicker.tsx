@@ -1,4 +1,4 @@
-import { Bot, ChevronDown, Sparkles } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { middleTruncate } from "../../lib/format";
@@ -10,6 +10,9 @@ import { Chip } from "../primitives/Chip";
 import { Glyph } from "../primitives/Glyph";
 import { Presence } from "../primitives/Presence";
 import type { ModelPickerProps } from "./modelPickerProps";
+
+/** The chip's mark loads the same way (its SVG chunk after it): the box in the Suspense fallback holds its place, 14px, so nothing shifts when it arrives. */
+const ProviderMark = lazy(() => import("../primitives/ProviderMark").then((m) => ({ default: m.ProviderMark })));
 
 /** The list loads on first open (its own chunk): the chip is all the composer and the title bar need up front. */
 const ModelPickerPanel = lazy(() => import("./ModelPickerPanel").then((m) => ({ default: m.ModelPickerPanel })));
@@ -84,7 +87,11 @@ export function ModelPicker(props: ModelPickerProps) {
     <>
       <Chip
         ref={button}
-        icon={ref ? Bot : Sparkles}
+        lead={
+          <Suspense fallback={<span className="size-3.5 shrink-0" />}>
+            <ProviderMark id={ref ? ref.id : props.value} label={text} size={14} />
+          </Suspense>
+        }
         name={props.label}
         label={text}
         bare={props.bare ?? false}

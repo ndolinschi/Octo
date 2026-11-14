@@ -3,7 +3,7 @@ import { CircleAlert, CircleCheck, CirclePause, Eraser, MessageSquareShare } fro
 import { useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { exchangeRow, metaLine, metaParts, needsFullRequest, OUTCOME_LABEL, statusNote, type Outcome } from "../../lib/memory/sessions";
-import { useModelNames } from "../../state/models";
+import { useModelNames } from "../../state/modelNames";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
 import { IconMenu } from "../primitives/IconMenu";

@@ -49,26 +49,17 @@ export function GeneralSection() {
 
 function BridgeRow() {
   const { bridgeUrl, health, retry, version, demo } = useApp();
-  const state =
-    health === "online"
-      ? demo
-        ? "Demo data, in memory"
-        : `Connected${version ? `, version ${version}` : ""}`
-      : health === "offline"
-        ? "Offline: the harness does not answer"
-        : "Connecting…";
+  const state = health === "online" ? (demo ? "Demo data, in memory" : "Connected") : health === "offline" ? "Not answering" : "Connecting…";
   return (
     <SettingsRow
       rowId="bridge"
-      title="Harness connection"
+      // B8: one plain name for the background service, as the offline screen says it; the address and version in the tooltip.
+      title="Octo's local service"
       description={
-        <span className="flex min-w-0 flex-wrap gap-x-2">
-          <code className="min-w-0 font-mono text-xs break-all text-fg-2">{bridgeUrl}</code>
-          {/* S1: the state glyph sits with the state's words, so the label keeps the rows' left edge. */}
-          <span role="status" className="inline-flex items-center gap-1.5">
-            {health === "checking" ? <Spinner size={10} /> : <ToneDot tone={health === "online" ? "ok" : "err"} />}
-            {state}
-          </span>
+        <span role="status" className="inline-flex items-center gap-1.5" title={`${bridgeUrl}${version ? ` · version ${version}` : ""}`}>
+          {health === "checking" ? <Spinner size={10} /> : <ToneDot tone={health === "online" ? "ok" : "err"} />}
+          {state}
+          {health === "online" && !demo ? ". It keeps your projects and runs the agents." : ""}
         </span>
       }
       control={

@@ -16,8 +16,8 @@ function describe(p: Provider): string {
   if (isReady(p)) return p.kind === "agent" ? "Logged in and ready. Pick it, or one of its models, in any model picker." : "Connected.";
   if (p.kind === "agent")
     return p.state === "not_installed"
-      ? "Not installed on this machine. Install it, log in, then check again."
-      : "Installed, but not logged in. Log in once, then check again.";
+      ? "Not installed on this computer. Install it and log in once in a terminal, then press Check again."
+      : "Installed, but not logged in. Log in once in a terminal, then press Check again.";
   if (p.kind === "api") return "Bill per token with your own Anthropic API key.";
   return "Route requests through the Octo router: one key upstream (for example OpenRouter), many models.";
 }
@@ -59,7 +59,7 @@ export function ConnectDetail({ provider: p, framed = true }: { provider: Provid
           </div>
           {state.kind === "failed" && (
             <Notice tone="error" action={undefined}>
-              Could not check: {state.message}. Check that the harness is running.
+              Could not check: {state.message}. Check that Octo&apos;s local service is running.
             </Notice>
           )}
           {state.kind === "done" && !isReady(p) && <Notice tone="warn">Still {stateText(p.state).toLowerCase()}.</Notice>}

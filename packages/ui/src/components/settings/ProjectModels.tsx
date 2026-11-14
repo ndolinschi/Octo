@@ -5,7 +5,7 @@ import { Button } from "../primitives/Button";
 import { Select } from "../primitives/Select";
 import { useHarnessSettings } from "./harnessSettings";
 import { ModelsProblem } from "./ModelsProblem";
-import { modelOptions, MODEL_ROWS, type ModelRow } from "./modelRows";
+import { modelOptions, MODEL_ROWS, TIERS_NOTE, type ModelRow } from "./modelRows";
 import { SaveStatus, SELECT_W, SettingsGroup, SettingsRow } from "./parts";
 import { useSave } from "./useSave";
 
@@ -18,11 +18,17 @@ export function ProjectModels(props: { project: Project; list: ProviderList; upd
   const harness = useHarnessSettings();
   return (
     <>
-      <ModelsProblem list={props.list} values={MODEL_ROWS.map((row) => props.project.models[row.field])} />
+      <ModelsProblem
+        list={props.list}
+        values={MODEL_ROWS.map((row) => props.project.models[row.field])}
+        onApply={(next) =>
+          props.update(props.project.id, { models: Object.fromEntries(MODEL_ROWS.flatMap((row, i) => (next[i] !== undefined ? [[row.field, next[i]]] : []))) })
+        }
+      />
       <SettingsGroup
         label={`Models of ${props.project.name}`}
         id="row-project-models"
-        footer="Defaults are copied into a project when it is created; a value equal to the default counts as inherited."
+        footer={`${TIERS_NOTE} Defaults are copied into a project when it is created; a value equal to the default counts as inherited.`}
       >
         {MODEL_ROWS.map((row) => {
           const d = harness.get(row.id)?.value;

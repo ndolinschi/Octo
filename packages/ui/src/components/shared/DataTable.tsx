@@ -1,7 +1,7 @@
 import { Check, Copy } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { useCopy } from "../../lib/hooks";
+import { useCopy, useScrollFade } from "../../lib/hooks";
 import { FOLD_ROWS, numericColumns, toCsv, toMarkdown, type Table } from "../../lib/table";
 import { Button } from "../primitives/Button";
 import { Menu } from "../primitives/Menu";
@@ -18,6 +18,8 @@ const cellText = (el: Element) => el.textContent.trim();
 export function TableFrame({ children, tone = "panel", note }: { children: ReactNode; tone?: "panel" | "code"; note?: string }) {
   const table = useRef<HTMLTableElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  useScrollFade(scroller, "x");
   const [rows, setRows] = useState(0);
   const [all, setAll] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -39,7 +41,7 @@ export function TableFrame({ children, tone = "panel", note }: { children: React
   const folded = rows > FOLD_ROWS && !all;
   return (
     <div data-table className={cn("octo-table-frame group/table", tone === "code" && "octo-table-code")} data-folded={folded || undefined}>
-      <div className="octo-table-scroll" tabIndex={-1}>
+      <div ref={scroller} className="octo-table-scroll" tabIndex={-1}>
         <table ref={table} className="octo-table">
           {children}
         </table>

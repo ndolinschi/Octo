@@ -7,6 +7,16 @@ import type { PickerSection } from "../../lib/picker";
 import { PopupList, popupOptionId, POPUP_PANEL } from "../primitives/PopupList";
 import { popupMove } from "../primitives/popupNav";
 import { useLatest } from "../../lib/hooks";
+import { MODE_LABEL } from "../../lib/modeLabels";
+import { MODES } from "../../lib/modes";
+
+/** "ask|plan|agent" reads "Agent, Ask or Plan"; any other argument hint stays as it is. */
+function argsText(args: string): string {
+  const parts = args.split("|");
+  if (parts.length < 2 || !parts.every((p) => p in MODE_LABEL)) return args;
+  const names = MODES.filter((m) => parts.includes(m)).map((m) => MODE_LABEL[m]);
+  return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
 
 export type SlashMenuHandle = { onKeyDown(e: KeyboardEvent): boolean };
 
@@ -48,13 +58,15 @@ export const SlashMenu = forwardRef<
   const { onActive, listId } = props;
   const activeId = activeRow?.id ?? null;
   useEffect(() => onActive(activeId === null ? null : popupOptionId(listId, activeId)), [activeId, onActive, listId]);
+  // A name that both Octo and the agent offer says whose it is on the agent's row ("/review · Claude Code").
+  const octoNames = new Set(groups.filter((g) => g.rows[0]?.group === "octo").flatMap((g) => g.rows.map((r) => r.name)));
   const sections: PickerSection[] = groups.map((g) => ({
     title: g.label,
     rows: g.rows.map((row) => ({
       id: row.id,
-      label: `/${row.name}`,
+      label: row.group === "agent" && octoNames.has(row.name) ? `/${row.name} · ${g.label}` : `/${row.name}`,
       detail: row.available ? row.description : `${row.description}. ${row.reason ?? "Not available right now."}`,
-      ...(row.args ? { hint: row.args } : {}),
+      ...(row.args ? { hint: argsText(row.args) } : {}),
       disabled: !row.available,
       run: () => props.onChoose(row),
     })),

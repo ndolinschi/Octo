@@ -24,6 +24,11 @@ export function ProvidersSection() {
   const [picked, setPicked] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [routerOpen, setRouterOpen] = useState(false);
+  const openRouter = () => {
+    setRouterOpen(true);
+    window.setTimeout(() => document.getElementById("row-router-group")?.scrollIntoView({ block: "start", behavior: "smooth" }), 50);
+  };
   const all = useMemo(() => list?.providers ?? [], [list]);
   const selected = all.find((p) => p.id === picked) ?? all.find((p) => p.id === defaultProviderId(all));
   const groups = providerGroups(all, { expanded, selectedId: selected?.id });
@@ -43,7 +48,7 @@ export function ProvidersSection() {
               </Button>
             }
           >
-            {providers.message.replace(/\.$/, "")}. Check that the harness is running, then retry.
+            {providers.message.replace(/\.$/, "")}. Check that Octo&apos;s local service is running, then retry.
           </Notice>
         )}
         {list && (
@@ -70,14 +75,14 @@ export function ProvidersSection() {
                       Providers
                     </Button>
                   </div>
-                  <ProviderDetail key={selected.id} provider={selected} />
+                  <ProviderDetail key={selected.id} provider={selected} onRouter={openRouter} />
                 </div>
               )}
             </div>
           </div>
         )}
       </SettingsGroup>
-      <RouterSettings />
+      <RouterSettings open={routerOpen} onOpen={setRouterOpen} />
     </>
   );
 }

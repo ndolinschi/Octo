@@ -29,6 +29,20 @@ const ProjectCommands = lazy(() => import("../commands/ProjectCommands"));
 const TabMenu = lazy(() => import("./TabMenu"));
 const AllTabsPicker = lazy(() => import("./AllTabsPicker").then((m) => ({ default: m.AllTabsPicker })));
 
+/**
+ * Round 3: narrow — how far the strip's direct children (laid out at their widths now, the tabs box at its minimum) run past
+ * the strip's content box; 0 when they fit. Summed from the children's own widths, not from `scrollWidth`, which also counts
+ * absolutely placed and invisible parts and changes with the fold it is meant to decide.
+ */
+function stripShortfall(el: HTMLElement): number {
+  const css = getComputedStyle(el);
+  const gap = parseFloat(css.columnGap) || 0;
+  const inner = el.clientWidth - (parseFloat(css.paddingLeft) || 0) - (parseFloat(css.paddingRight) || 0);
+  const kids = [...el.children].filter((c): c is HTMLElement => c instanceof HTMLElement && getComputedStyle(c).position !== "absolute");
+  const used = kids.reduce((sum, c) => sum + c.offsetWidth, 0) + gap * Math.max(0, kids.length - 1);
+  return Math.max(0, Math.round(used - inner));
+}
+
 /** Room the "+" takes after the tabs (28 + the 4px gap), and the "all tabs" button when the strip scrolls (24 + 4). */
 const PLUS_ROOM = 32;
 const ALL_TABS_ROOM = 28;
@@ -65,18 +79,26 @@ export function TabStrip(props: {
   const allButton = useRef<HTMLButtonElement>(null);
   const [allOpen, setAllOpen] = useState(false);
   const [room, setRoom] = useState(0);
+  const strip = useRef<HTMLDivElement>(null);
+  // Round 3: narrow — the strip's own width too: its tabs box never measures below TAB_MIN + the "+", so `room` alone does not say that the end cluster pushed past the edge.
+  const [stripWidth, setStripWidth] = useState(0);
   useLayoutEffect(() => {
     const w = wrap.current;
+    const st = strip.current;
     if (!w) return;
-    const measure = () => setRoom(w.clientWidth);
+    const measure = () => {
+      setRoom(w.clientWidth);
+      if (st) setStripWidth(st.clientWidth);
+    };
     const ro = new ResizeObserver(measure);
     ro.observe(w);
+    if (st) ro.observe(st);
     measure();
     return () => ro.disconnect();
   }, []);
   // Decision 90, narrow strips: what "N agents" and "Run" give back when they fold, measured from the end of this strip.
-  const strip = useRef<HTMLDivElement>(null);
-  const [ends, setEnds] = useState({ agents: 0, run: 0 });
+  // `short`: how far the strip's content runs past its edge now (0 when it fits), taken off `room` before deciding.
+  const [ends, setEnds] = useState({ agents: 0, run: 0, short: 0 });
   const [compactAgents, setCompactAgents] = useState(false);
   const [compactRun, setCompactRun] = useState(false);
   useLayoutEffect(() => {
@@ -86,10 +108,11 @@ export function TabStrip(props: {
     const next = {
       agents: label ? label.offsetWidth : 0,
       run: el.querySelector('[aria-label^="Run a project command"]') ? RUN_FREED : 0,
+      short: stripShortfall(el),
     };
-    setEnds((e) => (e.agents === next.agents && e.run === next.run ? e : next));
+    setEnds((e) => (e.agents === next.agents && e.run === next.run && e.short === next.short ? e : next));
     // The lazy commands arrive and the strip's width changes (`room`), a fold flips: measure again.
-  }, [room, compactAgents, compactRun, props.tabs.length]);
+  }, [room, stripWidth, compactAgents, compactRun, props.tabs.length]);
   const [menu, setMenu] = useState<{ tab: TabId; x: number; y: number } | null>(null);
   const drag = useDrag();
   const counts = useOptionalComments()?.counts;
@@ -113,7 +136,14 @@ export function TabStrip(props: {
     })
     .join("\n");
   const fit = useStripFit(list, room - reserved, signature);
-  const end = endPlan({ room: room - reserved, tabs: props.tabs.length, ...ends, agentsCompact: compactAgents, runCompact: compactRun });
+  const end = endPlan({
+    room: room - reserved - ends.short,
+    tabs: props.tabs.length,
+    agents: ends.agents,
+    run: ends.run,
+    agentsCompact: compactAgents,
+    runCompact: compactRun,
+  });
   // Derived from measurements already in state: adjusted while rendering, not in an effect.
   if (end.agentsCompact !== compactAgents) setCompactAgents(end.agentsCompact);
   if (end.runCompact !== compactRun) setCompactRun(end.runCompact);

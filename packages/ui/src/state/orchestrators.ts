@@ -12,9 +12,10 @@ export function isPending(s: OrchestratorState): s is PendingState {
 
 /**
  * Each project's orchestrator state (decision 23) for the sidebar and Home: from the open project's live agents,
- * else the cached agent list (`listAgents`, re-read when the project's `updated_at` moves, 4 in flight). Until a
- * list is in, a running summary reads as working and anything else is `pending` (not a guessed "idle", which flashed a wrong
- * glyph); a list that cannot be read falls back to idle since `updated_at`.
+ * else the cached agent list (`listAgents`, re-read when the project's `updated_at` moves, 4 in flight). The summary's
+ * waiting approvals and forms make it "needs you" whatever the agents say (A1). Until a list is in, a running summary reads
+ * as working and anything else is `pending` (not a guessed "idle", which flashed a wrong glyph); a list that cannot be read
+ * falls back to idle since `updated_at`.
  */
 export function useOrchestrators(projects: readonly ProjectSummary[] | null): Map<string, OrchestratorState> {
   const store = useActivity();
@@ -37,11 +38,15 @@ export function useOrchestrators(projects: readonly ProjectSummary[] | null): Ma
       // The open project's live agents are newer than the polled summary: their root's status decides alone.
       const live = store.liveAgents(p.id);
       const agents = live ?? store.peekAgents(p);
+      const waiting = { approvals: p.pending_approvals ?? 0, inputs: p.pending_inputs ?? 0 };
+      // An approval or a form that waits decides alone (A1), before the agents are in too.
       const state: OrchestratorState = agents
-        ? orchestratorState(agents, live ? "idle" : p.status, p.attention)
-        : p.status === "running"
-          ? { kind: "working", agents: [] }
-          : (last.get(p.id) ?? (failed.has(p.id) ? { kind: "idle", at: p.updated_at } : pending(p.updated_at)));
+        ? orchestratorState(agents, live ? "idle" : p.status, p.attention, waiting)
+        : p.attention === "needs_you" || waiting.approvals + waiting.inputs > 0
+          ? orchestratorState([], p.status, p.attention, waiting)
+          : p.status === "running"
+            ? { kind: "working", agents: [] }
+            : (last.get(p.id) ?? (failed.has(p.id) ? { kind: "idle", at: p.updated_at } : pending(p.updated_at)));
       if (agents) last.set(p.id, state);
       out.set(p.id, state);
     }

@@ -1,8 +1,11 @@
 import { ArrowLeft } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
-import { useEscape, useRowKeys } from "../../lib/hooks";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useEscape } from "../../lib/hooks";
+import { useRowKeys } from "../../lib/hooksMore";
 import { cn } from "../../lib/cn";
 import { settingsHref } from "../../lib/route";
+import { openShortcuts } from "../../lib/openShortcuts";
+import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { ListFrame } from "../primitives/Card";
 import { ListRow } from "../primitives/ListRow";
@@ -15,24 +18,32 @@ import { AppearanceSection, GeneralSection } from "./GeneralSection";
 import { HarnessSettingsProvider } from "./harnessSettings";
 import { ModelsSection } from "./ModelsSection";
 import { SettingsActionsProvider, type SettingsActions } from "./pageContext";
-import { AboutSection, PrivacySection } from "./PrivacySection";
+import { PrivacySection } from "./PrivacySection";
 import { EditorSection, MemorySection, UsageSection } from "./ProjectSections";
 import { ProvidersSection } from "./ProvidersSection";
+import { SettingsGroup, SettingsRow } from "./parts";
 import { SettingsNav } from "./SettingsNav";
 import { searchSettings, SECTIONS, sectionLabel, sectionOf, type IndexedRow, type SectionId } from "./settingsIndex";
 
-/** `projectId` is the project that was open when Settings was opened (null from Home): the Models project tab starts on it. */
+const IntegrationsView = lazy(() => import("./IntegrationsView").then((m) => ({ default: m.IntegrationsView })));
+
+/** `projectId` is the project that was open when Settings was opened (null from Home): the per-project sections start on it. */
 const CONTENT: Record<SectionId, (projectId: string | null) => ReactNode> = {
   general: () => <GeneralSection />,
   appearance: () => <AppearanceSection />,
   providers: () => <ProvidersSection />,
   models: (projectId) => <ModelsSection projectId={projectId} />,
-  editor: () => <EditorSection />,
-  usage: () => <UsageSection />,
-  memory: () => <MemorySection />,
-  commands: () => <CommandsSection />,
+  editor: (projectId) => <EditorSection projectId={projectId} />,
+  integrations: () => (
+    <Suspense fallback={<p className="h-9" aria-busy />}>
+      <IntegrationsView />
+    </Suspense>
+  ),
+  usage: (projectId) => <UsageSection projectId={projectId} />,
+  memory: (projectId) => <MemorySection projectId={projectId} />,
+  commands: (projectId) => <CommandsSection projectId={projectId} />,
   privacy: () => <PrivacySection />,
-  about: () => <AboutSection />,
+  about: () => <AboutPage />,
 };
 
 /**
@@ -150,13 +161,48 @@ export function SettingsPage(props: {
               ) : (
                 // Cross-part leftovers (a): the row sections keep a reading measure (`settings-rows`) from the same left edge, so a
                 // row's control sits near its label; Providers keeps the column for its list | detail surface.
-                <div className={cn("flex flex-col gap-6", section !== "providers" && "max-w-settings-rows")}>{CONTENT[section](props.projectId ?? null)}</div>
+                <div className={cn("flex flex-col gap-6", section !== "providers" && section !== "usage" && "max-w-settings-rows")}>
+                  {CONTENT[section](props.projectId ?? null)}
+                </div>
               )}
             </div>
           </ScrollArea>
         </div>
       </SettingsActionsProvider>
     </HarnessSettingsProvider>
+  );
+}
+
+/**
+ * About: two groups named for what is in them (the page title already says "About"): the versions, and the help a person
+ * can ask for. The app shows no version of its own: the host does not provide one (`HostCapabilities` has none).
+ */
+function AboutPage() {
+  const { version, demo, bridgeUrl, shell } = useApp();
+  return (
+    <>
+      <SettingsGroup label="Versions">
+        <SettingsRow
+          rowId="version"
+          title="Harness version"
+          description={demo ? "Demo data, in memory: no local service runs." : "The version of Octo's local service (the harness) this window uses."}
+          control={<span className="text-sm text-fg-2 tabular-nums">{version ?? "Unknown"}</span>}
+        />
+        {/* S6: a sentence a person would write. */}
+        <SettingsRow
+          title="App"
+          description={demo ? `The ${shell} app, running on demo data in memory.` : `The ${shell} app, connected to Octo's local service at ${bridgeUrl}.`}
+        />
+      </SettingsGroup>
+      <SettingsGroup label="Help">
+        <SettingsRow
+          rowId="shortcuts"
+          title="Keyboard shortcuts"
+          description="Every shortcut in one list. Press ? anywhere outside a text field."
+          control={<Button onClick={openShortcuts}>Show shortcuts</Button>}
+        />
+      </SettingsGroup>
+    </>
   );
 }
 

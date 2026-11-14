@@ -2,9 +2,12 @@ import type { Agent } from "@octo/agent-client";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { formatRelative } from "../../lib/format";
-import { matchScore } from "../../lib/match";
+import { fieldScore, rankMatches } from "../../lib/match";
+import { openShortcuts } from "../../lib/openShortcuts";
 import { rankGroups } from "../../lib/matchMore";
-import { navigate } from "../../lib/route";
+import { navigate, settingsHref } from "../../lib/route";
+import { focusSoon } from "../../lib/focus";
+import { useMediaQuery } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { useNav } from "../../state/nav";
 import { hitRow } from "../../lib/requestSearch";
@@ -23,13 +26,51 @@ import { isPending, useOrchestrators } from "../../state/orchestrators";
 import { useModal } from "../primitives/useModal";
 import { popupListKey } from "../primitives/popupNav";
 
+/** The settings sections and rows the palette searches (`settings/settingsIndex`; the app passes its loader: a feature may not import another). */
+export type SettingsIndex = {
+  SECTIONS: readonly { id: string; label: string }[];
+  SETTINGS_INDEX: readonly { section: string; id: string; title: string; description: string; keywords?: string | undefined }[];
+  sectionLabel(id: string): string;
+};
+
 export type PaletteAction = { id: string; label: string; hint?: string; shortcut?: string; run(): void };
 
-type Item = { id: string; label: string; detail?: string | undefined; shortcut?: string | undefined; glyph?: GlyphState; pending?: true; run(): void };
+/** `search` is text that is searched but not shown (descriptions, keywords); an item without it is searched by its detail. */
+type Item = {
+  id: string;
+  label: string;
+  detail?: string | undefined;
+  search?: string | undefined;
+  shortcut?: string | undefined;
+  glyph?: GlyphState;
+  pending?: true;
+  run(): void;
+};
 type Group = { title: string; items: Item[] };
 
 /** Rows per group with an empty query, and when filtering. */
 const LIMIT = 6;
+/** With an empty query the first group: what a newcomer needs (ids of the actions below). */
+const SUGGESTED = ["x:new", "w:tool-files", "w:tool-review", "x:settings", "x:shortcuts"];
+const THEMES = [
+  ["dark", "Dark"],
+  ["light", "Light"],
+  ["system", "System"],
+] as const;
+
+/** Opens a settings section and, for a row, scrolls to it and focuses its control once the page has it. */
+function openSetting(section: string, row?: string) {
+  window.location.hash = settingsHref(section);
+  if (!row) return;
+  focusSoon(
+    () => {
+      const el = document.getElementById(`row-${row}`);
+      el?.scrollIntoView({ block: "center" });
+      return el?.querySelector<HTMLElement>("button, input, a[href]");
+    },
+    { timeout: 2500 },
+  );
+}
 
 /**
  * Ctrl/Cmd+K: one input over projects, the open project's tabs, requests and agents, and actions
@@ -37,8 +78,14 @@ const LIMIT = 6;
  * The input keeps focus (combobox + listbox); arrows move the selection, Enter runs it.
  * Hovering highlights a row without moving the keyboard selection.
  */
-export function CommandPalette(props: { openProjectId: string | null; actions: PaletteAction[]; onClose(): void }) {
-  const { projects, bridge } = useApp();
+export function CommandPalette(props: {
+  openProjectId: string | null;
+  actions: PaletteAction[];
+  settingsIndex: () => Promise<SettingsIndex>;
+  onClose(): void;
+}) {
+  const { projects, bridge, canChooseTheme, themePref, setThemePref } = useApp();
+  const narrow = useMediaQuery("(max-width: 600px)");
   const nav = useNav();
   const panel = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -49,7 +96,7 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
   const openProject = projects?.find((p) => p.id === props.openProjectId);
   const orchestrators = useOrchestrators(projects);
   const { requests } = useRequests(openProject, true);
-  const past = useRequestSearch(query);
+  const pastHits = useRequestSearch(query);
   const { onClose } = props;
   const state = usePresence();
   // The workspace's tabs and tab actions, as they are when the palette opens.
@@ -78,6 +125,19 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
     [onClose],
   );
 
+  const [settings, setSettings] = useState<SettingsIndex | null>(null);
+  const { settingsIndex } = props;
+  useEffect(() => {
+    let alive = true;
+    settingsIndex().then(
+      (i) => alive && setSettings(i),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [settingsIndex]);
+
   const openId = openProject?.id;
   useEffect(() => {
     if (!openId) return;
@@ -94,113 +154,158 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
   const groups = useMemo<Group[]>(() => {
     const now = Date.now();
     const go = runAfterClose;
-    const rank = (items: Item[], text: (i: Item) => string): Item[] => {
-      if (!query.trim()) return items.slice(0, LIMIT);
-      return items
-        .map((item, i) => ({ item, i, score: matchScore(query, text(item)) }))
-        .filter((x) => x.score >= 0)
-        .sort((a, b) => b.score - a.score || a.i - b.i)
-        .slice(0, LIMIT)
-        .map((x) => x.item);
-    };
+    const q = query.trim();
     const pid = openId;
-    const all: Group[] = [
+    const seen = new Set<string>();
+    // The same request text of the same project is listed once (a repeated prompt is six rows otherwise).
+    const fresh = (project: string, text: string) => {
+      const key = `${project}\n${text.trim().toLowerCase()}`;
+      return !seen.has(key) && !!seen.add(key);
+    };
+    const own: Item[] = [
+      { id: "x:shortcuts", label: "Keyboard shortcuts", detail: "?", run: go(openShortcuts) },
+      { id: "x:help", label: "Help", detail: "Keys and how to get around", run: go(openShortcuts) },
       {
-        title: "Tabs",
-        items: workspace
-          ? rank(
-              workspace.tabs.map((t) => ({ ...t, run: go(t.run) })),
-              (i) => i.label,
-            )
-          : [],
+        id: "x:model",
+        label: "Change model",
+        detail: "The model of this project",
+        run: go(() => {
+          const chip = [...document.querySelectorAll<HTMLElement>("[data-model-picker]")].find((el) => el.offsetParent !== null);
+          if (chip) chip.click();
+          else openSetting("models");
+        }),
       },
-      {
-        title: "Projects",
-        items: rank(
-          (projects ?? []).map((p) => ({
-            id: `p:${p.id}`,
-            label: p.name,
-            // Finding C / polish step 2 (F6): the project's real state (a failed one shows its glyph, not idle) and the sidebar's meta.
-            detail: projectRowLines(orchestrators.get(p.id) ?? { kind: "idle", at: p.updated_at }, now, p.updated_at).meta ?? undefined,
-            ...(isPending(orchestrators.get(p.id) ?? { kind: "new" })
-              ? { pending: true as const }
-              : { glyph: orchestratorGlyph((orchestrators.get(p.id) ?? { kind: "idle" as const }).kind) }),
-            run: go(() => navigate(p.id)),
-          })),
-          (i) => i.label,
-        ),
-      },
-      {
-        // Decision 94d: ONE "Requests" group: this project's first (its loaded requests, then older hits of the harness's search),
-        // then other projects' hits with the project dim on the right.
-        title: "Requests",
-        items: [
-          ...(pid
-            ? rank(
-                (requests ?? []).map((r) => ({
+      ...(canChooseTheme
+        ? THEMES.map(([value, name]) => ({
+            id: `x:theme-${value}`,
+            label: `Change theme: ${name}`,
+            detail: themePref === value ? "current" : undefined,
+            search: "dark light system appearance colour color mode",
+            run: go(() => setThemePref(value)),
+          }))
+        : []),
+    ];
+    const actions: Item[] = [
+      ...(workspace?.actions ?? []).map((a) => ({ ...a, id: `w:${a.id}`, run: go(a.run) })),
+      ...props.actions.map((a) => ({ id: `x:${a.id}`, label: a.label, detail: a.hint, shortcut: a.shortcut, run: go(a.run) })),
+      ...own,
+    ];
+    // Settings: each section, then the rows of the settings search (description and keywords are searched, not shown).
+    const { SECTIONS, SETTINGS_INDEX, sectionLabel } = settings ?? { SECTIONS: [], SETTINGS_INDEX: [], sectionLabel: () => "" };
+    const settingRows: Item[] = [
+      // A section whose own row has its name ("Providers") is the row.
+      ...SECTIONS.filter((s) => !SETTINGS_INDEX.some((r) => r.title === s.label)).map((s) => ({
+        id: `s:${s.id}`,
+        label: s.label,
+        detail: "Settings",
+        run: go(() => openSetting(s.id)),
+      })),
+      ...SETTINGS_INDEX.filter((r) => r.id !== "shortcuts").map((r) => ({
+        id: `s:${r.section}:${r.id}`,
+        label: r.title,
+        detail: sectionLabel(r.section),
+        search: `${r.description} ${r.keywords ?? ""} ${sectionLabel(r.section)}`,
+        run: go(() => openSetting(r.section, r.id)),
+      })),
+    ];
+    const loaded: Item[] = pid
+      ? (requests ?? []).flatMap((r) => {
+          const label = r.text.split("\n", 1)[0] ?? r.text;
+          return !q || fresh(pid, label)
+            ? [
+                {
                   id: `r:${r.id}`,
-                  label: r.text.split("\n", 1)[0] ?? r.text,
+                  label,
                   detail: formatRelative(r.created_at, now),
                   run: go(() => {
                     nav.requestTurn({ projectId: pid, messageId: r.id });
                     navigate(pid);
                   }),
-                })),
-                (i) => i.label,
-              )
-            : []),
-          ...past
-            .filter((h) => !(h.project_id === pid && (requests ?? []).some((r) => r.id === h.message_id)))
-            .sort((x, y) => Number(y.project_id === pid) - Number(x.project_id === pid))
-            .map((h) => ({
-              ...hitRow(h),
-              run: go(() => {
-                nav.requestTurn({ projectId: h.project_id, messageId: h.message_id });
-                navigate(h.project_id);
-              }),
-            })),
-        ],
-      },
-      {
-        title: "Agents",
-        items: pid
-          ? rank(
-              (agents ?? []).map((a) => {
-                const root = a.parent_id === null;
-                return {
-                  id: `a:${a.id}`,
-                  label: root ? "Conversation" : a.role,
-                  detail: root ? undefined : a.title,
-                  glyph: agentGlyph(a.status),
-                  run: go(() => {
-                    if (!workspace) return navigate(pid, root ? null : a.id);
-                    if (root) workspace.api.focusChat();
-                    else workspace.api.openAgent(a.id);
-                  }),
-                };
-              }),
-              (i) => `${i.label} ${i.detail ?? ""}`,
-            )
-          : [],
-      },
-      {
-        title: "Actions",
-        items: rank(
-          [
-            ...(workspace?.actions ?? []).map((a) => ({ ...a, id: `w:${a.id}`, run: go(a.run) })),
-            ...props.actions.map((a) => ({ id: `x:${a.id}`, label: a.label, detail: a.hint, shortcut: a.shortcut, run: go(a.run) })),
-          ],
-          (i) => i.label,
-        ),
-      },
-    ];
+                },
+              ]
+            : [];
+        })
+      : [];
+    const projectRows: Item[] = (projects ?? []).map((p) => ({
+      id: `p:${p.id}`,
+      label: p.name,
+      // Finding C / polish step 2 (F6): the project's real state (a failed one shows its glyph, not idle) and the sidebar's meta.
+      detail: projectRowLines(orchestrators.get(p.id) ?? { kind: "idle", at: p.updated_at }, now, p.updated_at).meta ?? undefined,
+      ...(isPending(orchestrators.get(p.id) ?? { kind: "new" })
+        ? { pending: true as const }
+        : { glyph: orchestratorGlyph((orchestrators.get(p.id) ?? { kind: "idle" as const }).kind) }),
+      run: go(() => navigate(p.id)),
+    }));
+    const agentRows: Item[] = pid
+      ? (agents ?? []).map((a) => {
+          const root = a.parent_id === null;
+          return {
+            id: `a:${a.id}`,
+            label: root ? "Conversation" : a.role,
+            detail: root ? undefined : a.title,
+            glyph: agentGlyph(a.status),
+            run: go(() => {
+              if (!workspace) return navigate(pid, root ? null : a.id);
+              if (root) workspace.api.focusChat();
+              else workspace.api.openAgent(a.id);
+            }),
+          };
+        })
+      : [];
+    const tabRows: Item[] = workspace ? workspace.tabs.map((t) => ({ ...t, run: go(t.run) })) : [];
+    // One real (substring) hit anywhere drops every loose letter-by-letter hit: "key" is not "Knock every yellow".
+    const strict = [tabRows, projectRows, loaded, agentRows, actions, settingRows].some((l) => l.some((i) => fieldScore(q, i.label, i.search ?? i.detail).sub));
+    const rank = (items: Item[]) => rankMatches(q, items, (i) => [i.label, i.search ?? i.detail], LIMIT, strict);
+    const past = pastHits
+      .filter((h) => fresh(h.project_id, hitRow(h).label))
+      .sort((x, y) => Number(y.project_id === pid) - Number(x.project_id === pid))
+      .map((h) => ({
+        ...hitRow(h),
+        run: go(() => {
+          nav.requestTurn({ projectId: h.project_id, messageId: h.message_id });
+          navigate(h.project_id);
+        }),
+      }));
+    // Past requests come after the actions that match: a typed query that names an action finds the action first.
+    const all: Group[] = q
+      ? [
+          { title: "Tabs", items: rank(tabRows) },
+          { title: "Projects", items: rank(projectRows) },
+          { title: "Actions", items: rank(actions) },
+          { title: "Settings", items: rank(settingRows) },
+          { title: "Requests", items: [...rank(loaded), ...past] },
+          { title: "Agents", items: rank(agentRows) },
+        ]
+      : [
+          { title: "Suggested", items: SUGGESTED.flatMap((id) => actions.find((a) => a.id === id) ?? []) },
+          { title: "Tabs", items: tabRows.slice(0, LIMIT) },
+          { title: "Projects", items: projectRows.slice(0, LIMIT) },
+          { title: "Requests", items: [...loaded.slice(0, LIMIT), ...past] },
+          { title: "Agents", items: agentRows.slice(0, LIMIT) },
+        ];
     // Groups follow the quality of their best match (lib/match.ts: word-start before mid-word before loose).
     return rankGroups(
       query,
       all.filter((g) => g.items.length),
-      (g) => g.items.map((i) => i.label),
+      (g) => g.items.map((i) => `${i.label} ${i.search ?? i.detail ?? ""}`),
     );
-  }, [query, projects, orchestrators, requests, agents, props.actions, openId, nav, runAfterClose, workspace, past]);
+  }, [
+    query,
+    projects,
+    orchestrators,
+    requests,
+    agents,
+    props.actions,
+    openId,
+    nav,
+    runAfterClose,
+    workspace,
+    pastHits,
+    canChooseTheme,
+    themePref,
+    setThemePref,
+    settings,
+  ]);
 
   const flat = groups.flatMap((g) => g.items);
   const current = Math.min(selected, Math.max(0, flat.length - 1));
@@ -245,8 +350,8 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
       >
         <SearchField
           variant="header"
-          label="Search tabs, projects, requests, agents and actions"
-          placeholder="Search tabs, projects, requests, agents, actions"
+          label="Search tabs, projects, requests, agents, settings and actions"
+          placeholder={narrow ? "Search or run a command" : "Search tabs, projects, requests, agents, actions"}
           value={query}
           clearOnEscape={false}
           onChange={(v) => {

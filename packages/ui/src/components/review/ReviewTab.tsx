@@ -28,7 +28,7 @@ export function ReviewTab(props: Loaders) {
   const api = useMemo(() => reviewApi(bridge, projectId), [bridge, projectId]);
   if (!api)
     return (
-      <Notice title="This harness cannot review pull requests">
+      <Notice title="This version of Octo's local service cannot review pull requests">
         Update the harness, or open the app with the demo data (?demo=1) to try the review screens.
       </Notice>
     );

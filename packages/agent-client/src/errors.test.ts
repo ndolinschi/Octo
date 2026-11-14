@@ -14,7 +14,7 @@ test("BridgeError carries hint, command, action and details of a structured erro
       code: "model_unavailable",
       message: "GitHub Copilot is not logged in.",
       hint: "Log in to it in a terminal, then check again.",
-      command: "copilot auth login",
+      command: "copilot login",
       action: "recheck_provider",
       details: "models.fast cannot run",
       provider: "copilot",
@@ -26,7 +26,7 @@ test("BridgeError carries hint, command, action and details of a structured erro
     assert.ok(e instanceof BridgeError);
     assert.equal(e.message, "GitHub Copilot is not logged in.");
     assert.equal(e.hint, "Log in to it in a terminal, then check again.");
-    assert.equal(e.command, "copilot auth login");
+    assert.equal(e.command, "copilot login");
     assert.equal(e.action, "recheck_provider");
     assert.equal(e.details, "models.fast cannot run");
     return true;
@@ -52,11 +52,11 @@ test("turn.finished and project.attention keep the structured fields", () => {
     status: "failed",
     error: "GitHub Copilot is not logged in.",
     hint: "Log in to it in a terminal, then check again.",
-    command: "copilot auth login",
+    command: "copilot login",
     action: "recheck_provider",
     details: "exit status 1",
   });
-  assert.equal(s.lastTurn?.command, "copilot auth login");
+  assert.equal(s.lastTurn?.command, "copilot login");
   assert.equal(s.lastTurn?.action, "recheck_provider");
   assert.equal(s.lastTurn?.details, "exit status 1");
   s = applyEvent(s, {
@@ -67,10 +67,10 @@ test("turn.finished and project.attention keep the structured fields", () => {
     inputs: 0,
     state: "failed",
     error: "GitHub Copilot is not logged in.",
-    command: "copilot auth login",
+    command: "copilot login",
     action: "recheck_provider",
   });
-  assert.equal(s.attention.command, "copilot auth login");
+  assert.equal(s.attention.command, "copilot login");
   assert.equal(s.attention.action, "recheck_provider");
 });
 

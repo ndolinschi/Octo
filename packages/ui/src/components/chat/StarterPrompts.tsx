@@ -1,6 +1,6 @@
 import type { Project } from "@octo/agent-client";
 import { useRef } from "react";
-import { useRowKeys } from "../../lib/hooks";
+import { useRowKeys } from "../../lib/hooksMore";
 import { prompts } from "../../lib/starters";
 import { ListRow } from "../primitives/ListRow";
 import { SectionHeader } from "../primitives/SectionHeader";

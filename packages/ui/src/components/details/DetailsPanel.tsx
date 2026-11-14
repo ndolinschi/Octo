@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { fileName, parentPath } from "../../lib/files";
 import { formatRelative, formatTokens, middleTruncate } from "../../lib/format";
-import { useDelayedLoading, useNow, useRowKeys } from "../../lib/hooks";
+import { useNow } from "../../lib/hooks";
+import { useDelayedLoading, useRowKeys } from "../../lib/hooksMore";
 import { useApp } from "../../state/app";
 import { useCode } from "../../state/code";
 import { useProject } from "../../state/project";
@@ -19,7 +20,7 @@ import { Notice } from "../primitives/Notice";
 import { Panel, PanelBody } from "../primitives/Panel";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { SkeletonList } from "../primitives/Skeleton";
-import { StatusIcon } from "../primitives/Status";
+import { StatusIcon } from "../primitives/statusMore";
 import { groupWrites, useWrittenFiles } from "./useWrittenFiles";
 import { Server, type LucideIcon } from "lucide-react";
 import { languagesIn } from "../../lib/languages";
@@ -27,17 +28,20 @@ import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import type { ContextBreakdown } from "@octo/agent-client";
 import { contextMeter, shareText } from "../../lib/contextMeter";
 import { budgetState, policyLabel, routeLine } from "../../lib/modelsMore";
-import { useModelNames } from "../../state/models";
+import { useModelNames } from "../../state/modelNames";
+import { canRun } from "../../lib/providers/providers";
+import { useProviders } from "../../lib/providers/useProviders";
 
 /** Rows shown before "Show all" / "Show more" (contract v6 decision 17). */
 const PAGE = 8;
 /** Outputs of the latest request shown before "Show more" (decision 38). */
 const OUTPUTS = 5;
+/** B7: the tiers by the one name Settings uses ("Fast tier"), so a person sees the same words in both places. */
 const TIERS = [
   ["orchestrator", "Conversation"],
-  ["fast", "Fast"],
-  ["balanced", "Balanced"],
-  ["deep", "Deep"],
+  ["fast", "Fast tier"],
+  ["balanced", "Balanced tier"],
+  ["deep", "Deep tier"],
 ] as const;
 
 const roleOf = (a: Agent) => (a.parent_id === null ? "Conversation" : roleText(a.role));
@@ -206,8 +210,10 @@ function Context() {
 
 function Team() {
   const { project, state } = useProject();
-  const { config } = useApp();
+  const { config, bridge } = useApp();
   const names = useModelNames();
+  const providers = useProviders(bridge);
+  const list = providers.status === "ready" ? providers.list : null;
   if (!project) return null;
   const root = state.agents[project.orchestrator_agent_id];
   const budget = budgetState(project.spent_usd, project.budget_usd);
@@ -223,18 +229,25 @@ function Team() {
         // The orchestrator's row names the model that answered (decision 37), and under it the one it asked for.
         const served =
           key === "orchestrator" && root?.served_model ? names.served({ model: project.models.orchestrator, served_model: root.served_model }) : null;
+        // A3: a model whose provider is not connected reads in the warn tone with the reason on hover, as the model chips do.
+        const stuck = list !== null && project.models[key] !== "" && !canRun(list, project.models[key]);
         return (
           <div key={key} className="flex flex-col">
-            <div className={INFO_ROW} title={served ? served.long : project.models[key]}>
+            <div
+              className={INFO_ROW}
+              title={stuck ? "Cannot run: this model's provider is not connected. Change it in project settings." : served ? served.long : project.models[key]}
+            >
               <span className="shrink-0 text-fg-2">{label}</span>
-              <span className="ml-auto min-w-0 truncate pl-2 text-fg">{served ? served.name : names.name(project.models[key])}</span>
+              <span className={cn("ml-auto min-w-0 truncate pl-2", stuck ? "text-warn" : "text-fg")}>
+                {served ? served.name : names.name(project.models[key])}
+              </span>
             </div>
             {served?.asked && <p className="-mt-1 truncate px-2 pb-1 text-right text-xs text-fg-3">asked for {served.asked}</p>}
           </div>
         );
       })}
       {config?.router && (
-        <div className={INFO_ROW}>
+        <div className={INFO_ROW} title="How the router picks a tier for each task: Auto, Ceiling or Fixed (project settings).">
           <span className="shrink-0 text-fg-2">Routing</span>
           <span className="ml-auto text-fg">{policyLabel(project.models.tier_policy)}</span>
         </div>
@@ -307,7 +320,7 @@ function PluginsInUse() {
           <div key={a.id} className={INFO_ROW}>
             <Slot icon={GLYPH.agent} />
             <span className="min-w-0 shrink-0 truncate text-fg">{a.label}</span>
-            <span className="ml-auto min-w-0 truncate pl-2 text-xs text-fg-3">ACP agent</span>
+            <span className="ml-auto min-w-0 truncate pl-2 text-xs text-fg-3">Agent</span>
           </div>
         ))}
     </InfoSection>

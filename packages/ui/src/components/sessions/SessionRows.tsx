@@ -1,7 +1,7 @@
 import type { ProjectSession } from "@octo/agent-client";
 import type { KeyboardEvent } from "react";
 import { canDelete, sessionRow, type SessionNode } from "../../lib/sessions/model";
-import { useModelNames } from "../../state/models";
+import { useModelNames } from "../../state/modelNames";
 import { IconMenu } from "../primitives/IconMenu";
 import { ListRow } from "../primitives/ListRow";
 import type { MenuItem } from "../primitives/Menu";

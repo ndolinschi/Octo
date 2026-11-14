@@ -16,6 +16,7 @@ import { ShellContext } from "../state/shell";
 import { Presence } from "../components/primitives/Presence";
 import type { PaletteAction } from "../components/shell/CommandPalette";
 import { Panel } from "../components/shell/Panel";
+import { MainSkeleton } from "../components/shell/MainSkeleton";
 import { Sidebar } from "../components/shell/Sidebar";
 import { TitleBar } from "../components/shell/TitleBar";
 import { StatusBar } from "../components/status/StatusBar";
@@ -28,7 +29,11 @@ import { DRAWER_QUERY } from "../lib/constants";
 /** Home loads on first visit (its own chunk); the app usually opens a project. */
 /** The palette loads after the first paint (idle) or on first use, whichever comes first (its own chunk). */
 const loadPalette = () => import("../components/shell/CommandPalette");
+/** The settings index for the palette's Settings group (loaded with the palette). */
+const loadSettingsIndex = () => import("../components/settings/settingsIndex");
 const CommandPalette = lazy(() => loadPalette().then((m) => ({ default: m.CommandPalette })));
+/** The shortcuts sheet: its own chunk, mounted for its "?" key; it renders only while open. */
+const ShortcutsSheet = lazy(() => import("../components/shell/ShortcutsSheet"));
 /** Demo-only `#/p/<id>/memory` (the Memory view on its own); not in a normal start's chunks. */
 const MemoryRoute = lazy(() => import("./MemoryRoute").then((m) => ({ default: m.MemoryRoute })));
 /** States the app is rarely in: their own chunks (bundle budget). */
@@ -110,6 +115,8 @@ function Shell() {
   // (decision 22); an unknown project id falls back to the first project.
   // Settings → General → "On startup: Home" keeps Home instead.
   const opened = useRef((window.location.hash === "" || window.location.hash === "#") && startupOpensLast());
+  // While it loads into a project, the empty main panel sits where the project's panel will (under the top row on phones too).
+  const [startsInProject] = useState(() => route.projectId !== null || ((window.location.hash === "" || window.location.hash === "#") && startupOpensLast()));
   useEffect(() => {
     if (health !== "online" || projects === null) return;
     const atHome = route.projectId === null && !opened.current;
@@ -256,7 +263,7 @@ function Shell() {
     { id: "home", label: "Go to Home", run: () => navigate(null) },
     { id: "new", label: "New project", run: newProject },
     { id: "settings", label: "Open settings", run: () => openSettings() },
-    { id: "integrations", label: "Open integrations", run: () => openSettings("editor") },
+    { id: "integrations", label: "Open integrations", run: () => openSettings("integrations") },
     { id: "providers", label: "Connect a provider", run: () => openSettings("providers") },
     { id: "sidebar", label: "Toggle sidebar", run: toggleSidebar },
   ];
@@ -289,7 +296,11 @@ function Shell() {
             )}
             {/* Equal gutters on the other sides of every panel (the sidebar card included); the row above is the top one. Full-bleed on phones. */}
             <div
-              className={cn("relative flex min-w-0 flex-1 flex-col p-gutter pt-0 pb-0 max-sm:p-0", !(workspace && route.projectId) && "pt-bar")}
+              className={cn(
+                "relative flex min-w-0 flex-1 flex-col p-gutter pt-0 pb-0 max-sm:p-0",
+                !(workspace && route.projectId) && "pt-bar",
+                !workspace && main === null && startsInProject && "max-sm:pt-bar",
+              )}
               inert={drawerShown}
             >
               {workspace && route.projectId ? (
@@ -304,7 +315,8 @@ function Shell() {
                 </ProjectProvider>
               ) : (
                 <Panel className="flex-1">
-                  <div className="min-h-0 flex-1">{main}</div>
+                  {/* Until the projects are in (or the route's project is found), lines instead of an empty card. */}
+                  <div className="min-h-0 flex-1">{main ?? (health !== "offline" && <MainSkeleton />)}</div>
                 </Panel>
               )}
             </div>
@@ -339,9 +351,17 @@ function Shell() {
           </Presence>
           <Presence show={palette}>
             <Suspense fallback={null}>
-              <CommandPalette openProjectId={known ? route.projectId : null} actions={actions} onClose={() => setPalette(false)} />
+              <CommandPalette
+                openProjectId={known ? route.projectId : null}
+                actions={actions}
+                settingsIndex={loadSettingsIndex}
+                onClose={() => setPalette(false)}
+              />
             </Suspense>
           </Presence>
+          <Suspense fallback={null}>
+            <ShortcutsSheet />
+          </Suspense>
           <Presence show={pending}>
             <Suspense fallback={null}>
               <LeaveDialog

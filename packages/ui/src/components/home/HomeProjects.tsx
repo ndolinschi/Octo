@@ -3,10 +3,9 @@ import { Plus } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { focusSoon, visibleComposer } from "../../lib/focus";
-import { formatRelative } from "../../lib/format";
-import { useRowKeys } from "../../lib/hooks";
+import { useRowKeys } from "../../lib/hooksMore";
 import { readable } from "../../lib/errors/plain";
-import { stateLine, type OrchestratorState } from "../../lib/orchestrator";
+import { projectWhen, stateLine, type OrchestratorState } from "../../lib/orchestrator";
 import { agentStack } from "../../lib/orchestratorMore";
 import { navigate } from "../../lib/route";
 import { TRIAGE_LABEL, TRIAGE_ORDER, triageGroups, type Triage } from "../../lib/triage";
@@ -31,7 +30,7 @@ const NEVER_CUT: readonly Triage[] = ["needs", "working"];
 
 function secondLine(state: OrchestratorState, reply: Reply | null | undefined, loaded: boolean): string {
   if (state.kind === "working") return state.agents.length ? agentStack(state.agents.map((a) => a.role)) : "Thinking";
-  if (state.kind === "needs") return state.error ? readable(state.error) : "The last turn failed";
+  if (state.kind === "needs" && !state.waiting) return state.error ? readable(state.error) : "The last turn failed";
   if (reply) return reply.text;
   return loaded || state.kind === "new" ? "No requests yet" : "";
 }
@@ -132,10 +131,12 @@ function ProjectRow({
       size="lg"
       title={project.name}
       description={`${status}${second}`}
-      meta={formatRelative(project.updated_at, now)}
-      // Decision 76: only a project that is working right now turns its arc; a needs-you row does not pulse.
+      // B6: the sidebar's time, from the same function (since the last turn, else since the project changed).
+      meta={projectWhen(state, now, project.updated_at) ?? undefined}
+      // Decision 76: only a project that is working right now turns its arc; a needs-you row does not pulse. C2: the glyph sits
+      // on the name's line (the 20px title line's centre is 8px above the 36px two-line block's centre).
       leading={
-        <span className={cn("flex", state.kind !== "working" && STILL)}>
+        <span className={cn("flex -translate-y-2", state.kind !== "working" && STILL)}>
           {isPending(state) ? <Skeleton shape="circle" className="size-3.5" /> : <OrchestratorGlyph state={state.kind} />}
         </span>
       }

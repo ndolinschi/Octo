@@ -14,6 +14,8 @@ import { TabStrip } from "./TabStrip";
 import { TabView } from "./TabView";
 import { useShell } from "../../state/shell";
 import { controlsWidth, useChrome } from "../../state/chrome";
+import { DRAWER_QUERY } from "../../lib/constants";
+import { useMediaQuery } from "../../lib/hooks";
 
 /** The resize handle between groups loads when a second group exists; until then its 8px gap is an empty box, so nothing moves. */
 const Divider = lazy(() => import("./Divider"));
@@ -117,6 +119,8 @@ function GroupView(props: { group: Group; name: string; first: boolean; last: bo
   const { group, name, first, last, maximised, stepAside } = props;
   const ws = useWorkspace();
   const { sidebarOpen } = useShell();
+  // Round 3: narrow — in drawer mode the sidebar floats over the page, so the window buttons stay over the first strip whether or not the drawer is open.
+  const drawer = useMediaQuery(DRAWER_QUERY);
   const { insetStart } = useChrome();
   const visited = useVisited(group);
   const fileShell = useFileShellTab(group, visited);
@@ -161,7 +165,7 @@ function GroupView(props: { group: Group; name: string; first: boolean; last: bo
           focused={focused}
           last={last}
           maximised={maximised}
-          startInset={first && !sidebarOpen ? controlsWidth(insetStart) : 0}
+          startInset={first && (drawer || !sidebarOpen) ? controlsWidth(insetStart) : 0}
         />
         <div className={cn(panelClass, "relative flex-1")}>
           {backdrops.has(strip.active) && (

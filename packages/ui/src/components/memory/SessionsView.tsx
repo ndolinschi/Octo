@@ -1,7 +1,8 @@
 import type { MemorySessionDetail } from "@octo/agent-client";
 import { useMemo, useRef, useState } from "react";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
-import { useNow, useRowKeys } from "../../lib/hooks";
+import { useNow } from "../../lib/hooks";
+import { useRowKeys } from "../../lib/hooksMore";
 import { formatDay } from "../../lib/memory/dates";
 import { endedNote, exchangeCount, newestFirst, sessionRow, toggleExpanded } from "../../lib/memory/sessions";
 import { liveOrchestratorState } from "../../lib/orchestrator";
@@ -160,7 +161,7 @@ function SessionDetail(props: {
             onClose={() => setOpen(null)}
             onOpenMessage={props.onOpenMessage}
             onForget={async (id) => {
-              if (!forget) throw new Error("This harness cannot forget an exchange.");
+              if (!forget) throw new Error("This version of Octo's local service cannot forget an exchange.");
               await forget.call(bridge, props.projectId, id);
               props.onChanged();
             }}

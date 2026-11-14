@@ -5,6 +5,7 @@ import test from "node:test";
 import { SPAWN_TOOL } from "./tools";
 import {
   buildTurns,
+  turnDurationMs,
   latestReply,
   promptText,
   requestSummaries,
@@ -268,4 +269,17 @@ test("a delegation without an agent settles from its result; a finished turn nev
   assert.equal(spawnStatus("running", undefined, true, null), "running");
   assert.equal(spawnStatus("failed", err("sub-agent failed: x"), false, "completed"), "failed");
   assert.equal(spawnStatus("cancelled", err("sub-agent stopped by the user"), false, "completed"), "cancelled");
+});
+
+test("B4: a finished turn's duration runs to its end, not to its last item", () => {
+  const start = Date.parse("2026-11-10T10:00:00Z");
+  const lastAt = "2026-11-10T10:00:01Z";
+  // Stopped 5 s in, one second after the last message: the agent's finished_at says so.
+  assert.equal(turnDurationMs(start, { live: false, lastAt, finishedAt: "2026-11-10T10:00:05Z" }), 5_000);
+  // The stored exchange wins (after a reload, for an earlier turn too).
+  assert.equal(turnDurationMs(start, { live: false, lastAt, stored: { status: "cancelled", startedAt: start, ms: 5_400 } }), 5_400);
+  // A finished_at from before this turn (an older turn's) is not its end.
+  assert.equal(turnDurationMs(start, { live: false, lastAt, finishedAt: "2026-11-10T09:00:00Z" }), 1_000);
+  assert.equal(turnDurationMs(start, { live: true, lastAt, finishedAt: null }), null);
+  assert.equal(turnDurationMs(null, { live: false, lastAt }), null);
 });

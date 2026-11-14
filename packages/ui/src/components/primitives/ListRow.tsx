@@ -34,6 +34,8 @@ export function ListRow(props: {
   leading?: ReactNode;
   meta?: ReactNode;
   trailing?: ReactNode;
+  /** The trailing actions show at all times, not on hover/focus (the one action a row needs: Retry on a failed row). */
+  trailingShown?: boolean;
   size?: RowSize;
   selected?: boolean;
   active?: boolean;
@@ -116,7 +118,12 @@ export function ListRow(props: {
         </div>
       )}
       {props.trailing !== undefined && (
-        <span className="flex shrink-0 items-center gap-0.5 pr-1 opacity-0 transition-opacity duration-100 group-focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100">
+        <span
+          className={cn(
+            "flex shrink-0 items-center gap-0.5 pr-1",
+            !props.trailingShown && "opacity-0 transition-opacity duration-100 group-focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100",
+          )}
+        >
           {props.trailing}
         </span>
       )}

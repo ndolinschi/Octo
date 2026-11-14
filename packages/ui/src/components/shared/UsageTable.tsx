@@ -80,7 +80,7 @@ function Cells({ r, dim }: { r: UsageRow; dim?: boolean }) {
 
 function costTitle(r: UsageRow): string {
   if (r.cost.spent === null) {
-    const none = "No price for this model, so its cost is not counted. Add the model to prices.toml in the harness data directory.";
+    const none = "No price for this model, so its cost is not counted. Add the model to prices.toml in Octo's data folder.";
     return r.cost.equivalent > 0 ? `${none} The subscription part is not spend.` : none;
   }
   if (r.cost.equivalent > 0) return `${costCellText(r.cost)}: the subscription part is not spend`;

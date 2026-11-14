@@ -49,14 +49,14 @@ export function AgentPrefs({ agent }: { agent: Provider }) {
         />
       </section>
       <section className="flex flex-col gap-1">
-        <SectionTitle aside={<SaveStatus state={state} />}>Roles</SectionTitle>
+        <SectionTitle aside={<SaveStatus state={state} />}>Tiers</SectionTitle>
         <FieldRow
           fields={ROLES.map((r) => ({
             id: `${base}-${r.id}`,
             label: r.label,
             control: control(r.id, roleModel(agent, r.id, local), r.label, (m) => save(agent.id, { roles: { [r.id]: m } })),
           }))}
-          hint="The router decides how hard a task is; roles say which of this provider's models does it."
+          hint="Work handed to a helper gets a tier by how hard it is (Fast, Balanced, Deep); pick which of this provider's models does each."
         />
       </section>
     </>

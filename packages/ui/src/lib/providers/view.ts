@@ -126,9 +126,9 @@ export function reasonLine(p: Pick<Provider, "state" | "kind" | "reason" | "prob
       return r || "This agent's command line cannot work with Octo.";
     }
     case "not_installed":
-      return "This agent is not on this machine yet. Install it, log in once, then check again.";
+      return "This agent is not on this computer yet. Install it and log in once in a terminal, then press Check again.";
     case "not_logged_in":
-      return "Installed, but not logged in. Log in once, then check again.";
+      return "Installed, but not logged in. Log in once in a terminal, then press Check again.";
     case "not_connected":
       return p.kind === "api" ? "Add an API key to bill per token through your own account." : "Switch the router on and give it an upstream key.";
     case "error": {

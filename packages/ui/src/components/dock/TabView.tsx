@@ -16,7 +16,7 @@ import type { FloatingSlot } from "../files/FileView";
 const FileView = lazy(() => import("../files/FileView").then((m) => ({ default: m.FileView })));
 
 /** What a file view renders as its floating composer: the dock, not the file feature, knows about chat. */
-const renderFloatingComposer: FloatingSlot = (onHeight) => <FloatingComposer onHeight={onHeight} />;
+const renderFloatingComposer: FloatingSlot = (onHeight, rest) => <FloatingComposer onHeight={onHeight} rest={rest} />;
 
 /** The Details tab loads when it is first opened (its own chunk). */
 const DetailsPanel = lazy(() => import("../details/DetailsPanel").then((m) => ({ default: m.DetailsPanel })));

@@ -1,5 +1,5 @@
 import { ChevronsUpDown, type LucideIcon } from "lucide-react";
-import { forwardRef, type ButtonHTMLAttributes } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { Glyph } from "./Glyph";
 import { MiddleText } from "./MiddleText";
@@ -11,7 +11,9 @@ import { MiddleText } from "./MiddleText";
 export const Chip = forwardRef<
   HTMLButtonElement,
   ButtonHTMLAttributes<HTMLButtonElement> & {
-    icon: LucideIcon;
+    icon?: LucideIcon;
+    /** Instead of `icon`: a 14px provider mark. */
+    lead?: ReactNode;
     label: string;
     name: string;
     tip?: string | undefined;
@@ -19,7 +21,7 @@ export const Chip = forwardRef<
     open?: boolean;
     warn?: boolean;
   }
->(function Chip({ icon, label, name, tip, bare = false, open = false, warn = false, className, ...rest }, ref) {
+>(function Chip({ icon, lead, label, name, tip, bare = false, open = false, warn = false, className, ...rest }, ref) {
   return (
     <button
       ref={ref}
@@ -36,7 +38,7 @@ export const Chip = forwardRef<
       )}
       {...rest}
     >
-      <Glyph icon={icon} size={14} className="shrink-0" />
+      {lead ?? (icon && <Glyph icon={icon} size={14} className="shrink-0" />)}
       {!bare && (
         <span data-chip-label className="flex min-w-0 items-center gap-1.5">
           <MiddleText text={label} />

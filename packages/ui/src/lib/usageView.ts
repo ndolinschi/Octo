@@ -1,6 +1,4 @@
-import { formatTokens } from "./format";
-
-/* The parts of the usage helpers the main bundle needs (tab memory, the agent header); the rest of `usage.ts` loads with
+/* The parts of the usage helpers the main bundle needs (tab memory); the rest of `usage.ts` loads with
    the Usage tab, Home and Details. */
 
 /** The Usage tab's controls (kept per tab across remounts). Decision 86: By model | By agent | By day | Limits. */
@@ -18,12 +16,6 @@ export function isUsageView(v: unknown): v is UsageView {
   if (typeof v !== "object" || v === null || !("segment" in v) || !("period" in v) || !("scope" in v) || !("roles" in v)) return false;
   const { segment, period, scope, roles } = v;
   return SEGMENTS.includes(segment) && PERIODS.includes(period) && (scope === "project" || scope === "all") && typeof roles === "boolean";
-}
-
-/** "context 1.8k / 200k" when the agent reported both figures; null otherwise (never a guessed window). */
-export function contextText(used: number | null | undefined, size: number | null | undefined): string | null {
-  if (typeof used !== "number" || typeof size !== "number" || size <= 0) return null;
-  return `context ${formatTokens(used)} / ${formatTokens(size)}`;
 }
 
 const PERIOD_TEXT: Record<UsagePeriod, string> = { session: "This session", today: "Today", "7d": "7 days", "30d": "30 days", all: "All time" };

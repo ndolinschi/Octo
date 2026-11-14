@@ -1,18 +1,21 @@
 import { agentBySpawnToolUse, descendantCount, type Agent } from "@octo/agent-client";
 import { roleText } from "../../lib/orchestrator";
 import { agentActivity } from "../../lib/orchestrator";
-import { agentDuration } from "../../lib/format";
+import { agentDuration } from "../../lib/duration";
 import { hrefFor } from "../../lib/route";
 import { spawnInput } from "../../lib/toolsMore";
 import { spawnStatus, type SpawnStatus, type ToolUse, type TurnEnd } from "../../lib/transcript";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { isTier, statusLabel, tierLabel } from "../primitives/Status";
+import { isTier, tierLabel } from "../primitives/statusMore";
 import { plainError } from "../../lib/errors/plain";
 import { ActivityRow, type ActivityState } from "./ActivityRow";
-import { useModelNames } from "../../state/models";
+import { useModelNames } from "../../state/modelNames";
 import { useTranscript } from "./transcriptContext";
 import { IconButton } from "../primitives/IconButton";
+import { Button } from "../primitives/Button";
+import { CHAT } from "../../state/workspace/layout";
+import { prefillComposer } from "./composerDraft";
 import { GLYPH } from "../primitives/glyphs";
 import { requestSession } from "../../state/workspace/sessionsStart";
 
@@ -40,15 +43,16 @@ export function DelegationGroup({ uses, live = false, end = null }: { uses: Tool
   // A call that failed before its agent existed (validation) settles from its result; a finished turn leaves no spinner.
   const statuses = uses.map((u, i) => spawnStatus(agents[i]?.status, results.get(u.id), live, end));
   const caption = uses.length === 1 ? "1\u00a0agent" : `${uses.length}\u00a0agents`;
-  const status = progress(statuses);
+  // A stopped turn's head already says "Stopped after 14s": the caption does not say it again (the rows say "stopped").
+  const status = end === "cancelled" && progress(statuses) === "Stopped" ? null : progress(statuses);
 
   return (
     // Polish step 3, C3: no frame of its own. A meta caption ("3 agents · 1/3 done") over activity rows on the steps' glyph column.
     <section aria-label={uses.length === 1 ? "Delegated task" : `${caption} in parallel`} className="@container">
       <p className="flex h-6 min-w-0 items-center gap-1.5 text-xs text-fg-3">
         <span className="shrink-0 whitespace-nowrap">{caption}</span>
-        <span aria-hidden>·</span>
-        <span className="min-w-0 truncate tabular-nums">{status}</span>
+        {status && <span aria-hidden>·</span>}
+        {status && <span className="min-w-0 truncate tabular-nums">{status}</span>}
       </p>
       <ul className="flex flex-col">
         {uses.map((u, i) => (
@@ -59,6 +63,12 @@ export function DelegationGroup({ uses, live = false, end = null }: { uses: Tool
       </ul>
     </section>
   );
+}
+
+/** The message "Retry" puts in the composer: the helper's name and its task, trimmed to one line. */
+export function retryText(role: string, task: string | undefined): string {
+  const line = (task ?? "").replace(/\s+/g, " ").trim();
+  return `Retry ${role}: ${line.length > 240 ? `${line.slice(0, 237)}…` : line}`.replace(/:\s*$/, "");
 }
 
 const STATE: Record<string, ActivityState> = { running: "running", completed: "done", failed: "failed", cancelled: "stopped", pending: "running" };
@@ -101,7 +111,7 @@ function DelegationRow({ use, agent, status }: { use: ToolUse; agent: Agent | un
           : status === "failed"
             ? "failed"
             : status === "cancelled"
-              ? statusLabel("cancelled")
+              ? "stopped"
               : model;
   const tip =
     (note && raw ? `${note}\n\n${raw}` : null) ??
@@ -120,9 +130,27 @@ function DelegationRow({ use, agent, status }: { use: ToolUse; agent: Agent | un
       duration={duration}
       note={note}
       {...(tip ? { tip } : {})}
-      {...(session
+      trailingShown={status === "failed"}
+      {...(session || (status === "failed" && ws)
         ? {
-            trailing: <IconButton icon={GLYPH.sessions} label="Open session" size="xs" onClick={openSession} />,
+            trailing: (
+              <>
+                {status === "failed" && ws && (
+                  <Button
+                    variant="quiet"
+                    size="xs"
+                    title="Put a message that asks for this again into the box; nothing is sent until you send it"
+                    onClick={() => {
+                      prefillComposer(ws.memory, CHAT, retryText(role, agent?.task ?? input.title));
+                      ws.focusChat();
+                    }}
+                  >
+                    Retry
+                  </Button>
+                )}
+                {session && <IconButton icon={GLYPH.sessions} label="Open session" size="xs" onClick={openSession} />}
+              </>
+            ),
           }
         : {})}
       {...(agent

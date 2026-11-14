@@ -11,8 +11,10 @@ import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsGroup, SettingsRow } from 
 import { useSave } from "./useSave";
 
 /** The router's switch, URL and upstream key, folded (decision 59; the API key moved into its provider's detail, decision 89). Values are write-only. */
-export function RouterSettings() {
-  const [open, setOpen] = useState(false);
+export function RouterSettings(props: { open?: boolean; onOpen?(open: boolean): void }) {
+  const [own, setOwn] = useState(false);
+  const open = props.open ?? own;
+  const setOpen = (next: (o: boolean) => boolean) => (props.onOpen ? props.onOpen(next(open)) : setOwn(next));
   const harness = useHarnessSettings();
   const panelId = useId();
   // S1: a group like every other (caption over one surface), folded to one row until it is opened (decision 89).
@@ -20,7 +22,8 @@ export function RouterSettings() {
     <SettingsGroup label="Router" id="row-router-group">
       <SettingsRow
         title="Octo router"
-        description="The bundled router's switch, a router you run yourself, and its upstream key."
+        // B7: the router by what it does for a person, and what happens without it.
+        description="Optional. Picks a cheaper model for small tasks and can cap spending. While it is off, each task runs on the model its tier names."
         control={
           <Button
             variant="quiet"
@@ -37,11 +40,11 @@ export function RouterSettings() {
       {open && (
         <div id={panelId} className="divide-y divide-line">
           {harness.load.status === "unavailable" && (
-            <SettingsRow title="Not available here" description="This connection cannot read or change the harness's settings." />
+            <SettingsRow title="Not available here" description="This connection cannot read or change Octo's settings." />
           )}
           {harness.load.status === "loading" && <SkeletonList count={1} size="lg" twoLine />}
           {harness.load.status === "error" && (
-            <LoadErrorRow what="settings" message={harness.load.message} hint="The harness answers only on this machine (loopback)." onRetry={harness.reload} />
+            <LoadErrorRow what="settings" message={harness.load.message} hint="Octo's local service answers only on this computer." onRetry={harness.reload} />
           )}
           {harness.load.status === "ready" && (
             <>
@@ -91,7 +94,7 @@ function RouterSwitch() {
       rowId="router"
       title="Use the Octo router"
       htmlFor={id}
-      description={s.editable ? "The app starts the bundled router in front of the harness." : (s.note ?? `Set by the ${s.source}`)}
+      description={s.editable ? "Octo starts the router that comes with the app; models are then reached through it." : (s.note ?? `Set by the ${s.source}`)}
       status={<SaveStatus state={saved} restart={harness.needsRestart(s.id)} onRestart={restart} />}
       control={
         <Switch

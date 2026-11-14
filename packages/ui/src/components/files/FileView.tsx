@@ -5,7 +5,8 @@ import { cn } from "../../lib/cn";
 import { fileKey as fileKeyOf, splitKey, type FileKey } from "../../lib/files";
 import { middleTruncate } from "../../lib/format";
 import { crumbFloor, crumbName, fitCrumbs } from "../../lib/crumbs";
-import { useCopy, useDelayedLoading } from "../../lib/hooks";
+import { useCopy } from "../../lib/hooks";
+import { useDelayedLoading } from "../../lib/hooksMore";
 import { useApp } from "../../state/app";
 import { useCode, type OpenFile } from "../../state/code";
 import { useProject } from "../../state/project";
@@ -35,7 +36,7 @@ import { slot } from "../../state/workspace/tabMemory";
 import { useTabMemory } from "../../state/workspace/useTabMemory";
 
 /** Renders the floating composer over the editor area; `onHeight` reports the room it takes. Supplied by the dock. */
-export type FloatingSlot = (onHeight: (px: number) => void) => ReactNode;
+export type FloatingSlot = (onHeight: (px: number) => void, rest: boolean) => ReactNode;
 
 /** Gap between the floating composer and the last line it must not cover (contract v6 decision 8). */
 const FLOAT_ROOM = 16;
@@ -243,7 +244,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
         >
           {file && <Notice file={file} />}
           <div className="min-h-0 flex-1">{body}</div>
-          {floating && floatingComposer(setFloatHeight)}
+          {floating && floatingComposer(setFloatHeight, narrow)}
         </div>
       </div>
     </div>

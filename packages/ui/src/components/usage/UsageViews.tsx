@@ -5,7 +5,7 @@ import { roleText } from "../../lib/orchestrator";
 import { bucketTokens, daysWithData, fillDays, mergeBy } from "../../lib/usage";
 import { chartDays, periodText, placeRoles, usageRows } from "../../lib/usage/model";
 import type { UsageView } from "../../lib/usageView";
-import { useModelNames } from "../../state/models";
+import { useModelNames } from "../../state/modelNames";
 import { useProject } from "../../state/project";
 import { DayBars } from "../primitives/DayBars";
 import { Notice } from "../primitives/Notice";

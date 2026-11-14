@@ -41,6 +41,8 @@ export function ActivityRow(props: {
   tip?: string;
   /** A row action (quiet `IconButton`s shown on hover or focus, always on touch). */
   trailing?: ReactNode;
+  /** The trailing action shows at all times (Retry on a failed row). */
+  trailingShown?: boolean;
   /** A line under the row, in the error tone (a failed step's reason). */
   error?: ReactNode;
   /** A dim line under the row (why a step failed, in words; the glyph carries the tone). */
@@ -94,7 +96,7 @@ export function ActivityRow(props: {
         {...(expandable ? { onClick: toggle, expanded: open } : props.onClick ? { onClick: props.onClick } : {})}
         {...(props.href ? { href: props.href } : {})}
         {...(props.tip ? { tip: props.tip } : {})}
-        {...(props.trailing ? { trailing: props.trailing } : {})}
+        {...(props.trailing ? { trailing: props.trailing, trailingShown: props.trailingShown } : {})}
         className="-mx-2"
         {...(expandable ? { id: `${id}-row` } : {})}
       />

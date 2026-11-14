@@ -12,14 +12,17 @@ export type MenuItem =
       label: string;
       shortcut?: string;
       /** Dim text after the label (a role, a remote). */ detail?: string;
+      /** A second, dim line under the label: what the row does (the row grows to 40px). */ sub?: string;
       disabled?: boolean;
       /** A choice in a set (menuitemradio). */ checked?: boolean;
       title?: string;
       run(): void;
     }
-  | { id: string; separator: true };
+  | { id: string; separator: true }
+  /** A line of plain dim text on the label's left edge: not a row, not focusable (a count, a total). */
+  | { id: string; caption: string; title?: string };
 
-const isAction = (item: MenuItem): item is Extract<MenuItem, { run(): void }> => !("separator" in item);
+const isAction = (item: MenuItem): item is Extract<MenuItem, { run(): void }> => !("separator" in item) && !("caption" in item);
 
 /** Gap kept between the menu and the viewport edges. */
 const EDGE = 8;
@@ -179,7 +182,8 @@ export function Menu(props: {
             }}
             className={cn(
               // Radius 6 = menu radius (10) − its padding (4).
-              "flex h-row items-center gap-2 rounded-sm px-2 outline-none focus-visible:shadow-none touch:h-ctl-lg",
+              "flex items-center gap-2 rounded-sm px-2 outline-none focus-visible:shadow-none touch:h-ctl-lg",
+              item.sub ? "h-10" : "h-row",
               item.disabled ? "text-fg-3" : "text-fg focus:bg-active",
             )}
           >
@@ -187,10 +191,21 @@ export function Menu(props: {
             <span aria-hidden className="grid size-4 shrink-0 place-items-center">
               {item.checked && <Glyph icon={Check} size={14} />}
             </span>
-            <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            {item.sub ? (
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate">{item.label}</span>
+                <span className="truncate text-xs text-fg-3">{item.sub}</span>
+              </span>
+            ) : (
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            )}
             {item.detail && <span className="shrink-0 pl-4 text-xs text-fg-3">{item.detail}</span>}
             {item.shortcut && <kbd className="shrink-0 pl-4 font-sans text-xs text-fg-2">{item.shortcut}</kbd>}
           </div>
+        ) : "caption" in item ? (
+          <p key={item.id} title={item.title} className="px-2 py-1 pl-8 text-xs text-fg-3">
+            {item.caption}
+          </p>
         ) : (
           <div key={item.id} role="separator" className="mx-2 my-1 h-px bg-line" />
         ),

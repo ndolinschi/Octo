@@ -1,4 +1,15 @@
-import type { Attachment, CompletionResult, ConversationMarker, LanguageServerInfo, Plugin, QueuedMessage, Transcript, UsageParams } from "./types";
+import type {
+  Attachment,
+  CompletionResult,
+  ConversationMarker,
+  FileStat,
+  LanguageServerInfo,
+  Plugin,
+  Project,
+  QueuedMessage,
+  Transcript,
+  UsageParams,
+} from "./types";
 import type { CommandRun, CommandSuggestion, StartedCommandRun } from "./commands";
 import type {
   ReviewBranchList,
@@ -101,6 +112,25 @@ export function createRareMethods({ request, unwrap, p, memoryPath, base, token,
   };
 
   return {
+    createProject: (input) => request("POST", "/v1/projects", input) as Promise<Project>,
+    updateProject: (id, patch) => request("PATCH", p(id), patch) as Promise<Project>,
+    deleteProject: async (id) => {
+      await request("DELETE", p(id));
+    },
+    sendMessage: async (id, text) => {
+      const body = await request("POST", `${p(id)}/messages`, { text });
+      if (isRecord(body) && isRecord(body.queued)) {
+        throw new BridgeError(202, "queued", "a turn is running: the message was queued (use sendOrQueueMessage)");
+      }
+      if (!isRecord(body) || !isRecord(body.message)) throw new BridgeError(0, "invalid_response", 'missing "message" in response');
+      return body.message as unknown as Message;
+    },
+    cancelTurn: async (id) => {
+      await request("POST", `${p(id)}/cancel`);
+    },
+    getContext: (id, agentId) =>
+      request("GET", `${p(id)}/context${agentId === undefined ? "" : `?agent=${encodeURIComponent(agentId)}`}`) as Promise<ContextBreakdown>,
+    writeFile: (id, input) => request("PUT", `${p(id)}/files/content`, input) as Promise<FileStat>,
     askSide: (id, text) => request("POST", `${p(id)}/side`, { text }) as Promise<SideStarted>,
     listSide: (id) => unwrap<SideMessage[]>(request("GET", `${p(id)}/side`), "messages"),
     clearSide: async (id) => {

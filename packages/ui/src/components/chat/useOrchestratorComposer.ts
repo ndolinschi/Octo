@@ -9,29 +9,19 @@ import { useOptionalComments } from "../../state/comments";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { ComposerMode, ComposerProps } from "./Composer";
-import { DraftBus } from "./draftBus";
+import { draftOf } from "./composerDraft";
 import type { QueuedMessage } from "./ComposerPills";
 import { slot, type TabMemory } from "../../state/workspace/tabMemory";
 import type { TabId } from "../../state/workspace/layout";
 
 /** Composers sharing a draft key (the Chat tab's and the floating one) hear each other's edits. */
 type Listener = () => void;
-const DRAFT = slot("draft", (v): v is DraftBus => v instanceof DraftBus);
 const isQueue = (v: unknown): v is QueuedMessage[] =>
   Array.isArray(v) &&
   v.every((q: unknown) => typeof q === "object" && q !== null && "id" in q && "text" in q && typeof (q as { text: unknown }).text === "string");
 const QUEUE = slot("queue", isQueue);
 const QUEUE_LISTENERS = slot("queue:listeners", (v): v is Set<Listener> => v instanceof Set);
 const EMPTY: QueuedMessage[] = [];
-
-/** One bus per tab key, created on first use and kept in the tab memory (so it survives the tab remounting). */
-function draftOf(memory: TabMemory, tab: TabId): DraftBus {
-  const existing = memory.get(tab, DRAFT);
-  if (existing) return existing;
-  const bus = new DraftBus();
-  memory.set(tab, DRAFT, bus);
-  return bus;
-}
 
 function queueListeners(memory: TabMemory, tab: TabId): Set<Listener> {
   const existing = memory.get(tab, QUEUE_LISTENERS);
@@ -160,7 +150,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
     folders: project?.folders ?? [],
     notice: noKey
       ? {
-          text: "No API key set. Choose an agent on a subscription in the model chip, or give the harness a key.",
+          text: "No API key set. Choose an agent on a subscription in the model chip, or give Octo's local service a key.",
           ...(loop?.reason ? { title: loop.reason } : {}),
         }
       : null,

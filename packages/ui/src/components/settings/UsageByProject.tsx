@@ -6,7 +6,7 @@ import { useNow } from "../../lib/hooks";
 import { periodRange, usageRows, USAGE_PERIODS } from "../../lib/usage/model";
 import { SESSION_STARTED_AT, type UsagePeriod } from "../../lib/usageView";
 import { useApp } from "../../state/app";
-import { useModelNames } from "../../state/models";
+import { useModelNames } from "../../state/modelNames";
 import { Notice } from "../primitives/Notice";
 import { Select } from "../primitives/Select";
 import { SkeletonList } from "../primitives/Skeleton";
@@ -106,7 +106,7 @@ export function UsageByProject() {
         {report.status === "loading" && <SkeletonList count={3} size="lg" twoLine />}
         {report.status === "error" && (
           <Notice tone="error" className="p-2">
-            Couldn&apos;t read usage: {report.message}. Check that the harness is running, then reopen Settings.
+            Couldn&apos;t read usage: {report.message}. Check that Octo&apos;s local service is running, then reopen Settings.
           </Notice>
         )}
         {empty && <p className="px-2 py-2 text-sm text-fg-3">No usage in this period. Tokens appear here after a project gets a model response.</p>}

@@ -1,5 +1,12 @@
 /** Bridge methods implemented in `rare.ts` (a lazy chunk); `createHttpBridge` forwards each to it. */
 export const RARE_METHODS = [
+  "createProject",
+  "updateProject",
+  "deleteProject",
+  "sendMessage",
+  "cancelTurn",
+  "getContext",
+  "writeFile",
   "askSide",
   "listSide",
   "clearSide",

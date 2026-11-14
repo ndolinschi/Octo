@@ -48,7 +48,7 @@ export function SecretForm(props: {
         hint={
           props.set
             ? `A key is set${props.hint ? ` (${props.hint})` : ""}. A new one replaces it.`
-            : "Stored by the harness in its settings file on this machine; never shown again."
+            : "Kept on this computer by Octo's local service; never shown again."
         }
         error={status.kind === "error" ? status.message : null}
         errorId={errId}

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  agentDuration,
   basename,
   errorMessage,
   excerpt,
@@ -13,6 +12,7 @@ import {
   needsSeparator,
   timeAgo,
 } from "./format";
+import { agentDuration } from "./duration";
 
 const at = (y: number, mo: number, d: number, h: number, mi = 0) => new Date(y, mo - 1, d, h, mi).toISOString();
 

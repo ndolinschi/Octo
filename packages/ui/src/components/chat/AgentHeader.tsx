@@ -5,15 +5,20 @@ import { ChevronRight } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { useId, useState } from "react";
 import { cn } from "../../lib/cn";
-import { agentDuration, formatDuration } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
+import { agentDuration } from "../../lib/duration";
 import { hrefFor } from "../../lib/route";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Markdown } from "../shared/Markdown";
-import { statusLabel, tierLabel } from "../primitives/Status";
-import { useAcpNames, useModelNames } from "../../state/models";
+import { statusLabel, tierLabel } from "../primitives/statusMore";
+import { useAcpNames } from "../../state/models";
+import { useModelNames } from "../../state/modelNames";
 import { routeLine } from "../../lib/modelsMore";
-import { contextText } from "../../lib/usageView";
+import { contextText } from "../../lib/contextText";
+import { CHAT } from "../../state/workspace/layout";
+import { retryText } from "./DelegationGroup";
+import { prefillComposer } from "./composerDraft";
 
 export function Breadcrumb({ agent }: { agent: Agent }) {
   const { projectId, state } = useProject();
@@ -58,6 +63,7 @@ export function Breadcrumb({ agent }: { agent: Agent }) {
 
 export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
   const { state } = useProject();
+  const ws = useOptionalWorkspace();
   const [briefOpen, setBriefOpen] = useState(false);
   const briefId = useId();
   const duration = agentDuration(agent, now);
@@ -100,7 +106,20 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
       )}
       {agent.status === "failed" && (
         <p role="note" className="mt-1.5 text-sm text-fg-2">
-          <span className="text-err">{(agent.error || "No error details were reported").replace(/\.$/, "")}.</span> Ask in the conversation to retry it.
+          <span className="text-err">{(agent.error || "No error details were reported").replace(/\.$/, "")}.</span>{" "}
+          {ws ? (
+            <Button
+              variant="link"
+              onClick={() => {
+                prefillComposer(ws.memory, CHAT, retryText(roleName(agent), agent.task || agent.title));
+                ws.focusChat();
+              }}
+            >
+              Retry
+            </Button>
+          ) : (
+            "Ask in the conversation to retry it."
+          )}
         </p>
       )}
       {agent.task && (

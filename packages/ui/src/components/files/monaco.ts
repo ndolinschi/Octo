@@ -251,6 +251,9 @@ function theme(base: "vs" | "vs-dark", p: Palette, chrome: Chrome): monaco.edito
 monaco.editor.defineTheme("octo-dark", theme("vs-dark", DARK, DARK_CHROME));
 monaco.editor.defineTheme("octo-light", theme("vs", LIGHT, LIGHT_CHROME));
 
+// One palette in the app (Ctrl/Cmd+K): Monaco's own command palette (F1) is switched off for every editor.
+monaco.editor.addKeybindingRule({ keybinding: monaco.KeyCode.F1, command: "-editor.action.quickCommand" });
+
 export function themeName(mode: "dark" | "light"): string {
   return `octo-${mode}`;
 }

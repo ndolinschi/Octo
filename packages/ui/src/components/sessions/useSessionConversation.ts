@@ -69,7 +69,7 @@ export function useSessionConversation(session: ProjectSession): SessionConversa
     const boundary = read && "messages" in read && read.key.startsWith(mine) ? read.boundary : undefined;
     return { status: "ok", agent, messages, ...(boundary ? { boundary } : {}) };
   }
-  if (!read2) return { status: "error", message: "This harness cannot read a session's transcript. Update the harness." };
+  if (!read2) return { status: "error", message: "This version of Octo's local service cannot read a session's transcript. Update it." };
   if (!read?.key.startsWith(mine)) return { status: "loading" };
   if ("error" in read) return { status: "error", message: read.error };
   return { status: "ok", agent, messages: read.messages, ...(read.boundary ? { boundary: read.boundary } : {}) };

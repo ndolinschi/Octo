@@ -55,7 +55,7 @@ export function PopupList(props: {
   maxRows?: number;
   /** A tall list (the model picker): grows with the window up to 480px instead of `maxRows`, its scrolling ends fade (12px). */
   tall?: boolean;
-  /** The row's `detail` is a short tag ("experimental", "default"): a pill that never shrinks; the name truncates instead. */
+  /** The row's `detail` is a short tag ("experimental", "default"): a pill that never shrinks; the name keeps its room too, so a long hint goes to the second line (`sub`). */
   tagDetail?: boolean;
   /** Keys that reach the list itself (focus normally stays in the field; a click may have put it here). */
   onKeyDown?(e: KeyboardEvent<HTMLDivElement>): void;
@@ -144,9 +144,9 @@ export function PopupList(props: {
                     r.content
                   ) : (
                     <span className="flex min-w-0 flex-1 flex-col">
-                      {/* The name keeps its room: the detail and the hint give way first (decision 64 f). */}
+                      {/* The name keeps its room: the tag, the detail and the hint give way first (decision 64 f); it truncates only when it alone is wider than the row. */}
                       <span className="flex min-w-0 items-center gap-2">
-                        <span className={cn("min-w-0 shrink-[0.1] truncate", r.quiet && !on && "text-fg-2")}>
+                        <span className={cn("max-w-full min-w-0 shrink-0 truncate", r.quiet && !on && "text-fg-2")}>
                           <Highlight text={r.label} query={query} />
                         </span>
                         {r.checked && <span className="sr-only">(current)</span>}

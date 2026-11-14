@@ -5,6 +5,7 @@ import {
   type ChangeDetail,
   type FileChange,
   type InputRequest,
+  type ProjectSummary,
   type QueuedMessage,
   type QueueState,
   type TurnChanges,
@@ -123,7 +124,7 @@ function seed(rec: ProjectRecord): V7 {
     agent_label: "orchestrator",
     turn_id: turnB,
     title: "Deploy settings",
-    reason: "I need these before writing the deploy script. The token is stored by the harness and never shown to the model.",
+    reason: "I need these before writing the deploy script. The token is stored by Octo's local service and never shown to the model.",
     fields: [
       { id: "name", label: "Service name", kind: "text", required: true },
       { id: "token", label: "Deploy token", kind: "secret", required: true },
@@ -215,8 +216,19 @@ export function withDemoV7(base: Bridge, records: Map<string, ProjectRecord>): B
     }
     return sent;
   };
+  // As the harness reports it (project/dto.go): `needs_you`, the counts and `attention: "needs_you"` while an approval or a form
+  // waits; otherwise the base summary is left as it was (its own failed or idle state).
+  const withAttention = <T extends ProjectSummary>(p: T): T => {
+    const { v } = state(p.id);
+    const approvals = v.approvals.length;
+    const inputs = v.inputs.length;
+    if (approvals + inputs === 0) return p;
+    return { ...p, needs_you: true, pending_approvals: approvals, pending_inputs: inputs, attention: "needs_you" };
+  };
   return {
     ...base,
+    listProjects: async () => (await base.listProjects()).map(withAttention),
+    getProject: async (id) => withAttention(await base.getProject(id)),
     sendMessage,
     sendOrQueueMessage: async (id, text) => {
       const { rec, v } = state(id);

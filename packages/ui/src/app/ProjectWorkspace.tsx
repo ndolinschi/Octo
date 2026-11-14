@@ -13,6 +13,7 @@ import { Button } from "../components/primitives/Button";
 import { Presence } from "../components/primitives/Presence";
 import { ChatSlotsProvider, type ChatSlots } from "../state/chatSlots";
 import { Panel } from "../components/shell/Panel";
+import { MainSkeleton } from "../components/shell/MainSkeleton";
 
 /** The status bar's project items load after first paint (its own chunk; the row itself is always there, so nothing shifts). */
 const ProjectStatus = lazy(() => import("../components/status/ProjectStatus").then((m) => ({ default: m.ProjectStatus })));
@@ -130,8 +131,12 @@ function Body() {
         <Panel className="mt-bar flex-1">
           <LoadError message={loadError} onRetry={reload} />
         </Panel>
+      ) : project ? (
+        <Dock />
       ) : (
-        project && <Dock />
+        <Panel className="mt-bar flex-1">
+          <MainSkeleton />
+        </Panel>
       )}
     </div>
   );

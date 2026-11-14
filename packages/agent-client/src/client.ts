@@ -717,12 +717,7 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     health: () => request("GET", "/health") as Promise<HealthResponse>,
     getConfig: () => request("GET", "/v1/config") as Promise<BridgeConfig>,
     listProjects: () => unwrap<ProjectSummary[]>(request("GET", "/v1/projects"), "projects"),
-    createProject: (input) => request("POST", "/v1/projects", input) as Promise<Project>,
     getProject: (id) => request("GET", p(id)) as Promise<Project>,
-    updateProject: (id, patch) => request("PATCH", p(id), patch) as Promise<Project>,
-    deleteProject: async (id) => {
-      await request("DELETE", p(id));
-    },
     listAgents: (id) => unwrap<Agent[]>(request("GET", `${p(id)}/agents`), "agents"),
     getAgent: (id, agentId) => request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}`) as Promise<Agent>,
     listMessages: (id, agentId) => unwrap<Message[]>(request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}/messages`), "messages"),
@@ -738,22 +733,8 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
         ...(Array.isArray(body.conversations) ? { conversations: body.conversations as ConversationMarker[] } : {}),
       };
     },
-    sendMessage: async (id, text) => {
-      const body = await request("POST", `${p(id)}/messages`, { text });
-      if (isRecord(body) && isRecord(body.queued)) {
-        throw new BridgeError(202, "queued", "a turn is running: the message was queued (use sendOrQueueMessage)");
-      }
-      if (!isRecord(body) || !isRecord(body.message)) throw new BridgeError(0, "invalid_response", 'missing "message" in response');
-      return body.message as unknown as Message;
-    },
-    cancelTurn: async (id) => {
-      await request("POST", `${p(id)}/cancel`);
-    },
-    getContext: (id, agentId) =>
-      request("GET", `${p(id)}/context${agentId === undefined ? "" : `?agent=${encodeURIComponent(agentId)}`}`) as Promise<ContextBreakdown>,
     listFiles: (id, folder, path) => unwrap<FileEntry[]>(request("GET", `${p(id)}/files?${fileQuery(folder, path)}`), "entries"),
     readFile: (id, folder, path) => request("GET", `${p(id)}/files/content?${fileQuery(folder, path)}`) as Promise<FileContent>,
-    writeFile: (id, input) => request("PUT", `${p(id)}/files/content`, input) as Promise<FileStat>,
     sendOrQueueMessage: async (id, text, opts) => {
       const payload: Record<string, unknown> = { text };
       if (opts?.mode) payload.mode = opts.mode;

@@ -319,7 +319,7 @@ function seed(): ProjectRecord[] {
   Object.assign(orchestratorOf(copilot), {
     status: "failed",
     error: "GitHub Copilot is not logged in.",
-    error_hint: "Log in once with `copilot auth login`, then check again.",
+    error_hint: "Log in once with `copilot login`, then check again.",
     finished_at: new Date(now - 40 * 60_000).toISOString(),
   });
 
@@ -446,7 +446,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
         ...(nokey ? {} : { router_capabilities: ["autoroute", "route_hints", "result_headers", "budget_key"] }),
         acp_orchestrators: pluginsOn ? [claude, copilot, codex] : [],
         builtin_loop: nokey
-          ? { available: false, reason: "No API key: set ANTHROPIC_API_KEY for the harness, or run it behind an Octo router." }
+          ? { available: false, reason: "No API key: set ANTHROPIC_API_KEY for Octo's local service, or run it behind an Octo router." }
           : { available: true },
         default_orchestrator: nokey && pluginsOn ? "acp:claude-code" : DEFAULT_MODELS.orchestrator,
       };

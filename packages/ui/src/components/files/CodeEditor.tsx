@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "re
 import type { FilePosition } from "../../lib/files";
 import type { OpenFile } from "../../state/code";
 import { useLatest } from "../../lib/hooks";
+import { EditorContextMenu } from "../shared/EditorContextMenu";
 import { EditorSkeleton } from "./EditorSkeleton";
 import type { EditorBuffers, MonacoApi } from "../../lib/buffers";
 import { errorMessage } from "../../lib/format";
@@ -153,6 +154,8 @@ export function CodeEditor(props: {
       overflowWidgetsDomNode: overflow,
       ariaLabel: "Code editor",
       tabFocusMode: false,
+      // The right-click menu is the app's own (EditorContextMenu): Monaco's has no surface in its shadow root.
+      contextmenu: false,
     });
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSave.current());
     editorRef.current = editor;
@@ -228,6 +231,7 @@ export function CodeEditor(props: {
       {/* Decision 60: grey lines in the editor's own box until Monaco is in, shown at once (no empty frame, no late spinner). */}
       {!editor && !failed && <EditorSkeleton />}
       <div ref={host} className="h-full min-h-0 min-w-0" data-testid="code-editor" />
+      {editor && file && <EditorContextMenu editor={editor} path={file.path} />}
       {mod && editor && file && <mod.EditorComments editor={editor} monaco={mod.monaco} buffers={buffers} folder={file.folder} path={file.path} />}
       {mod && editor && file && (
         <Suspense fallback={null}>
