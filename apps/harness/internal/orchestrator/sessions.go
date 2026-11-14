@@ -151,12 +151,18 @@ func (o *Orchestrator) steerTextsOf(agentID string) func(context.Context) []stri
 
 // SessionView adds the live state to a stored session.
 func (o *Orchestrator) SessionView(ctx context.Context, db *projectstore.DB, info projectstore.SessionInfo) SessionView {
+	return o.sessionView(ctx, db, info, o.ActiveSession(db.ID(), info.ID))
+}
+
+// sessionView is SessionView with whether the session is live given (a turn that is ending computes the view it
+// leaves before its slot is released: endedView).
+func (o *Orchestrator) sessionView(ctx context.Context, db *projectstore.DB, info projectstore.SessionInfo, active bool) SessionView {
 	v := SessionView{SessionInfo: info}
 	if info.Kind == projectstore.KindMain {
 		v.PendingApprovals, v.PendingInputs = o.SessionAttention(db.ID(), info.ID)
 		v.NeedsYou = v.PendingApprovals+v.PendingInputs > 0
 		switch {
-		case o.ActiveSession(db.ID(), info.ID):
+		case active:
 			v.State = projectstore.SessionWorking
 			if v.NeedsYou {
 				v.State = projectstore.SessionWaiting
@@ -239,6 +245,18 @@ func (o *Orchestrator) publishSession(ctx context.Context, db *projectstore.DB, 
 		typ = events.SessionCreated
 	}
 	o.hub.Publish(db.ID(), typ, map[string]any{"session": o.SessionView(c, db, info)})
+}
+
+// endedView is the session.updated payload of a main session whose turn is ending, as it is once the turn is over
+// (nil when it cannot be read). finish publishes it right after turn.finished, under the same lock.
+func (o *Orchestrator) endedView(db *projectstore.DB, sid string) map[string]any {
+	c, cancel := dbCtx(context.Background())
+	defer cancel()
+	info, err := db.SessionInfoOf(c, sid)
+	if err != nil {
+		return nil
+	}
+	return map[string]any{"session": o.sessionView(c, db, info, false)}
 }
 
 func (rt *runtime) publishSession(id string, created bool) {

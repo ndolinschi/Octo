@@ -14,7 +14,8 @@ import (
 const interruptedResult = "interrupted: the tool call did not complete"
 
 // loadHistory rebuilds the agent's conversation from storage: the latest
-// compaction summary, if any, then the messages stored after it.
+// compaction summary, if any, then the messages stored after it, with every
+// request that nothing answered closed by its note (closed.go).
 func (rt *runtime) loadHistory(ctx context.Context, agentID string) ([]anthropic.MessageParam, error) {
 	return rt.loadHistoryWith(ctx, agentID, rt.imageLoader(ctx))
 }
@@ -38,7 +39,8 @@ func (rt *runtime) loadHistoryWith(ctx context.Context, agentID string, load ima
 	case compacted:
 		history = append(history, agent.SummaryMessage(comp.Summary))
 	}
-	for _, m := range stored {
+	ended := rt.unfinishedTurns(ctx, agentID)
+	for i, m := range stored {
 		if compacted && m.ID <= comp.UptoMessageID {
 			continue
 		}
@@ -48,6 +50,9 @@ func (rt *runtime) loadHistoryWith(ctx context.Context, agentID string, load ima
 		}
 		if ok {
 			history = append(history, p)
+		}
+		if e, unanswered := closesUnanswered(stored, i, ended); unanswered && ok {
+			history = append(history, closedNoteMessage(e)) // NEW-8: closed.go
 		}
 	}
 	return history, nil

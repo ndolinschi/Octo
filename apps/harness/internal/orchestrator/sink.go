@@ -78,6 +78,12 @@ func (s *agentSink) store(ctx context.Context, role string, msg anthropic.Messag
 	return stored, nil
 }
 
+// StoppedMessage implements agent.StoppedSink: the message is stored flagged stopped (cut short).
+func (s *agentSink) StoppedMessage(ctx context.Context, role string, msg anthropic.MessageParam) error {
+	_, err := s.store(ctx, role, msg, true)
+	return err
+}
+
 // keepPartial stores the text streamed since the last stored message as an
 // assistant message flagged stopped: what a cancelled turn had written.
 func (s *agentSink) keepPartial(ctx context.Context) {

@@ -289,6 +289,8 @@ func (rt *runtime) runAgent(ctx context.Context, a projectstore.Agent, history [
 		Router:          rt.o.opts.Router,
 		Hints:           rt.hints(a),
 		Gate:            rt.loopGate(),
+		OutputCap:       rt.outputCap(a.Model),
+		BudgetCut:       rt.budgetCut,
 	}
 	if a.ParentID != nil {
 		loop.Steer = rt.o.steerTextsOf(a.ID) // a message the user sent to this sub-agent's session

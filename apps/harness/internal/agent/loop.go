@@ -58,6 +58,12 @@ type Loop struct {
 	// Clear, when set, replaces old tool results with stubs once a request is
 	// past its share of the window, before compaction is considered.
 	Clear *ClearPolicy
+	// OutputCap, when set, is asked before every request for the most output
+	// tokens the remaining budget can buy (0: no limit); inputTokens estimates
+	// the request's input. A response that stops at a limit it set ends the
+	// loop: its text is stored cut short and BudgetCut's error is returned.
+	OutputCap func(ctx context.Context, inputTokens func() int64) int64
+	BudgetCut func(ctx context.Context) error
 }
 
 // Run continues history (which must end with a user message already persisted
@@ -120,6 +126,12 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 			// reach the stored history.
 			send.Messages = withMessageBreakpoint(messages)
 		}
+		capped := false
+		if l.OutputCap != nil && l.BudgetCut != nil {
+			if c := l.OutputCap(ctx, func() int64 { return estimateInput(send) }); c > 0 && c < send.MaxTokens {
+				send.MaxTokens, capped = c, true
+			}
+		}
 		l.activity(activity.Thinking, "Thinking", "")
 		resp, routed, err := l.request(ctx, send)
 		if err != nil {
@@ -141,6 +153,16 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 		}
 
 		toolUses, textParts := collectAssistant(resp.Content)
+		if capped && resp.StopReason == anthropic.StopReasonMaxTokens {
+			// The budget's cap cut the answer: keep its text (a tool call cut in the middle is dropped) and stop.
+			res.Text = strings.Join(textParts, "")
+			if strings.TrimSpace(res.Text) != "" {
+				if err := l.storeStopped(ctx, anthropic.NewAssistantMessage(anthropic.NewTextBlock(res.Text))); err != nil {
+					return res, err
+				}
+			}
+			return res, l.BudgetCut(ctx)
+		}
 		assistantMsg := resp.ToParam()
 		if err := l.Sink.Message(ctx, "assistant", assistantMsg); err != nil {
 			return res, err
@@ -177,6 +199,25 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 		}
 	}
 	return res, ErrMaxTurns
+}
+
+func (l *Loop) storeStopped(ctx context.Context, msg anthropic.MessageParam) error {
+	if s, ok := l.Sink.(StoppedSink); ok {
+		return s.StoppedMessage(ctx, "assistant", msg)
+	}
+	return l.Sink.Message(ctx, "assistant", msg)
+}
+
+// estimateInput is a rough count of a request's input tokens (4 bytes a token
+// of its JSON): enough to price the input of a request before it is sent.
+func estimateInput(p anthropic.MessageNewParams) int64 {
+	n := 0
+	for _, part := range []any{p.System, p.Tools, p.Messages} {
+		if raw, err := json.Marshal(part); err == nil {
+			n += len(raw)
+		}
+	}
+	return int64(n / 4)
 }
 
 func (l *Loop) activity(kind, label, toolID string) {

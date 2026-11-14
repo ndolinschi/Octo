@@ -241,7 +241,8 @@ plid=$(jget 'd["plan"]["id"]' <<<"$plan")
 idle "$PB3P"
 [ "$(curl -fsS "$BASE/v1/projects/$PB3P/plans/latest" | jget 'd["plan"]["status"]')" = approved ] || fail "plan not approved"
 [ "$(http_code POST "/v1/projects/$PB3P/plans/$plid/approve")" = 409 ] || fail "second approval"
-[ "$(http_code GET "/v1/projects/$PB3/plans/latest")" = 404 ] || fail "no plan must be 404"
+nop=$(curl -fsS "$BASE/v1/projects/$PB3/plans/latest") || fail "no plan must answer 200"
+[ "$(jget 'd["plan"]' <<<"$nop")" = None ] || fail "no plan must be {\"plan\": null}: $nop"
 echo "   ok"
 
 echo "== B3 ACP: ask/plan map to the agent's own session modes"

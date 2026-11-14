@@ -22,6 +22,9 @@ func TestACPFailureModesSayWhatToDo(t *testing.T) {
 		{"refusal", "[refuse] hi", "declined the request", "Rephrase", false},
 		{"max tokens", "[max-tokens] hi", "ran out of room", "smaller step", false},
 		{"crash mid-turn", "[crash] hi", "stopped in the middle of the request", "Try again", false},
+		// NEW-10: killed while a command runs, or while it works without a word: it was working, not starting.
+		{"killed during a command", "[die-in-command] hi", "stopped in the middle of the request", "Try again", false},
+		{"killed while silent", "[die-silent] hi", "stopped in the middle of the request", "Try again", false},
 	} {
 		t.Run("orchestrator "+tc.name, func(t *testing.T) {
 			ag := fakeAgent("fake", true)

@@ -65,6 +65,7 @@ the bridge writes them (`writeProblem`, `writeError`, `errorBody`). `writeError(
 | `AgentSilent`, `AgentStopped`, `AgentCrashed`, `AgentFailed`, `AgentUnavailable` | see `catalogue_agent.go` |
 | `NoProvider`, `ProviderNotConnected`, `ProviderNotSupported`, `ProviderNotWorking` | provider states (`connect_provider` / `recheck_provider`) |
 | `BudgetReached` | "This project's budget is used up ($X of $Y)." (`open_settings`) |
+| `BudgetCut` | "This project's budget ran out during this request ($X of $Y); the answer was stopped mid-request." Hint: what it had written is kept. Code `budget_reached` (`open_settings`) |
 | `TurnInProgress`, `SideInProgress`, `QueueFull`, `ImagesUnsupported`, `SteerUnsupported`, `NothingToCompact`, `CompactUnsupported`, `BuiltinLoopOff`, `NewerSchema`, `PlanNotPending`, `FileChanged`, … | `catalogue_service.go` |
 | `GitHubCLIMissing`, `GitHubCLINotLoggedIn`, `GitHubNoRemote`, `GitMissing`, `RepoMismatch`, `DirtyWorkingCopy`, `CheckoutConflict`, `FetchFailed`, … | `catalogue_review.go` |
 
@@ -102,3 +103,19 @@ contains "ACP"). No real agent CLI was run: every case was produced by the scrip
 
 `current_session`, `session_running`, `not_main_session`, `queue_full` and `turn_in_progress` keep their wording; `queue_full`
 is now per session (20 waiting messages of one session).
+
+## Added 2026-11-14 (owner's fourth re-test)
+
+- `turn_interrupted` has two hints (NEW-9): "What it had written before the restart is kept. Retry to run the request
+  again." only when the interrupted turn had stored assistant text; otherwise "Nothing had been written yet. Retry to run
+  the request again." (`TurnInterrupted(kept)`). The exchange carries the same fact as `kept_text` (`memory.md`).
+- `BudgetCut` (code `budget_reached`): a built-in request under a budget asks for at most the output the rest of the
+  budget buys (P2-11); an answer that reached that cap ends the turn with this message, its text kept and flagged
+  `stopped`.
+- `agent_exited_on_start` ("<Agent> stopped while starting.") is now only for an agent process that ended before it was
+  ready: during the start-up handshake or before `session/new` answered (that case used to read `agent_crashed`). An
+  agent that dies after its turn began is `agent_crashed` ("<Agent> stopped in the middle of the request.", hint "Try
+  again. Octo starts it again by itself.", action `retry`). NEW-10: an ACP orchestrator whose prompt failed because the
+  process was gone is started again and sent the request once more only when the prompt failed within a second of being
+  sent (the process had died between turns); an agent that worked on it silently and then died is no longer restarted
+  with the request sent a second time, and so no longer ends as "stopped while starting" when that restart fails.

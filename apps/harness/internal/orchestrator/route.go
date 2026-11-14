@@ -4,8 +4,10 @@ import (
 	"context"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/budget"
+	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 func (rt *runtime) meter() budget.Meter {
@@ -74,4 +76,52 @@ func (rt *runtime) budgetReached(ctx context.Context) *router.BudgetError {
 		return nil
 	}
 	return be
+}
+
+// budgetFloorTokens is the least output a request may ask for under a budget cap: a nearly spent budget still
+// gets an answer of a few paragraphs, and the overshoot stays at most this much output (plus the input).
+const budgetFloorTokens = 256
+
+// outputCap is the loop's OutputCap (P2-11): the most output tokens the project's remaining budget can buy at
+// model's price from the price table, after the request's estimated input; never below budgetFloorTokens. 0 (no
+// cap) without a budget or a known price. The budget is still checked before every request (gate); this bounds
+// what one long request can spend past it. (A request's cost is known only at its end; the cap bounds it before.)
+func (rt *runtime) outputCap(model string) func(context.Context, func() int64) int64 {
+	return func(ctx context.Context, inputTokens func() int64) int64 {
+		c, cancel := dbCtx(ctx)
+		defer cancel()
+		info, err := rt.db.Info(c)
+		if err != nil || info.BudgetUSD == nil {
+			return 0
+		}
+		m := rt.meter()
+		perMillion, ok := m.Prices.Estimate(model, prices.Tokens{Output: 1_000_000})
+		if !ok || perMillion <= 0 {
+			return 0
+		}
+		spent, _, err := m.Spent(c, rt.db)
+		if err != nil {
+			return 0
+		}
+		left := *info.BudgetUSD - spent
+		if in, ok := m.Prices.Estimate(model, prices.Tokens{Input: inputTokens()}); ok {
+			left -= in
+		}
+		n := int64(left / perMillion * 1_000_000)
+		return max(n, budgetFloorTokens)
+	}
+}
+
+// budgetCut is the loop's BudgetCut: the error a turn ends with when the cap stopped an answer.
+func (rt *runtime) budgetCut(ctx context.Context) error {
+	spent, budget := -1.0, -1.0
+	c, cancel := dbCtx(ctx)
+	defer cancel()
+	if info, err := rt.db.Info(c); err == nil && info.BudgetUSD != nil {
+		budget = *info.BudgetUSD
+		if v, known, err := rt.meter().Spent(c, rt.db); err == nil && known {
+			spent = v
+		}
+	}
+	return usererr.BudgetCut(spent, budget).Caused(&router.BudgetError{Spent: spent, Budget: budget})
 }

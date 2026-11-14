@@ -67,6 +67,9 @@ type Exchange struct {
 	Interrupted bool `json:"interrupted,omitempty"`
 	// Error says why a failed turn failed (schema 15; absent for other outcomes and for turns recorded before).
 	Error *ExchangeError `json:"error,omitempty"`
+	// KeptText says, for a turn that did not complete (failed, stopped, interrupted), whether text it had written
+	// is kept in the conversation (MessageID names it); absent on a completed or forgotten exchange. Derived, not stored.
+	KeptText *bool `json:"kept_text,omitempty"`
 }
 
 // ExchangeError is the catalogue error a failed turn ended with: what the conversation shows after a reload.
@@ -112,6 +115,10 @@ func scanExchange(sc interface{ Scan(...any) error }) (Exchange, error) {
 	if cost.Valid {
 		v := cost.Float64
 		e.CostUSD = &v
+	}
+	if e.Status != ExchangeCompleted && !e.Removed {
+		kept := e.MessageID != 0
+		e.KeptText = &kept
 	}
 	return e, nil
 }
@@ -542,4 +549,32 @@ func (d *DB) ChangedPaths(ctx context.Context, turnID int64) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// TurnEnding is how a request's turn ended when it did not complete: its exchange's status (failed or stopped)
+// and whether the harness stopped while it ran.
+type TurnEnding struct {
+	Status      string
+	Interrupted bool
+}
+
+// UnfinishedTurns returns, by request message id, the turns of agentID's requests that ended failed or stopped
+// (the exchange recorded for each; a retried request's record is its latest outcome).
+func (d *DB) UnfinishedTurns(ctx context.Context, agentID string) (map[int64]TurnEnding, error) {
+	rows, err := d.sql.QueryContext(ctx, `SELECT x.turn_id, x.status, x.interrupted FROM exchanges x JOIN messages m ON m.id = x.turn_id
+		WHERE m.agent_id = ? AND x.status != ?`, agentID, ExchangeCompleted)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]TurnEnding{}
+	for rows.Next() {
+		var id int64
+		var e TurnEnding
+		if err := rows.Scan(&id, &e.Status, &e.Interrupted); err != nil {
+			return nil, err
+		}
+		out[id] = e
+	}
+	return out, rows.Err()
 }

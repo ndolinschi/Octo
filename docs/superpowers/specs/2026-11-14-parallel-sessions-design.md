@@ -568,4 +568,14 @@ handler of `session.current` relies on `project.updated`; two real Claude Code s
 per-session MCP tokens. `e2e-parity.sh` stops at "no plan must be 404", which the previous binary also fails (the
 route answers 200 `{"plan": null}` since 2026-11-13); with that line skipped it passes.
 
+After the owner's fourth re-test (2026-11-14, harness): `session.updated` with the after-turn state is published
+right after `turn.finished` (the Stop button no longer lingers); a request whose turn ended failed, stopped or
+interrupted with nothing answering it is closed for the model by a note in the assistant's role, added when the context
+is built and never stored (full history, window mode and the ACP orchestrator's next prompt), so the next prompt does
+not also carry out the old request — a Retry sends the stored request alone; exchanges carry `kept_text`; an ACP
+orchestrator that dies after its turn began is not restarted and re-sent (only a prompt that fails within a second
+is); with a budget and a price, each request's `max_tokens` is capped by what the remaining budget buys (256–8192) and
+an answer cut there ends the turn with `budget_reached`, text kept; a failed built-in `bash` result always ends with
+`exit status N`. Details: `apps/harness/docs/{sessions,errors,memory,architecture}.md`. Not verified live.
+
 Phases 2–5 (criteria 14–37): not built.

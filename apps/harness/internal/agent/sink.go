@@ -32,6 +32,12 @@ type ToolInputSink interface {
 	ToolInput(id, name string, input json.RawMessage)
 }
 
+// StoppedSink is implemented by sinks that can persist a message flagged as cut
+// short; the loop uses it for the text of a response the budget cap stopped.
+type StoppedSink interface {
+	StoppedMessage(ctx context.Context, role string, msg anthropic.MessageParam) error
+}
+
 // Compactor is implemented by sinks that keep compaction summaries; the loop
 // calls Compacted when an Octo router answered with one (see compactionSummary).
 type Compactor interface {

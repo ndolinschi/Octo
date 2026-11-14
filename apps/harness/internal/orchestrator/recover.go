@@ -100,7 +100,7 @@ func (o *Orchestrator) RecoverInterrupted(ctx context.Context, db *projectstore.
 		if alive > end {
 			end = alive // still at work when it last said so (a long tool call writes nothing)
 		}
-		p := usererr.TurnInterrupted()
+		p := usererr.TurnInterrupted(keptAfter(ctx, db, orch.ID, req.ID)) // NEW-9: the hint says whether anything was kept
 		idle := projectstore.StatusIdle
 		patch := projectstore.AgentPatch{Status: &idle, Error: &p.Message, ErrorHint: &p.Hint, FinishedAt: &end}
 		if _, err := db.UpdateAgent(ctx, orch.ID, patch); err != nil {
@@ -144,4 +144,19 @@ func interruptedRequest(ctx context.Context, db *projectstore.DB, orch projectst
 		return m, true
 	}
 	return projectstore.Message{}, false
+}
+
+// keptAfter reports whether the agent has an assistant message with text after the request: what the
+// interrupted turn had written, kept in the conversation.
+func keptAfter(ctx context.Context, db *projectstore.DB, agentID string, requestID int64) bool {
+	msgs, err := db.Messages(ctx, agentID)
+	if err != nil {
+		return false
+	}
+	for _, m := range msgs {
+		if m.ID > requestID && m.Role == "assistant" && messageText(m) != "" {
+			return true
+		}
+	}
+	return false
 }

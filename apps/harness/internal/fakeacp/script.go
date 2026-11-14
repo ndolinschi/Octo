@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 )
 
 // defaultSessionID is the session id unless EnvUniqueSessions asks for fresh ones.
@@ -15,8 +16,16 @@ const defaultSessionID = "fake-session-1"
 
 // Markers in the prompt text that switch the scripted behaviour.
 const (
+	// ClosedNoteEnd ends the harness's note about an earlier request nothing answered (orchestrator/closed.go).
+	ClosedNoteEnd = "they will ask again.]\n\n"
 	MarkerEscape  = "[escape]"
 	MarkerCrash   = "[crash]"
+	// MarkerDieInCommand: the agent starts a command (an execute tool call, in progress) and its process dies.
+	MarkerDieInCommand = "[die-in-command]"
+	// MarkerDieSilent: the agent works 1.5 s without sending anything, then its process dies.
+	MarkerDieSilent = "[die-silent]"
+	// DieSilentLog is the file in the working folder MarkerDieSilent appends each request it got to.
+	DieSilentLog  = ".fakeacp-die-silent.log"
 	MarkerHang    = "[hang]"
 	MarkerDeaf    = "[deaf]"
 	MarkerUnknown = "[unknown]"
@@ -121,6 +130,10 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 	if i := strings.LastIndex(prompt, "User request:\n"); i >= 0 {
 		request = prompt[i+len("User request:\n"):]
 	}
+	// The harness's note closing an unanswered earlier request quotes that request (and its markers).
+	if i := strings.LastIndex(request, ClosedNoteEnd); i >= 0 {
+		request = request[i+len(ClosedNoteEnd):]
+	}
 	// A side question's first prompt carries a recap of the orchestrator's conversation.
 	if i := strings.LastIndex(request, "Side question: "); i >= 0 {
 		request = request[i+len("Side question: "):]
@@ -159,12 +172,28 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		return "refusal"
 	case has(MarkerMaxTokens):
 		return "max_tokens"
+	case has(MarkerDieSilent):
+		if f, err := os.OpenFile(filepath.Join(cwd, DieSilentLog), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+			_, _ = f.WriteString(request + "\n") // a test counts how many times the request reached an agent
+			_ = f.Close()
+		}
+		time.Sleep(1500 * time.Millisecond) // working without a word (a long first model call), then killed
+		a.exit(137)
+		return "end_turn"
 	case has(MarkerLive) || has(MarkerSlowTool) || has(MarkerQuiet) || has(MarkerSecretThought) || has(MarkerAuthRequired) || has(MarkerLateInput) || has(MarkerSayHang):
 		stop, _ := a.liveScript(ctx, cwd, request)
 		return stop
 	}
 	a.say("I'll look at the project first. ")
 	switch {
+	case has(MarkerDieInCommand):
+		a.update(map[string]any{
+			"sessionUpdate": "tool_call", "toolCallId": "call-cmd", "title": "Run go test ./...", "kind": "execute",
+			"status": "in_progress", "rawInput": map[string]string{"command": "go test ./..."},
+		})
+		time.Sleep(200 * time.Millisecond)
+		a.exit(137) // killed while the command runs
+		return "end_turn"
 	case has(MarkerCrash):
 		a.toolCall("call-crash", "Read README.md", "read", "pending", filepath.Join(cwd, "README.md"))
 		a.exit(3)

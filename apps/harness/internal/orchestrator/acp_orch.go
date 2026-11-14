@@ -116,11 +116,16 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 	}
 	s.applyMode(ctx, rt, client, sessID)
 	endSpan := rt.trackSpan(ctx, orch.ID, "", changes.SourceACPTurn)
+	sent := time.Now()
 	stop, err := client.PromptWith(ctx, sessID, prompt, images, handler)
-	if err != nil && ctx.Err() == nil && handler.idle() && connectionEnded(client) {
+	if err != nil && ctx.Err() == nil && handler.idle() && time.Since(sent) < deadOnArrival && connectionEnded(client) {
 		// The agent process died between turns and the harness had not noticed
 		// yet (its exit is seen asynchronously): the prompt never reached an agent
 		// that did anything. Start a fresh process once and send it again.
+		// NEW-10: only when the prompt failed at once. An agent that worked on it
+		// for a while without a word (a long first model call) and then died was
+		// working: sending the request again would run it twice, and a restart
+		// that fails would read "stopped while starting".
 		slog.Warn("acp agent was gone when the prompt was sent; restarting it", "project", rt.pid(), "agent", target.agent.ID, "err", err)
 		s.mu.Lock()
 		s.closeLocked()
@@ -273,7 +278,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 		sess, err = client.NewSession(ctx, cwd, nil, opts)
 	}
 	if err != nil {
-		return false, acpFailure(ag, false, err)
+		return false, acpFailure(ag, true, err) // NEW-10: before session/new answered, the agent was starting
 	}
 	s.mu.Lock()
 	s.sessID = sess.ID
@@ -446,6 +451,9 @@ func (rt *runtime) acpTurnPrompt(ctx context.Context, s *orchSession, orch proje
 	}
 	if n := modeNote(rt.mode); n != "" {
 		b.WriteString("[" + n + "]\n")
+	}
+	if prev, e, ok := unansweredBefore(msgs, last, rt.unfinishedTurns(ctx, orch.ID)); ok {
+		b.WriteString(closedPromptNote(prev, e)) // NEW-8: the agent may hold the unanswered request (closed.go)
 	}
 	b.WriteString(request)
 	return b.String(), nil
@@ -648,6 +656,10 @@ func (b mcpBackend) Call(ctx context.Context, bind mcp.Binding, name string, arg
 	}
 	return text, isErr, nil
 }
+
+// deadOnArrival is how soon a prompt to an agent process that had already died fails: its exit is
+// pending on the connection when the prompt is written. A prompt that fails later reached a live agent.
+const deadOnArrival = time.Second
 
 // connectionEnded reports whether the agent's connection is (or, within a
 // moment, becomes) closed: a process that died is noticed by the reader asynchronously.

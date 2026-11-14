@@ -407,14 +407,14 @@ func TestCrashRecoveryClosesEverySession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := usererr.TurnInterrupted()
+	want := usererr.TurnInterrupted(false) // NEW-9: nothing had been written when the harness died
 	for _, sid := range []string{s1, s2.ID} {
 		root, _ := db.RootAgent(ctx, sid)
 		if root.Status != projectstore.StatusIdle || root.Error == nil || *root.Error != want.Message {
 			t.Fatalf("root of %s = %+v", sid, root)
 		}
 		_, ex, _ := db.SessionOf(ctx, sid)
-		if len(ex) != 1 || !ex[0].Interrupted || ex[0].Status != projectstore.ExchangeFailed {
+		if len(ex) != 1 || !ex[0].Interrupted || ex[0].Status != projectstore.ExchangeFailed || ex[0].KeptText == nil || *ex[0].KeptText {
 			t.Fatalf("exchanges of %s = %+v", sid, ex)
 		}
 		// The stored exchange says why the turn failed (what a reloaded conversation shows).

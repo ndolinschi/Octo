@@ -362,7 +362,10 @@ func (o *Orchestrator) StartWith(ctx context.Context, projectID, text string, op
 		o.qmu.Lock()
 		closeBox()
 		finished["session_id"], finished["agent_id"] = sid, orch.ID
-		o.finish(key, finished)
+		// NEW-10: the session's state as it is once the turn is over goes out right after turn.finished. The
+		// update runTurn published still said working (the session was live then); a client that shows Stop from
+		// the session's state kept it until some later event.
+		o.finish(key, finished, o.endedView(db, sid))
 		o.advance(projectID, sid, status)
 		o.qmu.Unlock()
 	}()
@@ -465,12 +468,16 @@ func (o *Orchestrator) release(key string) {
 // idle (the agent row says idle before this) without turn.finished already
 // published: a client that polls for idle and then subscribes would otherwise
 // catch the previous turn's turn.finished as the next turn's.
-func (o *Orchestrator) finish(key string, finished map[string]any) {
+func (o *Orchestrator) finish(key string, finished, session map[string]any) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	delete(o.turns, key)
 	pid, _ := splitKey(key)
 	o.hub.Publish(pid, events.TurnFinished, finished)
+	if session != nil {
+		// Under o.mu: an operation that claims the slot next (a clear) publishes after this, never before.
+		o.hub.Publish(pid, events.SessionUpdated, session)
+	}
 	delete(o.live, key)
 }
 

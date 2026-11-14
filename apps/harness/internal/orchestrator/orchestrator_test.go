@@ -152,9 +152,10 @@ type fakeReq struct {
 		Name        string          `json:"name"`
 		InputSchema json.RawMessage `json:"input_schema"`
 	} `json:"tools"`
-	Msgs   []json.RawMessage `json:"messages"`
-	Stream bool              `json:"stream"`
-	System json.RawMessage   `json:"system"`
+	Msgs      []json.RawMessage `json:"messages"`
+	Stream    bool              `json:"stream"`
+	System    json.RawMessage   `json:"system"`
+	MaxTokens int64             `json:"max_tokens"`
 }
 
 func (f fakeReq) isOrchestrator() bool {

@@ -87,7 +87,7 @@ session the request belongs to), `GET /context`, `GET /plans/latest` and `GET /e
   failed or cancelled turn pauses that session's non-empty queue; a crash pauses every non-empty queue.
 - A turn that cannot wait in a queue (approving a plan, `/compact` sent to an agent) is 409 `session_slots_full` at the cap.
 - The budget gate runs before every model request of every session; parallel requests already in flight can overshoot by one
-  request per running agent.
+  request per running agent. Each such request is bounded by the output cap (`architecture.md`, Budget).
 
 ## Events
 
@@ -133,7 +133,22 @@ the stop, and a stop kills a running `bash` command's whole process group.
 
 At start every main session whose root was left running is closed on its own: its streamed text is kept as a stopped message, its
 root is idle with the `turn_interrupted` error, its exchange is recorded `failed`, `interrupted` and with `error`; every
-non-empty session queue is paused.
+non-empty session queue is paused. The error's hint says whether text was kept ("What it had written before the restart is
+kept" only then; "Nothing had been written yet" otherwise) and the exchange's `kept_text` says the same.
+
+**An unanswered request is closed for the model (NEW-8).** A request whose turn ended failed, stopped or interrupted
+before any assistant message is followed in storage directly by the next message. When the harness builds a model's
+context it puts, after such a request, an assistant-side note: "[Octo: the request above was not carried out; <why>. Do
+not do it or continue it now: answer only the message that follows. If the person wants it done, they will ask again.]"
+(`orchestrator/closed.go`; `<why>` names the restart, the failure or the stop). It is added in the full history
+(`loadHistory`), in the window mode's recent exchanges, and for an ACP orchestrator at the start of the next prompt
+(quoting the unanswered request, which the agent may hold in its own session). The note is never stored: messages,
+exchanges, search and exports are unchanged, and a client has nothing new to render. It is added only when another
+message follows the request, so Retry (the same text sent again, which runs the stored request again) sends the
+request alone, once.
+
+**Session state after a turn (NEW-10).** `session.updated` is published again after `turn.finished`, with the state as it
+is then (idle, failed, stopped or queued); the one published while the turn was ending still said `working`.
 
 ## Schema 15
 

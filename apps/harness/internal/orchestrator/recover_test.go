@@ -153,7 +153,7 @@ func TestKilledWhileStreamingKeepsTheTextAndClosesTheTurn(t *testing.T) {
 	if len(msgs) != 2 || msgs[1].Role != "assistant" || !msgs[1].Stopped || *msgs[1].Content[0].Text != want {
 		t.Fatalf("messages after restart = %+v, want the request and the kept text flagged stopped", msgs)
 	}
-	p := usererr.TurnInterrupted()
+	p := usererr.TurnInterrupted(true)
 	if orch.Status != projectstore.StatusIdle || orch.Error == nil || *orch.Error != p.Message || orch.ErrorHint == nil || *orch.ErrorHint != p.Hint || orch.FinishedAt == nil {
 		t.Fatalf("orchestrator after restart = %+v", orch)
 	}
@@ -161,7 +161,8 @@ func TestKilledWhileStreamingKeepsTheTextAndClosesTheTurn(t *testing.T) {
 		t.Fatalf("%d checkpoints left after the restart", n)
 	}
 	x := onlyExchange(t, r2, pid)
-	if x.Status != projectstore.ExchangeFailed || !x.Interrupted || x.Answer != want || x.MessageID != msgs[1].ID || x.TurnID != msgs[0].ID {
+	if x.Status != projectstore.ExchangeFailed || !x.Interrupted || x.Answer != want || x.MessageID != msgs[1].ID || x.TurnID != msgs[0].ID ||
+		x.KeptText == nil || !*x.KeptText || x.Error == nil || x.Error.Hint != p.Hint {
 		t.Fatalf("exchange = %+v", x)
 	}
 	pr, err := r2.svc.Get(context.Background(), pid)
