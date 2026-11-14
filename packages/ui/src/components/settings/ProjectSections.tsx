@@ -239,7 +239,7 @@ export function UsageSection({ projectId }: { projectId: string | null }) {
           scopeText="A budget is set per project."
           // B11: what the harness does (apps/harness/docs/architecture.md, Budget): the cap is on everything the project has
           // ever spent, not per month; subscription use is not spend.
-          footer="A budget caps everything a project spends, in total (not per month). Once it is used up the project starts no new work; subscription use does not count."
+          footer="A budget caps everything a project spends, in total (not per month). It is checked between steps: once it is used up the project starts no new work, but a step already running can go over. Subscription use does not count."
           row={(p) => <BudgetRow key={p.id} project={p} update={update} usage={cost[p.id]} />}
         />
       </div>

@@ -1,6 +1,21 @@
 import type { Folder, TierPolicy } from "@octo/agent-client";
 import { ArrowUp, Clock, Plus, Square } from "lucide-react";
-import { forwardRef, lazy, Suspense, useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
+import {
+  forwardRef,
+  lazy,
+  Suspense,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { cn } from "../../lib/cn";
 import { useChatSlots } from "../../state/chatSlots";
 import { errorMessage } from "../../lib/format";
@@ -18,12 +33,15 @@ import { useAttachments } from "./useAttachments";
 import { useImages } from "./useImages";
 import { useHost } from "../../state/host";
 import { FileInput, type FileInputHandle } from "../primitives/FileInput";
-import { useAgentName } from "./Transcript";
+import { useAgentName } from "./agentName";
 import { errorCode as errorCodeOf, structuredError } from "../../lib/format";
 import type { SlashMenuHandle } from "./SlashMenu";
 import { octoCommandFor, slashQuery, type SlashRow } from "../../lib/slash";
 import { useSlashCommands, useSlashRunner } from "./useSlash";
 import { useComposerText, type ComposerDraft } from "./useComposerText";
+import { SENDING_NOTICE_MS } from "../../lib/constants";
+import { mayNearLimit, plainShaping, triggerAt } from "../../lib/composerInput";
+import type * as SizeModule from "../../lib/messageSize";
 
 const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
 const ModelRefusedActions = lazy(() => import("../shared/ModelRefusedActions").then((m) => ({ default: m.ModelRefusedActions })));
@@ -86,8 +104,8 @@ export type ComposerProps = {
 
 const noCount = () => undefined;
 
-/** `/` or `@` at the start of a word, up to the caret: the "+" menu's inline query. */
-const TRIGGER = /(^|\s)([/@])([^\s/@]*)$/;
+/** P2-6: the size check's own chunk, loaded once a text could be near the body limit. */
+const loadSizer = () => import("../../lib/messageSize");
 
 type MenuState = { mode: "button" } | { mode: "inline"; start: number; query: string };
 
@@ -106,6 +124,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [errorFields, setErrorFields] = useState<ReturnType<typeof structuredError>>(null);
   const [sending, setSending] = useState(false);
+  // A9: a send still unanswered after a moment says so; the bridge times it out (then the notice below offers Retry).
+  const [slow, setSlow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelError, setModelError] = useState<{ model: string; message: string; provider?: string } | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -151,6 +171,22 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const pendingComments = props.comments?.count ?? 0;
   const hasContent = text.trim().length > 0 || attach.files.length > 0 || pics.images.length > 0 || pendingComments > 0;
   const canSend = !disabled && !sending && !pics.busy && hasContent;
+  // P2-6: the harness refuses a body over 1 MiB; the size shows near the limit and a longer message is not sent.
+  // Counted in a deferred render, off the keystroke (a pass over a 2.4 MB text is ~20 ms).
+  const sizedText = useDeferredValue(text);
+  const large = mayNearLimit(sizedText);
+  const [sizer, setSizer] = useState<typeof SizeModule | null>(null);
+  useEffect(() => {
+    // A failed load leaves no counter; the harness still refuses the body itself.
+    if (large && !sizer) void loadSizer().then(setSizer, () => undefined);
+  }, [large, sizer]);
+  const size = useMemo(() => (large && sizer ? sizer.messageSize(sizedText) : null), [large, sizer, sizedText]);
+  // Set before a paste that brings one goes in (the browser lays the text out once while inserting it): see `plainShaping`.
+  const [pastingLong, setPastingLong] = useState(false);
+  const plainText = useMemo(() => plainShaping(text), [text]);
+  const longWord = plainText || pastingLong;
+  /** The refusal of a message too long to send (until the text is edited). */
+  const [refused, setRefused] = useState<string | null>(null);
 
   const outgoing = () => withAttachments(text.trim(), attach.files);
   const queue = () => {
@@ -171,8 +207,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       await runSlash(octo.command.name, octo.args);
       return;
     }
+    // P2-6: a message over the harness's body limit is not sent (a short one never waits for the check).
+    const message = outgoing();
+    const check = mayNearLimit(message) ? await loadSizer().catch(() => null) : null;
+    const big = check?.messageSize(message);
+    setRefused(check && big?.over ? check.tooLongText(big.bytes) : null);
+    if (big?.over) return;
     if (props.running && !props.serverQueue) return queue();
     setSending(true);
+    // Cleared when the send settles, which the bridge's send timeout bounds.
+    const timer = window.setTimeout(() => setSlow(true), SENDING_NOTICE_MS);
     setError(null);
     setErrorCode(null);
     setErrorFields(null);
@@ -189,7 +233,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setErrorCode(errorCodeOf(e));
       setErrorFields(structuredError(e));
     } finally {
+      window.clearTimeout(timer);
       setSending(false);
+      setSlow(false);
     }
   };
 
@@ -201,9 +247,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setMenu(null);
       return;
     }
-    const m = TRIGGER.exec(value.slice(0, caret));
-    const query = m?.[3];
-    if (query !== undefined) setMenu({ mode: "inline", start: caret - query.length - 1, query });
+    // Only the words before the caret are read (P1-5: a pasted megabyte must not be scanned on every keystroke).
+    const at = triggerAt(value, caret);
+    if (at) setMenu({ mode: "inline", ...at });
     else setMenu((cur) => (cur?.mode === "inline" ? null : cur));
   };
   // Closing the button-opened menu gives focus back: Esc to the "+" that opened it (decision 95 b), a pick or a click to the text.
@@ -326,6 +372,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           />
         </Suspense>
       )}
+      {refused !== null && (
+        <Suspense fallback={null}>
+          <ErrorNotice fields={{ message: refused }} className="mb-2" data="too-long" />
+        </Suspense>
+      )}
       {props.acceptsImages === false && pics.images.length > 0 && !error && (
         <p data-images-unsupported className="mb-2 px-3 text-sm text-fg-3">
           {agentName ?? "This model"} can&apos;t read images, so it would ignore these. Remove them or choose another model.
@@ -432,14 +483,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               ref={area}
               rows={1}
               value={text}
+              data-long-word={longWord || undefined}
               disabled={disabled}
               onChange={(e) => {
                 setText(e.target.value);
+                setRefused(null);
+                setPastingLong(false);
                 syncTrigger(e.target.value, e.target.selectionStart);
               }}
               onSelect={(e) => inlineOpen && syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
               onKeyDown={onKeyDown}
-              onPaste={attach.onPaste}
+              onPaste={(e) => {
+                if (!longWord && plainShaping(e.clipboardData.getData("text/plain"))) flushSync(() => setPastingLong(true));
+                attach.onPaste(e);
+              }}
               onBlur={() => {
                 if (inlineOpen) setMenu(null);
                 setSlash(null);
@@ -505,6 +562,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 <ContextRing used={props.context.used} size={props.context.size} />
               </Suspense>
             ) : null}
+            {size?.near && (
+              <span data-composer-size data-over={size.over || undefined} className={cn("px-1 text-xs tabular-nums", size.over ? "text-err" : "text-fg-3")}>
+                {size.label}
+              </span>
+            )}
+            {slow && (
+              <span role="status" className="px-1 text-xs text-fg-3">
+                Sending…
+              </span>
+            )}
             <SendButton action={action} enabled={action === "stop" ? !disabled : canSend} onStop={() => void props.onCancel()} />
           </div>
         </form>

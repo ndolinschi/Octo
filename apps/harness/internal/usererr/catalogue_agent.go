@@ -37,7 +37,7 @@ func AgentNotLoggedIn(label, command, instructions string) *Error {
 func AgentNotInstalled(label, installCommand, reason string) *Error {
 	return &Error{
 		Code: CodeAgentNotInstalled, Message: label + " is not installed.",
-		Hint:    "Install it, then check again.",
+		Hint:    "Octo could not find its program. Install it, or add its folder to PATH, then check again.",
 		Command: installCommand, Action: ActionRecheckProvider, Details: clip(reason),
 	}
 }

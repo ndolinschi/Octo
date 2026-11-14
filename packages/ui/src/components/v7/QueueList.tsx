@@ -32,7 +32,7 @@ type Pending = { kind: "remove" | "send" | "stop"; id: string } | { kind: "resum
 
 /**
  * Messages waiting for the running turn (v7 §2), as a compact stack above the composer: one 28px row each with "Send
- * now" and remove; folded past three; the paused state with Resume / Clear. Nothing when the queue is empty and running.
+ * now" and remove; folded past three; the paused state with Resume / Clear. Nothing when the queue is empty, paused or not (P2-8).
  */
 export function QueueList(props: QueueListProps) {
   const [expanded, setExpanded] = useState(false);
@@ -46,7 +46,9 @@ export function QueueList(props: QueueListProps) {
 
   // Removed rows disappear at once (optimistic); the next `queue.updated` confirms or, after a failure, they return.
   const messages = props.messages.filter((m) => !hidden.has(m.id));
-  if (!messages.length && !props.paused) return null;
+  // P2-8: paused with nothing queued is not shown (a cleared queue left an empty "Queue paused" strip); a message queued
+  // later brings the strip back with its count and Resume.
+  if (!messages.length) return null;
   const view = queueView(messages, expanded);
 
   const run = async (p: NonNullable<Pending>, work: () => Promise<void>, what: string) => {
@@ -99,7 +101,7 @@ export function QueueList(props: QueueListProps) {
           ) : undefined
         }
       >
-        {props.paused ? (messages.length ? `${queueCountLabel(count)} · paused after a failed or stopped turn` : "Queue paused") : queueCountLabel(count)}
+        {props.paused ? `${queueCountLabel(count)} · paused after a failed or stopped turn` : queueCountLabel(count)}
       </SectionHeader>
       {props.paused && (
         <div className="flex min-h-ctl-sm flex-wrap items-center gap-2 pr-0.5 pl-2">
@@ -108,11 +110,9 @@ export function QueueList(props: QueueListProps) {
           <Button size="xs" variant="secondary" disabled={pending !== null} onClick={() => void run({ kind: "resume" }, props.onResume, "resume the queue")}>
             Resume
           </Button>
-          {messages.length > 0 && (
-            <Button size="xs" variant="quiet" disabled={pending !== null} onClick={() => void run({ kind: "clear" }, props.onClear, "clear the queue")}>
-              Clear
-            </Button>
-          )}
+          <Button size="xs" variant="quiet" disabled={pending !== null} onClick={() => void run({ kind: "clear" }, props.onClear, "clear the queue")}>
+            Clear
+          </Button>
         </div>
       )}
       {view.shown.length > 0 && (

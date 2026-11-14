@@ -46,6 +46,9 @@ func (rt *runtime) acpOrchestratorTarget() (acpTarget, error) {
 	}
 	t, msg := rt.pickACPAgent(id, model)
 	if msg != "" {
+		if missing := rt.missingAgent(id); missing != nil {
+			return acpTarget{}, missing
+		}
 		return acpTarget{}, usererr.AgentUnavailable(msg)
 	}
 	return t, nil

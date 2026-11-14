@@ -8,6 +8,12 @@ export const COMPOSER_MAX_LINES = 10;
 export type ComposerDraft = DraftBus;
 
 /**
+ * P1-5: where the engine sizes a text area to its content (`field-sizing: content`, styles.css "stress: perf"), the height
+ * is left to it; measuring (height 0, then scrollHeight) laid a pasted megabyte out twice per keystroke.
+ */
+const SIZED_BY_CSS = typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("field-sizing", "content");
+
+/**
  * The composer's text: kept in the shared draft (both composers on one key hear each other), and the text area's
  * height fitted to it (refitted when the width changes the wrapping).
  */
@@ -34,7 +40,7 @@ export function useComposerText(draft: ComposerDraft | undefined) {
 
   const fit = useCallback(() => {
     const el = area.current;
-    if (!el) return;
+    if (!el || SIZED_BY_CSS) return;
     el.style.height = "0px";
     const max = COMPOSER_LINE * COMPOSER_MAX_LINES;
     el.style.height = `${Math.max(COMPOSER_LINE, Math.min(el.scrollHeight, max))}px`;
@@ -43,7 +49,7 @@ export function useComposerText(draft: ComposerDraft | undefined) {
   useLayoutEffect(fit, [text, fit]);
   useEffect(() => {
     const el = area.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
+    if (!el || SIZED_BY_CSS || typeof ResizeObserver === "undefined") return;
     let width = el.clientWidth;
     const ro = new ResizeObserver(() => {
       if (el.clientWidth === width) return;

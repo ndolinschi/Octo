@@ -418,6 +418,16 @@ export function withMessages(state: ProjectState, agentId: string, messages: Mes
   return { ...state, messages: { ...state.messages, [agentId]: merged } };
 }
 
+/**
+ * After a re-read (a reconnect, the stream watchdog): the live parts of every agent that is not running any more —
+ * streamed text, reasoning, tools in flight, activity — are dropped, because the `turn.finished` that would have cleared
+ * them was missed and the stored messages now hold what they were showing. A running agent keeps them.
+ */
+export function settleStreams(state: ProjectState): ProjectState {
+  const live = <T>(record: Record<string, T>) => Object.fromEntries(Object.entries(record).filter(([id]) => state.agents[id]?.status === "running"));
+  return { ...state, streaming: live(state.streaming), thinking: live(state.thinking), activeTools: live(state.activeTools), activity: live(state.activity) };
+}
+
 export function withCompactions(state: ProjectState, agentId: string, markers: CompactionMarker[]): ProjectState {
   return { ...state, compactions: { ...state.compactions, [agentId]: mergeCompactions(state.compactions[agentId] ?? [], markers) } };
 }

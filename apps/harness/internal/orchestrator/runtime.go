@@ -273,8 +273,10 @@ func (rt *runtime) runAgent(ctx context.Context, a projectstore.Agent, history [
 		sink.onCleared = rt.addCleared
 	}
 	res, err := loop.Run(ctx, history)
-	if err != nil && ctx.Err() != nil {
-		sink.keepPartial(ctx) // what a cancelled turn had written is kept, flagged stopped
+	if err != nil {
+		// What a cancelled or failed turn had written is kept, flagged stopped (cut short): a
+		// stream that broke off (the provider or the router went away) keeps the text it had sent.
+		sink.keepPartial(ctx)
 	}
 	return res, err
 }

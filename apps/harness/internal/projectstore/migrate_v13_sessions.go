@@ -54,6 +54,9 @@ func (d *DB) addSessionColumns(ctx context.Context) error {
 		{"sessions", sessionColumns},
 		{"messages", []column{{"session_id", "TEXT NOT NULL DEFAULT ''"}}},
 		{"compactions", []column{{"session_id", "TEXT NOT NULL DEFAULT ''"}}},
+		// An exchange closed at start because the harness stopped while its turn ran (no version of its own: older
+		// binaries never read it and their inserts get the default).
+		{"exchanges", []column{{"interrupted", "INTEGER NOT NULL DEFAULT 0"}}},
 	} {
 		have, err := d.columns(ctx, t.table)
 		if err != nil {

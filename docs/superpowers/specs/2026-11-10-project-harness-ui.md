@@ -3367,3 +3367,59 @@ bridge". Not seen on screen by anyone: the project dialog's unrunnable notice an
 `spacing-audit`, `flicker`, `width-stability`, `layout-shift`, `scroll-on-send`, `picker-keys`,
 `file-open-stability`. Not verified: WebKit and Tauri (including CSS masks for the marks), a live harness for the UI
 parts, real agents, touch, a screen reader.
+
+## As built — the owner's stress test (2026-11-14)
+
+The owner ran 61 chaos scenarios and a responsiveness check against a live stack (their snapshot had no round 3). What
+changed, with the report's ids. Every fix was reproduced first against a real `harness serve` with the mock model behind
+a fault-injecting proxy.
+
+- **A send that never gets an answer (A9).** "Sending…" after 1 s; the fetch is aborted after 15 s; the client then
+  reads back the conversation and the queue, and a message that did arrive is shown as sent (the harness has no
+  idempotency key); otherwise the text is kept and the notice offers Retry, which looks again before posting.
+- **A silent or broken event stream (A16, A11).** The harness's ping is a named `heartbeat` event (a comment never
+  reaches the page) and the stream starts with `retry: 1000`. The client reopens a stream that was silent for 35 s or
+  was refused (backoff 1–10 s); every reopen re-reads the project; a disagreement between the polled project list and
+  the stream about a running turn for 4 s also re-reads. After a re-read, agents that no longer run lose their live
+  parts (`settleStreams`), so a cut answer is replaced by the stored one.
+- **A first load that fails (A14).** Failures are tracked per agent and for the project; retries with backoff 1–30 s,
+  on window focus and on stream reopen; "Couldn't load the conversation · Retry" while it fails.
+- **Offline, refused, unreadable (A15, P2-3, P2-4).** A stream error checks health at once (0.4 s, was 12–14 s).
+  After the first load the workspace stays under a banner and the composer says why sending is off; the full-screen
+  state is only for a first connection. A 401 is "Octo's local service didn't accept this window" (Restart Octo in the
+  packaged app; reload and the token hint in dev); a body that is not JSON is "sent an answer that could not be read".
+- **Clock skew (P2-12).** Relative times use the offset from the service's `Date` header when it is over 30 s.
+- **Interrupted turns (P1-1).** The harness checkpoints streamed text every 500 ms and a heartbeat every 5 s; on start
+  it closes turns that were running: kept text, interruption results for open tool calls, an exchange marked
+  `interrupted`. The head reads "Interrupted after 15s — Octo's local service restarted" with Retry. When the model or
+  the router dies mid-stream the text stays above the failure card ("The connection to the model broke off." / "The
+  Octo router stopped answering.").
+- **The route decides the project (P1-4).** `resolveProjectRoute`: an id that is not in the list is re-read; a 404
+  shows "This project no longer exists" with no composer; the app opens the first project only when it starts with no
+  hash. A deleted open project is noticed through its stream (the harness emits no `project.deleted`).
+- **Ctrl+K typeahead (P2-7).** Keys typed after Ctrl+K are held until the palette's field has focus (they used to go
+  to the composer, and Enter sent them as a prompt); a held Enter runs the first row once the rows for that text exist.
+- **The composer on long input (P1-5).** The cost was layout: the tint layer copied the whole text, and Inter's
+  kerning on a 50k-character word took ~2 s per layout. The tint layer is skipped above 20k characters or with a
+  1000-character word; such text is shaped without kerning (`data-long-word`); the field sizes with
+  `field-sizing: content` where supported; the `@`/`/` trigger reads 256 characters before the caret. 100k paste
+  5.3 s → 46 ms, a keystroke 7 s → 18–32 ms (dev server). A counter from 75 % of the 1 MB body limit; over it the send
+  is refused before any request.
+- **Long conversations (P1-6, CLS).** Turns near the viewport are mounted; the rest are empty sections of their
+  measured height that keep their text findable (`hidden="until-found"`); jumps mount their target first
+  (`turnReveal`). 1000 messages: 106,560 → 4,530 nodes, scroll 18–28 → 52–56 fps, streaming 20 → 50–54 fps. Parts
+  that are already loaded render without suspending (`readyLazy`); CLS on open at 390×700 0.72 → 0.026.
+- **Smaller.** An empty paused queue shows nothing; a long project name wraps to two lines in the empty state; soft
+  line breaks are kept unless a line is 50+ characters and does not end a sentence (`lib/softBreaks.ts`; applies to
+  every Markdown render); answers' prose is 60ch wide (~83 characters; the bubble, tables, code and composer keep the
+  column) and the column is 820px when the conversation is ≥ 1240px wide; the model picker's list uses the height
+  down to 88px of margin; the budget's wording says it is checked between steps.
+- **Entry bundle 154.56 kB of 158.90**: the transcript is its own chunk (`transcriptPart`), warmed after first paint.
+
+Not reached or not verified: one long task of 139–183 ms while streaming in two of three runs (target 100 ms); Ctrl+F
+over unmounted turns was exercised only by dispatching `beforematch`; in WebKit the scroll correction when turns mount
+above the viewport and the composer's height fallback were not run; a turn killed before it wrote anything leaves two
+user messages in a row; tool rows of an interrupted turn read "error"; the real router's wording (unit test only);
+Tauri's "Restart Octo"; IME input; all numbers are from the dev server. Gates on the final tree: lint with cycles,
+format, 693 UI / 157 client / 42 desktop tests, `go test -race ./...`, `cargo test -p octo-sidecar`, the build, and
+the browser scripts including `spacing-audit` total=0.

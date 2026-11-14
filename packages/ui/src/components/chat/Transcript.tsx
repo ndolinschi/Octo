@@ -2,7 +2,7 @@ import { errorFieldsOf, type Agent, type Message, type PlanEntry, type TurnOutco
 import { Check, Copy } from "lucide-react";
 
 import { markSteered } from "../../lib/v7/steer";
-import { lazy, memo, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { cn } from "../../lib/cn";
 import { formatSeparator, needsSeparator, timeAgo } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
@@ -20,16 +20,16 @@ import {
   type TurnEnd,
 } from "../../lib/transcript";
 import type { StoredEndingLookup } from "../../lib/storedEndings";
-import { agentLabelOf } from "../../lib/errors/words";
+import { hasLongWord } from "../../lib/composerInput";
 import { useApp } from "../../state/app";
-import { parseAcp } from "../../lib/models";
-import { useAcpNames } from "../../state/models";
 import { useProject } from "../../state/project";
-import { useActivity } from "../../state/activity";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { useTurnLine } from "./useTurnLine";
-import { LazyMarkdown as Markdown } from "./LazyMarkdown";
+import { providerIdOf, useAgentName, useLoginHint } from "./agentName";
+import { LazyMarkdown as Markdown, markdownPart } from "./LazyMarkdown";
+import { readyLazy, usePartsReady } from "./readyLazy";
+import { turnSig, useTurnWindow } from "./useTurnWindow";
 /** Code comments sent with a prompt render with the first such prompt (their own chunk). */
 /** The failed or stopped turn's notice: its own chunk (error mapping, notice, retry), warmed after first paint. */
 export const TurnBanner = lazy(() => import("./TurnBanner").then((m) => ({ default: m.TurnBanner })));
@@ -46,8 +46,12 @@ const PlanForTurn = lazy(() => import("./PlanCard").then((m) => ({ default: m.Pl
 const PLAN_TURNS = 5;
 
 /** Tool lines and delegation cards: their own chunks, fetched right after the first paint with the Markdown chunk (`AppShell`). */
-const ToolGroup = lazy(() => import("./ToolGroup").then((m) => ({ default: m.ToolGroup })));
-const DelegationGroup = lazy(() => import("./DelegationGroup").then((m) => ({ default: m.DelegationGroup })));
+const toolGroup = readyLazy(() => import("./ToolGroup").then((m) => m.ToolGroup));
+const delegationGroup = readyLazy(() => import("./DelegationGroup").then((m) => m.DelegationGroup));
+const ToolGroup = toolGroup.Component;
+const DelegationGroup = delegationGroup.Component;
+/** A long conversation mounts its turns once these are in, so each turn is laid out once, complete (no shift on open). */
+const TURN_PARTS = [markdownPart, toolGroup, delegationGroup];
 import { TranscriptContext, useTranscript, type ToolResult, type TranscriptCtx } from "./transcriptContext";
 import { proseClass } from "../primitives/Prose";
 import { ActivityLine, useBatched } from "./LiveActivity";
@@ -138,11 +142,32 @@ export const Transcript = memo(function Transcript(props: {
     isOrchestrator && !running ? turnWarning(lastTurn?.status === "completed" ? lastTurn.error : agent.status !== "failed" ? agent.error : null) : null;
   // Finished turns only show minutes-old times; a coarse clock lets them skip the per-second tick.
   const minute = Math.floor(now / 60_000) * 60_000;
+  // P1-6: only the turns near the viewport are mounted (and none before the Markdown chunk is in, so each lays out once).
+  const { root: turnsRoot, observe, isMounted, heightAt } = useTurnWindow(agent.id, turns, usePartsReady(TURN_PARTS));
+  // An unmounted turn's element is reused while its height holds: the transcript re-renders on every streamed delta, and
+  // creating hundreds of placeholder elements each time was most of that render.
+  const [shellKey] = useState(() => ({}));
+  const shell = (turn: Turn, i: number) => {
+    const height = heightAt(i);
+    const sig = turnSig(turn);
+    let mine = shells.get(shellKey);
+    if (!mine) shells.set(shellKey, (mine = new Map<string, Shell>()));
+    const hit = mine.get(turn.key);
+    if (hit?.height === height && hit.sig === sig) return hit.el;
+    const el = (
+      <section key={turn.key} ref={observe} data-turn-id={turn.prompt?.id} data-turn-key={turn.key} style={{ height }}>
+        <FindText turn={turn} />
+      </section>
+    );
+    mine.set(turn.key, { height, sig, el });
+    return el;
+  };
 
   return (
     <TranscriptContext.Provider value={ctx}>
-      <div className="flex flex-col gap-8">
+      <div ref={turnsRoot} className="flex flex-col gap-8">
         {turns.map((turn, i) => {
+          if (!isMounted(i)) return shell(turn, i);
           const last = i === turns.length - 1;
           const hidePrompt = props.hideFirstPrompt && i === 0;
           const started = turn.prompt?.created_at ?? (i === 0 ? agent.started_at : null);
@@ -157,7 +182,7 @@ export const Transcript = memo(function Transcript(props: {
             !isOrchestrator || last
               ? null
               : ((turn.prompt ? state.turnOutcomes[turn.prompt.id] : undefined) ??
-                (stored ? { status: stored.status, error: null } : cut ? { status: "cancelled", error: null } : null));
+                (stored ? { status: stored.status, error: stored.error ?? null } : cut ? { status: "cancelled", error: null } : null));
           // How the turn ended, for its head row and its steps (a stopped turn's interrupted call reads "stopped").
           const end: TurnEnd =
             last && running
@@ -172,7 +197,7 @@ export const Transcript = memo(function Transcript(props: {
                       ? "cancelled"
                       : null;
           return (
-            <section key={turn.key} data-turn-id={turn.prompt?.id} className="flex flex-col gap-4">
+            <section key={turn.key} ref={observe} data-turn-id={turn.prompt?.id} data-turn-key={turn.key} data-turn-mounted className="flex flex-col gap-4">
               {slots.get(i)?.map((m) => (
                 <Suspense key={`c${m.upto_message_id}`} fallback={null}>
                   <CompactedMarker marker={m} />
@@ -183,7 +208,7 @@ export const Transcript = memo(function Transcript(props: {
                 <UserPrompt
                   messageId={turn.prompt.id}
                   text={promptText(turn.prompt)}
-                  images={turn.prompt.content.filter((b) => b.type === "image")}
+                  content={turn.prompt.content}
                   author={props.promptAuthor}
                   external={!isOrchestrator}
                   steered={steeredAt.has(i)}
@@ -292,11 +317,27 @@ function TimeSeparator({ at, now }: { at: string; now: number }) {
   );
 }
 
+/**
+ * A turn that is not mounted keeps its text for the browser's find, laid out by nothing (`hidden="until-found"`, set through the
+ * ref: an engine without it treats the attribute as plain `hidden`). A match mounts the turn (`useTurnWindow`).
+ */
+const FindText = memo(function FindText({ turn }: { turn: Turn }) {
+  const text = useMemo(
+    () => [turn.prompt ? promptText(turn.prompt) : "", ...turn.items.flatMap((it) => (it.kind === "text" ? [it.text] : []))].filter(Boolean).join("\n\n"),
+    [turn],
+  );
+  return <div ref={untilFound}>{text}</div>;
+});
+
+function untilFound(el: HTMLDivElement | null) {
+  el?.setAttribute("hidden", "until-found");
+}
+
 /** Prompts longer than eight lines collapse, with a toggle to read them in full; code comments show as cards. */
 const UserPrompt = memo(function UserPrompt({
   messageId,
   text: raw,
-  images,
+  content,
   author,
   external,
   steered,
@@ -304,13 +345,17 @@ const UserPrompt = memo(function UserPrompt({
 }: {
   messageId: number;
   text: string;
-  images: Extract<Message["content"][number], { type: "image" }>[];
+  /** The prompt message's blocks (a stable array: a filtered copy made each render re-rendered every prompt on every delta). */
+  content: Message["content"];
   author: string;
   external: boolean;
   steered: boolean;
   onRewind: ((messageId: number) => void) | undefined;
 }) {
   const { prose: text, comments } = useMemo(() => splitComments(raw), [raw]);
+  const images = useMemo(() => content.filter((b) => b.type === "image"), [content]);
+  // P1-5: a pasted log's long word is set without kerning, or every layout of the transcript re-shapes it for seconds.
+  const longWord = useMemo(() => hasLongWord(text), [text]);
   const compact = useTranscript().density === "compact";
   const box = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -343,7 +388,7 @@ const UserPrompt = memo(function UserPrompt({
           </div>
         )}
         {text && (
-          <div ref={box} id={id} className={cn("wrap-anywhere whitespace-pre-wrap", !expanded && "line-clamp-8")}>
+          <div ref={box} id={id} data-long-word={longWord || undefined} className={cn("wrap-anywhere whitespace-pre-wrap", !expanded && "line-clamp-8")}>
             {text}
           </div>
         )}
@@ -416,7 +461,7 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   const steps = toolUses.map((u) => stepState(ctx.results.get(u.id), ctx.agentRunning, ending));
   // Open by default when a step failed or was stopped (the head of a stopped turn shows what the stop cut).
   const showSteps = worked === null || (stepsOpen ?? steps.some((s) => s === "error" || s === "stopped"));
-  const head = worked === null ? null : turnHead(ending, worked, steps);
+  const head = worked === null ? null : turnHead(ending, worked, steps, props.stored);
   const reply = turn.items.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n\n");
   // The newest step row above, when it already says what the activity line would: a streaming thinking row (nothing after it), a running tool group.
   const lastItem = turn.items[turn.items.length - 1];
@@ -473,6 +518,10 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   );
 });
 
+/** Placeholder elements of each transcript (by an object it holds), by turn key and content signature. */
+type Shell = { height: number; sig: string; el: ReactElement };
+const shells = new WeakMap<object, Map<string, Shell>>();
+
 const NO_ENDINGS: StoredEndingLookup = () => undefined;
 
 /**
@@ -521,42 +570,4 @@ function TurnFooter({ reply, at, now, usage, compact }: { reply: string; at: str
       {usage && !compact && <span className="min-w-0 truncate whitespace-nowrap tabular-nums">· {usage}</span>}
     </div>
   );
-}
-
-/** The login hint of the ACP agent an `acp:` setting names, when the plugins report it logged out (or give a hint); `recheck` reads it again. */
-export function useLoginHint(model: string | null): { hint: string | null; recheck(): void } {
-  const activity = useActivity();
-  const id = model?.startsWith("acp:") ? model.slice(4).split("/")[0] : undefined;
-  const [hint, setHint] = useState<string | null>(null);
-  const [round, setRound] = useState(0);
-  useEffect(() => {
-    if (!id) return;
-    let alive = true;
-    activity.plugins().then(
-      (plugins) => {
-        const a = plugins.flatMap((p) => p.agents).find((x) => x.id === id);
-        if (alive) setHint(a && a.logged_in !== true && a.hint ? a.hint : null);
-      },
-      // Unreadable plugin list: the notice keeps its own text and "Check again" asks once more.
-      () => undefined,
-    );
-    return () => {
-      alive = false;
-    };
-  }, [activity, id, round]);
-  const recheck = useCallback(() => setRound((n) => n + 1), []);
-  return { hint: id ? hint : null, recheck };
-}
-
-/** The provider id of an `acp:` model setting, undefined for a plain model. */
-export function providerIdOf(model: string | null | undefined): string | undefined {
-  return model ? parseAcp(model)?.id : undefined;
-}
-
-/** The label of the agent a model setting names (decision 94e): never its id. Null for a plain model. */
-export function useAgentName(model: string | null | undefined): string | undefined {
-  const acp = useAcpNames();
-  const ref = model ? parseAcp(model) : null;
-  if (!ref) return undefined;
-  return acp.find((a) => a.id === ref.id)?.label ?? agentLabelOf(ref.id);
 }

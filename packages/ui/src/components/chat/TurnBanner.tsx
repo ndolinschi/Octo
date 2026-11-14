@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { errorMessage } from "../../lib/format";
 import { loginSteps, withLoginSteps, type LoginSteps } from "../../lib/errors/login";
 import { isStructured, plainError } from "../../lib/errors/plain";
+import { isRestartInterruption } from "../../lib/transcript";
 import { useActivity } from "../../state/activity";
 import { useProject } from "../../state/project";
 import { Notice } from "../primitives/Notice";
@@ -48,7 +49,9 @@ export function TurnBanner(props: {
   const failed = props.status === "failed";
   // Only a recheck-the-login failure needs the command (the harness's own `command` always wins).
   const steps = useLoginSteps(props.providerId, failed && props.fields?.action === "recheck_provider" && !props.fields.command);
-  const fields = withLoginSteps(props.fields, steps);
+  // A turn the harness closed after a restart (P1-1): after a reload its row keeps the sentence and hint, not the action.
+  const restarted = failed && isRestartInterruption(props.error) && !props.fields?.action;
+  const fields = withLoginSteps(restarted ? { ...props.fields, action: "retry" as const } : props.fields, steps);
   const retryText = props.retryText;
 
   const retry = async () => {

@@ -37,9 +37,15 @@ func newRig(t *testing.T, llm http.Handler) *rig {
 // newRigWith is newRig with extra orchestrator options (client and max turns are set here).
 func newRigWith(t *testing.T, llm http.Handler, opts orchestrator.Options) *rig {
 	t.Helper()
+	return newRigAt(t, t.TempDir(), llm, opts)
+}
+
+// newRigAt is newRigWith over the data directory dir.
+func newRigAt(t *testing.T, dir string, llm http.Handler, opts orchestrator.Options) *rig {
+	t.Helper()
 	srv := httptest.NewServer(llm)
 	t.Cleanup(srv.Close)
-	store, err := projectstore.Open(t.TempDir())
+	store, err := projectstore.Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

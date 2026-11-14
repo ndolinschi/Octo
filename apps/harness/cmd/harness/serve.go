@@ -26,6 +26,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/codehost"
 	"github.com/ndolinschi/Octo/apps/harness/internal/commands"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
+	"github.com/ndolinschi/Octo/apps/harness/internal/datalock"
 	"github.com/ndolinschi/Octo/apps/harness/internal/diag"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/limits"
@@ -41,6 +42,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/local"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/remote"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 func cmdServe(args []string) error {
@@ -179,6 +181,21 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	if err != nil {
 		return err
 	}
+	// One service per data folder: the lock comes before the store is opened, migrated or recovered, so a second
+	// `harness serve` on a folder in use stops here instead of rewriting the running instance's turns.
+	lock, err := datalock.Acquire(cfg.DataDir)
+	if err != nil {
+		if errors.Is(err, datalock.ErrInUse) {
+			u := usererr.DataDirInUse(cfg.DataDir, err.Error()).Caused(err)
+			return fmt.Errorf("%w %s (%s)", u, u.Hint, cfg.DataDir)
+		}
+		return err
+	}
+	defer func() {
+		if err := lock.Release(); err != nil {
+			slog.Error("release data folder lock", "err", err)
+		}
+	}()
 	store, err := projectstore.Open(cfg.DataDir)
 	if err != nil {
 		return err

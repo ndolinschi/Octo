@@ -14,7 +14,9 @@ type Message struct {
 	Role      string         `json:"role"`
 	Content   []ContentBlock `json:"content"`
 	CreatedAt string         `json:"created_at"`
-	// Stopped marks an assistant message cut short because the turn was cancelled.
+	// Stopped marks an assistant message cut short: the turn was cancelled, its
+	// stream broke off (failed), or the harness stopped while it streamed (kept
+	// from its checkpoint at the next start).
 	Stopped bool `json:"stopped,omitempty"`
 	// Command is the name of the agent slash command a user message ran ("" for plain text).
 	Command string `json:"command,omitempty"`
@@ -126,7 +128,7 @@ func newMessage(id int64, agentID, role string, raw []byte, created string) Mess
 	}
 }
 
-// MarkStopped flags an assistant message as cut short by a cancelled turn.
+// MarkStopped flags an assistant message as cut short (see Message.Stopped).
 func (d *DB) MarkStopped(ctx context.Context, id int64) error {
 	_, err := d.sql.ExecContext(ctx, `UPDATE messages SET stopped = 1 WHERE id = ?`, id)
 	return err

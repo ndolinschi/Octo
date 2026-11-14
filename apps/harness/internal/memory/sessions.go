@@ -23,6 +23,8 @@ type ExchangeInput struct {
 	Tokens            projectstore.Tokens
 	CostUSD           *float64
 	TaskID            string
+	// Interrupted: the harness stopped while the turn ran (Status is failed).
+	Interrupted bool
 }
 
 func (s *Service) now() time.Time {
@@ -43,6 +45,7 @@ func (s *Service) RecordExchange(ctx context.Context, in ExchangeInput) (project
 		TurnID: in.TurnID, MessageID: in.MessageID, Request: s.redact(in.Request), Answer: answer, AnswerTruncated: cut,
 		Status: in.Status, StartedAt: projectstore.Stamp(in.StartedAt), DurationMS: in.Duration.Milliseconds(), Model: in.Model,
 		Files: cleanFiles(in.Files), Agents: cleanList(in.Agents, 120), Tokens: in.Tokens, CostUSD: in.CostUSD, TaskID: in.TaskID,
+		Interrupted: in.Interrupted,
 	}
 	e, sess, err := s.DB.RecordExchange(ctx, e, projectstore.SessionGap)
 	if err == nil {

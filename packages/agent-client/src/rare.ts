@@ -7,6 +7,7 @@ import type {
   Plugin,
   Project,
   QueuedMessage,
+  QueueState,
   Transcript,
   UsageParams,
 } from "./types";
@@ -65,7 +66,17 @@ import type {
   SlashCommands,
   UsageReport,
 } from "./types";
-import { BridgeError, type AbortSignalLike, type BinaryFetchLike, type BlobLike, type Bridge, type FetchResponseLike } from "./client";
+import {
+  BridgeError,
+  retryDelay,
+  type AbortSignalLike,
+  type BinaryFetchLike,
+  type BlobLike,
+  type Bridge,
+  type FetchResponseLike,
+  type StreamHandle,
+  type TimersLike,
+} from "./client";
 import type { RareMethod } from "./rareNames";
 
 /** What the rare methods need from the client that loads them. */
@@ -78,6 +89,9 @@ export type RareContext = {
   memoryPath(path: string): string;
   base: string;
   token: string;
+  timers: TimersLike | undefined;
+  /** The send timeout (`POST …/messages`); default {@link SEND_TIMEOUT_MS}. */
+  sendTimeout: number | undefined;
   /** The host's binary fetch (or the global one); throws `no_fetch` where there is none. */
   binaryFetch(): BinaryFetchLike;
   /** The error for a failed response. */
@@ -97,11 +111,168 @@ function parseJson(text: string): unknown {
   }
 }
 
+function globalTimers(): TimersLike {
+  const g = globalThis as unknown as { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(id: unknown): void };
+  return {
+    // Under Node a watchdog timer must not keep the process alive (`unref`); a browser's timer id is a number.
+    setTimeout: (fn, ms) => {
+      const id = g.setTimeout(fn, ms) as { unref?(): void };
+      id.unref?.();
+      return id;
+    },
+    clearTimeout: (id) => g.clearTimeout(id),
+    now: () => Date.now(),
+  };
+}
+
+/**
+ * A send (`POST …/messages`) the harness has not answered in this time fails with code `timeout`. The harness answers in
+ * milliseconds (the turn runs after the answer); 15 s covers a busy machine and still unlocks the composer long before
+ * anyone reaches for a reload. The message may have arrived: the caller re-reads the conversation before offering Retry.
+ */
+export const SEND_TIMEOUT_MS = 15_000;
+/**
+ * The harness sends a `heartbeat` event every 15 s. A stream that carried nothing for this long (two heartbeats missed) is
+ * half-open: it is closed and opened again, and the reopen's `onOpen` is the caller's cue to re-read the project.
+ */
+export const STREAM_STALE_MS = 35_000;
+/** How often the watchdog looks at the stream (it sends nothing; the cost is one timer). */
+const STREAM_CHECK_MS = 5_000;
+
+/**
+ * The event stream's watchdog (A16, A11): a stream silent for `staleMs` (the harness sends a heartbeat every 15 s) is
+ * closed and opened again; one EventSource closed for good (a refused connection) is opened again after 1 s, 2 s, 4 s …
+ * 10 s. Returns the stop.
+ */
+export function watchStream(
+  h: StreamHandle,
+  onError: ((e: unknown) => void) | undefined,
+  given: TimersLike | undefined,
+  staleMs = STREAM_STALE_MS,
+): () => void {
+  const timers = given ?? globalTimers();
+  let retryAt = 0;
+  let fails = 0;
+  let timer: unknown;
+  let stopped = false;
+  const watch = () => {
+    timers.clearTimeout(timer);
+    if (stopped) return;
+    const now = timers.now();
+    // Refused opens in a row set the backoff; an open stream ends the run.
+    if (h.source?.readyState === 1) fails = 0;
+    if (!h.source && now >= retryAt) h.open();
+    else if (h.source && now - h.seen > staleMs) {
+      h.source.close();
+      onError?.(new BridgeError(0, "stream_stale", "the event stream went quiet"));
+      h.open();
+    }
+    timer = timers.setTimeout(watch, h.source ? STREAM_CHECK_MS : retryAt - now);
+  };
+  h.refused = () => {
+    h.source?.close();
+    h.source = null;
+    retryAt = timers.now() + retryDelay((fails += 1), 10_000);
+    watch();
+  };
+  if (h.source?.readyState === 2) h.refused();
+  else watch();
+  return () => {
+    stopped = true;
+    timers.clearTimeout(timer);
+    delete h.refused;
+  };
+}
+
 /**
  * The bridge methods the first paint never calls (notes, review, commands, memory, sessions' writes, secrets, plans, ...).
  * `createHttpBridge` imports this module on first use so the entry chunk does not carry it.
  */
-export function createRareMethods({ request, unwrap, p, memoryPath, base, token, binaryFetch, fail }: RareContext): Pick<Bridge, RareMethod> {
+export function createRareMethods({
+  request,
+  unwrap,
+  p,
+  memoryPath,
+  base,
+  token,
+  timers: given,
+  sendTimeout = SEND_TIMEOUT_MS,
+  binaryFetch,
+  fail,
+}: RareContext): Pick<Bridge, RareMethod> {
+  const timers = given ?? globalTimers();
+  /**
+   * A9. A send (`POST …/messages`) gives up after `sendTimeout` with code `timeout` and aborts its fetch (where
+   * AbortController exists). The harness has no idempotency key, so a send it took late must not be repeated: after a
+   * timeout the conversation and the queue are read back, and a message with this text stored since the send started
+   * is the answer (as if it had come in time). Not found: the error, and the next send of the same text to that project
+   * (the notice's Retry) looks once more before it posts.
+   */
+  const unconfirmed = new Map<string, { text: string; since: number }>();
+  const post = async (id: string, payload: Record<string, unknown>) => {
+    const Abort = (globalThis as { AbortController?: new () => { signal: AbortSignalLike; abort(): void } }).AbortController;
+    const ctl = Abort ? new Abort() : undefined;
+    const call = request("POST", `${p(id)}/messages`, payload, ctl?.signal);
+    let timer: unknown;
+    try {
+      return await Promise.race([
+        call,
+        new Promise<never>((_, reject) => {
+          timer = timers.setTimeout(() => {
+            call.catch(() => undefined);
+            ctl?.abort();
+            reject(new BridgeError(0, "timeout", "timeout"));
+          }, sendTimeout);
+        }),
+      ]);
+    } finally {
+      timers.clearTimeout(timer);
+    }
+  };
+  /** `{ message }` or `{ queued }` when the harness stored this text at or after `since` (same machine, same clock). */
+  const stored = async (id: string, text: string, since: number): Promise<unknown> => {
+    const after = (at: string) => Date.parse(at) >= since - 1000;
+    const look = async () => {
+      const project = (await request("GET", p(id))) as Project;
+      const body = await request("GET", `${p(id)}/agents/${encodeURIComponent(project.orchestrator_agent_id)}/messages`);
+      const messages = isRecord(body) && Array.isArray(body.messages) ? (body.messages as Message[]) : [];
+      const message = messages.find((m) => m.role === "user" && after(m.created_at) && m.content.some((b) => b.type === "text" && b.text === text));
+      if (message) return { message };
+      const queue = (await request("GET", `${p(id)}/queue`)) as QueueState | undefined;
+      const queued = queue?.messages.find((m) => m.text === text && after(m.created_at));
+      return queued ? { queued } : null;
+    };
+    let timer: unknown;
+    try {
+      // A harness that answers nothing at all must not hold the composer again: give up after the same timeout.
+      return await Promise.race([look().catch(() => null), new Promise((resolve) => (timer = timers.setTimeout(() => resolve(null), sendTimeout)))]);
+    } finally {
+      timers.clearTimeout(timer);
+    }
+  };
+  const send = async (id: string, payload: Record<string, unknown>): Promise<unknown> => {
+    const text = String(payload.text);
+    const prior = unconfirmed.get(id);
+    unconfirmed.delete(id);
+    if (prior?.text === text) {
+      const found = await stored(id, text, prior.since);
+      if (found) return found;
+    }
+    const since = timers.now();
+    try {
+      return await post(id, payload);
+    } catch (e) {
+      if (!(e instanceof BridgeError) || e.code !== "timeout") throw e;
+      const found = await stored(id, text, since);
+      if (found) return found;
+      unconfirmed.set(id, { text, since });
+      throw new BridgeError(0, "timeout", "Octo's local service didn't answer in time.", {
+        action: "retry",
+        hint: "Your text is kept. Retry looks in the conversation first, so nothing is sent twice.",
+      });
+    }
+  };
+
   const usageQuery = (params: UsageParams | undefined) => {
     const parts: string[] = [];
     for (const k of ["from", "to", "group", "project"] as const) {
@@ -118,12 +289,21 @@ export function createRareMethods({ request, unwrap, p, memoryPath, base, token,
       await request("DELETE", p(id));
     },
     sendMessage: async (id, text) => {
-      const body = await request("POST", `${p(id)}/messages`, { text });
+      const body = await send(id, { text });
       if (isRecord(body) && isRecord(body.queued)) {
         throw new BridgeError(202, "queued", "a turn is running: the message was queued (use sendOrQueueMessage)");
       }
       if (!isRecord(body) || !isRecord(body.message)) throw new BridgeError(0, "invalid_response", 'missing "message" in response');
       return body.message as unknown as Message;
+    },
+    sendOrQueueMessage: async (id, text, opts) => {
+      const payload: Record<string, unknown> = { text };
+      if (opts?.mode) payload.mode = opts.mode;
+      if (opts?.attachments && opts.attachments.length > 0) payload.attachments = opts.attachments;
+      const body = await send(id, payload);
+      if (isRecord(body) && isRecord(body.queued)) return { queued: body.queued as QueuedMessage };
+      if (isRecord(body) && isRecord(body.message)) return { message: body.message as unknown as Message };
+      throw new BridgeError(0, "invalid_response", 'missing "message" or "queued" in response');
     },
     cancelTurn: async (id) => {
       await request("POST", `${p(id)}/cancel`);

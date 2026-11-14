@@ -228,6 +228,8 @@ func cors(next http.Handler) http.Handler {
 			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Last-Event-ID")
 			h.Set("Access-Control-Max-Age", "600")
+			// The UI reads the clock of the answers (relative times on a machine whose clock is off).
+			h.Set("Access-Control-Expose-Headers", "Date")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

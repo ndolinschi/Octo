@@ -72,6 +72,9 @@ func orchestratorReply(r *request) reply {
 	if strings.Contains(ask, formMarker) && r.hasTool("request_input") {
 		return formReply(r, anchor, ask)
 	}
+	if strings.Contains(ask, essayMarker) {
+		return reply{Text: essayAnswer(ask)}
+	}
 	if strings.Contains(strings.ToLower(ask), "quick") {
 		return reply{Text: quickAnswer(ask)}
 	}

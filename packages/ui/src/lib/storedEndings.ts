@@ -1,5 +1,5 @@
 import type { MemoryExchange, Message } from "@octo/agent-client";
-import type { StoredEnding } from "./transcript";
+import { RESTART_INTERRUPTION, type StoredEnding } from "./transcript";
 
 /*
  * B4, how each request ended as the harness stored it: its own chunk, imported with the session read that needs it (the
@@ -8,13 +8,15 @@ import type { StoredEnding } from "./transcript";
 
 /** The exchanges of a session by the id of the request that started each (`turn_id`); a forgotten one says nothing. */
 export function storedEndings(
-  exchanges: readonly Pick<MemoryExchange, "turn_id" | "status" | "started_at" | "duration_ms" | "removed">[],
+  exchanges: readonly Pick<MemoryExchange, "turn_id" | "status" | "started_at" | "duration_ms" | "removed" | "interrupted">[],
 ): Map<number, StoredEnding> {
   const out = new Map<number, StoredEnding>();
   for (const x of exchanges) {
     const startedAt = Date.parse(x.started_at);
     if (!x.turn_id || x.removed || Number.isNaN(startedAt)) continue;
-    out.set(x.turn_id, { status: x.status === "stopped" ? "cancelled" : x.status, startedAt, ms: Math.max(0, x.duration_ms) });
+    const ending: StoredEnding = { status: x.status === "stopped" ? "cancelled" : x.status, startedAt, ms: Math.max(0, x.duration_ms) };
+    // P1-1: the harness stopped while the turn ran and closed it when it started again.
+    out.set(x.turn_id, x.interrupted && x.status === "failed" ? { ...ending, interrupted: true, error: RESTART_INTERRUPTION } : ending);
   }
   return out;
 }

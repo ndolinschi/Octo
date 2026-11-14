@@ -74,3 +74,15 @@ Messages that only a model reads (tool results such as "spawn_agent requires rol
 `GET /v1/diagnostics`), the `unavailable_reason` of `GET /v1/plugins` (technical; the screen reads `GET /v1/providers`), memory tool errors
 and the sentences inside `Generic`-wrapped routes (their text is `details`). Manifest labels are shown as written (the Pi entry's label
 contains "ACP"). No real agent CLI was run: every case was produced by the scripted agent (`internal/fakeacp`) or a unit test.
+
+## Added 2026-11-14
+
+- `turn_interrupted` (`TurnInterrupted`, action retry): a turn that was running when the service stopped; set on start
+  by recovery.
+- `model_unreachable` (`ModelUnreachable`) and `router_unreachable` (`RouterUnreachable`): the upstream connection broke
+  (unexpected EOF, refused, reset); the router wording is used when a router is configured.
+- `request_too_large` (`RequestTooLarge`, HTTP 413): any JSON body over 1 MiB.
+- `data_dir_in_use` (`DataDirInUse`): a second service on a data folder that is in use; it stops before opening the store.
+- `agent_not_installed` is now also returned when an agent's program is missing at load, with the plugin's install line
+  (it used to read "cannot be used" and the UI added a login command).
+

@@ -4,7 +4,8 @@ import { recheckAgent } from "../../lib/providers/recheck";
 import { turnWarning } from "../../lib/transcript";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
-import { TurnBanner, providerIdOf, useAgentName, useLoginHint } from "./Transcript";
+import { providerIdOf, useAgentName, useLoginHint } from "./agentName";
+import { TurnBanner } from "./Transcript";
 
 /**
  * The orchestrator failed before anything was stored (an ACP agent that is not logged in): the failed turn shows above

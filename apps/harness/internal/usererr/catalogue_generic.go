@@ -1,6 +1,9 @@
 package usererr
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // generic is the plain wording of a route's own error code, for the failures a
 // route reports in its own words (a malformed body, a missing item, a limit).
@@ -98,6 +101,40 @@ func Generic(code, technical string) *Error {
 // NameRequired: a project or note needs a name.
 func NameRequired() *Error {
 	return &Error{Code: "invalid_request", Message: "A name is required.", Hint: "Type a name, then save again."}
+}
+
+// CodeRequestTooLarge: a request body over the bridge's limit (413).
+const CodeRequestTooLarge = "request_too_large"
+
+// RequestTooLarge: a request body over the bridge's limit of limit bytes (a
+// long paste in a message), with the limit in the sentence.
+func RequestTooLarge(limit int64) *Error {
+	return &Error{
+		Code: CodeRequestTooLarge, Message: fmt.Sprintf("That is too much to send at once (the limit is %s).", sizeText(limit)),
+		Hint:    "Send less at a time, or save the long text as a file in the project folder and mention the file.",
+		Details: fmt.Sprintf("request body over %d bytes", limit),
+	}
+}
+
+// CodeDataDirInUse: a second Octo service started on a data folder in use.
+const CodeDataDirInUse = "data_dir_in_use"
+
+// DataDirInUse: another Octo service holds the data folder dir (its lock file);
+// this one stops before it opens or changes anything there.
+func DataDirInUse(dir, details string) *Error {
+	return &Error{
+		Code: CodeDataDirInUse, Message: "Another Octo service is already using this data folder.",
+		Hint:    "Quit the other Octo (or the harness started in a terminal), then start this one again, or give this one another data folder.",
+		Details: clip(strings.TrimSpace(dir + " " + details)),
+	}
+}
+
+// sizeText is n bytes as "1 MB" (whole MiB) or "512 KB".
+func sizeText(n int64) string {
+	if n >= 1<<20 && n%(1<<20) == 0 {
+		return fmt.Sprintf("%d MB", n>>20)
+	}
+	return fmt.Sprintf("%d KB", (n+1023)>>10)
 }
 
 // FolderInvalid: a folder the person picked cannot be used.

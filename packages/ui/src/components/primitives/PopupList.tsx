@@ -13,9 +13,13 @@ const VISIBLE = 9;
  */
 const MAX_HEIGHT = "max-h-[calc(var(--spacing-row)*var(--popup-rows)+8px)] touch:max-h-[calc(var(--spacing-ctl-lg)*var(--popup-rows)+8px)]";
 
-/** `tall` (audit B4): up to 480px, but never past the window (160px for the field, header and footer), still whole rows (CSS `round`). */
+/**
+ * `tall` (audit B4): up to 480px, but never past the window, still whole rows (CSS `round`). 88px is the popover's margins
+ * and its search field; a footer or a note takes its room from the list, which shrinks inside the popover (min-h-0). It was
+ * 160px: at a short window (200 % zoom, ~400px tall) the list stopped at 3 rows with the window's height unused.
+ */
 const TALL_HEIGHT =
-  "max-h-[calc(round(down,min(480px,100vh-160px)-8px,var(--spacing-row))+8px)] touch:max-h-[calc(round(down,min(480px,100vh-160px)-8px,var(--spacing-ctl-lg))+8px)]";
+  "max-h-[calc(round(down,min(480px,100vh-88px)-8px,var(--spacing-row))+8px)] touch:max-h-[calc(round(down,min(480px,100vh-88px)-8px,var(--spacing-ctl-lg))+8px)]";
 
 /** The panel look of every popup list that floats on its own (slash and mention menus; the pickers get it from `Popover`). */
 export const POPUP_PANEL =

@@ -338,3 +338,21 @@ Changes from the owner's second live run (findings and decisions: `docs/superpow
 - **Cancelled turns.** The text an agent had written is stored as an assistant message with `stopped: true` (the built-in loop's streamed text and an ACP agent's flushed text alike); `message.created` carries the flag and `turn.finished` says `cancelled`. A tool call that is announced without input and given it by a `tool_call_update` keeps the input: the stored `tool_use` row is rewritten and `message.updated {message}` is published (`spawn_agent` rows of an ACP orchestrator were stored as `""`).
 - **Trace.** The ACP wire trace also redacts e-mail addresses.
 - **Doctor, memory and search:** see the README ("Diagnostics") and `memory.md` ("Task records over a turn"). Schema version 5 added `agents.error_hint`, `messages.stopped`, `usage.tokens_estimated` and the `search_s` index (rebuilt from the stored documents when an older database opens).
+
+## Added 2026-11-14: durability of a running turn, the event stream, one service per data folder
+
+- **Checkpoints.** While an agent streams, its redacted partial text is written to `partials` (one row per agent) at most
+  every 500 ms, and a running turn stamps `turn_alive` every 5 s. Storing the message clears the row; a row older than
+  the agent's last message is ignored.
+- **Recovery on start** (`orchestrator/recover.go`, before the rows are settled): open tool calls of running agents get
+  the interruption result, a valid checkpoint becomes the assistant message (flagged `stopped`, which now means "cut
+  short" for cancelled, failed and recovered turns), the orchestrator row gets `turn_interrupted`, and the exchange is
+  recorded `failed` with `interrupted: true` and a duration up to the last sign of life. A failed stream keeps its
+  partial text too. The tables and the `exchanges.interrupted` column are additive; the schema number did not change.
+- **Event stream.** `event: heartbeat` (`data: {}`, no id) every 15 s instead of a comment; `retry: 1000` at the start.
+  Events are not replayed (`Last-Event-ID` is ignored): clients re-read after a reconnect. CORS exposes `Date`.
+- **Data-folder lock** (`internal/datalock`): `harness serve` takes an OS lock on `<data-dir>/harness.lock` before the
+  store is opened (flock on Unix; a no-share open on Windows, compiled but not run; none elsewhere) and refuses a second
+  service with `data_dir_in_use`. A killed holder leaves no stale lock.
+- **Mock model:** the `[essay]` marker gives a long answer with no tools.
+

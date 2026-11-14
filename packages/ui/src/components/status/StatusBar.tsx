@@ -13,11 +13,11 @@ import { StatusButton } from "./StatusButton";
  * in progress (decision 76): the one glyph that turns is the working item's. Hidden below 600px of window height.
  */
 export function StatusBar(props: { home: boolean; startRef(el: HTMLElement | null): void; endRef(el: HTMLElement | null): void }) {
-  const { projects, health, retry } = useApp();
+  const { projects, health, retry, cause } = useApp();
   const running = useMemo(() => projects?.filter((p) => p.status === "running").length ?? 0, [projects]);
   // Home lists the projects at work itself (its tiles): the item would only repeat it.
   const working = props.home ? null : workingText(running);
-  const connection = connectionText(health);
+  const connection = connectionText(health, cause);
   return (
     <footer
       aria-label="Status"

@@ -146,7 +146,9 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   const noKey = loop?.available === false && !acp;
   return {
     running,
-    disabledReason: health === "offline" ? "Bridge offline. Start harness serve to continue." : live === "reconnecting" ? "Reconnecting to the bridge…" : null,
+    // P2-3: the conversation stays on screen while the service is away; the composer says why it is off.
+    disabledReason:
+      health === "offline" ? "Octo's local service isn't answering. Sending is off until it's back." : live === "reconnecting" ? "Reconnecting…" : null,
     folders: project?.folders ?? [],
     notice: noKey
       ? {

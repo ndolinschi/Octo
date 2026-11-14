@@ -247,7 +247,9 @@ func (o *Orchestrator) StartWith(ctx context.Context, projectID, text string, op
 	go func() {
 		defer o.wg.Done()
 		defer cancel()
+		stopAlive := o.keepAlive(rt)
 		status, finished := o.runTurn(turnCtx, rt, orch)
+		stopAlive()
 		o.qmu.Lock()
 		closeBox()
 		o.finish(projectID, finished)
@@ -255,6 +257,42 @@ func (o *Orchestrator) StartWith(ctx context.Context, projectID, text string, op
 		o.qmu.Unlock()
 	}()
 	return msg, nil
+}
+
+// turnAliveEvery is how often a running turn records that it is alive
+// (projectstore.TurnAlive): what a turn cut by a crash during a long tool call
+// is said to have run for, to within this much. One tiny write per project
+// every few seconds, only while a turn runs.
+var turnAliveEvery = 5 * time.Second
+
+// keepAlive records the turn as alive now and every turnAliveEvery until the
+// returned stop is called.
+func (o *Orchestrator) keepAlive(rt *runtime) (stop func()) {
+	beat := func() {
+		c, cancel := dbCtx(context.Background())
+		defer cancel()
+		if err := rt.db.TurnAlive(c); err != nil {
+			rt.logErr("record the turn alive", err)
+		}
+	}
+	beat()
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		t := time.NewTicker(turnAliveEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				beat()
+			}
+		}
+	}()
+	return func() { close(done); wg.Wait() }
 }
 
 func (o *Orchestrator) claim(projectID string, cancel context.CancelFunc) bool {
@@ -380,7 +418,7 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 	case ctx.Err() != nil, errors.Is(err, errAgentCancelled):
 		status = projectstore.StatusCancelled
 	default:
-		status, problem = projectstore.StatusFailed, describe(err)
+		status, problem = projectstore.StatusFailed, o.describeTurn(err)
 		slog.Error("turn failed", "project", rt.pid(), "err", err)
 	}
 	if status == projectstore.StatusCancelled && !rt.isACPOrchestrator() {

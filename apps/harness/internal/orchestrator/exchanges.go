@@ -16,6 +16,12 @@ import (
 // it had said), when, how long, who answered, files changed, sub-agents,
 // tokens and cost. It runs once per turn for every outcome; a failure only logs.
 func (o *Orchestrator) recordExchange(rt *runtime, orchID string, status projectstore.AgentStatus, replyText string) {
+	o.recordExchangeEnded(rt, orchID, exchangeStatus(status), replyText, time.Time{}, false)
+}
+
+// recordExchangeEnded is recordExchange with the turn's end (zero: now) and
+// whether the harness stopped while it ran (RecoverInterrupted).
+func (o *Orchestrator) recordExchangeEnded(rt *runtime, orchID, status, replyText string, end time.Time, interrupted bool) {
 	if rt.turnID == 0 {
 		return
 	}
@@ -30,6 +36,9 @@ func (o *Orchestrator) recordExchange(rt *runtime, orchID string, status project
 		request = rt.request
 	}
 	begin, _ := time.Parse(time.RFC3339Nano, started)
+	if end.IsZero() {
+		end = time.Now()
+	}
 	answer, answerID := replyText, int64(0)
 	if msgs, err := rt.db.Messages(ctx, orchID); err == nil {
 		for i := len(msgs) - 1; i >= 0 && msgs[i].ID > rt.turnID; i-- {
@@ -40,8 +49,8 @@ func (o *Orchestrator) recordExchange(rt *runtime, orchID string, status project
 		}
 	}
 	in := memory.ExchangeInput{
-		TurnID: rt.turnID, MessageID: answerID, Request: request, Answer: answer, StartedAt: begin, Duration: time.Since(begin),
-		Status: exchangeStatus(status), TaskID: rt.currentTask(), Files: []string{}, Agents: []string{},
+		TurnID: rt.turnID, MessageID: answerID, Request: request, Answer: answer, StartedAt: begin, Duration: max(end.Sub(begin), 0),
+		Status: status, TaskID: rt.currentTask(), Files: []string{}, Agents: []string{}, Interrupted: interrupted,
 	}
 	if a, err := rt.db.Orchestrator(ctx); err == nil {
 		in.Model = a.Model

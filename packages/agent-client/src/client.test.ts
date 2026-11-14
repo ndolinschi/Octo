@@ -336,7 +336,9 @@ test("subscribe dispatches named events, ignores malformed, unsubscribes", () =>
 test("subscribe registers every event type", () => {
   const bridge = createHttpBridge({ baseUrl: "http://h", EventSource: FakeEventSource });
   bridge.subscribe("p", { onEvent: () => {} });
-  assert.equal(FakeEventSource.last.listeners.size, BRIDGE_EVENT_TYPES.length);
+  // Every event type, and the harness's `heartbeat` (it only feeds the stream watchdog).
+  assert.equal(FakeEventSource.last.listeners.size, BRIDGE_EVENT_TYPES.length + 1);
+  assert.ok(FakeEventSource.last.listeners.has("heartbeat"));
   for (const type of ["agent.compacted", "side.delta", "side.done", "side.error"]) {
     assert.ok(FakeEventSource.last.listeners.has(type), type);
   }

@@ -5,6 +5,7 @@ import {
   withMessages,
   withNotes,
   withSessions,
+  settleStreams,
   withSideAsked,
   withSideCleared,
   withSideMessages,
@@ -32,6 +33,8 @@ export type Action =
   | { type: "sideAsked"; started: SideStarted }
   | { type: "sideCleared" }
   | { type: "clearTurn" }
+  /** After a re-read: drop the live parts of agents that are not running any more (A11). */
+  | { type: "settle" }
   | { type: "rewound"; messageId: number; label: string; at: string; soft?: boolean };
 
 export function projectReducer(state: ProjectState, action: Action): ProjectState {
@@ -61,6 +64,8 @@ export function projectReducer(state: ProjectState, action: Action): ProjectStat
       return withSideAsked(state, action.started);
     case "sideCleared":
       return withSideCleared(state);
+    case "settle":
+      return settleStreams(state);
     case "clearTurn":
       return { ...state, lastTurn: null };
     case "rewound":

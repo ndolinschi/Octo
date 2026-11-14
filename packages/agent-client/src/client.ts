@@ -201,6 +201,8 @@ export type BinaryFetchLike = (
 ) => Promise<FetchResponseLike>;
 
 export type EventSourceLike = {
+  /** 0 connecting, 1 open, 2 closed (a refused connection: EventSource does not retry it). */
+  readonly readyState?: number;
   onopen: ((ev: unknown) => void) | null;
   onerror: ((ev: unknown) => void) | null;
   addEventListener(type: string, listener: (ev: { data?: unknown }) => void): void;
@@ -217,8 +219,43 @@ export type SubscribeHandlers = {
 
 export type HealthResponse = { ok: boolean; version: string };
 
+/** Timers and a clock, passed in like `fetch` (this package builds without DOM or Node types); default: the global ones. */
+export type TimersLike = { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(id: unknown): void; now(): number };
+
+/** The event stream as the watchdog (`watchStream`, lazy) sees it. */
+export type StreamHandle = {
+  /** When the stream last carried anything: opened, an event, a heartbeat. */
+  seen: number;
+  source: EventSourceLike | null;
+  open(): void;
+  /** Set by the watchdog: EventSource gave up on a refused connection. */
+  refused?: () => void;
+};
+
+/** Backoff for retries after a failure: 1 s, 2 s, 4 s … up to `cap`. `attempt` counts from 1. */
+export function retryDelay(attempt: number, cap = 30_000): number {
+  return Math.min(cap, 1000 * 2 ** Math.min(Math.max(attempt - 1, 0), 20));
+}
+
+/**
+ * P2-12: how far the service's clock (`Date` of its answer) is ahead of this machine's, in ms; 0 when the gap is under
+ * 30 s (the header has 1 s resolution and a request takes time) or there is no usable header.
+ */
+export function clockSkew(dateHeader: string | null | undefined, localMs: number): number {
+  const server = dateHeader ? Date.parse(dateHeader) : NaN;
+  const skew = server - localMs;
+  return Number.isFinite(skew) && Math.abs(skew) > 30_000 ? skew : 0;
+}
+
+/** The harness answered but refused this window's API token (it restarted with a new one): not "offline". */
+export function isAuthRefused(e: unknown): boolean {
+  return e instanceof BridgeError && e.status === 401;
+}
+
 export interface Bridge {
   health(): Promise<HealthResponse>;
+  /** P2-12: the service's clock minus this machine's (ms), from the last answer's `Date` header; 0 when close. HTTP bridge only. */
+  clockOffset?(): number;
   getConfig(): Promise<BridgeConfig>;
   listProjects(): Promise<ProjectSummary[]>;
   createProject(input: ProjectInput): Promise<Project>;
@@ -504,6 +541,10 @@ export type HttpBridgeOptions = {
    */
   token?: string;
   fetch?: FetchLike;
+  timers?: TimersLike;
+  /** Defaults (in `rare.ts`): `SEND_TIMEOUT_MS`, `STREAM_STALE_MS`. */
+  sendTimeoutMs?: number;
+  streamStaleMs?: number;
   /** Used for attachment upload and download; defaults to the global `fetch`. */
   fetchBinary?: BinaryFetchLike;
   EventSource?: EventSourceCtor;
@@ -650,6 +691,10 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   /** An SSE URL: EventSource sends no headers, so the token travels in the query. */
   const streamUrl = (path: string) => `${base}${path}${token === "" ? "" : `${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`}`;
 
+  // Default timers live in the lazy half (`rare.ts`), the only place that sets any.
+  const timers = options.timers;
+  let offset = 0;
+
   async function request(method: string, path: string, body?: unknown, signal?: AbortSignalLike): Promise<unknown> {
     const doFetch = options.fetch ?? globalFetch();
     const init: { method: string; headers?: Record<string, string>; body?: string; signal?: AbortSignalLike } = { method };
@@ -666,12 +711,16 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     try {
       res = await doFetch(`${base}${path}`, init);
       text = await res.text();
+      offset = clockSkew(res.headers?.get("date"), Date.now());
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       throw new BridgeError(0, "network_error", msg);
     }
     if (!res.ok) throw toBridgeError(res.status, text);
-    return parseJson(text);
+    const parsed = parseJson(text);
+    // P2-4: an answer that is not JSON is a failure with its own words, not an empty value that leaves a screen waiting.
+    if (parsed === undefined && text.trim() !== "") throw new BridgeError(0, "invalid_response", "Octo's local service sent an answer that could not be read.");
+    return parsed;
   }
 
   async function unwrap<T>(promise: Promise<unknown>, key: string): Promise<T> {
@@ -698,6 +747,8 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
         memoryPath,
         base,
         token,
+        timers,
+        sendTimeout: options.sendTimeoutMs,
         binaryFetch: () => options.fetchBinary ?? globalBinaryFetch(),
         fail: toBridgeError,
       }),
@@ -715,6 +766,7 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     // The keys come from RARE_METHODS and `createRareMethods` returns exactly that Pick, so each forwarder has its method's type.
     ...(forwarded as Pick<Bridge, RareMethod>),
     health: () => request("GET", "/health") as Promise<HealthResponse>,
+    clockOffset: () => offset,
     getConfig: () => request("GET", "/v1/config") as Promise<BridgeConfig>,
     listProjects: () => unwrap<ProjectSummary[]>(request("GET", "/v1/projects"), "projects"),
     getProject: (id) => request("GET", p(id)) as Promise<Project>,
@@ -735,15 +787,6 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     },
     listFiles: (id, folder, path) => unwrap<FileEntry[]>(request("GET", `${p(id)}/files?${fileQuery(folder, path)}`), "entries"),
     readFile: (id, folder, path) => request("GET", `${p(id)}/files/content?${fileQuery(folder, path)}`) as Promise<FileContent>,
-    sendOrQueueMessage: async (id, text, opts) => {
-      const payload: Record<string, unknown> = { text };
-      if (opts?.mode) payload.mode = opts.mode;
-      if (opts?.attachments && opts.attachments.length > 0) payload.attachments = opts.attachments;
-      const body = await request("POST", `${p(id)}/messages`, payload);
-      if (isRecord(body) && isRecord(body.queued)) return { queued: body.queued as QueuedMessage };
-      if (isRecord(body) && isRecord(body.message)) return { message: body.message as unknown as Message };
-      throw new BridgeError(0, "invalid_response", 'missing "message" or "queued" in response');
-    },
     getQueue: (id) => request("GET", `${p(id)}/queue`) as Promise<QueueState>,
     exportConversationUrl: (id) => `${base}${p(id)}/export?format=md`,
     listApprovals: (id) => unwrap<Approval[]>(request("GET", `${p(id)}/approvals`), "approvals"),
@@ -775,18 +818,55 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
         p(id),
         serverId,
       ),
+    /**
+     * The project's events. EventSource retries a dropped connection itself; the watchdog (`watchStream`, in the lazy
+     * half) also reopens a refused one (closed for good after an HTTP error) with backoff, and a half-open one: nothing
+     * at all, not even the harness's `heartbeat`, for `streamStaleMs`. Every reopen ends in `onOpen`, where the caller
+     * re-reads what it may have missed.
+     */
     subscribe(id, handlers) {
       const Ctor = options.EventSource ?? globalEventSource();
-      const source = new Ctor(streamUrl(`${p(id)}/events`));
-      source.onopen = () => handlers.onOpen?.();
-      source.onerror = (err) => handlers.onError?.(err);
-      for (const type of BRIDGE_EVENT_TYPES) {
-        source.addEventListener(type, (ev) => {
-          const event = parseEvent(ev.data);
-          if (event) handlers.onEvent(event);
-        });
-      }
-      return () => source.close();
+      const h: StreamHandle = {
+        seen: 0,
+        source: null,
+        open: () => {
+          const s = new Ctor(streamUrl(`${p(id)}/events`));
+          const alive = () => (h.seen = timers?.now() ?? Date.now());
+          h.source = s;
+          alive();
+          s.onopen = () => {
+            alive();
+            handlers.onOpen?.();
+          };
+          s.onerror = (err) => {
+            handlers.onError?.(err);
+            if (s.readyState === 2 && h.source === s) h.refused?.();
+          };
+          s.addEventListener("heartbeat", alive);
+          for (const type of BRIDGE_EVENT_TYPES) {
+            s.addEventListener(type, (ev) => {
+              alive();
+              const event = parseEvent(ev.data);
+              if (event) handlers.onEvent(event);
+            });
+          }
+        },
+      };
+      h.open();
+      let stop: (() => void) | undefined;
+      let stopped = false;
+      // A failed chunk load leaves the stream as EventSource keeps it (no watchdog).
+      void import("./rare").then(
+        (m) => {
+          if (!stopped) stop = m.watchStream(h, handlers.onError, timers, options.streamStaleMs);
+        },
+        () => undefined,
+      );
+      return () => {
+        stopped = true;
+        stop?.();
+        h.source?.close();
+      };
     },
   };
 }

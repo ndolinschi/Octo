@@ -29,4 +29,7 @@ test("texts", () => {
   assert.equal(connectionText("online"), null);
   assert.equal(connectionText("offline")?.text, "Bridge offline");
   assert.equal(connectionText("checking")?.text, "Connecting…");
+  assert.equal(connectionText("offline", "refused")?.text, "Access refused");
+  assert.equal(connectionText("offline", "unreadable")?.text, "Unreadable answer");
+  assert.equal(connectionText("online", "refused"), null);
 });

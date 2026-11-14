@@ -17,6 +17,20 @@ export function parseHash(hash: string): Route {
   }
 }
 
+/**
+ * What the main column shows for the route's project (P1-4: the route alone says which project is shown and sent to):
+ * `show` it when the list has it; `check` (re-read the list and the project) when the list does not have it yet;
+ * `missing` once the harness said 404 for it, even while a stale list still has it; never another project.
+ */
+export type ProjectRouteState = "home" | "loading" | "show" | "check" | "missing";
+
+export function resolveProjectRoute(projectId: string | null, projects: readonly { id: string }[] | null, missing: ReadonlySet<string>): ProjectRouteState {
+  if (projectId === null) return "home";
+  if (missing.has(projectId)) return "missing";
+  if (projects === null) return "loading";
+  return projects.some((p) => p.id === projectId) ? "show" : "check";
+}
+
 export function hrefFor(projectId: string, agentId?: string | null): string {
   const base = `#/p/${encodeURIComponent(projectId)}`;
   return agentId ? `${base}/a/${encodeURIComponent(agentId)}` : base;

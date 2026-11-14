@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { useNav } from "../../state/nav";
 import { PROMPT_FLASH_MS } from "../../lib/constants";
 import { useLatest } from "../../lib/hooks";
+import { revealTurn } from "./turnReveal";
 
 /** Distance from the scroll area's top at which a prompt counts as stuck (the sticky copy's inset). */
 export const STICK_TOP = 8;
@@ -143,6 +144,8 @@ export function useTurnRequests(opts: {
       const el = root.current;
       const turn = el?.querySelector<HTMLElement>(`[data-turn-id="${messageId}"]`);
       if (!el || !turn) return;
+      // A far turn is an empty section until mounted (stress P1-6): mount it first, then measure its prompt.
+      revealTurn(turn);
       const prompt = turn.querySelector<HTMLElement>(PROMPT) ?? turn;
       // A time separator above the prompt lands in view with it.
       const anchor = turn.querySelector<HTMLElement>("[data-time-sep]") ?? prompt;

@@ -5,7 +5,7 @@ import { FloatRoomContext } from "../primitives/floatRoom";
 import { parseTab, type TabId } from "../../state/workspace/layout";
 import { FloatingBlockContext, useFloatingHere } from "../../state/workspace/useFloatingHere";
 import { ConversationView } from "../chat/ConversationView";
-import { Transcript } from "../chat/Transcript";
+import { transcriptPart } from "../chat/transcriptPart";
 import { useNow } from "../../lib/hooks";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { TranscriptSlot } from "../sessions/parts";
@@ -31,21 +31,26 @@ const MemoryTab = lazy(() => import("../memory/MemoryTab").then((m) => ({ defaul
 const SessionsTab = lazy(() => import("../sessions/SessionsTab").then((m) => ({ default: m.SessionsTab })));
 const SessionPane = lazy(() => import("../sessions/SessionPane").then((m) => ({ default: m.SessionPane })));
 
+/** The transcript's own chunk (`transcriptPart`). */
+const Transcript = transcriptPart.Component;
+
 /** A session's conversation is drawn by the project chat's own `Transcript`; the sessions feature receives it as a slot. */
 function SessionTranscript(props: Parameters<TranscriptSlot>[0]) {
   const now = useNow(props.agent.status === "running");
   return (
-    <Transcript
-      agent={props.agent}
-      messages={props.messages}
-      now={now}
-      watched
-      speaker={props.speaker}
-      promptAuthor={props.promptAuthor}
-      hideFirstPrompt={props.hideFirstPrompt}
-      density={props.density}
-      onOpenSession={props.onOpenSession}
-    />
+    <Suspense fallback={null}>
+      <Transcript
+        agent={props.agent}
+        messages={props.messages}
+        now={now}
+        watched
+        speaker={props.speaker}
+        promptAuthor={props.promptAuthor}
+        hideFirstPrompt={props.hideFirstPrompt}
+        density={props.density}
+        onOpenSession={props.onOpenSession}
+      />
+    </Suspense>
   );
 }
 const renderSessionTranscript: TranscriptSlot = (props) => <SessionTranscript {...props} />;

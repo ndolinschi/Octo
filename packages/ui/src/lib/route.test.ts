@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hrefFor, parseHash, parseSettingsHash, settingsHref } from "./route";
+import { hrefFor, parseHash, parseSettingsHash, resolveProjectRoute, settingsHref } from "./route";
 
 test("project and agent routes parse", () => {
   assert.deepEqual(parseHash("#/p/atlas"), { projectId: "atlas", agentId: null });
@@ -45,4 +45,18 @@ test("settings hashes: #/settings/<section>, the bare page, and nothing else", (
   for (const hash of ["", "#/", "#/p/atlas", "#/settingsx", "#/settings/a/b"]) assert.equal(parseSettingsHash(hash), null, hash);
   // A settings hash is not a project route.
   assert.deepEqual(parseHash("#/settings/general"), { projectId: null, agentId: null });
+});
+
+test("P1-4: the route's project is shown only when it is in the list and not known to be gone", () => {
+  const list = [{ id: "a" }, { id: "b" }];
+  assert.equal(resolveProjectRoute(null, list, new Set()), "home");
+  assert.equal(resolveProjectRoute("a", null, new Set()), "loading");
+  assert.equal(resolveProjectRoute("a", list, new Set()), "show");
+  // Not in the list (created a moment ago, or never existed): look it up, do not fall back to another project.
+  assert.equal(resolveProjectRoute("new", list, new Set()), "check");
+  assert.equal(resolveProjectRoute("new", [], new Set()), "check");
+  // The harness answered 404: gone, even while a stale list still has it, and even before the list is in.
+  assert.equal(resolveProjectRoute("a", list, new Set(["a"])), "missing");
+  assert.equal(resolveProjectRoute("a", null, new Set(["a"])), "missing");
+  assert.equal(resolveProjectRoute("b", list, new Set(["a"])), "show");
 });

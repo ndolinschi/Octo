@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { CLOCK_IDLE_MS, COPY_FEEDBACK_MS, NOW_ACTIVE_MS } from "./constants";
+import { clockNow, onClockOffset } from "./clock";
 
 /**
  * A ref that always holds the latest `value`, updated in a layout effect (after the commit, before any event or effect can
@@ -19,13 +20,19 @@ export function useLatest<T>(value: T): RefObject<T> {
  * unrelated updates such as scrolling.
  */
 export function useNow(active: boolean, intervalMs = NOW_ACTIVE_MS, paused = false): number {
-  const [now, setNow] = useState(() => Date.now());
+  // The service's clock (P2-12): times it stamped are compared with it, not with a machine clock that is off.
+  const [now, setNow] = useState(clockNow);
   useEffect(() => {
     // Paused (a hidden tab or page): no timer at all; the clock catches up when it shows again.
     if (paused) return;
-    setNow(Date.now());
-    const id = window.setInterval(() => setNow(Date.now()), active ? intervalMs : CLOCK_IDLE_MS);
-    return () => window.clearInterval(id);
+    setNow(clockNow());
+    const tick = () => setNow(clockNow());
+    const id = window.setInterval(tick, active ? intervalMs : CLOCK_IDLE_MS);
+    const off = onClockOffset(tick);
+    return () => {
+      window.clearInterval(id);
+      off();
+    };
   }, [active, intervalMs, paused]);
   return now;
 }

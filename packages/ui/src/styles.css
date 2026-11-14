@@ -218,6 +218,9 @@
   /* Content width of the conversation column (transcript, header, pinned prompt, composer share both
      edges) and of the Markdown preview. */
   --spacing-measure: 720px;
+  /* Running text of answers (paragraphs, lists, quotes, headings) stops here, inside the measure: ~80 characters of Inter
+     at 14px (its average character is ~0.73ch). Tables, code blocks, the prompt and the composer keep the measure. */
+  --spacing-answer: 60ch;
   --spacing-sidebar: 260px;
   --spacing-float: 640px; /* floating composer, max width */
   --spacing-details: 480px; /* Details and Usage content column: a measure for label ↔ value rows in a wide group */
@@ -1077,6 +1080,22 @@
      scrollbar off again and the composer's height oscillated until React gave up: "Maximum update depth exceeded"). */
   scrollbar-gutter: stable;
 }
+/* stress: perf (P1-5). A word of 1000+ characters (a log, base64, minified code) is set without kerning: with Inter's
+   kerning Chromium re-shapes the whole word on every relayout (50k characters: 2 s per keystroke; without: ~20 ms).
+   `data-long-word` comes from `plainShaping` / `hasLongWord` (lib/composerInput.ts); the composer also sets it on a text
+   over 100k characters. */
+[data-long-word] {
+  font-kerning: none;
+}
+/* stress: perf (P1-5). The text area grows with its text from 1 to 10 lines (decision 62) by itself where the engine can
+   (`useComposerText` measures only where it cannot): one layout per keystroke instead of a measure-and-set pair. */
+@supports (field-sizing: content) {
+  [data-composer] textarea.octo-composer-input {
+    field-sizing: content;
+    max-height: calc(22px * 10);
+    overflow-y: auto;
+  }
+}
 /* Touch screens: 16px so iOS does not zoom into the field. */
 @media (pointer: coarse) {
   .octo-composer-input {
@@ -1091,6 +1110,19 @@
 @media (pointer: coarse), (max-width: 767.98px) {
   [data-v7-form] :is(input:not([type="checkbox"]), textarea) {
     font-size: var(--text-input-touch);
+  }
+}
+
+/* Owner report §5 (line length): answers read at ~80 characters a line; the column's edges (prompt, tool rows, tables,
+   code, composer) stay at the measure. */
+[data-conv] .octo-prose :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+  max-width: var(--spacing-answer);
+}
+/* Very wide conversations (a 1920px window or more with the sidebar): the column steps up for tables and code; the type
+   size and the prose measure stay. */
+@container conv (min-width: 1240px) {
+  [data-conv] > * {
+    --spacing-measure: 820px;
   }
 }
 

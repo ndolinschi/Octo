@@ -1,9 +1,10 @@
 import { warmBridgeClient, type ProjectSummary } from "@octo/agent-client";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn";
-import { useEscape, useMediaQuery } from "../lib/hooks";
+import { useEscape, useLatest, useMediaQuery } from "../lib/hooks";
+import { holdTypeahead, takeTypeahead } from "../lib/typeahead";
 import { focusSoon, visibleComposer } from "../lib/focus";
-import { navigate, settingsHref, useGuardedRoute, useSettingsSection } from "../lib/route";
+import { navigate, resolveProjectRoute, settingsHref, useGuardedRoute, useSettingsSection } from "../lib/route";
 import { useProviders } from "../lib/providers/useProviders";
 import { startupOpensLast, useStoredMotion } from "../components/settings/prefs";
 import { useUnseen } from "../lib/seen";
@@ -21,8 +22,9 @@ import { Sidebar } from "../components/shell/Sidebar";
 import { TitleBar } from "../components/shell/TitleBar";
 import { StatusBar } from "../components/status/StatusBar";
 import { StatusSlotsContext } from "../state/statusSlots";
-import { ProjectWorkspace } from "./ProjectWorkspace";
+import { ProjectGone, ProjectWorkspace } from "./ProjectWorkspace";
 import { warmDrag } from "../components/dock/drag";
+import { transcriptPart } from "../components/chat/transcriptPart";
 import { ActivityProvider } from "../state/activity";
 import { DRAWER_QUERY } from "../lib/constants";
 
@@ -38,6 +40,8 @@ const ShortcutsSheet = lazy(() => import("../components/shell/ShortcutsSheet"));
 const MemoryRoute = lazy(() => import("./MemoryRoute").then((m) => ({ default: m.MemoryRoute })));
 /** States the app is rarely in: their own chunks (bundle budget). */
 const NoProjectsHero = lazy(() => import("../components/project/NoProjectsHero").then((m) => ({ default: m.NoProjectsHero })));
+// The same chunk as OfflineState: a chunk of its own would cost the entry more than the banner itself.
+const OfflineBanner = lazy(() => import("../components/shell/OfflineState").then((m) => ({ default: m.OfflineBanner })));
 const OfflineState = lazy(() => import("../components/shell/OfflineState").then((m) => ({ default: m.OfflineState })));
 const Home = lazy(() => import("../components/home/Home").then((m) => ({ default: m.Home })));
 /** The project dialog and the settings page load on first use, warmed with the palette (their own chunks; v6.3 bundle). */
@@ -100,29 +104,63 @@ function Shell() {
   const noProvider = providers.status === "ready" && providers.list.connected === 0;
   useStoredMotion();
   const [palette, setPalette] = useState(false);
+  const paletteOpen = useLatest(palette);
   const drawerOpener = useRef<HTMLElement | null>(null);
   // The two ends of the status bar that the open project fills (see `ProjectStatus`).
   const [statusStart, setStatusStart] = useState<HTMLElement | null>(null);
   const [statusEnd, setStatusEnd] = useState<HTMLElement | null>(null);
   const sidebarOpen = drawerMode ? drawerOpen : inlineOpen;
 
-  const known = projects?.some((p) => p.id === route.projectId) ?? false;
+  // P1-4: the route alone says which project is shown and sent to. An id the list lacks is looked up (list and project)
+  // instead of falling back to another project; a 404 makes it "missing", even while a stale list still has it.
+  const [missing, setMissing] = useState<ReadonlySet<string>>(() => new Set());
+  const routeState = resolveProjectRoute(route.projectId, projects, missing);
+  const known = routeState === "show";
+  const lookingUp = useRef<string | null>(null);
+  const lookUp = useCallback(
+    async (id: string) => {
+      if (lookingUp.current === id) return;
+      lookingUp.current = id;
+      try {
+        await bridge.getProject(id);
+        await refreshProjects();
+      } catch (e) {
+        // Not a 404 (offline, 5xx): health polling shows that; the next list change or reconnect looks again.
+        if (typeof e === "object" && e !== null && "status" in e && e.status === 404) {
+          setMissing((m) => new Set(m).add(id));
+          void refreshProjects();
+        }
+      } finally {
+        lookingUp.current = null;
+      }
+    },
+    [bridge, refreshProjects],
+  );
+  useEffect(() => {
+    if (health !== "online" || routeState !== "check" || route.projectId === null) return;
+    const id = route.projectId;
+    const t = window.setTimeout(() => void lookUp(id), 0);
+    return () => window.clearTimeout(t);
+  }, [health, routeState, route.projectId, lookUp]);
+  // The open project's stream or load failed: it may have been deleted elsewhere (its events answer 404).
+  const onProjectLost = useCallback(() => {
+    if (route.projectId !== null) void lookUp(route.projectId);
+  }, [route.projectId, lookUp]);
   // Tracked here, not in the sidebar, so it runs while the sidebar drawer is closed too.
   const unseen = useUnseen(projects, known ? route.projectId : null);
   const firstId = projects?.[0]?.id ?? null;
 
   // Opening the app (no route) shows the most recently active project, as before; `#/` is Home and stays
-  // (decision 22); an unknown project id falls back to the first project.
+  // (decision 22); an unknown project id is looked up above, never replaced by another project (P1-4).
   // Settings → General → "On startup: Home" keeps Home instead.
   const opened = useRef((window.location.hash === "" || window.location.hash === "#") && startupOpensLast());
   // While it loads into a project, the empty main panel sits where the project's panel will (under the top row on phones too).
   const [startsInProject] = useState(() => route.projectId !== null || ((window.location.hash === "" || window.location.hash === "#") && startupOpensLast()));
   useEffect(() => {
     if (health !== "online" || projects === null) return;
-    const atHome = route.projectId === null && !opened.current;
+    if (opened.current && route.projectId === null && firstId) navigate(firstId);
     opened.current = false;
-    if (!known && firstId && !atHome) navigate(firstId);
-  }, [health, projects, known, firstId, route.projectId]);
+  }, [health, projects, firstId, route.projectId]);
 
   // The drawer closes on navigation and whenever the window grows out of drawer mode.
   useEffect(() => setDrawerOpen(false), [route.projectId, route.agentId, drawerMode]);
@@ -135,6 +173,7 @@ function Shell() {
       warmBridgeClient();
       warmDrag();
       void import("../components/shared/Markdown").catch(() => undefined);
+      void transcriptPart.fetch().catch(() => undefined);
       void import("../components/chat/ToolGroup").catch(() => undefined);
       void import("../components/chat/DelegationGroup").catch(() => undefined);
       void import("../components/chat/TurnBanner").catch(() => undefined);
@@ -174,7 +213,10 @@ function Shell() {
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
         e.stopPropagation();
-        setPalette((p) => !p);
+        // P2-7: what is typed before the palette's field has focus goes to the field, not to the composer.
+        if (paletteOpen.current) takeTypeahead();
+        else holdTypeahead();
+        setPalette(!paletteOpen.current);
       }
       // Ctrl/Cmd+L: the caret into the visible composer, from anywhere (Monaco keeps Tab for indenting).
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "l" && !document.querySelector('[aria-modal="true"]')) {
@@ -188,7 +230,7 @@ function Shell() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, []);
+  }, [paletteOpen]);
 
   const toggleSidebar = () => {
     if (!drawerMode) return setInlineOpen((o) => !o);
@@ -210,14 +252,17 @@ function Shell() {
     setPalette(true);
   };
 
-  const workspace = health !== "offline" && known && route.projectId !== null;
+  // P2-3: unreachable before anything loaded takes the panel; after that a banner sits over the workspace, which stays.
+  const offlineFull = health === "offline" && projects === null;
+  const workspace = !offlineFull && known && route.projectId !== null;
   let main: React.ReactNode = null;
-  if (health === "offline")
+  if (offlineFull)
     main = (
       <Suspense fallback={null}>
         <OfflineState />
       </Suspense>
     );
+  else if (routeState === "missing") main = <ProjectGone />;
   else if (noProvider && route.projectId === null)
     main = (
       <Suspense fallback={null}>
@@ -310,14 +355,19 @@ function Shell() {
                       <MemoryRoute />
                     </Suspense>
                   ) : (
-                    <ProjectWorkspace agentId={route.agentId} />
+                    <ProjectWorkspace agentId={route.agentId} onLost={onProjectLost} />
                   )}
                 </ProjectProvider>
               ) : (
                 <Panel className="flex-1">
                   {/* Until the projects are in (or the route's project is found), lines instead of an empty card. */}
-                  <div className="min-h-0 flex-1">{main ?? (health !== "offline" && <MainSkeleton />)}</div>
+                  <div className="min-h-0 flex-1">{main ?? (!offlineFull && <MainSkeleton />)}</div>
                 </Panel>
+              )}
+              {health !== "online" && projects !== null && (
+                <Suspense fallback={null}>
+                  <OfflineBanner />
+                </Suspense>
               )}
             </div>
           </div>
@@ -355,7 +405,10 @@ function Shell() {
                 openProjectId={known ? route.projectId : null}
                 actions={actions}
                 settingsIndex={loadSettingsIndex}
-                onClose={() => setPalette(false)}
+                onClose={() => {
+                  takeTypeahead();
+                  setPalette(false);
+                }}
               />
             </Suspense>
           </Presence>

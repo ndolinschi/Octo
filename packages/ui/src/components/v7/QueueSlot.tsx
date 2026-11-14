@@ -24,7 +24,7 @@ export function QueueSlot(props: QueueSlotProps) {
 
 function Live({ onCount }: QueueSlotProps) {
   const { bridge } = useApp();
-  const { projectId, project } = useProject();
+  const { projectId, project, synced } = useProject();
   const [queue, setQueue] = useState<QueueState>({ paused: false, messages: [] });
   useEffect(() => {
     let alive = true;
@@ -36,7 +36,8 @@ function Live({ onCount }: QueueSlotProps) {
     return () => {
       alive = false;
     };
-  }, [bridge, projectId]);
+    // `synced`: loaded again after a reconnect (a `queue.updated` may have been missed).
+  }, [bridge, projectId, synced]);
   useV7Events((e) => {
     if (e.type === "queue.updated") setQueue({ paused: e.paused, messages: e.messages });
   });

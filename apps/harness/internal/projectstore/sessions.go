@@ -62,17 +62,20 @@ type Exchange struct {
 	CostUSD         *float64 `json:"cost_usd"`
 	TaskID          string   `json:"task_id,omitempty"`
 	Removed         bool     `json:"removed,omitempty"`
+	// Interrupted: the harness stopped (a crash, a kill, a restart) while the turn ran; Status is failed and
+	// the turn was closed when the harness started again. Answer is what had been written before.
+	Interrupted bool `json:"interrupted,omitempty"`
 }
 
 const exchangeCols = `id, session_id, turn_id, message_id, request, answer, answer_truncated, status, started_at, duration_ms, model,
-	files_json, agents_json, input_tokens, output_tokens, cost_usd, task_id, removed`
+	files_json, agents_json, input_tokens, output_tokens, cost_usd, task_id, removed, interrupted`
 
 func scanExchange(sc interface{ Scan(...any) error }) (Exchange, error) {
 	var e Exchange
 	var files, agents string
 	var cost sql.NullFloat64
 	if err := sc.Scan(&e.ID, &e.SessionID, &e.TurnID, &e.MessageID, &e.Request, &e.Answer, &e.AnswerTruncated, &e.Status, &e.StartedAt,
-		&e.DurationMS, &e.Model, &files, &agents, &e.Tokens.Input, &e.Tokens.Output, &cost, &e.TaskID, &e.Removed); err != nil {
+		&e.DurationMS, &e.Model, &files, &agents, &e.Tokens.Input, &e.Tokens.Output, &cost, &e.TaskID, &e.Removed, &e.Interrupted); err != nil {
 		return e, err
 	}
 	_ = json.Unmarshal([]byte(files), &e.Files)
@@ -163,9 +166,9 @@ func recordExchange(ctx context.Context, tx txer, e Exchange, gap time.Duration,
 	case err == nil:
 		e.ID, e.SessionID = id, sid
 		if _, err := tx.ExecContext(ctx, `UPDATE exchanges SET message_id=?, request=?, answer=?, answer_truncated=?, status=?, started_at=?, duration_ms=?,
-			model=?, files_json=?, agents_json=?, input_tokens=?, output_tokens=?, cost_usd=?, task_id=? WHERE id=?`,
+			model=?, files_json=?, agents_json=?, input_tokens=?, output_tokens=?, cost_usd=?, task_id=?, interrupted=? WHERE id=?`,
 			e.MessageID, e.Request, e.Answer, e.AnswerTruncated, e.Status, e.StartedAt, e.DurationMS, e.Model, string(files), string(agents),
-			e.Tokens.Input, e.Tokens.Output, cost, e.TaskID, id); err != nil {
+			e.Tokens.Input, e.Tokens.Output, cost, e.TaskID, e.Interrupted, id); err != nil {
 			return e, Session{}, err
 		}
 	case errors.Is(err, sql.ErrNoRows):
@@ -174,9 +177,9 @@ func recordExchange(ctx context.Context, tx txer, e Exchange, gap time.Duration,
 			return e, Session{}, err
 		}
 		e.ID, e.SessionID = NewID("exc"), sid
-		if _, err := tx.ExecContext(ctx, `INSERT INTO exchanges (`+exchangeCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
+		if _, err := tx.ExecContext(ctx, `INSERT INTO exchanges (`+exchangeCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)`,
 			e.ID, sid, e.TurnID, e.MessageID, e.Request, e.Answer, e.AnswerTruncated, e.Status, e.StartedAt, e.DurationMS, e.Model,
-			string(files), string(agents), e.Tokens.Input, e.Tokens.Output, cost, e.TaskID); err != nil {
+			string(files), string(agents), e.Tokens.Input, e.Tokens.Output, cost, e.TaskID, e.Interrupted); err != nil {
 			return e, Session{}, err
 		}
 	default:

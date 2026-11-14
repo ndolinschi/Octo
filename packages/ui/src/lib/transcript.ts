@@ -103,20 +103,41 @@ export function stepState(result: Result | undefined, running: boolean, end: Tur
 }
 
 /**
- * The head row of a finished turn ("Worked for 8s"): a stopped turn says "Stopped after 8s" with the stopped glyph, a
- * failed one "Failed after 8s" with the failed glyph. An unknown ending with a stopped step reads as stopped (the harness
- * writes an interruption result only after a cancel or a crash).
+ * The sentence the harness stores for a turn it closed when it started again after stopping mid-turn (a crash, a kill, a
+ * restart: `usererr.TurnInterrupted`, the orchestrator row's error and an exchange's `interrupted`).
  */
-export function turnHead(end: TurnEnd, ms: number, steps: readonly StepState[] = []): { state: "done" | "failed" | "stopped"; label: string } {
+export const RESTART_INTERRUPTION = "Octo's local service restarted while this request was running.";
+
+/** Whether a turn error is the harness's restart interruption (the latest turn after a reload carries only the row's text). */
+export function isRestartInterruption(error: string | null | undefined): boolean {
+  return (error ?? "").trim() === RESTART_INTERRUPTION;
+}
+
+/**
+ * The head row of a finished turn ("Worked for 8s"): a stopped turn says "Stopped after 8s" with the stopped glyph, a
+ * failed one "Failed after 8s" with the failed glyph, a failed one the harness closed after a restart (its stored ending is
+ * `interrupted`) "Interrupted after 8s — Octo's local service restarted". An unknown ending with a stopped step reads as
+ * stopped (the harness writes an interruption result only after a cancel or a crash).
+ */
+export function turnHead(
+  end: TurnEnd,
+  ms: number,
+  steps: readonly StepState[] = [],
+  stored?: Pick<StoredEnding, "interrupted">,
+): { state: "done" | "failed" | "stopped"; label: string } {
   const ending = end ?? (steps.includes("stopped") ? "cancelled" : "completed");
   const time = formatDuration(ms);
+  if (stored?.interrupted && ending === "failed") return { state: "failed", label: `Interrupted after ${time} — Octo's local service restarted` };
   if (ending === "cancelled") return { state: "stopped", label: `Stopped after ${time}` };
   if (ending === "failed") return { state: "failed", label: `Failed after ${time}` };
   return { state: "done", label: `Worked for ${time}` };
 }
 
-/** How a request ended as the harness stored it (its exchange): status, start and duration (`lib/storedEndings`). */
-export type StoredEnding = { status: Exclude<TurnEnd, null>; startedAt: number; ms: number };
+/**
+ * How a request ended as the harness stored it (its exchange): status, start and duration (`lib/storedEndings`); a failed one
+ * the harness closed after a restart is `interrupted`, with the sentence of that ending as `error`.
+ */
+export type StoredEnding = { status: Exclude<TurnEnd, null>; startedAt: number; ms: number; interrupted?: true; error?: string };
 
 /**
  * How long a finished turn worked (B4), to the turn's end rather than to its last item (a stop or a failure can come long after

@@ -15,6 +15,8 @@ import {
   isInterruption,
   stepState,
   turnHead,
+  isRestartInterruption,
+  RESTART_INTERRUPTION,
   spawnStatus,
 } from "./transcript";
 
@@ -253,6 +255,20 @@ test("the head of a finished turn says how it ended", () => {
   // Unknown ending (an earlier turn after a reload): a stopped step means the turn was cut.
   assert.deepEqual(turnHead(null, 8_000, ["done", "stopped"]), { state: "stopped", label: "Stopped after 8s" });
   assert.deepEqual(turnHead(null, 8_000, ["done", "error"]), { state: "done", label: "Worked for 8s" });
+});
+
+test("P1-1: a turn the harness closed after a restart says so in its head", () => {
+  assert.deepEqual(turnHead("failed", 12_000, ["stopped"], { interrupted: true }), {
+    state: "failed",
+    label: "Interrupted after 12s — Octo's local service restarted",
+  });
+  // Only a failed ending is a restart's: a later stop or completion of the same request says what it was.
+  assert.deepEqual(turnHead("cancelled", 12_000, [], { interrupted: true }), { state: "stopped", label: "Stopped after 12s" });
+  assert.deepEqual(turnHead("failed", 12_000, [], {}), { state: "failed", label: "Failed after 12s" });
+  assert.equal(isRestartInterruption(RESTART_INTERRUPTION), true);
+  assert.equal(isRestartInterruption(` ${RESTART_INTERRUPTION}\n`), true);
+  assert.equal(isRestartInterruption("The connection to the model broke off."), false);
+  assert.equal(isRestartInterruption(null), false);
 });
 
 test("a delegation without an agent settles from its result; a finished turn never leaves it pending", () => {

@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import { useCopy } from "../../lib/hooks";
 import { InlineCode } from "./FileLink";
 import { NUMERIC_CELL } from "../../lib/numericCell";
+import { remarkSoftBreaks } from "../../lib/softBreaks";
 
 function textOf(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
@@ -126,6 +127,8 @@ function rehypeNumericColumns() {
   };
 }
 const REHYPE = [rehypeNumericColumns];
+/** P2-13: single newlines are line breaks in paragraphs that read as lines, spaces in hard-wrapped prose (lib/softBreaks). */
+const REMARK = [remarkGfm, remarkSoftBreaks];
 
 const TableFrame = lazy(() => import("./DataTable").then((m) => ({ default: m.TableFrame })));
 
@@ -167,7 +170,7 @@ export const Markdown = memo(function Markdown(props: {
   const base = props.fileLinks ? WITH_FILE_LINKS : COMPONENTS;
   return (
     <div className={className ?? "octo-prose"} data-streaming={props.streaming ? "" : undefined}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={REHYPE} components={props.components ? { ...base, ...props.components } : base}>
+      <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={REHYPE} components={props.components ? { ...base, ...props.components } : base}>
         {text}
       </ReactMarkdown>
     </div>

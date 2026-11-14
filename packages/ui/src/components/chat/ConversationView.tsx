@@ -19,6 +19,7 @@ import { useComposerAnchor } from "./useComposerAnchor";
 const nameIn = (projectName: string) => (a: Pick<Agent, "parent_id" | "role">) => (a.parent_id === null ? projectName : baseRoleName(a));
 import { showRail } from "../../lib/transcript";
 /** The failed start of an empty project (rare): its own chunk. */
+const LoadFailed = lazy(() => import("./LoadFailed").then((m) => ({ default: m.LoadFailed })));
 const StartFailure = lazy(() => import("./StartFailure").then((m) => ({ default: m.StartFailure })));
 
 /** A sub-agent's header loads with the first Agent tab (its own chunk). */
@@ -37,7 +38,8 @@ import { useApp } from "../../state/app";
 const ObserverBar = lazy(() => import("./ObserverBar").then((m) => ({ default: m.ObserverBar })));
 import { useBackdrop } from "../primitives/backdrop";
 const StickyPrompt = lazy(() => import("./StickyPrompt").then((m) => ({ default: m.StickyPrompt })));
-import { Transcript } from "./Transcript";
+import { transcriptPart } from "./transcriptPart";
+const Transcript = transcriptPart.Component;
 import { Presence } from "../primitives/Presence";
 
 /** The rewind dialog loads when first asked for (parity B5). */
@@ -84,7 +86,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const ws = useOptionalWorkspace();
   const slots = useChatSlots();
   const { theme, backdrop: appBackdrop, bridge } = useApp();
-  const { project, state, running, ensureMessages, projectId } = useProject();
+  const { project, state, running, ensureMessages, projectId, loadFailures, reload } = useProject();
   const agent = state.agents[agentId];
   const messages = state.messages[agentId];
   const streaming = state.streaming[agentId];
@@ -220,6 +222,9 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
     };
   }, [memory, tab, scroll.ref]);
 
+  // A14: a first load that fails says so, with Retry, while it is retried with backoff. (The project itself failing is
+  // `ProjectWorkspace`'s notice.)
+  const failure = messages === undefined ? loadFailures[agentId] : undefined;
   if (!project) return null;
   const roleName = nameIn(project.name);
   if (!agent) {
@@ -320,17 +325,24 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
                     <AgentHeader agent={agent} now={now} />
                   </Suspense>
                 )}
-                <Transcript
-                  agent={agent}
-                  messages={messages ?? []}
-                  now={now}
-                  watched={watched}
-                  speaker={agent?.parent_id === null ? (project?.name ?? "Assistant") : roleName(agent)}
-                  promptAuthor={isOrchestrator ? "You" : parent ? (parent.parent_id === null ? (project?.name ?? "Assistant") : roleName(parent)) : "Parent"}
-                  hideFirstPrompt={!isOrchestrator}
-                  onKeepEditing={isOrchestrator ? keepEditing : undefined}
-                  onRewind={isOrchestrator && bridge.rewind ? setRewinding : undefined}
-                />
+                {failure && (
+                  <Suspense fallback={null}>
+                    <LoadFailed error={failure} onRetry={() => void reload()} />
+                  </Suspense>
+                )}
+                <Suspense fallback={null}>
+                  <Transcript
+                    agent={agent}
+                    messages={messages ?? []}
+                    now={now}
+                    watched={watched}
+                    speaker={agent?.parent_id === null ? (project?.name ?? "Assistant") : roleName(agent)}
+                    promptAuthor={isOrchestrator ? "You" : parent ? (parent.parent_id === null ? (project?.name ?? "Assistant") : roleName(parent)) : "Parent"}
+                    hideFirstPrompt={!isOrchestrator}
+                    onKeepEditing={isOrchestrator ? keepEditing : undefined}
+                    onRewind={isOrchestrator && bridge.rewind ? setRewinding : undefined}
+                  />
+                </Suspense>
                 {isOrchestrator && (
                   <Suspense fallback={null}>
                     <InlineNotes />

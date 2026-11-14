@@ -4,6 +4,7 @@ export const RARE_METHODS = [
   "updateProject",
   "deleteProject",
   "sendMessage",
+  "sendOrQueueMessage",
   "cancelTurn",
   "getContext",
   "writeFile",

@@ -1,6 +1,9 @@
-import { lazy, Suspense, type ComponentProps } from "react";
+import { Suspense, type ComponentProps } from "react";
+import { readyLazy } from "./readyLazy";
 
-const Markdown = lazy(() => import("../shared/Markdown").then((m) => ({ default: m.Markdown })));
+/** The Markdown renderer's chunk; once it is in, a reply renders without suspending (see `readyLazy`). */
+export const markdownPart = readyLazy(() => import("../shared/Markdown").then((m) => m.Markdown));
+const Markdown = markdownPart.Component;
 
 type Props = ComponentProps<typeof Markdown>;
 

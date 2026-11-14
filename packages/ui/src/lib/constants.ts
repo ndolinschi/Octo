@@ -48,6 +48,13 @@ export const CLOCK_MINUTE_MS = 60_000;
 /** Health check cadence: while online, and while offline or checking. */
 export const HEALTH_POLL_ONLINE_MS = 15_000;
 export const HEALTH_POLL_OFFLINE_MS = 5_000;
+/**
+ * A16: how long the polled project list may disagree with the event stream about a running turn before the stream is
+ * reopened and the project re-read. Longer than a poll round trip after `turn.finished`, so an ordinary turn never trips it.
+ */
+export const SUMMARY_DISAGREE_MS = 4_000;
+/** A9: a send still unanswered after this shows "Sending…" (a normal one answers in milliseconds and never shows it). */
+export const SENDING_NOTICE_MS = 1_000;
 /** Project list refresh: while any project runs, and otherwise. */
 export const PROJECTS_POLL_BUSY_MS = 3_000;
 export const PROJECTS_POLL_IDLE_MS = 12_000;

@@ -217,7 +217,7 @@ export type Message = {
   role: "user" | "assistant";
   content: ContentBlock[];
   created_at: string;
-  /** The turn was stopped while this reply was being written (its text is cut). */
+  /** The reply was cut short (its text is cut): the turn was stopped, its stream broke off, or the harness restarted while it was written. */
   stopped?: boolean;
   /** B11: on a user message that ran an ACP agent's slash command, the command's name (without the slash); `session_report` marks a note of sub-agent results handed to the orchestrator (show it as a quiet note, not as typed text). */
   command?: string;
@@ -1336,6 +1336,8 @@ export type MemoryExchange = {
   cost_usd: number | null;
   task_id?: string;
   removed?: boolean;
+  /** The harness stopped (a crash, a kill, a restart) while this turn ran; `status` is `failed`, `answer` what had been written. */
+  interrupted?: boolean;
 };
 export type MemorySessionDetail = { session: MemorySession; exchanges: MemoryExchange[] };
 

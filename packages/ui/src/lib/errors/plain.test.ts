@@ -76,3 +76,10 @@ test("a refused call's note has no code fences or backticks", () => {
   assert.ok(!p.sentence.includes("`"), p.sentence);
   assert.ok(p.details.includes("```"));
 });
+
+test("P2-6: a body over the bridge's limit says the message is too long, with the limit", () => {
+  const want = "This message is too long to send (limit 1 MB). Send less at a time.";
+  assert.equal(plainError("request body over 1048576 bytes", { code: "request_too_large" }).sentence, want);
+  assert.equal(plainError("http: request body too large").sentence, want);
+  assert.equal(plainError("http: request body too large").next, null);
+});

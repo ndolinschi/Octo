@@ -49,10 +49,16 @@ const CHAT_SLOTS: ChatSlots = {
 };
 
 /** One project: header row, then the dock of tab groups. */
-export function ProjectWorkspace(props: { agentId: string | null }) {
+export function ProjectWorkspace(props: { agentId: string | null; onLost(): void }) {
   const [settings, setSettings] = useState(false);
   const openSettings = useCallback(() => setSettings(true), []);
-  const { projectId } = useProject();
+  const { projectId, live, loadError, project } = useProject();
+  // P1-4: a stream that drops or a load that fails may mean the project was deleted elsewhere: the shell looks it up.
+  const lost = live === "reconnecting" || (loadError !== null && project === null);
+  const { onLost } = props;
+  useEffect(() => {
+    if (lost) onLost();
+  }, [lost, onLost]);
   return (
     // The file-view state sits above the workspace: the dock's width floors read each group's tree column (decision 94a).
     <FileViewProvider projectId={projectId}>
@@ -170,12 +176,27 @@ function SettingsDialog({ show, onClose }: { show: boolean; onClose(): void }) {
   );
 }
 
+const NOTICE = "mx-auto w-full max-w-measure px-6 pt-10 text-sm max-drawer:px-4";
+
+/** P1-4: the route's project was deleted (the harness answered 404): nothing else is shown or sent to under its URL. */
+export function ProjectGone() {
+  return (
+    <div role="alert" className={NOTICE}>
+      <p className="text-fg">This project no longer exists.</p>
+      <p className="mt-1 text-fg-2">It was deleted, perhaps in another window. Your other projects are on Home.</p>
+      <Button size="sm" className="mt-3" onClick={() => navigate(null)}>
+        Go to Home
+      </Button>
+    </div>
+  );
+}
+
 function LoadError({ message, onRetry }: { message: string; onRetry(): Promise<void> }) {
   const [busy, setBusy] = useState(false);
   return (
-    <div role="alert" className="mx-auto w-full max-w-measure px-6 pt-10 text-sm max-drawer:px-4">
+    <div role="alert" className={NOTICE}>
       <p className="text-fg">Couldn't load this project.</p>
-      <p className="mt-1 text-fg-2">{message.replace(/\.$/, "")}. Check that the harness bridge is running, then retry.</p>
+      <p className="mt-1 text-fg-2">{message.replace(/\.$/, "")}. Octo tries again by itself; Retry tries now.</p>
       <Button
         size="sm"
         className="mt-3"

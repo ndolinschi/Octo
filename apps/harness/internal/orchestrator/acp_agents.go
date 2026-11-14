@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // ACPModelPrefix prefixes the model recorded for an ACP sub-agent.
@@ -22,6 +23,20 @@ func (rt *runtime) acpAgents() []plugins.Agent {
 		}
 	}
 	return out
+}
+
+// missingAgent is the not-installed error for a loaded agent that is not
+// available because its program (or one it requires) was not found on PATH,
+// with its install line (P2-9: not "cannot be used" and a login command); nil
+// for an unknown id, an available agent or one Octo does not support.
+func (rt *runtime) missingAgent(id string) *usererr.Error {
+	for _, a := range rt.o.agents() {
+		if a.ID == id && !a.Available && a.Unsupported == "" {
+			details := strings.Join(slices.DeleteFunc([]string{a.UnavailableReason, a.InstallHint}, func(s string) bool { return s == "" }), ". ")
+			return usererr.AgentNotInstalled(a.Label, a.InstallCmd(), details)
+		}
+	}
+	return nil
 }
 
 func (o *Orchestrator) agents() []plugins.Agent {

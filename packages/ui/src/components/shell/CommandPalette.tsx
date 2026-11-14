@@ -8,6 +8,7 @@ import { rankGroups } from "../../lib/matchMore";
 import { navigate, settingsHref } from "../../lib/route";
 import { focusSoon } from "../../lib/focus";
 import { useMediaQuery } from "../../lib/hooks";
+import { takeTypeahead } from "../../lib/typeahead";
 import { useApp } from "../../state/app";
 import { useNav } from "../../state/nav";
 import { hitRow } from "../../lib/requestSearch";
@@ -311,6 +312,23 @@ export function CommandPalette(props: {
   const current = Math.min(selected, Math.max(0, flat.length - 1));
   const optionId = (i: number) => `${baseId}-opt-${i}`;
 
+  // P2-7: the keys typed since Ctrl/Cmd+K (held while this chunk loaded) go into the field when it takes focus; a held
+  // Enter runs the first row once the rows for that text are in (the render after the query is set).
+  const typedEnter = useRef<string | null>(null);
+  const takeTyped = () => {
+    const typed = takeTypeahead();
+    if (typed.text) {
+      if (typed.enter) typedEnter.current = typed.text;
+      setQuery(typed.text);
+    } else if (typed.enter) flat[current]?.run();
+  };
+  useEffect(() => {
+    // Focus comes in the mount's effects, before the render with the typed query: wait for the rows of that text.
+    if (typedEnter.current === null || typedEnter.current !== query) return;
+    typedEnter.current = null;
+    flat[current]?.run();
+  });
+
   useEffect(() => {
     list.current?.querySelector(`#${CSS.escape(optionId(current))}`)?.scrollIntoView({ block: "nearest" });
   });
@@ -360,6 +378,7 @@ export function CommandPalette(props: {
           }}
           onKeyDown={onKeyDown}
           inputProps={{
+            onFocus: takeTyped,
             role: "combobox",
             "aria-expanded": true,
             "aria-controls": `${baseId}-list`,

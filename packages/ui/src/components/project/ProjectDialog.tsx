@@ -443,8 +443,8 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                 hint={
                   <>
                     {spent
-                      ? `Spent ${spent.text}. Leave the budget empty for no cap.`
-                      : "Budget in US dollars: the router stops the project's requests at this amount."}{" "}
+                      ? `Spent ${spent.text}. Checked between steps, so a running step can go over; empty means no cap.`
+                      : "Budget in US dollars, checked between steps: a running step can go over."}{" "}
                     Delegation depth is the levels of sub-agents that may spawn their own, 1–8.
                   </>
                 }

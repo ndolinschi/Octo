@@ -172,6 +172,10 @@ func (d *DB) migrate(ctx context.Context) error {
 	if err := d.migrateV14Tasks(ctx); err != nil {
 		return err
 	}
+	// The streamed-text checkpoints (partials.go); no version of their own.
+	if err := d.migratePartials(ctx); err != nil {
+		return err
+	}
 	return stampVersion(ctx, d.sql)
 }
 

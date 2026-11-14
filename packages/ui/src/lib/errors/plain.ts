@@ -111,7 +111,11 @@ const BY_CODE: Record<string, (c: Ctx) => Pick<PlainError, "sentence" | "next" |
   unauthorized: () => ({ sentence: "The provider did not accept the key. Check it in Settings.", next: null, action: "open_settings" }),
   no_api_key: () => ({ sentence: "No model is connected yet. Connect one in Settings.", next: null, action: "open_settings" }),
   context_too_long: () => ({ sentence: "The conversation is too long for this model. Compact it or start a new one.", next: null }),
+  // P2-6: the bridge's body limit (413).
+  request_too_large: () => ({ sentence: TOO_LONG, next: null }),
 };
+
+const TOO_LONG = "This message is too long to send (limit 1 MB). Send less at a time.";
 
 /** Maps a failure to its plain form. `code` is the typed error code when there is one, `raw` the message text. */
 export function plainError(raw: string | null | undefined, ctx: Ctx & { code?: string | null | undefined } = {}): PlainError {
@@ -122,6 +126,7 @@ export function plainError(raw: string | null | undefined, ctx: Ctx & { code?: s
   if (byCode) return { ...byCode(ctx), details };
   const known = (sentence: string, next: NextStep | null): PlainError => ({ sentence, next, details });
   if (!text) return known("Something went wrong, and no reason was reported.", { kind: "retry" });
+  if (has(text, "request body too large", "request_too_large", "too much to send at once")) return known(TOO_LONG, null);
   if (has(text, "refused the harness", "ran without harness tools"))
     return known(`${name} ran this request without Octo's own tools (agents, notes, plans).`, null);
   if (has(text, "not logged in", "login required", "please log in", "unauthenticated", "auth login")) return { ...loginSentence(ctx), details };

@@ -18,8 +18,18 @@ export function workingText(projectsRunning: number): string | null {
 }
 
 /** The connection item: only when the bridge is not fine, and what to do. */
-export function connectionText(health: "checking" | "online" | "offline"): { text: string; hint: string } | null {
+export function connectionText(
+  health: "checking" | "online" | "offline",
+  cause: "refused" | "unreadable" | null = null,
+): { text: string; hint: string } | null {
   if (health === "online") return null;
+  // A15: it answered, and refused this window's token.
+  // A15 / P2-4: it answered, so not "offline"; the notice above says what to do.
+  if (cause)
+    return {
+      text: cause === "refused" ? "Access refused" : "Unreadable answer",
+      hint: "Octo's local service answered but can't be used. See the notice above.",
+    };
   return health === "offline"
     ? { text: "Bridge offline", hint: "Nothing answers at the bridge address. Start the bridge, then select to retry." }
     : { text: "Connecting…", hint: "Checking the bridge." };

@@ -23,7 +23,8 @@ export function EmptyTitle({ project }: { project: Project }) {
   return (
     <div className="relative mx-auto w-full max-w-float text-center">
       {/* Decision 28: one sentence in two tones — the lead-in muted, the statement in fg. */}
-      <h1 className="relative text-display text-fg">
+      {/* P2-10: a long name without spaces wraps anywhere and the sentence stops at two lines; the tooltip has it all. */}
+      <h1 className="relative line-clamp-2 text-display wrap-anywhere text-fg" title={`${project.name}. What should we work on?`}>
         <span className="octo-lead">{project.name}.</span> What should we work on?
       </h1>
       {(stuck ?? noFolder) && (
