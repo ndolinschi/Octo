@@ -10,9 +10,10 @@ export function focusSoon(
     delay?: number;
     onlyIfLost?: boolean;
     /** Focus here also counts as lost (a placeholder holder). */ holder?: () => Element | null;
+    /** Stop looking (checked every frame): the reason to move focus is gone. */ abort?: () => boolean;
   } = {},
 ): void {
-  const { timeout = 1000, delay = 0, onlyIfLost = false, holder } = options;
+  const { timeout = 1000, delay = 0, onlyIfLost = false, holder, abort } = options;
   const until = performance.now() + delay + timeout;
   // Lost: nothing focused, or the focused element was removed or hidden (a tab panel that just went away).
   const lost = () => {
@@ -26,6 +27,7 @@ export function focusSoon(
     );
   };
   const step = () => {
+    if (abort?.()) return;
     // Focus still somewhere real: keep watching until the timeout (it may be lost a frame later), never take it.
     if (onlyIfLost && !lost()) {
       if (performance.now() < until) requestAnimationFrame(step);
@@ -92,12 +94,23 @@ function panelTarget(root: ParentNode): HTMLElement | null {
  */
 export function focusSurfaceSoon(root: () => HTMLElement | null, wait = 1000): void {
   const start = performance.now();
+  const from = document.activeElement;
   focusSoon(
     () => {
       const el = root();
       if (!el) return null;
       return panelTarget(el) ?? (performance.now() - start > wait ? el : null);
     },
-    { timeout: wait + 1500 },
+    {
+      timeout: wait + 1500,
+      // The person moved focus somewhere else meanwhile (opened a menu, clicked a field): a panel whose content arrives
+      // late must not take it back — that closed the tab picker a moment after it opened.
+      abort: () => {
+        const a = document.activeElement;
+        if (!a || a === from || a === document.body || !a.isConnected) return false;
+        const el = root();
+        return !el?.contains(a);
+      },
+    },
   );
 }
