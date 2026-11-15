@@ -611,7 +611,7 @@ export type InputResolvedEvent = {
   id: string;
   status: "submitted" | "skipped" | "cancelled";
   provided: string[];
-  values: Record<string, string | boolean>;
+  values: Record<string, FormValue>;
 };
 export type QueueUpdatedEvent = { type: "queue.updated"; seq: number; paused: boolean; messages: QueuedMessage[] };
 /**
@@ -1206,11 +1206,75 @@ export type InputRequest = {
   turn_id: number;
   title: string;
   reason: string;
+  /** The legacy field list; the harness keeps it for old clients (dynamic forms §A, decision 2). */
   fields: InputField[];
+  /**
+   * The form itself (dynamic forms §A.1): the MCP elicitation schema plus `x-octo` keys. Every harness that knows schema
+   * forms sends it (also for a `fields` form, converted); absent from an older harness, in which case the UI converts
+   * `fields` itself.
+   */
+  schema?: FormSchema;
+  /** Who opened the form; absent means the agent's `request_input` tool. */
+  source?: FormSource;
   created_at: string;
 };
-/** Submit with `values` by field id (strings; booleans for confirm fields), or skip. */
-export type InputAnswer = { skip?: boolean; values?: Record<string, string | boolean> };
+/** Submit with `values` by property id (strings, numbers, booleans, arrays of strings), or skip. */
+export type InputAnswer = { skip?: boolean; values?: Record<string, FormValue> };
+
+// --- dynamic forms (spec 2026-11-15, §A.1): one schema for every form ------------------------------------------
+
+/** A scalar a condition compares with. */
+export type FormScalar = string | number | boolean;
+/** A property is shown only while `field` (an earlier property) equals `equals`, or any value of the list. */
+export type FormCondition = { field: string; equals: FormScalar | FormScalar[] };
+export type FormChoice = { const: string; title: string };
+/** Octo's keys of one property (ignored by a plain MCP / JSON Schema reader). */
+export type FormPropertyOcto = {
+  placeholder?: string;
+  visible_when?: FormCondition;
+  multiline?: boolean;
+  step?: number;
+  widget?: "path";
+  path_kind?: "file" | "folder";
+  /** A boolean that must be ticked (a legacy required `confirm` field). */
+  accept?: boolean;
+};
+type FormPropertyBase = { title?: string; description?: string; "x-octo"?: FormPropertyOcto };
+export type FormStringFormat = "email" | "uri" | "date" | "date-time" | "password";
+export type FormProperty = FormPropertyBase &
+  (
+    | {
+        type: "string";
+        format?: FormStringFormat;
+        minLength?: number;
+        maxLength?: number;
+        pattern?: string;
+        default?: string;
+        enum?: undefined;
+        oneOf?: undefined;
+      }
+    | { type: "string"; enum: string[]; enumNames?: string[]; default?: string; format?: undefined; oneOf?: undefined }
+    | { type: "string"; oneOf: FormChoice[]; default?: string; format?: undefined; enum?: undefined }
+    | { type: "number" | "integer"; minimum?: number; maximum?: number; default?: number }
+    | { type: "boolean"; default?: boolean }
+    | {
+        type: "array";
+        items: { type: "string"; enum: string[]; enumNames?: string[] } | { anyOf: FormChoice[] };
+        minItems?: number;
+        maxItems?: number;
+        default?: string[];
+      }
+  );
+export type FormSchema = {
+  type: "object";
+  properties: Record<string, FormProperty>;
+  required?: string[];
+  /** Normalised by the service: `order` always lists every property. */
+  "x-octo"?: { order?: string[]; groups?: { title: string; fields: string[] }[]; submit_label?: string };
+};
+/** One answered value: numbers stay numbers, many-of choices are arrays. */
+export type FormValue = string | number | boolean | string[];
+export type FormSource = { kind: "tool" } | { kind: "tool_server"; server: string; tool: string };
 /** A stored secret: its name only. Agents use it as `secret:<name>`. */
 export type SecretInfo = { name: string; updated_at: string };
 
@@ -1234,6 +1298,17 @@ export type DiagnosticsAgent = {
   login_hint?: string;
   install_hint?: string;
   flat_rate: boolean;
+  /** The CLI's version check, for an agent whose manifest has one (Antigravity): absent otherwise. */
+  version?: DiagnosticsVersion;
+};
+/** One agent CLI's version check: `too_old` only when a version was read and is below `min`. */
+export type DiagnosticsVersion = {
+  ran: boolean;
+  version?: string;
+  min?: string;
+  too_old: boolean;
+  reason: string;
+  at?: string;
 };
 /** `GET /v1/diagnostics`: what a problem report needs, without secrets (names of variables, never values). */
 export type Diagnostics = {

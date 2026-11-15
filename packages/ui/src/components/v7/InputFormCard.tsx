@@ -1,5 +1,5 @@
 import { Check, Lock, SkipForward, X } from "lucide-react";
-import { useState, type SyntheticEvent } from "react";
+import { useMemo, useState, type SyntheticEvent } from "react";
 import type { AnsweredInput, InputAnswer, InputRequest } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
@@ -9,10 +9,12 @@ import { TextField } from "../primitives/TextField";
 import { Glyph } from "../primitives/Glyph";
 import { Card } from "../primitives/Card";
 import { Notice } from "../primitives/Notice";
+import type { NormalForm } from "../../lib/schemaForm/schema";
+import { formOfRequest, localAnswered } from "../../lib/schemaForm/summary";
 import { RequestCard } from "../shared/RequestCard";
-import { FormField } from "./FormFields";
+import { SchemaForm } from "../shared/SchemaForm";
+import { useSchemaForm } from "../shared/useSchemaForm";
 import { focusOnMount } from "./parts";
-import { fieldDomId, useInputForm } from "./useInputForm";
 
 export type InputFormCardProps = {
   request: InputRequest;
@@ -25,18 +27,35 @@ export type InputFormCardProps = {
   onReplaceSecret?(name: string, value: string): Promise<void>;
 };
 
-/** A form an agent asked for (`request_input`, decision 43): values go to the harness, never to the model. */
+/** A form an agent asked for (`request_input`, decision 43; schema forms, spec 2026-11-15 §A): values go to the harness, never to the model. */
 export function InputFormCard(props: InputFormCardProps) {
   if (props.answered) return <AnsweredForm request={props.request} answered={props.answered} onReplaceSecret={props.onReplaceSecret} />;
   return <OpenForm {...props} />;
 }
 
 function OpenForm(props: InputFormCardProps) {
-  const { request } = props;
-  const f = useInputForm(props);
-  const hasSecret = request.fields.some((x) => x.kind === "secret");
+  const parsed = useMemo(() => formOfRequest(props.request), [props.request]);
+  if (!parsed.ok) return <BrokenForm {...props} reason={parsed.reason} />;
+  return <SchemaCard {...props} form={parsed.form} />;
+}
+
+function SchemaCard(props: InputFormCardProps & { form: NormalForm }) {
+  const { request, form, onSubmit, onAnswered } = props;
+  const f = useSchemaForm({
+    form,
+    onSubmit: async (answer) => {
+      await onSubmit(request.id, answer);
+      onAnswered(request.id, localAnswered(form, answer));
+    },
+    onSkip: async () => {
+      await onSubmit(request.id, { skip: true });
+      onAnswered(request.id, { status: "skipped", provided: [], values: {} });
+    },
+  });
+  const hasSecret = form.fields.some((x) => x.secret);
+  const { attachForm } = f;
   return (
-    <form noValidate onSubmit={f.submit} className="contents">
+    <form noValidate ref={attachForm} onSubmit={(e) => void f.submit(e)} className="contents">
       <RequestCard
         aria-labelledby={`v7-form-${request.id}`}
         data-v7-form={request.id}
@@ -45,42 +64,69 @@ function OpenForm(props: InputFormCardProps) {
         asks={request.agent_label}
         primary={
           <Button type="submit" variant="primary" size="sm" disabled={f.busy !== null} loading={f.busy === "submit"}>
-            Submit
+            {form.submitLabel ?? "Submit"}
           </Button>
         }
         alternatives={
-          <Button variant="quiet" size="sm" disabled={f.busy !== null} loading={f.busy === "skip"} onClick={f.skip}>
+          <Button variant="quiet" size="sm" disabled={f.busy !== null} loading={f.busy === "skip"} onClick={() => void f.skip()}>
             Skip
           </Button>
         }
         error={f.error}
       >
         {request.reason && <p className="[overflow-wrap:anywhere] text-fg-2">{request.reason}</p>}
-        {/* C5: label → field 6 (Field), field → next label 16. */}
-        <div className="flex flex-col gap-4">
-          {request.fields.map((field) => (
-            <FormField
-              key={field.id}
-              field={field}
-              domId={fieldDomId(request.id, field.id)}
-              value={f.values[field.id]}
-              error={f.errors[field.id]}
-              disabled={f.busy !== null}
-              registerControl={f.registerControl(field.id)}
-              onChange={(v) => f.set(field.id, v)}
-              onSecretInput={() => f.clearError(field.id)}
-            />
-          ))}
-        </div>
-        <p className="flex items-start gap-2 text-xs text-fg-3">
-          <Glyph icon={Lock} size={14} className="mt-px shrink-0" />
-          <span>
-            Sent to Octo's local service, not to the model.
-            {hasSecret && " Secrets are stored for this project; the agent only learns that they were provided."}
-          </span>
-        </p>
+        <SchemaForm form={form} state={f} idPrefix={`v7-${request.id}`} />
+        <SentNote secret={hasSecret} />
       </RequestCard>
     </form>
+  );
+}
+
+function SentNote({ secret }: { secret: boolean }) {
+  return (
+    <p className="flex items-start gap-2 text-xs text-fg-3">
+      <Glyph icon={Lock} size={14} className="mt-px shrink-0" />
+      <span>
+        Sent to Octo's local service, not to the model.
+        {secret && " Secrets are stored for this project; the agent only learns that they were provided."}
+      </span>
+    </p>
+  );
+}
+
+/** A form whose schema this UI cannot show: it says why and can still be skipped, so the agent is not left waiting. */
+function BrokenForm(props: InputFormCardProps & { reason: string }) {
+  const { request, onSubmit, onAnswered } = props;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const skip = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onSubmit(request.id, { skip: true });
+      onAnswered(request.id, { status: "skipped", provided: [], values: {} });
+    } catch (e) {
+      setError(`Not skipped: ${errorMessage(e)}. Try again.`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <RequestCard
+      aria-labelledby={`v7-form-${request.id}`}
+      data-v7-form={request.id}
+      titleId={`v7-form-${request.id}`}
+      title={request.title}
+      asks={request.agent_label}
+      alternatives={
+        <Button variant="quiet" size="sm" disabled={busy} loading={busy} onClick={() => void skip()}>
+          Skip
+        </Button>
+      }
+      error={error}
+    >
+      <Notice tone="warn">This form could not be shown: {props.reason}.</Notice>
+    </RequestCard>
   );
 }
 
@@ -91,6 +137,8 @@ function AnsweredForm({
   onReplaceSecret,
 }: Pick<InputFormCardProps, "request"> & { answered: AnsweredInput; onReplaceSecret: InputFormCardProps["onReplaceSecret"] | undefined }) {
   const line = answeredLine(request, answered);
+  const parsed = formOfRequest(request);
+  const titleOf = (id: string) => (parsed.ok ? parsed.form.fields.find((x) => x.id === id)?.title : undefined) ?? id;
   const [changing, setChanging] = useState<string | null>(null);
   const icon = line.status === "submitted" ? Check : line.status === "skipped" ? SkipForward : X;
   const secrets = onReplaceSecret ? answered.provided : [];
@@ -107,19 +155,14 @@ function AnsweredForm({
             <span className="flex shrink-0 gap-1">
               {secrets.map((id) => (
                 <Button key={id} variant="quiet" size="xs" aria-expanded={changing === id} onClick={() => setChanging(changing === id ? null : id)}>
-                  {secrets.length > 1 ? `Change ${request.fields.find((x) => x.id === id)?.label ?? id}` : "Change"}
+                  {secrets.length > 1 ? `Change ${titleOf(id)}` : "Change"}
                 </Button>
               ))}
             </span>
           )}
         </div>
         {changing && onReplaceSecret && (
-          <ReplaceSecret
-            name={changing}
-            label={request.fields.find((x) => x.id === changing)?.label ?? changing}
-            onReplace={onReplaceSecret}
-            onDone={() => setChanging(null)}
-          />
+          <ReplaceSecret name={changing} label={titleOf(changing)} onReplace={onReplaceSecret} onDone={() => setChanging(null)} />
         )}
       </Card>
     </div>

@@ -33,6 +33,24 @@ test("BridgeError carries hint, command, action and details of a structured erro
   });
 });
 
+test("a refused form answer carries error.fields; non-string messages and an empty map are dropped", async () => {
+  const body = JSON.stringify({
+    error: {
+      code: "invalid_request",
+      message: "2 fields need attention",
+      fields: { email: "Enter an email address like name@example.com", password: "Required", n: 3 },
+    },
+  });
+  await assert.rejects(bridgeWith(400, body).listProjects(), (e: unknown) => {
+    assert.ok(e instanceof BridgeError);
+    assert.equal(e.status, 400);
+    assert.deepEqual(e.fields, { email: "Enter an email address like name@example.com", password: "Required" });
+    return true;
+  });
+  const empty = JSON.stringify({ error: { code: "invalid_request", message: 'field "x" is required', fields: {} } });
+  await assert.rejects(bridgeWith(400, empty).listProjects(), (e: unknown) => e instanceof BridgeError && e.fields === undefined);
+});
+
 test("an unknown action is dropped; an object in details is data (rewind_conflict)", async () => {
   const body = JSON.stringify({ error: { code: "rewind_conflict", message: "Some files changed.", action: "dance", details: { files: ["a"] } } });
   await assert.rejects(bridgeWith(409, body).listProjects(), (e: unknown) => {

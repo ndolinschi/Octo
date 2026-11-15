@@ -6,6 +6,7 @@ import type {
   CompactionMarker,
   ContentBlock,
   FileChange,
+  FormValue,
   InputRequest,
   Message,
   Note,
@@ -44,7 +45,7 @@ export type AttentionState = ErrorFields & {
 export type AnsweredInput = {
   status: "submitted" | "skipped" | "cancelled";
   provided: string[];
-  values: Record<string, string | boolean>;
+  values: Record<string, FormValue>;
 };
 
 /** A tool call in flight; the optional fields come from tool.updated (ACP). */

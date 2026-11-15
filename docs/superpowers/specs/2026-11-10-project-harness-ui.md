@@ -3759,3 +3759,30 @@ keyboard behaved the same. What was broken, and what was done:
 Not verified: Safari and the Tauri window; the on-screen keyboard; dragging the scrollbar (headless cannot grab it);
 Safari's own find over folded turns; landscape safe areas on the phone frame; Ctrl+Alt+C (comment) does nothing in this
 WebKit build; `apps/web/scripts/phone-flow.sh` was not run (it needs Go 1.26, the environment has 1.24).
+
+## As built — schema forms in the client and the UI; the audit at zero (2026-11-15)
+
+- **Decision 97 (forms from a schema; contract in `2026-11-15-dynamic-forms-mentions-design.md`, phase A2).** One renderer,
+  `shared/SchemaForm`, draws a form from a flat JSON schema on the library's primitives; nothing is written per form. The
+  pure part is `lib/schemaForm/` (parse, the old five field kinds to a schema, defaults, `visible_when`, checks, the
+  summary). `v7/InputFormCard` is built on it; a request without `schema` is converted on the client. Controls: an enum
+  of up to four short options is segments, a longer one a Select; `email`, `uri`, `date`, `date-time` and numbers are
+  `TextField` with a type; many-of is a list of checkboxes; a boolean is a checkbox; `password` has show / hide. Enter
+  submits a single-line form, Ctrl/Cmd+Enter any; a refused submit focuses the first field in error and says how many
+  need attention; the service's `error.fields` show under their fields. After an answer the card is one line ("Answered ·
+  Email: … · Password: •••"); a password is not left in the DOM, the console or the optimistic state. `pattern` runs on
+  the client only when it cannot backtrack badly; otherwise the service decides.
+  Demo: `?demo=1&forms=1` (sign in, region, rollout, release checks). `packages/ui/scripts/schema-forms.mjs` passes in
+  Chromium and WebKit; axe finds nothing on the card. Differences from the contract: the summary shows values (the
+  contract says "answered"); group titles are parsed and not drawn; the path widget is still a text field.
+  Not seen on screen: 1100 and the narrow column; "Closed: stopped". The shared fixture
+  `packages/agent-client/src/fixtures/forms.json` (50 cases) is checked by the client's tests; the Go side is the
+  harness's phase A1.
+- **The spacing audit** found 182 off-scale values after waves 1–5 (11px and 7px paddings that made room for a 1px frame
+  in Settings; the phone's hanging indent of a wrapped diff line). `ListFrame` and the settings search field now draw
+  their frame as an overlay, so paddings are 12 and 8 and no text moved (1112 of 1136 measured edges equal; the others
+  are the search input's own box). The hanging indent is one allow-list entry (content geometry, in `ch`). The audit
+  reaches the tool tables and the phone's New project dialog again; both were skipped on `main` as well, so the earlier
+  "total=0" there was with four states skipped.
+- An agent that is installed but too old (Antigravity before 1.5.0) reads "Installed, but too old for Octo. Update it,
+  then check again." and its step is "Update".

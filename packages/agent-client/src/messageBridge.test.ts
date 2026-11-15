@@ -149,6 +149,14 @@ test("BridgeError round-trips with status, code and message", async () => {
   });
 });
 
+test("a refused form answer keeps its messages by field across the port", async () => {
+  const { client, bridge } = setup();
+  bridge.failWith = new BridgeError(400, "invalid_request", "2 fields need attention", { fields: { email: "Enter an email address like name@example.com" } });
+  await assert.rejects(client.bridge.getProject("x"), (err) => {
+    return err instanceof BridgeError && err.status === 400 && err.fields?.email === "Enter an email address like name@example.com";
+  });
+});
+
 test("non-BridgeError failures map to internal", async () => {
   const { client, bridge } = setup();
   bridge.failWith = new Error("boom");

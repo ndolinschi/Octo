@@ -20,7 +20,7 @@ export type BridgeServer = { setTheme(theme: Theme): void; dispose(): void };
 
 function toWireError(err: unknown): WireError {
   if (err instanceof BridgeError) {
-    return { status: err.status, code: err.code, message: err.message };
+    return { status: err.status, code: err.code, message: err.message, ...(err.fields ? { fields: { ...err.fields } } : {}) };
   }
   const message = err instanceof Error ? err.message : String(err);
   return { status: 0, code: "internal", message };

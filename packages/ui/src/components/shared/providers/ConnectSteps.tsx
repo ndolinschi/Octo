@@ -108,7 +108,8 @@ export function AgentSteps({ provider: p }: { provider: Provider }) {
       </p>
     );
   const steps: { title: string; text: string; commands: string[] }[] = [];
-  if (p.state === "not_installed") steps.push({ title: "Install", text: p.install_hint, commands: commandsIn(p.install_hint) });
+  if (p.state === "not_installed")
+    steps.push({ title: /too old/i.test(p.reason) ? "Update" : "Install", text: p.install_hint, commands: commandsIn(p.install_hint) });
   steps.push({ title: "Log in", text: p.login_hint, commands: commandsIn(p.login_hint) });
   return (
     <div className="flex flex-col gap-4">

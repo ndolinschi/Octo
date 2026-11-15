@@ -13,6 +13,7 @@ import {
 import { emit, newId, orchestratorOf, type ProjectRecord } from "./store";
 import { CLIENT_AFTER, CLIENT_BEFORE, RETRY_AFTER, RETRY_BEFORE, SHOWCASE_PROMPT } from "./toolShowcase";
 import { countLines, lineDiff } from "./reviewDiff";
+import { demoFormKeys, demoRefusal, demoSchemaForms, secretIds } from "./forms";
 
 /**
  * v7 for the demo bridge: a pending approval, an open form, queued messages and two turns with changes on the Atlas
@@ -150,6 +151,10 @@ function seed(rec: ProjectRecord): V7 {
     ],
     created_at: iso(20_000),
   });
+  // Schema forms (`?forms=`): after the legacy one, in the same request.
+  v.inputs.push(
+    ...demoSchemaForms(demoFormKeys(), { agent_id: orch.id, agent_label: "orchestrator", turn_id: turnB, created_at: iso(10_000) }, () => newId("inp")),
+  );
   v.queue.messages.push(
     { id: newId("q"), text: "Then rename the helper to formatBytes and update its callers", created_at: iso(2 * MIN) },
     { id: newId("q"), text: "After that, run the full lint and summarise the warnings by file", created_at: iso(MIN) },
@@ -358,8 +363,10 @@ export function withDemoV7(base: Bridge, records: Map<string, ProjectRecord>): B
       const { rec, v } = state(id);
       const form = v.inputs.find((i) => i.id === iid);
       if (!form) throw notFound("form");
+      const refused = demoRefusal(answer);
+      if (refused) throw refused;
       v.inputs = v.inputs.filter((i) => i.id !== iid);
-      const secrets = new Set(form.fields.filter((f) => f.kind === "secret").map((f) => f.id));
+      const secrets = secretIds(form);
       const values = answer.values ?? {};
       emit(rec, {
         type: "input.resolved",

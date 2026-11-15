@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Approval, ChangeDetail, InputField, InputRequest } from "@octo/agent-client";
 import { answerFor, approvalDeadline, approvalItems, diffBlocks, formatCountdown, keyAction, optionAnswer, resolutionCause, resolutionLabel } from "./approval";
-import { answeredLine, buildAnswer, fieldsInError, initialValues, localAnswered, validate } from "./form";
+import { answeredLine, SECRET_MIN_BYTES, utf8Length } from "./form";
 import { queueLine, queueSummary, queueView, withoutQueued } from "./queue";
 import { diffLayout, earlierRequestLabel, netDiff, netIds, revertOrder, revertProblem, sourceLabel, splitPath, turnRevertOrder } from "./changes";
 
@@ -88,31 +88,14 @@ const fields: InputField[] = [
   { id: "ok", label: "I understand", kind: "confirm", required: true },
 ];
 
-test("form: initial values hold no secret; validation names each problem", () => {
-  const v = initialValues(fields);
-  assert.deepEqual(v, { region: "", note: "", ok: false });
-  assert.deepEqual(validate(fields, v, {}), { api_key: "Required", region: "Choose one", ok: "Confirm to continue" });
-  assert.deepEqual(validate(fields, { region: "mars", note: "", ok: true }, { api_key: "abc" }), {
-    api_key: "At least 4 characters",
-    region: "Choose one of the options",
-  });
-  assert.deepEqual(validate(fields, { region: "eu", note: "", ok: true }, { api_key: "sk-1234" }), {});
-});
-
-test("form: the answer carries the secret once, trims text, drops empty optional fields", () => {
-  const ans = buildAnswer(fields, { region: "eu", note: "  ", ok: true }, { api_key: "sk-1234" });
-  assert.deepEqual(ans, { values: { api_key: "sk-1234", region: "eu", ok: true } });
-});
-
-test("form: the optimistic and the answered summary hold names only", () => {
+test("form: the answered line names fields in order, shows non-secret values and masks secrets", () => {
   const req: InputRequest = { id: "f", agent_id: "a", agent_label: "x", turn_id: 1, title: "t", reason: "", fields, created_at: "" };
-  const local = localAnswered(fields, { values: { api_key: "sk-1234", region: "eu", ok: true } });
-  assert.equal(JSON.stringify(local).includes("sk-1234"), false);
-  assert.equal(JSON.stringify(local).includes("eu"), false);
-  assert.deepEqual(answeredLine(req, local), { status: "submitted", text: "API key provided · Region, I understand answered" });
+  const line = answeredLine(req, { status: "submitted", provided: ["api_key"], values: { region: "eu", ok: true } });
+  assert.deepEqual(line, { status: "submitted", text: "Answered · API key: ••• · Region: eu · I understand: Yes" });
   assert.equal(answeredLine(req, { status: "skipped", provided: [], values: {} }).text, "Skipped");
-  assert.deepEqual(fieldsInError("missing required field api_key", fields), ["api_key"]);
-  assert.deepEqual(fieldsInError("value of region is not an option", fields), ["region"]);
+  assert.equal(answeredLine(req, { status: "cancelled", provided: [], values: {} }).text, "Closed: stopped");
+  assert.equal(utf8Length("é"), 2);
+  assert.equal(SECRET_MIN_BYTES, 4);
 });
 
 test("queue: one line per message, folds past three", () => {

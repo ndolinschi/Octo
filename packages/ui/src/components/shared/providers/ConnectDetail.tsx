@@ -16,7 +16,9 @@ export function describe(p: Provider): string {
   if (isReady(p)) return p.kind === "agent" ? "Ready. Choose it, or one of its models, from the model menu." : "Connected.";
   if (p.kind === "agent")
     return p.state === "not_installed"
-      ? "Not installed on this computer. Install it and log in once in a terminal, then check again."
+      ? /too old/i.test(p.reason)
+        ? "Installed, but too old for Octo. Update it, then check again."
+        : "Not installed on this computer. Install it and log in once in a terminal, then check again."
       : "Installed, but not logged in. Log in once in a terminal, then check again.";
   if (p.kind === "api") return "Bill per token with your own Anthropic API key.";
   return "Use the Octo router: one provider key (for example OpenRouter) gives you many models.";

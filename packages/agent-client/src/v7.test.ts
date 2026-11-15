@@ -111,6 +111,16 @@ test("forms: open, then answered keeps names and non-secret values only", () => 
   });
   assert.equal(s.inputs.length, 0);
   assert.deepEqual(s.answeredInputs.i1, { status: "submitted", provided: ["api_key"], values: { region: "eu" } });
+  // A schema form keeps its schema in state and its typed values once answered.
+  const schema: InputRequest["schema"] = {
+    type: "object",
+    required: ["replicas"],
+    properties: { replicas: { type: "integer", minimum: 1, maximum: 10 }, checks: { type: "array", items: { type: "string", enum: ["unit", "lint"] } } },
+  };
+  s = applyEvent(s, { type: "input.requested", seq: 3, input: { ...form("i4"), schema } });
+  assert.deepEqual(s.inputs[0]?.schema, schema);
+  s = applyEvent(s, { type: "input.resolved", seq: 4, id: "i4", status: "submitted", provided: [], values: { replicas: 3, checks: ["unit"] } });
+  assert.deepEqual(s.answeredInputs.i4?.values, { replicas: 3, checks: ["unit"] });
   s = withInputs(s, [form("i3"), form("i2")]);
   assert.deepEqual(
     s.inputs.map((i) => i.id),
@@ -269,6 +279,16 @@ test("http: changes, queue, approvals, forms and secrets request shapes", async 
       method: "POST",
       path: "/v1/projects/p/inputs/i1",
       body: { values: { api_key: "k" } },
+      result: undefined,
+    },
+    {
+      // Dynamic forms: numbers stay numbers and many-of answers arrays on the wire.
+      run: (b) => b.submitInput?.("p", "i2", { values: { replicas: 3, checks: ["unit", "lint"], canary: true } }),
+      reply: "",
+      status: 204,
+      method: "POST",
+      path: "/v1/projects/p/inputs/i2",
+      body: { values: { replicas: 3, checks: ["unit", "lint"], canary: true } },
       result: undefined,
     },
     {

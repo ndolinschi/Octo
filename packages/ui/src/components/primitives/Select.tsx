@@ -38,6 +38,10 @@ type SelectProps = {
   side?: "top" | "bottom";
   disabled?: boolean;
   invalid?: boolean;
+  /** `aria-describedby` of the trigger (a form field's description and error). */
+  describedBy?: string;
+  /** `aria-required` of the trigger. */
+  required?: boolean;
   id?: string;
   className?: string;
 };
@@ -138,6 +142,8 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         aria-invalid={props.invalid || undefined}
+        aria-describedby={props.describedBy}
+        aria-required={props.required || undefined}
         disabled={props.disabled}
         onClick={() => (open ? setOpen(false) : show())}
         onKeyDown={onTriggerKey}

@@ -12,6 +12,14 @@ import {
 } from "./messageProtocol";
 import type { LanguageServerSession } from "./types";
 
+/** A refused form answer's messages by field, as the host sent them (strings only; anything else is dropped). */
+function wireFields(v: unknown): { fields: Record<string, string> } | undefined {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [id, m] of Object.entries(v)) if (typeof m === "string") out[id] = m;
+  return Object.keys(out).length ? { fields: out } : undefined;
+}
+
 export type MessageClient = {
   bridge: Bridge;
   callHost(action: string, args?: unknown[]): Promise<unknown>;
@@ -39,7 +47,7 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     if (!p) return;
     pending.delete(msg.id);
     if (msg.ok) p.resolve(msg.value);
-    else p.reject(new BridgeError(msg.error.status, msg.error.code, msg.error.message));
+    else p.reject(new BridgeError(msg.error.status, msg.error.code, msg.error.message, wireFields(msg.error.fields)));
   }
 
   function openedSession(msg: Extract<LspOpenedMessage, { ok: true }>): LanguageServerSession {

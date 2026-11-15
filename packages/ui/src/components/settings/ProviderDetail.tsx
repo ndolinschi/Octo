@@ -113,7 +113,12 @@ function HintProse({ text }: { text: string }) {
  */
 function Reason({ provider: p, text }: { provider: Provider; text: string }) {
   const steps =
-    p.kind === "agent" ? [...(p.state === "not_installed" ? [{ title: "Install", hint: p.install_hint }] : []), { title: "Log in", hint: p.login_hint }] : [];
+    p.kind === "agent"
+      ? [
+          ...(p.state === "not_installed" ? [{ title: /too old/i.test(p.reason) ? "Update" : "Install", hint: p.install_hint }] : []),
+          { title: "Log in", hint: p.login_hint },
+        ]
+      : [];
   // S5: the API provider's "No API key" is said by its key group; one label, not three. C17: "Grok is not installed." after
   // "Not installed" and the reason line says nothing new.
   const extra = p.kind === "api" || (p.state === "not_installed" && /not installed/i.test(extraReason(p))) ? "" : extraReason(p);

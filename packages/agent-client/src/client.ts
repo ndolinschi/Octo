@@ -147,6 +147,11 @@ export class BridgeError extends Error {
   readonly details?: string;
   /** `rewind_conflict`: `error.details` is the report object, kept here as data. */
   readonly data?: unknown;
+  /**
+   * `invalid_request` (400) of a form answer (dynamic forms, decision 4): a message by property id. Names fields, never
+   * values; absent from an older harness, whose message names the field ids instead.
+   */
+  readonly fields?: Readonly<Record<string, string>>;
 
   constructor(
     status: number,
@@ -163,6 +168,7 @@ export class BridgeError extends Error {
       action?: ErrorAction;
       details?: string;
       data?: unknown;
+      fields?: Record<string, string>;
     },
   ) {
     super(message);
@@ -179,6 +185,7 @@ export class BridgeError extends Error {
     if (detail?.action !== undefined) this.action = detail.action;
     if (detail?.details !== undefined) this.details = detail.details;
     if (detail?.data !== undefined) this.data = detail.data;
+    if (detail?.fields !== undefined) this.fields = detail.fields;
   }
 }
 
@@ -671,6 +678,14 @@ function isErrorAction(v: unknown): v is ErrorAction {
   return typeof v === "string" && ERROR_ACTIONS.includes(v);
 }
 
+/** `error.fields` of a refused form answer: only string messages under non-empty ids are kept. */
+function fieldMessages(v: unknown): { fields: Record<string, string> } | null {
+  if (!isRecord(v)) return null;
+  const out: Record<string, string> = {};
+  for (const [id, message] of Object.entries(v)) if (id && typeof message === "string" && message.trim()) out[id] = message.trim();
+  return Object.keys(out).length ? { fields: out } : null;
+}
+
 function toBridgeError(status: number, text: string): BridgeError {
   const body = parseJson(text);
   const err = isRecord(body) ? body.error : undefined;
@@ -687,6 +702,7 @@ function toBridgeError(status: number, text: string): BridgeError {
       ...(isErrorAction(err.action) ? { action: err.action } : {}),
       ...(typeof err.details === "string" && err.details ? { details: err.details } : {}),
       ...(err.details !== undefined && typeof err.details !== "string" ? { data: err.details } : {}),
+      ...(fieldMessages(err.fields) ?? {}),
     };
     return new BridgeError(status, code, err.message, detail);
   }
