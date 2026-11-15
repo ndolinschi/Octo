@@ -1,5 +1,13 @@
 # Handover — status on 2026-11-12 (after batch 5 and the sessions merge)
 
+> **2026-11-15, the premium pass** (branch `claude/octo-ui-polish-r1k9zi`, five commits on top of `main` 7d68ccd; not merged).
+> What changed, what was measured and what was not verified is in the UI spec's last five "As built" sections
+> ("the premium pass, wave 1" to "wave 5"). In short: one name per thing in the interface copy; even edges in the sidebar,
+> Settings and every tool panel; the phone's Back; `/new <text>`; the request bubble; "Restore to here"; whole tabs; the
+> first WebKit run and its fixes; every browser script takes `--browser chromium|webkit`. Still for the owner: the top
+> bar's command buttons, the text field's hairline, "Compact" and Memory's tab names, Shift+Tab in the composer; and a
+> run in real Safari and in the Tauri window on macOS (only Playwright's Linux WebKit ran here).
+
 For whoever continues the work: what exists and how far it is verified, what is open, how work runs, what comes next.
 The specs hold the detail; the system overview is [`../ARCHITECTURE.md`](../ARCHITECTURE.md), the monorepo map and
 commands are [`../../AGENTS.md`](../../AGENTS.md). The owner's next step is [`LIVE-CHECKLIST.md`](LIVE-CHECKLIST.md)

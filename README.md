@@ -1,5 +1,12 @@
 # Octo monorepo
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/images/octo-dark.png">
+  <img alt="Octo: a project's session with the agent's work, the changed files beside it and the session tree in the sidebar" src="./docs/images/octo-light.png">
+</picture>
+
+_The desktop app on demo data (`?demo=1`)._
+
 Apps-directory monorepo with shared frontend packages.
 
 | App / package | Path | Description |
@@ -7,9 +14,9 @@ Apps-directory monorepo with shared frontend packages.
 | **router** (Octo) | [`apps/router/`](./apps/router/) | Rust HTTP proxy for OpenAI / Anthropic / OpenRouter, plus an autoroute model ladder, a price rule, a routing decision for delegated tasks, budgets and a SQLite call history |
 | **harness** | [`apps/harness/`](./apps/harness/) | Go project server (`harness serve`): one orchestrator per project (built-in Messages loop or an ACP agent such as Claude Code on a subscription), nested sub-agents, per-project SQLite, memory, changes / approvals / queue, file API, plugins, settings, `harness doctor` |
 | **desktop** | [`apps/desktop/`](./apps/desktop/) | Tauri 2 shell for the shared UI; starts the harness and the optional router as sidecars |
-| **ui** | [`packages/ui/`](./packages/ui/) | Shared React UI (`@octo/ui`) for desktop and future web |
+| **ui** | [`packages/ui/`](./packages/ui/) | Shared React UI (`@octo/ui`) for the desktop app and the mobile web client |
 | **agent-client** | [`packages/agent-client/`](./packages/agent-client/) | Harness bridge client (`@octo/agent-client`): HTTP + SSE, state reducer, message-port bridge |
-| **web** (planned) | [`apps/web/`](./apps/web/) | Future static host (README only) |
+| **web** | [`apps/web/`](./apps/web/) | Mobile web client (`@octo/web`): the same UI on a phone, served by the harness through Remote access |
 
 ## Documentation
 
