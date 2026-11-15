@@ -8,12 +8,11 @@
  *   3. asserts that the newest request is on screen and the scroller sits at its end (within 8 px), and that the "Jump to
  *      latest" button is gone.
  *
- *   node packages/ui/scripts/scroll-on-send.mjs [--url http://localhost:1420] [--width 1440] [--height 900] [--project "Atlas API"]
+ *   node packages/ui/scripts/scroll-on-send.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--width 1440] [--height 900] [--project "Atlas API"]
  *
  * Prints `scroll-on-send: ok` or the measurements. Exit code 1 on a failure, 2 on a problem driving the page.
  */
-import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
+import { launchBrowser, newContext, isAbortedImport } from "./browser.mjs";
 
 const argv = process.argv.slice(2);
 const opt = (n, d) => {
@@ -25,30 +24,13 @@ const W = Number(opt("--width", "1440"));
 const H = Number(opt("--height", "900"));
 const PROJECT = opt("--project", "Atlas API");
 
-function loadPlaywright() {
-  const roots = [import.meta.url, "file:///opt/node-tools/", "file:///usr/local/lib/node_modules_global/"];
-  try {
-    roots.push(`file://${execSync("npm root -g", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim()}/`);
-  } catch {
-    /* no npm */
-  }
-  for (const from of roots) {
-    try {
-      return createRequire(from)("playwright");
-    } catch {
-      /* try the next place */
-    }
-  }
-  throw new Error("playwright is not installed");
-}
 const fail = (why) => {
   console.error(`scroll-on-send: could not drive the page: ${why}`);
   process.exit(2);
 };
 
-const { chromium } = loadPlaywright();
-const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport: { width: W, height: H } });
+const browser = await launchBrowser();
+const ctx = await newContext(browser, { viewport: { width: W, height: H } });
 await ctx.addInitScript(() => {
   try {
     localStorage.setItem("octo.theme", "dark");
@@ -59,7 +41,7 @@ await ctx.addInitScript(() => {
 });
 const page = await ctx.newPage();
 const problems = [];
-page.on("pageerror", (e) => problems.push(`page error: ${String(e.stack ?? e).slice(0, 600)}`));
+page.on("pageerror", (e) => isAbortedImport(e.message) || problems.push(`page error: ${String(e.stack ?? e).slice(0, 600)}`));
 await page.goto(`${BASE}/?demo=1`, { waitUntil: "domcontentloaded" });
 const projects = page.locator('nav[aria-label="Projects"] a');
 if (
@@ -102,6 +84,7 @@ await page.evaluate(() => {
   let el = col;
   while (el && !(el.scrollHeight > el.clientHeight + 4 && getComputedStyle(el).overflowY !== "visible")) el = el.parentElement;
   if (el) {
+    el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -el.scrollTop }));
     el.scrollTop = 0;
     el.dispatchEvent(new Event("scroll"));
   }

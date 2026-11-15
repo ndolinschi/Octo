@@ -8,8 +8,7 @@
  *
  * Exit code 1 when any screen fails.
  */
-import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
+import { launchBrowser, newContext } from "./browser.mjs";
 
 const argv = process.argv.slice(2);
 const opt = (n, d) => {
@@ -21,21 +20,6 @@ const THEMES = opt("--theme", "dark,light").split(",");
 const SIZES = opt("--sizes", "1440x900,900x600,390x700")
   .split(",")
   .map((s) => s.split("x").map(Number));
-
-function loadPlaywright() {
-  for (const t of [
-    () => createRequire(import.meta.url)("playwright"),
-    () => createRequire(`${execSync("npm root -g", { encoding: "utf8" }).trim()}/`)("playwright"),
-  ]) {
-    try {
-      return t();
-    } catch {
-      // Try the next place Playwright may be installed.
-    }
-  }
-  console.error("backdrop-check: Playwright is not installed (npm i -g playwright).");
-  process.exit(2);
-}
 
 const menuButton = async (page) => {
   const b = page.getByRole("button", { name: /^(Show|Open) sidebar$|^Menu$/ }).first();
@@ -87,13 +71,12 @@ const measure = () => {
   return { bands: 1, top: Math.round(box.top), bottom: Math.round(box.bottom), hits };
 };
 
-const { chromium } = loadPlaywright();
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 let failed = 0;
 for (const sc of SCREENS) {
   for (const theme of THEMES) {
     for (const [width, height] of SIZES) {
-      const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: theme });
+      const ctx = await newContext(browser, { viewport: { width, height }, colorScheme: theme });
       const page = await ctx.newPage();
       const label = `${sc.name} ${theme} ${width}x${height}`;
       try {

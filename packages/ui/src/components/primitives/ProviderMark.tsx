@@ -15,10 +15,12 @@ export function ProviderMark({ id, label, size = 16, className }: { id: string; 
   const [, loaded] = useState(0);
   useEffect(() => {
     if (!marks)
-      void import("./providerMarkAssets").then((m) => {
-        marks = m;
-        loaded((n) => n + 1);
-      });
+      void import("./providerMarkAssets")
+        .then((m) => {
+          marks = m;
+          loaded((n) => n + 1);
+        })
+        .catch(() => undefined); // a load cut short by leaving the page: the neutral shape stays
   }, []);
   const mark = marks?.markOf(id, label);
   const url = mark && "url" in mark ? mark.url : undefined;

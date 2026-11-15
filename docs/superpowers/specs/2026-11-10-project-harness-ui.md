@@ -3726,3 +3726,36 @@ Not seen on screen (unit tests only): the suggestions for an empty folder and fo
 gives every project the same commands and hides `.git`); a tab dragged from another group into a strip with hidden tabs.
 Not verified: WebKit for this wave; the first-open panel on a phone (it is off outside the docked layout).
 `--spacing-settings-rows` is no longer used.
+
+## As built — the premium pass, wave 5: WebKit, and the browser scripts in two engines (2026-11-15)
+
+The interface had never run in WebKit. A reviewer ran both layouts in Playwright's WebKit 26.6 beside Chromium (this is the
+Linux build: not Safari on iOS or macOS, and not the Tauri window). Vendor-mark masks, `:has`, `color-mix`, container
+queries, the Inter subsets (widths equal to the pixel), the streak canvas, history layers and `visualViewport` without a
+keyboard behaved the same. What was broken, and what was done:
+
+- **A long conversation did not open at its end** (WebKit only: 92–132px short at 1440, a screen short on the phone, so
+  approval cards were out of sight). The engine itself moves `scrollTop` up when mounted content above the viewport is
+  replaced, and `overflow-anchor: none` does not stop it. `lib/stickDecision.ts`: a move up counts as the reader's only
+  within a second of their input inside the scroller (wheel, touch, scrolling keys, a press on the scroller or its bar,
+  `beforematch`, a selection) or when one event moves most of a screen; otherwise a pinned view returns to the end
+  before paint. After: 0px from the end in both engines.
+- **Scroll correction without CSS anchoring** jumped 1716px (1440) and 2336px (390) in both engines when anchoring was
+  forced off: only the frame of mounting was corrected. `chat/useTurnWindow.ts` now observes every turn section and adds
+  the height change of a turn that is wholly above the viewport before paint: 0px over 30 steps, native and manual.
+  Whether Safari has native anchoring was not checked.
+- **The composer's height fallback on the phone** (no `field-sizing`, Safari before 26) cut lines 7–11 at 120px with no
+  scrolling: the limit is now read from the computed `max-height` (`fitHeight`), and the empty field is one 20px line.
+- **The editor's context menu** closed after ~280 ms in WebKit with a macOS user agent (wave 2's `Menu` change); a
+  script now checks it.
+- **Changes' diff** shows a dimmed loading state until Monaco has computed the diff (in WebKit the text stood uncoloured
+  for 1–4 s on the dev server and read as "no changes").
+- The shortcuts sheet's second column no longer starts 16px low in WebKit; it lists N / P for review threads.
+- **Scripts.** Every script in `packages/ui/scripts` takes `--browser chromium|webkit` (`browser.mjs`); four new ones
+  (`stick-on-open`, `composer-fit`, `scroll-anchor`, `editor-context-menu`); `flicker` samples with a ResizeObserver
+  probe after the page's own observers (the old sampler recorded a frame nobody saw); the tour finds the file tree by
+  name again and follows the new wording.
+
+Not verified: Safari and the Tauri window; the on-screen keyboard; dragging the scrollbar (headless cannot grab it);
+Safari's own find over folded turns; landscape safe areas on the phone frame; Ctrl+Alt+C (comment) does nothing in this
+WebKit build; `apps/web/scripts/phone-flow.sh` was not run (it needs Go 1.26, the environment has 1.24).

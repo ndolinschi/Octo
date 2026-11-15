@@ -12,9 +12,8 @@
  * f>row = header bottom to the filter row, filter row bottom to the first row, row = height of the first list row,
  * dy = vertical distance between the centres of the title text and the action text (0 = one baseline).
  */
-import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { launchBrowser, newContext } from "./browser.mjs";
 
 const argv = process.argv.slice(2);
 const opt = (n, d) => {
@@ -30,23 +29,6 @@ const H = Number(opt("--height", "900"));
 const ONLY = opt("--only", null)?.split(",") ?? null;
 const SHOTS = !argv.includes("--no-shots");
 const PROJECT = opt("--project", "Atlas API");
-
-function loadPlaywright() {
-  const roots = [import.meta.url];
-  try {
-    roots.push(`file://${execSync("npm root -g", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim()}/`);
-  } catch {
-    /* no npm */
-  }
-  for (const from of roots) {
-    try {
-      return createRequire(from)("playwright");
-    } catch {
-      /* next */
-    }
-  }
-  throw new Error("cannot resolve playwright");
-}
 
 const T = 4000;
 const settle = (page, ms = 300) => page.waitForTimeout(ms);
@@ -233,14 +215,13 @@ function probe({ mode, id, ready }) {
 const fmt = (v) => (v === null || v === undefined ? "–" : typeof v === "number" ? String(Math.round(v * 10) / 10) : String(v));
 
 async function main() {
-  const { chromium } = loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   const results = {};
   for (const theme of THEMES) {
     for (const scene of SCENES) {
       if (ONLY && !ONLY.includes(scene.id)) continue;
       // One context per screen: the dock remembers its tabs, and a leftover tab changes where the next one opens.
-      const ctx = await browser.newContext({ viewport: { width: W, height: H } });
+      const ctx = await newContext(browser, { viewport: { width: W, height: H } });
       await ctx.addInitScript((t) => {
         try {
           localStorage.setItem("octo.theme", t);

@@ -8,15 +8,14 @@
  * (and past the end: it must wrap) and asserts that the active row is visible after every key. Escape must close the picker and
  * leave focus on the opener (or in the composer's text).
  *
- *   node packages/ui/scripts/picker-keys.mjs [--url http://localhost:1420] [--width 1440] [--height 900] [--theme dark|light]
+ *   node packages/ui/scripts/picker-keys.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--width 1440] [--height 900] [--theme dark|light]
  *                                            [--project "Atlas API"] [--shots DIR]
  *
  * `--shots DIR` also writes a screenshot of each open picker. Prints `picker-keys: ok` or the failures. Exit code 1 on a
  * failure, 2 on a problem driving the page.
  */
-import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
+import { launchBrowser, newContext, isAbortedImport } from "./browser.mjs";
 
 const argv = process.argv.slice(2);
 const opt = (n, d) => {
@@ -30,31 +29,14 @@ const THEME = opt("--theme", "dark");
 const PROJECT = opt("--project", "Atlas API");
 const SHOTS = opt("--shots", "");
 
-function loadPlaywright() {
-  const roots = [import.meta.url, "file:///opt/node-tools/", "file:///usr/local/lib/node_modules_global/"];
-  try {
-    roots.push(`file://${execSync("npm root -g", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim()}/`);
-  } catch {
-    /* no npm */
-  }
-  for (const from of roots) {
-    try {
-      return createRequire(from)("playwright");
-    } catch {
-      /* try the next place */
-    }
-  }
-  throw new Error("playwright is not installed");
-}
 const fail = (why) => {
   console.error(`picker-keys: could not drive the page: ${why}`);
   process.exit(2);
 };
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
-const { chromium } = loadPlaywright();
-const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport: { width: W, height: H } });
+const browser = await launchBrowser();
+const ctx = await newContext(browser, { viewport: { width: W, height: H } });
 await ctx.addInitScript((theme) => {
   try {
     localStorage.setItem("octo.theme", theme);
@@ -66,7 +48,7 @@ await ctx.addInitScript((theme) => {
 const page = await ctx.newPage();
 const problems = [];
 const failures = [];
-page.on("pageerror", (e) => problems.push(`page error: ${String(e.stack ?? e).slice(0, 600)}`));
+page.on("pageerror", (e) => isAbortedImport(e.message) || problems.push(`page error: ${String(e.stack ?? e).slice(0, 600)}`));
 await page.goto(`${BASE}/?demo=1`, { waitUntil: "domcontentloaded" });
 const project = page.locator('nav[aria-label="Projects"] a', { hasText: PROJECT }).first();
 await project.waitFor({ state: "attached", timeout: 8000 }).catch(() => fail("no project list"));
@@ -94,7 +76,8 @@ const probe = () =>
       scrollable: box ? box.scrollHeight > box.clientHeight + 1 : false,
     };
   });
-const rowCount = () => page.locator('[role="listbox"]:visible [role="option"], [role="menu"]:visible [role="menuitem"], [role="menu"]:visible [role="menuitemradio"]').count();
+const rowCount = () =>
+  page.locator('[role="listbox"]:visible [role="option"], [role="menu"]:visible [role="menuitem"], [role="menu"]:visible [role="menuitemradio"]').count();
 const note = (name, what) => failures.push(`${name}: ${what}`);
 const shot = async (name) => {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}-${THEME}.png` });

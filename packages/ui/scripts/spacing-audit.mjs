@@ -5,15 +5,14 @@
  * Drives the running UI (demo data) with Playwright, walks the visible DOM and reports violations of the spacing
  * system. Exit code 1 when there are violations (or skipped states with --strict), 0 otherwise.
  *
- *   node packages/ui/scripts/spacing-audit.mjs [--url http://localhost:1420] [--only <state>] [--json <path>]
+ *   node packages/ui/scripts/spacing-audit.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--only <state>] [--json <path>]
  *                                              [--strict] [--selftest] [--query "demo=1"] [--list] [--help]
  *
  * Rules: scale, row-height, gutter, edges, icon-gap, overlap, inset-balance, dialog-bounds, field-row, key-hint, panel-frame (see RULES below).
  * States that cannot be reached are reported as `skipped` with a reason, never as a crash.
  */
-import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
+import { launchBrowser, newContext, isAbortedImport } from "./browser.mjs";
 
 // ---------------------------------------------------------------------------------------------------------------
 // Allow-list. Every entry is printed in the report so exceptions stay visible.
@@ -92,31 +91,6 @@ if (flag("--help") || flag("-h")) {
 // ---------------------------------------------------------------------------------------------------------------
 // Playwright resolution: local, then the global node path.
 // ---------------------------------------------------------------------------------------------------------------
-function loadPlaywright() {
-  const attempts = [];
-  const tryFrom = (base) => {
-    try {
-      return createRequire(base)("playwright");
-    } catch (e) {
-      attempts.push(`${base}: ${e.code ?? e.message}`);
-      return null;
-    }
-  };
-  let pw = tryFrom(import.meta.url);
-  if (pw) return pw;
-  const roots = [];
-  try {
-    roots.push(execSync("npm root -g", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim());
-  } catch {
-    /* no npm */
-  }
-  if (process.env.NODE_PATH) roots.push(...process.env.NODE_PATH.split(":").filter(Boolean));
-  for (const r of roots) {
-    pw = tryFrom(r.endsWith("/") ? r : `${r}/`);
-    if (pw) return pw;
-  }
-  throw new Error(`Cannot resolve "playwright" (${attempts.join("; ")})`);
-}
 
 // ---------------------------------------------------------------------------------------------------------------
 // States
@@ -849,7 +823,7 @@ const STATES = [
       await page.getByRole("button", { name: "Project actions" }).first().click({ timeout: T });
       await page.getByRole("menuitem", { name: "Project settings" }).click({ timeout: T });
       try {
-        await page.getByRole("button", { name: "Models and delegation" }).click({ timeout: T });
+        await page.getByRole("button", { name: /Models and (delegation|agents)/ }).click({ timeout: T });
       } catch {
         skip("project settings did not open");
       }
@@ -1583,8 +1557,7 @@ async function main() {
     for (const st of STATES) console.log(`${st.id.padEnd(18)} ${st.viewports.map((v) => `${v.width}x${v.height}`).join(" ")}`);
     return;
   }
-  const { chromium } = loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   const report = { base: BASE, strict: STRICT, selftest: SELFTEST, allowList: ALLOW, results: [], totals: {}, skipped: [] };
   const rulesFor = (state, vp) => {
     const chatish = ["chat-idle", "chat-running", "delegation"].includes(state.id);
@@ -1593,7 +1566,7 @@ async function main() {
 
   let hrefs = {};
   async function probe() {
-    const ctx = await browser.newContext({ viewport: WIDE[0] });
+    const ctx = await newContext(browser, { viewport: WIDE[0] });
     await ctx.addInitScript(() => {
       try {
         localStorage.setItem("octo.theme", "dark");
@@ -1639,7 +1612,7 @@ async function main() {
         measures: {},
         scanned: 0,
       };
-      const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, hasTouch: vp.touch === true, isMobile: vp.touch === true });
+      const ctx = await newContext(browser, { viewport: { width: vp.width, height: vp.height }, hasTouch: vp.touch === true, isMobile: vp.touch === true });
       await ctx.addInitScript(() => {
         try {
           localStorage.setItem("octo.theme", "dark");
@@ -1647,7 +1620,7 @@ async function main() {
       });
       const page = await ctx.newPage();
       const errors = [];
-      page.on("pageerror", (e) => errors.push(String(e).slice(0, 160)));
+      page.on("pageerror", (e) => isAbortedImport(e.message) || errors.push(String(e).slice(0, 160)));
       try {
         await page.goto(`${BASE}/?${QUERY}`, { waitUntil: "domcontentloaded" });
         await page.locator("[data-dock-group], nav[aria-label='Projects']").first().waitFor({ timeout: 8000 });

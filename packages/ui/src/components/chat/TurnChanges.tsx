@@ -163,7 +163,7 @@ export function TurnChanges({ turnId }: { turnId: number }) {
                     tone="quiet"
                     mono
                     size="xs"
-                    className="min-w-0"
+                    className="h-6 min-w-0"
                     data-row
                     title={`${kindLabel(f.kind)}: ${f.folder}/${f.path} — show its diff`}
                     onClick={() => {
@@ -179,7 +179,7 @@ export function TurnChanges({ turnId }: { turnId: number }) {
             {rest > 0 && (
               <span className="flex shrink-0 items-center gap-1.5">
                 <span aria-hidden>·</span>
-                <Button variant="link" tone="quiet" size="xs" data-row onClick={() => setListed(true)}>
+                <Button variant="link" tone="quiet" size="xs" className="h-6" data-row onClick={() => setListed(true)}>
                   +{rest} more
                 </Button>
               </span>

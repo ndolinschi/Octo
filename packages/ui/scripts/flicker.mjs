@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
  * Decisions 69 and 76: nothing flickers, nothing jerks, and nothing animates unless something is in progress. Drives the demo
- * UI with Playwright (Chromium; the owner can point `--url` at any dev server, and the same page logic runs in any browser
- * Playwright drives):
+ * UI with Playwright (`--browser chromium|webkit`, default Chromium; the owner can point `--url` at any dev server):
  *
  *   typing   types a long multi-line prompt (2000 characters, 20 lines) into the composer of a project while a
  *            requestAnimationFrame recorder samples, every frame, the bounding boxes of the window's top row (the tab
@@ -12,12 +11,11 @@
  *   idle     loads Home with no project at work, an idle project and Settings and asserts that `document.getAnimations()`
  *            has no animation in `playState === "running"`.
  *
- *   node packages/ui/scripts/flicker.mjs [--url http://localhost:1420] [--width 1440] [--height 900] [--only typing|idle]
+ *   node packages/ui/scripts/flicker.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--width 1440] [--height 900] [--only typing|idle]
  *
  * Prints `flicker: ok` or the offending measurements. Exit code 1 on a failure, 2 on a problem driving the page.
  */
-import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
+import { launchBrowser, newContext, isAbortedImport } from "./browser.mjs";
 
 const argv = process.argv.slice(2);
 const opt = (n, d) => {
@@ -25,7 +23,9 @@ const opt = (n, d) => {
   return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : d;
 };
 if (argv.includes("--help") || argv.includes("-h")) {
-  console.log("node packages/ui/scripts/flicker.mjs [--url http://localhost:1420] [--width 1440] [--height 900] [--only typing|idle]");
+  console.log(
+    "node packages/ui/scripts/flicker.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--width 1440] [--height 900] [--only typing|idle]",
+  );
   process.exit(0);
 }
 const BASE = opt("--url", "http://localhost:1420").replace(/\/$/, "");
@@ -33,23 +33,6 @@ const W = Number(opt("--width", "1440"));
 const H = Number(opt("--height", "900"));
 const ONLY = opt("--only", null);
 const TOL = 0.5;
-
-function loadPlaywright() {
-  const roots = [import.meta.url, "file:///opt/node-tools/", "file:///usr/local/lib/node_modules_global/"];
-  try {
-    roots.push(`file://${execSync("npm root -g", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim()}/`);
-  } catch {
-    /* no npm */
-  }
-  for (const from of roots) {
-    try {
-      return createRequire(from)("playwright");
-    } catch {
-      /* try the next place */
-    }
-  }
-  throw new Error("playwright is not installed");
-}
 
 const fail = (why) => {
   console.error(`flicker: could not drive the page: ${why}`);
@@ -65,14 +48,20 @@ const RECORD = () => {
     const r = el.getBoundingClientRect();
     return { top: r.top, left: r.left, width: r.width, height: r.height, bottom: r.bottom };
   };
-  // Sampled after the frame is painted (a message task queued from the rAF callback runs after rendering), so what is recorded is
-  // what the user saw, not the layout between a change and the observers that settle it in the same frame.
-  const channel = new MessageChannel();
+  // Sampled as the frame is painted: from a ResizeObserver made after the page's own (observers run in the order they were
+  // made, after layout and before paint), fed by a probe whose width changes every frame. So what is recorded is what the user
+  // saw, not the layout between a change and the observers that settle it in the same frame. (A message task queued from the
+  // rAF callback, the earlier way, can run after a key event task that already changed the layout for the NEXT frame: WebKit
+  // then showed a composer grown without its column, a frame that was never painted.)
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;visibility:hidden;pointer-events:none";
+  document.body.append(probe);
   const tick = () => {
     if (rec.stop) return;
-    channel.port2.postMessage(0);
+    probe.style.width = probe.style.width === "1px" ? "2px" : "1px";
+    requestAnimationFrame(tick);
   };
-  channel.port1.onmessage = () => {
+  new ResizeObserver(() => {
     if (rec.stop) return;
     const strips = [...document.querySelectorAll("[data-strip]")].filter((e) => e.offsetParent).map(box);
     const lists = [...document.querySelectorAll("[data-tab-list]")].filter((e) => e.offsetParent).map(box);
@@ -85,8 +74,7 @@ const RECORD = () => {
       column: box(column),
       composer: box(composer),
     });
-    requestAnimationFrame(tick);
-  };
+  }).observe(probe);
   requestAnimationFrame(tick);
 };
 
@@ -124,14 +112,17 @@ function analyse(frames) {
     const grew = b.composer.height - a.composer.height;
     const gave = a.scroller.height - b.scroller.height;
     const moved = a.column.top - b.column.top;
-    if (Math.abs(gave - grew) > TOL) problems.push(`conversation scroller gave ${gave.toFixed(1)}px for a composer that grew ${grew.toFixed(1)}px at frame ${i}`);
-    if (Math.abs(moved) > TOL && Math.abs(moved - grew) > TOL) problems.push(`conversation column moved ${moved.toFixed(1)}px for a composer that grew ${grew.toFixed(1)}px at frame ${i}`);
+    if (Math.abs(gave - grew) > TOL)
+      problems.push(`conversation scroller gave ${gave.toFixed(1)}px for a composer that grew ${grew.toFixed(1)}px at frame ${i}`);
+    if (Math.abs(moved) > TOL && Math.abs(moved - grew) > TOL)
+      problems.push(`conversation column moved ${moved.toFixed(1)}px for a composer that grew ${grew.toFixed(1)}px at frame ${i}`);
   }
   // The composer grows upward: its bottom edge is fixed, its height never shrinks.
   still("composer (bottom edge, left, width)", (f) => f.composer && { ...f.composer, top: f.composer.bottom, height: 0 });
   let prev = null;
   frames.forEach((f, i) => {
-    if (f.composer && prev && f.composer.height < prev - TOL) problems.push(`composer: height shrank ${prev.toFixed(1)} -> ${f.composer.height.toFixed(1)} at frame ${i}`);
+    if (f.composer && prev && f.composer.height < prev - TOL)
+      problems.push(`composer: height shrank ${prev.toFixed(1)} -> ${f.composer.height.toFixed(1)} at frame ${i}`);
     if (f.composer) prev = f.composer.height;
   });
   return problems;
@@ -144,16 +135,17 @@ const RUNNING = () =>
     .map((a) => {
       const target = a.effect && "target" in a.effect && a.effect.target instanceof Element ? a.effect.target : null;
       const name = "animationName" in a ? a.animationName : "transition";
-      const where = target ? `${target.tagName.toLowerCase()}${typeof target.className === "string" && target.className ? `.${target.className.split(" ")[0]}` : ""}` : "?";
+      const where = target
+        ? `${target.tagName.toLowerCase()}${typeof target.className === "string" && target.className ? `.${target.className.split(" ")[0]}` : ""}`
+        : "?";
       return `${name} on ${where}`;
     });
 
-const { chromium } = loadPlaywright();
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const problems = [];
 
 async function open(query) {
-  const ctx = await browser.newContext({ viewport: { width: W, height: H } });
+  const ctx = await newContext(browser, { viewport: { width: W, height: H } });
   await ctx.addInitScript(() => {
     try {
       localStorage.setItem("octo.theme", "dark");
@@ -163,11 +155,22 @@ async function open(query) {
     }
   });
   const page = await ctx.newPage();
-  page.on("pageerror", (e) => problems.push(`page error: ${String(e.stack ?? e).slice(0, 900)}`));
+  page.on("pageerror", (e) => isAbortedImport(e.message) || problems.push(`page error: ${String(e.stack ?? e).slice(0, 900)}`));
   await page.goto(`${BASE}/?${query}`, { waitUntil: "domcontentloaded" });
   const projects = page.locator('nav[aria-label="Projects"] a');
-  if (!(await projects.first().waitFor({ state: "attached", timeout: 3000 }).then(() => true, () => false))) {
-    await page.getByRole("button", { name: /sidebar/i }).first().click();
+  if (
+    !(await projects
+      .first()
+      .waitFor({ state: "attached", timeout: 3000 })
+      .then(
+        () => true,
+        () => false,
+      ))
+  ) {
+    await page
+      .getByRole("button", { name: /sidebar/i })
+      .first()
+      .click();
   }
   await projects.first().waitFor({ state: "attached", timeout: 10000 });
   return { ctx, page, projects };
@@ -231,8 +234,19 @@ if (ONLY === null || ONLY === "idle") {
   await page.evaluate(() => (window.location.hash = "#/"));
   await idle("Home, no project at work");
   // The sidebar is a drawer on a narrow window and may be closed here: open it to read the name of the first project.
-  if (!(await projects.first().waitFor({ state: "attached", timeout: 1000 }).then(() => true, () => false)))
-    await page.getByRole("button", { name: /sidebar/i }).first().click();
+  if (
+    !(await projects
+      .first()
+      .waitFor({ state: "attached", timeout: 1000 })
+      .then(
+        () => true,
+        () => false,
+      ))
+  )
+    await page
+      .getByRole("button", { name: /sidebar/i })
+      .first()
+      .click();
   await projects.first().waitFor({ state: "attached", timeout: 10000 });
   const first = await page.evaluate(() => {
     const a = document.querySelector('nav[aria-label="Projects"] a[href^="#/p/"]');

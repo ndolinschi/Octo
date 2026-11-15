@@ -61,6 +61,8 @@ const GROUPS: readonly { title: string; items: readonly Shortcut[] }[] = [
       { keys: ["K"], does: "Previous change" },
       { keys: ["]"], does: "Next file" },
       { keys: ["["], does: "Previous file" },
+      { keys: ["N"], does: "Next thread in the file" },
+      { keys: ["P"], does: "Previous thread in the file" },
       { keys: ["V"], does: "Mark the file viewed" },
       { keys: ["C"], does: "Comment" },
       { keys: ["S"], does: "Suggest a change" },
@@ -122,7 +124,7 @@ function Sheet({ onClose }: { onClose(): void }) {
     <Dialog title="Keyboard shortcuts" width="xl" reading onClose={onClose}>
       <div className="flex flex-col gap-4 @min-[520px]/dialog:block @min-[520px]/dialog:columns-2 @min-[520px]/dialog:gap-x-8">
         {GROUPS.map((g) => (
-          <section key={g.title} aria-label={g.title} className="flex break-inside-avoid flex-col @min-[520px]/dialog:mb-4">
+          <section key={g.title} aria-label={g.title} className="flex break-inside-avoid flex-col @min-[520px]/dialog:pb-4">
             <SectionHeader as="h3">{g.title}</SectionHeader>
             <ul className="flex flex-col">
               {g.items.map((s) => (

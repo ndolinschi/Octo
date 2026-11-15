@@ -64,6 +64,37 @@ function selectionIn(el: Element): boolean {
   return !!s && !s.isCollapsed && s.rangeCount > 0 && s.getRangeAt(0).intersectsNode(el);
 }
 
+/**
+ * Without native anchoring (WebKit before 26), what the reader sees stays still while turns above it change height: a turn
+ * mounting over its placeholder, and the same turn settling a moment later (a wide table laid out at 2646 px, then 902 once
+ * its column width is known: the first correction alone left a 1744 px jump). Every turn's height is watched; a change of a
+ * turn that was entirely above the viewport is added to `scrollTop` before the frame is painted (ResizeObserver runs after
+ * layout, before paint).
+ */
+function keepPlace(scroller: HTMLElement): ResizeObserver {
+  const last = new WeakMap<Element, number>();
+  return new ResizeObserver((entries) => {
+    const changes: { el: Element; delta: number }[] = [];
+    for (const e of entries) {
+      const h = e.borderBoxSize[0]?.blockSize ?? e.target.getBoundingClientRect().height;
+      const before = last.get(e.target);
+      last.set(e.target, h);
+      if (before !== undefined && h !== before && e.target.isConnected) changes.push({ el: e.target, delta: h - before });
+    }
+    if (!changes.length) return;
+    changes.sort((a, b) => (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+    const top = scroller.getBoundingClientRect().top;
+    let shift = 0;
+    let correction = 0;
+    for (const { el, delta } of changes) {
+      // Where its bottom was before this round of changes: the changes above it moved it too.
+      shift += delta;
+      if (el.getBoundingClientRect().bottom - shift <= top + 0.5) correction += delta;
+    }
+    if (correction) scroller.scrollTop += correction;
+  });
+}
+
 const keyOf = (el: Element) => (el instanceof HTMLElement ? el.dataset.turnKey : undefined);
 
 export function useTurnWindow(agentId: string, turns: readonly Turn[], ready: boolean) {
@@ -87,8 +118,8 @@ export function useTurnWindow(agentId: string, turns: readonly Turn[], ready: bo
       ),
     [turns, heightAt],
   );
-  /** Placeholders that just mounted above the viewport: their height then, for the scroll correction without native anchoring. */
-  const grown = useRef<{ el: Element; before: number }[]>([]);
+  /** Without native anchoring: watches every turn's height, to keep the reader's place when one above them changes. */
+  const sizes = useRef<ResizeObserver | null>(null);
 
   const update = useCallback((add: readonly string[], drop: readonly string[]) => {
     setMounted((cur) => {
@@ -107,14 +138,9 @@ export function useTurnWindow(agentId: string, turns: readonly Turn[], ready: bo
     const near = new IntersectionObserver(
       (entries) => {
         const add: string[] = [];
-        const top = scroller?.getBoundingClientRect().top ?? 0;
         for (const e of entries) {
           const key = keyOf(e.target);
-          if (!key || !e.isIntersecting) continue;
-          add.push(key);
-          if (!NATIVE_ANCHORING && !e.target.hasAttribute("data-turn-mounted") && e.boundingClientRect.bottom <= top) {
-            grown.current.push({ el: e.target, before: e.boundingClientRect.height });
-          }
+          if (key && e.isIntersecting) add.push(key);
         }
         if (add.length) startTransition(() => update(add, []));
       },
@@ -150,26 +176,20 @@ export function useTurnWindow(agentId: string, turns: readonly Turn[], ready: bo
       { root: scroller, rootMargin: `${UNMOUNT_MARGIN_PX}px 0px` },
     );
     io.current = [near, far];
-    for (const s of el.querySelectorAll(":scope > section[data-turn-key]")) for (const o of io.current) o.observe(s);
+    sizes.current = !NATIVE_ANCHORING && scroller && typeof ResizeObserver !== "undefined" ? keepPlace(scroller) : null;
+    for (const s of el.querySelectorAll(":scope > section[data-turn-key]")) {
+      for (const o of io.current) o.observe(s);
+      sizes.current?.observe(s);
+    }
     return () => {
       document.removeEventListener("selectionchange", onSelection);
       near.disconnect();
       far.disconnect();
+      sizes.current?.disconnect();
       io.current = [];
+      sizes.current = null;
     };
   }, [agentId, update]);
-
-  // Without native anchoring, keep what the reader sees still when turns above it mount.
-  useLayoutEffect(() => {
-    const list = grown.current;
-    if (!list.length || !root.current) return;
-    grown.current = [];
-    const scroller = scrollParent(root.current);
-    if (!scroller) return;
-    let delta = 0;
-    for (const { el, before } of list) if (el.isConnected) delta += el.getBoundingClientRect().height - before;
-    if (delta) scroller.scrollTop += delta;
-  }, [mounted]);
 
   // A jump (`revealTurn`) or the browser's find (`beforematch` on the hidden text) mounts the turn now.
   useEffect(() => {
@@ -194,8 +214,10 @@ export function useTurnWindow(agentId: string, turns: readonly Turn[], ready: bo
   const observe = useCallback((section: HTMLElement | null) => {
     if (!section) return;
     for (const o of io.current) o.observe(section);
+    sizes.current?.observe(section);
     return () => {
       for (const o of io.current) o.unobserve(section);
+      sizes.current?.unobserve(section);
     };
   }, []);
 

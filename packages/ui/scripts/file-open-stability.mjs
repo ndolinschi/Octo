@@ -26,9 +26,8 @@
  *   node packages/ui/scripts/file-open-stability.mjs [--url http://localhost:1420] [--width 1440] [--height 900] [--project "Atlas API"]
  *                                                    [--out DIR] [--browser chromium|webkit]
  */
-import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { BROWSER, launchBrowser, newContext, isAbortedImport } from "./browser.mjs";
 
 const argv = process.argv.slice(2);
 const opt = (n, d) => {
@@ -46,26 +45,8 @@ const W = Number(opt("--width", "1440"));
 const H = Number(opt("--height", "900"));
 const PROJECT = opt("--project", "Atlas API");
 const OUT = opt("--out", null);
-const BROWSER = opt("--browser", "chromium");
 const TOL = 0.5;
 const AFTER_MS = 600;
-
-function loadPlaywright() {
-  const roots = [import.meta.url, "file:///opt/node-tools/", "file:///usr/local/lib/node_modules_global/"];
-  try {
-    roots.push(`file://${execSync("npm root -g", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim()}/`);
-  } catch {
-    /* no npm */
-  }
-  for (const from of roots) {
-    try {
-      return createRequire(from)("playwright");
-    } catch {
-      /* try the next place */
-    }
-  }
-  throw new Error("playwright is not installed");
-}
 
 const fail = (why) => {
   console.error(`file-open-stability: could not drive the page: ${why}`);
@@ -139,11 +120,8 @@ const RECORD = () => {
   requestAnimationFrame(tick);
 };
 
-const { chromium, webkit } = loadPlaywright();
-const engine = BROWSER === "webkit" ? webkit : chromium;
-if (!engine) fail(`playwright has no ${BROWSER}`);
-const browser = await engine.launch().catch((e) => fail(`${BROWSER} did not start: ${String(e).split("\n")[0]}`));
-const ctx = await browser.newContext({ viewport: { width: W, height: H } });
+const browser = await launchBrowser().catch((e) => fail(`${BROWSER} did not start: ${String(e).split("\n")[0]}`));
+const ctx = await newContext(browser, { viewport: { width: W, height: H } });
 await ctx.addInitScript(() => {
   try {
     localStorage.setItem("octo.theme", "dark");
@@ -157,7 +135,7 @@ await ctx.addInitScript(() => {
 });
 const page = await ctx.newPage();
 const errors = [];
-page.on("pageerror", (e) => errors.push(String(e).slice(0, 200)));
+page.on("pageerror", (e) => isAbortedImport(e.message) || errors.push(String(e).slice(0, 200)));
 
 async function openProject() {
   await page.goto(`${BASE}/?demo=1`, { waitUntil: "domcontentloaded" });
@@ -355,7 +333,7 @@ for (const name of ["narrow.txt", "wide.txt"]) {
     await record(`palette: ${name}`, "strict", async () => {
       await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
       await page.keyboard.press("Control+k");
-      const input = page.locator('input[aria-label^="Search tabs"]:visible').first();
+      const input = page.locator('input[aria-label^="Search tabs"]:visible, input[aria-label^="Search or run"]:visible').first();
       await input.waitFor({ timeout: 3000 });
       await page.keyboard.type(name);
       await page.waitForTimeout(150);

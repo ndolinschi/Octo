@@ -7,9 +7,9 @@
  * through intermediate sizes, no second re-wrap when the file view or Monaco arrives), the sidebar never, and the
  * conversation's scroll anchor (the message at the top of the viewport) moves by at most 2px.
  *
- *   node packages/ui/scripts/layout-shift.mjs [--anchor] [--url http://localhost:1420] [--width 1440] [--height 900] [--project "Atlas API"]
+ *   node packages/ui/scripts/layout-shift.mjs [--anchor] [--url http://localhost:1420] [--browser chromium|webkit] [--width 1440] [--height 900] [--project "Atlas API"]
  */
-import { createRequire } from "node:module";
+import { launchBrowser, newContext, isAbortedImport } from "./browser.mjs";
 
 const argv = process.argv.slice(2);
 const opt = (n, d) => {
@@ -23,17 +23,6 @@ const PROJECT = opt("--project", "Atlas API");
 // --anchor: also run lib/scrollAnchor.ts on the conversation's scroller (what the chat feature does once it calls the hook).
 const ANCHOR = argv.includes("--anchor");
 const ITEMS = "article, article :is(p, li, pre, h1, h2, h3, h4, blockquote, tr)";
-
-function loadPlaywright() {
-  for (const from of [import.meta.url, "file:///opt/node-tools/", "file:///usr/local/lib/node_modules_global/"]) {
-    try {
-      return createRequire(from)("playwright");
-    } catch {
-      /* try the next place */
-    }
-  }
-  throw new Error("playwright is not installed");
-}
 
 const SAMPLER = (items) => {
   const col = () => [...document.querySelectorAll("[data-column]")].find((e) => e.offsetParent);
@@ -90,9 +79,8 @@ const SAMPLER = (items) => {
   requestAnimationFrame(tick);
 };
 
-const { chromium } = loadPlaywright();
-const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport: { width: W, height: H } });
+const browser = await launchBrowser();
+const ctx = await newContext(browser, { viewport: { width: W, height: H } });
 await ctx.addInitScript(() => {
   try {
     localStorage.setItem("octo.theme", "dark");
@@ -101,7 +89,7 @@ await ctx.addInitScript(() => {
 });
 const page = await ctx.newPage();
 const errors = [];
-page.on("pageerror", (e) => errors.push(String(e).slice(0, 200)));
+page.on("pageerror", (e) => isAbortedImport(e.message) || errors.push(String(e).slice(0, 200)));
 await page.goto(`${BASE}/?demo=1`, { waitUntil: "domcontentloaded" });
 await page.locator('nav[aria-label="Projects"] a').first().waitFor({ timeout: 8000 });
 const href = await page.evaluate((name) => {
@@ -127,6 +115,8 @@ await page.evaluate(() => window.__resetAnchor());
 // Scroll the conversation into the middle so the anchor is a real message.
 await page.evaluate(() => {
   const s = document.querySelector("[data-column]")?.closest(".overflow-y-auto");
+  // The reader's wheel first: the conversation follows its end until the reader scrolls away themselves.
+  s?.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -400 }));
   if (s) s.scrollTop = Math.max(0, (s.scrollHeight - s.clientHeight) / 2);
 });
 await page.waitForTimeout(300);

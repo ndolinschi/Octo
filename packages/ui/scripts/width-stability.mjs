@@ -15,10 +15,9 @@
  * or can scroll sideways, and that `document.documentElement.scrollWidth === clientWidth`. Prints `width-stability: ok`
  * or the measurements that differ. Exit code 1 on a difference, 2 on a problem driving the page.
  *
- *   node packages/ui/scripts/width-stability.mjs [--url http://localhost:1420] [--width 1440] [--height 900] [--project "Atlas API"]
+ *   node packages/ui/scripts/width-stability.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--width 1440] [--height 900] [--project "Atlas API"]
  */
-import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
+import { launchBrowser, newContext, isAbortedImport } from "./browser.mjs";
 
 const argv = process.argv.slice(2);
 const opt = (n, d) => {
@@ -26,7 +25,9 @@ const opt = (n, d) => {
   return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : d;
 };
 if (argv.includes("--help") || argv.includes("-h")) {
-  console.log('node packages/ui/scripts/width-stability.mjs [--url http://localhost:1420] [--width 1440] [--height 900] [--project "Atlas API"]');
+  console.log(
+    'node packages/ui/scripts/width-stability.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--width 1440] [--height 900] [--project "Atlas API"]',
+  );
   process.exit(0);
 }
 const BASE = opt("--url", "http://localhost:1420").replace(/\/$/, "");
@@ -34,23 +35,6 @@ const W = Number(opt("--width", "1440"));
 const H = Number(opt("--height", "900"));
 const PROJECT = opt("--project", "Atlas API");
 const TOL = 0.5;
-
-function loadPlaywright() {
-  const roots = [import.meta.url, "file:///opt/node-tools/", "file:///usr/local/lib/node_modules_global/"];
-  try {
-    roots.push(`file://${execSync("npm root -g", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim()}/`);
-  } catch {
-    /* no npm */
-  }
-  for (const from of roots) {
-    try {
-      return createRequire(from)("playwright");
-    } catch {
-      /* try the next place */
-    }
-  }
-  throw new Error("playwright is not installed");
-}
 
 /** What is measured, in the page: every dock group, the editor area, and the sideways overflow of what could scroll. */
 const MEASURE = () => {
@@ -77,9 +61,8 @@ const MEASURE = () => {
   };
 };
 
-const { chromium } = loadPlaywright();
-const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport: { width: W, height: H } });
+const browser = await launchBrowser();
+const ctx = await newContext(browser, { viewport: { width: W, height: H } });
 await ctx.addInitScript(() => {
   try {
     localStorage.setItem("octo.theme", "dark");
@@ -90,7 +73,7 @@ await ctx.addInitScript(() => {
 });
 const page = await ctx.newPage();
 const errors = [];
-page.on("pageerror", (e) => errors.push(String(e).slice(0, 200)));
+page.on("pageerror", (e) => isAbortedImport(e.message) || errors.push(String(e).slice(0, 200)));
 const states = { single: [], split: [] };
 const measure = async (phase, name) => states[phase].push({ name, ...(await page.evaluate(MEASURE)) });
 const fail = (why) => {

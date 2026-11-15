@@ -3,14 +3,13 @@
  * Component gallery screenshots (decision 90): opens `?demo=1&gallery=1` and captures every `[data-gallery-section]`
  * in dark and light, and reports console errors and the measured height of the sized controls.
  *
- *   node packages/ui/scripts/gallery-shots.mjs [--url http://localhost:1420] [--out <dir>] [--width 1440] [--height 900]
+ *   node packages/ui/scripts/gallery-shots.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--out <dir>] [--width 1440] [--height 900]
  *
  * Exit code 1 when the page logs a console error or a control is not the height of its size.
  */
-import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+import { launchBrowser, newPage, isAbortedImport } from "./browser.mjs";
 
 const argv = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -21,40 +20,16 @@ const BASE = opt("--url", "http://localhost:1420").replace(/\/$/, "");
 const OUT = opt("--out", "gallery-shots");
 const VIEWPORT = { width: Number(opt("--width", "1440")), height: Number(opt("--height", "900")) };
 
-function loadPlaywright() {
-  const roots = [import.meta.url];
-  try {
-    roots.push(`${execSync("npm root -g", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim()}/`);
-  } catch {
-    // No npm on PATH: the other roots still apply.
-  }
-  if (process.env.NODE_PATH)
-    roots.push(
-      ...process.env.NODE_PATH.split(":")
-        .filter(Boolean)
-        .map((r) => (r.endsWith("/") ? r : `${r}/`)),
-    );
-  for (const base of roots) {
-    try {
-      return createRequire(base)("playwright");
-    } catch {
-      // Try the next root.
-    }
-  }
-  throw new Error('Cannot resolve "playwright"');
-}
-
 const EXPECTED = { xs: 24, sm: 28, md: 32, lg: 40 };
 
-const { chromium } = loadPlaywright();
 mkdirSync(OUT, { recursive: true });
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const errors = [];
 const wrong = [];
 for (const theme of ["dark", "light"]) {
-  const page = await browser.newPage({ viewport: VIEWPORT });
+  const page = await newPage(browser, { viewport: VIEWPORT });
   page.on("console", (m) => m.type() === "error" && errors.push(`[${theme}] ${m.text()}`));
-  page.on("pageerror", (e) => errors.push(`[${theme}] ${e.message}`));
+  page.on("pageerror", (e) => isAbortedImport(e.message) || errors.push(`[${theme}] ${e.message}`));
   await page.goto(`${BASE}/?demo=1&gallery=1`);
   // The gallery is a fixed, scrolling page: a tall window lets each section be captured whole.
   await page.setViewportSize({ width: VIEWPORT.width, height: Math.max(VIEWPORT.height, 2600) });

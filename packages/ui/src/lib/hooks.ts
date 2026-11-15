@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { CLOCK_IDLE_MS, COPY_FEEDBACK_MS, NOW_ACTIVE_MS } from "./constants";
 import { clockNow, onClockOffset } from "./clock";
+import { isScrollKey, stickDecision } from "./stickDecision";
 
 /**
  * A ref that always holds the latest `value`, updated in a layout effect (after the commit, before any event or effect can
@@ -79,6 +80,54 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
   const lastHeight = useRef(0);
   // The reader has scrolled away themselves: only then does the first render's guess (agent not loaded yet) stop mattering.
   const touched = useRef(false);
+  // The reader's own input inside the scroller (stickDecision): when it last happened, and whether a pointer is held on it
+  // (dragging the scrollbar, middle-button autoscroll).
+  const lastInput = useRef(Number.NEGATIVE_INFINITY);
+  const pointerHeld = useRef(false);
+  useEffect(() => {
+    const inside = (e: Event) => e.target instanceof Node && !!ref.current?.contains(e.target);
+    const mark = (e: Event) => {
+      if (inside(e)) lastInput.current = performance.now();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target;
+      // Keys typed into a text field move its caret, not the conversation (Alt+↑/↓ jumps release by themselves).
+      const typing = t instanceof HTMLElement && (t.isContentEditable || t instanceof HTMLTextAreaElement || t instanceof HTMLInputElement);
+      if (!typing && isScrollKey(e.key)) lastInput.current = performance.now();
+    };
+    const onDown = (e: PointerEvent) => {
+      // The scrollbar is the scroller itself; the middle button starts autoscroll anywhere in it.
+      if (!inside(e) || (e.target !== ref.current && e.button !== 1)) return;
+      pointerHeld.current = true;
+      lastInput.current = performance.now();
+    };
+    const onUp = () => {
+      if (pointerHeld.current) lastInput.current = performance.now();
+      pointerHeld.current = false;
+    };
+    // The browser's find selects its match (window.find) or reveals hidden text (beforematch) before it scrolls there.
+    const onSelection = () => {
+      const s = document.getSelection();
+      const node = s && !s.isCollapsed ? s.anchorNode : null;
+      if (node && ref.current?.contains(node)) lastInput.current = performance.now();
+    };
+    const opts = { capture: true, passive: true } as const;
+    const events = ["wheel", "touchstart", "touchmove", "touchend", "beforematch"] as const;
+    for (const name of events) document.addEventListener(name, mark, opts);
+    document.addEventListener("keydown", onKey, opts);
+    document.addEventListener("pointerdown", onDown, opts);
+    window.addEventListener("pointerup", onUp, opts);
+    window.addEventListener("pointercancel", onUp, opts);
+    document.addEventListener("selectionchange", onSelection);
+    return () => {
+      for (const name of events) document.removeEventListener(name, mark, opts);
+      document.removeEventListener("keydown", onKey, opts);
+      document.removeEventListener("pointerdown", onDown, opts);
+      window.removeEventListener("pointerup", onUp, opts);
+      window.removeEventListener("pointercancel", onUp, opts);
+      document.removeEventListener("selectionchange", onSelection);
+    };
+  }, []);
 
   const onScroll = useCallback(() => {
     const el = ref.current;
@@ -88,17 +137,30 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
     // Content that got shorter (Markdown replacing plain text, a card resolving) clamps scrollTop: not the reader going up.
     const shrank = el.scrollHeight < lastHeight.current - 1;
     lastHeight.current = el.scrollHeight;
-    const movedUp = !shrank && el.scrollTop < lastTop.current - 1;
+    const distance = lastTop.current - el.scrollTop;
+    const movedUp = !shrank && distance > 1;
     lastTop.current = el.scrollTop;
     if (gliding.current) {
       if (!end) return;
       gliding.current = false;
     }
-    // A reflow (the group resized, a tab moved) that leaves a following reader short of the end is not
-    // the reader scrolling away: only scrolling up lets go.
-    if (!end && atBottomRef.current && !movedUp) {
+    // A reflow (the group resized, a tab moved, WebKit re-anchoring) that leaves a following reader short of the end is
+    // not the reader scrolling away: only the reader scrolling up lets go.
+    const held = pointerHeld.current;
+    const decision = stickDecision({
+      end,
+      following: atBottomRef.current,
+      movedUp,
+      distance,
+      page: el.clientHeight,
+      sinceInput: held ? 0 : performance.now() - lastInput.current,
+    });
+    // Within the tolerance but short of the very end (WebKit can leave a following view a pixel short): to the end, so the
+    // composer growing later moves the column by exactly its own growth (flicker.mjs).
+    if (decision === "repin" || (end && atBottomRef.current && el.scrollHeight - el.scrollTop - el.clientHeight >= 1)) {
       el.scrollTop = el.scrollHeight;
-      return;
+      lastTop.current = el.scrollTop;
+      if (decision === "repin") return;
     }
     if (movedUp && !end) touched.current = true;
     atBottomRef.current = end;

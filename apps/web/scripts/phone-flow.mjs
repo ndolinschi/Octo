@@ -89,7 +89,7 @@ try {
   if (filled !== st.pairing.code) throw new Error(`code from the QR link: ${filled}`);
   if (page.url().includes("pair=")) throw new Error("the code stayed in the address bar");
   await shot("1-pairing");
-  await page.getByRole("button", { name: "Pair" }).click();
+  await page.getByRole("button", { name: /^(Connect|Pair)$/ }).click();
   await page.getByText("Waiting for your computer").waitFor();
   await shot("2-waiting");
 

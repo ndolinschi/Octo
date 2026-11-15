@@ -24,10 +24,16 @@ node packages/ui/scripts/flicker.mjs --url http://localhost:1420   # decisions 6
 node packages/ui/scripts/width-stability.mjs --url http://localhost:1420   # decision 79: must print "width-stability: ok" (also at --width 900 --height 600)
 node packages/ui/scripts/frame-colours.mjs --url http://localhost:1420   # decision 81: no warn/error/accent border, outline or ring (approval, form, plan, failed turn, review screens)
 node packages/ui/scripts/scroll-on-send.mjs --url http://localhost:1420   # rule: sending scrolls to the sent message and re-pins to the bottom
+node packages/ui/scripts/stick-on-open.mjs --url http://localhost:1420   # a long conversation opens at its end and lets go only when the reader scrolls (wheel, keys, stream)
+node packages/ui/scripts/composer-fit.mjs --url http://localhost:1420   # the composer grows a line at a time, then scrolls; also with the script fallback (no field-sizing)
+node packages/ui/scripts/scroll-anchor.mjs --url http://localhost:1420   # 30 steps up the Stress test: the text under the eyes never jumps (native and manual anchoring)
+node packages/ui/scripts/editor-context-menu.mjs --url http://localhost:1420 --browser webkit --ua-macos   # the editor's context menu stays open (WebKit with a macOS user agent)
 node packages/ui/scripts/ui-tour.mjs --url http://localhost:1420 --out /tmp/tour   # (then `python3 packages/ui/scripts/tour-sheets.py /tmp/tour` for one contact sheet per group and theme) every screen in dark and light at four sizes (PNG + INDEX.md + MISSING.txt); `--only chat`, `--theme dark`, `--small`
 ```
 
-Demo knobs: `?demo=one|many|empty`, `?lsp=fail-once|slow|exit`, `?plugins=none`, `?claude=empty`, `?refresh=fail|none`, `?providers=none|owner` (the owner's live set of twelve). Without `?demo` the app uses the
+Every UI script takes `--browser chromium|webkit` (`scripts/browser.mjs`; WebKit is Playwright's Linux build, not Safari).
+
+Demo knobs: `?demo=one|many|empty`, `?lsp=fail-once|slow|exit`, `?plugins=none`, `?claude=empty`, `?refresh=fail|none`, `?providers=none|owner` (the owner's live set of twelve), `?router=on`, `?remote=on|missing`. Without `?demo` the app uses the
 harness at `VITE_HARNESS_BRIDGE_URL` (default `http://127.0.0.1:8790`).
 
 ## Rules that are easy to break

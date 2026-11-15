@@ -39,7 +39,7 @@ async function home(page) {
 /** Ctrl+K, type, pick the first result with Enter. */
 async function palette(page, text, pick = true) {
   await page.keyboard.press("Control+k");
-  const box = page.getByRole("combobox", { name: /^Search tabs/ }).first();
+  const box = page.getByRole("combobox", { name: /^Search (tabs|or run an action)/ }).first();
   await box.waitFor({ timeout: 6000 });
   if (text) await box.fill(text);
   await page.waitForTimeout(500);
@@ -66,12 +66,12 @@ const click = async (page, name, opts = {}) => {
   await page.waitForTimeout(500);
 };
 
-/** Hovers the newest request and presses its "Rewind to here". */
+/** Presses "Restore to here" under the newest reply that has one (R2 checkpoints; shown on hover under a reply without changes). */
 async function openRewind(page) {
-  const prompt = page.locator("[data-prompt]").last();
-  await prompt.scrollIntoViewIfNeeded();
-  await prompt.hover();
-  await prompt.getByRole("button", { name: "Rewind to here" }).click({ timeout: 8000 });
+  const reply = page.locator("article:has(button[data-restore])").last();
+  await reply.scrollIntoViewIfNeeded();
+  await reply.hover();
+  await reply.locator("button[data-restore]").last().click({ timeout: 8000 });
 }
 
 /** Files tool, then a file of the tree by name. */
@@ -89,7 +89,8 @@ async function openFile(page, name) {
 /** Opens `src/auth/refresh.ts`-style paths from the Files tree, expanding each folder. */
 async function openPath(page, parts) {
   await tool(page, "Show files");
-  const tree = page.getByRole("tree").first();
+  // The file tree by its name: the sidebar's "Projects and sessions" tree comes first in the page.
+  const tree = page.getByRole("tree", { name: /files/i }).filter({ visible: true }).first();
   await tree.waitFor({ timeout: 8000 });
   for (let i = 0; i < parts.length; i++) {
     const row = tree.getByText(parts[i], { exact: true }).first();
@@ -288,7 +289,7 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Docs site");
         await send(page, "live activity please");
-        await need(page, page.getByRole("button", { name: /Stop the turn/ }), "running turn");
+        await need(page, page.getByRole("button", { name: /^Stop( the turn| \(|$)/ }), "running turn");
         await page.waitForTimeout(4200);
       },
     },
@@ -382,7 +383,7 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Docs site");
         await send(page, "live activity please");
-        await need(page, page.getByRole("button", { name: /Stop the turn/ }), "running turn");
+        await need(page, page.getByRole("button", { name: /^Stop( the turn| \(|$)/ }), "running turn");
         await page.waitForTimeout(800);
         await send(page, "Then summarise the result in one line");
         await need(page, page.getByRole("button", { name: /Send now/ }), "queue row with Send now");
@@ -442,7 +443,7 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Docs site");
         await send(page, "live activity please");
-        await click(page, /Stop the turn/);
+        await click(page, /^Stop( the turn| \(|$)/);
         await need(page, page.getByText(/Stopped|stopped/), "stopped banner", 12000);
       },
     },
@@ -479,7 +480,10 @@ export const GROUPS = {
         await openRewind(page);
         await need(page, page.locator("[data-rewind]"), "rewind dialog");
         await page.waitForTimeout(800);
-        await page.getByRole("dialog").getByRole("button", { name: "Rewind", exact: true }).click();
+        await page
+          .getByRole("dialog")
+          .getByRole("button", { name: /^(Restore|Rewind)$/ })
+          .click();
         await need(page, page.getByText("src/stale.ts"), "conflict list", 8000);
         await page.waitForTimeout(500);
       },
@@ -494,7 +498,10 @@ export const GROUPS = {
         await openRewind(page);
         await need(page, page.locator("[data-rewind]"), "rewind dialog");
         await page.waitForTimeout(800);
-        await page.getByRole("dialog").getByRole("button", { name: "Rewind", exact: true }).click();
+        await page
+          .getByRole("dialog")
+          .getByRole("button", { name: /^(Restore|Rewind)$/ })
+          .click();
         await need(page, page.locator("[data-rewound]"), "rewound marker", 8000);
         await page.mouse.move(2, 2);
         await page.waitForTimeout(500);
@@ -674,8 +681,8 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Atlas API");
         await tool(page, "Show files");
-        await need(page, page.getByRole("tree"), "file tree");
-        const tree = page.getByRole("tree").first();
+        const tree = page.getByRole("tree", { name: /files/i }).filter({ visible: true }).first();
+        await need(page, tree, "file tree");
         await tree.getByText("src", { exact: true }).first().click();
         await page.waitForTimeout(500);
       },
@@ -1387,7 +1394,7 @@ export const GROUPS = {
         const list = page.locator("[aria-label='Sessions']").first();
         await list.waitFor({ timeout: 10000 });
         await list.locator("button[data-row]").first().click();
-        await need(page, page.locator("[aria-label='Exchanges']").first(), "exchanges", 10000);
+        await need(page, page.locator("[aria-label='Requests'], [aria-label='Exchanges']").first(), "exchanges", 10000);
         await page.waitForTimeout(600);
       },
     },
@@ -1403,9 +1410,17 @@ export const GROUPS = {
         const list = page.locator("[aria-label='Sessions']").first();
         await list.waitFor({ timeout: 10000 });
         await list.locator("button[data-row]").first().click();
-        await page.getByRole("button", { name: "Exchange actions" }).filter({ visible: true }).first().click();
-        await page.getByRole("menuitem", { name: /Forget this exchange/ }).click();
-        await need(page, page.getByRole("dialog", { name: /Forget this exchange/ }).or(page.getByText("Forget this exchange?")), "forget confirmation");
+        await page
+          .getByRole("button", { name: /^(Request|Exchange) actions$/ })
+          .filter({ visible: true })
+          .first()
+          .click();
+        await page.getByRole("menuitem", { name: /Forget this (exchange|request)/ }).click();
+        await need(
+          page,
+          page.getByRole("dialog", { name: /Forget this (exchange|request)/ }).or(page.getByText(/Forget this (exchange|request)\?/)),
+          "forget confirmation",
+        );
       },
     },
   ],
@@ -1556,7 +1571,11 @@ export const GROUPS = {
         await project(page, env, "Atlas API");
         await tool(page, "Show usage");
         await page.getByRole("tab", { name: "By model" }).click({ timeout: 10000 });
-        await page.getByRole("button", { name: "Show roles" }).filter({ visible: true }).first().click();
+        await page
+          .getByRole("button", { name: /Show (roles|tiers)/ })
+          .filter({ visible: true })
+          .first()
+          .click();
         await page.waitForTimeout(1200);
       },
     },
@@ -1655,7 +1674,7 @@ export const GROUPS = {
         await composer(page).click();
         await composer(page).fill("/context");
         await page.keyboard.press("Enter");
-        await need(page, page.getByRole("dialog", { name: "Context window" }), "window report");
+        await need(page, page.getByRole("dialog", { name: /^Context( window)?$/ }), "window report");
         await page.waitForTimeout(800);
       },
     },
@@ -1672,7 +1691,7 @@ export const GROUPS = {
           .click();
         await need(page, page.getByRole("button", { name: "Open context details" }), "popover button");
         await page.getByRole("button", { name: "Open context details" }).click();
-        await need(page, page.getByRole("dialog", { name: "Context window" }), "window report");
+        await need(page, page.getByRole("dialog", { name: /^Context( window)?$/ }), "window report");
         await page.waitForTimeout(800);
       },
     },
@@ -1795,6 +1814,8 @@ export const GROUPS = {
       run: async (page, env) => {
         await boot(page, env);
         await project(page, env, "Atlas API");
+        // The palette offers it on a desktop width only (the phone has no keyboard shortcuts).
+        if (env.width < 768) throw new Error("not on a phone: the palette lists Keyboard shortcuts on a desktop width only");
         await palette(page, "Keyboard shortcuts");
         await need(page, page.getByRole("dialog"), "shortcuts sheet");
         await page.waitForTimeout(500);

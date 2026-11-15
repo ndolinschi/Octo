@@ -6,10 +6,9 @@
  * queue, a failed turn, the review screens) no visible element may have a border, outline or ring whose colour is the warn, danger or accent token,
  * unless it has keyboard focus or is marked invalid. Exit code 1 when one does.
  *
- *   node packages/ui/scripts/frame-colours.mjs [--url http://localhost:1420] [--selftest]
+ *   node packages/ui/scripts/frame-colours.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--selftest]
  */
-import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
+import { launchBrowser, newContext } from "./browser.mjs";
 
 const argv = process.argv.slice(2);
 const opt = (n, d) => {
@@ -18,22 +17,6 @@ const opt = (n, d) => {
 };
 const BASE = opt("--url", "http://localhost:1420").replace(/\/$/, "");
 const SELFTEST = argv.includes("--selftest");
-
-function loadPlaywright() {
-  const tries = [
-    () => createRequire(import.meta.url)("playwright"),
-    () => createRequire(`${execSync("npm root -g", { encoding: "utf8" }).trim()}/`)("playwright"),
-  ];
-  for (const t of tries) {
-    try {
-      return t();
-    } catch {
-      // Try the next place Playwright may be installed.
-    }
-  }
-  console.error("frame-colours: Playwright is not installed (npm i -g playwright).");
-  process.exit(2);
-}
 
 /** Runs in the page: the offending elements. */
 function scan() {
@@ -92,8 +75,7 @@ function scan() {
   return found;
 }
 
-const { chromium } = loadPlaywright();
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 let bad = 0;
 
 async function check(label, page) {
@@ -104,7 +86,7 @@ async function check(label, page) {
 }
 
 async function fresh(scheme) {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: scheme });
+  const ctx = await newContext(browser, { viewport: { width: 1440, height: 900 }, colorScheme: scheme });
   const page = await ctx.newPage();
   await page.goto(`${BASE}/?demo=1`);
   await page.waitForTimeout(700);

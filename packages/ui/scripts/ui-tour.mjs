@@ -8,11 +8,10 @@
  *
  * `--only` takes a group (or several, comma separated) or `group/nn`; `--theme` limits the themes; `--small` keeps 1440x900 only.
  */
-import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { GROUPS } from "./ui-tour-states.mjs";
+import { launchBrowser, newContext, isAbortedImport } from "./browser.mjs";
 
 const argv = process.argv.slice(2);
 const opt = (n, d) => {
@@ -28,24 +27,7 @@ const SMALL = argv.includes("--small");
 const ONLY_SIZES = opt("--sizes", "").split(",").filter(Boolean);
 const SIZES = { full: [1440, 900], wide: [1100, 700], narrow: [830, 560], phone: [390, 700] };
 
-function loadPlaywright() {
-  const tries = [
-    () => createRequire(import.meta.url)("playwright"),
-    () => createRequire(`${execSync("npm root -g", { encoding: "utf8" }).trim()}/`)("playwright"),
-  ];
-  for (const t of tries) {
-    try {
-      return t();
-    } catch {
-      // Try the next place Playwright may be installed.
-    }
-  }
-  console.error("ui-tour: Playwright is not installed (npm i -g playwright).");
-  process.exit(2);
-}
-
-const { chromium } = loadPlaywright();
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 fs.mkdirSync(OUT, { recursive: true });
 const missing = [];
 const index = [];
@@ -82,10 +64,10 @@ for (const [group, states] of Object.entries(GROUPS)) {
         const [width, height] = SIZES[sz];
         const file = `${nn}-${st.name}-${theme}-${width}x${height}.png`;
         const rel = `${group}/${file}`;
-        const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: theme, deviceScaleFactor: 1 });
+        const ctx = await newContext(browser, { viewport: { width, height }, colorScheme: theme, deviceScaleFactor: 1 });
         const page = await ctx.newPage();
         const errors = [];
-        page.on("pageerror", (e) => errors.push(e.message));
+        page.on("pageerror", (e) => isAbortedImport(e.message) || errors.push(e.message));
         try {
           const env = { base: BASE, theme, width, height, clip: null };
           await st.run(page, env);

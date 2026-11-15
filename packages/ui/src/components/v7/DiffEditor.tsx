@@ -1,6 +1,7 @@
 import type * as Monaco from "monaco-editor";
 import { useEffect, useRef, useState } from "react";
 import type { MonacoApi } from "../../lib/buffers";
+import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
 import { useLatest } from "../../lib/hooks";
 import { usePhone } from "../../lib/phone";
@@ -41,7 +42,13 @@ export function DiffEditor(props: {
   const [mod, setMod] = useState<DiffMonaco | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [editor, setEditor] = useState<Monaco.editor.IStandaloneDiffEditor | null>(null);
-  const loading = useDelayedLoading(!mod && !failed);
+  // Until the first diff of the shown texts is computed, Monaco shows both texts without colour, which reads as "no
+  // changes" (WebKit took 2.4–3.8 s, Chromium 0.2–0.7): one loading state from the editor's chunk to the computed diff
+  // (the text dimmed under the spinner), shown after 200 ms so a quick diff never shows it.
+  const shown = useLatest({ path: props.path, before: props.before, after: props.after });
+  const [diffed, setDiffed] = useState<{ path: string; before: string; after: string } | null>(null);
+  const diffing = diffed?.path !== props.path || diffed.before !== props.before || diffed.after !== props.after;
+  const loading = useDelayedLoading(!failed && (!mod || diffing));
   const shownTexts = useRef<{ before: string; after: string } | null>(null);
   const { loadMonaco } = props;
   const firstLine = useLatest(props.onFirstLine);
@@ -126,7 +133,9 @@ export function DiffEditor(props: {
     const report = () => {
       const changes = editor.getLineChanges();
       const first = changes?.[0];
-      if (changes) firstLine.current?.(first ? Math.max(1, first.modifiedStartLineNumber) : null);
+      if (!changes) return;
+      firstLine.current?.(first ? Math.max(1, first.modifiedStartLineNumber) : null);
+      setDiffed(shown.current);
     };
     const sub = editor.onDidUpdateDiff(report);
     report();
@@ -138,7 +147,7 @@ export function DiffEditor(props: {
       sub.dispose();
       down.dispose();
     };
-  }, [mod, editor, firstLine, goToLine]);
+  }, [mod, editor, firstLine, goToLine, shown]);
 
   // Decision 46: once the diff is computed for a new flash key, its changed lines flash their tone.
   useEffect(() => {
@@ -175,8 +184,8 @@ export function DiffEditor(props: {
   }, [editor, props.flashKey, props.before, props.after]);
 
   return (
-    <div className="relative min-h-0 flex-1">
-      <div ref={host} className="absolute inset-0" />
+    <div className="relative min-h-0 flex-1" aria-busy={loading}>
+      <div ref={host} className={cn("absolute inset-0 transition-opacity duration-150", loading && "opacity-40")} />
       {editor && <EditorContextMenu editor={editor.getModifiedEditor()} path={props.path} />}
       {editor && <EditorContextMenu editor={editor.getOriginalEditor()} path={props.path} />}
       {mod && editor && props.onAddComment && (
@@ -188,7 +197,7 @@ export function DiffEditor(props: {
         </p>
       )}
       {loading && (
-        <div className="absolute inset-0 grid place-items-center">
+        <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <Spinner />
         </div>
       )}
