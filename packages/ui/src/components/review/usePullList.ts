@@ -70,7 +70,11 @@ export function usePullList(api: ReviewApi, folder: string, repo?: string) {
         setState({ list, open: o, loading: false, settled: tick.n, stale: list.stale === true, error: null });
         if (list.stale) retry = window.setTimeout(() => alive && setTick((t) => ({ n: t.n + 1, refresh: false })), STALE_RETRY_MS);
       },
-      (e: unknown) => alive && setState((s) => ({ ...s, loading: false, settled: tick.n, stale: false, error: s.list ? null : errorMessage(e) })),
+      // B2 (polish pass F3): a failed list still shows the reviews in progress (they are the local service's, not GitHub's).
+      async (e: unknown) => {
+        const o = await open;
+        if (alive) setState((s) => ({ ...s, open: o, loading: false, settled: tick.n, stale: false, error: s.list ? null : errorMessage(e) }));
+      },
     );
     return () => {
       alive = false;

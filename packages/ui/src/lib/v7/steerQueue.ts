@@ -7,7 +7,7 @@ export function steerUnsupportedFor(orchestratorModel: string | undefined): bool
   return (orchestratorModel ?? "").startsWith("acp:");
 }
 
-export const STEER_REASON = "This agent can't take a message in the middle of a turn. It is sent when the turn ends, or stop the turn and send it now.";
+export const STEER_REASON = "This agent can't take a message while it works. It sends when the agent finishes, or stop it and send now.";
 
 /** The reply to a steer attempt, from the error's code. */
 export function steerOutcome(code: string | null): "unsupported" | "gone" | "failed" {

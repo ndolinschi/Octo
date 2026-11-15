@@ -7,6 +7,7 @@ import type { PickerSection } from "../../lib/picker";
 import { PopupList, popupOptionId, POPUP_PANEL } from "../primitives/PopupList";
 import { popupMove } from "../primitives/popupNav";
 import { useLatest } from "../../lib/hooks";
+import { usePhone } from "../../lib/phone";
 import { MODE_LABEL } from "../../lib/modeLabels";
 import { MODES } from "../../lib/modes";
 
@@ -17,6 +18,8 @@ function argsText(args: string): string {
   const names = MODES.filter((m) => parts.includes(m)).map((m) => MODE_LABEL[m]);
   return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
 }
+
+const describe = (row: SlashRow) => (row.available ? row.description : `${row.description}. ${row.reason ?? "Not available right now."}`);
 
 export type SlashMenuHandle = { onKeyDown(e: KeyboardEvent): boolean };
 
@@ -60,13 +63,16 @@ export const SlashMenu = forwardRef<
   useEffect(() => onActive(activeId === null ? null : popupOptionId(listId, activeId)), [activeId, onActive, listId]);
   // A name that both Octo and the agent offer says whose it is on the agent's row ("/review · Claude Code").
   const octoNames = new Set(groups.filter((g) => g.rows[0]?.group === "octo").flatMap((g) => g.rows.map((r) => r.name)));
+  // 5a: on the phone the description is a second line (styles.css lets it take two) and the argument hint goes: it repeated the
+  // description ("Choose Agent, Ask or Plan" · "Agent, Ask or Plan") and both were cut at 390.
+  const phone = usePhone();
   const sections: PickerSection[] = groups.map((g) => ({
     title: g.label,
     rows: g.rows.map((row) => ({
       id: row.id,
       label: row.group === "agent" && octoNames.has(row.name) ? `/${row.name} · ${g.label}` : `/${row.name}`,
-      detail: row.available ? row.description : `${row.description}. ${row.reason ?? "Not available right now."}`,
-      ...(row.args ? { hint: argsText(row.args) } : {}),
+      ...(phone ? { sub: describe(row) } : { detail: describe(row) }),
+      ...(row.args && !phone ? { hint: argsText(row.args) } : {}),
       disabled: !row.available,
       run: () => props.onChoose(row),
     })),

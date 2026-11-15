@@ -96,7 +96,7 @@ export function WindowReport(props: {
   };
   return (
     <Dialog
-      title="Context window"
+      title="Context"
       {...(view ? { description: contextHeadline(view) } : {})}
       onClose={props.onClose}
       footer={
@@ -107,7 +107,7 @@ export function WindowReport(props: {
     >
       {load.status === "loading" && <SkeletonText lines={5} />}
       {load.status === "error" && <Notice tone="error">{load.message} Close this and open it again to retry.</Notice>}
-      {view?.source === "agent" && <p className="text-sm text-fg-2">This agent manages its own context. Octo shows what it reports.</p>}
+      {view?.source === "agent" && <p className="text-sm text-fg-2">This agent keeps its own context; the numbers come from it.</p>}
       {report && report.sections.length > 0 && view?.source !== "agent" && (
         <div
           role="meter"
@@ -162,7 +162,7 @@ export function WindowReport(props: {
           {report.buffer !== null && (
             <li>
               <ListRow
-                title="Compaction buffer"
+                title="Reserved for compacting"
                 trailing={TAIL}
                 tone="quiet"
                 meta={
@@ -177,11 +177,11 @@ export function WindowReport(props: {
         </ul>
       )}
       {report && report.notLoaded.length > 0 && (
-        <section aria-label="Not loaded" className="pt-3">
+        <section aria-label="Not included" className="pt-3">
           <SectionHeader as="h3" inset className="-mx-2">
-            Not loaded
+            Not included
           </SectionHeader>
-          <p className="pb-1 text-xs text-fg-3">What could be in the window and is not. The number is what loading it would add.</p>
+          <p className="pb-1 text-xs text-fg-3">Things Octo could add to the context but hasn&apos;t. The number is what each would add.</p>
           <ul className="-mx-2 flex flex-col">
             {foldItems(report.notLoaded, all.has("not_loaded")).shown.map((i) => itemRow(i, "+"))}
             {(foldItems(report.notLoaded, false).hidden > 0 || all.has("not_loaded")) && (

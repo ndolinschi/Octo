@@ -36,7 +36,7 @@ export function validate(fields: readonly InputField[], values: FormValues, secr
       if (!s) {
         if (f.required) errors[f.id] = "Required";
       } else if (utf8Length(s) < SECRET_MIN_BYTES) errors[f.id] = `At least ${SECRET_MIN_BYTES} characters`;
-      else if (utf8Length(s) > SECRET_MAX_BYTES) errors[f.id] = "Too long (16 KiB at most)";
+      else if (utf8Length(s) > SECRET_MAX_BYTES) errors[f.id] = "Too long (16 KB at most)";
       continue;
     }
     const v = values[f.id];
@@ -81,7 +81,7 @@ export type AnsweredLine = { status: AnsweredInput["status"]; text: string };
 /** The collapsed card: names only — "API key provided · Region, Environment answered", "Skipped", "Closed". */
 export function answeredLine(req: InputRequest, answered: AnsweredInput): AnsweredLine {
   if (answered.status === "skipped") return { status: "skipped", text: "Skipped" };
-  if (answered.status === "cancelled") return { status: "cancelled", text: "Closed: the turn was stopped" };
+  if (answered.status === "cancelled") return { status: "cancelled", text: "Closed: stopped" };
   const label = (id: string) => req.fields.find((f) => f.id === id)?.label ?? id;
   const provided = answered.provided.map(label);
   const given = Object.keys(answered.values)

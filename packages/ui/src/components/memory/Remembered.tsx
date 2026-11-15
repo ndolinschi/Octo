@@ -212,7 +212,7 @@ function RememberedRow(props: {
   const forget = bridge.forgetFact;
   const keeper = keeperName(fact.remembered_by, (id) => {
     const a = state.agents[id];
-    return a ? (a.parent_id === null ? "Orchestrator" : a.title || a.role) : null;
+    return a ? (a.parent_id === null ? "Octo" : a.title || a.role) : null;
   });
   const open = props.onOpenMessage;
   const line2 = itemDescription(item);
@@ -223,8 +223,9 @@ function RememberedRow(props: {
         size="md"
         expanded={props.open}
         title={fact.text}
-        {...(line2 === "" ? { meta: formatDay(fact.date, now) } : {})}
-        {...(line2 === "" ? {} : { description: <RowLine end={formatDay(fact.date, now)}>{line2}</RowLine> })}
+        // B4.2 (polish pass F3): the date is always on the title line, so one- and two-line rows keep one column of dates.
+        meta={formatDay(fact.date, now)}
+        {...(line2 === "" ? {} : { description: <RowLine>{line2}</RowLine> })}
         tip={fact.text}
         onClick={props.onToggle}
         trailing={forget && <IconMenu label="Item actions" size="xs" items={[{ id: "forget", label: "Forget", run: () => setConfirm(true) }]} />}
@@ -264,7 +265,7 @@ function RememberedRow(props: {
       {confirm && forget && (
         <ConfirmDialog
           title="Forget this?"
-          description="It is deleted from the project's memory and from search. The conversation is not changed. This cannot be undone."
+          description="Octo forgets it: it leaves the project's memory and search. The session is not changed. This can't be undone."
           confirm="Forget"
           busyText="Forgetting"
           onClose={() => setConfirm(false)}

@@ -73,10 +73,10 @@ export function kindLabel(kind: RememberKind | undefined): string | null {
   return kind === undefined ? null : KIND_LABEL[kind];
 }
 
-/** Who kept an item, as a name: "You" for the user, the agent's own name when known, else "Orchestrator". */
+/** Who kept an item, as a name: "You" for the user, the agent's own name when known, else "Octo". */
 export function keeperName(by: string | undefined, agentName: (id: string) => string | null): string | null {
   if (by === undefined) return null;
-  return by === "user" ? "You" : (agentName(by) ?? "Orchestrator");
+  return by === "user" ? "You" : (agentName(by) ?? "Octo");
 }
 
 /**
@@ -106,7 +106,7 @@ export function rememberedGroups(items: readonly RememberedItem[]): RememberedGr
   return [...groups.values()].sort((a, b) => b.newest.localeCompare(a.newest) || a.subject.localeCompare(b.subject));
 }
 
-/** "Remembered by Orchestrator · Nov 12", or "Noted · Nov 12" for a fact nobody kept on purpose. */
+/** "Remembered by Octo · Nov 12", or "Noted · Nov 12" for a fact nobody kept on purpose. */
 export function sourceText(fact: TaskFact, keeper: string | null, now: number): string {
   return `${keeper ? `Remembered by ${keeper}` : "Noted"} · ${formatDay(fact.date, now)}`;
 }

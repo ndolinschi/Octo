@@ -9,12 +9,11 @@ import { groupFiles, navigableFiles, readingOrder, sinceReview, stepFile } from 
 import type { ReviewKeyAction } from "../../lib/review/keys";
 import { anchorProblem, commentWhere, fileCommentInput, generalCommentInput, lineCommentInput, linesOf, type Anchor } from "../../lib/review/position";
 import { reviewDiffLayout } from "../../lib/review/diffLayout";
-import { repliesByThread, threadsOfFile, unresolvedTotal } from "../../lib/review/threads";
+import { repliesByThread, stepThread, threadRows, threadsOfFile, unresolvedTotal, type ThreadRow } from "../../lib/review/threads";
 import { Button } from "../primitives/Button";
 import { Checkbox } from "../primitives/Checkbox";
 import { SkeletonRows } from "../primitives/InfoList";
 import { Presence } from "../primitives/Presence";
-import { ApartThreads } from "./ApartThreads";
 import { CheckoutBanner, CheckoutMenu, checkoutItems, DirtyDialog } from "./Checkout";
 import { Composer, type ComposerValue } from "./Composer";
 import { DiffPane } from "./DiffPane";
@@ -23,9 +22,10 @@ import { Overview } from "./Overview";
 import { Notice } from "./parts";
 import { PendingPanel } from "./PendingPanel";
 import { ReviewHeader } from "./ReviewHeader";
-import type { DiffZone, Marked, RevealRequest, ReviewMonaco } from "./ReviewDiff";
+import type { DiffZone, Marked, RevealRequest, ReviewMonaco, ScrollRequest } from "./ReviewDiff";
 import { SubmitSheet } from "./SubmitSheet";
 import { ThreadCard, type ThreadActions } from "./ThreadCard";
+import { ThreadList, ThreadsToggle } from "./ThreadList";
 import { useCheckout } from "./useCheckout";
 import { useCode } from "../../state/code";
 import { useFileDiff, useReview, type ReviewData } from "./useReview";
@@ -60,7 +60,7 @@ export function ReviewView(props: {
         actions={
           <>
             <Button size="sm" variant="secondary" onClick={retry}>
-              Try again
+              Retry
             </Button>
             <Button size="sm" variant="ghost" onClick={props.onBack}>
               Back to the list
@@ -135,7 +135,24 @@ function Ready(props: {
   }, [api, review.id, review.folder, review.kind, review.head_commit]);
   const [explicitReveal, setReveal] = useState<RevealRequest | null>(null);
   const [cursor, setCursor] = useState<{ path: string | null; index: number | null }>({ path: null, index: null });
-  const [edge, setEdge] = useState<{ at: "first" | "last"; n: number } | null>(null);
+  const [edge, setEdge] = useState<{ at: "first" | "last"; n: number; focus: boolean } | null>(null);
+  // The thread list (item 1, polish pass F3): folded open or not, the unfolded thread, a focus request from n / p, the
+  // diff's scroll to a thread's line, and the reply drafts both copies of a thread share.
+  const [threadsOpen, setThreadsOpen] = useState(false);
+  const [currentThread, setCurrentThread] = useState<string | null>(null);
+  const [threadFocus, setThreadFocus] = useState(0);
+  const [scrollTo, setScrollTo] = useState<ScrollRequest | null>(null);
+  const [drafts, setDrafts] = useState<ReadonlyMap<string, string>>(new Map());
+  const setDraft = useCallback((id: string, body: string | null) => {
+    setDrafts((d) => {
+      const next = new Map(d);
+      if (body === null) next.delete(id);
+      else next.set(id, body);
+      return next;
+    });
+  }, []);
+  // j / k pressed with focus in the diff: the change they land on takes focus back (the editor is rebuilt for another file).
+  const keepFocus = useRef(false);
   const selection = useRef<Anchor | null>(null);
   const seq = useRef(0);
 
@@ -153,7 +170,10 @@ function Ready(props: {
   // After `j` / `k` ran off the end of a file, the next file opens on its first (or last) change: derived, no effect.
   const edgeIndex = edge && blocks.length ? (edge.at === "first" ? 0 : blocks.length - 1) : null;
   const edgeBlock = edgeIndex === null ? undefined : blocks[edgeIndex];
-  const reveal = useMemo<RevealRequest | null>(() => (edge && edgeBlock ? { block: edgeBlock, n: edge.n } : explicitReveal), [edge, edgeBlock, explicitReveal]);
+  const reveal = useMemo<RevealRequest | null>(
+    () => (edge && edgeBlock ? { block: edgeBlock, n: edge.n, focus: edge.focus } : explicitReveal),
+    [edge, edgeBlock, explicitReveal],
+  );
   const index = edgeIndex ?? (cursor.path === path ? cursor.index : null);
 
   useEffect(() => {
@@ -169,6 +189,8 @@ function Ready(props: {
     selection.current = null;
     setReveal(null);
     setComposer(null);
+    setCurrentThread(null);
+    setScrollTo(null);
   }, []);
 
   const goTo = useCallback(
@@ -176,7 +198,7 @@ function Ready(props: {
       const block = blocks[i];
       if (!block) return;
       setCursor({ path, index: i });
-      setReveal({ block, n: ++seq.current });
+      setReveal({ block, n: ++seq.current, focus: keepFocus.current });
     },
     [blocks, path],
   );
@@ -185,7 +207,7 @@ function Ready(props: {
     const next = stepFile(nav, path, dir);
     if (!next) return setHint(dir === 1 ? "That was the last file." : "That was the first file.");
     select(next.path);
-    if (landOn) setEdge({ at: landOn, n: ++seq.current });
+    if (landOn) setEdge({ at: landOn, n: ++seq.current, focus: keepFocus.current });
   };
   const stepChangeBy = (dir: 1 | -1) => {
     const s = stepChange(blocks.length, index, dir);
@@ -202,18 +224,16 @@ function Ready(props: {
   };
   const toggleViewed = () => file && void actions.setViewed(file.path, !file.viewed);
 
-  const onKey = (a: ReviewKeyAction) => {
-    if (a === "next-change") stepChangeBy(1);
-    else if (a === "prev-change") stepChangeBy(-1);
-    else if (a === "next-file") stepFileBy(1);
-    else if (a === "prev-file") stepFileBy(-1);
-    else if (a === "viewed") toggleViewed();
-    else startLine(selection.current, a === "suggest");
-  };
-  useReviewKeys(root, onKey);
-
   // The keys listen on the review itself: take focus when it opens, so they work without a first click.
   useEffect(() => root.current?.focus({ preventScroll: true }), []);
+  // Item 2 (polish pass F3): j / k into another file rebuild the diff editor and focus falls to the page; until the change
+  // takes it (or when the file has no text diff), the review's root holds it, so the keys keep working.
+  const diffStatus = diffState.state.status;
+  useEffect(() => {
+    if (!keepFocus.current) return;
+    const a = document.activeElement;
+    if (a === null || a === document.body) root.current?.focus({ preventScroll: true });
+  }, [path, diffStatus]);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -286,6 +306,35 @@ function Ready(props: {
     [split, fileThreads],
   );
   const zones = useMemo<DiffZone[]>(() => drawn.map((t) => ({ key: t.id, side: t.side, line: t.line ?? 1 })), [drawn]);
+  const rows = useMemo(() => threadRows(drawn, apart), [drawn, apart]);
+  const showThread = (id: string | null, row: ThreadRow | null) => {
+    setCurrentThread(id);
+    if (row?.drawn && row.thread.line !== undefined) setScrollTo({ side: row.thread.side, line: row.thread.line, n: ++seq.current });
+  };
+  const stepThreadBy = (dir: 1 | -1) => {
+    if (rows.length === 0) return setHint("This file has no threads.");
+    const id = stepThread(
+      rows.map((r) => r.thread.id),
+      currentThread,
+      dir,
+    );
+    if (id === null) return setHint(dir === 1 ? "That was the last thread in this file." : "That was the first thread in this file.");
+    setThreadsOpen(true);
+    showThread(id, rows.find((r) => r.thread.id === id) ?? null);
+    setThreadFocus((n) => n + 1);
+  };
+  const onKey = (a: ReviewKeyAction) => {
+    if (a === "next-change" || a === "prev-change") keepFocus.current = diffCol.current?.contains(document.activeElement) ?? false;
+    if (a === "next-thread" || a === "prev-thread") return stepThreadBy(a === "next-thread" ? 1 : -1);
+    if (a === "next-change") stepChangeBy(1);
+    else if (a === "prev-change") stepChangeBy(-1);
+    else if (a === "next-file") stepFileBy(1);
+    else if (a === "prev-file") stepFileBy(-1);
+    else if (a === "viewed") toggleViewed();
+    else startLine(selection.current, a === "suggest");
+  };
+  useReviewKeys(root, onKey);
+
   const threadActions: ThreadActions = {
     reply: (t, body) => actions.addComment({ in_reply_to: t.id, body }),
     deleteReply: (c) => void actions.deleteComment(c),
@@ -296,7 +345,14 @@ function Ready(props: {
     return t ? (
       // R4: the card starts on the code's left edge and keeps a reading width; no side inset of its own.
       <div className="max-w-thread py-2 pr-4 font-sans">
-        <ThreadCard thread={t} pending={pendingReplies.get(t.id) ?? []} actions={threadActions} now={now} />
+        <ThreadCard
+          thread={t}
+          pending={pendingReplies.get(t.id) ?? []}
+          draft={drafts.get(t.id) ?? null}
+          onDraft={(body) => setDraft(t.id, body)}
+          actions={threadActions}
+          now={now}
+        />
       </div>
     ) : null;
   };
@@ -309,6 +365,7 @@ function Ready(props: {
         review={review}
         viewed={data.files.viewed_count}
         pending={comments.length}
+        findings={findings.filter((f) => f.status === "new").length}
         unresolved={unresolved}
         behind={behind}
         overviewOpen={overview}
@@ -329,7 +386,7 @@ function Ready(props: {
         <div role="status" className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line px-4 py-1.5 text-sm">
           <span className="text-fg-2">The existing comments did not load: {threads.load.message}.</span>
           <Button size="sm" variant="secondary" onClick={threads.refresh} className="max-md:h-10">
-            Try again
+            Retry
           </Button>
         </div>
       )}
@@ -373,7 +430,22 @@ function Ready(props: {
               reveal={reveal}
               zones={zones}
               renderZone={renderZone}
-              apart={<ApartThreads threads={apart} pending={pendingReplies} actions={threadActions} now={now} />}
+              scrollTo={scrollTo}
+              threadsToggle={<ThreadsToggle rows={rows} open={threadsOpen} onToggle={() => setThreadsOpen((o) => !o)} />}
+              threadList={
+                <ThreadList
+                  rows={rows}
+                  open={threadsOpen}
+                  current={currentThread}
+                  focusSeq={threadFocus}
+                  onCurrent={showThread}
+                  pending={pendingReplies}
+                  drafts={drafts}
+                  onDraft={setDraft}
+                  actions={threadActions}
+                  now={now}
+                />
+              }
               onToggleWhitespace={() => setIgnoreWhitespace((x) => !x)}
               onToggleExpanded={() => setExpanded((x) => !x)}
               onViewed={(v) => void actions.setViewed(file.path, v)}
@@ -389,7 +461,7 @@ function Ready(props: {
               {...(pickerEl ? { picker: pickerEl, onStepFile: (dir: 1 | -1) => stepFileBy(dir) } : {})}
               // The review's code: its read-only worktree while it is the project's workspace, else the project's folder.
               onOpenAt={(line) => code.openFile(checkout.inWorkspace ? "@review" : review.folder, file.path, line ? { line, column: 1 } : undefined)}
-              openWhere={checkout.inWorkspace ? "in the review's workspace" : `in ${review.folder}`}
+              openWhere={checkout.inWorkspace ? "in the read-only copy" : `in ${review.folder}`}
             />
             {hint && (
               <p role="status" className={cn("shrink-0 border-t border-line px-4 py-1.5 text-xs text-fg-2")}>

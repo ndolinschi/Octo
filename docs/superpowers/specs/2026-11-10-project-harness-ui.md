@@ -3570,3 +3570,61 @@ its left; the phone navigation shows row actions on every row (no hover on touch
 
 Not looked at in this pass: the shortcuts sheet, Review with an open pull request, the offline banner, several panels
 in light. Not verified: WebKit, a real phone, a screen reader.
+
+## As built — the premium pass, wave 1: navigation, conversation, panels (2026-11-15)
+
+The owner asked for an even, calm interface on both layouts ("no clutter, clean edges"). Four reviewers first walked the app
+(WebKit; the phone and the screens not looked at before; accessibility; every string) and returned measured findings; the
+fixes then went to executors on disjoint files. A reference was measured for principles only (one ink at opacity steps,
+hierarchy by ink not by weight, one icon size per zone, one border per seam). This wave is the shell, the conversation and
+the tool panels; Settings, the primitives, the tokens and the WebKit fixes follow in their own commits.
+
+- **Section titles in the sidebar** (the owner's screenshot: "the sidebar is uneven where it says Projects"). A section
+  title starts on the left edge of the rows' icon column (x 48 → 24), 16px above it and 4px under it, a 20px line. The "+"
+  beside "Projects" is gone in the tree and Projects views (it was a second way into New project); in the Sessions view it
+  stays (New session). A session's highlight starts where every row's does; the step in is inside the row.
+- **Phone: Back.** A row that opens a route from a panel no longer loses the navigation (`lib/historyLayer.ts` marks the
+  entries the page has seen; a new entry is a navigation, `onClose(navigated)`): Agents → agent → Back → Agents. A file
+  goes back to the Files tree. The palette, every `Dialog` and the shortcuts sheet are history layers on the phone. A
+  detail inside Sessions, Memory (a session, a file), Review (an open pull request) and Changes (a diff) is a layer:
+  Back returns to the list. Not done: Agents' own detail (it opens a tab), a provider's detail (Settings, next commit).
+- **Phone: the rest.** A panel's purpose is the first group of the "⋯" sheet and the lone (i) row is gone (44px back in
+  Memory, Usage, Details, Changes). Navigation rows carry one "›" with a 44px zone and the project's time; New session is
+  in the row's menu and the "⋯" sheet (iOS has no long-press menu). "Rewind to here" opens when the bubble is tapped (a
+  request block 126 → 98px; the old always-shown row's hit area covered the whole bubble). One-line step rows are 32px with
+  a 44px zone, 12px apart. Diffs in a reply and in Changes wrap (a continuation hangs 2ch past the line's indent); the
+  Changes toolbar keeps Back, the name, "⋯" and Revert. The slash menu's descriptions are a second line. A file opens
+  read-only with Edit / Done (`domReadOnly`, so WebKit raises no keyboard); crumbs are hidden; an SVG's source wraps.
+  Home's tiles are two rows of two. The shortcuts sheet is not offered. Gone and timed-out states keep the header.
+- **`/new <text>`** (the owner): starts a new main session and sends the text there as its first request; the current
+  session gets nothing and the view stays, with "Started in a new session: … · Open" above the composer. `/new` alone
+  opens an empty session. A failed create keeps the text; a failed send opens the new session with the text in its box
+  (both unit-tested only: the demo cannot fail). `lib/newSession.ts`, `chat/useNewSession.ts`.
+- **Review.** Threads are reachable: a "N threads" control in the file's bar opens a list outside Monaco (one tab stop;
+  Enter shows the thread and its Reply there and scrolls the diff), `n` / `p` step through them, and the copies inside
+  Monaco's view zones are `inert` while no pointer is over the diff. `j` / `k` keep the focus in the diff. The header is
+  Run (pinned commands first), Check out, Details, Submit; "Pending" shows only above zero. A failed list keeps "Reviews
+  in progress"; the `gh` install command follows the platform. A wholly added line carries the line tint only. There is
+  no Resolve: the bridge has no such method.
+- **Keyboard and names.** One tab stop per list (`lib/listStops.ts`, `lib/rovingRows.ts`): Home, the Sessions tab, Agents,
+  Memory, Notes, Review's files, the empty composer's suggestions, a reply's file chips; a row's menu on Shift+F10. A
+  project row's menu (New session, Show sessions) opens on Shift+F10. The file editor says how to leave it ("Press
+  Ctrl+M, then Tab"; Esc with no selection and no widget moves to the file's tab). The composer is a `combobox` for its
+  "@" and "/" menus. One polite live region says when a request starts and ends and when an approval or a form arrives
+  (never the streamed text). Both sides of a Monaco diff have names. After a route change the focus goes to the page's
+  title or back to the control that opened the page; focus set by the app draws no ring until a key is pressed
+  (`lib/quietFocus.ts`). `<main>`, a page `h1`, and `document.title` with the project and the session.
+- **Words** (one name per thing; the list is in the session's copy report): the orchestrator is "Octo"; "harness" and
+  "bridge" are "Octo's local service" ("Offline" in the status bar); a turn is a request or a reply; helpers and
+  sub-agents are agents; an exchange is a request; a worktree is "a copy of the code"; the code host is GitHub; "Routing"
+  is "Model choice"; "Review changes" is "Open changes"; buttons say "Retry"; sizes are KB / MB. Kept for the owner to
+  decide: "Compact", Memory's tab names, "agent" for both a helper and a coding agent.
+- **Syntax colours on diff tints** pass 4.5:1 in both themes (`lib/codePalette.ts`; minimum 4.13 → 4.6).
+
+Gates on this commit's index (a clean copy): see the commit message. Browser scripts were run by the executors on their
+own screens only; the full set, the spacing audit and both engines run on the pass's last commit. `ui-tour-states.mjs`
+and `spacing-audit.mjs` still look for some of the old strings until the scripts' commit. Not verified: a screen reader
+(the accessibility tree and axe only), a real phone, Safari and the Tauri window (Playwright's Linux WebKit only, and
+only for the phone's Back, the conversation and Monaco), a live harness, 1100 and 1680 for the panels. Known and open:
+the demo shows a failed request's text twice; `aria-allowed-role` on the composer's textarea; small touch-zone overlaps
+at "Go to line N" and "Raw"; Shift+Tab in the composer still switches the mode (the owner's call).

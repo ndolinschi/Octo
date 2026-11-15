@@ -7,7 +7,10 @@ import { openShortcuts } from "../../lib/openShortcuts";
 import { rankGroups } from "../../lib/matchMore";
 import { navigate, settingsHref } from "../../lib/route";
 import { focusSoon } from "../../lib/focus";
+import { cn } from "../../lib/cn";
 import { useMediaQuery } from "../../lib/hooks";
+import { useHistoryLayer } from "../../lib/historyLayer";
+import { usePhone } from "../../lib/phone";
 import { palette as paletteGate } from "../../lib/typeahead";
 import { useApp } from "../../state/app";
 import { useNav } from "../../state/nav";
@@ -16,6 +19,7 @@ import { sessionTab } from "../../state/workspace/layout";
 import { hitRow } from "../../lib/requestSearch";
 import { useRequests } from "../../state/requests";
 import { useRequestSearch } from "../../state/requestSearch";
+import { Button } from "../primitives/Button";
 import { Highlight } from "../primitives/Highlight";
 import { ListRow } from "../primitives/ListRow";
 import { usePresence } from "../primitives/Presence";
@@ -57,6 +61,8 @@ type Group = { title: string; items: Item[] };
 const LIMIT = 6;
 /** With an empty query the first group: what a newcomer needs (ids of the actions below). */
 const SUGGESTED = ["x:new", "w:tool-files", "w:tool-review", "x:settings", "x:shortcuts"];
+/** Not offered on the phone (no keyboard there): the shortcut list and its "Help" row. */
+const KEYBOARD_ONLY = new Set(["x:shortcuts", "x:help"]);
 const THEMES = [
   ["dark", "Dark"],
   ["light", "Light"],
@@ -104,6 +110,7 @@ export function CommandPalette(props: {
 }) {
   const { projects, bridge, canChooseTheme, themePref, setThemePref } = useApp();
   const narrow = useMediaQuery("(max-width: 600px)");
+  const phone = usePhone();
   const nav = useNav();
   const panel = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -125,6 +132,8 @@ export function CommandPalette(props: {
   });
 
   useModal(panel, onClose);
+  // Direction 7: on the phone the palette is a history entry (the system's Back closes it, not the app).
+  useHistoryLayer(phone && state === "open", () => onClose());
 
   // The chosen command runs once the palette has started closing and focus is back on its opener (useModal's restore runs
   // first: its effect is declared above). A command that moves focus itself (a tool tab, a file, a dialog, the Files tree's
@@ -182,12 +191,16 @@ export function CommandPalette(props: {
       return !seen.has(key) && !!seen.add(key);
     };
     const own: Item[] = [
-      { id: "x:shortcuts", label: "Keyboard shortcuts", detail: "?", run: go(openShortcuts) },
-      { id: "x:help", label: "Help", detail: "Keys and how to get around", run: go(openShortcuts) },
+      ...(phone
+        ? []
+        : [
+            { id: "x:shortcuts", label: "Keyboard shortcuts", detail: "?", run: go(openShortcuts) },
+            { id: "x:help", label: "Help", detail: "Shortcuts and help", run: go(openShortcuts) },
+          ]),
       {
         id: "x:model",
         label: "Change model",
-        detail: "The model of this project",
+        detail: "Model for this project",
         run: go(() => {
           const chip = [...document.querySelectorAll<HTMLElement>("[data-model-picker]")].find((el) => el.offsetParent !== null);
           if (chip) chip.click();
@@ -205,8 +218,10 @@ export function CommandPalette(props: {
         : []),
     ];
     const actions: Item[] = [
-      ...(workspace?.actions ?? []).map((a) => ({ ...a, id: `w:${a.id}`, run: go(a.run) })),
-      ...props.actions.map((a) => ({ id: `x:${a.id}`, label: a.label, detail: a.hint, shortcut: a.shortcut, run: go(a.run) })),
+      ...(workspace?.actions ?? []).map((a) => ({ ...a, id: `w:${a.id}`, ...(phone ? { shortcut: undefined } : {}), run: go(a.run) })),
+      ...props.actions
+        .filter((a) => !(phone && KEYBOARD_ONLY.has(`x:${a.id}`)))
+        .map((a) => ({ id: `x:${a.id}`, label: a.label, detail: a.hint, shortcut: phone ? undefined : a.shortcut, run: go(a.run) })),
       ...own,
     ];
     // Settings: each section, then the rows of the settings search (description and keywords are searched, not shown).
@@ -261,7 +276,7 @@ export function CommandPalette(props: {
           const root = a.parent_id === null;
           return {
             id: `a:${a.id}`,
-            label: root ? "Conversation" : a.role,
+            label: root ? "Session" : a.role,
             detail: root ? undefined : a.title,
             glyph: agentGlyph(a.status),
             run: go(() => {
@@ -354,6 +369,7 @@ export function CommandPalette(props: {
     settings,
     bridge,
     sessionIndex.all,
+    phone,
   ]);
 
   const flat = groups.flatMap((g) => g.items);
@@ -416,26 +432,35 @@ export function CommandPalette(props: {
         data-state={state}
         className="octo-overlay relative flex max-h-[70vh] w-full max-w-[560px] flex-col overflow-hidden rounded-xl border border-transparent bg-overlay shadow-pop"
       >
-        <SearchField
-          variant="header"
-          label="Search tabs, projects, requests, agents, settings and actions"
-          placeholder={narrow ? "Search or run a command" : "Search tabs, projects, requests, agents, actions"}
-          value={query}
-          clearOnEscape={false}
-          onChange={(v) => {
-            setQuery(v);
-            setSelected(0);
-          }}
-          onKeyDown={onKeyDown}
-          inputProps={{
-            onFocus: takeTyped,
-            role: "combobox",
-            "aria-expanded": true,
-            "aria-controls": `${baseId}-list`,
-            "aria-autocomplete": "list",
-            ...(flat.length ? { "aria-activedescendant": optionId(current) } : {}),
-          }}
-        />
+        <div className={cn("flex shrink-0 items-center", phone && "border-b border-line pr-1")}>
+          <SearchField
+            variant="header"
+            className={phone ? "min-w-0 flex-1 border-b-0!" : "min-w-0 flex-1"}
+            label="Search or run an action"
+            placeholder={narrow ? "Search or run an action" : "Search tabs, projects, requests, agents, actions"}
+            value={query}
+            clearOnEscape={false}
+            onChange={(v) => {
+              setQuery(v);
+              setSelected(0);
+            }}
+            onKeyDown={onKeyDown}
+            inputProps={{
+              onFocus: takeTyped,
+              role: "combobox",
+              "aria-expanded": true,
+              "aria-controls": `${baseId}-list`,
+              "aria-autocomplete": "list",
+              ...(flat.length ? { "aria-activedescendant": optionId(current) } : {}),
+            }}
+          />
+          {/* A9.9: on the phone there is no Esc; a constant way out beside the field. */}
+          {phone && (
+            <Button variant="quiet" size="lg" className="shrink-0" onClick={onClose}>
+              Close
+            </Button>
+          )}
+        </div>
         <div ref={list} id={`${baseId}-list`} role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
           {groups.map((g) => (
             <div key={g.title} role="group" aria-labelledby={`${baseId}-${g.title}`} className="pb-1">

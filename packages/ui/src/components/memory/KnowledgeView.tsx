@@ -1,7 +1,7 @@
 import type { Task, TaskStatus } from "@octo/agent-client";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
-import { moveInList } from "../../lib/focus";
+import { useListStops } from "../../lib/listStops";
 import { useNow } from "../../lib/hooks";
 import type { Load } from "../../lib/memory/load";
 import { filterCounts, rememberedItems, TASK_FILTERS } from "../../lib/memory/tasks";
@@ -39,6 +39,10 @@ export function KnowledgeView(props: {
   const [adding, setAdding] = useState(false);
   const focusTask = tasks?.find((t) => t.id === props.focus.task) ?? null;
   const [status, setStatus] = useState<TaskStatus>(focusTask?.status ?? "open");
+  // Item 9 (polish pass F3): both lists are one Tab stop (↑/↓/Home/End between the rows); an item's "⋯" is the pointer's way,
+  // Shift+F10 on the row the keyboard's.
+  const rows = useRef<HTMLDivElement>(null);
+  useListStops(rows);
 
   if (props.load.status === "error") return <MemoryError message={props.load.message} onRetry={props.reload} />;
   if (props.load.status === "loading") return <SkeletonList count={6} size="md" twoLine />;
@@ -57,14 +61,13 @@ export function KnowledgeView(props: {
             }
           : {})}
       >
-        Decisions, preferences and facts the orchestrator keeps appear here, with the tasks they belong to.
+        Decisions, preferences and facts Octo keeps appear here, grouped by task.
       </PaneEmpty>
     );
   }
   return (
     <ScrollArea className="h-full min-h-0 px-pane pt-1 pb-6">
-      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- ↑/↓/Home/End between the rows of both lists */}
-      <div onKeyDown={moveInList} className={DETAIL_MAX}>
+      <div ref={rows} className={DETAIL_MAX}>
         <section aria-label="Remembered">
           <RememberedHeader count={items.length} onAdd={canAdd && !adding ? () => setAdding(true) : undefined} />
           {adding && <AddFact onDone={() => setAdding(false)} onKept={props.reload} />}

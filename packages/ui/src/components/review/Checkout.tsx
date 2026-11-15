@@ -19,8 +19,8 @@ export function checkoutItems(checkout: Checkout, review: Review): MenuItem[] {
     ...(checkout.inWorkspace ? [{ id: "back", label: "Back to my folder", run: () => void checkout.back() }] : []),
     {
       id: "workspace",
-      label: "Open in workspace (read-only)",
-      title: "Point the file tree, editor and language server at this pull request. Your folder is untouched.",
+      label: "Open read-only copy",
+      title: "Show this pull request in the file tree and editor. Your folder is untouched.",
       disabled: checkout.inWorkspace || !review.worktree_present,
       run: () => void checkout.openWorkspace(),
     },
@@ -61,7 +61,7 @@ export function CheckoutBanner({ checkout }: { checkout: Checkout }) {
       )}
       {!checkout.error && checkout.inWorkspace && (
         <>
-          <span className="min-w-0 flex-1 text-fg-2">Workspace: the file tree, editor and language server show this pull request, read-only.</span>
+          <span className="min-w-0 flex-1 text-fg-2">Read-only copy: the file tree and editor show this pull request.</span>
           <Button size="sm" variant="secondary" disabled={checkout.busy} onClick={() => void checkout.back()} className="max-md:h-10">
             Back to my folder
           </Button>

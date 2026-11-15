@@ -95,8 +95,8 @@ export function SessionComposer({ session, actions }: { session: ProjectSession;
           <Checkbox
             checked={report}
             onChange={setReport}
-            label="Send result to the orchestrator"
-            description="Its answer is added to the main conversation before the next request."
+            label="Send result to Octo"
+            description="Adds its answer to the main session before the next request."
           />
           {outcome && <QuietLine>{outcomeText(outcome)}</QuietLine>}
         </div>

@@ -66,9 +66,7 @@ export function Overview({ review, facts }: { review: Review; /** Page mode: the
         (review.body.trim() ? (
           <>
             <TheirText who={review.author ?? "the author"} text={review.body} />
-            {review.meta.body_truncated && (
-              <p className="text-xs text-fg-3">The description was cut short by the code host. Read the rest on the pull request.</p>
-            )}
+            {review.meta.body_truncated && <p className="text-xs text-fg-3">The description was cut short by GitHub. Read the rest on the pull request.</p>}
           </>
         ) : (
           <p className="text-sm text-fg-3">{review.kind === "local" ? "A local review has no description." : "The author wrote no description."}</p>

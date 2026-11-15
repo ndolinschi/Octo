@@ -1,4 +1,5 @@
 import { usePhone } from "../../lib/phone";
+import { quietFocus } from "../../lib/quietFocus";
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { cn } from "../../lib/cn";
 import { useCode } from "../../state/code";
@@ -47,7 +48,7 @@ export function TreeColumn(props: {
   const { takeFocusRequest } = fv;
   const phone = usePhone();
   useEffect(() => {
-    if (shown && ws.isVisible(props.tab) && takeFocusRequest() && !phone) input.current?.focus({ preventScroll: true });
+    if (shown && ws.isVisible(props.tab) && takeFocusRequest() && !phone) quietFocus(input.current);
   }, [fv.focusTreeTick, ws, props.tab, takeFocusRequest, shown, phone]);
 
   const onInputKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {

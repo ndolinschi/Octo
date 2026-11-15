@@ -22,11 +22,29 @@ export type ThreadActions = { reply(thread: ReviewThread, body: string): Promise
  * people's text; replies fold after two; a resolved thread is one line until opened; "Reply" makes a pending comment the
  * submit sheet counts. Used inline in the diff and in the list of threads that have no line.
  */
-export function ThreadCard(props: { thread: ReviewThread; pending: readonly ReviewComment[]; actions: ThreadActions; now: number; showPath?: boolean }) {
+export function ThreadCard(props: {
+  thread: ReviewThread;
+  pending: readonly ReviewComment[];
+  actions: ThreadActions;
+  now: number;
+  showPath?: boolean;
+  /**
+   * The reply being written (null: no reply box). Owned by the review, so the thread list's card and the diff's visual copy
+   * show the same draft.
+   */
+  draft: string | null;
+  onDraft(body: string | null): void;
+  /** In the thread list a card is always open (the list row folds it); in the diff a resolved thread folds to one line. */
+  fold?: boolean;
+}) {
   const t = props.thread;
-  const [open, setOpen] = useState(!t.resolved);
+  const fold = props.fold ?? true;
+  const [openState, setOpen] = useState(!t.resolved);
+  const open = openState || !fold;
   const [all, setAll] = useState(false);
-  const [replying, setReplying] = useState(false);
+  const replying = props.draft !== null;
+  // Only the copy whose Reply was pressed takes focus into its box (the other copy shows the same draft without moving focus).
+  const [own, setOwn] = useState(false);
   // The reply box held focus: when it closes (Cancel, Esc, added), focus goes back to the thread's Reply button.
   const replyButton = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
@@ -40,8 +58,9 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
     focusSoon(() => replyButton.current, { onlyIfLost: true, timeout: 800 });
   }, [replying]);
   const closeReply = () => {
-    refocus.current = true;
-    setReplying(false);
+    refocus.current = own;
+    setOwn(false);
+    props.onDraft(null);
   };
   const { shown, hidden } = visibleComments(t.comments, all);
 
@@ -74,7 +93,7 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
         <span className="shrink-0">{t.outdated ? "Outdated: the code changed since this comment was written" : t.resolved ? "Resolved" : "Unresolved"}</span>
         {t.side === "old" && !t.outdated && <span className="shrink-0">removed side</span>}
         <span className="min-w-0 flex-1 truncate text-right">Others' text, shown as text</span>
-        {t.resolved && <IconButton icon={ChevronDown} label="Collapse the thread" onClick={() => setOpen(false)} />}
+        {t.resolved && fold && <IconButton icon={ChevronDown} label="Collapse the thread" onClick={() => setOpen(false)} />}
       </header>
       {shown.map((c, i) => (
         <div key={c.id} className={cn("flex flex-col gap-1", i > 0 && "border-t border-line pt-2")}>
@@ -102,6 +121,9 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
       {!props.actions.readOnly &&
         (replying ? (
           <ReplyBox
+            body={props.draft ?? ""}
+            onBody={props.onDraft}
+            takeFocus={own}
             onCancel={closeReply}
             onSave={async (body) => {
               const problem = await props.actions.reply(t, body);
@@ -110,7 +132,16 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
             }}
           />
         ) : (
-          <Button ref={replyButton} variant="quiet" size="sm" onClick={() => setReplying(true)} className="-ml-2 w-fit">
+          <Button
+            ref={replyButton}
+            variant="quiet"
+            size="sm"
+            onClick={() => {
+              setOwn(true);
+              props.onDraft("");
+            }}
+            className="-ml-2 w-fit"
+          >
             Reply
           </Button>
         ))}
@@ -118,15 +149,15 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
   );
 }
 
-function ReplyBox(props: { onSave(body: string): Promise<string | null>; onCancel(): void }) {
-  const [body, setBody] = useState("");
+function ReplyBox(props: { body: string; onBody(body: string): void; takeFocus: boolean; onSave(body: string): Promise<string | null>; onCancel(): void }) {
+  const { body, takeFocus } = props;
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     // `preventScroll`: see the Reply button above (a scroll inside Monaco's layers hid the zone and dropped the caret).
-    field.current?.focus({ preventScroll: true });
-  }, []);
+    if (takeFocus) field.current?.focus({ preventScroll: true });
+  }, [takeFocus]);
   const save = async () => {
     if (!body.trim() || busy) return;
     setBusy(true);
@@ -143,7 +174,7 @@ function ReplyBox(props: { onSave(body: string): Promise<string | null>; onCance
         value={body}
         aria-label="Your reply"
         placeholder="Write a reply"
-        onChange={(e) => setBody(e.target.value)}
+        onChange={(e) => props.onBody(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void save();
           if (e.key === "Escape") {

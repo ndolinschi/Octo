@@ -24,3 +24,33 @@ export function selectionAria(role: string | undefined, selected: boolean): Reco
   if (role === "menuitemcheckbox" || role === "menuitemradio") return { "aria-checked": "true" };
   return { "aria-current": "true" };
 }
+
+/**
+ * The plain text of a row's `meta` node, for its accessible name (6a): a string or number, the text children of elements
+ * (a caller may wrap the meta in an `aria-hidden` span for its looks), nothing for a node with no text (a state dot).
+ */
+export function nodeText(node: unknown): string {
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join("");
+  if (node !== null && typeof node === "object" && "props" in node) {
+    const props: unknown = node.props;
+    if (props !== null && typeof props === "object" && "children" in props) return nodeText(props.children);
+  }
+  return "";
+}
+
+/**
+ * 6c: a meta that would draw nothing — no node, an empty string, or a wrapper element whose children are empty (the
+ * sidebar wraps a missing time in a span). A row then gives its title the whole width. An element with no `children`
+ * prop (a state dot) is drawn, so it is not empty.
+ */
+export function emptyNode(node: unknown): boolean {
+  if (node === undefined || node === null || node === false || node === "") return true;
+  if (Array.isArray(node)) return node.every(emptyNode);
+  if (typeof node === "object" && "props" in node) {
+    const props: unknown = node.props;
+    return props !== null && typeof props === "object" && "children" in props && emptyNode(props.children);
+  }
+  return false;
+}

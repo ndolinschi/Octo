@@ -122,7 +122,7 @@ test("limits: countdown stops at zero, stale after ten minutes", () => {
   assert.equal(resetLabel(null, NOW), null);
   assert.equal(isStale(new Date(NOW - 11 * 60_000).toISOString(), NOW), true);
   assert.equal(isStale(new Date(NOW - 9 * 60_000).toISOString(), NOW), false);
-  assert.equal(observedLabel(new Date(NOW - 120_000).toISOString(), NOW), "observed 2m ago");
+  assert.equal(observedLabel(new Date(NOW - 120_000).toISOString(), NOW), "seen 2m ago");
 });
 
 test("limits: remaining share and text, sorted by provider, model, kind", () => {

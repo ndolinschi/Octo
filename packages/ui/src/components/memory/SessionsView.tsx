@@ -2,7 +2,7 @@ import type { MemorySessionDetail } from "@octo/agent-client";
 import { useMemo, useRef, useState } from "react";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { useNow } from "../../lib/hooks";
-import { useRowKeys } from "../../lib/hooksMore";
+import { useListStops } from "../../lib/listStops";
 import { formatDay } from "../../lib/memory/dates";
 import { endedNote, exchangeCount, newestFirst, sessionRow, toggleExpanded } from "../../lib/memory/sessions";
 import { liveOrchestratorState } from "../../lib/orchestrator";
@@ -45,6 +45,8 @@ export function SessionsView(props: {
   const now = useNow(false, CLOCK_MINUTE_MS);
   const list = useMemo(() => (sessions.load.status === "ok" ? newestFirst(sessions.load.value) : []), [sessions.load]);
   const picked = props.selected !== null && list.some((s) => s.id === props.selected) ? props.selected : null;
+  const rows = useRef<HTMLUListElement>(null);
+  useListStops(rows);
 
   if (sessions.load.status === "error") return <MemoryError message={sessions.load.message} onRetry={sessions.reload} />;
   if (sessions.load.status === "ok" && list.length === 0) {
@@ -58,26 +60,29 @@ export function SessionsView(props: {
       loading={sessions.load.status === "loading"}
       selected={picked}
       onSelect={(id) => props.onSelect(id)}
-      list={(select) =>
-        list.map((s) => {
-          const r = sessionRow(s, now, working, currentId);
-          return (
-            <ListRow
-              key={s.id}
-              role="listitem"
-              size="md"
-              selected={s.id === picked}
-              // P3: the glyph column of every session list (the Sessions tab's): working, else the quiet idle dot.
-              leading={<StateGlyph state={r.working ? "working" : "idle"} />}
-              title={r.title}
-              description={<RowLine {...(r.current ? { end: "current" } : {})}>{r.description}</RowLine>}
-              tip={r.title}
-              onClick={() => select(s.id)}
-              trailing={ROW_TAIL}
-            />
-          );
-        })
-      }
+      listSemantics="own"
+      list={(select) => (
+        <ul ref={rows} aria-label="Sessions" className="flex flex-col">
+          {list.map((s) => {
+            const r = sessionRow(s, now, working, currentId);
+            return (
+              <li key={s.id}>
+                <ListRow
+                  size="md"
+                  selected={s.id === picked}
+                  // P3: the glyph column of every session list (the Sessions tab's): working, else the quiet idle dot.
+                  leading={<StateGlyph state={r.working ? "working" : "idle"} />}
+                  title={r.title}
+                  description={<RowLine {...(r.current ? { end: "current" } : {})}>{r.description}</RowLine>}
+                  tip={r.title}
+                  onClick={() => select(s.id)}
+                  trailing={ROW_TAIL}
+                />
+              </li>
+            );
+          })}
+        </ul>
+      )}
       detail={
         picked ? (
           <SessionDetail
@@ -112,7 +117,8 @@ function SessionDetail(props: {
   const [open, setOpen] = useState<string | null>(props.focusExchange);
   // The list mounts after the load; `useRowKeys` rebinds when its container appears.
   const exchangeRows = useRef<HTMLUListElement>(null);
-  useRowKeys(exchangeRows);
+  // Item 9 (polish pass F3): one Tab stop; a request's "⋯" is the pointer's way, Shift+F10 the keyboard's.
+  useListStops(exchangeRows);
   if (load.status === "loading") return <SkeletonText lines={5} className="pt-4" />;
   if (load.status === "error") return <MemoryError message={load.message} />;
   const { session, exchanges }: MemorySessionDetail = load.value;
@@ -148,7 +154,7 @@ function SessionDetail(props: {
           <Prose size="compact" text={session.summary} />
         </div>
       )}
-      <ul ref={exchangeRows} aria-label="Exchanges" className="flex flex-col">
+      <ul ref={exchangeRows} aria-label="Requests" className="flex flex-col">
         {exchanges.map((e) => (
           <ExchangeRow
             key={e.id}
@@ -161,7 +167,7 @@ function SessionDetail(props: {
             onClose={() => setOpen(null)}
             onOpenMessage={props.onOpenMessage}
             onForget={async (id) => {
-              if (!forget) throw new Error("This version of Octo's local service cannot forget an exchange.");
+              if (!forget) throw new Error("This version of Octo's local service can't forget a request.");
               await forget.call(bridge, props.projectId, id);
               props.onChanged();
             }}

@@ -1,5 +1,7 @@
 import type { ProjectSession } from "@octo/agent-client";
-import type { KeyboardEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent } from "react";
+import { useRowKeys } from "../../lib/hooksMore";
+import { useRovingRows } from "../../lib/rovingRows";
 import { canDelete, sessionRow, type SessionNode } from "../../lib/sessions/model";
 import { useModelNames } from "../../state/modelNames";
 import { IconMenu } from "../primitives/IconMenu";
@@ -34,6 +36,21 @@ export function SessionRows(props: {
   };
 }) {
   const { name } = useModelNames();
+  // 11g: one Tab stop for the list (↑/↓/Home/End between rows); a row's "⋯" is the pointer's way, Shift+F10 the keyboard's.
+  const list = useRef<HTMLUListElement>(null);
+  useRowKeys(list);
+  useRovingRows(list);
+  useEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    const apply = () => {
+      for (const b of el.querySelectorAll<HTMLElement>('[aria-haspopup="menu"]')) if (b.tabIndex !== -1) b.tabIndex = -1;
+    };
+    apply();
+    const mo = new MutationObserver(apply);
+    mo.observe(el, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, []);
   const rows = (s: ProjectSession, expanded?: boolean) => {
     const r = sessionRow(s, props.now, name);
     const menu = props.menu;
@@ -68,7 +85,7 @@ export function SessionRows(props: {
     );
   };
   return (
-    <ul aria-label="Sessions" className="flex flex-col">
+    <ul ref={list} aria-label="Sessions" className="flex flex-col">
       {props.nodes.map((n) => {
         const expandable = n.children.length > 0;
         const shown = expandable && (props.openAll || props.open === n.session.id);
@@ -97,8 +114,17 @@ export function SessionRows(props: {
  * Left on an agent row moves focus to its main row.
  */
 function keys(e: KeyboardEvent<HTMLElement>, n: SessionNode, open: boolean, toggle: (s: ProjectSession) => void) {
-  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
   const target = e.target instanceof HTMLElement ? e.target : null;
+  if (target && (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey))) {
+    // The row's own menu: the "⋯" beside the focused row's button.
+    const trigger = target.closest("[data-row]")?.parentElement?.querySelector<HTMLElement>('[aria-haspopup="menu"]');
+    if (!trigger) return;
+    e.preventDefault();
+    e.stopPropagation();
+    trigger.click();
+    return;
+  }
+  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
   const first = e.currentTarget.querySelector<HTMLElement>("[data-row]");
   if (!target || !first) return;
   if (target === first && n.children.length > 0) {

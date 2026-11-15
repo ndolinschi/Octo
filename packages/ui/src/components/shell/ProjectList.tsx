@@ -1,10 +1,8 @@
-import { Plus } from "lucide-react";
 import { useMemo, useRef } from "react";
 import { CLOCK_SIDEBAR_MS } from "../../lib/constants";
 import { useNow, useScrollFade } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { useOrchestrators } from "../../state/orchestrators";
-import { IconButton } from "../primitives/IconButton";
 import { SkeletonList } from "../primitives/Skeleton";
 import { ProjectItem } from "./ProjectItem";
 
@@ -17,7 +15,6 @@ export function ProjectList(props: { activeProjectId: string | null; unseen: Rea
   const now = useNow(true, CLOCK_SIDEBAR_MS);
   const list = useRef<HTMLUListElement>(null);
   useScrollFade(list, "y");
-  const canCreate = health === "online";
   // Stable order (newest project first by creation), so rows never jump under the pointer as
   // activity changes `updated_at`; activity shows as the dot instead.
   const ordered = useMemo(
@@ -28,10 +25,10 @@ export function ProjectList(props: { activeProjectId: string | null; unseen: Rea
   return (
     <>
       {(projects ? projects.length > 0 : health !== "offline") && (
-        // Polish step 2 (F1): the caption is a row of the same 32px, its text on the rows' text edge (8 inset + 16 glyph + 8).
-        <div className="mt-4 flex h-row-nav shrink-0 items-center pr-0.5 pl-8">
+        // The section caption, as in the tree (`SessionTree`): on the rows' glyph column, 16px under the block above, a 20px line,
+        // 4px over the first row. "New project" is the row at the top of the sidebar: no second "+" here.
+        <div data-side-caption className="mt-4 mb-1 flex h-5 shrink-0 items-center pl-2">
           <h2 className="text-xs text-fg-3">Projects</h2>
-          <IconButton icon={Plus} label="Add project" onClick={props.onNewProject} disabled={!canCreate} className="ml-auto" />
         </div>
       )}
       <ul ref={list} className="min-h-0 flex-1 overflow-y-auto overscroll-contain fade-y">

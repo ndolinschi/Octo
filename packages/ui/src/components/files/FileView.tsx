@@ -7,6 +7,8 @@ import { middleTruncate } from "../../lib/format";
 import { crumbFloor, crumbName, fitCrumbs } from "../../lib/crumbs";
 import { useCopy } from "../../lib/hooks";
 import { useDelayedLoading } from "../../lib/hooksMore";
+import { usePhone } from "../../lib/phone";
+import { useQuietOpen } from "../../lib/quietFocus";
 import { useApp } from "../../state/app";
 import { useCode, type OpenFile } from "../../state/code";
 import { useProject } from "../../state/project";
@@ -69,10 +71,18 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   const [floatHeight, setFloatHeight] = useState(0);
   const bottomRoom = floating && floatHeight > 0 ? floatHeight + FLOAT_ROOM : 0;
   const opening = useDelayedLoading(fileKey !== null && (!file || file.status === "loading"));
+  // A5 (polish pass F3): on a phone a file opens to read — a tap selects and scrolls, it does not raise the keyboard and type
+  // into the file. "Edit" in the bar turns typing on for this file, "Done" off again.
+  const phone = usePhone();
+  const [editingKey, setEditingKey] = useState<FileKey | null>(null);
+  const editing = editingKey !== null && editingKey === fileKey;
+  const readFirst = phone && !editing;
   const saving = useDelayedLoading(Boolean(file?.saving));
 
   const groupId = group?.groupId ?? "";
   const root = useRef<HTMLDivElement>(null);
+  // B4.3: the filter or editor the dock focuses on opening draws no ring until the first key or press.
+  useQuietOpen(root);
   const shell = useTreeShell(root, tab, fileKey, groupId);
   const { width, page, showEditor } = shell;
   const treeId = `${domId(tab)}-tree`;
@@ -115,6 +125,14 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
     },
     [code, group, fileKey, tab, showEditor],
   );
+
+  // Item 3 (polish pass F3): Esc with nothing selected and no editor widget open leaves the editor for the file's tab (the
+  // tab strip; a phone has none, so the bar's first control).
+  const leaveEditor = () => {
+    const t = document.getElementById(`${domId(tab)}-tab`);
+    const target = t && t.offsetParent !== null ? t : root.current?.querySelector<HTMLElement>("[data-file-bar] button:not([disabled])");
+    target?.focus();
+  };
 
   // Ctrl/Cmd+S anywhere in the view (Monaco binds it too; saving is guarded against doubles).
   const onKeyDown = (e: KeyboardEvent) => {
@@ -167,6 +185,9 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
             bottomPadding={Math.max(8, bottomRoom)}
             onSave={() => void (shown && code.save(shown.key))}
             onMonaco={(mod) => code.startIntel((o) => new mod.LspManager({ ...o, monaco: mod.monaco }))}
+            onEscape={leaveEditor}
+            readOnly={readFirst}
+            wrap={phone && svg}
           />
         </div>
       )}
@@ -205,7 +226,16 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
           ))}
         <IconButton icon={ArrowLeft} label="Back" title="Back (previous file in this group)" disabled={!group?.canBack} onClick={group?.back} />
         <IconButton icon={ArrowRight} label="Forward" title="Forward (next file in this group)" disabled={!group?.canForward} onClick={group?.forward} />
-        {fileKey ? <Crumbs folder={folder} path={path} /> : <p className="ml-1 min-w-0 flex-1 truncate px-1 text-sm text-fg-2">{project?.name}</p>}
+        {/* A phone's header already names the file (A5): no crumbs, the bar keeps its controls. */}
+        {fileKey ? (
+          phone ? (
+            <span className="min-w-0 flex-1" />
+          ) : (
+            <Crumbs folder={folder} path={path} />
+          )
+        ) : (
+          <p className="ml-1 min-w-0 flex-1 truncate px-1 text-sm text-fg-2">{project?.name}</p>
+        )}
         <span data-file-status className="flex min-w-0 shrink items-center gap-2 pl-1 empty:hidden" role="status">
           {saving && (
             <>
@@ -226,6 +256,21 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
         <span data-file-actions className="flex shrink-0 items-center gap-1 empty:hidden">
           {fileKey && <CompletionStatus fileKey={fileKey} compact={compact} />}
           {(markdown || svg) && file?.status === "ready" && <ModeToggle label={svg ? "Image view" : "Markdown view"} mode={mode} onChange={setMode} />}
+          {phone && fileKey && ready && cover === null && (
+            <Button
+              variant="quiet"
+              size="sm"
+              onClick={() => {
+                if (!editing) return setEditingKey(fileKey);
+                setEditingKey(null);
+                // Done: the on-screen keyboard goes with the caret (focus left in the editor; the button keeps its own).
+                const a = document.activeElement;
+                if (a instanceof HTMLElement && a.closest("[data-editor-area]")) a.blur();
+              }}
+            >
+              {editing ? "Done" : "Edit"}
+            </Button>
+          )}
           {fileKey && <MoreMenu tab={tab} folder={folder} path={path} />}
           {!page && (
             <IconButton
@@ -488,20 +533,39 @@ function MoreMenu({ tab, folder, path }: { tab: TabId; folder: string; path: str
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const button = useRef<HTMLButtonElement>(null);
   const absolute = code.folders.find((f) => f.label === folder)?.path;
+  const phone = usePhone();
+  const toggle = () => {
+    const r = button.current?.getBoundingClientRect();
+    if (r) setMenu(menu ? null : { x: r.right, y: r.bottom + 4 });
+  };
   return (
     <>
-      <IconButton
-        ref={button}
-        icon={Ellipsis}
-        label="File actions"
-        aria-haspopup="menu"
-        aria-expanded={menu !== null}
-        className={cn(menu && "bg-active text-fg")}
-        onClick={() => {
-          const r = button.current?.getBoundingClientRect();
-          if (r) setMenu(menu ? null : { x: r.right, y: r.bottom + 4 });
-        }}
-      />
+      {/* A5: a phone's header has its own "⋯" (the panels sheet) right above; the file's menu is a word there, so the two
+          never read as one control twice. */}
+      {phone ? (
+        <Button
+          ref={button}
+          variant="quiet"
+          size="sm"
+          aria-haspopup="menu"
+          aria-expanded={menu !== null}
+          aria-label="File actions"
+          className={cn(menu && "bg-active text-fg")}
+          onClick={toggle}
+        >
+          Actions
+        </Button>
+      ) : (
+        <IconButton
+          ref={button}
+          icon={Ellipsis}
+          label="File actions"
+          aria-haspopup="menu"
+          aria-expanded={menu !== null}
+          className={cn(menu && "bg-active text-fg")}
+          onClick={toggle}
+        />
+      )}
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
           <Menu

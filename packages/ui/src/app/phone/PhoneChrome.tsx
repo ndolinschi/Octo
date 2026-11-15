@@ -6,15 +6,20 @@ import { useShell } from "../../state/shell";
 import { useVisualViewport } from "./useVisualViewport";
 import { useTouchHelpers } from "./useTouchHelpers";
 
-/** The screen's name for the top bar; null where a project's own header shows (`dock/phone/PhoneHeader`). */
-function screenTitle(hash: string): string | null {
+/**
+ * The screen's name for the top bar; null where a project's own header shows (`dock/phone/PhoneHeader`). A project route whose
+ * workspace is not shown (the project is gone, Octo's local service is not answering yet) keeps the bar: the menu is the way
+ * to Home and Settings from there (A9.4).
+ */
+export function screenTitle(hash: string, projectShown: boolean): string | null {
   // Balance pass: in a section the header names the section (the page's own title goes to a screen reader only, and the page's
   // "Settings" back control is the one place that says Settings).
   const section = /^#\/settings\/([a-z-]+)/.exec(hash)?.[1];
   const known = section ? SECTIONS.find((s) => s.id === section) : undefined;
   if (known) return known.label;
   if (hash.startsWith("#/settings")) return "Settings";
-  return hash.startsWith("#/p/") ? null : "Home";
+  if (!hash.startsWith("#/p/")) return "Home";
+  return projectShown ? null : "Octo";
 }
 
 /**
@@ -24,7 +29,7 @@ function screenTitle(hash: string): string | null {
  * - the on-screen keyboard (`useVisualViewport`) and the touch helpers (a tap on a popup's scrim never reaches what is under
  *   it; a long press shows a control's description, the touch stand-in for a tooltip).
  */
-export default function PhoneChrome() {
+export default function PhoneChrome({ projectShown }: { projectShown: boolean }) {
   const { toggleSidebar, sidebarOpen } = useShell();
   const [hash, setHash] = useState(window.location.hash);
   useEffect(() => {
@@ -36,7 +41,7 @@ export default function PhoneChrome() {
   useEffect(() => void import("../../components/dock/phone/PhoneHeader").catch(() => undefined), []);
   useVisualViewport();
   const tip = useTouchHelpers();
-  const title = screenTitle(hash);
+  const title = screenTitle(hash, projectShown);
   return (
     <>
       {title !== null && (

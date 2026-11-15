@@ -52,7 +52,7 @@ export function toolActivity(name: string, input: unknown): string {
     case "save_note":
       return "Saving a note";
     case "spawn_agent":
-      return typeof record.role === "string" && record.role ? `Starting ${record.role}` : "Starting a sub-agent";
+      return typeof record.role === "string" && record.role ? `Starting ${record.role}` : "Starting an agent";
     default:
       return `Using ${name}`;
   }

@@ -10,10 +10,10 @@ export { currentTitle, transcriptSession } from "./current";
 export type SessionFilter = "all" | "working" | "mine" | "agents" | "archived";
 
 export const FILTERS: readonly { id: SessionFilter; label: string; title: string }[] = [
-  { id: "all", label: "All", title: "Conversations with the orchestrator and the agent sessions they started" },
+  { id: "all", label: "All", title: "All sessions" },
   { id: "working", label: "Working", title: "Sessions that are working or waiting for you" },
-  { id: "mine", label: "Mine", title: "Your conversations with the orchestrator" },
-  { id: "agents", label: "Agents", title: "Sessions of the agents the orchestrator started" },
+  { id: "mine", label: "Mine", title: "Sessions you started" },
+  { id: "agents", label: "Agents", title: "Sessions of agents Octo started" },
   { id: "archived", label: "Archived", title: "Archived sessions" },
 ];
 
@@ -47,7 +47,7 @@ export function deleteCopy(s: Pick<ProjectSession, "kind">): { title: string; de
     ? {
         title: "Delete this session?",
         description:
-          "Its transcript and the sessions of the agents it started are deleted. What the project remembered from it stays, marked as from a deleted session. This cannot be undone.",
+          "Its transcript and its agents' sessions are deleted. What the project remembered stays, marked as from a deleted session. This can't be undone.",
       }
     : {
         title: "Delete this agent session?",
@@ -123,7 +123,7 @@ export function glyphOf(state: ProjectSessionState): GlyphState {
 const STATE_WORD: Record<ProjectSessionState, string> = {
   working: "Working",
   waiting: "Waiting for you",
-  queued: "Waiting for a free slot",
+  queued: "Waiting to start",
   idle: "Idle",
   failed: "Failed",
   stopped: "Stopped",
@@ -185,8 +185,8 @@ const BLOCKED: Record<string, string> = {
   not_current: "Resume this session to continue it.",
   steer_unsupported: "This agent can't take a message while it works. Continue it when it finishes.",
   not_running: "This agent has finished and can't be continued.",
-  not_continuable: "This agent can't be continued: its conversation was not kept.",
-  builtin_loop_unavailable: "The built-in agent loop is not available, so this agent can't be continued.",
+  not_continuable: "This agent can't be continued: its session was not kept.",
+  builtin_loop_unavailable: "Octo has no API key, so this agent can't continue.",
 };
 
 /**
@@ -206,13 +206,13 @@ const ERRORS: Record<string, string> = {
   turn_in_progress: "Wait for the current request to finish, or stop it.",
   current_session: "This is the project's default session. Make another one the default first.",
   session_running: "This session is still working. Stop it first.",
-  not_continuable: "This agent can't be continued: its conversation was not kept. Ask the orchestrator to start a new one.",
+  not_continuable: "This agent can't be continued: its conversation was not kept. Ask Octo to start a new one.",
   steer_unsupported: "This agent can't take a message while it works. Wait until it finishes, then continue it.",
   not_running: "This session is not working, so there is nothing to stop.",
-  not_main_session: "Only a conversation with the orchestrator can be the default.",
+  not_main_session: "Only a session with Octo can be the default.",
   queue_full: "This session already has 20 messages waiting. Wait for some to go, or remove one.",
-  not_agent_session: "Messages to the orchestrator go through the project's conversation.",
-  builtin_loop_unavailable: "The built-in agent loop is not available, so this agent can't be continued.",
+  not_agent_session: "Messages to Octo go through the project's default session.",
+  builtin_loop_unavailable: "Octo has no API key, so this agent can't continue.",
   not_found: "This session no longer exists. It may have been deleted.",
 };
 export function sessionErrorText(code: string, message: string): string {
@@ -222,7 +222,7 @@ export function sessionErrorText(code: string, message: string): string {
 
 /** What a message to an agent session did, as one quiet line. */
 export function outcomeText(outcome: "steered" | "continued"): string {
-  return outcome === "steered" ? "Steered: the agent reads it at its next step." : "Continued: the agent is working on it again.";
+  return outcome === "steered" ? "Sent: the agent reads it at its next step." : "Continued: the agent is working on it again.";
 }
 
 const AGENT_STATUS: Record<ProjectSessionState, Agent["status"]> = {

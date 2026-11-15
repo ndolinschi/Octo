@@ -6,7 +6,8 @@ import { sessionRoot, type ProjectState } from "@octo/agent-client";
 import type { OpenFile } from "../../state/code";
 import { middleTruncate } from "../../lib/format";
 import { fileIcon } from "../primitives/fileIcons";
-import { parseTab, type TabId } from "../../state/workspace/layout";
+import { parseTab, type TabId, type ToolTab } from "../../state/workspace/layout";
+import { TOOL_PURPOSE } from "../../lib/toolPurpose";
 import { type FileKey, splitKey } from "../../lib/files";
 import type { GlyphState } from "../../lib/stateGlyph";
 
@@ -28,17 +29,20 @@ export type TabInfo = {
   comments: number;
 };
 
-const TOOLS: Record<string, { label: string; icon: LucideIcon; title: string }> = {
-  sessions: { label: "Sessions", icon: GLYPH.sessions, title: "Sessions: your conversations with the orchestrator and the agent sessions it started" },
-  agents: { label: "Agents", icon: GLYPH.agents, title: "Agents in this project" },
-  notes: { label: "Notes", icon: GLYPH.notes, title: "Project notes" },
-  files: { label: "Files", icon: GLYPH.files, title: "Project files: select a file to open it here" },
-  details: { label: "Details", icon: GLYPH.details, title: "Project details: folders, models, tokens, activity, files written" },
-  usage: { label: "Usage", icon: GLYPH.usage, title: "Usage: tokens, cost and rate limits" },
-  changes: { label: "Changes", icon: GLYPH.changes, title: "Changes: what the agents changed in this project, with diffs and revert" },
-  memory: { label: "Memory", icon: GLYPH.memory, title: "Memory: what the orchestrator remembers about this project" },
-  review: { label: "Review", icon: GLYPH.review, title: "Review: read a pull request or a local branch, comment, and submit your review" },
-  side: { label: "Side question", icon: GLYPH.side, title: "Ask about this project without interrupting the orchestrator" },
+/** The tooltip of a tool tab is its name and its purpose (one source with the panels' (i) and the palette: `lib/toolPurpose`). */
+const tool = (label: string, icon: LucideIcon, purpose: string) => ({ label, icon, title: `${label}: ${purpose}` });
+
+const TOOLS: Record<ToolTab, { label: string; icon: LucideIcon; title: string }> = {
+  sessions: tool("Sessions", GLYPH.sessions, TOOL_PURPOSE.sessions),
+  agents: tool("Agents", GLYPH.agents, TOOL_PURPOSE.agents),
+  notes: tool("Notes", GLYPH.notes, TOOL_PURPOSE.notes),
+  files: tool("Files", GLYPH.files, TOOL_PURPOSE.files),
+  details: tool("Details", GLYPH.details, TOOL_PURPOSE.details),
+  usage: tool("Usage", GLYPH.usage, TOOL_PURPOSE.usage),
+  changes: tool("Changes", GLYPH.changes, TOOL_PURPOSE.changes),
+  memory: tool("Memory", GLYPH.memory, TOOL_PURPOSE.memory),
+  review: tool("Review", GLYPH.review, TOOL_PURPOSE.review),
+  side: tool("Side question", GLYPH.side, TOOL_PURPOSE.side),
 };
 
 function firstWords(text: string, n = 6): string {
@@ -56,7 +60,7 @@ function conversationInfo(ctx: ConversationCtx, sessionId: string | null): TabIn
   const root = (sessionId !== null ? sessionRoot(ctx.state, sessionId) : "") || (sessionId === ctx.state.sessions.defaultId ? ctx.orchestratorId : undefined);
   const status = root ? ctx.state.agents[root]?.status : undefined;
   const running = status === "running";
-  const name = ctx.projectName || "Conversation";
+  const name = ctx.projectName || "Session";
   // The session's title (project sessions), else its root's own.
   const own = root ? (ctx.state.agents[root]?.title?.trim() ?? "") : "";
   const topic = currentTitle(ctx.state.sessions.list, sessionId, own).trim();
@@ -66,7 +70,7 @@ function conversationInfo(ctx: ConversationCtx, sessionId: string | null): TabIn
     label: middleTruncate(name, 28),
     ...(detail ? { detail } : {}),
     name: detail ? `${name} / ${topic}` : name,
-    title: `${name}: the project's conversation${topic ? ` — ${topic}` : ""}`,
+    title: `${name}: the project's session${topic ? ` — ${topic}` : ""}`,
     icon: GLYPH.chat,
     status: running ? "running" : null,
     glyph: running ? "working" : status === "failed" ? "needs" : queued ? "queued" : null,
@@ -95,8 +99,7 @@ export function tabInfo(
   if (!ref) return { label: tab, title: tab, icon: File, status: null, glyph: null, comments: 0 };
   if (ref.kind === "chat") return conversationInfo(ctx, ctx.chatSessionId ?? ctx.state.sessions.defaultId);
   if (ref.kind === "tool") {
-    const tool = TOOLS[ref.tool];
-    return tool ? { ...tool, status: null, glyph: null, comments: 0 } : { label: tab, title: tab, icon: File, status: null, glyph: null, comments: 0 };
+    return { ...TOOLS[ref.tool], status: null, glyph: null, comments: 0 };
   }
   if (ref.kind === "agent") {
     const agent = ctx.state.agents[ref.agentId];

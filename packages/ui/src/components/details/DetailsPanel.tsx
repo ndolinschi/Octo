@@ -1,4 +1,5 @@
 import type { Agent, LanguageServerInfo, PluginAgent } from "@octo/agent-client";
+import { useQuietOpen } from "../../lib/quietFocus";
 import { roleText } from "../../lib/orchestrator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
@@ -40,13 +41,13 @@ const PAGE = 8;
 const OUTPUTS = 5;
 /** B7: the tiers by the one name Settings uses ("Fast tier"), so a person sees the same words in both places. */
 const TIERS = [
-  ["orchestrator", "Conversation"],
+  ["orchestrator", "Session"],
   ["fast", "Fast tier"],
   ["balanced", "Balanced tier"],
   ["deep", "Deep tier"],
 ] as const;
 
-const roleOf = (a: Agent) => (a.parent_id === null ? "Conversation" : roleText(a.role));
+const roleOf = (a: Agent) => (a.parent_id === null ? "Session" : roleText(a.role));
 
 /**
  * The Details tab as stacked sections (decision 38): one scroll of plain sections, each a 12px caption and 28px rows,
@@ -58,10 +59,13 @@ export function DetailsPanel() {
   const { project } = useProject();
   const rows = useRef<HTMLDivElement>(null);
   useRowKeys(rows);
+  // B4.3: focus the dock moves here on opening draws no ring until the first key or press.
+  const quiet = useRef<HTMLDivElement>(null);
+  useQuietOpen(quiet);
   if (!project) return null;
   return (
     // Rows reaching the fold fade out instead of being cut (the list's scrollbar is hidden, like the sidebar's).
-    <div data-details className="h-full min-h-0">
+    <div ref={quiet} data-details className="h-full min-h-0">
       <Panel name="details" title="Details" lead={<PanelPurpose tool="details" />}>
         <PanelBody fade>
           <div ref={rows} className="flex w-full max-w-details flex-col gap-4">
@@ -152,7 +156,7 @@ function Context() {
       labelId="details-context"
       aside={
         meter?.estimated && (
-          <span className="shrink-0" title="Counted from the stored text (about 4 characters a token), not reported by the model">
+          <span className="shrink-0" title="Estimated from the saved text, not reported by the model">
             estimated
           </span>
         )
@@ -168,7 +172,7 @@ function Context() {
           className="px-2"
           action={
             <Button variant="link" size="xs" onClick={ctx.retry}>
-              Try again
+              Retry
             </Button>
           }
         >
@@ -178,7 +182,7 @@ function Context() {
       {meter && (
         <>
           <div className={INFO_ROW}>
-            <span className="text-fg">{meter.percent ?? "Window unknown"}</span>
+            <span className="text-fg">{meter.percent ?? "Context size unknown"}</span>
             <span className="ml-auto shrink-0 font-mono text-xs text-fg-2 tabular-nums">{meter.amount}</span>
           </div>
           {/* One 3px bar: the window's used share, split by part (decision 38). */}
@@ -226,7 +230,7 @@ function Team() {
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
   const route = routed ? routeLine(routed, config?.acp_orchestrators ?? []) : null;
   return (
-    <InfoSection title="Team" labelId="details-models">
+    <InfoSection title="Agents" labelId="details-models">
       {TIERS.map(([key, label]) => {
         // The orchestrator's row names the model that answered (decision 37), and under it the one it asked for.
         const served =
@@ -253,8 +257,8 @@ function Team() {
         );
       })}
       {config?.router && (
-        <div className={INFO_ROW} title="How the router picks a tier for each task: Auto, Ceiling or Fixed (project settings).">
-          <span className="shrink-0 text-fg-2">Routing</span>
+        <div className={INFO_ROW} title="How Octo picks a model for each task. Change it in project settings.">
+          <span className="shrink-0 text-fg-2">Model choice</span>
           <span className="ml-auto text-fg">{policyLabel(project.models.tier_policy)}</span>
         </div>
       )}
@@ -305,7 +309,7 @@ function PluginsInUse() {
   const slow = useDelayedLoading((load === null || languages === null) && !failed);
   const empty = load !== null && servers !== null && servers.length + load.agents.length === 0;
   return (
-    <InfoSection title="Plugins in use" labelId="details-plugins">
+    <InfoSection title="Integrations in use" labelId="details-plugins">
       {failed && <Notice className="px-2">Couldn't read the plugins. Reopen this tab to try again.</Notice>}
       {(load === null || servers === null) && !failed && (
         // The skeleton holds its room from the start and shows only once loading is slow (no jump either way).
@@ -313,7 +317,7 @@ function PluginsInUse() {
           <SkeletonList count={2} />
         </div>
       )}
-      {empty && <p className={cn(INFO_ROW, "text-fg-3")}>No language servers or agents available.</p>}
+      {empty && <p className={cn(INFO_ROW, "text-fg-3")}>No language help or agents available.</p>}
       {servers?.map((s) => (
         <div key={s.id} className={INFO_ROW}>
           <Slot icon={Server} />
@@ -449,7 +453,7 @@ function Outputs() {
           )}
           {commandsRan && (
             <p data-outputs-note className="px-2 pt-1 text-xs text-fg-3">
-              Commands ran in this request; files they changed are not tracked yet, so this list may be incomplete.
+              Files changed by commands are not tracked yet, so this list may be incomplete.
             </p>
           )}
         </>

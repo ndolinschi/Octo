@@ -4,10 +4,11 @@ import { refusalRepoChoices, repoMenu, type OpenReviewInput, type PullRequestFil
 import { cn } from "../../lib/cn";
 import { errorMessage, timeAgo } from "../../lib/format";
 import { useRowKeys } from "../../lib/hooksMore";
+import { useQuietOpen } from "../../lib/quietFocus";
 import { useRovingRows } from "../../lib/rovingRows";
 import type { ReviewApi } from "../../lib/review/api";
 import { plural } from "../../lib/review/files";
-import { CHECKS_LABEL, listFailure, parsePullInput, reviewSourceText, unavailableTitle } from "../../lib/review/pull";
+import { CHECKS_LABEL, ghInstallCommand, listFailure, parsePullInput, reviewSourceText, unavailableTitle } from "../../lib/review/pull";
 import { filterCounts, freshness, PULL_FILTERS, pullRowLine, visibleRows } from "../../lib/review/pullList";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
@@ -88,6 +89,9 @@ function Picker(props: {
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [now] = useState(() => Date.now());
   const list = useRef<HTMLDivElement>(null);
+  // B2: the search field the dock focuses when the list opens draws no ring until the first key or press.
+  const quiet = useRef<HTMLDivElement>(null);
+  useQuietOpen(quiet);
   useRowKeys(list);
   useRovingRows(list);
 
@@ -176,11 +180,17 @@ function Picker(props: {
     </span>
   ) : null;
   const fresh = updating ? "Updating" : ready ? freshness(ready, now) : "";
+  const emptyText =
+    rows.length === 0
+      ? `Nothing is open on ${ready?.repo ?? "this repository"} right now.`
+      : query.trim()
+        ? "Nothing matches. Try fewer words, or pick All."
+        : "No pull request is in this tab. Pick All to see every open one.";
 
   return (
     // R1 (polish step 6b): the picker is a `Panel` (header 40, title at 16, view tabs with the frame's hairline, one filter row,
     // the list inset 8). The container query folds the freshness words into the refresh button's tooltip in a narrow group.
-    <div className="@container h-full min-h-0">
+    <div ref={quiet} className="@container h-full min-h-0">
       <Panel
         name="review"
         title="Pull requests"
@@ -193,7 +203,7 @@ function Picker(props: {
             </span>
             <IconButton
               icon={RefreshCw}
-              label={fresh ? `Ask the code host now (${fresh.toLowerCase()})` : "Ask the code host now"}
+              label={fresh ? `Check GitHub now (${fresh.toLowerCase()})` : "Check GitHub now"}
               onClick={reload}
               disabled={updating}
             />
@@ -242,7 +252,7 @@ function Picker(props: {
               />
               <SearchField
                 label="Search pull requests, or paste an address or a number"
-                placeholder="Search or paste a PR link"
+                placeholder="Search or paste a pull request link"
                 value={query}
                 onChange={setQuery}
                 size="sm"
@@ -283,7 +293,7 @@ function Picker(props: {
               title={unavailableTitle(ready.reason)}
               actions={
                 <Button size="sm" variant="secondary" onClick={reload}>
-                  I ran it: reload
+                  Reload
                 </Button>
               }
             >
@@ -291,7 +301,8 @@ function Picker(props: {
               {ready.command && (
                 <div className="mt-3 flex flex-col gap-1.5 text-left">
                   <p className="text-xs text-fg-3">Run this in a terminal, then come back and reload:</p>
-                  <CommandLine command={ready.command} />
+                  <CommandLine command={ghInstallCommand(ready.command, navigator.platform).command} />
+                  <OtherSystems command={ready.command} />
                 </div>
               )}
             </PanelEmpty>
@@ -328,16 +339,19 @@ function Picker(props: {
                   {ready.command && (
                     <>
                       <p className="text-xs text-fg-3">Run this in a terminal, then come back and reload:</p>
-                      <CommandLine command={ready.command} />
+                      <CommandLine command={ghInstallCommand(ready.command, navigator.platform).command} />
+                      <OtherSystems command={ready.command} />
                     </>
                   )}
                   <div>
                     <Button size="sm" variant="secondary" onClick={reload}>
-                      I ran it: reload
+                      Reload
                     </Button>
                   </div>
                 </section>
               )}
+              {/* B2: with reviews in progress listed, "nothing open" says so above them (it is about the pull requests). */}
+              {available && shown.length === 0 && !typed && resume.length > 0 && <p className="max-w-home px-2 pb-2 text-sm text-fg-3">{emptyText}</p>}
               {/* R7: the rows are one Tab stop; ↑/↓/Home/End move between them. */}
               {/* A maximised review is 1400 wide: the rows keep Home's column (880, left-aligned as every panel body), so the time
                   and the counts stay near the title they belong to. */}
@@ -372,15 +386,7 @@ function Picker(props: {
                     />
                   ))}
               </div>
-              {available && shown.length === 0 && !typed && (
-                <PanelEmpty>
-                  {rows.length === 0
-                    ? `Nothing is open on ${ready.repo ?? "this repository"} right now.`
-                    : query.trim()
-                      ? "Nothing matches. Try fewer words, or pick All."
-                      : "No pull request is in this tab. Pick All to see every open one."}
-                </PanelEmpty>
-              )}
+              {available && shown.length === 0 && !typed && resume.length === 0 && <PanelEmpty>{emptyText}</PanelEmpty>}
               {ready?.truncated && (
                 <p className="px-2 pt-2 text-xs text-fg-3">This repository has more open pull requests than are listed. Search by number to find the rest.</p>
               )}
@@ -440,4 +446,10 @@ function OpenRow({ r, now, onOpen }: { r: ReviewSummary; now: number; onOpen(): 
       onClick={onOpen}
     />
   );
+}
+
+/** B2: the platform's own install command replaces Homebrew's off a Mac; the address covers the rest. */
+function OtherSystems({ command }: { command: string }) {
+  const other = ghInstallCommand(command, navigator.platform).other;
+  return other ? <p className="text-xs text-fg-3">{other}</p> : null;
 }

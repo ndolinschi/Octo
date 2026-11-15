@@ -4,7 +4,18 @@ import type { PullRequestList, PullRequestRow, ReviewComment, ReviewThread } fro
 import { dirtyList, goBackCommand, checkoutSentence, hasConflicts } from "./checkout";
 import { reviewDiffLayout } from "./diffLayout";
 import { createListCache, filterCounts, freshness, mergePages, newSinceMyReview, visibleRows } from "./pullList";
-import { repliesByThread, threadCountText, threadsOfFile, threadSummary, visibleComments } from "./threads";
+import {
+  firstPhrase,
+  repliesByThread,
+  stepThread,
+  threadCountText,
+  threadRows,
+  threadsLabel,
+  threadsOfFile,
+  threadSummary,
+  threadWhere,
+  visibleComments,
+} from "./threads";
 
 function row(n: number, extra: Partial<PullRequestRow> = {}): PullRequestRow {
   return {
@@ -108,6 +119,35 @@ test("threads split into inline and apart, by line", () => {
     r.apart.map((x) => x.id),
     ["c", "e"],
   );
+});
+
+test("thread list rows: one line order for drawn and apart threads, where in words, n / p steps", () => {
+  const rows = threadRows(
+    [thread("b", { line: 9 }), thread("a", { line: 2, start_line: 1 })],
+    [thread("c", { outdated: true, line: 4, original_line: 4 }), noLine("e")],
+  );
+  assert.deepEqual(
+    rows.map((r) => [r.thread.id, r.where, r.drawn]),
+    [
+      ["e", "File", false],
+      ["a", "Lines 1–2", true],
+      ["c", "Outdated, was line 4", false],
+      ["b", "Line 9", true],
+    ],
+  );
+  assert.equal(threadWhere(thread("o", { side: "old" }), true), "Line 5, removed side");
+  assert.equal(threadWhere(thread("o", { side: "old" }), false), "Line 5, removed side (not shown in one column)");
+  assert.equal(threadsLabel(rows), "4 threads, 2 not at a line");
+  assert.equal(threadsLabel(rows.slice(1, 2)), "1 thread");
+  assert.equal(firstPhrase("Should 429   be retried? It is not idempotent."), "Should 429 be retried?");
+  assert.equal(firstPhrase("x".repeat(80), 10), "xxxxxxxxx…");
+  const ids = ["a", "b", "c"];
+  assert.equal(stepThread(ids, null, 1), "a");
+  assert.equal(stepThread(ids, null, -1), "c");
+  assert.equal(stepThread(ids, "a", 1), "b");
+  assert.equal(stepThread(ids, "c", 1), null);
+  assert.equal(stepThread(ids, "a", -1), null);
+  assert.equal(stepThread([], null, 1), null);
 });
 
 test("replies fold after two, the latest stay", () => {

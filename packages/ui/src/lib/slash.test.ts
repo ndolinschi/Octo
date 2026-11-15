@@ -66,3 +66,11 @@ test("typed commands: Octo ones run, the agent's are sent as typed", () => {
 test("OCTO_COMMAND_NAMES covers every command the UI runs without a harness list", () => {
   for (const c of OCTO_FALLBACK) assert.ok(OCTO_COMMAND_NAMES.includes(c.name), c.name);
 });
+
+test("/new is an Octo command even when the harness does not list it, and takes the rest as its text", () => {
+  assert.equal(octoCommandFor("/new Check the logs", null)?.command.name, "new");
+  assert.equal(octoCommandFor("/new Check the logs", null)?.args, "Check the logs");
+  const none: SlashCommands = { octo: [], agent: null };
+  assert.equal(octoCommandFor("/new", none)?.args, "");
+  assert.ok(OCTO_COMMAND_NAMES.includes("new"));
+});

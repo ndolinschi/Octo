@@ -3,7 +3,7 @@ import type { MemoryHit, Note } from "@octo/agent-client";
 export type HitGroupId = "exchanges" | "knowledge" | "files" | "notes";
 
 export const HIT_GROUPS: readonly { id: HitGroupId; label: string }[] = [
-  { id: "exchanges", label: "Exchanges" },
+  { id: "exchanges", label: "Requests" },
   { id: "knowledge", label: "Knowledge" },
   { id: "files", label: "Files" },
   { id: "notes", label: "Notes" },

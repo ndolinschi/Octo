@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { ProjectState } from "@octo/agent-client";
 import { closeLayer, openLayer } from "../../../lib/historyLayer";
 import { useLatest } from "../../../lib/hooks";
-import { parseTab, type TabId } from "../../../state/workspace/layout";
+import { parseTab, type TabId, type TabRef } from "../../../state/workspace/layout";
 
 /** A conversation tab: Chat, or a main session's own tab (decision 96). Everything else is a panel on the phone. */
 export function isConversation(tab: TabId, state: ProjectState): boolean {
@@ -16,6 +16,18 @@ export function conversationSession(tab: TabId, chatSessionId: string | null, st
   const ref = parseTab(tab);
   if (ref?.kind === "chat") return chatSessionId ?? state.sessions.defaultId ?? null;
   return ref?.kind === "session" ? ref.sessionId : null;
+}
+
+/**
+ * How Back shows a panel again: the tab itself when it is still open; else the tab is reopened the way it was opened (a file's
+ * row replaces the Files tab with the file on the phone, so Back from the file opens Files again, not the conversation).
+ */
+export type Reopen = { kind: "activate"; tab: TabId } | { kind: "chat" } | Exclude<TabRef, { kind: "chat" }>;
+
+export function reopenFor(tab: TabId, open: readonly TabId[]): Reopen {
+  if (open.includes(tab)) return { kind: "activate", tab };
+  const ref = parseTab(tab);
+  return ref === null || ref.kind === "chat" ? { kind: "chat" } : ref;
 }
 
 type Memory = { project: string; last: TabId | null; layers: { token: string; tab: TabId }[]; expect: TabId | null };
@@ -55,10 +67,13 @@ export function usePanelHistory(projectId: string, active: TabId, conversation: 
       if (above) closeLayer(above.token);
       return;
     }
-    const token = openLayer(() => {
+    const token = openLayer((navigated) => {
       const i = mem.layers.findIndex((l) => l.token === token);
       if (i < 0) return;
       mem.layers = mem.layers.slice(0, i);
+      // A row in the panel that opened a route (an agent in Agents): the route shows what it should; showing `prev` again
+      // here would navigate once more and take the place of that route in the history.
+      if (navigated) return;
       mem.expect = prev;
       go.current(prev);
     });

@@ -5,7 +5,7 @@ import type { UsagePeriod } from "../usageView";
 /* Decision 86: the view-model of the usage table (By model / By agent / By day / by project). Pure; the table renders it. */
 
 export const USAGE_PERIODS: readonly { id: UsagePeriod; label: string }[] = [
-  { id: "session", label: "This session" },
+  { id: "session", label: "Since app start" },
   { id: "today", label: "Today" },
   { id: "7d", label: "7 days" },
   { id: "30d", label: "30 days" },

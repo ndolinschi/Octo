@@ -118,7 +118,7 @@ function DelegationRow({ use, agent, status, interrupted }: { use: ToolUse; agen
   // Without an agent the reason is the call's own error result (a spawn refused before the agent was created).
   const result = results.get(use.id);
   const raw = agent ? agent.error : result?.is_error && typeof result.content === "string" ? result.content.trim() : null;
-  const note = status === "failed" ? (raw ? plainError(raw).sentence : "This helper failed.") : null;
+  const note = status === "failed" ? (raw ? plainError(raw).sentence : "This agent failed.") : null;
   // A compact place: the served model's name alone (decision 37), the requested one in the row's tooltip.
   const served = agent ? names.served(agent) : null;
   const model = served ? served.name : tier ? tierLabel(tier) : "";
@@ -137,9 +137,10 @@ function DelegationRow({ use, agent, status, interrupted }: { use: ToolUse; agen
                 ? "interrupted"
                 : "stopped"
               : model;
+  const phoneActivity = phone && running && !wait && Boolean(aside);
   const tip =
     (note && raw ? `${note}\n\n${raw}` : null) ??
-    (agent?.task ? `${agent.task}\n\nAlt-click opens it on the other side.` : served?.asked ? `${served.asked} → ${served.name} (chosen → served)` : undefined);
+    (agent?.task ? `${agent.task}\n\nAlt-click opens it in the other pane.` : served?.asked ? `${served.name} (asked for ${served.asked})` : undefined);
   return (
     <ActivityRow
       // A waiting agent is not working: no spinner (ActivityRow has no needs-you glyph yet; "pending" is its still circle).
@@ -151,9 +152,10 @@ function DelegationRow({ use, agent, status, interrupted }: { use: ToolUse; agen
           {nested > 0 && <span className="ml-1 text-xs text-fg-3">+{nested}</span>}
         </>
       }
-      detail={title}
+      // 5c: on the phone what a running agent does leads its second line (in the meta column it was cut to "Running a com…").
+      detail={phoneActivity ? [aside, title].filter(Boolean).join(" · ") : title}
       stacked={phone}
-      aside={aside}
+      aside={phoneActivity ? null : aside}
       duration={duration}
       note={note}
       {...(tip ? { tip } : {})}
@@ -166,7 +168,7 @@ function DelegationRow({ use, agent, status, interrupted }: { use: ToolUse; agen
                   <Button
                     variant="quiet"
                     size="xs"
-                    title="Put a message that asks for this again into the box; nothing is sent until you send it"
+                    title="Puts this request back in the box. Nothing is sent yet."
                     onClick={() => {
                       prefillComposer(ws.memory, CHAT, retryText(role, agent?.task ?? input.title));
                       ws.focusChat();

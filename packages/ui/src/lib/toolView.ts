@@ -571,3 +571,64 @@ export function groupSummary(uses: readonly { name: string; input: unknown }[]):
     .join(", ");
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+/** Short nouns of `groupShortSummary`; every change to a file (edit, write, delete, move) is one "edit". */
+const SHORT: Record<string, [string, string]> = {
+  command: ["command", "commands"],
+  read: ["read", "reads"],
+  edit: ["edit", "edits"],
+  list: ["listing", "listings"],
+  search: ["search", "searches"],
+  fetch: ["page", "pages"],
+  save_note: ["note", "notes"],
+  delete_note: ["note", "notes"],
+  other: ["tool", "tools"],
+};
+const SHORT_KEY: Record<string, string> = { write: "edit", delete: "edit", move: "edit", delete_note: "save_note" };
+
+/**
+ * The summary of a run of tool calls when the full one does not fit its line ("4 commands, 5 edits, +3"): nouns only, the
+ * file changes counted together, the `keep` largest kinds in the order they ran and the rest as one count. The full summary
+ * stays in the row's tooltip.
+ */
+export function groupShortSummary(uses: readonly { name: string; input: unknown }[], keep = 2): string {
+  const counts = new Map<string, number>();
+  const seen = new Set<string>();
+  uses.forEach((u, i) => {
+    const key = groupKey(u.name, u.input);
+    const path = BY_FILE.has(key) ? callPath(u.name, u.input) : "";
+    const id = `${key}\u0001${path || `#${i}`}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    const short = SHORT_KEY[key] ?? (key in SHORT ? key : "other");
+    counts.set(short, (counts.get(short) ?? 0) + 1);
+  });
+  const all = [...counts];
+  // The `keep` largest kinds (the earlier one on a tie), shown in the order they ran.
+  const top = new Set(
+    [...all]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, keep)
+      .map(([key]) => key),
+  );
+  const shown = all
+    .filter(([key]) => top.has(key))
+    .map(([key, n]) => {
+      const [one, many] = SHORT[key] ?? ["tool", "tools"];
+      return `${n} ${n === 1 ? one : many}`;
+    });
+  const rest = all.filter(([key]) => !top.has(key)).reduce((sum, [, n]) => sum + n, 0);
+  // "+3", not "3 more": a row named "… more" also answered the phone header's "More" button in scripts and assistive search.
+  return [...shown, ...(rest > 0 ? [`+${rest}`] : [])].join(", ");
+}
+
+/** A7.2: how far a diff line's own indentation reaches, in columns (a tab to the next multiple of `tabSize`). */
+export function leadingColumns(text: string, tabSize = 8): number {
+  let col = 0;
+  for (const ch of text) {
+    if (ch === " ") col += 1;
+    else if (ch === "\t") col += tabSize - (col % tabSize);
+    else break;
+  }
+  return col;
+}

@@ -28,7 +28,7 @@ export function NoteDetail(props: {
       <DetailHeader
         title={note.title}
         meta={[
-          note.author === "orchestrator" ? "Orchestrator" : "You",
+          note.author === "orchestrator" ? "Octo" : "You",
           `Updated ${formatRelative(note.updated_at, props.now)}`,
           note.read_count > 0 ? `Opened by agents ${note.read_count}×` : null,
         ]
@@ -46,7 +46,7 @@ export function NoteDetail(props: {
               size="sm"
               icon={Pin}
               pressed={note.pinned}
-              title={note.pinned ? "Agents get this note whole in every request. Press to unpin." : "Give agents this note whole in every request"}
+              title={note.pinned ? "Pinned: agents always get the full note. Press to unpin." : "Pin: agents always get the full note"}
               onClick={() => void props.onTogglePin()}
             >
               {note.pinned ? "Pinned" : "Pin"}

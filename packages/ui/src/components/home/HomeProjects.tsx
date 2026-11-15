@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { focusSoon, visibleComposer } from "../../lib/focus";
 import { useRowKeys } from "../../lib/hooksMore";
+import { useRovingRows } from "../../lib/rovingRows";
 import { readable } from "../../lib/errors/plain";
 import { projectWhen, stateLine, type OrchestratorState } from "../../lib/orchestrator";
 import { agentStack } from "../../lib/orchestratorMore";
@@ -33,7 +34,7 @@ const NEVER_CUT: readonly Triage[] = ["needs", "working"];
 
 function secondLine(state: OrchestratorState, reply: Reply | null | undefined, loaded: boolean): string {
   if (state.kind === "working") return state.agents.length ? agentStack(state.agents.map((a) => a.role)) : "Thinking";
-  if (state.kind === "needs" && !state.waiting) return state.error ? readable(state.error) : "The last turn failed";
+  if (state.kind === "needs" && !state.waiting) return state.error ? readable(state.error) : "The last request failed";
   if (reply) return reply.text;
   return loaded || state.kind === "new" ? "No requests yet" : "";
 }
@@ -62,6 +63,8 @@ export function Projects({
   const { health } = useApp();
   const list = useRef<HTMLDivElement>(null);
   useRowKeys(list);
+  // 11g: the list is one Tab stop; ↑/↓/Home/End move between its rows.
+  useRovingRows(list);
   // B55: "N more projects" shows the whole list here (it opened the palette, which lists six), and "Show fewer" folds it again.
   const [all, setAll] = useState(false);
   // Grouped by state in triage order, most recent first within a group (decision 26); a tile shows its group whole.

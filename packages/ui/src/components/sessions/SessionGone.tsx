@@ -30,7 +30,7 @@ export function SessionGone(props: { sessionId: string | null; onDefault: (() =>
           )
         }
       >
-        It was deleted, perhaps in another window. The project's other sessions are in the sidebar.
+        It was deleted, perhaps in another window.
       </EmptyState>
     </div>
   );

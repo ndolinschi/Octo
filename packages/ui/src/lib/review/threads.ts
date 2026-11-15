@@ -58,6 +58,52 @@ export function threadCountText(threads: number, unresolved: number): string {
   return unresolved > 0 ? `${t}, ${unresolved} unresolved` : `${t}, all resolved`;
 }
 
+/** A row of the file's accessible thread list: the thread and where it sits, in words. */
+export type ThreadRow = { thread: ReviewThread; where: string; /** Drawn at its line in the diff (Enter scrolls there). */ drawn: boolean };
+
+/**
+ * The rows of the thread list outside Monaco (the diff's zones are a visual copy, hidden from assistive technology): the
+ * threads drawn at a line and those listed apart, in one line order, so the list, the zones and `n` / `p` agree.
+ */
+export function threadRows(drawn: readonly ReviewThread[], apart: readonly ReviewThread[]): ThreadRow[] {
+  const at = (t: ReviewThread) => t.line ?? t.original_line ?? 0;
+  const rows = [...drawn.map((t) => ({ thread: t, drawn: true })), ...apart.map((t) => ({ thread: t, drawn: false }))];
+  rows.sort((a, b) => at(a.thread) - at(b.thread) || a.thread.id.localeCompare(b.thread.id));
+  return rows.map((r) => ({ ...r, where: threadWhere(r.thread, r.drawn) }));
+}
+
+/** "Line 42", "Lines 40–42, removed side", "Outdated, was line 30", "File". */
+export function threadWhere(t: ReviewThread, drawn: boolean): string {
+  if (t.outdated) return t.original_line ? `Outdated, was line ${t.original_line}` : "Outdated";
+  if (t.line === undefined) return "File";
+  const lines = t.start_line !== undefined && t.start_line < t.line ? `Lines ${t.start_line}–${t.line}` : `Line ${t.line}`;
+  return t.side === "old" ? `${lines}, removed side${drawn ? "" : " (not shown in one column)"}` : lines;
+}
+
+/** The first sentence of a comment, on one line, cut at `max` characters. */
+export function firstPhrase(body: string, max = 60): string {
+  const text = body.replace(/\s+/g, " ").trim();
+  const m = /^(.+?[.!?])(\s|$)/.exec(text);
+  const s = m?.[1] ?? text;
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+/** The list's collapsed line: "4 threads", or "4 threads, 1 not at a line". */
+export function threadsLabel(rows: readonly ThreadRow[]): string {
+  const n = rows.length;
+  const apart = rows.filter((r) => !r.drawn).length;
+  const t = `${n} ${n === 1 ? "thread" : "threads"}`;
+  return apart > 0 && apart < n ? `${t}, ${apart} not at a line` : t;
+}
+
+/** `n` / `p`: the next (or previous) thread id after `current`; null past either end. No current: the first (or last). */
+export function stepThread(ids: readonly string[], current: string | null, dir: 1 | -1): string | null {
+  if (ids.length === 0) return null;
+  const i = current === null ? -1 : ids.indexOf(current);
+  if (i < 0) return (dir === 1 ? ids[0] : ids[ids.length - 1]) ?? null;
+  return ids[i + dir] ?? null;
+}
+
 /** The total of unresolved threads over all files. */
 export function unresolvedTotal(unresolvedByPath: Readonly<Record<string, number>>): number {
   return Object.values(unresolvedByPath).reduce((a, b) => a + b, 0);

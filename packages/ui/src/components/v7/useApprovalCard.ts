@@ -3,6 +3,7 @@ import type { Approval, ApprovalAnswer, ApprovalOption } from "@octo/agent-clien
 import { answerFor, keyAction, optionAnswer, type ApprovalAction, type Resolution } from "../../lib/v7/approval";
 import { describeRule, ruleError } from "../../lib/v7/rules";
 import { errorMessage } from "../../lib/format";
+import { FOCUSED_ONCE, quietFocus } from "../../lib/v7/quietFocus";
 
 /** Which control is waiting for the bridge (its button shows the pressed state; the others are disabled). */
 export type Busy = ApprovalAction | `option:${string}` | null;
@@ -96,11 +97,14 @@ export function useApprovalCard(props: {
   );
 
   // Focus on arrival only (the first render's choice), and never out of a field the user is typing in.
+  // 7g: an approval takes focus once, when it first appears; the card mounting again (back from Settings, "Previous page", a
+  // moved tab) does not take it again. The focus is programmatic, so it draws no ring until a key is pressed (`quietFocus`).
   const autoFocus = useRef(props.focusOnArrival);
   useEffect(() => {
-    if (!autoFocus.current || isField(document.activeElement)) return;
-    card.current?.focus({ preventScroll: true });
-  }, [card]);
+    if (!autoFocus.current || isField(document.activeElement) || FOCUSED_ONCE.has(approval.id) || !card.current) return;
+    FOCUSED_ONCE.add(approval.id);
+    quietFocus(card.current);
+  }, [card, approval.id]);
 
   return { busy, error, noteOpen, setNoteOpen, alwaysOpen, setAlwaysOpen, note, setNote, act, choose, onKeyDown };
 }

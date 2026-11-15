@@ -80,7 +80,7 @@ export function RunPanel({ tab }: { /** The "Run: name" tab (decision 68): fills
       {cur ? (
         <RunBody v={cur} withLine={tab === undefined} />
       ) : tab === undefined ? (
-        <p className="px-3 py-3 text-sm text-fg-3">Use Run in the header to start a command in this review's worktree.</p>
+        <p className="px-3 py-3 text-sm text-fg-3">Use Run in the header to start a command in this review's copy of the code.</p>
       ) : (
         <p className="flex items-center gap-3 px-3 py-3 text-sm text-fg-3">
           Not run yet.

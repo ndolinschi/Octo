@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MonacoApi } from "../../lib/buffers";
 import { errorMessage } from "../../lib/format";
 import { useLatest } from "../../lib/hooks";
+import { usePhone } from "../../lib/phone";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { DIFF_FLASH_MS, type DiffLayout } from "../../lib/v7/changes";
 import { EditorContextMenu } from "../shared/EditorContextMenu";
@@ -45,6 +46,7 @@ export function DiffEditor(props: {
   const { loadMonaco } = props;
   const firstLine = useLatest(props.onFirstLine);
   const goToLine = useLatest(props.onGoToLine);
+  const phone = usePhone();
 
   useEffect(() => {
     let alive = true;
@@ -77,7 +79,8 @@ export function DiffEditor(props: {
       renderLineHighlight: "none",
       stickyScroll: { enabled: false },
       scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false, alwaysConsumeMouseWheel: false },
-      diffWordWrap: "off",
+      // A7.2: on the phone long lines wrap, as in a review: at 390 the visible parts of a changed line's − and + were the same.
+      ...(phone ? { wordWrap: "on" as const, diffWordWrap: "inherit" as const } : { diffWordWrap: "off" as const }),
       renderMarginRevertIcon: false,
       ariaLabel: "Diff",
       contextmenu: false,
@@ -90,15 +93,19 @@ export function DiffEditor(props: {
       model?.original.dispose();
       model?.modified.dispose();
     };
-  }, [mod]);
+  }, [mod, phone]);
 
   useEffect(() => {
     if (mod) mod.monaco.editor.setTheme(mod.themeName(props.theme));
   }, [mod, props.theme]);
 
   useEffect(() => {
-    editor?.updateOptions({ renderSideBySide: props.layout === "split", ignoreTrimWhitespace: props.ignoreWhitespace });
-  }, [editor, props.layout, props.ignoreWhitespace]);
+    if (!editor) return;
+    editor.updateOptions({ renderSideBySide: props.layout === "split", ignoreTrimWhitespace: props.ignoreWhitespace });
+    // 7d: after the diff editor's own options (it hands each side its label again, empty, on every update).
+    editor.getOriginalEditor().updateOptions({ ariaLabel: `${props.path}, before` });
+    editor.getModifiedEditor().updateOptions({ ariaLabel: `${props.path}, after` });
+  }, [editor, props.layout, props.ignoreWhitespace, props.path]);
 
   // Models per shown text; URIs carry the path so Monaco picks the language from the extension.
   useEffect(() => {

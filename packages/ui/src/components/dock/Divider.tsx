@@ -49,7 +49,7 @@ export default function Divider({ index, value }: { index: number; value: number
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize groups"
+      aria-label="Resize panels"
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(value * 100)}

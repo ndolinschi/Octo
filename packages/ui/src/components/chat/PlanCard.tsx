@@ -83,7 +83,7 @@ function PlanCard(props: { plan: Plan; onPlan(plan: Plan): void; onRefresh(): Pr
       <div className="max-h-80 overflow-y-auto">
         <LazyMarkdown text={plan.text} className="octo-prose" />
       </div>
-      {running && !problem && <p className="text-fg-3">A turn is running.</p>}
+      {running && !problem && <p className="text-fg-3">Octo is still working.</p>}
     </RequestCard>
   );
 }

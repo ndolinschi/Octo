@@ -6,6 +6,7 @@ import { useEscape, useMediaQuery } from "../lib/hooks";
 import { palette as paletteGate } from "../lib/typeahead";
 import { focusSoon, visibleComposer } from "../lib/focus";
 import { navigate, resolveProjectRoute, settingsHref, useGuardedRoute, useSettingsSection } from "../lib/route";
+import { useRouteFocus } from "./routeFocus";
 import { useProviders } from "../lib/providers/useProviders";
 import { startupOpensLast, useStoredMotion } from "../components/settings/prefs";
 import { useUnseen } from "../lib/seen";
@@ -128,6 +129,7 @@ function Shell() {
   const paletteState = useSyncExternalStore(paletteGate.subscribe, paletteGate.snapshot);
   const palette = paletteState.phase === "opening" || paletteState.phase === "open";
   const drawerOpener = useRef<HTMLElement | null>(null);
+  useRouteFocus(settings !== null);
   // The two ends of the status bar that the open project fills (see `ProjectStatus`).
   const [statusStart, setStatusStart] = useState<HTMLElement | null>(null);
   const [statusEnd, setStatusEnd] = useState<HTMLElement | null>(null);
@@ -383,7 +385,7 @@ function Shell() {
               </div>
             )}
             {/* Equal gutters on the other sides of every panel (the sidebar card included); the row above is the top one. Full-bleed on phones. */}
-            <div
+            <main
               className={cn(
                 "relative flex min-w-0 flex-1 flex-col p-gutter pt-0 pb-0 max-sm:p-0",
                 // Direction 7: the phone's window header lies over the panel's top (Home, the connect screen, the no-projects hero):
@@ -414,12 +416,12 @@ function Shell() {
                   <OfflineBanner />
                 </Suspense>
               )}
-            </div>
+            </main>
           </div>
           <StatusBar home={route.projectId === null && settings === null} startRef={setStatusStart} endRef={setStatusEnd} />
           {phone && (
             <Suspense fallback={null}>
-              <PhoneChrome />
+              <PhoneChrome projectShown={workspace && route.projectId !== null} />
             </Suspense>
           )}
           <Presence show={drawerShown}>

@@ -114,8 +114,8 @@ function Help({ onClose }: { onClose(): void }) {
         }
       >
         <p className="text-fg-2">
-          Type <code className="font-mono text-xs text-fg">/</code> at the start of the message to see every command. Octo&apos;s commands (compact, clear,
-          mode, model, rewind, export, review, context, memory, settings, remember) run here; the agent&apos;s own commands are sent as typed.
+          Type <code className="font-mono text-xs text-fg">/</code> to see commands. Octo&apos;s commands run here; the agent&apos;s own are sent as typed.{" "}
+          <code className="font-mono text-xs text-fg">/new</code> with text starts a new session and sends the text there.
         </p>
         <p className="mt-2 text-xs text-fg-3">Always available: {OCTO_FALLBACK.map((c) => `/${c.name}`).join(", ")}.</p>
       </Card>

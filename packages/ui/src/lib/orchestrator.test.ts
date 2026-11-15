@@ -163,7 +163,7 @@ test("teamLine words", () => {
   const now = Date.parse("2026-11-11T12:00:00Z");
   assert.equal(teamLine(3, "2026-11-11T11:00:00Z", now), "Last ran 3 agents, 1h ago");
   assert.equal(teamLine(1, null, now), "Last ran 1 agent");
-  assert.equal(teamLine(0, "2026-11-11T10:00:00Z", now), "Worked alone, 2h ago");
+  assert.equal(teamLine(0, "2026-11-11T10:00:00Z", now), "No agents used, 2h ago");
 });
 
 test("teamRoles groups by role with the most urgent status", () => {
@@ -184,8 +184,8 @@ test("teamRoles groups by role with the most urgent status", () => {
 });
 
 test("roleText: one spelling for the orchestrator", () => {
-  assert.equal(roleText("orchestrator"), "Orchestrator");
-  assert.equal(roleText("Orchestrator"), "Orchestrator");
+  assert.equal(roleText("orchestrator"), "Octo");
+  assert.equal(roleText("Orchestrator"), "Octo");
   assert.equal(roleText("Code explorer"), "Code explorer");
   assert.equal(roleText(""), "Agent");
   assert.equal(roleText(null), "Agent");

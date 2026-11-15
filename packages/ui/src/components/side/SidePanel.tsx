@@ -1,4 +1,5 @@
 import { BridgeError, type SideMessage } from "@octo/agent-client";
+import { useQuietOpen } from "../../lib/quietFocus";
 import { ArrowUp, Pin, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { errorMessage } from "../../lib/format";
@@ -120,8 +121,11 @@ export function SidePanel() {
   const working = pending !== null;
   const sideModel = project ? (project.models.side ?? project.models.fast) : null;
 
+  // B4.3: focus the dock moves here on opening draws no ring until the first key or press.
+  const quiet = useRef<HTMLDivElement>(null);
+  useQuietOpen(quiet);
   return (
-    <div data-side className="h-full min-h-0">
+    <div ref={quiet} data-side className="h-full min-h-0">
       <Panel
         name="side"
         title="Side question"
@@ -135,7 +139,7 @@ export function SidePanel() {
                     size="sm"
                     icon={Pin}
                     pressed={pinned}
-                    title={pinned ? "Kept when this tab closes" : "Cleared when this tab closes; keep it instead"}
+                    title={pinned ? "Saved when you close this tab" : "Cleared when you close this tab; press to keep"}
                     onClick={() => setPinned(!pinned)}
                   >
                     {pinned ? "Kept" : "Keep"}
@@ -179,7 +183,7 @@ export function SidePanel() {
                         )
                       }
                     >
-                      Try again
+                      Retry
                     </Button>
                   }
                 >
@@ -263,7 +267,7 @@ export function SidePanel() {
                     value={sideModel}
                     onChoose={chooseModel}
                     side="top"
-                    tip={project?.models.side ? undefined : "Side questions use the fast model until you choose one"}
+                    tip={project?.models.side ? undefined : "Side questions use the Fast tier until you choose a model"}
                   />
                 )}
                 <span className="ml-auto" />

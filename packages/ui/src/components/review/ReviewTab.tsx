@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReviewCommandsKit } from "../../lib/commands/kit";
+import { useHistoryLayer } from "../../lib/historyLayer";
+import { usePhone } from "../../lib/phone";
 import { reviewApi } from "../../lib/review/api";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
@@ -26,12 +28,7 @@ export function ReviewTab(props: Loaders) {
   const { bridge } = useApp();
   const { projectId } = useProject();
   const api = useMemo(() => reviewApi(bridge, projectId), [bridge, projectId]);
-  if (!api)
-    return (
-      <Notice title="This version of Octo's local service cannot review pull requests">
-        Update the harness, or open the app with the demo data (?demo=1) to try the review screens.
-      </Notice>
-    );
+  if (!api) return <Notice title="This version of Octo's local service cannot review pull requests">Update Octo to review pull requests.</Notice>;
   return <Live api={api} {...props} />;
 }
 
@@ -66,6 +63,14 @@ function Live({ api, loadMonaco, loadCommands }: { api: NonNullable<ReturnType<t
     };
   }, [loadCommands]);
   const id = openId || null;
+  // A1.3 (polish pass F3): on a phone the open review is a layer over the list, so the system Back (and the header's arrow)
+  // returns to the list.
+  const phone = usePhone();
+  useHistoryLayer(phone && id !== null, (navigated) => {
+    if (navigated || id === null) return;
+    setReturnTo(id);
+    setOpen(null);
+  });
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-panel" data-review-tab>
       {id ? (

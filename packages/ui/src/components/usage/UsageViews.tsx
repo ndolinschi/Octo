@@ -28,7 +28,7 @@ function UsageState({ load, empty, first, children }: { load: Load<UsageData>; e
   if (load.status === "error")
     return (
       <Notice form="block" tone="error" title="Couldn't read usage">
-        {load.message}. Check that the harness is running, then reopen this tab.
+        {load.message}. Check that Octo's local service is running, then reopen this tab.
       </Notice>
     );
   // The tab shows its one empty state itself (`usageEmpty`, P1); here an empty report draws nothing.
@@ -73,7 +73,7 @@ export function UsageByModel({ load, view }: { load: Load<UsageData>; view: Usag
         footer={
           placed.unplaced.length > 0 && (
             <p className="px-2 text-xs text-fg-3">
-              Roles without a known model: {placed.unplaced.map((r) => `${r.label} ${formatTokens(r.total)}`).join(", ")}.
+              Tiers without a known model: {placed.unplaced.map((r) => `${r.label} ${formatTokens(r.total)}`).join(", ")}.
             </p>
           )
         }

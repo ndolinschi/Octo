@@ -1,6 +1,6 @@
 import { useMemo, useRef, type CSSProperties } from "react";
 import { useScrollFade } from "../../../lib/hooks";
-import { foldedRows, previewRows, type DiffRow } from "../../../lib/toolView";
+import { foldedRows, leadingColumns, previewRows, type DiffRow } from "../../../lib/toolView";
 import { Button } from "../../primitives/Button";
 import { ScrollArea } from "../../primitives/ScrollArea";
 
@@ -127,7 +127,10 @@ function Line({ row, numbered, onLine }: { row: DiffRow; numbered: boolean; onLi
           ))}
         <span className="octo-diff-sign">{sign}</span>
       </span>
-      <span className="octo-diff-code">{row.text || " "}</span>
+      {/* A7.2: on the phone a wrapped line hangs under its own indentation (styles.css, `--diff-lead`). */}
+      <span className="octo-diff-code" style={{ "--diff-lead": `${leadingColumns(row.text)}ch` } as CSSProperties}>
+        {row.text || " "}
+      </span>
     </div>
   );
 }

@@ -1,4 +1,6 @@
 import { ChevronDown, ChevronRight, MessageCircle, MessageSquare } from "lucide-react";
+import { useRef } from "react";
+import { useListStops } from "../../lib/listStops";
 import type { ReviewFile, ReviewGroup } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { reasonLabel, splitPath, type FileSection } from "../../lib/review/files";
@@ -25,8 +27,11 @@ export function FileList(props: {
   onSelect(path: string): void;
   onViewed(path: string, viewed: boolean): void;
 }) {
+  // Item 9 (polish pass F3): the list is one Tab stop (↑/↓/Home/End between files and folded groups); "Viewed" is `v`.
+  const nav = useRef<HTMLElement>(null);
+  useListStops(nav);
   return (
-    <nav aria-label="Changed files" className="flex flex-col gap-2 px-pane pt-1 pb-2">
+    <nav ref={nav} aria-label="Changed files" className="flex flex-col gap-2 px-pane pt-1 pb-2">
       {props.sections.map((s) => {
         const open = !s.folded || props.opened.has(s.group);
         return (
@@ -48,10 +53,10 @@ export function FileList(props: {
                 }
               />
             ) : (
-              <h3 className="flex h-ctl-sm items-center gap-1.5 px-2 text-xs font-medium text-fg-3">
+              <h2 className="flex h-ctl-sm items-center gap-1.5 px-2 text-xs font-medium text-fg-3">
                 {s.label}
                 <span className="font-normal">{s.files.length}</span>
-              </h3>
+              </h2>
             )}
             {open && (
               <ul className="flex flex-col">
@@ -91,7 +96,7 @@ function FileRow(props: { file: ReviewFile; selected: boolean; onSelect(path: st
       onClick={() => props.onSelect(f.path)}
       control={
         <span title={f.viewed ? "Viewed (v)" : "Mark as viewed (v)"}>
-          <Checkbox hideLabel label={`Viewed: ${f.path}`} checked={f.viewed} onChange={(next) => props.onViewed(f.path, next)} />
+          <Checkbox hideLabel data-row-control label={`Viewed: ${f.path}`} checked={f.viewed} onChange={(next) => props.onViewed(f.path, next)} />
         </span>
       }
       leading={

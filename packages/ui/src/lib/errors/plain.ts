@@ -106,18 +106,18 @@ const BY_CODE: Record<string, (c: Ctx) => Pick<PlainError, "sentence" | "next" |
   images_unsupported: (c) => ({ sentence: `${c.agent ?? "This model"} can't read images. Your message is still in the box.`, next: null }),
   acp_not_logged_in: loginSentence,
   not_logged_in: loginSentence,
-  turn_in_progress: () => ({ sentence: "A turn is still running. Wait for it or stop it first.", next: null }),
+  turn_in_progress: () => ({ sentence: "Octo is still working on a request. Wait for it, or stop it first.", next: null }),
   rate_limited: () => ({ sentence: "The model is busy right now. Try again in a moment.", next: { kind: "retry" } }),
   unauthorized: () => ({ sentence: "The provider did not accept the key. Check it in Settings.", next: null, action: "open_settings" }),
   no_api_key: () => ({ sentence: "No model is connected yet. Connect one in Settings.", next: null, action: "open_settings" }),
-  context_too_long: () => ({ sentence: "The conversation is too long for this model. Compact it or start a new one.", next: null }),
+  context_too_long: () => ({ sentence: "This session is too long for the model. Compact it or start a new session.", next: null }),
   // P2-6: the bridge's body limit (413).
   request_too_large: () => ({ sentence: TOO_LONG, next: null }),
 };
 
 const TOO_LONG = "This message is too long to send (limit 1 MB). Send less at a time.";
 /** A failure that came with no text. */
-export const NO_TEXT = "This request failed.";
+export const NO_TEXT = "The request failed.";
 
 /** Maps a failure to its plain form. `code` is the typed error code when there is one, `raw` the message text. */
 export function plainError(raw: string | null | undefined, ctx: Ctx & { code?: string | null | undefined } = {}): PlainError {
@@ -140,13 +140,13 @@ export function plainError(raw: string | null | undefined, ctx: Ctx & { code?: s
     return { ...known("The provider did not accept the key. Check it in Settings.", null), action: "open_settings" };
   if (has(text, "timed out", "timeout", "deadline exceeded")) return known(`${name} took too long to answer.`, { kind: "retry" });
   if (has(text, "context length", "context window", "too many tokens", "prompt is too long"))
-    return known("The conversation is too long for this model. Compact it or start a new one.", null);
+    return known("This session is too long for the model. Compact it or start a new session.", null);
   if (has(text, "exit status", "exited", "broken pipe", "connection closed", "eof", "crashed", "signal: killed"))
     return known(`${name} stopped unexpectedly.`, { kind: "retry" });
   if (has(text, "connection refused", "network", "dns", "offline", "failed to fetch"))
     return known("Could not reach the model. Check the connection and try again.", { kind: "retry" });
   const first = stripJargon(text);
-  return known(first && !JARGON.test(first) ? first : "Something went wrong.", { kind: "retry" });
+  return known(first && !JARGON.test(first) ? first : "Something went wrong. Try again; if it keeps happening, copy the details.", { kind: "retry" });
 }
 
 /** Every fixed string this module can produce, for the test that none contains jargon. */

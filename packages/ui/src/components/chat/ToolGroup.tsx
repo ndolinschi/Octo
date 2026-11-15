@@ -1,8 +1,19 @@
-import { lazy, Suspense, useMemo } from "react";
+import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "../../lib/cn";
 import { locateInProject } from "../../lib/toolsMore";
-import { callRow, editView, groupProblems, groupState, groupSummary, mergeRuns, toolKind, viewState, type CallRow } from "../../lib/toolView";
+import {
+  callRow,
+  editView,
+  groupProblems,
+  groupShortSummary,
+  groupState,
+  groupSummary,
+  mergeRuns,
+  toolKind,
+  viewState,
+  type CallRow,
+} from "../../lib/toolView";
 import { stepState, type StepState, type ToolUse, type TurnEnd } from "../../lib/transcript";
 import { useOptionalCode } from "../../state/code";
 import { ActivityRow, type ActivityState } from "./ActivityRow";
@@ -107,18 +118,48 @@ export function ToolGroup({ uses, end = null, interrupted = false }: { uses: Too
     <ActivityRow
       state={ROW_STATE[groupState(states)]}
       // One truncating line (the problems are part of it, dim) so a narrow column cuts it with an ellipsis before the chevron.
-      verb={
-        <>
-          {groupSummary(uses)}
-          {problems && <span className="text-fg-3"> · {problems}</span>}
-        </>
-      }
+      verb={<GroupSummary long={groupSummary(uses)} short={groupShortSummary(uses)} problems={problems} />}
       tip={[groupSummary(uses), problems].filter(Boolean).join(" · ")}
     >
       {runs.map((run) => (
         <ToolRow key={run[0]?.use.id} run={run} folder={folder} end={end} interrupted={interrupted} />
       ))}
     </ActivityRow>
+  );
+}
+
+/** Room the step row keeps beside its words: the glyph column (16 + 8) and the chevron (4 + 14), with a little slack. */
+const ROW_RESERVED_PX = 48;
+
+/**
+ * The group row's words: the full summary when it fits the row, else the short one ("4 commands, 5 edits, +3"), so a
+ * narrow pane or a phone never cuts it mid-word; the problems stay at the end either way and the tooltip has it all. An
+ * invisible copy of the full text is measured against the row's width as it changes.
+ */
+function GroupSummary({ long, short, problems }: { long: string; short: string; problems: string }) {
+  const probe = useRef<HTMLSpanElement>(null);
+  const [fits, setFits] = useState(true);
+  useLayoutEffect(() => {
+    const p = probe.current;
+    const row = p?.closest<HTMLElement>("[data-activity-row]");
+    if (!p || !row) return;
+    const check = () => setFits(p.offsetWidth <= row.clientWidth - ROW_RESERVED_PX);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(row);
+    return () => ro.disconnect();
+  }, [long, problems]);
+  const tail = problems && <span className="text-fg-3"> · {problems}</span>;
+  return (
+    // `relative`: the probe's box is clipped by the row's truncating text, so it never widens the transcript's scroll area.
+    <span className="relative">
+      <span ref={probe} aria-hidden className="pointer-events-none invisible absolute top-0 left-0 whitespace-nowrap">
+        {long}
+        {tail}
+      </span>
+      {fits || long === short ? long : short}
+      {tail}
+    </span>
   );
 }
 

@@ -19,7 +19,7 @@ export function SidebarDrawer(props: { onClose(): void; opener: RefObject<HTMLEl
   useModal(panel, onClose);
   // Direction 7: on the phone the navigation is a full-screen list and a history entry (Back closes it).
   const phone = usePhone();
-  useHistoryLayer(phone && state === "open", onClose);
+  useHistoryLayer(phone && state === "open", () => onClose());
   useEffect(() => {
     panel.current?.querySelector<HTMLElement>('a[aria-current="true"], a[aria-current="page"]')?.focus();
   }, []);

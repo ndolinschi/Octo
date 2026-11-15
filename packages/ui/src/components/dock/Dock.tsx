@@ -26,7 +26,7 @@ const MaximiseEffects = lazy(() => import("./MaximiseEffects"));
 const SIDES: readonly [string, string, string] = ["Left", "Middle", "Right"];
 
 function groupName(index: number, count: number): string {
-  if (count === 1) return "Workspace";
+  if (count === 1) return "Panels";
   if (index === 0) return SIDES[0];
   return index === count - 1 ? SIDES[2] : count > 3 ? `Middle ${index}` : SIDES[1];
 }
@@ -149,7 +149,7 @@ function GroupView(props: { group: Group; name: string; first: boolean; last: bo
     // the card with the content. The strip of the first group starts after the window buttons while the sidebar is closed.
     <section
       data-dock-group={group.id}
-      aria-label={narrow ? "Workspace" : name === "Workspace" ? name : `${name} group`}
+      aria-label={narrow ? "Panels" : name === "Panels" ? name : `${name} panel`}
       hidden={hidden}
       style={narrow ? undefined : maximised ? { flex: "1 1 0px", minWidth: 0 } : { flex: `${group.size} 1 0px`, minWidth: ws.floorOf(group.id) }}
       onPointerDownCapture={() => ws.focusGroup(group.id)}
@@ -158,7 +158,7 @@ function GroupView(props: { group: Group; name: string; first: boolean; last: bo
     >
       <GroupProvider group={group}>
         <TabStrip
-          label={narrow || name === "Workspace" ? "Tabs" : `${name} group tabs`}
+          label={narrow || name === "Panels" ? "Tabs" : `${name} panel tabs`}
           groupId={group.id}
           tabs={strip.tabs}
           active={strip.active}

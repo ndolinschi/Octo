@@ -5,19 +5,27 @@ import { createLayerStack } from "./historyLayer";
 /** A fake history: entries of tokens, an index; `go` is asynchronous like the real one (settled by `arrive`). */
 function fakeHistory() {
   const entries: (string | null)[] = [null];
+  const seen: boolean[] = [true];
   let at = 0;
   const moves: number[] = [];
   return {
     env: {
       push(token: string) {
         entries.splice(at + 1);
+        seen.splice(at + 1);
         entries.push(token);
+        seen.push(true);
         at = entries.length - 1;
       },
       go(delta: number) {
         moves.push(delta);
       },
       token: () => entries[at] ?? null,
+      fresh() {
+        const was = seen[at] === false;
+        seen[at] = true;
+        return was;
+      },
     },
     /** The browser performs the oldest pending move; returns false when there is none. */
     arrive() {
@@ -29,7 +37,9 @@ function fakeHistory() {
     /** A navigation of its own (a hash change): a new entry without a token. */
     navigate() {
       entries.splice(at + 1);
+      seen.splice(at + 1);
       entries.push(null);
+      seen.push(false);
       at = entries.length - 1;
     },
     back() {
@@ -130,4 +140,37 @@ test("closing the top layer also goes back over dead layers under it", () => {
   s.sync();
   assert.equal(h.at, 0);
   assert.equal(s.depth(), 0);
+});
+
+test("a navigation tells the layers it was one; Back onto the entry under them does not", () => {
+  const h = fakeHistory();
+  const s = createLayerStack(h.env);
+  const pops: boolean[] = [];
+  s.open((navigated) => pops.push(navigated));
+  h.navigate();
+  s.sync();
+  assert.deepEqual(pops, [true], "a row that opened a route: the panel must not show what was under it");
+  s.open((navigated) => pops.push(navigated));
+  h.back();
+  s.sync();
+  assert.deepEqual(pops, [true, false], "Back onto the navigation's entry (seen before) is a Back");
+});
+
+test("without fresh() every move counts as Back (the old contract)", () => {
+  const entries: (string | null)[] = [null];
+  let at = 0;
+  const s = createLayerStack({
+    push: (t) => {
+      entries.push(t);
+      at = entries.length - 1;
+    },
+    go: () => undefined,
+    token: () => entries[at] ?? null,
+  });
+  const pops: boolean[] = [];
+  s.open((navigated) => pops.push(navigated));
+  entries.push(null);
+  at = entries.length - 1;
+  s.sync();
+  assert.deepEqual(pops, [false]);
 });

@@ -1,6 +1,6 @@
 import { Check, Copy } from "lucide-react";
 import { Button } from "../primitives/Button";
-import { lazy, memo, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useCopy } from "../../lib/hooks";
@@ -75,6 +75,17 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   const className = child && typeof child === "object" && "props" in child ? ((child as { props: { className?: string } }).props.className ?? "") : "";
   const lang = /language-([\w+-]+)/.exec(className)?.[1];
   const code = textOf(children).replace(/\n$/, "");
+  const pre = useRef<HTMLPreElement>(null);
+  const [scrolls, setScrolls] = useState(false);
+  useEffect(() => {
+    const el = pre.current;
+    if (!el) return;
+    const check = () => setScrolls(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [code]);
   return (
     // Card inset 12 on all sides: a 20px caption row, 8 below it, then 20px code lines.
     <div className="my-3 overflow-hidden rounded-md bg-code-bg p-card">
@@ -85,7 +96,13 @@ function CodeBlock({ children }: { children?: ReactNode }) {
         </Button>
       </div>
       {/* Plain first, coloured when the highlighter is in: same text, same metrics (colours only). */}
-      <pre className="octo-code overflow-x-auto font-mono text-xs leading-5">
+      {/* 7f: a block that scrolls sideways is a named stop in the tab order, so the keyboard can scroll it (WebKit does not
+          focus a scroller by itself); one that fits is not. */}
+      <pre
+        ref={pre}
+        className="octo-code overflow-x-auto font-mono text-xs leading-5"
+        {...(scrolls ? { tabIndex: 0, role: "region", "aria-label": `Code, ${lang ?? "text"}` } : {})}
+      >
         <code>
           <HighlightedCode code={code} lang={lang} />
         </code>

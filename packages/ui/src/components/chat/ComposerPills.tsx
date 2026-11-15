@@ -62,7 +62,7 @@ export function ComposerPills(props: {
           icon={Clock}
           label={q.text.split("\n", 1)[0] ?? ""}
           detail="queued"
-          title={`Sent when the current turn ends:\n${q.text}`}
+          title={`Sends after the current reply:\n${q.text}`}
           removeLabel="Remove from the queue"
           onRemove={() => props.onUnqueue(q.id)}
         />

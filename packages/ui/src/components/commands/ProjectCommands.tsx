@@ -63,7 +63,7 @@ export default function ProjectCommands({
     <IconButton
       icon={Minimize2}
       size="sm"
-      label="Restore the layout"
+      label="Show all panels again"
       title={`Restore the other panels (Esc, ${MOD_LABEL}Shift+Enter)`}
       data-restore-layout
       className="shrink-0"

@@ -8,6 +8,7 @@ import { EditorSkeleton } from "./EditorSkeleton";
 import type { EditorBuffers, MonacoApi } from "../../lib/buffers";
 import { errorMessage } from "../../lib/format";
 import { type FileKey } from "../../lib/files";
+import { editorAriaLabel, ESCAPE_OUT_WHEN, isApple } from "./editorA11y";
 
 type MonacoModule = typeof import("./monaco");
 const InlineCompletion = lazy(() => import("./editor/completion/InlineCompletion"));
@@ -67,6 +68,12 @@ export function CodeEditor(props: {
   onSave(): void;
   /** Monaco is in: start the editor services that need it (the language-server client). */
   onMonaco(mod: MonacoModule): void;
+  /** Esc with nothing selected and no widget open: focus leaves the editor (the file's tab). */
+  onEscape?(): void;
+  /** Read first (a phone, A5): the text can be read and selected, not typed into. */
+  readOnly?: boolean;
+  /** Wrap long lines (a phone reading an SVG's source, A7.1). */
+  wrap?: boolean;
 }) {
   const { file, buffers } = props;
   const [editor, setEditor] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -77,6 +84,7 @@ export function CodeEditor(props: {
   const shownKey = useRef<FileKey | null>(null);
   const onSave = useLatest(props.onSave);
   const onMonaco = useLatest(props.onMonaco);
+  const onEscape = useLatest(props.onEscape);
   const bottomPadding = useLatest(props.bottomPadding ?? 8);
 
   useEffect(() => {
@@ -152,12 +160,14 @@ export function CodeEditor(props: {
       cursorSmoothCaretAnimation: "off",
       fixedOverflowWidgets: true,
       overflowWidgetsDomNode: overflow,
-      ariaLabel: "Code editor",
+      // Named by the file once a model is in (the swap below).
+      ariaLabel: "Editor",
       tabFocusMode: false,
       // The right-click menu is the app's own (EditorContextMenu): Monaco's has no surface in its shadow root.
       contextmenu: false,
     });
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSave.current());
+    editor.addCommand(monaco.KeyCode.Escape, () => onEscape.current?.(), ESCAPE_OUT_WHEN);
     editorRef.current = editor;
     buffers.editors.add(editor);
     setEditor(editor);
@@ -172,7 +182,13 @@ export function CodeEditor(props: {
       editorRef.current = null;
     };
     // Theme changes are applied below without recreating the editor.
-  }, [mod, buffers, bottomPadding, onMonaco, onSave]);
+  }, [mod, buffers, bottomPadding, onMonaco, onSave, onEscape]);
+
+  useEffect(() => {
+    // `domReadOnly`: the input element itself is read-only too, so a tap on a phone does not raise the on-screen keyboard (WebKit
+    // focuses a textarea there; Monaco's own read-only alone left it writable).
+    editor?.updateOptions({ readOnly: props.readOnly ?? false, domReadOnly: props.readOnly ?? false, wordWrap: props.wrap ? "on" : "off" });
+  }, [editor, props.readOnly, props.wrap]);
 
   useEffect(() => {
     if (mod) mod.monaco.editor.setTheme(mod.themeName(props.theme));
@@ -202,6 +218,7 @@ export function CodeEditor(props: {
     if (shownKey.current && shownKey.current !== file.key) buffers.saveView(shownKey.current, editor.saveViewState());
     const model = buffers.ensure(file.key, file.folder, file.path, file.content);
     editor.setModel(model);
+    editor.updateOptions({ ariaLabel: editorAriaLabel(file.path, isApple(navigator.platform)) });
     const view = buffers.view(file.key);
     if (view) editor.restoreViewState(view);
     shownKey.current = file.key;

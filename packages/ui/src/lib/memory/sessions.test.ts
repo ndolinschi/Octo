@@ -49,7 +49,7 @@ const NOW = Date.parse("2026-11-12T12:00:00.000Z");
 test("session row model: title, day and count, the current mark, the working glyph only on the current session", () => {
   const r = sessionRow(session({ open: true, exchanges: 5 }), NOW, true);
   assert.equal(r.title, "t");
-  assert.match(r.description, /^Nov 12 · 5 exchanges$/);
+  assert.match(r.description, /^Nov 12 · 5 requests$/);
   assert.equal(r.current, true);
   assert.equal(r.working, true);
   assert.equal(sessionRow(session({ open: false }), NOW, true).working, false);
@@ -88,11 +88,11 @@ test("cost, counts and notes", () => {
   assert.equal(formatCost(0), "$0");
   assert.equal(formatCost(0.0012), "$0.0012");
   assert.equal(exchangeCount(0), "empty");
-  assert.equal(exchangeCount(1), "1 exchange");
+  assert.equal(exchangeCount(1), "1 request");
   assert.equal(endedNote(session({ open: true })), null);
   assert.equal(endedNote(session({ reason: "clear" })), "Ended with /clear");
   assert.equal(endedNote(session()), null);
-  assert.match(statusNote("failed") ?? "", /Open it in the conversation/);
+  assert.match(statusNote("failed") ?? "", /Open it in the session/);
   assert.equal(statusNote("completed"), null);
 });
 

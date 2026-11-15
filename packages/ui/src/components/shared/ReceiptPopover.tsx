@@ -43,11 +43,13 @@ export function ReceiptPopover(props: { anchor: RefObject<HTMLElement | null>; p
       <div className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
         <div className="flex flex-col">
           <p className="text-heading text-fg">Context for this request</p>
-          <p className="text-xs text-fg-3">{view ? view.modeText : "What the model had in front of it"}</p>
+          <p className="text-xs text-fg-3">{view ? view.modeText : "What the model read"}</p>
         </div>
         {load.status === "loading" && <SkeletonText lines={4} />}
         {load.status === "error" && <p className="text-sm text-fg-2">{load.message} Close this and open it again to retry.</p>}
-        {load.status === "none" && <p className="text-sm text-fg-2">This request ran before receipts were kept, or it has not reached its first model call.</p>}
+        {load.status === "none" && (
+          <p className="text-sm text-fg-2">No record for this request: it ran before records were kept, or it hasn&apos;t started yet.</p>
+        )}
         {view && (
           <>
             <div

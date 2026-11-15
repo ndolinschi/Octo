@@ -7,6 +7,12 @@ import { Button, type ButtonProps } from "../primitives/Button";
  */
 export function StatusButton({ warning, className, ...rest }: Omit<ButtonProps, "variant" | "size" | "tone"> & { warning?: "warn" | "err" }) {
   return (
-    <Button variant="quiet" size="xs" className={cn("min-w-0", warning === "warn" && "text-warn", warning === "err" && "text-err", className)} {...rest} />
+    <Button
+      data-status-item
+      variant="quiet"
+      size="xs"
+      className={cn("min-w-0", warning === "warn" && "text-warn", warning === "err" && "text-err", className)}
+      {...rest}
+    />
   );
 }

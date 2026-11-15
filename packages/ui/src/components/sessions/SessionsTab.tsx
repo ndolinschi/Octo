@@ -1,6 +1,8 @@
 import type { ProjectSession } from "@octo/agent-client";
 import { useEffect, useMemo, useState } from "react";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
+import { useHistoryLayer } from "../../lib/historyLayer";
+import { usePhone } from "../../lib/phone";
 import { useNow } from "../../lib/hooks";
 import { FILTERS, filterCounts, parentOf, toggleOpen, visibleNodes, type SessionFilter } from "../../lib/sessions/model";
 import { useApp } from "../../state/app";
@@ -62,6 +64,8 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
   const nodes = useMemo(() => visibleNodes(list, filter, filter === "agents" ? agentsOf : null), [list, filter, agentsOf]);
   const counts = useMemo(() => filterCounts(list), [list]);
   const picked = selected !== null ? (list.find((s) => s.id === selected) ?? null) : null;
+  // Direction 7: on the phone a chosen session is a screen of its own over the list, so Back returns to the list.
+  useHistoryLayer(usePhone() && picked !== null, () => setSelected(null));
 
   if (!bridge.listSessions) {
     return <PanelEmpty title="This version of Octo's local service has no sessions">Update it to see the project's sessions here.</PanelEmpty>;
@@ -96,7 +100,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
         }
       >
         {list.length === 0 ? (
-          <PanelEmpty title="No sessions yet">What you ask in the conversation starts the first session. New session starts another.</PanelEmpty>
+          <PanelEmpty title="No sessions yet">Your first request starts a session. New session starts another.</PanelEmpty>
         ) : (
           <ListDetail
             label="Sessions"
@@ -202,7 +206,7 @@ function emptyText(filter: SessionFilter): string {
     case "working":
       return "Nothing is working right now.";
     case "agents":
-      return "The orchestrator has not started any agent sessions.";
+      return "Octo hasn't started any agents yet.";
     case "archived":
       return "No archived sessions. Archive one from its menu to keep the list short.";
     default:

@@ -59,7 +59,7 @@ export default function ProjectActionsMenu(props: {
           ? [
               {
                 id: "export",
-                label: "Export conversation (Markdown)",
+                label: "Export session (Markdown)",
                 run: () => void saveConversation(bridge, project.id).catch((e: unknown) => props.onFailure(structuredError(e) ?? { message: errorMessage(e) })),
               },
             ]

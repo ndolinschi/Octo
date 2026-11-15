@@ -40,7 +40,14 @@ export function TurnFiles(props: {
             <Spinner />
           </span>
         ) : (
-          <IconButton icon={Undo2} size="sm" label="Revert this turn" disabled={allReverted} onClick={props.onRevertTurn} className="max-md:size-10" />
+          <IconButton
+            icon={Undo2}
+            size="sm"
+            label="Revert all changes from this request"
+            disabled={allReverted}
+            onClick={props.onRevertTurn}
+            className="max-md:size-10"
+          />
         )}
       </header>
       <ul className="flex flex-col">
@@ -74,8 +81,10 @@ function FileRow({ file, selected, state, onClick }: { file: FileChangeSummary; 
         selected ? "bg-active text-fg" : "text-fg-2 hover:bg-hover hover:text-fg",
       )}
     >
-      <span aria-label={kindLabel(file.kind)} className={cn("w-4 shrink-0 text-center font-mono text-xs font-medium", KIND_TONE[letter])}>
-        {letter}
+      {/* 7e: a span's aria-label is ignored; the letter is hidden and its word read instead. */}
+      <span className={cn("w-4 shrink-0 text-center font-mono text-xs font-medium", KIND_TONE[letter])}>
+        <span aria-hidden>{letter}</span>
+        <span className="sr-only">{kindLabel(file.kind)}</span>
       </span>
       <span className={cn("shrink-0 truncate", reverted && "text-fg-3 line-through")}>{name}</span>
       <span className="min-w-0 flex-1 truncate text-xs text-fg-3" dir="rtl">

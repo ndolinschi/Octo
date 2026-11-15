@@ -2,6 +2,8 @@ import { PanelEmpty } from "../primitives/Panel";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { TurnChanges } from "@octo/agent-client";
 import { useMediaQuery } from "../../lib/hooks";
+import { useHistoryLayer } from "../../lib/historyLayer";
+import { usePhone } from "../../lib/phone";
 import { DIFF_SPLIT_MIN, diffLayout, earlierRequestLabel, filesChanged, neighbours, rowKey, splitPath } from "../../lib/v7/changes";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
@@ -65,6 +67,11 @@ export function ChangesView(props: ChangesViewProps) {
 
   const index = c.selected ? c.all.findIndex((s) => s.turnId === c.selected?.turnId && s.file === c.selected.file) : -1;
   const near = neighbours(c.all, index);
+  // A1.3: on the phone the diff is a layer over the list, so the system Back returns to the list.
+  const phone = usePhone();
+  useHistoryLayer(phone && !two && showDiff && c.selected !== null, (navigated) => {
+    if (!navigated) setShowDiff(false);
+  });
   const select = (s: Selection) => {
     c.select(s);
     setShowDiff(true);
@@ -90,7 +97,7 @@ export function ChangesView(props: ChangesViewProps) {
     body = (
       <Empty title="The changes did not load" text={`${c.turns.message}.`}>
         <Button size="sm" variant="secondary" onClick={c.reload}>
-          Try again
+          Retry
         </Button>
       </Empty>
     );
@@ -186,8 +193,8 @@ function RevertDialog({ confirm, onCancel, onConfirm }: { confirm: NonNullable<C
       : file?.kind === "deleted"
         ? "This restores the file the agent deleted."
         : file
-          ? "This writes back the file's content from before this turn."
-          : "This writes back every file of this turn as it was before it (created files are deleted, deleted ones restored).";
+          ? "This writes back the file's content from before this request."
+          : "This writes back every file of this request as it was before it (created files are deleted, deleted ones restored).";
   return (
     <Dialog
       title={title}

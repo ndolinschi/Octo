@@ -130,7 +130,7 @@ export function ImagePreview(props: {
           )
         )}
       </div>
-      <div className="flex h-bar shrink-0 items-center gap-3 px-3 text-xs text-fg-3 tabular-nums shadow-[inset_0_1px_0_var(--octo-line)]">
+      <div className="flex h-bar shrink-0 items-center gap-3 px-3 text-xs text-fg-3 tabular-nums shadow-[inset_0_1px_0_var(--octo-line)] phone:h-11">
         <span className="min-w-0 flex-1 truncate" role="status">
           {load.status === "ready" ? [pixels, fileSizeLabel(load.size)].filter(Boolean).join(" · ") : ""}
         </span>
@@ -142,6 +142,8 @@ export function ImagePreview(props: {
           ]}
           value={zoom}
           onChange={setZoom}
+          // A7.1 (polish pass F3): on a phone the two segments are 40px tall in a 44px bar (their touch zones reach 44).
+          className="phone:h-ctl-lg"
         />
       </div>
     </Frame>

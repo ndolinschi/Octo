@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { useLatest } from "../../lib/hooks";
 import { MOD_LABEL } from "../../lib/keys";
+import { usePhone } from "../../lib/phone";
 import { SHORTCUTS_EVENT } from "../../lib/openShortcuts";
 import { Dialog } from "../primitives/Dialog";
 import { KeyHint } from "../primitives/KeyHint";
@@ -22,12 +24,12 @@ const GROUPS: readonly { title: string; items: readonly Shortcut[] }[] = [
     ],
   },
   {
-    title: "Conversation",
+    title: "Session",
     items: [
       { keys: ["Enter"], does: "Send" },
       { keys: ["Shift", "Enter"], does: "New line" },
-      { keys: ["Mod", "Enter"], does: "Queue the message while the agent works" },
-      { keys: ["Esc"], does: "Stop the running answer" },
+      { keys: ["Mod", "Enter"], does: "Queue while Octo works" },
+      { keys: ["Esc"], does: "Stop the current reply" },
       { keys: ["↑"], does: "In an empty box, bring back your last request" },
       { keys: ["Shift", "Tab"], does: "Change the mode" },
       { keys: ["Alt", "↑"], does: "Previous request" },
@@ -44,7 +46,13 @@ const GROUPS: readonly { title: string; items: readonly Shortcut[] }[] = [
       { keys: ["Mod", "Alt", "C"], does: "Comment on the selected lines" },
       { keys: ["Mod", "Enter"], does: "Save a comment" },
       { keys: ["Esc"], does: "Cancel a comment" },
+      // Monaco's own toggle (Tab focus mode): Ctrl+M, and Ctrl+Shift+M on a Mac.
+      { keys: MAC ? ["Ctrl", "Shift", "M"] : ["Ctrl", "M"], does: "Tab moves focus out of the editor" },
     ],
+  },
+  {
+    title: "Sidebar",
+    items: [{ keys: ["Shift", "F10"], does: "Row menu" }],
   },
   {
     title: "Review",
@@ -71,8 +79,8 @@ const GROUPS: readonly { title: string; items: readonly Shortcut[] }[] = [
       { keys: ["Mod", "Shift", "PgDn"], does: "Move the tab right" },
       { keys: ["Mod", "\\"], does: "Move the tab to the other side" },
       { keys: ["Mod", ";"], does: "Ask a side question" },
-      { keys: ["Mod", "Shift", "Enter"], does: "Give the panel the whole window" },
-      { keys: ["Esc"], does: "Give the window back" },
+      { keys: ["Mod", "Shift", "Enter"], does: "Maximise the panel" },
+      { keys: ["Esc"], does: "Restore the panel" },
     ],
   },
 ];
@@ -86,12 +94,14 @@ const name = (k: string) => NAMES[k] ?? k;
  */
 export default function ShortcutsSheet() {
   const [open, setOpen] = useState(false);
+  // A8: the phone has no keyboard to list; "?" typed there is only a character.
+  const phone = useLatest(usePhone());
   useEffect(() => {
     const show = () => setOpen(true);
     const onKey = (e: KeyboardEvent) => {
       const t = e.target;
       const typing = t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
-      if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey && !typing && !document.querySelector('[aria-modal="true"]')) show();
+      if (e.key === "?" && !phone.current && !e.ctrlKey && !e.metaKey && !e.altKey && !typing && !document.querySelector('[aria-modal="true"]')) show();
     };
     // NEW-6: navigating (Back / Forward, a hash change) closes the sheet, as it does the palette.
     const hide = () => setOpen(false);
@@ -103,13 +113,13 @@ export default function ShortcutsSheet() {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("hashchange", hide);
     };
-  }, []);
+  }, [phone]);
   return <Presence show={open}>{open && <Sheet onClose={() => setOpen(false)} />}</Presence>;
 }
 
 function Sheet({ onClose }: { onClose(): void }) {
   return (
-    <Dialog title="Keyboard shortcuts" width="lg" onClose={onClose}>
+    <Dialog title="Keyboard shortcuts" width="xl" reading onClose={onClose}>
       <div className="flex flex-col gap-4 @min-[520px]/dialog:block @min-[520px]/dialog:columns-2 @min-[520px]/dialog:gap-x-8">
         {GROUPS.map((g) => (
           <section key={g.title} aria-label={g.title} className="flex break-inside-avoid flex-col @min-[520px]/dialog:mb-4">

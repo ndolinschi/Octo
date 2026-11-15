@@ -9,7 +9,7 @@ export function sortFiles<T extends Pick<MemoryFile, "path" | "updated_at">>(fil
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   const k = n / 1024;
-  return `${k < 10 ? k.toFixed(1).replace(/\.0$/, "") : Math.round(k)} kB`;
+  return `${k < 10 ? k.toFixed(1).replace(/\.0$/, "") : Math.round(k)} KB`;
 }
 
 /** The harness's limit for one memory file. */

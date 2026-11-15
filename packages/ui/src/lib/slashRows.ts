@@ -1,10 +1,10 @@
 import type { SlashCommands } from "@octo/agent-client";
 import { matchScore } from "./match";
-import { OCTO_FALLBACK, type SlashGroup, type SlashRow } from "./slash";
+import { octoCommands, type SlashGroup, type SlashRow } from "./slash";
 
 /** The menu's two groups (Octo commands, then the agent's under its name), filtered and ranked by `query`; unavailable rows stay, dimmed. */
 export function slashGroups(cmds: SlashCommands | null, query: string): { groups: SlashGroup[]; rows: SlashRow[] } {
-  const octo: SlashRow[] = (cmds?.octo ?? OCTO_FALLBACK).map((c) => ({
+  const octo: SlashRow[] = octoCommands(cmds).map((c) => ({
     id: `octo:${c.name}`,
     group: "octo",
     name: c.name,

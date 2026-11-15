@@ -2,9 +2,10 @@ import type { ContextBreakdown, ContextPartKey } from "@octo/agent-client";
 import { formatTokens } from "./format";
 
 const LABEL: Record<ContextPartKey, string> = {
-  system: "System prompt",
+  // One name per category, the same as the context popover's (lib/contextView.ts).
+  system: "Instructions",
   tools: "Tool definitions",
-  notes: "Notes",
+  notes: "Notes and memory",
   messages: "Messages",
   tool_results: "Tool results",
   summary: "Compacted summary",

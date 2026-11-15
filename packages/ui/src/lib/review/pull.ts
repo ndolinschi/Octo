@@ -64,8 +64,27 @@ export function unavailableTitle(reason: string | undefined): string {
 /** A failed list call as one plain sentence and a next step; the technical text is the caller's "Details" (decision 94b). */
 export function listFailure(raw: string): { message: string; hint: string } {
   const hint = "Check the connection and refresh. You can still review a local branch: pick Local branches above.";
-  if (/resolve host|network|unreachable|timed out|timeout|connection|offline|dns/i.test(raw)) return { message: "Could not reach the code host.", hint };
-  return { message: "The code host did not answer the list request.", hint };
+  if (/resolve host|network|unreachable|timed out|timeout|connection|offline|dns/i.test(raw)) return { message: "Could not reach GitHub.", hint };
+  return { message: "GitHub did not answer the list request.", hint };
+}
+
+/**
+ * B2 (polish pass F3): the install command the local service suggests for the GitHub CLI is Homebrew's; on another platform
+ * the person gets that platform's (winget on Windows, apt elsewhere) and the address for the rest. A command that does not
+ * install gh passes through.
+ */
+export function ghInstallCommand(command: string, platform: string): { command: string; other: string | null } {
+  const m = /brew install gh\b(?:\s*\(or https?:\/\/cli\.github\.com\))?/.exec(command);
+  if (!m) return { command, other: null };
+  const mac = /Mac|iPhone|iPad/.test(platform);
+  const install = mac ? "brew install gh" : platform.includes("Win") ? "winget install --id GitHub.cli" : "sudo apt install gh";
+  return {
+    command: command
+      .replace(m[0], install)
+      .replace(/\s{2,}/g, " ")
+      .trim(),
+    other: mac ? null : "Other systems: cli.github.com",
+  };
 }
 
 /** The review id `github:owner/repo#12` as a person says it: `owner/repo #12`. */

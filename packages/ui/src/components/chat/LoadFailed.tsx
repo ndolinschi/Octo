@@ -4,10 +4,11 @@ import { ErrorNotice } from "../shared/ErrorNotice";
 export function LoadFailed({ error, onRetry }: { error: string; onRetry(): void }) {
   return (
     <ErrorNotice
-      title="Couldn't load the conversation"
+      title="Couldn't load the session"
       fields={{ message: error, hint: "Octo tries again by itself.", action: "retry" }}
       onRetry={onRetry}
-      className="m-4"
+      // B3: on the column's own edges (it was inset 16px more than the transcript: x28 on a phone).
+      className="my-4"
     />
   );
 }

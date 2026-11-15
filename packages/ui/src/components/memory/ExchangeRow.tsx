@@ -50,7 +50,7 @@ export function ExchangeRow(props: {
     return (
       <li data-exchange={e.id}>
         {/* B32: the glyph column and the time column of the other exchanges, so the text edge does not jump. */}
-        <ListRow size="md" tone="quiet" leading={<Glyph icon={Eraser} size={14} />} title="Forgotten exchange" meta="removed" trailing={ROW_TAIL} />
+        <ListRow size="md" tone="quiet" leading={<Glyph icon={Eraser} size={14} />} title="Forgotten request" meta="removed" trailing={ROW_TAIL} />
       </li>
     );
   }
@@ -78,12 +78,12 @@ export function ExchangeRow(props: {
           onClick={props.onToggle}
           trailing={
             <IconMenu
-              label="Exchange actions"
+              label="Request actions"
               size="xs"
               items={[
-                ...(open ? [{ id: "open", label: "Open in conversation", run: () => open(e.turn_id) }] : []),
+                ...(open ? [{ id: "open", label: "Open in session", run: () => open(e.turn_id) }] : []),
                 { id: "context", label: "Context", run: () => setReceipt(true) },
-                { id: "forget", label: "Forget this exchange", run: () => setConfirm(true) },
+                { id: "forget", label: "Forget this request", run: () => setConfirm(true) },
               ]}
             />
           }
@@ -105,7 +105,7 @@ export function ExchangeRow(props: {
               <span className="min-w-0 break-words">{note}</span>
             </p>
           )}
-          {e.answer_truncated && <Notice tone="info">The answer was longer than 64 KiB; the end is cut.</Notice>}
+          {e.answer_truncated && <Notice tone="info">The answer was longer than 64 KB; the end is cut.</Notice>}
           <div className="flex min-w-0 items-center gap-2 text-xs text-fg-3">
             <span className="min-w-0 flex-1 truncate" title={line}>
               {line}
@@ -123,8 +123,8 @@ export function ExchangeRow(props: {
       </Presence>
       {confirm && (
         <ConfirmDialog
-          title="Forget this exchange?"
-          description="The request and its answer are deleted from memory and from search. A marker stays in the session. The conversation itself is not changed. This cannot be undone."
+          title="Forget this request?"
+          description="The request and its answer are removed from memory and search. The session keeps a marker. This can't be undone."
           confirm="Forget"
           busyText="Forgetting"
           onClose={() => setConfirm(false)}

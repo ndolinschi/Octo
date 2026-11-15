@@ -62,13 +62,13 @@ export type Resolution = { decision: ApprovalDecision; by: ResolvedBy; note?: st
 /** The resolved card's one line ("Allowed once", "Denied automatically after 30 minutes" …). */
 export function resolutionLabel(r: Resolution): string {
   if (r.by === "timeout") return "Denied automatically";
-  if (r.by === "cancelled") return "Denied: the turn was stopped";
+  if (r.by === "cancelled") return "Denied: stopped";
   const verb =
     r.option ??
     (r.decision === "allow"
       ? "Allowed once"
       : r.decision === "allow_for_turn"
-        ? "Allowed for this turn"
+        ? "Allowed for this request"
         : r.decision === "allow_always"
           ? "Always allowed"
           : "Denied");
@@ -117,7 +117,7 @@ export function approvalCaption(a: Approval): string {
     case "command":
       return "Run a command";
     case "acp":
-      return "Permission requested";
+      return "Needs your permission";
     case "network":
       return "Fetch a web page";
   }

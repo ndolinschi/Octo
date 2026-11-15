@@ -92,11 +92,9 @@ export function EditorStatus({
       {status && (
         <span
           role="status"
-          aria-label={`${help} (language server ${status.label}): ${STATE_TEXT[status.state]}`}
+          aria-label={`${help} (${status.label}): ${STATE_TEXT[status.state]}`}
           title={
-            status.error
-              ? `${help} ${STATE_TEXT[status.state]}. ${status.label}: ${status.error}`
-              : `${help} is ${STATE_TEXT[status.state]} (language server ${status.label})`
+            status.error ? `${help} ${STATE_TEXT[status.state]}. ${status.label}: ${status.error}` : `${help} is ${STATE_TEXT[status.state]} (${status.label})`
           }
           data-lsp-state={status.state}
           className={

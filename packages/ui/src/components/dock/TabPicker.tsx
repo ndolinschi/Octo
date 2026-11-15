@@ -47,7 +47,7 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
   }, [state.agentOrder, state.agents]);
 
   const sections = (query: string): PickerSection[] => {
-    const tools: PickerRow[] = (Object.entries(TOOL_TABS) as [ToolTab, (typeof TOOL_TABS)[string]][]).map(([tool, t]) => ({
+    const tools: PickerRow[] = (Object.entries(TOOL_TABS) as [ToolTab, (typeof TOOL_TABS)[ToolTab]][]).map(([tool, t]) => ({
       id: `tool:${tool}`,
       label: t.label,
       lead: <Glyph icon={t.icon} size={14} />,

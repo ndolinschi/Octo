@@ -12,7 +12,7 @@ import { IconButton } from "../../primitives/IconButton";
 import { Presence } from "../../primitives/Presence";
 import { StateGlyph } from "../../primitives/StateGlyph";
 import { tabInfo } from "../tabInfo";
-import { conversationSession, isConversation, usePanelHistory } from "./panelHistory";
+import { conversationSession, isConversation, reopenFor, usePanelHistory } from "./panelHistory";
 
 const PhoneMoreSheet = lazy(() => import("./PhoneMoreSheet"));
 
@@ -35,7 +35,16 @@ export default function PhoneHeader() {
   const counts = useOptionalComments()?.counts;
   const [more, setMore] = useState(false);
   const conversation = isConversation(props.active, state);
-  usePanelHistory(projectId, props.active, conversation, (tab) => (props.tabs.includes(tab) ? ws.activate(tab) : ws.focusChat()));
+  usePanelHistory(projectId, props.active, conversation, (tab) => {
+    const r = reopenFor(tab, props.tabs);
+    if (r.kind === "activate") ws.activate(r.tab);
+    else if (r.kind === "tool") ws.openTool(r.tool);
+    else if (r.kind === "file") ws.openFileTab(r.key);
+    else if (r.kind === "run") ws.openRun(r.name);
+    else if (r.kind === "agent") ws.openAgent(r.agentId);
+    else if (r.kind === "session") ws.openSession(r.sessionId);
+    else ws.focusChat();
+  });
   const info = tabInfo(props.active, {
     state,
     projectName: project?.name,
@@ -62,7 +71,7 @@ export default function PhoneHeader() {
         <IconButton icon={ArrowLeft} label="Back" size="lg" onClick={() => window.history.back()} />
       )}
       <div className="flex min-w-0 flex-1 flex-col justify-center">
-        <h1 data-phone-title className="truncate text-title text-fg">
+        <h1 data-phone-title data-page-title tabIndex={-1} className="truncate text-title text-fg focus-visible:shadow-none">
           {title}
         </h1>
         {meta && <p className="truncate text-xs text-fg-3">{meta}</p>}

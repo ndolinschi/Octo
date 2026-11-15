@@ -174,7 +174,7 @@ export function isStale(observedAt: string, now: number): boolean {
 }
 
 export function observedLabel(observedAt: string, now: number): string {
-  return `observed ${timeAgo(observedAt, now)}`;
+  return `seen ${timeAgo(observedAt, now)}`;
 }
 
 const KIND: Record<LimitKind, string> = { requests: "Requests", tokens: "Tokens", input_tokens: "Input tokens", output_tokens: "Output tokens" };

@@ -1,5 +1,5 @@
 import type { CompactionMarker } from "@octo/agent-client";
-import { compactionLabel } from "../../lib/compact";
+import { AGENT_RESET, compactionLabel } from "../../lib/compact";
 import { formatTokens } from "../../lib/format";
 
 /**
@@ -20,7 +20,7 @@ export function CompactedMarker({ marker }: { marker: CompactionMarker }) {
       aria-label={label}
       title={
         cut
-          ? `The conversation was cut back here on ${new Date(marker.at).toLocaleString()}. The requests after it and the files they changed are gone.${label.includes("session reset") ? " The agent's own session was reset; its next turn starts a new one with a recap." : ""}`
+          ? `The session was cut back here on ${new Date(marker.at).toLocaleString()}. The requests after it and the files they changed are gone.${label.includes(AGENT_RESET) ? " The agent starts over from a short recap." : ""}`
           : `${count}compacted${size} on ${new Date(marker.at).toLocaleString()}. Everything after it works from that summary; the full text stays here.`
       }
       className="flex h-4 items-center gap-3 text-xs text-fg-3"

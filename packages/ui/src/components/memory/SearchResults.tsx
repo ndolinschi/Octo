@@ -27,7 +27,7 @@ export function SearchResults(props: { state: SearchState; query: string; canOpe
   if (state.status === "idle")
     return (
       <div className="px-pane">
-        <PanelEmpty>Type two letters or more to search exchanges, knowledge, files and notes.</PanelEmpty>
+        <PanelEmpty>Type two letters or more to search requests, knowledge, files and notes.</PanelEmpty>
       </div>
     );
   if (state.status === "loading") return <SkeletonList count={5} size="md" twoLine shimmer />;

@@ -57,7 +57,7 @@ export function anchorProblem(hunks: readonly DiffHunk[], a: Anchor, suggestion:
   const where = single ? `Line ${n.start}` : `Lines ${n.start}–${n.end}`;
   if (!single && lineInDiff(hunks, n.side, n.start) && lineInDiff(hunks, n.side, n.end))
     return `${where} cross a gap between two changes. Keep a range inside one change, or comment on each part.`;
-  return `${where} ${single ? "is" : "are"} not part of the diff. The code host takes comments on changed lines and up to three lines around them; pick one of those, or leave a file comment.`;
+  return `${where} ${single ? "is" : "are"} not part of the diff. GitHub only accepts comments on changed lines and up to three lines around them; pick one of those, or leave a file comment.`;
 }
 
 /** The API input for a comment on an anchor: one line is `line`, a range adds `start_line`. */
@@ -96,7 +96,7 @@ export function linesOf(text: string, start: number, end: number): string {
 export function commentError(code: string | undefined, message: string): string {
   switch (code) {
     case "line_not_in_diff":
-      return "That line is not part of the diff. The code host takes comments on changed lines and up to three lines around them. Pick a changed line, or leave a file comment.";
+      return "That line is not part of the diff. GitHub only accepts comments on changed lines and up to three lines around them. Pick a changed line, or leave a file comment.";
     case "path_not_in_diff":
       return "That file is not part of this review any more. Refresh the review and try again.";
     case "empty_comment":

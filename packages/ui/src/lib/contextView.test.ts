@@ -45,7 +45,7 @@ test("contextView: categories largest first, then reserved and free; shares sum 
   );
   assert.equal(v.free, 200_000 - 82_000 - 8_000);
   assert.equal(v.usedPercent, 41);
-  assert.equal(v.compacted, "history was compacted 2 turns ago");
+  assert.equal(v.compacted, "history was compacted 2 requests ago");
 });
 
 test("the ≈ rule: estimates by the harness are marked, what an agent reports is not", () => {
@@ -54,7 +54,7 @@ test("the ≈ rule: estimates by the harness are marked, what an agent reports i
   const agent = contextView({ window: 200_000, used: 61_000, source: "agent", categories: [] });
   assert.equal(agent.source, "agent");
   assert.deepEqual(agent.rows, []);
-  assert.equal(contextHeadline(agent), "61k of 200k used, as the agent reports");
+  assert.equal(contextHeadline(agent), "61k of 200k used (reported by the agent)");
   assert.equal(agent.approx, false);
 });
 
@@ -72,7 +72,7 @@ test("the older breakdown is read too; without the endpoint the last turn gives 
   });
   assert.deepEqual(
     old.rows.map((r) => r.label),
-    ["Conversation", "Instructions and briefing", "Free"],
+    ["Messages", "Instructions", "Free"],
   );
   assert.equal(
     old.rows.reduce((n, r) => n + r.percent, 0),
@@ -84,6 +84,6 @@ test("the older breakdown is read too; without the endpoint the last turn gives 
 });
 
 test("cacheLine: cached share of the last request's input", () => {
-  assert.equal(cacheLine(contextView(harness)), "Last request: 64k read, 50k of it cached (78%), 3.1k written");
+  assert.equal(cacheLine(contextView(harness)), "Last request: 64k read (78% from cache), 3.1k written");
   assert.equal(cacheLine(contextView({ window: 200_000, used: 1, source: "harness", categories: [] })), null);
 });

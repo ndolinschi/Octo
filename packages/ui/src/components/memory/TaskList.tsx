@@ -105,7 +105,9 @@ function TaskRow(props: {
             {t.title}
           </>
         }
-        description={<RowLine end={formatRelative(t.updated_at, props.now)}>{taskDescription(t)}</RowLine>}
+        // B4.2: the date on the title line, as the Remembered rows above.
+        meta={formatRelative(t.updated_at, props.now)}
+        description={<RowLine>{taskDescription(t)}</RowLine>}
         tip={t.title}
         onClick={props.onToggle}
         trailing={ROW_TAIL}

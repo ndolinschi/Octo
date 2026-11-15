@@ -57,7 +57,7 @@ export function ToolDetail({
   const kind = toolKind(use.name, use.input);
   const output = result ? result.content : null;
   const stopped = state === "stopped" ? stoppedLine(result, end, clockTime(times.end), interrupted) : null;
-  const failed = state === "error" ? (output ?? "").trim() || "The tool reported an error with no message." : null;
+  const failed = state === "error" ? (output ?? "").trim() || "The tool failed without saying why." : null;
   const uses = useMemo(() => [use, ...more], [use, more]);
   const raw = useMemo(
     () => ({

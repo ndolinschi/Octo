@@ -46,6 +46,7 @@ export function Tab(props: {
   return (
     <div
       data-tab-wrapper
+      role="none"
       data-no-drag
       data-pinned={canClose ? undefined : ""}
       onPointerDown={props.onPress}
@@ -81,6 +82,8 @@ export function Tab(props: {
         data-label={name}
         aria-selected={selected}
         aria-controls={`${domId(tab)}-panel`}
+        // 11a: the close button is out of the tablist's a11y (aria-hidden): the keyboard's way is Ctrl/Cmd+W on the tab.
+        aria-keyshortcuts={canClose ? "Control+W Meta+W" : undefined}
         tabIndex={selected ? 0 : -1}
         title={info.title}
         aria-description={commentsDescription(info.comments)}
@@ -110,7 +113,7 @@ export function Tab(props: {
         {info.glyph === "failed" && <span className="sr-only"> (failed)</span>}
         {info.glyph === "needs" && <span className="sr-only"> (needs you)</span>}
       </button>
-      <span className={cn("relative grid shrink-0 place-items-center", slot ? "mr-2 size-4" : "absolute top-0 right-0 h-full w-0")}>
+      <span role="none" className={cn("relative grid shrink-0 place-items-center", slot ? "mr-2 size-4" : "absolute top-0 right-0 h-full w-0")}>
         {info.status === "modified" && (
           <span
             aria-hidden
@@ -123,6 +126,7 @@ export function Tab(props: {
             icon={X}
             size="xs"
             tabIndex={-1}
+            aria-hidden="true"
             label={`Close ${name}`}
             data-shortcut={`${MOD}W`}
             onPointerDown={(e) => e.stopPropagation()}

@@ -31,7 +31,7 @@ function LimitRow({ limit, now }: { limit: Limit; now: number }) {
     <div
       data-limit
       data-stale={stale ? "" : undefined}
-      title={`${limit.model} on ${limit.provider}: ${limitKindLabel(limit.kind).toLowerCase()}${stale ? " — stale: no response with these headers for over 10 minutes" : ""}`}
+      title={`${limit.model} on ${limit.provider}: ${limitKindLabel(limit.kind).toLowerCase()}${stale ? " — out of date: no response reported limits for over 10 min" : ""}`}
       className="flex flex-col gap-1 rounded-sm px-2 py-2"
     >
       <div className="flex h-5 min-w-0 items-center gap-2 text-sm">
@@ -91,17 +91,17 @@ export function UsageLimits() {
       {!settled && slow && <SkeletonList count={4} size="md" />}
       {settled && limits.status === "error" && (
         <Notice form="block" tone="error" title="Couldn't read limits">
-          {limits.message}. Check that the harness is running, then reopen this tab.
+          {limits.message}. Check that Octo's local service is running, then reopen this tab.
         </Notice>
       )}
       {settled && limits.status === "ok" && groups.length === 0 && (
         // P1: a section with nothing to show says so in the frame's one empty line, under its caption like the others.
-        <InfoSection title="Rate limits" labelId="usage-limits-none">
+        <InfoSection title="Usage limits" labelId="usage-limits-none">
           <div data-limits-empty>
             <PanelEmpty>
               {config?.router
-                ? "The router reports no rate limits: the provider behind it (OpenRouter, for one) sends no rate-limit headers. They appear when a provider that sends them, such as Anthropic's API, answers."
-                : "None reported yet. Limits appear after the first model response that carries rate-limit headers; some providers (OpenRouter, for one) send none."}
+                ? "No limits reported: the provider behind the router (for example OpenRouter) doesn't send them."
+                : "None yet. Limits appear after a model answer that includes them."}
             </PanelEmpty>
           </div>
         </InfoSection>
@@ -115,14 +115,14 @@ export function UsageLimits() {
           </InfoSection>
         ))}
       {settled && (
-        <InfoSection title="Plan limits for external agents" labelId="usage-plan-limits">
+        <InfoSection title="Subscription limits of coding agents" labelId="usage-plan-limits">
           {agents.map((a) => (
-            <ListRow key={a.id} leading={<Glyph icon={GLYPH.agent} size={14} />} title={a.label} meta="ACP agent" tone="quiet" />
+            <ListRow key={a.id} leading={<Glyph icon={GLYPH.agent} size={14} />} title={a.label} meta="Coding agent" tone="quiet" />
           ))}
           <p className="px-2 pt-1 text-xs text-fg-3">
             {agents.length
-              ? "Plan limits (five-hour, weekly) are shown by each agent's own CLI; Octo's local service cannot read them."
-              : "No external agents are available."}
+              ? "Subscription limits (5-hour, weekly) are shown by each agent's own app; Octo can't read them."
+              : "No coding agents are available."}
           </p>
         </InfoSection>
       )}

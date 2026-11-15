@@ -46,10 +46,11 @@ export function percentShares(values: readonly number[]): number[] {
 const isOverview = (v: ContextOverview | ContextBreakdown): v is ContextOverview => "used" in v;
 
 const PART_LABEL: Record<string, string> = {
-  system: "Instructions and briefing",
+  // One name per category, the same as the context meter's (lib/contextMeter.ts).
+  system: "Instructions",
   tools: "Tool definitions",
-  notes: "Project notes and memory",
-  messages: "Conversation",
+  notes: "Notes and memory",
+  messages: "Messages",
   tool_results: "Tool results",
   summary: "Compacted summary",
 };
@@ -97,7 +98,7 @@ export function contextView(raw: ContextOverview | ContextBreakdown, now = Date.
   if (free !== null) rows.push({ id: "free", label: "Free", tokens: free, percent: pct[tokens.length - 1] ?? 0, kind: "free" });
   const compacted =
     o.compacted_turns_ago !== undefined
-      ? `history was compacted ${o.compacted_turns_ago === 0 ? "this turn" : o.compacted_turns_ago === 1 ? "1 turn ago" : `${o.compacted_turns_ago} turns ago`}`
+      ? `history was compacted ${o.compacted_turns_ago === 0 ? "in this request" : o.compacted_turns_ago === 1 ? "1 request ago" : `${o.compacted_turns_ago} requests ago`}`
       : o.compacted_at
         ? `history was compacted ${timeAgo(o.compacted_at, now)}`
         : null;
@@ -135,7 +136,9 @@ export function lastTurnView(used: number, window: number | null): ContextView {
 export function contextHeadline(v: ContextView): string {
   const a = v.approx ? "≈" : "";
   if (v.source === "agent")
-    return v.window ? `${formatTokens(v.used)} of ${formatTokens(v.window)} used, as the agent reports` : `${formatTokens(v.used)} used, as the agent reports`;
+    return v.window
+      ? `${formatTokens(v.used)} of ${formatTokens(v.window)} used (reported by the agent)`
+      : `${formatTokens(v.used)} used (reported by the agent)`;
   if (v.window === null) return `${a}${formatTokens(v.used)} tokens used`;
   return `${a}${v.usedPercent}% of ${formatTokens(v.window)} used · ${a}${formatTokens(v.free ?? 0)} free`;
 }
@@ -145,7 +148,7 @@ export function cacheLine(v: ContextView): string | null {
   const r = v.lastRequest;
   if (!r || r.input <= 0) return null;
   const share = Math.round((Math.min(r.cached, r.input) / r.input) * 100);
-  return `Last request: ${formatTokens(r.input)} read, ${formatTokens(Math.min(r.cached, r.input))} of it cached (${share}%), ${formatTokens(r.output)} written`;
+  return `Last request: ${formatTokens(r.input)} read (${share}% from cache), ${formatTokens(r.output)} written`;
 }
 
 /** The parts that have a colour in styles.css (`octo-ctx-<id>`); any other category is drawn neutral. */

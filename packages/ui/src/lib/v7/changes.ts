@@ -46,7 +46,7 @@ export function noteText(note: ChangeNote): string | null {
     case "binary":
       return "Binary file: no text diff.";
     case "too_large":
-      return "Too large to diff (over 2 MiB).";
+      return "Too large to diff (over 2 MB).";
     case "no_preimage":
       return "The content before this change was not kept, so there is no diff.";
     case "pruned":
@@ -118,7 +118,7 @@ export function revertProblem(e: unknown): RevertProblem {
     case "file_changed":
       return {
         kind: "file_changed",
-        message: "The file changed after this turn, so it was not reverted. Open the file to undo the edit by hand.",
+        message: "The file changed after this request, so it was not reverted. Open the file to undo the edit by hand.",
       };
     case "revert_unavailable":
       return {

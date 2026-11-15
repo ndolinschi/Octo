@@ -87,5 +87,5 @@ export function useSession(projectId: string, sessionId: string, tick: number): 
   const { bridge } = useApp();
   const get = bridge.getMemorySession;
   const load = useRead(`session|${projectId}|${sessionId}`, get ? () => get.call(bridge, projectId, sessionId) : null, tick, isNotFound);
-  return load.status === "none" ? { status: "error", message: "This session is gone." } : load;
+  return load.status === "none" ? { status: "error", message: "This session no longer exists." } : load;
 }

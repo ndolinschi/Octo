@@ -4,7 +4,17 @@ import type { Review, ReviewReplyPost, ReviewSubmitPreview, ReviewSubmitResult, 
 import { errorMessage } from "../../lib/format";
 import type { ReviewApi } from "../../lib/review/api";
 import { commentWhere } from "../../lib/review/position";
-import { canSubmit, reviewTarget, submitProblem, submittedText, submitText, VERDICTS, verdictLabel, type SubmitProblem } from "../../lib/review/submit";
+import {
+  canSubmit,
+  reviewTarget,
+  SUBMIT_EMPTY_TEXT,
+  submitButtonText,
+  submitProblem,
+  submittedText,
+  submitText,
+  VERDICTS,
+  type SubmitProblem,
+} from "../../lib/review/submit";
 import { Button } from "../primitives/Button";
 import { CommandLine } from "../primitives/CommandLine";
 import { Dialog } from "../primitives/Dialog";
@@ -30,6 +40,7 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
   const [result, setResult] = useState<{ result: ReviewSubmitResult; verdict: ReviewVerdict; replies: ReviewReplyPost[] } | null>(null);
   const [tick, setTick] = useState(0);
   const bodyId = useId();
+  const noteId = useId();
 
   useEffect(() => {
     let alive = true;
@@ -110,9 +121,7 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
               Open the review on {new URL(link).host}
             </a>
           )}
-          {!r.posted && (
-            <p className="text-fg-2">The comments are marked as submitted in this project. Hand them to the orchestrator if you want them acted on.</p>
-          )}
+          {!r.posted && <p className="text-fg-2">The comments are marked as submitted in this project. Send them to Octo if you want it to act on them.</p>}
         </div>
       </Dialog>
     );
@@ -126,12 +135,16 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
       onClose={props.onClose}
       footer={
         <>
+          {/* B2: what will happen (or why nothing can yet) is the note; the primary keeps a short label. */}
+          <span id={noteId} className="min-w-0 flex-1 basis-48 text-xs text-fg-3">
+            {ok || !ready ? submitText(review, verdict, ready ? ready.comments.length : count, hasBody, replies.length) : SUBMIT_EMPTY_TEXT}
+          </span>
           <Button variant="ghost" onClick={props.onClose}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={!ok || busy} aria-busy={busy} onClick={() => void submit()}>
+          <Button variant="primary" disabled={!ok || busy} aria-busy={busy} aria-describedby={noteId} onClick={() => void submit()}>
             {busy && <Spinner />}
-            {submitText(review, verdict, ready ? ready.comments.length : count, hasBody, replies.length)}
+            {submitButtonText(review, verdict)}
           </Button>
         </>
       }
@@ -179,11 +192,8 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
 function PreviewBody({ preview }: { preview: ReviewSubmitPreview }) {
   return (
     <div className="flex flex-col gap-3 text-sm">
-      <p className="text-fg-2">
-        {preview.posts ? "Verdict: " : "Verdict (kept here only): "}
-        <strong className="font-medium text-fg">{verdictLabel(preview.verdict)}</strong>
-      </p>
-      {!preview.posts && <p className="text-fg-2">This is a local review: nothing is posted to a code host.</p>}
+      {/* B2: the verdict is chosen right above; the preview does not repeat it. */}
+      {!preview.posts && <p className="text-fg-2">This is a local review: the verdict is kept here and nothing is posted to GitHub.</p>}
       {preview.body.trim() && (
         <figure className="flex flex-col gap-1">
           <figcaption className="text-xs text-fg-3">Review text, exactly as it will be posted</figcaption>

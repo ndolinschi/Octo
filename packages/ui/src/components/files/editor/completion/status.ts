@@ -61,7 +61,7 @@ export function stateAfterError(error: unknown, now: number): CompletionState {
   if (code === "completion_off") return { kind: "off", reason: "No completion model is set for this project" };
   if (code === "budget_reached") return { kind: "paused", reason: "The project's budget is reached", until: now + PAUSE_BUDGET_MS };
   const message = error instanceof Error && error.message ? error.message : "the request failed";
-  return { kind: "paused", reason: `Completion failed: ${message}. It tries again in 30 s`, until: now + PAUSE_ERROR_MS };
+  return { kind: "paused", reason: `Completion failed: ${message}. Tries again in 30s`, until: now + PAUSE_ERROR_MS };
 }
 
 /** The status item's words: a label (visible when there is room), and the hover text. */

@@ -30,7 +30,7 @@ export function Sheet(props: {
   const panel = useRef<HTMLDivElement>(null);
   const state = usePresence();
   useModal(panel, props.onClose);
-  useHistoryLayer(state === "open", props.onClose);
+  useHistoryLayer(state === "open", () => props.onClose());
   const full = props.variant === "full";
   return createPortal(
     <div className="fixed inset-0 z-50" inert={state === "closed"}>

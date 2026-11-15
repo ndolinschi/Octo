@@ -63,7 +63,7 @@ export function ContextRing(props: { used: number | null | undefined; size: numb
   if (!used || !size) return null;
   const share = Math.min(1, used / size);
   const pct = Math.round(share * 100);
-  const text = `Context: ${formatTokens(used)} of ${formatTokens(size)} tokens (${pct}%)`;
+  const text = `Context: ${pct}% full (${formatTokens(used)} of ${formatTokens(size)})`;
   return (
     <>
       <Button

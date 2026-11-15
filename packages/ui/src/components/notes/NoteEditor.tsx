@@ -188,7 +188,7 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
             <Notice tone="error">{pin.reason}</Notice>
           ) : (
             <p className="text-xs text-fg-3">
-              {`Agents get a pinned note whole in every request, for rules that must always apply: up to ${NOTE_LIMITS.pinned} notes, ${NOTE_LIMITS.pinnedChars.toLocaleString("en-US")} characters together.`}
+              {`Pinned notes go to agents in full with every request. Use them for rules that always apply (up to ${NOTE_LIMITS.pinned} notes, ${NOTE_LIMITS.pinnedChars.toLocaleString("en-US")} characters in total).`}
             </p>
           )}
         </div>

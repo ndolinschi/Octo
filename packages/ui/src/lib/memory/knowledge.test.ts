@@ -94,7 +94,7 @@ test("kind labels, keepers and the source line", () => {
   );
   assert.equal(
     keeperName("agt_1", () => null),
-    "Orchestrator",
+    "Octo",
   );
   assert.equal(
     keeperName("agt_1", () => "Explorer"),

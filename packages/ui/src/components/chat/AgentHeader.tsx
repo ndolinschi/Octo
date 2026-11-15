@@ -87,10 +87,7 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <h1 className="shrink-0 text-heading text-fg">{roleName(agent)}</h1>
         {agent.title && <p className="min-w-0 flex-1 truncate text-base text-fg-2">{agent.title}</p>}
-        <p
-          className="ml-auto shrink-0 text-xs text-fg-3 tabular-nums"
-          title={served.asked ? `${served.asked} → ${served.name} (chosen → served)` : served.name}
-        >
+        <p className="ml-auto shrink-0 text-xs text-fg-3 tabular-nums" title={served.asked ? `${served.name} (asked for ${served.asked})` : served.name}>
           {meta.map((m) => (
             <span key={m} className="ml-3 first:ml-0">
               {m}
@@ -106,7 +103,7 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
       )}
       {agent.status === "failed" && (
         <p role="note" className="mt-1.5 text-sm text-fg-2">
-          <span className="text-err">{(agent.error || "This helper failed").replace(/\.$/, "")}.</span>{" "}
+          <span className="text-err">{(agent.error || "This agent failed").replace(/\.$/, "")}.</span>{" "}
           {ws ? (
             <Button
               variant="link"
@@ -118,7 +115,7 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
               Retry
             </Button>
           ) : (
-            "Ask in the conversation to retry it."
+            "Ask in the session to retry it."
           )}
         </p>
       )}

@@ -1,4 +1,4 @@
-export type ReviewKeyAction = "next-change" | "prev-change" | "next-file" | "prev-file" | "viewed" | "comment" | "suggest";
+export type ReviewKeyAction = "next-change" | "prev-change" | "next-file" | "prev-file" | "viewed" | "comment" | "suggest" | "next-thread" | "prev-thread";
 
 export type KeyInput = { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean };
 /** Where the key was pressed: a text field the reader types in, or Monaco's (read-only) input, which still takes the review keys. */
@@ -12,6 +12,9 @@ const KEYS: Record<string, ReviewKeyAction> = {
   v: "viewed",
   c: "comment",
   s: "suggest",
+  // The existing threads of the file, in line order (the accessible thread list opens on the one reached).
+  n: "next-thread",
+  p: "prev-thread",
 };
 
 /** The review key a keydown stands for, or null: never while typing, never with a modifier (those belong to the app). */

@@ -43,6 +43,6 @@ export function ruleLine(rule: ApprovalRuleSpec): string {
 /** Why saving the rule failed, with a next step (422 `no_rule`, 400 `invalid_request`). */
 export function ruleError(code: string | null): string | null {
   if (code === "no_rule") return "No rule can be saved for this request. Allow it once instead.";
-  if (code === "invalid_request") return "The harness did not accept that rule. Allow it once instead.";
+  if (code === "invalid_request") return "Octo's local service did not accept that rule. Allow it once instead.";
   return null;
 }

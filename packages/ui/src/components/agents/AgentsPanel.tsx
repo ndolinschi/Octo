@@ -1,4 +1,6 @@
 import { plainError } from "../../lib/errors/plain";
+import { useQuietOpen } from "../../lib/quietFocus";
+import { useRovingRows } from "../../lib/rovingRows";
 import type { Agent } from "@octo/agent-client";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef } from "react";
@@ -44,6 +46,8 @@ export function AgentsPanel() {
   const scroller = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
   useRowKeys(rows);
+  // Item 9 (polish pass F3): the list is one Tab stop; ↑/↓/Home/End move between the rows.
+  useRovingRows(rows);
   useLayoutEffect(() => {
     const el = scroller.current;
     const top = memory.get(AGENTS_TAB, SCROLL);
@@ -101,8 +105,11 @@ export function AgentsPanel() {
   };
 
   const empty = groups.running.length + groups.finished.length === 0;
+  // B4.3: focus the dock moves here on opening draws no ring until the first key or press.
+  const quiet = useRef<HTMLDivElement>(null);
+  useQuietOpen(quiet);
   return (
-    <div data-agents className="h-full min-h-0">
+    <div ref={quiet} data-agents className="h-full min-h-0">
       <Panel
         name="agents"
         title="Agents"

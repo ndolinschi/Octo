@@ -14,7 +14,8 @@ import { useOptionalComments } from "../../../state/comments";
 import { useProject } from "../../../state/project";
 import { useRunsSelector, useRunsStore } from "../../../state/projectRuns";
 import { StatusSlotsContext } from "../../../state/statusSlots";
-import { toolTab, type TabId, type ToolTab } from "../../../state/workspace/layout";
+import { parseTab, toolTab, type TabId, type ToolTab } from "../../../state/workspace/layout";
+import { TOOL_PURPOSE } from "../../../lib/toolPurpose";
 import { useWorkspace } from "../../../state/workspace/WorkspaceProvider";
 import type { FileKey } from "../../../lib/files";
 import { startProjectRun } from "../../commands/startRun";
@@ -82,6 +83,9 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
     if ("problem" in r) setProblem(r.problem);
     else ws.openRun(name);
   };
+  // A4: the panel's purpose (the desktop's (i) after its title) leads the sheet on the phone.
+  const ref = parseTab(props.active);
+  const purpose = ref?.kind === "tool" ? TOOL_PURPOSE[ref.tool] : null;
   const others = (projects ?? []).filter((p) => p.status === "running" && p.id !== projectId).length;
   const working = workingText(others);
   return (
@@ -92,6 +96,13 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
             <Notice tone="error">{problem}</Notice>
           </div>
         )}
+        {purpose && (
+          <Group title="About this panel">
+            <p data-phone-purpose className="px-2 pb-2 text-sm text-fg-2">
+              {purpose}
+            </p>
+          </Group>
+        )}
         <Group title="This session">
           {props.tabs.map((t) => {
             const info = tabInfo(t, ctx);
@@ -101,7 +112,7 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
                 size="lg"
                 selected={t === props.active}
                 leading={info.glyph && info.glyph !== "idle" ? <StateGlyph state={info.glyph} size={14} box={16} /> : <Glyph icon={info.icon} size={16} />}
-                title={info.name ?? info.label}
+                title={withoutProject(info.name ?? info.label, project?.name)}
                 onClick={then(() => ws.activate(t))}
               />
             );
@@ -146,7 +157,6 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
         <Group title="Panels">
           {PANELS.map((tool) => {
             const t = TOOL_TABS[tool];
-            if (!t) return null;
             return (
               <ListRow
                 key={tool}
@@ -183,6 +193,11 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
       </div>
     </Sheet>
   );
+}
+
+/** A9.3: the header says the project; a conversation's row says its session ("Project / topic" → "topic"). */
+function withoutProject(name: string, projectName: string | undefined): string {
+  return projectName && name.startsWith(`${projectName} / `) ? name.slice(projectName.length + 3) : name;
 }
 
 function Group({ title, children }: { title: string; children: ReactNode }) {

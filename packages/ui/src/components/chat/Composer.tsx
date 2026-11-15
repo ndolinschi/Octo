@@ -46,6 +46,7 @@ import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { mayNearLimit, plainShaping, triggerAt } from "../../lib/composerInput";
 import type * as SizeModule from "../../lib/messageSize";
 import { usePhone } from "../../lib/phone";
+import { useNewSession, type StartedSession } from "./useNewSession";
 import { deviceMay, ON_YOUR_COMPUTER } from "../../lib/remoteDevice";
 
 const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
@@ -153,6 +154,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const slashCommands = useSlashCommands();
   const openModel = useCallback((query: string) => setModelRequest((r) => ({ n: (r?.n ?? 0) + 1, query })), []);
   const runSlash = useSlashRunner({ mode: props.mode, openModel });
+  const startNew = useNewSession();
+  const [started, setStarted] = useState<StartedSession | null>(null);
   const slashListId = useId();
   const listId = useId();
   const slots = useChatSlots();
@@ -230,6 +233,25 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (!canSend) return;
     // An Octo command typed out in full runs here; an agent's is sent as typed (B11).
     const octo = octoCommandFor(text, slashCommands);
+    // Addition 9: `/new <text>` goes to a new session (with its mentions and images); this one gets nothing and keeps working.
+    if (octo?.command.name === "new") {
+      setSlash(null);
+      setStarted(null);
+      setError(null);
+      const kept = text;
+      setText("");
+      const result = await startNew(withAttachments(octo.args, attach.files), pics.ready);
+      if (result && "failed" in result) {
+        setText(kept);
+        setError(result.failed);
+        return;
+      }
+      attach.clear();
+      pics.clear();
+      if (result) setStarted(result.started);
+      return;
+    }
+    setStarted(null);
     if (octo && attach.files.length === 0) {
       setText("");
       setSlash(null);
@@ -460,7 +482,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       )}
       {modelError && (
         <Notice>
-          <span className="text-err">Couldn't switch the model.</span> {modelError.message.replace(/\.$/, "")}. The orchestrator keeps its previous one.
+          <span className="text-err">Couldn't switch the model.</span> {modelError.message.replace(/\.$/, "")}. Octo keeps the previous model.
           {modelError.provider ? (
             <Suspense fallback={null}>
               <ModelRefusedActions
@@ -479,6 +501,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       {props.notice && (
         <p className="mb-2 px-3 text-sm text-fg-3" title={props.notice.title}>
           {props.notice.text}
+        </p>
+      )}
+      {started && (
+        // Addition 9: `/new <text>` went to a new session; the view stays here. Open goes there; the line goes with the next send.
+        <p role="status" data-new-session className="octo-fade mb-2 flex min-w-0 items-baseline gap-1.5 px-3 text-sm text-fg-3">
+          <span className="min-w-0 truncate">
+            Started in a new session: <span className="text-fg-2">{started.title}</span>
+            {started.waiting && " · Waiting to start"}
+          </span>
+          <span aria-hidden>·</span>
+          <a href={started.href} onClick={() => setStarted(null)} className="touch-hit shrink-0 text-fg underline-offset-2 hover:underline">
+            Open
+          </a>
         </p>
       )}
       {stillStopping && (
@@ -553,7 +588,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </Suspense>
           )}
           <label htmlFor={props.floating ? "octo-composer-float" : "octo-composer"} className="sr-only">
-            Message the orchestrator
+            Message Octo
           </label>
           {/* C6: the top padding sits outside the scrolling text, so a long prompt never scrolls it away. */}
           <div data-composer-pad className="relative pt-3">
@@ -584,6 +619,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 setSlash(null);
               }}
               placeholder={props.disabledReason ?? (phone ? "Ask anything" : "Ask anything, @ to mention a file")}
+              // 7a (ARIA 1.2): the "@" and "/" menus are listboxes driven by aria-activedescendant, so the field is a combobox
+              // (aria-expanded is not allowed on a plain textbox; aria-multiline is not allowed on a combobox). A combobox's
+              // popup is a listbox by default, so no aria-haspopup.
+              role="combobox"
               aria-autocomplete="list"
               aria-expanded={inlineOpen || slash !== null}
               aria-controls={slash ? slashListId : inlineOpen ? listId : undefined}
@@ -597,7 +636,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               ref={plus}
               icon={Plus}
               label="Attach, mention or run"
-              title="Attach a file, mention, or run an action ( / or @ )"
+              title="Attach, mention or run ( / or @ )"
               aria-haspopup="listbox"
               aria-expanded={menu?.mode === "button"}
               pressed={menu?.mode === "button"}
@@ -688,15 +727,18 @@ function Notice({ children }: { children: ReactNode }) {
 
 const SEND = {
   send: { icon: ArrowUp, label: "Send (Enter)" },
-  queue: { icon: Clock, label: "Queue: send when this turn ends (Enter)" },
-  stop: { icon: Square, label: "Stop the turn (Esc)" },
+  queue: { icon: Clock, label: "Queue: sends after the current reply (Enter)" },
+  stop: { icon: Square, label: "Stop (Esc)" },
 } as const;
-const STOPPING_LABEL = "Stopping… the turn ends once its current step does";
+const STOPPING_LABEL = "Stopping… waiting for the current step to finish";
 
 /** One 28px round button: Send (dim while empty), Stop while working, Queue while working with text (decision 62). */
 function SendButton({ action, enabled, stopping, onStop }: { action: "send" | "queue" | "stop"; enabled: boolean; stopping: boolean; onStop(): void }) {
   const { icon } = SEND[action];
-  const label = action === "stop" && stopping ? STOPPING_LABEL : SEND[action].label;
+  // A phone has no Esc key or Enter shortcut to name.
+  const phone = usePhone();
+  const named = action === "stop" && stopping ? STOPPING_LABEL : SEND[action].label;
+  const label = phone ? named.replace(/ \((Esc|Enter)\)$/, "") : named;
   const solid = enabled && action !== "stop";
   return (
     <IconButton

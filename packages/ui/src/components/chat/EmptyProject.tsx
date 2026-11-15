@@ -36,7 +36,7 @@ export function EmptyTitle({ project }: { project: Project }) {
       )}
       {noKey && (
         <p data-nokey className="relative mt-2 text-sm text-fg-2" title={config.builtin_loop?.reason}>
-          No API key set. Choose an agent on a subscription in the model menu below, or give Octo's local service a key.
+          No API key yet. Pick a coding agent in the model menu below, or add a key in Settings.
         </p>
       )}
     </div>

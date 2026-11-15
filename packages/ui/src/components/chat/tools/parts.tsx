@@ -40,11 +40,7 @@ export function BodyFrame(props: { kind: string; children?: ReactNode; lead?: Re
         <span className="ml-auto flex shrink-0 items-center gap-4">
           {props.actions}
           {props.raw && (
-            <TextAction
-              onClick={() => setRaw((r) => !r)}
-              pressed={raw}
-              title={raw ? "Hide the call as sent and its result" : "Show the call as sent and its result"}
-            >
+            <TextAction onClick={() => setRaw((r) => !r)} pressed={raw} title={raw ? "Hide raw input and result" : "Show raw input and result"}>
               Raw
             </TextAction>
           )}

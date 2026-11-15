@@ -12,7 +12,7 @@ export default function TabMenu(props: { tab: TabId; x: number; y: number; tabs:
     items.push(
       { id: "move", label: "Move to the other side", shortcut: `${MOD}\\`, disabled: !ws.canMoveToOtherSide(tab), run: () => ws.moveToOtherSide(tab) },
       { id: "split", label: "Split right", disabled: !ws.canSplitRight(tab), run: () => ws.splitRight(tab) },
-      { id: "maximise", label: props.maximised ? "Restore the layout" : "Maximise", shortcut: `${MOD}Shift+Enter`, run: () => ws.toggleMaximise(tab) },
+      { id: "maximise", label: props.maximised ? "Restore the panel" : "Maximise", shortcut: `${MOD}Shift+Enter`, run: () => ws.toggleMaximise(tab) },
       { id: "sep", separator: true },
     );
   }

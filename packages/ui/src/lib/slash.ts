@@ -21,6 +21,21 @@ export const OCTO_FALLBACK: OctoSlashCommand[] = [
   { name: "help", description: "What these commands do", available: true, endpoint: "ui:help" },
 ];
 
+/** Addition 9: `/new`, run by the UI itself (a new session, `lib/newSession.ts`); added when a harness does not list it. */
+export const NEW_COMMAND: OctoSlashCommand = {
+  name: "new",
+  description: "Start a new session; with text, sends it there",
+  args: "text",
+  available: true,
+  endpoint: "ui:new",
+};
+
+/** The Octo commands of the menu and of `octoCommandFor`: the harness's (or the fallback) and `/new`. */
+export function octoCommands(cmds: SlashCommands | null): OctoSlashCommand[] {
+  const list = cmds?.octo ?? OCTO_FALLBACK;
+  return list.some((c) => c.name === NEW_COMMAND.name) ? list : [...list, NEW_COMMAND];
+}
+
 /**
  * The names of every Octo command: the ones `chat/slashRun.ts` runs (a harness lists these in `getSlashCommands().octo`). The
  * composer highlights a command typed with one of these names (`lib/mentions.ts`).
@@ -38,6 +53,7 @@ export const OCTO_COMMAND_NAMES: readonly string[] = [
   "settings",
   "remember",
   "help",
+  "new",
 ];
 
 /** The word after a `/` at the very start of the text, up to the caret; null when the text does not start with a slash command being typed. */
@@ -56,6 +72,6 @@ export function parseSlash(text: string): { name: string; args: string } | null 
 export function octoCommandFor(text: string, cmds: SlashCommands | null): { command: OctoSlashCommand; args: string } | null {
   const parsed = parseSlash(text);
   if (!parsed) return null;
-  const command = (cmds?.octo ?? OCTO_FALLBACK).find((c) => c.name === parsed.name);
+  const command = octoCommands(cmds).find((c) => c.name === parsed.name);
   return command?.available ? { command, args: parsed.args } : null;
 }

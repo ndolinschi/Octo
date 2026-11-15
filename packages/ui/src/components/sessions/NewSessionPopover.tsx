@@ -101,7 +101,7 @@ export function NewSessionPopover(props: {
         {error && <Notice tone="error">{error}</Notice>}
         <div className="flex justify-end">
           <Button type="submit" variant="primary" size="sm" loading={busy} disabled={project === ""}>
-            Create
+            Start
           </Button>
         </div>
       </form>

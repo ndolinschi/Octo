@@ -29,6 +29,7 @@ import { useProject } from "../../state/project";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { useTurnLine } from "./useTurnLine";
+import { useTapReveal } from "./useTapReveal";
 import { providerIdOf, useAgentName, useLoginHint } from "./agentName";
 import { LazyMarkdown as Markdown, markdownPart } from "./LazyMarkdown";
 import { readyLazy, usePartsReady } from "./readyLazy";
@@ -402,9 +403,12 @@ const UserPrompt = memo(function UserPrompt({
   const longWord = useMemo(() => hasLongWord(text), [text]);
   const compact = useTranscript().density === "compact";
   const box = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const id = useId();
+  // A2: on touch the rewind action opens under the bubble when the bubble is tapped, not under every prompt at all times.
+  const revealed = useTapReveal(root);
 
   useLayoutEffect(() => {
     const el = box.current;
@@ -417,7 +421,7 @@ const UserPrompt = memo(function UserPrompt({
   }, [text, expanded]);
 
   return (
-    <div data-prompt className="group/prompt relative">
+    <div ref={root} data-prompt data-revealed={revealed || undefined} className="group/prompt relative">
       <div
         data-bubble
         className={cn(
@@ -428,7 +432,7 @@ const UserPrompt = memo(function UserPrompt({
         {external ? <div className="mb-0.5 text-xs text-fg-3">From {author}</div> : <span className="sr-only">{author}: </span>}
         {steered && (
           <div data-steered className="mb-0.5 text-xs text-fg-3">
-            Sent mid-turn
+            Sent while Octo was working
           </div>
         )}
         {text && (
@@ -456,15 +460,20 @@ const UserPrompt = memo(function UserPrompt({
       </div>
       {onRewind && (
         // On the bubble's lower edge, in the gap to the answer: it takes no room and shows on hover or focus. On touch (no hover)
-        // it is always shown, so it goes under the bubble as a quiet action at its right instead of covering the bubble's edge.
-        <Button
-          variant="secondary"
-          size="xs"
-          onClick={() => onRewind(messageId)}
-          className="absolute right-3 -bottom-3 z-10 rounded-full bg-overlay opacity-0 shadow-float group-focus-within/prompt:opacity-100 group-hover/prompt:opacity-100 pointer-coarse:static pointer-coarse:mt-1 pointer-coarse:ml-auto pointer-coarse:flex pointer-coarse:w-fit pointer-coarse:border-transparent pointer-coarse:bg-transparent pointer-coarse:text-fg-3 pointer-coarse:opacity-100 pointer-coarse:shadow-none"
-        >
-          Rewind to here
-        </Button>
+        // it opens under the bubble, at its right, when the bubble is tapped (`data-revealed`) or the action has keyboard focus;
+        // folded, it keeps no height and stays in the tab order and the accessibility tree (styles.css, `[data-rewind]`).
+        <div data-rewind>
+          <div>
+            <Button
+              variant="secondary"
+              size="xs"
+              onClick={() => onRewind(messageId)}
+              className="absolute right-3 -bottom-3 z-10 rounded-full bg-overlay opacity-0 shadow-float group-focus-within/prompt:opacity-100 group-hover/prompt:opacity-100 pointer-coarse:relative pointer-coarse:right-auto pointer-coarse:bottom-auto pointer-coarse:ml-auto pointer-coarse:flex pointer-coarse:w-fit pointer-coarse:border-transparent pointer-coarse:bg-transparent pointer-coarse:text-fg-3 pointer-coarse:opacity-100 pointer-coarse:shadow-none"
+            >
+              Rewind to here
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

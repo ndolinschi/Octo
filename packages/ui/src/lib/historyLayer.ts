@@ -16,12 +16,24 @@ export type HistoryEnv = {
   go(delta: number): void;
   /** The token of the current entry, or null. */
   token(): string | null;
+  /**
+   * Optional: true when the current entry is new, made by a navigation of the page's own (a hash change) rather than reached
+   * by Back or Forward. It marks the entry, so it reads true once per entry. Without it every entry counts as reached.
+   */
+  fresh?(): boolean;
 };
 
-type Layer = { token: string; onPop(): void; pushed: boolean; dead: boolean };
+/**
+ * Called when a layer's entry is left by a history move. `navigated` is true when the move was a navigation of the page's
+ * own (a hash change made while the layer was open: a row that opens a route), false for Back. A layer that would show
+ * something else on Back (the phone's panels) does nothing when `navigated`: the navigation already shows what it should.
+ */
+export type LayerPop = (navigated: boolean) => void;
+
+type Layer = { token: string; onPop: LayerPop; pushed: boolean; dead: boolean };
 
 export type LayerStack = {
-  open(onPop: () => void): string;
+  open(onPop: LayerPop): string;
   /**
    * Closes the layer from the UI. The top layer goes back over its entry (and over the entries of closed layers right under
    * it); a layer with an open one above it (a sheet that opened a panel as it closed) only dies: its entry is skipped later.
@@ -73,10 +85,11 @@ export function createLayerStack(env: HistoryEnv): LayerStack {
         return;
       }
       const t = env.token();
+      const navigated = t === null && env.fresh?.() === true;
       const at = t === null ? -1 : stack.findIndex((l) => l.token === t);
       const stale = t !== null && (at < 0 || stack[at]?.dead === true);
       const gone = stack.splice(stale && at >= 0 ? at : at + 1).filter((l) => l.pushed && !l.dead);
-      for (const l of gone.reverse()) l.onPop();
+      for (const l of gone.reverse()) l.onPop(navigated);
       // An entry of a layer that no longer exists: one more step back (see above).
       if (stale) env.go(-1);
     },
@@ -85,23 +98,39 @@ export function createLayerStack(env: HistoryEnv): LayerStack {
 }
 
 const KEY = "octoLayer";
+/** Marks an entry the page has seen (see `HistoryEnv.fresh`). */
+const SEEN = "octoSeen";
+
+function stateOf(): Record<string, unknown> {
+  const s: unknown = window.history.state;
+  return typeof s === "object" && s !== null ? { ...s } : {};
+}
+
+/** Marks the current entry as seen; returns true when it was not marked yet. */
+function mark(): boolean {
+  const s = stateOf();
+  if (s[SEEN] === true) return false;
+  window.history.replaceState({ ...s, [SEEN]: true }, "");
+  return true;
+}
 
 let shared: LayerStack | null = null;
 
 function layers(): LayerStack {
   if (shared) return shared;
   const stack = createLayerStack({
-    push: (token) => {
-      const s: unknown = window.history.state;
-      window.history.pushState(typeof s === "object" && s !== null ? { ...s, [KEY]: token } : { [KEY]: token }, "");
-    },
+    push: (token) => window.history.pushState({ ...stateOf(), [KEY]: token, [SEEN]: true }, ""),
     go: (delta) => window.history.go(delta),
     token: () => {
       const s: unknown = window.history.state;
       const v: unknown = typeof s === "object" && s !== null ? Reflect.get(s, KEY) : null;
       return typeof v === "string" ? v : null;
     },
+    fresh: mark,
   });
+  // The entry the first layer opens over, and every entry a hash change makes (some engines fire no popstate for one).
+  mark();
+  window.addEventListener("hashchange", () => void mark());
   window.addEventListener("popstate", () => stack.sync());
   shared = stack;
   return stack;
@@ -110,8 +139,10 @@ function layers(): LayerStack {
 /**
  * While `open`, this layer has a history entry; Back calls `onClose`. Closing it otherwise (`open` turns false) goes back over
  * its entry. A StrictMode re-run of the effect keeps the same entry (the release waits a tick).
+ * A navigation of the page's own while it is open (a hash change: a row that opens a session) also calls `onClose`, with
+ * `navigated` true; its entry is left behind and Back skips it.
  */
-export function useHistoryLayer(open: boolean, onClose: () => void): void {
+export function useHistoryLayer(open: boolean, onClose: (navigated: boolean) => void): void {
   const close = useLatest(onClose);
   const held = useRef<{ token: string; release: number | null } | null>(null);
   useEffect(() => {
@@ -121,9 +152,9 @@ export function useHistoryLayer(open: boolean, onClose: () => void): void {
       window.clearTimeout(h.release);
       h.release = null;
     } else if (!h) {
-      const token = layers().open(() => {
+      const token = layers().open((navigated) => {
         held.current = null;
-        close.current();
+        close.current(navigated);
       });
       held.current = { token, release: null };
     }
@@ -140,7 +171,7 @@ export function useHistoryLayer(open: boolean, onClose: () => void): void {
 }
 
 /** A layer opened outside a component's lifetime (the phone header's panels); see `LayerStack.open`. */
-export function openLayer(onPop: () => void): string {
+export function openLayer(onPop: LayerPop): string {
   return layers().open(onPop);
 }
 

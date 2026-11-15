@@ -15,6 +15,7 @@ import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { roleName as baseRoleName } from "../../lib/orchestrator";
 import { useNav, useNavState } from "../../state/nav";
 import { useComposerAnchor } from "./useComposerAnchor";
+import { Announcer } from "./Announcer";
 
 /** Decision 63: the project's own agent goes by the project's name in its conversation, never "Orchestrator". */
 const nameIn = (projectName: string) => (a: Pick<Agent, "parent_id" | "role">) => (a.parent_id === null ? projectName : baseRoleName(a));
@@ -236,7 +237,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
         <div>
           <p className="text-sm text-fg-2">This agent isn't part of {project.name}.</p>
           <a href={hrefFor(projectId)} className="mt-2 inline-block text-sm text-fg underline underline-offset-2">
-            Back to orchestrator
+            Back to session
           </a>
         </div>
       </div>
@@ -411,9 +412,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
         )}
       </Presence>
 
-      <p aria-live="polite" className="sr-only">
-        {agent.status === "running" ? `${roleName(agent)} is working` : ""}
-      </p>
+      <Announcer agent={agent} name={roleName(agent)} project={project.name} orchestrator={isOrchestrator} />
     </div>
   );
 }

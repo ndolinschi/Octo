@@ -2,6 +2,7 @@ import type { GlobalSession, ProjectSummary } from "@octo/agent-client";
 import { ChevronRight, Ellipsis, Plus } from "lucide-react";
 import { lazy, Suspense, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from "react";
 import { cn } from "../../lib/cn";
+import { usePhone } from "../../lib/phone";
 import { CLOCK_SIDEBAR_MS } from "../../lib/constants";
 import { formatRelative } from "../../lib/format";
 import { useNow, useScrollFade } from "../../lib/hooks";
@@ -62,7 +63,7 @@ export type SessionTreeProps = {
   onPick(): void;
 };
 
-type MenuAt = { session: GlobalSession; x: number; y: number };
+type MenuAt = ({ session: GlobalSession } | { project: ProjectSummary; open: boolean; anchor: HTMLElement | null }) & { x: number; y: number };
 
 /**
  * The sidebar's main navigation (UI decision 96): "Projects and sessions" — a `role="tree"` of project rows (32px, the
@@ -89,6 +90,7 @@ export function SessionTree(props: SessionTreeProps) {
   const list = useRef<HTMLUListElement>(null);
   useScrollFade(list, "y");
   useRovingRows(list);
+  const phone = usePhone();
 
   // Stable order (newest project first by creation), so rows never jump under the pointer as activity moves.
   const ordered = useMemo(
@@ -129,13 +131,29 @@ export function SessionTree(props: SessionTreeProps) {
       items.push({ id: "sep", separator: true }, { id: "delete", label: "Delete…", run: () => setDeleting(s) });
     return items;
   };
-  const openMenu = (s: GlobalSession, e: MouseEvent | KeyboardEvent, el?: HTMLElement | null) => {
+  const menuPoint = (e: MouseEvent | KeyboardEvent, el?: HTMLElement | null) => {
     e.preventDefault();
     const r = (el ?? (e.currentTarget instanceof HTMLElement ? e.currentTarget : null))?.getBoundingClientRect();
     const x = "clientX" in e && e.clientX > 0 ? e.clientX : (r?.right ?? 0);
     const y = "clientY" in e && e.clientY > 0 ? e.clientY : (r?.bottom ?? 0);
-    setMenu({ session: s, x, y });
+    return { x, y };
   };
+  const openMenu = (s: GlobalSession, e: MouseEvent | KeyboardEvent, el?: HTMLElement | null) => setMenu({ session: s, ...menuPoint(e, el) });
+  // 11a / A6: a project row's menu (Shift+F10, the ContextMenu key, a right click, a long press on the phone): the "+" and the
+  // chevron of the row, for the keyboard and for the phone (which shows the chevron only).
+  const openProjectMenu = (p: ProjectSummary, open: boolean, e: MouseEvent | KeyboardEvent, el?: HTMLElement | null) => {
+    const anchor = el ?? (e.currentTarget instanceof HTMLElement ? e.currentTarget : null);
+    setMenu({ project: p, open, anchor, ...menuPoint(e, anchor) });
+  };
+  const projectMenuItems = (m: { project: ProjectSummary; open: boolean; anchor: HTMLElement | null }): MenuItem[] => [
+    {
+      id: "new",
+      label: "New session",
+      disabled: !props.canCreate,
+      run: () => setCreating({ projectId: m.project.id, anchor: { current: m.anchor } }),
+    },
+    { id: "toggle", label: m.open ? "Hide sessions" : "Show sessions", run: () => toggle(m.project.id, !m.open) },
+  ];
 
   // The rows in screen order, for the keyboard (each row's main element has `id` = its key).
   const keyRows: (KeyRow & { session?: GlobalSession })[] = [];
@@ -166,8 +184,11 @@ export function SessionTree(props: SessionTreeProps) {
     const at = keyRows.findIndex((r) => r.id === (document.activeElement?.id ?? ""));
     if (at < 0) return;
     const row = keyRows[at];
-    if (row?.session && (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)))
-      return openMenu(row.session, e, document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    const menuKey = e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey);
+    const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (row?.session && menuKey) return openMenu(row.session, e, focused);
+    const project = menuKey && row?.level === 1 && !row.session ? ordered?.find((p) => rowId("p", p.id) === row.id) : undefined;
+    if (project) return openProjectMenu(project, row?.open === true, e, focused);
     const move = treeKey(e.key, props.mode === "sessions" ? keyRows.map((r) => ({ ...r, level: 1 as const, open: false })) : keyRows, at);
     if (!move) return;
     e.preventDefault();
@@ -180,7 +201,7 @@ export function SessionTree(props: SessionTreeProps) {
     const selected = s.id === currentSession;
     const meta = sessionMeta(s, now);
     return (
-      <li key={s.id} role="none" data-tree-row className={cn("group/r relative", inTree && "pl-4")} onContextMenu={(e) => openMenu(s, e)}>
+      <li key={s.id} role="none" data-tree-row data-tree-level={inTree ? 2 : 1} className="group/r relative" onContextMenu={(e) => openMenu(s, e)}>
         {renaming === s.id ? (
           <RenameRow
             initial={sessionTitle(s)}
@@ -193,6 +214,7 @@ export function SessionTree(props: SessionTreeProps) {
         ) : (
           <ListRow
             role="treeitem"
+            aria-haspopup="menu"
             level={inTree ? 2 : 1}
             id={rowId("s", s.id)}
             size="md"
@@ -219,8 +241,17 @@ export function SessionTree(props: SessionTreeProps) {
           />
         )}
         {renaming !== s.id && (
-          <span data-tree-actions className="absolute top-1 right-1 touch:top-2">
-            <IconButton icon={Ellipsis} size="xs" tabIndex={-1} label={`Actions for ${sessionTitle(s)}`} aria-haspopup="menu" onClick={(e) => openMenu(s, e)} />
+          // The pointer's way to the row's menu; the keyboard's is Shift+F10 on the row (the button is out of the tree's a11y).
+          <span data-tree-actions role="none" className="absolute top-1 right-1 touch:top-2">
+            <IconButton
+              icon={Ellipsis}
+              size={phone ? "lg" : "xs"}
+              tabIndex={-1}
+              aria-hidden="true"
+              label={`Actions for ${sessionTitle(s)}`}
+              aria-haspopup="menu"
+              onClick={(e) => openMenu(s, e)}
+            />
           </span>
         )}
       </li>
@@ -230,13 +261,13 @@ export function SessionTree(props: SessionTreeProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {(projects ? projects.length > 0 : health !== "offline") && (
-        // The caption is a row of the same 32px, its text on the rows' text edge (8 inset + 16 glyph + 8).
-        <div className="mt-4 flex h-row-nav shrink-0 items-center pr-0.5 pl-8">
+        // The section caption (one rule for both side columns): on the rows' glyph column (8 inset), a 20px line 16px under the
+        // block above and 4px over its first row. "New project" is the row at the top, so the caption has no "+" of its own;
+        // the flat Sessions list keeps "New session", its glyph's right edge on the rows' meta edge.
+        <div data-side-caption className="mt-4 mb-1 flex h-5 shrink-0 items-center pr-0.5 pl-2">
           <h2 className="text-xs text-fg-3">{props.mode === "sessions" ? "Sessions" : "Projects"}</h2>
-          {props.mode === "sessions" ? (
+          {props.mode === "sessions" && (
             <NewButton label="New session" disabled={!props.canCreate || !projects?.length} onOpen={(anchor) => setCreating({ anchor })} />
-          ) : (
-            <IconButton icon={Plus} label="Add project" onClick={props.onNewProject} disabled={!props.canCreate} className="ml-auto" />
           )}
         </div>
       )}
@@ -272,12 +303,13 @@ export function SessionTree(props: SessionTreeProps) {
                     props.onPick();
                   }}
                   onNew={(anchor) => setCreating({ projectId: p.id, anchor })}
+                  onMenu={(e) => openProjectMenu(p, open, e)}
                 />
                 {open && (shown.length > 0 || hidden > 0) && (
                   <ul role="group" className="flex flex-col">
                     {shown.map((s) => sessionRow(s, true))}
                     {hidden > 0 && (
-                      <li role="none" data-tree-row className="pl-4">
+                      <li role="none" data-tree-row data-tree-level={2}>
                         <ListRow
                           role="treeitem"
                           level={2}
@@ -305,7 +337,13 @@ export function SessionTree(props: SessionTreeProps) {
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
           <Suspense fallback={null}>
-            <Menu label="Session actions" x={menu.x} y={menu.y} items={menuItems(menu.session)} onClose={() => setMenu(null)} />
+            <Menu
+              label={"session" in menu ? "Session actions" : `${menu.project.name} actions`}
+              x={menu.x}
+              y={menu.y}
+              items={"session" in menu ? menuItems(menu.session) : projectMenuItems(menu)}
+              onClose={() => setMenu(null)}
+            />
           </Suspense>
         )}
       </Presence>
@@ -339,7 +377,9 @@ function rowId(kind: "p" | "s" | "m", id: string): string {
 
 function NewButton(props: { label: string; disabled: boolean; onOpen(anchor: RefObject<HTMLElement | null>): void }) {
   const ref = useRef<HTMLButtonElement>(null);
-  return <IconButton ref={ref} icon={Plus} label={props.label} disabled={props.disabled} className="ml-auto" onClick={() => props.onOpen(ref)} />;
+  return (
+    <IconButton ref={ref} icon={Plus} size="sm" label={props.label} disabled={props.disabled} className="-my-1 ml-auto" onClick={() => props.onOpen(ref)} />
+  );
 }
 
 /** The project's glyph from its sessions (needs you > failed > working > queued > idle), else its orchestrator's (no sessions known). */
@@ -362,17 +402,20 @@ function ProjectRow(props: {
   onToggle(): void;
   onOpen(): void;
   onNew(anchor: RefObject<HTMLElement | null>): void;
+  onMenu(e: MouseEvent): void;
 }) {
   const plus = useRef<HTMLButtonElement>(null);
+  const phone = usePhone();
   const { running } = projectSummary(props.sessions);
   const latest = mainSessions(props.sessions)[0];
   const lines = projectRowLines(props.state, props.now, props.project.updated_at);
   const meta = running > 1 ? `${running} running` : running === 1 ? null : latest ? formatRelative(latest.last_activity_at, props.now) : lines.meta;
   const glyph = projectGlyph(props.sessions, props.state, props.unseen);
   return (
-    <div data-tree-row data-tree-project className="group/r relative">
+    <div data-tree-row data-tree-project role="none" className="group/r relative" onContextMenu={props.onMenu}>
       <ListRow
         role="treeitem"
+        aria-haspopup="menu"
         level={1}
         expanded={props.open}
         id={rowId("p", props.project.id)}
@@ -389,20 +432,26 @@ function ProjectRow(props: {
           </span>
         }
       />
-      <span data-tree-actions className="absolute top-1 right-1 flex touch:top-2">
-        <IconButton
-          ref={plus}
-          icon={Plus}
-          size="xs"
-          tabIndex={-1}
-          label={`New session in ${props.project.name}`}
-          disabled={!props.canCreate}
-          onClick={() => props.onNew(plus)}
-        />
+      {/* The pointer's ways to these (the keyboard's: Shift+F10 on the row, ← / →): out of the tree's a11y. On the phone the
+          chevron alone, a full 44px target; "New session" is in the row's menu (a long press) and in the header's "⋯". */}
+      <span data-tree-actions role="none" className="absolute top-1 right-1 flex touch:top-2">
+        {!phone && (
+          <IconButton
+            ref={plus}
+            icon={Plus}
+            size="xs"
+            tabIndex={-1}
+            aria-hidden="true"
+            label={`New session in ${props.project.name}`}
+            disabled={!props.canCreate}
+            onClick={() => props.onNew(plus)}
+          />
+        )}
         <IconButton
           icon={ChevronRight}
-          size="xs"
+          size={phone ? "lg" : "xs"}
           tabIndex={-1}
+          aria-hidden="true"
           label={props.open ? `Hide the sessions of ${props.project.name}` : `Show the sessions of ${props.project.name}`}
           className={cn(props.open && "[&_svg]:rotate-90")}
           onClick={props.onToggle}

@@ -23,7 +23,7 @@
   --octo-line-strong: rgb(255 255 255 / 0.14);
   --octo-panel-edge: rgb(255 255 255 / 0.05);
   --octo-panel-highlight: rgb(255 255 255 / 0.04);
-  --octo-input-border: #6e6e6e;
+  --octo-input-border: #7a7a7a; /* 5b: ≥ 3:1 on raised (3.66) and on a selected row (3.43); #6e6e6e was 3.08 / 2.89 */
   /* T3: a text field's edge at rest is a hairline no brighter than a card's; focus turns it `fg` (decision 90c).
      `input-border` stays for the small boxes that need a strong edge to be seen (checkbox) and the composer's focus. */
   --octo-field-edge: rgb(255 255 255 / 0.14);
@@ -88,7 +88,7 @@
   --octo-fg-3: #5e5e5e;
   --octo-accent: #0a66e0;
   --octo-link: #0a5fd1;
-  --octo-ok: #1a7f45;
+  --octo-ok: #17703d; /* 5d: ≥ 4.5:1 on a selected row (#eee: 5.29); #1a7f45 was 4.35 */
   --octo-err: #b42a23;
   --octo-warn: #8a5512;
   --octo-primary: #1a1a1a;
@@ -402,6 +402,11 @@
 }
 [data-tree-row]:is(:hover, :focus-within) [data-tree-meta] {
   visibility: hidden;
+}
+/* Addendum 13: a session under its project starts its highlight where every sidebar row does; the step in is inside the row
+   (its glyph one 16px column right of the project's). */
+[data-tree-level="2"] [data-row] {
+  padding-left: 24px;
 }
 /* The title gives way to the actions instead of running under them: a project row has two (56px with the inset), a session one. */
 [data-tree-project]:is(:hover, :focus-within) [data-row] {
@@ -1529,13 +1534,14 @@
   min-width: 16px;
   height: 16px;
   place-items: center;
-  border: 1px solid currentColor;
+  /* 5c: the text keeps its colour's full contrast (opacity .7 was 3.1–4.2:1 on fg-3 / fg-2 in light); the quieting is in the
+     frame alone, which is decoration. */
+  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
   border-radius: var(--radius-2xs);
   padding: 0 4px;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: var(--text-xs--line-height);
-  opacity: 0.7;
 }
 
 /* Skeleton (decision 77): a static muted shape; it pulses only while loading is in progress (decision 76). */
@@ -1581,6 +1587,23 @@
    links and fold buttons (found while taking these shots: Monaco's `view-lines` took every click on the card). */
 .octo-thread-zone {
   z-index: 1;
+}
+/* Polish pass F3, item 5: a wholly added or removed line carries Monaco's word decoration over the whole line too, so it read
+   at line + word strength (≈ 25 %) where the conversation's diff shows a whole line at the line tint (9 / 8 %). The word tint
+   stays for words changed inside a changed line. */
+[data-review] .monaco-diff-editor .view-overlays .cdr:is(.char-insert, .char-delete)[style*="width:100%"] {
+  background: transparent;
+}
+/* Polish pass F3 (B4.3): focus the app moved by itself (a panel opening, a list's search field) draws no ring until the
+   first key pressed there (lib/quietFocus.ts). */
+:root [data-quiet-focus]:focus-visible,
+:root [data-quiet-root] :focus-visible {
+  box-shadow: none;
+}
+/* A framed field (FIELD_FRAME) darkens its edge while focused: not for that programmatic focus either. */
+:root [data-quiet-root] :has(> input:focus-visible),
+:root :has(> input[data-quiet-focus]:focus-visible) {
+  border-color: var(--octo-field-edge);
 }
 /* ── /polish step 6b: review ── */
 /* cross-part leftovers (after the six polish steps) */
@@ -2004,6 +2027,19 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 :root[data-phone] body > [role="menu"].fixed {
   padding: 8px;
 }
+/* 5a: in the slash menu a command's description is its second line and may take two (it was cut at 390). */
+:root[data-phone] [data-slash-menu] [role="option"] {
+  height: auto;
+  min-height: var(--spacing-ctl-lg);
+  padding-block: 6px;
+}
+:root[data-phone] [data-slash-menu] [role="option"] > span:nth-child(2) > span:last-child:not(:first-child) {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 /* The command palette is a full-screen search. */
 :root[data-phone] [role="dialog"][aria-label="Command palette"] {
   position: fixed;
@@ -2034,6 +2070,37 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] [data-conv] [data-rail] {
   display: none;
 }
+/* A2: on touch "Rewind to here" is folded under the bubble (no height, still focusable and read) and opens when the bubble is
+   tapped (`data-revealed`, chat/useTapReveal) or the action has keyboard focus. */
+@media (pointer: coarse) {
+  [data-prompt] > [data-rewind] {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 160ms var(--ease-out-quint);
+  }
+  [data-prompt] > [data-rewind] > div {
+    min-height: 0;
+    overflow: hidden;
+    padding-inline: 4px;
+  }
+  [data-prompt] > [data-rewind] > div > button {
+    margin-block: 4px 2px;
+  }
+  [data-prompt][data-revealed] > [data-rewind],
+  [data-prompt] > [data-rewind]:focus-within {
+    grid-template-rows: 1fr;
+  }
+  /* Open, the button's 44px touch zone (touch-hit) reaches past the fold's box. */
+  [data-prompt][data-revealed] > [data-rewind] > div,
+  [data-prompt] > [data-rewind]:focus-within > div {
+    overflow: visible;
+  }
+}
+@media (pointer: coarse) and (prefers-reduced-motion: reduce) {
+  [data-prompt] > [data-rewind] {
+    transition: none;
+  }
+}
 [data-phone] [data-conv] pre {
   overflow-x: auto;
   overscroll-behavior-x: contain;
@@ -2041,6 +2108,35 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 /* Tool rows and their bodies: no second indent, the whole column. */
 [data-phone] [data-activity-body] {
   padding-left: 0;
+}
+/* A3: a one-line step row reads 32px; its button keeps a 44px touch zone (6px over and under), and rows that follow each other
+   sit 12px apart, so the zones meet and never overlap. Two-line (stacked) rows keep their 44. */
+[data-phone] [data-conv] [data-activity-row] > [class~="touch:h-ctl-lg"] {
+  height: var(--spacing-ctl-md);
+}
+[data-phone] [data-conv] [data-activity-row] > [class~="touch:h-ctl-lg"] > [data-row] {
+  position: relative;
+}
+[data-phone] [data-conv] [data-activity-row] > [class~="touch:h-ctl-lg"] > [data-row]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block: calc((var(--spacing-ctl-md) - var(--spacing-touch)) / 2);
+}
+[data-phone] [data-conv] article > :is([data-activity-row], [data-thinking], [data-activity]) + :is([data-activity-row], [data-thinking], [data-activity]) {
+  margin-top: -4px;
+}
+[data-phone] [data-conv] [data-activity-body] > [data-activity-row] + [data-activity-row] {
+  margin-top: 12px;
+}
+/* What a row opens starts under the row's touch zone, and a row's own actions (an agent's Retry and "Open session") stand
+   apart from its text and from each other, so no two targets share a finger's area (A9.6). */
+[data-phone] [data-conv] [data-activity-body] {
+  margin-top: 12px;
+}
+[data-phone] [data-conv] [data-activity-row] [data-row] + span {
+  gap: 20px;
+  padding-left: 12px;
 }
 /* The per-turn footer wraps instead of running out of the column. */
 [data-phone] [data-conv] [data-turn-footer] {
@@ -2167,8 +2263,8 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] [data-strip] {
   display: none;
 }
-/* Home: a lower band, the sentence at title size, the four tiles as one compact row that scrolls sideways, then the list of
-   sessions that need you and that work (the triage list) right under them. */
+/* Home: a lower band, the sentence at title size, the four tiles in two rows of two (A9.5: a sideways row cut its third tile
+   mid-word and hid the fourth), then the list of sessions that need you and that work (the triage list) right under them. */
 [data-phone] [data-home] {
   --octo-band-h: 32px;
 }
@@ -2177,14 +2273,7 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   line-height: 24px;
 }
 [data-phone] [data-home] [aria-label="Filter projects by state"] {
-  display: flex;
-  margin-inline: -16px;
-  padding-inline: 16px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-[data-phone] [data-home] [data-triage] {
-  flex: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 /* Diffs: a compact gutter (the new line's number and the sign; the old number goes), so code gets the width. */
 [data-phone] .octo-diff {
@@ -2198,6 +2287,21 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 }
 [data-phone] .octo-diff[data-numbered] .octo-diff-gutter > .octo-diff-num:first-child {
   display: none;
+}
+/* A7.2: on the phone a diff line wraps instead of scrolling sideways (the change of a long line was cut off at 390): the gutter
+   keeps its column for the whole wrapped row, and a continuation hangs 2ch past the line's own indentation (`--diff-lead`, set
+   per line by DiffPreview; at most 16ch, so deep code keeps its width). */
+[data-phone] .octo-diff-rows {
+  width: auto;
+}
+[data-phone] .octo-diff-code {
+  --diff-hang: calc(min(var(--diff-lead, 0ch), 16ch) + 2ch);
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline-start: var(--diff-hang);
+  text-indent: calc(-1 * var(--diff-hang));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* The navigation's tree rows: the row actions (a project's "+" and chevron, a session's "⋯") are always shown on the phone and
@@ -2218,6 +2322,24 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] [data-tree-row] [data-row] {
   padding-right: 8px;
 }
+/* A9.3: in the phone's "⋯" sheet a status item is a row like the others: 44px, its glyph on the rows' glyph column, its text
+   on their text line (in the status bar it is a 24px chip). */
+[data-phone-status] [data-status-item] {
+  width: 100%;
+  min-height: var(--spacing-ctl-lg);
+  justify-content: flex-start;
+  gap: 8px;
+  padding-inline: 8px;
+  font-size: var(--text-sm);
+}
+[data-phone-status] [data-status-item] svg {
+  width: 16px;
+  height: 16px;
+}
+/* A6: the actions have their own place on the phone, so the row's time stays (a project's last activity, a session's). */
+[data-phone] [data-tree-row] [data-tree-meta] {
+  visibility: visible;
+}
 /* Balance pass: the phone header already names the panel (Back, the name, "⋯"), so the panel's own title is said once, to a
    screen reader only; its (i), count and actions keep their row, on the rows' text edge. A header with nothing else goes. */
 [data-phone] [data-panel-title]:not(:has(> :nth-child(2))),
@@ -2235,7 +2357,7 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] [data-panel-actions] {
   margin-left: auto;
 }
-[data-phone] [data-panel-header]:not(:has([data-panel-lead], [data-panel-actions])):has([data-panel-title] > :only-child) {
+[data-phone] [data-panel-header]:not(:has([data-panel-lead]:not(:empty), [data-panel-actions])):has([data-panel-title] > :only-child) {
   position: absolute;
   width: 1px;
   height: 1px;

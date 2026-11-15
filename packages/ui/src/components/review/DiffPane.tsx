@@ -12,7 +12,7 @@ import { Checkbox } from "../primitives/Checkbox";
 import { Spinner } from "../primitives/Status";
 import { ImageDiff } from "./ImageDiff";
 import { Counts, Notice } from "./parts";
-import { ReviewDiff, runsOf, type DiffZone, type Marked, type ReviewMonaco, type RevealRequest } from "./ReviewDiff";
+import { ReviewDiff, runsOf, type DiffZone, type Marked, type ReviewMonaco, type RevealRequest, type ScrollRequest } from "./ReviewDiff";
 import type { DiffLoad } from "./useReview";
 
 const STATUS_WORD = { added: "Added", modified: "Modified", deleted: "Deleted", renamed: "Renamed", copied: "Copied", typechange: "Type changed" } as const;
@@ -33,10 +33,13 @@ export function DiffPane(props: {
   commented: readonly Marked[];
   flagged: readonly Marked[];
   reveal: RevealRequest | null;
+  scrollTo?: ScrollRequest | null;
   zones: readonly DiffZone[];
   renderZone(key: string): ReactNode;
-  /** Threads that have no line in this diff (outdated), listed under the toolbar. */
-  apart?: ReactNode;
+  /** The file's thread counter, in the bar (folds the thread list open). */
+  threadsToggle?: ReactNode;
+  /** The accessible list of the file's threads (drawn and apart), under the bar. */
+  threadList?: ReactNode;
   onToggleWhitespace(): void;
   onToggleExpanded(): void;
   onViewed(viewed: boolean): void;
@@ -77,6 +80,7 @@ export function DiffPane(props: {
           </span>
         )}
         <span className="flex shrink-0 items-center gap-1">
+          {props.threadsToggle}
           <span title={f.viewed ? "Viewed (v)" : "Mark as viewed (v)"} className="flex px-2">
             <Checkbox label="Viewed" checked={f.viewed} onChange={props.onViewed} />
           </span>
@@ -109,7 +113,7 @@ export function DiffPane(props: {
           />
         </span>
       </div>
-      {props.apart}
+      {props.threadList}
       <div className="flex min-h-0 flex-1 flex-col">
         {props.diff.status === "error" ? (
           <Notice
@@ -117,7 +121,7 @@ export function DiffPane(props: {
             title="The diff did not load"
             actions={
               <Button size="sm" variant="secondary" onClick={props.onRetry}>
-                Try again
+                Retry
               </Button>
             }
           >
@@ -154,8 +158,7 @@ function Body(props: Omit<Parameters<typeof DiffPane>[0], "diff"> & { diff: Revi
   if (diff.too_large)
     return (
       <Notice title="This diff is too large to show here">
-        {plural(f.added + f.removed, "changed line")} in {f.path}. Read it in your editor or on the code host; you can still mark it viewed and comment on the
-        file.
+        {plural(f.added + f.removed, "changed line")} in {f.path}. Read it in your editor or on GitHub; you can still mark it viewed and comment on the file.
       </Notice>
     );
   if (diff.hunks.length === 0)
@@ -182,6 +185,7 @@ function Body(props: Omit<Parameters<typeof DiffPane>[0], "diff"> & { diff: Revi
       commented={props.commented}
       flagged={props.flagged}
       reveal={props.reveal}
+      scrollTo={props.scrollTo ?? null}
       zones={props.zones}
       renderZone={props.renderZone}
       onAnchor={props.onAnchor}

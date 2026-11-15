@@ -87,7 +87,7 @@ test("P2-6: a body over the bridge's limit says the message is too long, with th
 test("NEW-1: a failure with no text says the request failed and offers Retry, never 'no reason'", () => {
   for (const raw of ["", "   ", null, undefined]) {
     const p = plainError(raw);
-    assert.equal(p.sentence, "This request failed.");
+    assert.equal(p.sentence, "The request failed.");
     assert.deepEqual(p.next, { kind: "retry" });
     assert.doesNotMatch(p.sentence, /no reason/i);
   }

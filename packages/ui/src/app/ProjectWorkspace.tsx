@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { navigate } from "../lib/route";
+import { sessionTitle } from "../lib/sessions/tree";
 import { usePhone } from "../lib/phone";
 import { useApp } from "../state/app";
 import { CodeProvider, useCode } from "../state/code";
@@ -11,6 +12,7 @@ import { allTabs, fileTab, focusedGroup, parseTab } from "../state/workspace/lay
 import { useWorkspace, WorkspaceProvider } from "../state/workspace/WorkspaceProvider";
 import { Dock } from "../components/dock/Dock";
 import { Button } from "../components/primitives/Button";
+import { EmptyState } from "../components/primitives/EmptyState";
 import { Presence } from "../components/primitives/Presence";
 import { ChatSlotsProvider, type ChatSlots } from "../state/chatSlots";
 import { Panel } from "../components/shell/Panel";
@@ -75,6 +77,7 @@ export function ProjectWorkspace(props: { agentId: string | null; sessionId?: st
               <ProjectRunsFeed />
               {phone && <PhoneHeader />}
             </Suspense>
+            <WorkspaceTitle phone={phone} />
             <Body />
           </ChatSlotsProvider>
           <SettingsDialog show={settings} onClose={() => setSettings(false)} />
@@ -84,6 +87,28 @@ export function ProjectWorkspace(props: { agentId: string | null; sessionId?: st
         </Files>
       </WorkspaceProvider>
     </FileViewProvider>
+  );
+}
+
+/**
+ * 11d: the screen's name, "<Project> — <session>": the window title ("… · Octo") and, on the desktop, the page's h1 for a
+ * screen reader (the phone header has its own visible h1). The h1 takes focus after a route change that left it nowhere.
+ */
+function WorkspaceTitle({ phone }: { phone: boolean }) {
+  const ws = useWorkspace();
+  const { project, state } = useProject();
+  const sid = ws.focusedSessionId ?? state.sessions.defaultId ?? null;
+  const session = sid !== null ? state.sessions.list.find((x) => x.id === sid) : undefined;
+  const title = project ? (session ? `${project.name} — ${sessionTitle(session)}` : project.name) : "";
+  useEffect(() => {
+    if (!title) return;
+    document.title = `${title} · Octo`;
+  }, [title]);
+  if (phone || !title) return null;
+  return (
+    <h1 data-page-title tabIndex={-1} className="sr-only">
+      {title}
+    </h1>
   );
 }
 
@@ -186,13 +211,19 @@ const NOTICE = "mx-auto w-full max-w-measure px-6 pt-10 text-sm max-drawer:px-4"
 
 /** P1-4: the route's project was deleted (the harness answered 404): nothing else is shown or sent to under its URL. */
 export function ProjectGone() {
+  // B3: the same layout as a gone session (`SessionGone`): centred, the title, one sentence, the way on.
   return (
-    <div role="alert" className={NOTICE}>
-      <p className="text-fg">This project no longer exists.</p>
-      <p className="mt-1 text-fg-2">It was deleted, perhaps in another window. Your other projects are on Home.</p>
-      <Button size="sm" className="mt-3" onClick={() => navigate(null)}>
-        Go to Home
-      </Button>
+    <div role="alert" data-project-gone className="flex h-full min-h-0 flex-col">
+      <EmptyState
+        title="This project no longer exists"
+        actions={
+          <Button size="sm" onClick={() => navigate(null)}>
+            Go to Home
+          </Button>
+        }
+      >
+        It was deleted, perhaps in another window.
+      </EmptyState>
     </div>
   );
 }

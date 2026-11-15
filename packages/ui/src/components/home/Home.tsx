@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { cn } from "../../lib/cn";
 import { useNow } from "../../lib/hooks";
@@ -26,6 +26,10 @@ import { useOverview } from "./useOverview";
  */
 export function Home({ onNewProject, unseen }: { onNewProject(): void; onSearch(): void; unseen: Set<string> }) {
   const { theme, backdrop } = useApp();
+  // 11d: the window's title names the screen.
+  useEffect(() => {
+    document.title = "Home · Octo";
+  }, []);
   const data = useOverview();
   const now = useNow(true, CLOCK_MINUTE_MS);
   const [filter, setFilter] = useState<Triage | null>(null);
@@ -64,8 +68,8 @@ export function Home({ onNewProject, unseen }: { onNewProject(): void; onSearch(
             {/* Decision 28: one sentence in two tones — the lead-in muted, the statement in fg. */}
             {/* Polish step 2 (F5): one left edge at 16px inside the column — the heading's text, the tiles' glyphs, the cards'
                 captions and glyphs (card 8 + row 8) — instead of a centred heading over left-aligned rows. */}
-            <h1 id="home-title" className="px-4 text-display text-fg">
-              {count > 0 && <span className="octo-lead">{count === 1 ? "One project. " : `${count} projects. `}</span>}
+            <h1 id="home-title" data-page-title tabIndex={-1} className="px-4 text-display text-fg focus-visible:shadow-none">
+              {count > 0 && <span className="octo-lead block">{count === 1 ? "1 project" : `${count} projects`}</span>}
               What should we work on?
             </h1>
             <TriageRow items={[...triaged, ...(sessions ?? [])]} loading={data.projects === null} value={filter} onChange={setFilter} />

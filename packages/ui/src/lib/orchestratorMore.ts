@@ -10,9 +10,9 @@ export function agentStack(roles: readonly string[], max = 2): string {
   return rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
 }
 
-/** The idle team line: "Last ran 3 agents, 1h ago", "Worked alone, 2h ago" (no "·" joiners: craft rule). */
+/** The idle team line: "Last ran 3 agents, 1h ago", "No agents used, 2h ago" (no "·" joiners: craft rule). */
 export function teamLine(count: number, at: string | null, now: number): string {
-  const what = count === 0 ? "Worked alone" : `Last ran ${count} ${count === 1 ? "agent" : "agents"}`;
+  const what = count === 0 ? "No agents used" : `Last ran ${count} ${count === 1 ? "agent" : "agents"}`;
   return at ? `${what}, ${timeAgo(at, now)}` : what;
 }
 

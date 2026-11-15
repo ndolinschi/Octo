@@ -33,6 +33,6 @@ export function connectionText(
       hint: "Octo's local service answered but can't be used. See the notice above.",
     };
   return health === "offline"
-    ? { text: "Bridge offline", hint: "Nothing answers at the bridge address. Start the bridge, then select to retry." }
-    : { text: "Connecting…", hint: "Checking the bridge." };
+    ? { text: "Offline", hint: "Octo's local service isn't answering. Select to retry now." }
+    : { text: "Connecting…", hint: "Checking Octo's local service." };
 }

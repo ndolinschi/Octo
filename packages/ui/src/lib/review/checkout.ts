@@ -34,7 +34,7 @@ export function goBackCommand(r: Pick<ReviewCheckoutResult, "previous_branch" | 
 
 /** One sentence after a check out: which branch you are on now. */
 export function checkoutSentence(r: ReviewCheckoutResult): string {
-  if (r.mode === "workspace") return "The file tree, editor and language server now show this pull request (read-only). Your own folder is untouched.";
+  if (r.mode === "workspace") return "The file tree and editor now show this pull request (read-only copy). Your own folder is untouched.";
   const branch = r.branch ?? "the review branch";
   if (r.already_on_branch) return `You were already on ${branch}.`;
   const how = r.created ? "Created and switched to" : r.fast_forwarded ? "Switched to and moved forward" : "Switched to";

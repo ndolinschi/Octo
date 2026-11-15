@@ -4,7 +4,7 @@ import { formatTokens } from "../format";
 const LABEL: Record<string, string> = {
   memory_index: "Memory index",
   open_tasks: "Open tasks",
-  recent_window: "Recent exchanges",
+  recent_window: "Recent requests",
   facts: "Facts",
   current_turn: "This request",
   history: "Whole history",
@@ -83,20 +83,20 @@ export function receiptView(r: ContextReceipt): ReceiptView {
     segments,
     total,
     capsTotal: r.caps_total,
-    totalText: r.caps_total > 0 ? `${formatTokens(total)} of ${formatTokens(r.caps_total)} in capped blocks` : `${formatTokens(total)} tokens`,
+    totalText: r.caps_total > 0 ? `${formatTokens(total)} of ${formatTokens(r.caps_total)} (trimmed to fit)` : `${formatTokens(total)} tokens`,
     mode: r.mode,
     modeText:
       r.mode === "window"
-        ? `Window mode, last ${plural(r.recent_exchanges, "exchange", "exchanges")}, ${plural(r.message_count, "message", "messages")}`
+        ? `Recent only: last ${plural(r.recent_exchanges, "request", "requests")}, ${plural(r.message_count, "message", "messages")}`
         : `Full history, ${plural(r.message_count, "message", "messages")}`,
-    clearedText: r.cleared_calls > 0 ? `${plural(r.cleared_calls, "tool result was", "tool results were")} replaced by stubs` : null,
+    clearedText: r.cleared_calls > 0 ? `${plural(r.cleared_calls, "tool result was", "tool results were")} shortened` : null,
   };
 }
 
 const NOUN: Record<string, [string, string]> = {
   memory_index: ["memory file", "memory files"],
   open_tasks: ["open task", "open tasks"],
-  recent_window: ["recent exchange", "recent exchanges"],
+  recent_window: ["recent request", "recent requests"],
   facts: ["fact", "facts"],
   current_turn: ["message", "messages"],
   history: ["message", "messages"],

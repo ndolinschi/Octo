@@ -1,4 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from "react";
+import { useQuietOpen } from "../../lib/quietFocus";
+import { useHistoryLayer } from "../../lib/historyLayer";
+import { usePhone } from "../../lib/phone";
 import type { HitTarget } from "../../lib/memory/search";
 import { useApp } from "../../state/app";
 import { Panel, PanelFilters } from "../primitives/Panel";
@@ -46,7 +49,19 @@ export function MemoryView(props: {
   const files = useMemoryFiles(projectId);
   const search = useMemorySearch(projectId, query);
   const field = useRef<HTMLInputElement>(null);
+  // B4.3: focus the dock moves here on opening draws no ring until the first key or press.
+  const quiet = useRef<HTMLDivElement>(null);
+  useQuietOpen(quiet);
   const searching = query.trim() !== "";
+  // A1.3 (polish pass F3): on a phone a session or a memory file open over its list is a history entry, so the system Back
+  // returns to the list.
+  const phone = usePhone();
+  useHistoryLayer(phone && !searching && view === "sessions" && session.id !== null, (navigated) => {
+    if (!navigated) setSession({ id: null, exchange: null });
+  });
+  useHistoryLayer(phone && !searching && view === "files" && file !== null, (navigated) => {
+    if (!navigated) setFile(null);
+  });
 
   if (!bridge.listTasks && !bridge.listMemory && !bridge.listMemorySessions) {
     return (
@@ -78,7 +93,7 @@ export function MemoryView(props: {
 
   return (
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Ctrl/Cmd+F while the tab has focus goes to its search field (decision 93 b)
-    <div className="h-full min-h-0" data-memory onKeyDown={onKeyDown}>
+    <div ref={quiet} className="h-full min-h-0" data-memory onKeyDown={onKeyDown}>
       <Panel
         name="memory"
         title="Memory"
@@ -88,7 +103,7 @@ export function MemoryView(props: {
             <SearchField
               ref={field}
               label="Search memory"
-              placeholder="Search exchanges, knowledge, files and notes"
+              placeholder="Search requests, knowledge, files and notes"
               size="sm"
               value={query}
               onChange={setQuery}

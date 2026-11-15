@@ -59,13 +59,26 @@ function Control(props: Props & { described: string | undefined }) {
       const options = field.options ?? [];
       if (options.length <= CHOICES_MAX) {
         return (
-          <div ref={(el) => props.registerControl(el)} id={domId} tabIndex={-1} aria-describedby={described} aria-invalid={error ? true : undefined}>
+          <div
+            ref={(el) => props.registerControl(el)}
+            id={domId}
+            tabIndex={-1}
+            aria-describedby={described}
+            aria-invalid={error ? true : undefined}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1"
+          >
             <Segmented
               label={field.label}
               options={options.map((o) => ({ id: o, label: o }))}
               value={value}
               onChange={(v) => !props.disabled && props.onChange(v)}
             />
+            {/* Three equal segments did not say that none is chosen yet: the row says so until one is. */}
+            {!options.includes(value) && (
+              <span aria-hidden className="text-xs text-fg-3">
+                None chosen
+              </span>
+            )}
           </div>
         );
       }

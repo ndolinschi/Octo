@@ -1,6 +1,7 @@
 import type { Project } from "@octo/agent-client";
 import { useRef } from "react";
 import { useRowKeys } from "../../lib/hooksMore";
+import { useRovingRows } from "../../lib/rovingRows";
 import { prompts } from "../../lib/starters";
 import { ListRow } from "../primitives/ListRow";
 import { SectionHeader } from "../primitives/SectionHeader";
@@ -17,6 +18,8 @@ export function StarterPrompts({ project, onPick }: { project: Project; onPick(t
   const list = prompts(project).slice(0, MAX);
   const box = useRef<HTMLUListElement>(null);
   useRowKeys(box);
+  // 7h: the suggestions are one Tab stop; ↑/↓ move between them.
+  useRovingRows(box);
   if (!list.length) return null;
   return (
     <div className="flex flex-col px-1">

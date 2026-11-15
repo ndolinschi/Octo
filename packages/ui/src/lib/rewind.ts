@@ -31,11 +31,11 @@ export function cutSummary(report: Pick<RewindReport, "messages_cut" | "agents_c
   return `${messages.replace(/\.$/, "")}${agents}.`;
 }
 
-export const ACP_RESET_NOTE = "The agent's own session was reset. Its next turn starts a new session with a recap of what is left.";
+export const ACP_RESET_NOTE = "The agent starts over from a recap of what is left.";
 
 /** Rewinding is refused with these codes; each reads as one sentence with a next step. */
 export function rewindError(code: string | null): string | null {
-  if (code === "turn_in_progress") return "A turn is running. Stop it or wait for it to finish, then rewind.";
-  if (code === "invalid_request") return "That request is no longer in the conversation. Close this and try another one.";
+  if (code === "turn_in_progress") return "Octo is still working. Stop it or wait, then rewind.";
+  if (code === "invalid_request") return "That request is no longer in the session. Close this and try another one.";
   return null;
 }

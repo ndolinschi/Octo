@@ -54,7 +54,7 @@ export function SessionDetail(props: {
   const [confirm, setConfirm] = useState(false);
   const parent = parentOf(props.list, s);
   const agent: Agent | undefined = s.kind === "agent" && s.agent_id ? state.agents[s.agent_id] : undefined;
-  const orchestratorName = project?.name ?? "the orchestrator";
+  const orchestratorName = project?.name ?? "Octo";
 
   const openRequest = () => {
     if (!s.turn_id) return;

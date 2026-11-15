@@ -24,10 +24,10 @@ export function OfflineState() {
       <section aria-labelledby="offline-title" className="grid h-full place-items-center px-6">
         <div className="w-full max-w-[440px] min-w-0">
           <h1 id="offline-title" className="text-title text-fg">
-            {cause === "unreadable" ? "Octo's local service sent an answer that couldn't be read" : "Octo's local service didn't answer in time"}
+            {cause === "unreadable" ? "Octo's local service sent a reply Octo can't read" : "Octo's local service didn't answer in time"}
           </h1>
           <p className="mt-1 text-sm text-fg-2">
-            {cause === "unreadable" ? "It's running, but what it sent isn't valid." : "It took the request but sent nothing back."} Octo keeps trying by itself;
+            {cause === "unreadable" ? "It's running, but its reply was not valid." : "It took the request but sent nothing back."} Octo keeps trying by itself;
             if it keeps happening, restart Octo.
           </p>
           <div className="mt-5 flex gap-2">
@@ -107,10 +107,10 @@ export function OfflineState() {
       {/* B56: a grid item may shrink under its content (the command line), so the block fits a 390px window. */}
       <div className="w-full max-w-[440px] min-w-0">
         <h1 id="offline-title" className="text-title text-fg">
-          Can't reach the harness bridge
+          Octo's local service isn't answering
         </h1>
         <p className="mt-1 text-sm text-fg-2">
-          Nothing answered at <code className="font-mono text-xs text-fg">{bridgeUrl}</code>. Start the bridge, then retry.
+          Nothing answered at <code className="font-mono text-xs text-fg">{bridgeUrl}</code>. Start it with this command, then retry.
         </p>
         <div className="mt-4 flex h-9 items-center gap-2 rounded-md bg-code-bg pr-1 pl-3">
           <code className="min-w-0 flex-1 truncate font-mono text-xs text-fg">{COMMAND}</code>
@@ -143,16 +143,16 @@ export function OfflineBanner() {
     cause === "refused"
       ? "Octo's local service didn't accept this window: it restarted with a new access key."
       : cause === "unreadable"
-        ? "Octo's local service sent an answer that couldn't be read. Octo keeps trying."
+        ? "Octo's local service sent a reply Octo can't read. Octo keeps trying."
         : cause === "unanswered"
           ? "Octo's local service didn't answer in time. Octo keeps trying."
-          : "Octo's local service isn't answering. What's on screen stays readable; sending is off until it's back.";
+          : "Octo's local service isn't answering. Sending is off until it's back.";
   return (
-    <Notice
-      tone="warn"
-      className="px-3 py-1.5"
-      action={
-        <span className="ml-auto flex shrink-0 gap-2">
+    <Notice tone="warn" className="px-3 py-1.5">
+      {/* B3: the actions keep the text's line (the text wraps beside them on a phone) instead of dropping under it. */}
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="min-w-0 flex-1">{text}</span>
+        <span className="flex shrink-0 gap-2">
           {cause === "refused" && !host.managesHarness && (
             <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
               Reload the page
@@ -167,9 +167,7 @@ export function OfflineBanner() {
             {health === "checking" ? "Checking…" : "Retry"}
           </Button>
         </span>
-      }
-    >
-      {text}
+      </span>
     </Notice>
   );
 }

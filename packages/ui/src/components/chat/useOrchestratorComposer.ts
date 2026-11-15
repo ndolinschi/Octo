@@ -79,7 +79,7 @@ function useQueue(memory: TabMemory | undefined, tab: TabId) {
 export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "comments"> & { commentCount: number } {
   const { health, config, bridge } = useApp();
   const device = useHost().remoteDevice;
-  const { project, state, running, send, cancel, live, update, projectId } = useProject();
+  const { project, state, running, send, cancel, live, update, projectId, loadFailures } = useProject();
   const comments = useOptionalComments();
   const memory = useOptionalWorkspace()?.memory;
   // Decision 96: a session's draft and local queue are its own, wherever its composer is (its tab, Chat, the floating one).
@@ -93,6 +93,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   const orchestratorId = project?.orchestrator_agent_id;
   const orchestrator = orchestratorId ? state.agents[orchestratorId] : undefined;
   const messages = orchestratorId ? state.messages[orchestratorId] : undefined;
+  const loadFailed = loadFailures[""] !== undefined || (orchestratorId !== undefined && messages === undefined && loadFailures[orchestratorId] !== undefined);
   const current = pending ?? project?.models.orchestrator ?? null;
   const queue = useQueue(memory, key);
   const draft = useMemo(() => (memory ? draftOf(memory, key) : undefined), [memory, key]);
@@ -172,14 +173,18 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
         ? "Read-only"
         : "Sending is off"
       : health === "offline"
-        ? "Octo's local service isn't answering. Sending is off until it's back."
-        : live === "reconnecting"
-          ? "Reconnecting…"
-          : null,
+        ? // B3: the banner says what is wrong and what to do; the field only says why it is off.
+          "Offline"
+        : loadFailed
+          ? // B3: the service answers but the session did not load ("Couldn't load the session · Retry" above): not "Reconnecting…".
+            "Waiting for the session to load…"
+          : live === "reconnecting"
+            ? "Reconnecting…"
+            : null,
     folders: project?.folders ?? [],
     notice: noKey
       ? {
-          text: "No API key set. Choose an agent on a subscription in the model chip, or give Octo's local service a key.",
+          text: "No API key yet. Pick a coding agent in the model chip, or add a key in Settings.",
           ...(loop?.reason ? { title: loop.reason } : {}),
         }
       : null,
@@ -199,7 +204,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
     model: current
       ? {
           value: current,
-          title: served?.asked ? `${served.asked} → ${served.name} (chosen → served by the router)` : undefined,
+          title: served?.asked ? `${served.name} (asked for ${served.asked})` : undefined,
           unavailable: project?.models_unavailable?.some((i) => i.field === "orchestrator") === true,
           choose: async (model, force) => {
             if (!project || model === project.models.orchestrator) return;

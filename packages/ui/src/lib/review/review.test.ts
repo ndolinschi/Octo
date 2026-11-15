@@ -5,8 +5,8 @@ import { blockAt, changeBlocks, hunksToTexts, stepChange } from "./changes";
 import { groupFiles, navigableFiles, sizeChange, stepFile } from "./files";
 import { anchorProblem, commentError, commentWhere, lineCommentInput, lineInDiff, linesOf, rangeInDiff } from "./position";
 import { reviewKeyAction } from "./keys";
-import { listFailure, parsePullInput, reviewSourceText } from "./pull";
-import { canSubmit, submitProblem, submitText, submittedText } from "./submit";
+import { ghInstallCommand, listFailure, parsePullInput, reviewSourceText } from "./pull";
+import { canSubmit, submitButtonText, submitProblem, submitText, submittedText } from "./submit";
 
 function file(path: string, group: ReviewFile["group"], order: number, extra: Partial<ReviewFile> = {}): ReviewFile {
   return {
@@ -194,6 +194,10 @@ test("submit text says what is posted and where; a local review posts nothing", 
   assert.equal(submitText(gh, "comment", 1, false, 1), "Post 1 comment and 1 reply to o/r#123 as you");
   assert.equal(submitText(gh, "comment", 0, false, 2), "Post 2 replies to o/r#123 as you");
   assert.equal(submitText(local, "comment", 3, false), "Mark 3 comments as submitted (nothing is posted)");
+  assert.equal(submitButtonText(gh, "comment"), "Post review");
+  assert.equal(submitButtonText(gh, "approve"), "Approve");
+  assert.equal(submitButtonText(gh, "request_changes"), "Request changes");
+  assert.equal(submitButtonText(local, "approve"), "Mark as done");
   assert.ok(canSubmit("approve", 0, false));
   assert.ok(!canSubmit("comment", 0, false));
   assert.ok(canSubmit("comment", 0, true));
@@ -232,6 +236,9 @@ test("review keys: mapped, ignored with a modifier and inside text fields, kept 
   assert.equal(reviewKeyAction(k("v"), free), "viewed");
   assert.equal(reviewKeyAction(k("c"), free), "comment");
   assert.equal(reviewKeyAction(k("s"), free), "suggest");
+  assert.equal(reviewKeyAction(k("n"), free), "next-thread");
+  assert.equal(reviewKeyAction(k("p"), free), "prev-thread");
+  assert.equal(reviewKeyAction(k("n"), { editable: true, inMonaco: false }), null);
   assert.equal(reviewKeyAction(k("x"), free), null);
   assert.equal(reviewKeyAction(k("j", true), free), null);
   assert.equal(reviewKeyAction(k("j"), { editable: true, inMonaco: false }), null);
@@ -239,7 +246,14 @@ test("review keys: mapped, ignored with a modifier and inside text fields, kept 
 });
 
 test("a failed list is a plain sentence; a source id loses its prefix", () => {
-  assert.equal(listFailure("git fetch failed: could not resolve host").message, "Could not reach the code host.");
+  assert.equal(listFailure("git fetch failed: could not resolve host").message, "Could not reach GitHub.");
+  assert.deepEqual(ghInstallCommand("brew install gh && gh auth login", "MacIntel"), { command: "brew install gh && gh auth login", other: null });
+  assert.deepEqual(ghInstallCommand("brew install gh && gh auth login", "Linux x86_64"), {
+    command: "sudo apt install gh && gh auth login",
+    other: "Other systems: cli.github.com",
+  });
+  assert.equal(ghInstallCommand("brew install gh   (or https://cli.github.com)", "Win32").command, "winget install --id GitHub.cli");
+  assert.deepEqual(ghInstallCommand("gh auth login", "Linux"), { command: "gh auth login", other: null });
   assert.equal(reviewSourceText("github:atlas-labs/atlas-api#476"), "atlas-labs/atlas-api #476");
   assert.equal(reviewSourceText("local:main..feat"), "main..feat");
 });

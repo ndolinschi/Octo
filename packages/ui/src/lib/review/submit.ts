@@ -5,8 +5,8 @@ type Target = Pick<Review, "kind" | "repo" | "number" | "source">;
 
 export const VERDICTS: readonly { id: ReviewVerdict; label: string; hint: string }[] = [
   { id: "comment", label: "Comment", hint: "General feedback; no approval either way." },
-  { id: "approve", label: "Approve", hint: "You are happy for this to merge." },
-  { id: "request_changes", label: "Request changes", hint: "This must change before it can merge." },
+  { id: "approve", label: "Approve", hint: "Looks good to merge." },
+  { id: "request_changes", label: "Request changes", hint: "Needs changes before it can merge." },
 ];
 
 export function verdictLabel(v: ReviewVerdict): string {
@@ -40,6 +40,18 @@ export function submitText(review: Target, verdict: ReviewVerdict, comments: num
       return parts ? `Post ${parts} to ${target} as you` : `Post a review to ${target} as you`;
   }
 }
+
+/**
+ * B2 (polish pass F3): the submit button's own short label; the whole sentence (`submitText`) is the note beside it, so a
+ * disabled primary never carries a long line.
+ */
+export function submitButtonText(review: Pick<Review, "kind">, verdict: ReviewVerdict): string {
+  if (review.kind === "local") return "Mark as done";
+  return verdict === "approve" ? "Approve" : verdict === "request_changes" ? "Request changes" : "Post review";
+}
+
+/** Why the button is off: the sentence beside it then. */
+export const SUBMIT_EMPTY_TEXT = "Add a comment or review text, or choose Approve.";
 
 /** True when a submit has something to post (the harness refuses an empty review unless it approves). */
 export function canSubmit(verdict: ReviewVerdict, comments: number, hasBody: boolean): boolean {

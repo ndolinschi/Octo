@@ -1,5 +1,7 @@
 import { Pin, Plus, Upload } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useQuietOpen } from "../../lib/quietFocus";
+import { useListStops } from "../../lib/listStops";
+import { useMemo, useState, useRef } from "react";
 import type { Note } from "@octo/agent-client";
 import { errorMessage } from "../../lib/format";
 import { formatDay } from "../../lib/memory/dates";
@@ -115,8 +117,14 @@ export function NotesPanel() {
     );
 
   const empty = state.notes.length === 0 && mode.kind !== "new";
+  // B4.3: focus the dock moves here on opening draws no ring until the first key or press.
+  const quiet = useRef<HTMLDivElement>(null);
+  useQuietOpen(quiet);
+  // Item 9 (polish pass F3): the notes are one Tab stop (↑/↓/Home/End between them), a list of items (axe: a button cannot be one).
+  const noteList = useRef<HTMLUListElement>(null);
+  useListStops(noteList);
   return (
-    <div className="h-full min-h-0" data-notes>
+    <div ref={quiet} className="h-full min-h-0" data-notes>
       <Panel
         name="notes"
         title="Notes"
@@ -153,13 +161,18 @@ export function NotesPanel() {
               </PanelFilters>
             }
             detail={detail}
+            listSemantics="own"
             list={(select) =>
               shown.length === 0 ? (
-                <div role="listitem">
-                  <PanelEmpty>No note matches "{query}".</PanelEmpty>
-                </div>
+                <PanelEmpty>No note matches "{query}".</PanelEmpty>
               ) : (
-                shown.map((n) => <NoteRow key={n.id} note={n} now={now} active={current?.id === n.id && mode.kind !== "new"} onPick={() => select(n.id)} />)
+                <ul ref={noteList} aria-label="Notes" className="flex flex-col">
+                  {shown.map((n) => (
+                    <li key={n.id}>
+                      <NoteRow note={n} now={now} active={current?.id === n.id && mode.kind !== "new"} onPick={() => select(n.id)} />
+                    </li>
+                  ))}
+                </ul>
               )
             }
           />
@@ -178,7 +191,6 @@ function NoteRow(props: { note: Note; now: number; active: boolean; onPick(): vo
   const line = noteLine(note);
   return (
     <ListRow
-      role="listitem"
       size="md"
       selected={props.active}
       // The glyph column holds the pin only: a notebook on every row was noise, an empty slot keeps the text edge.

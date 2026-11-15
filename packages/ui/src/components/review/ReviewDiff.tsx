@@ -5,6 +5,7 @@ import type { MonacoApi } from "../../lib/buffers";
 import { errorMessage } from "../../lib/format";
 import { useLatest } from "../../lib/hooks";
 import { useDelayedLoading } from "../../lib/hooksMore";
+import { usePhone } from "../../lib/phone";
 import type { ChangeBlock } from "../../lib/review/changes";
 import { commentableRuns, type Anchor, type LineRun, type Side } from "../../lib/review/position";
 import { DIFF_FLASH_MS } from "../../lib/v7/changes";
@@ -15,7 +16,10 @@ import { Spinner } from "../primitives/Status";
 export type ReviewMonaco = { monaco: MonacoApi; themeName(mode: "dark" | "light"): string };
 
 export type Marked = { side: Side; start: number; end: number };
-export type RevealRequest = { block: ChangeBlock; n: number };
+/** `focus`: the reader stepped from inside the diff, so the side that shows the change takes focus (the old editor may be gone). */
+export type RevealRequest = { block: ChangeBlock; n: number; focus?: boolean };
+/** Bring a thread's line into view (the thread list's Enter), without selecting it. */
+export type ScrollRequest = { side: Side; line: number; n: number };
 /** A block of the review drawn inside the diff after a line (an existing thread): `render(key)` is its content. */
 export type DiffZone = { key: string; side: Side; line: number };
 
@@ -40,6 +44,7 @@ export function ReviewDiff(props: {
   commented: readonly Marked[];
   flagged: readonly Marked[];
   reveal: RevealRequest | null;
+  scrollTo?: ScrollRequest | null;
   zones: readonly DiffZone[];
   renderZone(key: string): ReactNode;
   onAnchor(anchor: Anchor): void;
@@ -56,6 +61,7 @@ export function ReviewDiff(props: {
   const [failed, setFailed] = useState<string | null>(null);
   const [editor, setEditor] = useState<Monaco.editor.IStandaloneDiffEditor | null>(null);
   const loading = useDelayedLoading(!mod && !failed);
+  const phone = usePhone();
   const { loadMonaco } = props;
   const latest = useLatest(props);
 
@@ -96,7 +102,8 @@ export function ReviewDiff(props: {
       renderMarginRevertIcon: false,
       enableSplitViewResizing: false,
       useInlineViewWhenSpaceIsLimited: false,
-      ariaLabel: "Diff",
+      originalAriaLabel: "Before",
+      modifiedAriaLabel: "After",
       contextmenu: false,
     });
     setEditor(ed);
@@ -112,6 +119,12 @@ export function ReviewDiff(props: {
   useEffect(() => {
     if (mod) mod.monaco.editor.setTheme(mod.themeName(props.theme));
   }, [mod, props.theme]);
+
+  // Item 5 (polish pass F3): on a phone the gutters took 76 of 390px. No comment lane (the "+" is a hover affordance; a tap
+  // selects lines and the bar's actions comment), numbers two digits wide before they grow.
+  useEffect(() => {
+    editor?.updateOptions({ glyphMargin: !phone, lineNumbersMinChars: phone ? 2 : 3 });
+  }, [editor, phone]);
 
   useEffect(() => {
     editor?.updateOptions({
@@ -131,6 +144,9 @@ export function ReviewDiff(props: {
     const old = editor.getModel();
     latest.current.onFirstLine?.(null);
     editor.setModel({ original, modified });
+    // Item 4 (polish pass F3): each side's input is named by the file, so a screen reader says which file and which side.
+    editor.getOriginalEditor().updateOptions({ ariaLabel: `${props.path}, before` });
+    editor.getModifiedEditor().updateOptions({ ariaLabel: `${props.path}, after` });
     editor.getModifiedEditor().setScrollLeft(0);
     editor.getOriginalEditor().setScrollLeft(0);
     old?.original.dispose();
@@ -251,9 +267,20 @@ export function ReviewDiff(props: {
         },
       ]);
       window.setTimeout(() => flash.clear(), DIFF_FLASH_MS + 100);
+      // Item 2 (polish pass F3): j / k pressed in the diff keep focus there, on the side that shows the change; moving to
+      // another file rebuilt the editor and dropped focus to the page.
+      if (reveal.focus) side.focus();
     };
     go();
   }, [mod, editor, reveal, props.split, latest]);
+
+  const { scrollTo } = props;
+  useEffect(() => {
+    if (!editor || !scrollTo) return;
+    const side = scrollTo.side === "old" && props.split ? editor.getOriginalEditor() : editor.getModifiedEditor();
+    side.revealLineInCenterIfOutsideViewport(scrollTo.line);
+    side.setScrollLeft(0);
+  }, [editor, scrollTo, props.split]);
 
   // Thread zones: a DOM node per zone inside Monaco's view-zone layer; React renders into it through a portal, and the
   // zone is as tall as its content (a ResizeObserver keeps it in step when a thread folds, unfolds or gets a reply box).
@@ -304,6 +331,40 @@ export function ReviewDiff(props: {
     };
   }, [editor, zoneNodes, props.split, props.before, props.after, latest]);
 
+  // Item 1 (polish pass F3): the zones are a visual copy of the thread list (Monaco's view-zone layer is aria-hidden and drops
+  // zones outside the viewport), so keyboard focus never enters them: they are inert, except while a mouse or pen is over
+  // the diff (a click on Reply still works there; focus that a click put inside a zone stays until it leaves) and on
+  // screens without hover, where nothing tabs into them.
+  const wrap = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const touchOnly = window.matchMedia("(hover: none)").matches;
+    const set = (inert: boolean) => {
+      for (const { dom } of zoneNodes) dom.toggleAttribute("inert", inert);
+    };
+    const inZone = () => zoneNodes.some(({ dom }) => dom.contains(document.activeElement));
+    set(!touchOnly);
+    if (touchOnly) return;
+    const move = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") set(false);
+    };
+    const leave = () => {
+      if (!inZone()) set(true);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Tab" && !inZone()) set(true);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerleave", leave);
+    window.addEventListener("keydown", key, true);
+    return () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerleave", leave);
+      window.removeEventListener("keydown", key, true);
+    };
+  }, [zoneNodes]);
+
   const { onReady } = props;
   useEffect(() => {
     if (!editor) return;
@@ -312,7 +373,7 @@ export function ReviewDiff(props: {
   }, [editor, onReady]);
 
   return (
-    <div className="relative min-h-0 flex-1">
+    <div ref={wrap} className="relative min-h-0 flex-1">
       <div ref={host} className="absolute inset-0" />
       {editor && <EditorContextMenu editor={editor.getModifiedEditor()} path={props.path} />}
       {editor && <EditorContextMenu editor={editor.getOriginalEditor()} path={props.path} />}

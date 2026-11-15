@@ -4,6 +4,7 @@ import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { useNow } from "../../lib/hooks";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { errorMessage } from "../../lib/format";
+import { useListStops } from "../../lib/listStops";
 import { formatDay, formatWhen } from "../../lib/memory/dates";
 import { draftProblem, fileDir, fileName, formatBytes, sortFiles } from "../../lib/memory/files";
 import type { Load } from "../../lib/memory/load";
@@ -38,9 +39,12 @@ export function FilesView(props: {
   const sorted = useMemo(() => (files ? sortFiles(files) : []), [files]);
   const now = useNow(false, CLOCK_MINUTE_MS);
   const current = files?.find((f) => f.path === props.selected) ?? null;
+  // Item 9 (polish pass F3): one Tab stop for the files (↑/↓/Home/End between them).
+  const rows = useRef<HTMLUListElement>(null);
+  useListStops(rows);
   if (props.load.status === "error") return <MemoryError message={props.load.message} onRetry={props.reload} />;
   if (files && sorted.length === 0)
-    return <PaneEmpty title="No memory files yet">Files the orchestrator writes to remember things between requests appear here.</PaneEmpty>;
+    return <PaneEmpty title="No memory files yet">Files Octo writes to remember things between requests appear here.</PaneEmpty>;
   return (
     <ListDetail
       label="Files"
@@ -49,23 +53,26 @@ export function FilesView(props: {
       loading={props.load.status === "loading"}
       selected={current?.path ?? null}
       onSelect={(path) => props.onSelect(path)}
-      list={(select) =>
-        sorted.map((f) => (
-          <ListRow
-            key={f.path}
-            role="listitem"
-            size="md"
-            selected={f.path === current?.path}
-            leading={<Glyph icon={fileIcon(f.path)} size={14} />}
-            title={f.path}
-            truncate="middle"
-            description={<RowLine end={`${formatBytes(f.size)} · ${formatWhen(f.updated_at, now)}`}>{f.summary}</RowLine>}
-            tip={f.path}
-            onClick={() => select(f.path)}
-            trailing={ROW_TAIL}
-          />
-        ))
-      }
+      listSemantics="own"
+      list={(select) => (
+        <ul ref={rows} aria-label="Files" className="flex flex-col">
+          {sorted.map((f) => (
+            <li key={f.path}>
+              <ListRow
+                size="md"
+                selected={f.path === current?.path}
+                leading={<Glyph icon={fileIcon(f.path)} size={14} />}
+                title={f.path}
+                truncate="middle"
+                description={<RowLine end={`${formatBytes(f.size)} · ${formatWhen(f.updated_at, now)}`}>{f.summary}</RowLine>}
+                tip={f.path}
+                onClick={() => select(f.path)}
+                trailing={ROW_TAIL}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
       detail={
         current ? (
           <FileDetail
@@ -140,10 +147,10 @@ function FileDetail(props: { projectId: string; file: MemoryFile; now: number; o
       </div>
       {confirm && remove && (
         <ConfirmDialog
-          title="Delete this file?"
-          description={`${file.path} leaves the memory index. It will no longer be remembered. This cannot be undone.`}
-          confirm="Delete"
-          busyText="Deleting"
+          title="Forget this file?"
+          description={`Octo will forget ${file.path}. This can't be undone.`}
+          confirm="Forget"
+          busyText="Forgetting"
           onClose={() => setConfirm(false)}
           onConfirm={async () => {
             await remove.call(bridge, props.projectId, file.path);

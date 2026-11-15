@@ -12,6 +12,8 @@ import {
   groupProblems,
   groupState,
   groupSummary,
+  groupShortSummary,
+  leadingColumns,
   mergeRuns,
   inputPairs,
   isRefusal,
@@ -264,4 +266,33 @@ test("3: a call a restart interrupted says so in its plain line, and the group c
   assert.equal(stoppedLine(closed, "failed", ""), "Interrupted — the request ended before this finished.");
   assert.equal(groupProblems(["done", "stopped", "error"], "interrupted"), "1 failed · 1 interrupted");
   assert.equal(groupProblems(["stopped"]), "1 stopped");
+});
+
+test("groupShortSummary: the two largest kinds in the order they ran, file changes together, the rest as one count", () => {
+  const uses = [
+    ...["a", "b", "c", "d"].map((c) => ({ name: "bash", input: { command: c } })),
+    { name: "read_file", input: { path: "r.ts" } },
+    { name: "search_issues", input: { query: "q" } },
+    { name: "search_issues", input: { query: "p" } },
+    ...["e1.ts", "e2.ts", "e3.ts"].map((p) => ({ name: "edit", input: { path: p, old_string: "x", new_string: "y" } })),
+    { name: "write_file", input: { path: "w.ts", content: "" } },
+    { name: "delete", input: { title: "Delete d.ts", raw_input: { file_path: "/r/d.ts" } } },
+  ];
+  assert.equal(groupShortSummary(uses), "4 commands, 5 edits, +3");
+  assert.equal(groupShortSummary([{ name: "bash", input: { command: "ls" } }]), "1 command");
+  assert.equal(
+    groupShortSummary([
+      { name: "read_file", input: { path: "a" } },
+      { name: "bash", input: { command: "ls" } },
+    ]),
+    "1 read, 1 command",
+  );
+});
+
+test("leadingColumns: spaces count one, a tab reaches the next stop", () => {
+  assert.equal(leadingColumns("    x"), 4);
+  assert.equal(leadingColumns("\tx"), 8);
+  assert.equal(leadingColumns("  \tx", 4), 4);
+  assert.equal(leadingColumns("x  "), 0);
+  assert.equal(leadingColumns(""), 0);
 });

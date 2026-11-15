@@ -44,12 +44,16 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
     <Popover anchor={props.anchor} label="Context" side="top" align="end" onClose={props.onClose} className="w-[min(340px,calc(100vw-16px))]">
       <div className="flex flex-col gap-3 p-3 text-sm">
         <div className="flex flex-col gap-0.5">
-          <p className="text-heading text-fg">{contextHeadline(view)}</p>
+          {/* 7c: focus lands here on open (the buttons may not exist yet while the numbers load, and focus fell to the page);
+              Esc returns it to the ring (Popover). Programmatic focus: no ring. */}
+          <p tabIndex={-1} data-autofocus className="text-heading text-fg focus:outline-none">
+            {contextHeadline(view)}
+          </p>
           {view.compacted && <p className="text-xs text-fg-3">{view.compacted}</p>}
-          {view.fromLastTurn && <p className="text-xs text-fg-3">From the last turn.</p>}
+          {view.fromLastTurn && <p className="text-xs text-fg-3">From the last reply.</p>}
         </div>
         {view.source === "agent" ? (
-          <p className="text-fg-2">This agent manages its own context. Octo shows what it reports.</p>
+          <p className="text-fg-2">This agent keeps its own context; the numbers come from it.</p>
         ) : (
           view.rows.length > 0 && (
             <>
@@ -112,7 +116,7 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
                   },
                   (e: unknown) => {
                     setCompacting(false);
-                    setNote(compactError(errorCode(e)) ?? `Could not compact: ${errorMessage(e).replace(/\.$/, "")}. Try again.`);
+                    setNote(compactError(errorCode(e)) ?? `Could not compact: ${errorMessage(e).replace(/\.$/, "")}.`);
                   },
                 );
               }}

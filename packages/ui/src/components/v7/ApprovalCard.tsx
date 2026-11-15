@@ -104,7 +104,7 @@ function useAnswers(approval: Approval, c: ReturnType<typeof useApprovalCard>, c
     ),
     alternatives: (
       <ActionButton variant="quiet" busy={c.busy} action="allow_for_turn" disabled={disabled} onClick={() => c.act("allow_for_turn")}>
-        Allow for this turn
+        Allow for this request
       </ActionButton>
     ),
     destructive: (
@@ -231,7 +231,7 @@ function CompactApproval(props: ApprovalCardProps) {
       aria-keyshortcuts="A D Enter"
       onKeyDown={c.onKeyDown}
       data-v7-approval={approval.id}
-      className="@container/v7 flex min-w-0 flex-col gap-1 rounded-sm px-2 py-2 focus-visible:shadow-[0_0_0_2px_var(--octo-focus)]"
+      className="@container/v7 flex min-w-0 flex-col gap-1 rounded-sm px-2 py-2 focus-visible:not-data-quiet-focus:shadow-[0_0_0_2px_var(--octo-focus)]"
     >
       <div className="flex min-w-0 items-baseline gap-2">
         <span className="shrink-0 text-fg">{approvalCaption(approval)}</span>

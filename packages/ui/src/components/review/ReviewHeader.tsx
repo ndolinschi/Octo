@@ -7,6 +7,7 @@ import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { IconMenu } from "../primitives/IconMenu";
 import type { MenuItem } from "../primitives/Menu";
+import { usePhone } from "../../lib/phone";
 
 /**
  * Decision 64 and 78, polish step 6b (R3): two lines at every width. The title line: Back, the title, and one right-hand group
@@ -23,6 +24,8 @@ export function ReviewHeader(props: {
   review: Review;
   viewed: number;
   pending: number;
+  /** Findings of an agent review wait in the same panel: Pending shows for them too. */
+  findings: number;
   unresolved: number;
   overviewOpen: boolean;
   /** The pull request has commits this review has not fetched yet. */
@@ -40,6 +43,8 @@ export function ReviewHeader(props: {
   onBack(): void;
 }) {
   const r = props.review;
+  // A1.3: a phone's header has the one Back (the open review is a history layer, `ReviewTab`); the review drops its own.
+  const phone = usePhone();
   const update = props.behind && r.kind !== "local";
   const facts = [
     reviewTarget(r),
@@ -49,17 +54,22 @@ export function ReviewHeader(props: {
     props.unresolved > 0 ? plural(props.unresolved, "unresolved thread") : "",
   ].filter(Boolean);
   const more: MenuItem[] = [
-    { id: "pending", label: `Pending comments (${props.pending})`, run: props.onPending },
+    ...(props.pending > 0 || props.findings > 0
+      ? [{ id: "pending", label: props.pending > 0 ? `Pending comments (${props.pending})` : `Findings (${props.findings})`, run: props.onPending }]
+      : []),
     { id: "details", label: props.overviewOpen ? "Hide details" : "Show details", run: props.onOverview },
     ...(update && props.compact ? [{ id: "update", label: "New commits: update", run: props.onRefresh }] : []),
     ...(props.checkoutItems.length > 0 ? [{ id: "sep-checkout", separator: true } as const, ...props.checkoutItems] : []),
   ];
   const submit = `Submit review${props.pending > 0 ? ` · ${props.pending}` : ""}`;
   return (
-    <header data-review-header className="@container/rh flex shrink-0 items-start gap-2 border-b border-line px-pane">
-      <span className="flex h-ctl-lg shrink-0 items-center">
-        <IconButton icon={ArrowLeft} label="All pull requests" onClick={props.onBack} />
-      </span>
+    // A div, not <header>: the window has its own banner (axe landmark-no-duplicate-banner).
+    <div data-review-header className="@container/rh flex shrink-0 items-start gap-2 border-b border-line px-pane">
+      {!phone && (
+        <span className="flex h-ctl-lg shrink-0 items-center">
+          <IconButton icon={ArrowLeft} label="All pull requests" onClick={props.onBack} />
+        </span>
+      )}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex h-ctl-lg min-w-0 items-center gap-2">
           <h1 className="min-w-0 flex-1 truncate text-heading text-fg" title={props.compact ? `${r.title}\n${facts.join(" · ")}` : r.title}>
@@ -70,9 +80,12 @@ export function ReviewHeader(props: {
             {props.runs}
             <span className="flex items-center gap-1 @max-[720px]/rh:hidden">
               {props.checkout}
-              <Button variant="quiet" size="sm" onClick={props.onPending} aria-haspopup="dialog" className="tabular-nums">
-                Pending {props.pending}
-              </Button>
+              {/* B2: nothing pending, no button (the submit sheet takes a general comment); it appears with the first comment. */}
+              {(props.pending > 0 || props.findings > 0) && (
+                <Button variant="quiet" size="sm" onClick={props.onPending} aria-haspopup="dialog" className="tabular-nums">
+                  {props.pending > 0 ? `Pending ${props.pending}` : `Findings ${props.findings}`}
+                </Button>
+              )}
               <Button
                 variant="quiet"
                 size="sm"
@@ -113,6 +126,6 @@ export function ReviewHeader(props: {
           </div>
         )}
       </div>
-    </header>
+    </div>
   );
 }

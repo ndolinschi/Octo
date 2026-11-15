@@ -27,9 +27,9 @@ test("receiptView: shares add up to the total, cap fill and capped flag, mode an
   assert.equal(v.segments[0]?.fill, 0.2);
   assert.equal(v.segments[1]?.capped, true);
   assert.equal(v.segments[2]?.fill, null);
-  assert.equal(v.totalText, "13k of 18k in capped blocks");
-  assert.equal(v.modeText, "Window mode, last 5 exchanges, 11 messages");
-  assert.equal(v.clearedText, "1 tool result was replaced by stubs");
+  assert.equal(v.totalText, "13k of 18k (trimmed to fit)");
+  assert.equal(v.modeText, "Recent only: last 5 requests, 11 messages");
+  assert.equal(v.clearedText, "1 tool result was shortened");
 });
 
 test("receiptView: a full-mode receipt has no caps, an empty one has zero shares", () => {
@@ -49,7 +49,7 @@ test("receiptView: a full-mode receipt has no caps, an empty one has zero shares
 });
 
 test("block labels and counts never show an id", () => {
-  assert.equal(blockLabel("recent_window"), "Recent exchanges");
+  assert.equal(blockLabel("recent_window"), "Recent requests");
   assert.equal(blockLabel("some_new_block"), "some new block");
   assert.equal(countText("open_tasks", 3), "3 open tasks");
   assert.equal(countText("memory_index", 1), "1 memory file");
@@ -66,8 +66,8 @@ test("files: order, sizes, draft limit", () => {
     ["c.md", "a.md", "b.md"],
   );
   assert.equal(formatBytes(512), "512 B");
-  assert.equal(formatBytes(2458), "2.4 kB");
-  assert.equal(formatBytes(64 * 1024), "64 kB");
+  assert.equal(formatBytes(2458), "2.4 KB");
+  assert.equal(formatBytes(64 * 1024), "64 KB");
   assert.equal(draftProblem("x".repeat(100)), null);
   assert.match(draftProblem("x".repeat(70_000)) ?? "", /^Too large/);
 });

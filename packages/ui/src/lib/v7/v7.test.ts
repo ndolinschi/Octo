@@ -53,7 +53,7 @@ test("resolution: ours wins, deny at the deadline is the timer, deny while stopp
   assert.equal(resolutionCause("deny", { local: undefined, now: 100_000, deadline: 100_500, turnStopped: false }).by, "timeout");
   assert.equal(resolutionCause("deny", { local: undefined, now: 0, deadline: 100_000, turnStopped: true }).by, "cancelled");
   assert.equal(resolutionCause("allow", { local: undefined, now: 0, deadline: null, turnStopped: true }).by, "elsewhere");
-  assert.equal(resolutionLabel({ decision: "allow_for_turn", by: "you" }), "Allowed for this turn");
+  assert.equal(resolutionLabel({ decision: "allow_for_turn", by: "you" }), "Allowed for this request");
   assert.equal(resolutionLabel({ decision: "allow_always", by: "you", rule: "git status" }), "Always allowed");
   assert.deepEqual(answerFor("allow_always", "ignored"), { decision: "allow_always" });
   assert.equal(resolutionLabel({ decision: "deny", by: "timeout" }), "Denied automatically");
@@ -150,7 +150,7 @@ test("changes: revert newest first, net diff from first before to last after", (
   assert.deepEqual(netDiff(file, detail({ before: "one" }), detail({ after: "three" })), { before: "one", after: "three" });
   assert.deepEqual(netDiff({ kind: "created", note: "" }, detail({ before: null }), detail({ after: "x" })), { before: "", after: "x" });
   assert.deepEqual(netDiff({ kind: "modified", note: "too_large" }, detail({ diff_available: false }), detail({})), {
-    unavailable: "Too large to diff (over 2 MiB).",
+    unavailable: "Too large to diff (over 2 MB).",
   });
 });
 

@@ -113,7 +113,7 @@ export function FloatingComposer({ onHeight, rest = false }: { onHeight?(px: num
     turn = (
       <>
         <Glyph icon={CircleX} size={14} className="text-err" />
-        Turn failed
+        Request failed
       </>
     );
   } else if (last?.state === "done" && last.endedAt !== null && last.endedAt - last.startedAt >= 1000) {
@@ -160,7 +160,7 @@ export function FloatingComposer({ onHeight, rest = false }: { onHeight?(px: num
         )}
         {/* State changes only (not the ticking timer) are announced. */}
         <p role="status" className="sr-only">
-          {last?.state === "working" ? "Working" : last?.state === "failed" ? "Turn failed" : last?.state === "done" ? "Turn finished" : ""}
+          {last?.state === "working" ? "Working" : last?.state === "failed" ? "Request failed" : last?.state === "done" ? "Done" : ""}
         </p>
         <Composer
           {...composer}

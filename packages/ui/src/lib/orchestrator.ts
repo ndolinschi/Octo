@@ -176,14 +176,14 @@ export function teamRoles(team: readonly Agent[]): TeamRole[] {
   return out;
 }
 
-/** A role as people read it: the project's agent is always "Orchestrator" (the harness stores "orchestrator"). */
+/** A role as people read it: the project's agent is always "Octo" (the harness stores "orchestrator"; the dictionary's name). */
 export function roleText(role: string | null | undefined): string {
   const r = (role ?? "").trim();
   if (!r) return "Agent";
-  return r.toLowerCase() === "orchestrator" ? "Orchestrator" : r;
+  return r.toLowerCase() === "orchestrator" ? "Octo" : r;
 }
 
-/** An agent's name as shown: "Orchestrator" for the project's agent, its role otherwise. */
+/** An agent's name as shown: "Octo" for the project's agent, its role otherwise. */
 export function roleName(agent: Pick<Agent, "parent_id" | "role">): string {
-  return agent.parent_id === null ? "Orchestrator" : roleText(agent.role);
+  return agent.parent_id === null ? "Octo" : roleText(agent.role);
 }

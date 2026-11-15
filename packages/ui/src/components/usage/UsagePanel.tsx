@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { useQuietOpen } from "../../lib/quietFocus";
 import { cn } from "../../lib/cn";
 import { useNow } from "../../lib/hooks";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
@@ -41,8 +42,11 @@ export function UsagePanel() {
     { id: "day", label: "By day" },
     { id: "limits", label: "Limits" },
   ];
+  // B4.3: focus the dock moves here on opening draws no ring until the first key or press.
+  const quiet = useRef<HTMLDivElement>(null);
+  useQuietOpen(quiet);
   return (
-    <div data-usage className="h-full min-h-0">
+    <div ref={quiet} data-usage className="h-full min-h-0">
       <Panel
         name="usage"
         title="Usage"
@@ -76,7 +80,7 @@ export function UsagePanel() {
               </div>
               {view.segment === "model" && !allProjects && (
                 <Button variant="quiet" size="sm" pressed={view.roles} onClick={() => setView({ roles: !view.roles })}>
-                  Show roles
+                  Show tiers
                 </Button>
               )}
             </PanelFilters>

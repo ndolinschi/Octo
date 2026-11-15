@@ -6,7 +6,7 @@ import { Button } from "../primitives/Button";
 import { ApprovalCard, Countdown, useApprovalLeft, type ApprovalCardProps } from "./ApprovalCard";
 import { RequestCard } from "../shared/RequestCard";
 
-/** "3 requests from Atlas API": several approvals waiting at once are one card with one "Allow all for this turn". */
+/** "3 approvals from Atlas API": several approvals waiting at once are one card with one "Allow all for this request". */
 export function ApprovalGroup(props: {
   approvals: Approval[];
   source: string;
@@ -58,11 +58,11 @@ export function ApprovalGroup(props: {
   return (
     <RequestCard
       data-v7-approval-group=""
-      title={`${approvals.length} requests from ${props.source}`}
+      title={`${approvals.length} approvals from ${props.source}`}
       meta={left !== null ? <Countdown left={left} /> : undefined}
       primary={
         <Button variant={alwaysOpen.size > 0 ? "secondary" : "primary"} size="sm" loading={busy} disabled={busy} onClick={() => void allowAll()}>
-          Allow all for this turn
+          Allow all for this request
         </Button>
       }
       error={error}

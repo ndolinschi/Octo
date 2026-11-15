@@ -123,13 +123,13 @@ function QueueBody(props: QueueListProps) {
         aside={
           view.shown.length > 0 ? (
             <span data-steer-reason={unsupported ? "" : undefined} className="inline-flex">
-              <IconButton icon={Info} size="xs" label={unsupported ? STEER_REASON : "Sent one by one when this turn ends."} />
+              <IconButton icon={Info} size="xs" label={unsupported ? STEER_REASON : "Sent one by one when the current reply ends."} />
             </span>
           ) : undefined
         }
       >
         {props.paused
-          ? `${queueCountLabel(count)} · paused after a failed or stopped turn`
+          ? `${queueCountLabel(count)} · paused after a failed or stopped reply`
           : props.waiting
             ? `${queueCountLabel(count)} · ${props.waiting}`
             : queueCountLabel(count)}
@@ -152,7 +152,7 @@ function QueueBody(props: QueueListProps) {
             const busy = pending !== null && "id" in pending && pending.id === m.id;
             const text = `${queuedModeTag(m.mode) ? `${queuedModeTag(m.mode)} ` : ""}${queueLine(m.text) || "(empty message)"}`;
             const sendNow = () => void steer(m.id);
-            const stopSend = () => void run({ kind: "stop", id: m.id }, () => props.onStopAndSend(m.id), "stop the turn and send it");
+            const stopSend = () => void run({ kind: "stop", id: m.id }, () => props.onStopAndSend(m.id), "stop and send it");
             const remove = () => void run({ kind: "remove", id: m.id }, () => props.onRemove(m.id), "remove it");
             return (
               <li key={m.id} data-row>
@@ -162,13 +162,13 @@ function QueueBody(props: QueueListProps) {
                   title={text}
                   tip={m.text}
                   className={cn(busy && "opacity-70")}
-                  meta={steering.has(m.id) ? <span data-steering>Goes in at the next step</span> : undefined}
+                  meta={steering.has(m.id) ? <span data-steering>Sends at the next step</span> : undefined}
                   trailing={
                     steering.has(m.id) ? undefined : (
                       <>
                         <span className="flex gap-0.5 @max-[480px]/queue:hidden">
                           {!unsupported && <IconButton icon={CornerDownLeft} size="xs" label="Send now" disabled={pending !== null} onClick={sendNow} />}
-                          <IconButton icon={CircleStop} size="xs" label="Stop this turn and send it now" disabled={pending !== null} onClick={stopSend} />
+                          <IconButton icon={CircleStop} size="xs" label="Stop and send it now" disabled={pending !== null} onClick={stopSend} />
                           <IconButton icon={X} size="xs" label="Remove from queue" disabled={pending !== null} onClick={remove} />
                         </span>
                         <span className="hidden @max-[480px]/queue:inline-flex">
@@ -177,7 +177,7 @@ function QueueBody(props: QueueListProps) {
                             disabled={pending !== null}
                             items={[
                               ...(unsupported ? [] : [{ id: "now", label: "Send now", run: sendNow }]),
-                              { id: "stop", label: "Stop this turn and send it now", run: stopSend },
+                              { id: "stop", label: "Stop and send it now", run: stopSend },
                               { id: "remove", label: "Remove from queue", run: remove },
                             ]}
                           />

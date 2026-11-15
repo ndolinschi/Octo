@@ -4,6 +4,7 @@ import { formatDuration } from "../../lib/format";
 import { agentDuration } from "../../lib/duration";
 import { useNow } from "../../lib/hooks";
 import { useRowKeys } from "../../lib/hooksMore";
+import { useRovingRows } from "../../lib/rovingRows";
 import { roleText, runningAgents } from "../../lib/orchestrator";
 import { navigate } from "../../lib/route";
 import { Card } from "../primitives/Card";
@@ -29,6 +30,7 @@ export function TeamCard({ projects, agents }: { projects: ProjectSummary[] | nu
   const waits = useAgentWaits(projects);
   const list = useRef<HTMLDivElement>(null);
   useRowKeys(list);
+  useRovingRows(list);
   const shown = running.slice(0, TEAM_ROWS);
   const busy = (projects ?? []).filter((p) => p.status === "running").length;
   if (agents && running.length === 0) return null;
@@ -53,15 +55,17 @@ export function TeamCard({ projects, agents }: { projects: ProjectSummary[] | nu
 
 function TeamRow({ project, agent, now, wait }: { project: ProjectSummary; agent: Agent; now: number; wait: AgentWait | null }) {
   const ms = agentDuration(agent, now);
+  // 11f: the list item wraps the row's button (a button may not be a listitem).
   return (
-    <ListRow
-      size="md"
-      role="listitem"
-      leading={wait ? <StateGlyph state="needs" box={16} /> : <RunningDot box={16} />}
-      title={`${roleText(agent.role)}${agent.title ? ` · ${agent.title}` : ""}`}
-      meta={wait ? `${project.name} · ${WAIT_TEXT[wait]}` : `${project.name}${ms !== null ? ` · ${formatDuration(ms)}` : ""}`}
-      tip={`${agent.role}${agent.title ? `: ${agent.title}` : ""} — ${project.name}`}
-      onClick={() => navigate(project.id, agent.id)}
-    />
+    <div role="listitem">
+      <ListRow
+        size="md"
+        leading={wait ? <StateGlyph state="needs" box={16} /> : <RunningDot box={16} />}
+        title={`${roleText(agent.role)}${agent.title ? ` · ${agent.title}` : ""}`}
+        meta={wait ? `${project.name} · ${WAIT_TEXT[wait]}` : `${project.name}${ms !== null ? ` · ${formatDuration(ms)}` : ""}`}
+        tip={`${agent.role}${agent.title ? `: ${agent.title}` : ""} — ${project.name}`}
+        onClick={() => navigate(project.id, agent.id)}
+      />
+    </div>
   );
 }

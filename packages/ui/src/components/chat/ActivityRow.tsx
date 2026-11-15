@@ -110,8 +110,9 @@ export function ActivityRow(props: {
         {...(expandable ? { id: `${id}-row` } : {})}
       />
       {overlay && <span data-row-actions>{props.trailing}</span>}
-      {props.error && <p className="-mt-1 truncate pb-1 pl-8 text-xs text-err">{props.error}</p>}
-      {props.note && <p className="-mt-1 truncate pb-1 pl-8 text-xs text-fg-3">{props.note}</p>}
+      {/* On the row's text line (16 glyph + 8 gap), as what a row opens: it stood 8px right of the text it explains. */}
+      {props.error && <p className="-mt-1 truncate pb-1 pl-6 text-xs text-err">{props.error}</p>}
+      {props.note && <p className="-mt-1 truncate pb-1 pl-6 text-xs text-fg-3">{props.note}</p>}
       {nested && open && (
         // C1: what a row opens sits on the row's text line (16 glyph + 8 gap), so the nesting reads at a glance.
         <div id={id} data-activity-body className="mt-1 mb-1 pl-6">

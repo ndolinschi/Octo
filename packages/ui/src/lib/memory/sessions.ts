@@ -4,7 +4,7 @@ import { formatDay, formatWhen } from "./dates";
 
 /** "3 exchanges" / "1 exchange" / "empty" for a session whose exchanges were all forgotten. */
 export function exchangeCount(n: number): string {
-  return n === 0 ? "empty" : `${n} ${n === 1 ? "exchange" : "exchanges"}`;
+  return n === 0 ? "empty" : `${n} ${n === 1 ? "request" : "requests"}`;
 }
 
 /** What a session row says (decision 93 d): the title, "Nov 12 · 5 exchanges", and whether it is the one in use. */
@@ -91,7 +91,7 @@ export function exchangeRow(e: MemoryExchange, now: number): ExchangeRow {
 
 /** The sentence under an expanded failed or stopped exchange, with the next step (rule 20); null when it went well. */
 export function statusNote(status: MemoryExchange["status"]): string | null {
-  if (status === "failed") return "This request failed before it was answered. Open it in the conversation to see why or send it again.";
+  if (status === "failed") return "This request failed before it was answered. Open it in the session to see why or send it again.";
   if (status === "stopped") return "Stopped before it finished. What it had written so far is above.";
   return null;
 }

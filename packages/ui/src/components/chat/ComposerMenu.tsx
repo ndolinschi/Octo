@@ -123,7 +123,7 @@ export const ComposerMenu = forwardRef<
         id: "attach:image",
         group: "Attach",
         label: "Attach image…",
-        hint: "Choose from disk",
+        hint: "From this computer",
         icon: ImageIcon,
         match: "attach image picture photo screenshot",
         pick: { run: props.onPickImage },
@@ -157,7 +157,7 @@ export const ComposerMenu = forwardRef<
         id: `agent:${a.id}`,
         group: "Agents",
         label: a.label,
-        detail: "ACP agent",
+        detail: "Coding agent",
         hint: "Insert",
         icon: GLYPH.agent,
         match: a.label,
@@ -282,7 +282,8 @@ export const ComposerMenu = forwardRef<
     return (
       <PhoneComposerSheet
         chips={props.chips}
-        onClose={() => onClose()}
+        // 7i: dismissing the sheet (Close, the scrim, Esc, the system Back) gives focus back to the "+" that opened it.
+        onClose={() => onClose("escape")}
         onImage={() => {
           onClose();
           props.onPickImage();
