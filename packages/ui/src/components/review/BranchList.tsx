@@ -8,6 +8,7 @@ import { useRovingRows } from "../../lib/rovingRows";
 import { aheadBehindCompact, aheadBehindText, splitName, branchOrder, hasChanges, openInput } from "../../lib/review/branches";
 import type { ReviewApi } from "../../lib/review/api";
 import { Glyph } from "../primitives/Glyph";
+import { Button } from "../primitives/Button";
 import { SkeletonList } from "../primitives/Skeleton";
 import { Spinner } from "../primitives/Status";
 import { TextMenu } from "./parts";
@@ -23,6 +24,7 @@ type Load = { status: "loading" } | { status: "error"; message: string } | { sta
 export function BranchList(props: { api: ReviewApi; folder: string; opening: string | null; onOpen(id: string, input: OpenReviewInput): void }) {
   const { api, folder } = props;
   const [base, setBase] = useState<string | undefined>(undefined);
+  const [retry, setRetry] = useState(0);
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [now] = useState(() => Date.now());
   const list = useRef<HTMLDivElement>(null);
@@ -31,6 +33,7 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
 
   useEffect(() => {
     let alive = true;
+    setLoad({ status: "loading" });
     const fail = (e: unknown) => alive && setLoad({ status: "error", message: errorMessage(e) });
     if (api.branches) {
       api.branches({ ...(folder ? { folder } : {}), ...(base ? { base } : {}) }).then((data) => alive && setLoad({ status: "ready", data }), fail);
@@ -54,7 +57,7 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
     return () => {
       alive = false;
     };
-  }, [api, folder, base]);
+  }, [api, folder, base, retry]);
 
   const data = load.status === "ready" ? load.data : null;
   const rows = useMemo(() => (data ? branchOrder(data.branches) : []), [data]);
@@ -64,12 +67,10 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
         <SkeletonList count={5} size="md" twoLine shimmer widths={[60, 48, 54, 44, 50]} />
       </PanelBody>
     );
-  if (load.status === "error")
-    return <PanelEmpty title="The branches did not load">{load.message}. Check that the folder is a git repository, then pick this view again.</PanelEmpty>;
-  const shownBase = data?.base ?? "main";
+  const shownBase = data?.base ?? base ?? "main";
   // The base is never offered against itself: the current branch is not a base for its own review.
   const current = rows.find((r) => r.current)?.name;
-  const names = [...new Set([data?.default_base ?? "main", ...rows.map((r) => r.name)])].filter((n) => n !== current || n === shownBase);
+  const names = [...new Set([data?.default_base ?? "main", shownBase, ...rows.map((r) => r.name)])].filter((n) => n !== current || n === shownBase);
   // R1 (polish step 6b): the list header is the panel's filter row (caption at the rows' text edge, the base menu at the right),
   // the rows sit in the frame's list inset.
   return (
@@ -87,26 +88,39 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
           </span>
         )}
       </div>
-      {rows.length === 0 ? (
-        <PanelEmpty title="No local branches">This folder has no branch to review. Create one, or switch to Pull requests.</PanelEmpty>
-      ) : (
-        <PanelBody>
-          <div ref={list} className="flex flex-col">
-            {rows.map((b) => (
-              <BranchRow
-                key={b.name}
-                b={b}
-                now={now}
-                busy={props.opening === `branch:${b.name}`}
-                onOpen={() => props.onOpen(`branch:${b.name}`, openInput(b, shownBase))}
-              />
-            ))}
-          </div>
-          {data?.truncated && (
-            <p className="px-2 pt-2 text-xs text-fg-3">More branches exist than are listed. Check one out or delete old ones to see the rest.</p>
-          )}
-        </PanelBody>
-      )}
+      {load.status === "error" ? (
+        <PanelEmpty
+          title="The branches did not load"
+          actions={
+            <Button size="sm" variant="quiet" onClick={() => setRetry((n) => n + 1)}>
+              Try again
+            </Button>
+          }
+        >
+          {load.message}. Check that the folder is a git repository, then try again.
+        </PanelEmpty>
+      ) : null}
+      {load.status === "ready" &&
+        (rows.length === 0 ? (
+          <PanelEmpty title="No local branches">This folder has no branch to review. Create one, or switch to Pull requests.</PanelEmpty>
+        ) : (
+          <PanelBody>
+            <div ref={list} className="flex flex-col gap-1.5">
+              {rows.map((b) => (
+                <BranchRow
+                  key={b.name}
+                  b={b}
+                  now={now}
+                  busy={props.opening === `branch:${b.name}`}
+                  onOpen={() => props.onOpen(`branch:${b.name}`, openInput(b, shownBase))}
+                />
+              ))}
+            </div>
+            {data?.truncated && (
+              <p className="px-2 pt-2 text-xs text-fg-3">More branches exist than are listed. Check one out or delete old ones to see the rest.</p>
+            )}
+          </PanelBody>
+        ))}
     </section>
   );
 }

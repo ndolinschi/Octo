@@ -160,7 +160,7 @@ export function RememberedList(props: {
             />
             {!isCollapsed && (
               <>
-                <ul aria-label={g.subject} className="flex flex-col pl-6">
+                <ul aria-label={g.subject} className="flex flex-col gap-1.5 pl-6">
                   {shown.map((item) => (
                     <RememberedRow
                       key={item.key}

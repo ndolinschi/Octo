@@ -100,8 +100,20 @@ export function MemoryView(props: {
         name="memory"
         title="Memory"
         lead={<PanelPurpose tool="memory" />}
-        filters={
-          <PanelFilters>
+        views={
+          <ViewTabs<MemoryTab>
+            label="Memory"
+            options={TABS}
+            value={view}
+            onChange={(next) => {
+              setQuery("");
+              setView(next);
+            }}
+          />
+        }
+      >
+        <div className="flex h-full min-h-0 flex-col">
+          <PanelFilters className="pt-2">
             <SearchField
               ref={field}
               label="Search memory"
@@ -112,30 +124,35 @@ export function MemoryView(props: {
               className="min-w-0 flex-1"
             />
           </PanelFilters>
-        }
-        views={
-          searching ? <div className="mt-1 border-b border-line" /> : <ViewTabs<MemoryTab> label="Memory" options={TABS} value={view} onChange={setView} />
-        }
-      >
-        {searching ? (
-          <SearchResults state={search} query={query} canOpenMessage={onOpenMessage !== undefined} onOpen={open} />
-        ) : (
-          <div className="h-full min-h-0">
-            {view === "sessions" && (
-              <SessionsView
-                projectId={projectId}
-                selected={session.id}
-                focusExchange={session.exchange}
-                onSelect={(id) => setSession({ id, exchange: null })}
-                onOpenMessage={onOpenMessage}
-              />
+          <div className="min-h-0 flex-1">
+            {searching ? (
+              <SearchResults state={search} query={query} canOpenMessage={onOpenMessage !== undefined} onOpen={open} />
+            ) : (
+              <div className="h-full min-h-0">
+                {view === "sessions" && (
+                  <SessionsView
+                    projectId={projectId}
+                    selected={session.id}
+                    focusExchange={session.exchange}
+                    onSelect={(id) => setSession({ id, exchange: null })}
+                    onOpenMessage={onOpenMessage}
+                  />
+                )}
+                {view === "knowledge" && (
+                  <KnowledgeView
+                    key={focus.nonce}
+                    load={tasks.load}
+                    reload={tasks.reload}
+                    focus={focus}
+                    onOpenMessage={onOpenMessage}
+                    onOpenFile={onOpenFile}
+                  />
+                )}
+                {view === "files" && <FilesView projectId={projectId} load={files.load} reload={files.reload} selected={file} onSelect={setFile} />}
+              </div>
             )}
-            {view === "knowledge" && (
-              <KnowledgeView key={focus.nonce} load={tasks.load} reload={tasks.reload} focus={focus} onOpenMessage={onOpenMessage} onOpenFile={onOpenFile} />
-            )}
-            {view === "files" && <FilesView projectId={projectId} load={files.load} reload={files.reload} selected={file} onSelect={setFile} />}
           </div>
-        )}
+        </div>
       </Panel>
     </div>
   );

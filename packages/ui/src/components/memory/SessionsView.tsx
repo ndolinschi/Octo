@@ -62,7 +62,7 @@ export function SessionsView(props: {
       onSelect={(id) => props.onSelect(id)}
       listSemantics="own"
       list={(select) => (
-        <ul ref={rows} aria-label="Sessions" className="flex flex-col">
+        <ul ref={rows} aria-label="Sessions" className="flex flex-col gap-1.5">
           {list.map((s) => {
             const r = sessionRow(s, now, working, currentId);
             return (

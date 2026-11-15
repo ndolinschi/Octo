@@ -36,7 +36,7 @@ export function TaskList(props: {
   if (shown.length === 0) return <p className="px-2 py-3 text-sm text-fg-3">No {STATUS_LABEL[props.status].toLowerCase()} tasks.</p>;
   return (
     <>
-      <ul aria-label="Tasks" className="flex flex-col">
+      <ul aria-label="Tasks" className="flex flex-col gap-1.5">
         {rows.shown.map((t) => (
           <TaskRow
             key={t.id}

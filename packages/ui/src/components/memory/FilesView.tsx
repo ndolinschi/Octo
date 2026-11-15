@@ -55,7 +55,7 @@ export function FilesView(props: {
       onSelect={(path) => props.onSelect(path)}
       listSemantics="own"
       list={(select) => (
-        <ul ref={rows} aria-label="Files" className="flex flex-col">
+        <ul ref={rows} aria-label="Files" className="flex flex-col gap-1.5">
           {sorted.map((f) => (
             <li key={f.path}>
               <ListRow

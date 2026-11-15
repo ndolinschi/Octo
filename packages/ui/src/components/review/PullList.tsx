@@ -152,7 +152,12 @@ function Picker(props: {
   }, [listed, rows]);
 
   const submitSearch = () => {
-    if (typed) void run("address", { source: "github", ...(typed.kind === "number" ? { pr: typed.pr } : { url: typed.url }) });
+    if (opening !== null) return;
+    if (typed)
+      void run("address", {
+        source: "github",
+        ...(typed.kind === "number" ? { pr: typed.pr, ...(props.repo ? { repo: props.repo } : {}) } : { url: typed.url }),
+      });
     else if (shown[0]) openRow(shown[0]);
   };
 
@@ -237,7 +242,7 @@ function Picker(props: {
             // line of its own above the chips, with balanced vertical breathing room and full-width FilterTabs so fade-x works cleanly.
             <div
               data-panel-filters
-              className="box-content flex min-h-9 shrink-0 items-center gap-x-2 gap-y-2 px-pane @max-[560px]:flex-wrap @max-[560px]:pt-1.5 @max-[560px]:pb-2 touch:min-h-ctl-lg"
+              className="box-content flex min-h-9 shrink-0 items-center gap-x-2 gap-y-2 px-pane @max-[560px]:flex-wrap @max-[560px]:pt-2 @max-[560px]:pb-1 touch:min-h-ctl-lg"
             >
               <FilterTabs<PullRequestFilter>
                 label="Show"
@@ -369,7 +374,7 @@ function Picker(props: {
                   />
                 )}
                 {resume.length > 0 && (
-                  <section aria-label="Reviews in progress" className="flex flex-col pb-2">
+                  <section aria-label="Reviews in progress" className="flex flex-col gap-1.5 pb-2">
                     <h2 className="flex h-ctl-md items-center px-2 text-xs font-medium text-fg-3">Reviews in progress</h2>
                     {resume.map((r) => (
                       <OpenRow key={r.id} r={r} now={now} onOpen={() => props.onOpen(r.id)} />
