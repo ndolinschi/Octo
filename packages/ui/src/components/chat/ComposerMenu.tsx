@@ -1,7 +1,8 @@
 import type { Bridge, PluginAgent } from "@octo/agent-client";
-import { AtSign, MessageSquare, Paperclip, Search, type LucideIcon } from "lucide-react";
+import { AtSign, MessageSquare, Paperclip, type LucideIcon } from "lucide-react";
 import { GLYPH } from "../primitives/glyphs";
 import { Glyph } from "../primitives/Glyph";
+import { SearchField } from "../primitives/SearchField";
 import {
   forwardRef,
   useEffect,
@@ -319,27 +320,27 @@ export const ComposerMenu = forwardRef<
       className={POPUP_PANEL}
     >
       {props.query === null && (
-        <div className="flex h-bar shrink-0 items-center gap-2 border-b border-line px-3">
-          <Glyph icon={Search} size={14} className="shrink-0 text-fg-3" />
-          <input
-            ref={search}
-            role="combobox"
-            aria-expanded="true"
-            aria-controls={props.listId}
-            aria-activedescendant={currentId !== null ? optionId(currentId) : undefined}
-            aria-label="Search files, agents and actions"
-            placeholder="Search files, agents, actions"
-            value={ownQuery}
-            onChange={(e) => setOwnQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (keys(e)) {
-                e.preventDefault();
-                e.stopPropagation();
-              }
-            }}
-            className="h-full min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none max-sm:text-input-touch"
-          />
-        </div>
+        <SearchField
+          ref={search}
+          variant="header"
+          clearOnEscape={false}
+          label="Search files, agents and actions"
+          placeholder="Search files, agents, actions"
+          value={ownQuery}
+          onChange={setOwnQuery}
+          onKeyDown={(e) => {
+            if (keys(e)) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          }}
+          inputProps={{
+            role: "combobox",
+            "aria-expanded": true,
+            "aria-controls": props.listId,
+            ...(currentId !== null ? { "aria-activedescendant": optionId(currentId) } : {}),
+          }}
+        />
       )}
       <PopupList
         id={props.listId}

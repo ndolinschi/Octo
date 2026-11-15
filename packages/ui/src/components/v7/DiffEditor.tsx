@@ -11,8 +11,10 @@ import { EditorContextMenu } from "../shared/EditorContextMenu";
 import { Spinner } from "../primitives/Status";
 import { DiffComments, type LineComment } from "./DiffComments";
 
+import type { Theme } from "../../lib/theme";
+
 /** What the diff needs from the editor chunk; the host passes the files feature's loader (Monaco loads only there). */
-export type DiffMonaco = { monaco: MonacoApi; themeName(mode: "dark" | "light"): string };
+export type DiffMonaco = { monaco: MonacoApi; themeName(mode: Theme): string };
 
 let uriSeq = 0;
 
@@ -22,7 +24,7 @@ let uriSeq = 0;
  */
 export function DiffEditor(props: {
   loadMonaco(): Promise<DiffMonaco>;
-  theme: "dark" | "light";
+  theme: Theme;
   path: string;
   before: string;
   after: string;

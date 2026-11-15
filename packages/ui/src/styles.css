@@ -43,9 +43,11 @@
   --octo-primary-fg: #141414;
   --octo-focus: rgb(255 255 255 / 0.6);
   --octo-scrim: rgb(0 0 0 / 0.55);
-  --octo-shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.08), 0 16px 40px -12px rgb(0 0 0 / 0.7);
+  --octo-shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.11), inset 0 1px 0 rgb(255 255 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.72);
   --octo-shadow-panel: inset 0 1px 0 var(--octo-panel-highlight);
-  --octo-shadow-float: 0 0 0 1px rgb(255 255 255 / 0.08), 0 8px 24px -8px rgb(0 0 0 / 0.7);
+  --octo-shadow-float: 0 0 0 1px rgb(255 255 255 / 0.1), inset 0 1px 0 rgb(255 255 255 / 0.05), 0 8px 24px -8px rgb(0 0 0 / 0.72);
+  --octo-tab-active: var(--octo-raised);
+  --octo-shadow-tab: inset 0 0 0 1px var(--octo-panel-edge), inset 0 1px 0 var(--octo-panel-highlight);
   --octo-shadow-seg: 0 0 #0000;
   --octo-drop: rgb(92 157 255 / 0.1);
   --octo-drop-edge: rgb(92 157 255 / 0.45);
@@ -70,9 +72,11 @@
   --octo-raised: #212126;
   --octo-overlay: #26262c;
   --octo-code-bg: #1b1b1f;
+  --octo-panel-edge: rgb(215 220 255 / 0.06);
+  --octo-panel-highlight: rgb(225 230 255 / 0.045);
   --octo-fg: #ededf0;
-  --octo-fg-2: #b8b8c2;
-  --octo-fg-3: #8a8a96;
+  --octo-fg-2: #bdbdc8;
+  --octo-fg-3: #9d9daa;
   --octo-accent: #4da3ff;
   --octo-link: #6bb5ff;
   --octo-ok: #4ec9b0;
@@ -80,6 +84,7 @@
   --octo-warn: #e5b567;
   --octo-primary: #ededf0;
   --octo-primary-fg: #141416;
+  --octo-shadow-pop: 0 0 0 1px rgb(215 220 255 / 0.11), inset 0 1px 0 rgb(225 230 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.74);
   --octo-drop: rgb(77 163 255 / 0.11);
   --octo-drop-edge: rgb(77 163 255 / 0.45);
   --octo-selection: rgb(77 163 255 / 0.3);
@@ -96,9 +101,11 @@
   --octo-raised: #26231f;
   --octo-overlay: #2b2823;
   --octo-code-bg: #1f1d1a;
+  --octo-panel-edge: rgb(255 240 220 / 0.06);
+  --octo-panel-highlight: rgb(255 242 225 / 0.045);
   --octo-fg: #f2efe9;
-  --octo-fg-2: #c7c0b5;
-  --octo-fg-3: #9c9488;
+  --octo-fg-2: #cac3b8;
+  --octo-fg-3: #ada497;
   --octo-accent: #d97757;
   --octo-link: #e58d70;
   --octo-ok: #68b87d;
@@ -106,6 +113,7 @@
   --octo-warn: #e0a960;
   --octo-primary: #f2efe9;
   --octo-primary-fg: #171512;
+  --octo-shadow-pop: 0 0 0 1px rgb(255 240 220 / 0.11), inset 0 1px 0 rgb(255 242 225 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.74);
   --octo-drop: rgb(217 119 87 / 0.12);
   --octo-drop-edge: rgb(217 119 87 / 0.45);
   --octo-selection: rgb(217 119 87 / 0.28);
@@ -123,9 +131,11 @@
   --octo-raised: #1d2128;
   --octo-overlay: #22272f;
   --octo-code-bg: #171a20;
+  --octo-panel-edge: rgb(210 230 255 / 0.06);
+  --octo-panel-highlight: rgb(220 238 255 / 0.045);
   --octo-fg: #eef1f6;
-  --octo-fg-2: #b7c0cd;
-  --octo-fg-3: #8893a3;
+  --octo-fg-2: #bcc5d2;
+  --octo-fg-3: #98a3b3;
   --octo-accent: #38b889;
   --octo-link: #52c99d;
   --octo-ok: #4cc38a;
@@ -133,6 +143,7 @@
   --octo-warn: #dfb064;
   --octo-primary: #eef1f6;
   --octo-primary-fg: #0f1216;
+  --octo-shadow-pop: 0 0 0 1px rgb(210 230 255 / 0.11), inset 0 1px 0 rgb(220 238 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.74);
   --octo-drop: rgb(56 184 137 / 0.11);
   --octo-drop-edge: rgb(56 184 137 / 0.45);
   --octo-selection: rgb(56 184 137 / 0.28);
@@ -150,9 +161,11 @@
   --octo-raised: #1c1c24;
   --octo-overlay: #22222b;
   --octo-code-bg: #17171d;
+  --octo-panel-edge: rgb(225 220 255 / 0.06);
+  --octo-panel-highlight: rgb(232 228 255 / 0.045);
   --octo-fg: #ececf2;
-  --octo-fg-2: #bcbcc9;
-  --octo-fg-3: #8d8d9e;
+  --octo-fg-2: #c0c0cd;
+  --octo-fg-3: #9c9dad;
   --octo-accent: #9b8aff;
   --octo-link: #b0a3ff;
   --octo-ok: #5dc286;
@@ -160,6 +173,7 @@
   --octo-warn: #e3b368;
   --octo-primary: #ececf2;
   --octo-primary-fg: #111116;
+  --octo-shadow-pop: 0 0 0 1px rgb(225 220 255 / 0.11), inset 0 1px 0 rgb(232 228 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.74);
   --octo-drop: rgb(155 138 255 / 0.12);
   --octo-drop-edge: rgb(155 138 255 / 0.45);
   --octo-selection: rgb(155 138 255 / 0.28);
@@ -205,6 +219,8 @@
   --octo-shadow-pop: 0 0 0 1px rgb(0 0 0 / 0.06), 0 2px 4px rgb(0 0 0 / 0.04), 0 16px 40px -12px rgb(0 0 0 / 0.18);
   --octo-shadow-panel: 0 1px 2px rgb(0 0 0 / 0.04);
   --octo-shadow-float: 0 0 0 1px rgb(0 0 0 / 0.08), 0 8px 24px -8px rgb(0 0 0 / 0.18);
+  --octo-tab-active: var(--octo-panel);
+  --octo-shadow-tab: var(--octo-shadow-seg);
   /* C4: the chosen segment lifts off its track in light (white on a grey tint needs a whisper of shadow to read). */
   --octo-shadow-seg: 0 0 0 0.5px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.08);
   --octo-drop: rgb(10 102 224 / 0.08);
@@ -238,6 +254,7 @@
   --color-code-bg: var(--octo-code-bg);
   --color-hover: var(--octo-hover);
   --color-active: var(--octo-active);
+  --color-tab-active: var(--octo-tab-active);
   --color-mark: var(--octo-mark);
   --color-line: var(--octo-line);
   --color-line-strong: var(--octo-line-strong);
@@ -260,6 +277,7 @@
   --shadow-pop: var(--octo-shadow-pop);
   --shadow-panel: var(--octo-shadow-panel);
   --shadow-float: var(--octo-shadow-float);
+  --shadow-tab: var(--octo-shadow-tab);
   --shadow-seg: var(--octo-shadow-seg);
   --color-panel-edge: var(--octo-panel-edge);
   --color-drop: var(--octo-drop);
@@ -396,6 +414,22 @@
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--octo-line-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--octo-line-strong);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--octo-fg-3);
   }
 }
 
@@ -711,12 +745,14 @@
   /* Overlays keep a plain cross-fade. */
   .octo-overlay,
   .octo-drawer,
+  .octo-sheet,
   .octo-scrim {
     animation-name: octo-fade-in !important;
     animation-duration: 120ms !important;
   }
   .octo-overlay[data-state="closed"],
   .octo-drawer[data-state="closed"],
+  .octo-sheet[data-state="closed"],
   .octo-scrim[data-state="closed"] {
     animation-name: octo-fade-out !important;
     animation-duration: 80ms !important;
@@ -1237,6 +1273,7 @@
   flex-direction: row;
   align-items: center;
   min-height: var(--spacing-ctl-lg);
+  overflow-x: clip;
   border-radius: 12px;
 }
 [data-floating-composer][data-collapsed] .octo-composer > :not([data-composer-pad], [data-composer-row]),
@@ -1247,7 +1284,7 @@
 [data-floating-composer][data-collapsed] [data-composer-pad] {
   flex: 1 1 auto;
   min-width: 0;
-  padding-block: 8px;
+  padding-block: 9px;
   padding-right: 40px;
 }
 [data-floating-composer][data-collapsed] .octo-composer-input {
@@ -1255,7 +1292,7 @@
   overflow: hidden;
 }
 /* The control row keeps its full width, laid out but unseen, so the chips' measured label shedding is right the moment it
-   opens; only send shows, at the line's end. */
+   opens; only send/stop/queue shows, at the line's end. */
 [data-floating-composer][data-collapsed] [data-composer-row] {
   position: absolute;
   inset: 0;
@@ -1263,7 +1300,7 @@
   padding: 0 6px;
   visibility: hidden;
 }
-[data-floating-composer][data-collapsed] [data-composer-row] > :last-child {
+[data-floating-composer][data-collapsed] [data-composer-row] > [data-action] {
   visibility: visible;
 }
 .octo-composer[data-drop] {
@@ -2444,7 +2481,8 @@ article:not(:has([data-turn-changes])):is(:hover, :focus-within) [data-restore] 
   padding: 12px 16px;
   border-color: transparent;
 }
-[data-prompt] > [data-bubble][data-one-line] {
+[data-prompt] > [data-bubble][data-one-line],
+[data-pinned-box] > button[data-one-line] {
   border-radius: 9999px;
   padding-block: 8px;
 }
@@ -2468,22 +2506,22 @@ article:not(:has([data-turn-changes])):is(:hover, :focus-within) [data-restore] 
   background: var(--octo-bubble);
   color: var(--octo-bubble-fg);
 }
-/* Inside the fill: the selection and "Show more" in white (the blue selection and the dim text muddied the green). */
+/* Inside the fill: the selection and "Show more" use bubble-fg (the blue selection and dim text muddied the fill). */
 [data-prompt] > [data-bubble] ::selection,
 [data-pinned-box] > button ::selection {
-  background: rgb(255 255 255 / 0.32);
-  color: #fff;
+  background: color-mix(in srgb, var(--octo-bubble-fg) 32%, transparent);
+  color: var(--octo-bubble-fg);
 }
 [data-prompt] > [data-bubble] > button {
-  color: rgb(255 255 255 / 0.85);
+  color: color-mix(in srgb, var(--octo-bubble-fg) 85%, transparent);
 }
 [data-prompt] > [data-bubble] > button:hover {
-  color: #fff;
-  background: rgb(255 255 255 / 0.12);
+  color: var(--octo-bubble-fg);
+  background: color-mix(in srgb, var(--octo-bubble-fg) 12%, transparent);
 }
-/* The focus ring on the fill: the ring colour is the panel's, so it reads as a gap around the white text's button. */
+/* The focus ring on the fill: crisp bubble-fg outline. */
 [data-prompt] > [data-bubble] > button:focus-visible {
-  box-shadow: 0 0 0 2px #fff;
+  box-shadow: 0 0 0 2px var(--octo-bubble-fg);
 }
 @media (forced-colors: active) {
   [data-prompt] > [data-bubble],

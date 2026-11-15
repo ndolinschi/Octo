@@ -25,7 +25,7 @@ export function StatusBar(props: { home: boolean; startRef(el: HTMLElement | nul
       data-status-bar
       // Polish step 2 (F4): the first item's glyph starts on the sidebar's glyph column (24 = 16 here + the button's 8), the last
       // item's text ends on the panel's right edge (the button's 8px inset is the gutter); one size (12px), one colour.
-      className="flex h-7 shrink-0 items-center gap-4 pr-2 pl-4 text-xs text-fg-2 [@media(max-height:599px)]:hidden"
+      className="flex h-7 shrink-0 items-center gap-4 overflow-hidden pr-2 pl-4 text-xs text-fg-2 [@media(max-height:599px)]:hidden"
     >
       <div ref={props.startRef} className="flex min-w-0 items-center gap-1 empty:hidden" />
       <div className="ml-auto flex shrink-0 items-center gap-1">

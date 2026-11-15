@@ -22,7 +22,7 @@ export function DiffPane(props: {
   file: ReviewFile;
   diff: DiffLoad;
   onRetry(): void;
-  theme: "dark" | "light";
+  theme: import("../../lib/theme").Theme;
   loadMonaco(): Promise<ReviewMonaco>;
   split: boolean;
   ignoreWhitespace: boolean;
@@ -86,11 +86,11 @@ export function DiffPane(props: {
         )}
         <span className="flex shrink-0 items-center gap-1">
           {props.threadsToggle}
-          <span title={f.viewed ? "Viewed (v)" : "Mark as viewed (v)"} className="flex px-2">
+          <span title={f.viewed ? "Viewed (v)" : "Mark as viewed (v)"} className="flex px-1 @max-[440px]/diff:px-0.5">
             <Checkbox label="Viewed" checked={f.viewed} onChange={props.onViewed} />
           </span>
-          <IconButton icon={ChevronUp} label="Previous change (k)" onClick={() => props.onStepChange(-1)} />
-          <IconButton icon={ChevronDown} label="Next change (j)" onClick={() => props.onStepChange(1)} />
+          <IconButton icon={ChevronUp} label="Previous change (k)" onClick={() => props.onStepChange(-1)} className="@max-[440px]/diff:hidden" />
+          <IconButton icon={ChevronDown} label="Next change (j)" onClick={() => props.onStepChange(1)} className="@max-[440px]/diff:hidden" />
           {/* As in Changes (DiffPanel): the first changed line, opened in the editor; the line numbers of the new side open it too. */}
           {canOpen && firstLine !== null && (
             <IconButton

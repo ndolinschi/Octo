@@ -67,7 +67,7 @@ export function ApprovalGroup(props: {
       }
       error={error}
     >
-      <div className="-mx-2 flex flex-col divide-y divide-line">
+      <div className="-mx-card flex flex-col divide-y divide-line">
         {approvals.map((a) => (
           <ApprovalCard
             key={a.id}

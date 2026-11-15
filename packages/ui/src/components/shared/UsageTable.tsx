@@ -21,7 +21,7 @@ export type UsageTableRow = UsageRow & {
 /** Narrow containers (decision 86, below the list floor) fold the token columns under the name. */
 const WIDE = "@max-xl/utable:hidden";
 const TH = "h-row px-2 text-right text-xs font-normal text-fg-3 whitespace-nowrap";
-const TD = "px-2 text-right tabular-nums whitespace-nowrap";
+const TD = "px-2 @max-xl/utable:py-1.5 text-right tabular-nums whitespace-nowrap";
 
 function pct(share: number): string {
   return `${(share * 100).toFixed(share > 0 && share < 0.01 ? 1 : 0)}%`;
@@ -45,7 +45,13 @@ function CostText({ r }: { r: UsageRow }) {
 function detail(r: UsageRow) {
   return (
     <>
-      {[`${formatTokens(r.input)} in`, `${formatTokens(r.cached)} cached`, `${formatTokens(r.output)} out`].join(" · ")} · <CostText r={r} />
+      {[
+        `${formatTokens(r.input)} in`,
+        `${formatTokens(r.cached)} cached`,
+        `${formatTokens(r.output)} out`,
+        `${r.requests.toLocaleString()} ${r.requests === 1 ? "req" : "reqs"}`,
+      ].join(" · ")}{" "}
+      · <CostText r={r} />
     </>
   );
 }
@@ -104,9 +110,9 @@ function Bar({ share }: { share: number }) {
 function Body({ r, nested, onToggle }: { r: UsageTableRow; nested: boolean; onToggle?: ((key: string) => void) | undefined }) {
   const dim = nested;
   return (
-    <tr className={cn("h-row border-t border-line first:border-t-0", dim && "text-fg-3")}>
+    <tr className={cn("min-h-row border-t border-line first:border-t-0", dim && "text-fg-3")}>
       {/* 6h: the model (or project) names the row's numbers for a screen reader's table navigation. */}
-      <th scope="row" className={cn("w-full max-w-0 px-2 text-left font-normal", nested && "pl-6")}>
+      <th scope="row" className={cn("w-full max-w-0 px-2 text-left font-normal @max-xl/utable:py-1.5", nested && "pl-6")}>
         <div className="flex min-w-0 items-center gap-1">
           {r.expandable && (
             <IconButton
@@ -122,7 +128,7 @@ function Body({ r, nested, onToggle }: { r: UsageTableRow; nested: boolean; onTo
             {r.label}
           </span>
         </div>
-        <span className="hidden pb-1 text-xs text-fg-3 tabular-nums @max-xl/utable:block">{detail(r)}</span>
+        <span className="hidden pt-0.5 text-xs text-fg-3 tabular-nums @max-xl/utable:block">{detail(r)}</span>
       </th>
       <Cells r={r} dim={dim} />
       <Bar share={r.share} />
@@ -134,7 +140,7 @@ function Head({ first }: { first: string }) {
   return (
     <thead>
       <tr className="border-b border-line">
-        <th scope="col" className="h-row w-full px-2 text-left text-xs font-normal text-fg-3">
+        <th scope="col" className="h-row w-full max-w-0 px-2 text-left text-xs font-normal text-fg-3">
           {first}
         </th>
         <th scope="col" className={cn(TH, WIDE)}>
@@ -174,12 +180,12 @@ export function UsageTableSkeleton({ first = "", rows }: { first?: string; rows:
         <Head first={first} />
         <tbody>
           {Array.from({ length: rows + 1 }, (_, i) => (
-            <tr key={i} className="h-row border-t border-line first:border-t-0">
-              <td className="w-full max-w-0 px-2 text-left">
+            <tr key={i} className="min-h-row border-t border-line first:border-t-0">
+              <td className="w-full max-w-0 px-2 text-left @max-xl/utable:py-1.5">
                 <span className="flex h-5 items-center">
                   <Skeleton width={i === rows ? "24%" : (BAR_W[i % BAR_W.length] ?? "50%")} />
                 </span>
-                <span className="invisible hidden pb-1 text-xs @max-xl/utable:block">0</span>
+                <span className="invisible hidden pt-0.5 text-xs @max-xl/utable:block">0</span>
               </td>
               <td className={cn(TD, WIDE)} />
               <td className={cn(TD, WIDE)} />

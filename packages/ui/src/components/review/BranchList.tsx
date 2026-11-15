@@ -4,6 +4,7 @@ import type { OpenReviewInput, ReviewBranch, ReviewBranchList } from "@octo/agen
 import { cn } from "../../lib/cn";
 import { errorMessage, timeAgo } from "../../lib/format";
 import { useRowKeys } from "../../lib/hooksMore";
+import { PANEL_COLUMN } from "../../lib/panelColumn";
 import { useRovingRows } from "../../lib/rovingRows";
 import { aheadBehindCompact, aheadBehindText, splitName, branchOrder, hasChanges, openInput } from "../../lib/review/branches";
 import type { ReviewApi } from "../../lib/review/api";
@@ -12,7 +13,7 @@ import { Button } from "../primitives/Button";
 import { SkeletonList } from "../primitives/Skeleton";
 import { Spinner } from "../primitives/Status";
 import { TextMenu } from "./parts";
-import { PanelBody, PanelEmpty } from "../primitives/Panel";
+import { PanelBody, PanelEmpty, PanelFilters } from "../primitives/Panel";
 
 type Load = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; data: ReviewBranchList };
 
@@ -64,7 +65,9 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
   if (load.status === "loading")
     return (
       <PanelBody>
-        <SkeletonList count={5} size="md" twoLine shimmer widths={[60, 48, 54, 44, 50]} />
+        <div className={PANEL_COLUMN}>
+          <SkeletonList count={5} size="md" twoLine shimmer widths={[60, 48, 54, 44, 50]} />
+        </div>
       </PanelBody>
     );
   const shownBase = data?.base ?? base ?? "main";
@@ -75,7 +78,7 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
   // the rows sit in the frame's list inset.
   return (
     <section aria-label="Local branches" className="flex h-full min-h-0 flex-col">
-      <div data-panel-filters className="box-content flex min-h-9 shrink-0 items-center gap-2 px-pane py-1 touch:min-h-ctl-lg">
+      <PanelFilters className={cn("py-1", PANEL_COLUMN)}>
         <span className="shrink-0 px-2 text-xs font-medium text-fg-3">{rows.length === 1 && !api.branches ? "Current branch" : "Branches"}</span>
         {api.branches && (
           <span className="ml-auto flex max-w-[65%] min-w-0 items-center">
@@ -87,7 +90,7 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
             />
           </span>
         )}
-      </div>
+      </PanelFilters>
       {load.status === "error" ? (
         <PanelEmpty
           title="The branches did not load"
@@ -105,7 +108,7 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
           <PanelEmpty title="No local branches">This folder has no branch to review. Create one, or switch to Pull requests.</PanelEmpty>
         ) : (
           <PanelBody>
-            <div ref={list} className="flex flex-col gap-1.5">
+            <div ref={list} className={cn("flex flex-col gap-1.5", PANEL_COLUMN)}>
               {rows.map((b) => (
                 <BranchRow
                   key={b.name}
@@ -117,7 +120,9 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
               ))}
             </div>
             {data?.truncated && (
-              <p className="px-2 pt-2 text-xs text-fg-3">More branches exist than are listed. Check one out or delete old ones to see the rest.</p>
+              <p className={cn("px-2 pt-2 text-xs text-fg-3", PANEL_COLUMN)}>
+                More branches exist than are listed. Check one out or delete old ones to see the rest.
+              </p>
             )}
           </PanelBody>
         ))}

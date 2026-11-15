@@ -115,7 +115,7 @@ function QueueBody(props: QueueListProps) {
   };
 
   const count = messages.length;
-  const sectionClass = "@container/queue flex min-w-0 flex-col border-b border-line p-0.5 text-sm";
+  const sectionClass = "@container/queue flex min-w-0 flex-col border-b border-line px-1 py-0.5 text-sm";
   if (!unfolded && !props.paused && error === null)
     return (
       <section aria-label={queueCountLabel(count)} data-queue-summary className={sectionClass}>
@@ -125,6 +125,7 @@ function QueueBody(props: QueueListProps) {
           title={queueSummary(messages, props.waiting)}
           tip={messages.map((m) => queueLine(m.text)).join("\n")}
           expanded={false}
+          className="rounded-md"
           onClick={() => setUnfolded(true)}
           trailing={<Glyph icon={ChevronDown} size={14} className="mx-1.5 text-fg-3" />}
           trailingShown

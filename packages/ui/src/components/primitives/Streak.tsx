@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { parseColor, renderStreak, streakCell } from "../../lib/streak";
 import { STREAK_NARROW_BELOW, type StreakPreset } from "../../lib/streakPresets";
+import { themeMode, type Theme } from "../../lib/theme";
 
 /** The canvas overhangs the host by this much on every side (CSS px; `.octo-streak` in styles.css places it). */
 const DRIFT = 12;
@@ -27,7 +28,7 @@ function resolveColor(host: HTMLElement, name: string) {
   return resolved ?? parseColor(getComputedStyle(host).getPropertyValue(name));
 }
 
-export default function Streak({ preset, theme, mono = false }: { preset: StreakPreset; theme: "dark" | "light"; mono?: boolean }) {
+export default function Streak({ preset, theme, mono = false }: { preset: StreakPreset; theme: Theme; mono?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const { anchor, rise, echo, narrow } = preset;
   const { x: anchorX, y: anchorY } = anchor;
@@ -47,7 +48,7 @@ export default function Streak({ preset, theme, mono = false }: { preset: Streak
       const w = host.clientWidth;
       const h = host.clientHeight;
       const cell = streakCell(window.devicePixelRatio);
-      const key = `${w}x${h}@${cell}:${mono ? "mono" : "vivid"}`;
+      const key = `${w}x${h}@${cell}:${theme}:${mono ? "mono" : "vivid"}`;
       if (w === 0 || h === 0 || key === drawn) return;
       drawn = key;
       const t0 = performance.now();
@@ -79,7 +80,7 @@ export default function Streak({ preset, theme, mono = false }: { preset: Streak
         echo,
         panel,
         accent,
-        theme,
+        theme: themeMode(theme),
         mono,
       });
       const t2 = performance.now();

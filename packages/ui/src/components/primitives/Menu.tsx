@@ -162,7 +162,7 @@ export function Menu(props: {
       onKeyDown={onKeyDown}
       onContextMenu={(e) => e.preventDefault()}
       style={{ left: pos.left, top: pos.top }}
-      className="fixed z-[60] max-h-[calc(100dvh-24px)] max-w-[calc(100vw-24px)] min-w-[200px] overflow-y-auto overscroll-contain rounded-xl border border-transparent bg-overlay p-1 text-sm shadow-pop"
+      className="fixed z-[60] max-h-[calc(100dvh-24px)] max-w-[calc(100vw-24px)] min-w-[200px] overflow-y-auto overscroll-contain rounded-xl bg-overlay p-1 text-sm shadow-pop forced-colors:border forced-colors:border-[CanvasText]"
     >
       {props.items.map((item) =>
         isAction(item) ? (

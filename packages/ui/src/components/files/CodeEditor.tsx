@@ -2,6 +2,7 @@ import type * as Monaco from "monaco-editor";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FilePosition } from "../../lib/files";
 import type { OpenFile } from "../../state/code";
+import type { Theme } from "../../lib/theme";
 import { useLatest } from "../../lib/hooks";
 import { EditorContextMenu } from "../shared/EditorContextMenu";
 import { EditorSkeleton } from "./EditorSkeleton";
@@ -62,7 +63,7 @@ const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 export function CodeEditor(props: {
   file: OpenFile | null;
   buffers: EditorBuffers;
-  theme: "dark" | "light";
+  theme: Theme;
   /** Room below the last line (8, or the floating composer's height + 16 so the last line stays reachable). */
   bottomPadding?: number;
   onSave(): void;

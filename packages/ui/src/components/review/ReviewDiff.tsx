@@ -12,8 +12,10 @@ import { DIFF_FLASH_MS } from "../../lib/v7/changes";
 import { EditorContextMenu } from "../shared/EditorContextMenu";
 import { Spinner } from "../primitives/Status";
 
+import type { Theme } from "../../lib/theme";
+
 /** What the diff needs from the editor chunk; the dock passes the files feature's loader (Monaco is a value only there). */
-export type ReviewMonaco = { monaco: MonacoApi; themeName(mode: "dark" | "light"): string };
+export type ReviewMonaco = { monaco: MonacoApi; themeName(mode: Theme): string };
 
 export type Marked = { side: Side; start: number; end: number };
 /** `focus`: the reader stepped from inside the diff, so the side that shows the change takes focus (the old editor may be gone). */
@@ -32,7 +34,7 @@ let uriSeq = 0;
  */
 export function ReviewDiff(props: {
   loadMonaco(): Promise<ReviewMonaco>;
-  theme: "dark" | "light";
+  theme: Theme;
   path: string;
   before: string;
   after: string;

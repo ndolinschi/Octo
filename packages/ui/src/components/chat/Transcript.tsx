@@ -433,7 +433,7 @@ const UserPrompt = memo(function UserPrompt({
         data-bubble
         data-one-line={(oneLine && !external && !steered && images.length === 0 && comments.length === 0) || undefined}
         // R2 (owner's addition 10): the shape, padding and fill are the request bubble's block in styles.css (`--octo-bubble`).
-        className={cn("border border-transparent transition-[box-shadow] duration-300", compact ? "text-sm" : "text-base")}
+        className={cn("transition-[box-shadow] duration-300 forced-colors:border", compact ? "text-sm" : "text-base")}
       >
         {text && (
           <div ref={box} id={id} data-long-word={longWord || undefined} className={cn("wrap-anywhere whitespace-pre-wrap", !expanded && "line-clamp-8")}>
@@ -441,7 +441,7 @@ const UserPrompt = memo(function UserPrompt({
           </div>
         )}
         {text && (overflows || expanded) && (
-          <Button variant="quiet" size="xs" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded((x) => !x)} className="mt-1 -ml-1.5">
+          <Button variant="quiet" size="xs" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded((x) => !x)} className="mt-1 -ml-2">
             {expanded ? "Show less" : "Show more"}
           </Button>
         )}

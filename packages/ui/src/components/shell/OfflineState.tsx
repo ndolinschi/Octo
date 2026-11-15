@@ -1,8 +1,7 @@
-import { Check, Copy } from "lucide-react";
-import { useCopy } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
-import { Button, IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
+import { CommandLine } from "../primitives/CommandLine";
 import { Notice } from "../primitives/Notice";
 
 const COMMAND = "cd apps/harness && go run ./cmd/harness serve";
@@ -10,7 +9,6 @@ const COMMAND = "cd apps/harness && go run ./cmd/harness serve";
 export function OfflineState() {
   const { bridgeUrl, retry, health, cause } = useApp();
   const refused = cause === "refused";
-  const [copied, copy] = useCopy();
   const host = useHost();
   const retryButton = (
     <Button variant={host.restart || refused ? "secondary" : "primary"} size="sm" onClick={retry} disabled={health === "checking"}>
@@ -21,7 +19,7 @@ export function OfflineState() {
   // answered. Either way the app checks again by itself (1–30 s, on focus); Retry checks now.
   if (cause === "unreadable" || cause === "unanswered") {
     return (
-      <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6">
+      <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6 max-sm:px-4">
         <div className="w-full max-w-[440px] min-w-0">
           <h1 id="offline-title" className="text-title text-fg">
             {cause === "unreadable" ? "Octo's local service sent a reply Octo can't read" : "Octo's local service didn't answer in time"}
@@ -45,7 +43,7 @@ export function OfflineState() {
   // A15: the service answered and refused this window's API token (it restarted with a new one). Not "nothing answered".
   if (refused) {
     return (
-      <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6">
+      <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6 max-sm:px-4">
         <div className="w-full max-w-[440px] min-w-0">
           <h1 id="offline-title" className="text-title text-fg">
             Octo's local service didn't accept this window
@@ -82,7 +80,7 @@ export function OfflineState() {
   // The packaged app starts the harness itself: no command to run, no address to set; Retry, and a restart when the host has one.
   if (host.managesHarness) {
     return (
-      <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6">
+      <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6 max-sm:px-4">
         <div className="w-full max-w-[440px] min-w-0">
           <h1 id="offline-title" className="text-title text-fg">
             Octo's local service isn't running.
@@ -103,7 +101,7 @@ export function OfflineState() {
     );
   }
   return (
-    <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6">
+    <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6 max-sm:px-4">
       {/* B56: a grid item may shrink under its content (the command line), so the block fits a 390px window. */}
       <div className="w-full max-w-[440px] min-w-0">
         <h1 id="offline-title" className="text-title text-fg">
@@ -112,9 +110,8 @@ export function OfflineState() {
         <p className="mt-1 text-sm text-fg-2">
           Nothing answered at <code className="font-mono text-xs text-fg">{bridgeUrl}</code>. Start it with this command, then retry.
         </p>
-        <div className="mt-4 flex h-9 items-center gap-2 rounded-md bg-code-bg pr-1 pl-3">
-          <code className="min-w-0 flex-1 truncate font-mono text-xs text-fg">{COMMAND}</code>
-          <IconButton icon={copied ? Check : Copy} label={copied ? "Copied" : "Copy command"} size="sm" onClick={() => copy(COMMAND)} />
+        <div className="mt-4">
+          <CommandLine command={COMMAND} label="local service command" />
         </div>
         <p className="mt-3 text-xs text-fg-3">
           Set <code className="font-mono">VITE_HARNESS_BRIDGE_URL</code> for another address, or{" "}
@@ -148,7 +145,7 @@ export function OfflineBanner() {
           ? "Octo's local service didn't answer in time. Octo keeps trying."
           : "Octo's local service isn't answering. Sending is off until it's back.";
   return (
-    <Notice tone="warn" className="px-3 py-1.5">
+    <Notice tone="warn" className="mt-gutter px-3 py-1.5">
       {/* B3: the actions keep the text's line (the text wraps beside them on a phone) instead of dropping under it. */}
       <span className="flex min-w-0 items-center gap-2">
         <span className="min-w-0 flex-1">{text}</span>

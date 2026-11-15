@@ -4,7 +4,7 @@ import { claim, deviceNameFromUA, formatCode, PairingError, type FetchFn, type P
 const pageFetch: FetchFn = (url, init) => window.fetch(url, init);
 
 const FIELD =
-  "h-10 w-full rounded-md border border-input-border bg-panel px-3 text-input-touch text-fg outline-none placeholder:text-fg-3 focus-visible:border-focus";
+  "h-ctl-lg w-full rounded-md border border-field-edge bg-panel px-3 text-input-touch text-fg outline-none placeholder:text-fg-3 transition-[border-color] duration-100 focus-visible:border-fg";
 
 /**
  * The phone's first screen (spec section 8): the code from the computer (filled from a scanned QR link), a name for this
@@ -50,7 +50,11 @@ export function PairingScreen({ base, phase, onPaired }: { base: string; phase: 
         )}
 
         {phase.kind === "waiting" && (
-          <section role="status" aria-live="polite" className="flex flex-col gap-2 rounded-xl border border-line bg-panel p-card text-center">
+          <section
+            role="status"
+            aria-live="polite"
+            className="flex flex-col gap-2 rounded-xl border border-panel-edge bg-panel p-card text-center shadow-panel"
+          >
             <p className="text-heading text-fg">Waiting for your computer</p>
             <p className="text-sm text-fg-2">
               Click <span className="font-medium text-fg">Allow</span> next to “{phase.name}” in Octo on your computer (Settings → Remote access).
@@ -61,7 +65,7 @@ export function PairingScreen({ base, phase, onPaired }: { base: string; phase: 
         {phase.kind === "pair" && (
           <form onSubmit={submit} className="flex flex-col gap-4" aria-describedby={ids.note}>
             {notice && (
-              <p role="alert" className="rounded-md border border-line bg-panel p-card text-sm text-fg">
+              <p role="alert" className="rounded-md border border-panel-edge bg-panel p-card text-sm text-fg">
                 {notice}
               </p>
             )}

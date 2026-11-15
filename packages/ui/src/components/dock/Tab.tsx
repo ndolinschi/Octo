@@ -42,6 +42,7 @@ export function Tab(props: {
   const { tab, info, selected } = props;
   const canClose = closable(tab);
   const name = info.name ?? info.label;
+  const hasTrailing = canClose || info.status === "modified";
   const slot = !props.overlayClose || selected || info.status === "modified";
   const style: CSSProperties = { maxWidth: TAB_MAX, minWidth: props.minWidth ?? TAB_MIN };
   if (props.shift) style.transform = `translateX(${props.shift}px)`;
@@ -69,10 +70,10 @@ export function Tab(props: {
       style={style}
       className={cn(
         "group/tab relative flex h-row w-max shrink items-center rounded-sm press-row",
-        selected ? (props.focusedGroup ? "bg-active text-fg" : "bg-hover text-fg") : "text-fg-3 hover:bg-hover hover:text-fg-2",
+        selected ? (props.focusedGroup ? "bg-tab-active text-fg shadow-tab" : "bg-hover text-fg") : "text-fg-3 hover:bg-hover hover:text-fg-2",
         // Neighbours slide out of the way (150ms); open/close changes widths (120ms); the dragged tab follows the pointer.
         props.dragging === "other" && "motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-(--ease-out-quint)",
-        props.dragging === "self-attached" && "z-10 bg-active text-fg shadow-pop",
+        props.dragging === "self-attached" && "z-10 bg-tab-active text-fg shadow-pop",
         props.dragging === "self-detached" && "opacity-40",
       )}
     >
@@ -99,13 +100,13 @@ export function Tab(props: {
             and 0px tall, so every tab is always as wide as its medium-weight title: selecting a tab never changes a width (83). */}
         <span
           data-tab-label
-          data-bold={info.detail ? `${info.label} / ${info.detail}` : info.label}
+          data-bold={info.label}
           aria-hidden={info.name ? true : undefined}
           className="flex min-w-0 flex-col overflow-hidden after:invisible after:h-0 after:font-medium after:whitespace-nowrap after:content-[attr(data-bold)]"
         >
           <span className={cn("min-w-0 truncate", selected && "font-medium")}>
             {info.label}
-            {info.detail && <span className="font-normal text-fg-3"> / {info.detail}</span>}
+            {info.detail && <span className={cn("font-normal", selected ? "text-fg-2" : "text-fg-3")}> / {info.detail}</span>}
           </span>
         </span>
         {info.name && <span className="sr-only">{info.name}</span>}
@@ -115,32 +116,34 @@ export function Tab(props: {
         {info.glyph === "failed" && <span className="sr-only"> (failed)</span>}
         {info.glyph === "needs" && <span className="sr-only"> (needs you)</span>}
       </button>
-      <span role="none" className={cn("relative grid shrink-0 place-items-center", slot ? "mr-2 size-4" : "absolute top-0 right-0 h-full w-0")}>
-        {info.status === "modified" && (
-          <span
-            aria-hidden
-            data-testid="modified-dot"
-            className={cn("size-1.5 rounded-full bg-fg-2", canClose && "group-focus-within/tab:invisible group-hover/tab:invisible")}
-          />
-        )}
-        {canClose && (
-          <IconButton
-            icon={X}
-            size="xs"
-            tabIndex={-1}
-            aria-hidden="true"
-            label={`Close ${name}`}
-            data-shortcut={`${MOD}W`}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={props.onClose}
-            className={cn(
-              // A 24px hit area around the 16px slot (decision 36); without a slot it sits over the title's end on the tab's own fill.
-              slot ? "absolute -inset-1" : "absolute top-1/2 right-1 -translate-y-1/2 bg-hover",
-              selected && info.status !== "modified" ? "" : "opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100",
-            )}
-          />
-        )}
-      </span>
+      {hasTrailing && (
+        <span role="none" className={cn("relative grid shrink-0 place-items-center", slot ? "mr-2 size-4" : "absolute top-0 right-0 h-full w-0")}>
+          {info.status === "modified" && (
+            <span
+              aria-hidden
+              data-testid="modified-dot"
+              className={cn("size-1.5 rounded-full bg-fg-2", canClose && "group-focus-within/tab:invisible group-hover/tab:invisible")}
+            />
+          )}
+          {canClose && (
+            <IconButton
+              icon={X}
+              size="xs"
+              tabIndex={-1}
+              aria-hidden="true"
+              label={`Close ${name}`}
+              data-shortcut={`${MOD}W`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={props.onClose}
+              className={cn(
+                // A 24px hit area around the 16px slot (decision 36); without a slot it sits over the title's end on an opaque surface.
+                slot ? "absolute -inset-1" : "absolute top-1/2 right-1 -translate-y-1/2 bg-raised",
+                selected && info.status !== "modified" ? "" : "opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100",
+              )}
+            />
+          )}
+        </span>
+      )}
     </div>
   );
 }

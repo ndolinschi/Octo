@@ -28,11 +28,15 @@ export function StickyPrompt(props: { text: string; author: string | null; onHei
   }, [onHeight]);
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
+  const [oneLine, setOneLine] = useState(false);
 
   useLayoutEffect(() => {
     const el = box.current;
     if (!el || expanded) return;
-    const check = () => setClamped(el.scrollHeight > el.clientHeight + 1);
+    const check = () => {
+      setClamped(el.scrollHeight > el.clientHeight + 1);
+      setOneLine(el.clientHeight <= parseFloat(getComputedStyle(el).lineHeight) * 1.5);
+    };
     check();
     const ro = new ResizeObserver(check);
     ro.observe(el);
@@ -41,7 +45,7 @@ export function StickyPrompt(props: { text: string; author: string | null; onHei
 
   const body = (
     <>
-      {props.author && <span className="mb-0.5 block text-xs text-fg-3">From {props.author}</span>}
+      {props.author && <span className="mb-0.5 block text-xs opacity-80">From {props.author}</span>}
       <span
         ref={box}
         className={cn(
@@ -55,7 +59,7 @@ export function StickyPrompt(props: { text: string; author: string | null; onHei
     </>
   );
   // R2 (addition 10): the request bubble's shape and fill (styles.css, `[data-pinned-box] > button`), right-aligned.
-  const boxClass = "block border border-transparent text-left text-base";
+  const boxClass = "block text-left text-base forced-colors:border";
 
   return (
     <div ref={root} data-pinned className="pointer-events-none absolute inset-x-0 top-0 z-10 overflow-hidden scroll-quiet">
@@ -64,20 +68,20 @@ export function StickyPrompt(props: { text: string; author: string | null; onHei
           {/* One element in both states (a swap would remount the measured text and lose `clamped`). */}
           <button
             type="button"
+            data-one-line={(oneLine && !props.author && !expanded) || undefined}
             aria-expanded={clamped || expanded ? expanded : undefined}
             aria-label={clamped || expanded ? (expanded ? "Collapse the pinned request" : "Expand the pinned request") : undefined}
             aria-hidden={clamped || expanded ? undefined : true}
             tabIndex={clamped || expanded ? undefined : -1}
             onClick={() => (clamped || expanded) && setExpanded((x) => !x)}
-            className={cn(boxClass, clamped || expanded ? "press-row hover:border-line-strong" : "pointer-events-none")}
+            className={cn(boxClass, clamped || expanded ? "press-row hover:brightness-110" : "pointer-events-none")}
           >
             {body}
           </button>
         </div>
       </div>
-      {/* 8px opaque, then a 32px eased fade (16 on short viewports): what passes under the pin fades out
-          — never a hard-cut table row or code line right under the box. */}
-      <div aria-hidden className="octo-pin-fade h-10 [@media(max-height:640px)]:h-6" />
+      {/* Short eased fade so scrolling content reads as passing under the pin without excessive dead height. */}
+      <div aria-hidden className="octo-pin-fade h-6 [@media(max-height:640px)]:h-4" />
     </div>
   );
 }

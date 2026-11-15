@@ -126,7 +126,7 @@ export function SidePanel() {
   const quiet = useRef<HTMLDivElement>(null);
   useQuietOpen(quiet);
   return (
-    <div ref={quiet} data-side className={cn("h-full min-h-0", PANEL_COLUMN)}>
+    <div ref={quiet} data-side className="h-full min-h-0">
       <Panel
         name="side"
         title="Side question"
@@ -234,7 +234,7 @@ export function SidePanel() {
             </div>
             <FloatRoom />
           </ScrollArea>
-          <div className="shrink-0 px-pane pb-pane">
+          <div className={cn("shrink-0 px-pane pb-pane", PANEL_COLUMN)}>
             <form
               className="octo-composer flex w-full max-w-measure flex-col gap-1 bg-raised p-2"
               onSubmit={(e) => {

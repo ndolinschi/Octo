@@ -138,7 +138,7 @@ export function DiffComments(props: {
     <div
       role="dialog"
       aria-label={`Comment on ${lines}`}
-      className="absolute z-10 flex flex-col gap-2 rounded-md border border-line-strong bg-overlay p-2 shadow-pop"
+      className="absolute z-10 flex flex-col gap-2 rounded-md border border-transparent bg-overlay p-2 shadow-pop forced-colors:border-[CanvasText]"
       style={{ top: draft.top, left: draft.left, width: draft.width }}
     >
       <Textarea

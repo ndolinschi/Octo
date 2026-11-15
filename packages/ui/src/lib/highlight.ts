@@ -5,7 +5,7 @@
  * or style changes — so a block keeps its exact size when it upgrades from plain text. Unknown languages
  * return null and stay plain.
  */
-import { CODE_DARK, CODE_LIGHT, type CodePalette } from "./codePalette";
+import { CODE_DARK, CODE_PALETTES, type CodePalette } from "./codePalette";
 
 /** Token kinds, named after the Monaco theme rules they mirror. */
 export type TokenKind = "comment" | "keyword" | "string" | "number" | "type" | "muted" | "strong" | "added" | "removed" | "plain";
@@ -268,15 +268,18 @@ const COLOR: Record<Exclude<TokenKind, "plain">, (p: CodePalette) => string> = {
   removed: (p) => p.err,
 };
 
-/** The token classes' colours for both themes, written once into the document (the palette is the source). */
+/** The token classes' colours for all themes, written once into the document (the palette is the source). */
 export function installTokenStyles(doc: Document = document): void {
   if (doc.getElementById("octo-code-tokens")) return;
   const rules = (scope: string, p: CodePalette) =>
     Object.entries(COLOR)
       .map(([kind, color]) => `${scope} .octo-tok-${kind}{color:${color(p)}}`)
       .join("\n");
+  const themed = (Object.entries(CODE_PALETTES) as [keyof typeof CODE_PALETTES, CodePalette][])
+    .filter(([name]) => name !== "dark")
+    .map(([name, palette]) => rules(`:root[data-theme="${name}"]`, palette));
   const style = doc.createElement("style");
   style.id = "octo-code-tokens";
-  style.textContent = [rules(":root", CODE_DARK), rules(':root[data-theme="light"]', CODE_LIGHT), `:root .octo-tok-plain{color:inherit}`].join("\n");
+  style.textContent = [rules(":root", CODE_DARK), ...themed, `:root .octo-tok-plain{color:inherit}`].join("\n");
   doc.head.appendChild(style);
 }

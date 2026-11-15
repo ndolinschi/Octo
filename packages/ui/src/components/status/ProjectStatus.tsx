@@ -62,10 +62,10 @@ function Start() {
   return (
     <>
       {first && (
-        <StatusButton className="shrink" title={`${first.path}\nOpen the project's files`} onClick={() => ws?.openTool("files")}>
+        <StatusButton className="max-w-48 min-w-0 shrink" title={`${first.path}\nOpen the project's files`} onClick={() => ws?.openTool("files")}>
           <Glyph icon={GLYPH.files} size={14} />
           <span className="truncate">{first.label}</span>
-          {more > 0 && <span className="tabular-nums">+{more}</span>}
+          {more > 0 && <span className="shrink-0 tabular-nums">+{more}</span>}
         </StatusButton>
       )}
       {changed > 0 && (

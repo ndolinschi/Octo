@@ -7,11 +7,11 @@ import { Select } from "../primitives/Select";
 import { Spinner } from "../primitives/Status";
 import { Switch } from "../primitives/Switch";
 import { ToneDot } from "../shared/providers/ProviderRows";
-import { SaveStatus, SettingsGroup, SettingsRow } from "./parts";
+import { SaveStatus, SELECT_W, SettingsGroup, SettingsRow } from "./parts";
 import { useSave } from "./useSave";
 import { startupCodec, useMotionPref } from "./prefs";
 import type { Backdrop, ThemePref } from "../../state/app";
-import { THEME_CHOICES } from "../../state/themePref";
+import { THEME_CHOICES } from "../../lib/theme";
 
 export function GeneralSection() {
   const [startup, setStartup] = usePersistentState(PREFS.startup, startupCodec);
@@ -134,14 +134,15 @@ export function AppearanceSection() {
         status={<SaveStatus state={themeSaved} />}
         control={
           canChooseTheme ? (
-            <Select
-              size="sm"
-              label="Theme"
-              value={themePref}
-              options={THEME_OPTIONS}
-              onChange={(v) => void saveTheme(now(() => setThemePref(v as ThemePref)))}
-              className="w-40"
-            />
+            <div className={SELECT_W}>
+              <Select
+                size="sm"
+                label="Theme"
+                value={themePref}
+                options={THEME_OPTIONS}
+                onChange={(v) => void saveTheme(now(() => setThemePref(v as ThemePref)))}
+              />
+            </div>
           ) : undefined
         }
       />

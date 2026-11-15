@@ -231,7 +231,7 @@ function CompactApproval(props: ApprovalCardProps) {
       aria-keyshortcuts="A D Enter"
       onKeyDown={c.onKeyDown}
       data-v7-approval={approval.id}
-      className="@container/v7 flex min-w-0 flex-col gap-1 rounded-sm px-2 py-2 focus-visible:not-data-quiet-focus:shadow-[0_0_0_2px_var(--octo-focus)]"
+      className="@container/v7 flex min-w-0 flex-col gap-1 rounded-sm px-card py-2 focus-visible:not-data-quiet-focus:shadow-[0_0_0_2px_var(--octo-focus)]"
     >
       <div className="flex min-w-0 items-baseline gap-2">
         <span className="shrink-0 text-fg">{approvalCaption(approval)}</span>
@@ -239,7 +239,7 @@ function CompactApproval(props: ApprovalCardProps) {
           {subjectLine(approval)}
         </span>
       </div>
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="flex flex-wrap items-center gap-2">
         {answers.primary}
         {answers.alternatives}
         {rule && (

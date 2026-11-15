@@ -68,7 +68,7 @@ export function PendingPanel(props: {
       tabIndex={-1}
       role="dialog"
       aria-label="Pending comments and findings"
-      className="absolute inset-y-0 right-0 z-20 flex w-[400px] max-w-full flex-col border-l border-line-strong bg-overlay shadow-pop outline-none"
+      className="absolute inset-y-0 right-0 z-20 flex w-[400px] max-w-full flex-col border-l border-panel-edge bg-overlay shadow-pop outline-none"
     >
       <header className="flex h-ctl-lg shrink-0 items-center gap-2 border-b border-line pr-2 pl-4">
         <h2 className="text-heading text-fg">Pending</h2>
@@ -148,10 +148,10 @@ function CommentCard(props: {
           {confirm ? (
             <>
               <span className="mr-1 text-xs text-fg-2">Delete?</span>
-              <Button size="sm" variant="danger" className="h-6 px-2" onClick={() => props.onDelete(c)}>
+              <Button size="xs" variant="danger" onClick={() => props.onDelete(c)}>
                 Delete
               </Button>
-              <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => setConfirm(false)}>
+              <Button size="xs" variant="quiet" onClick={() => setConfirm(false)}>
                 Keep
               </Button>
             </>
@@ -239,7 +239,7 @@ function FindingCard(props: {
       {f.status !== "new" && (
         <p className="flex items-center gap-2 text-xs text-fg-3">
           {f.status === "kept" ? "Kept as a pending comment." : `Dismissed${f.dismiss_reason ? `: ${f.dismiss_reason}` : "."}`}
-          <Button size="sm" variant="ghost" className="ml-auto h-6 px-2" onClick={() => props.onDecide(f, { status: "new" })}>
+          <Button size="xs" variant="quiet" className="ml-auto" onClick={() => props.onDecide(f, { status: "new" })}>
             Undo
           </Button>
         </p>

@@ -111,7 +111,7 @@ export function AgentsPanel() {
   const quiet = useRef<HTMLDivElement>(null);
   useQuietOpen(quiet);
   return (
-    <div ref={quiet} data-agents className={cn("h-full min-h-0", PANEL_COLUMN)}>
+    <div ref={quiet} data-agents className="h-full min-h-0">
       <Panel
         name="agents"
         title="Agents"
@@ -131,7 +131,7 @@ export function AgentsPanel() {
           </PanelEmpty>
         ) : (
           <PanelBody ref={scroller} onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)}>
-            <div ref={rows} className="flex w-full flex-col gap-4">
+            <div ref={rows} className={cn("flex flex-col gap-4", PANEL_COLUMN)}>
               {groups.running.length > 0 && (
                 <section aria-labelledby="agents-running" className="flex flex-col">
                   <SectionHeader inset id="agents-running">{`Running ${groups.running.length}`}</SectionHeader>

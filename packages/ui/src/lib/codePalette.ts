@@ -1,5 +1,7 @@
+import type { Theme } from "./theme";
+
 /**
- * Code colours for both themes: the Monaco themes (`components/files/monaco.ts`) and the chat / preview
+ * Code colours for all themes: the Monaco themes (`components/files/monaco.ts`) and the chat / preview
  * highlighter (`lib/highlight.ts`) read this one palette. Every token colour is ≥ 4.5:1 on the panel and on the diff tints
  * (a changed word over a changed line, the strongest: dark #294231 / #472f2d, light #c5ded0 / #efd1d0; polish pass F3, item 5,
  * nudged the tokens that fell to 4.1–4.5 there instead of thinning the tints). Comments are a hair off the meta tone
@@ -45,6 +47,80 @@ export const CODE_DARK: CodePalette = {
   tint: (a) => `#ffffff${a}`,
 };
 
+export const CODE_CURSOR: CodePalette = {
+  ...CODE_DARK,
+  text: "#d8d8e0",
+  strong: "#ededf0",
+  muted: "#9c9ca8",
+  comment: "#9c9ca8",
+  keyword: "#7fb4ff",
+  type: "#6fd1bf",
+  lineNumber: "#7d7d8a",
+  lineNumberActive: "#ededf0",
+  overlay: "#26262c",
+  raised: "#212126",
+  err: "#f17878",
+  warn: "#e5b567",
+  link: "#6bb5ff",
+};
+
+export const CODE_CLAUDE: CodePalette = {
+  ...CODE_DARK,
+  text: "#ded9d0",
+  strong: "#f2efe9",
+  muted: "#ada497",
+  comment: "#ada497",
+  keyword: "#e2987b",
+  string: "#a7c68b",
+  number: "#e0a960",
+  type: "#7fc6b2",
+  lineNumber: "#8a8276",
+  lineNumberActive: "#f2efe9",
+  overlay: "#2b2823",
+  raised: "#26231f",
+  err: "#eb7a72",
+  warn: "#e0a960",
+  link: "#e58d70",
+};
+
+export const CODE_CODEX: CodePalette = {
+  ...CODE_DARK,
+  text: "#d6dce6",
+  strong: "#eef1f6",
+  muted: "#98a3b3",
+  comment: "#98a3b3",
+  keyword: "#79c8a8",
+  string: "#9ac78f",
+  number: "#dfb064",
+  type: "#76bfd9",
+  lineNumber: "#7a8596",
+  lineNumberActive: "#eef1f6",
+  overlay: "#22272f",
+  raised: "#1d2128",
+  err: "#f07b78",
+  warn: "#dfb064",
+  link: "#52c99d",
+};
+
+export const CODE_OPENCODE: CodePalette = {
+  ...CODE_DARK,
+  text: "#dad9e6",
+  strong: "#ececf2",
+  muted: "#9c9dad",
+  comment: "#9c9dad",
+  keyword: "#a89bff",
+  string: "#99c897",
+  number: "#e3b368",
+  type: "#76c9c2",
+  lineNumber: "#7f7f91",
+  lineNumberActive: "#ececf2",
+  overlay: "#22222b",
+  raised: "#1c1c24",
+  err: "#f27c85",
+  warn: "#e3b368",
+  link: "#b0a3ff",
+};
+
 export const CODE_LIGHT: CodePalette = {
   text: "#262626",
   strong: "#141414",
@@ -62,4 +138,13 @@ export const CODE_LIGHT: CodePalette = {
   warn: "#8a5512",
   link: "#0958c2",
   tint: (a) => `#000000${a}`,
+};
+
+export const CODE_PALETTES: Record<Theme, CodePalette> = {
+  dark: CODE_DARK,
+  cursor: CODE_CURSOR,
+  claude: CODE_CLAUDE,
+  codex: CODE_CODEX,
+  opencode: CODE_OPENCODE,
+  light: CODE_LIGHT,
 };

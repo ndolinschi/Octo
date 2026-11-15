@@ -5,7 +5,8 @@
  * from a CDN.
  */
 import * as monaco from "monaco-editor";
-import { CODE_DARK, CODE_LIGHT, type CodePalette } from "../../lib/codePalette";
+import { CODE_PALETTES, type CodePalette as Palette } from "../../lib/codePalette";
+import type { Theme } from "../../lib/theme";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 import CssWorker from "monaco-editor/language/css/css.worker?worker";
 import HtmlWorker from "monaco-editor/language/html/html.worker?worker";
@@ -64,9 +65,6 @@ monaco.json.jsonDefaults.setDiagnosticsOptions({ validate: true, allowComments: 
 
 /* Themes derived from the UI tokens in styles.css; the palette is shared with the chat's code highlighter
    (`lib/codePalette.ts`), so code reads the same in the editor, the chat and the Markdown preview. */
-type Palette = CodePalette;
-const DARK = CODE_DARK;
-const LIGHT = CODE_LIGHT;
 
 /**
  * The editor's own chrome, from the UI tokens in styles.css (Monaco needs hex, so the values are written out here; keep them
@@ -95,6 +93,46 @@ const DARK_CHROME: Chrome = {
   ok: "#5fbf7f",
   err: "#f6847e",
 };
+const CURSOR_CHROME: Chrome = {
+  background: "#18181b",
+  selection: "#4da3ff4d",
+  selectionInactive: "#4da3ff26",
+  findMatch: "#4da3ff85",
+  findOthers: "#4da3ff33",
+  currentLine: "#ffffff0d",
+  ok: "#4ec9b0",
+  err: "#f17878",
+};
+const CLAUDE_CHROME: Chrome = {
+  background: "#1c1a17",
+  selection: "#d9775747",
+  selectionInactive: "#d9775724",
+  findMatch: "#d9775780",
+  findOthers: "#d9775730",
+  currentLine: "#ffffff0d",
+  ok: "#68b87d",
+  err: "#eb7a72",
+};
+const CODEX_CHROME: Chrome = {
+  background: "#14171c",
+  selection: "#38b88947",
+  selectionInactive: "#38b88924",
+  findMatch: "#38b88980",
+  findOthers: "#38b88930",
+  currentLine: "#ffffff0d",
+  ok: "#4cc38a",
+  err: "#f07b78",
+};
+const OPENCODE_CHROME: Chrome = {
+  background: "#131318",
+  selection: "#9b8aff47",
+  selectionInactive: "#9b8aff24",
+  findMatch: "#9b8aff80",
+  findOthers: "#9b8aff30",
+  currentLine: "#ffffff0d",
+  ok: "#5dc286",
+  err: "#f27c85",
+};
 const LIGHT_CHROME: Chrome = {
   background: "#ffffff",
   selection: "#0a66e033",
@@ -102,8 +140,16 @@ const LIGHT_CHROME: Chrome = {
   findMatch: "#0a66e066",
   findOthers: "#0a66e01f",
   currentLine: "#00000009",
-  ok: "#1a7f45",
+  ok: "#17703d",
   err: "#b42a23",
+};
+const CHROME: Record<Theme, Chrome> = {
+  dark: DARK_CHROME,
+  cursor: CURSOR_CHROME,
+  claude: CLAUDE_CHROME,
+  codex: CODEX_CHROME,
+  opencode: OPENCODE_CHROME,
+  light: LIGHT_CHROME,
 };
 
 /**
@@ -292,13 +338,14 @@ function theme(base: "vs" | "vs-dark", p: Palette, chrome: Chrome): monaco.edito
   };
 }
 
-monaco.editor.defineTheme("octo-dark", theme("vs-dark", DARK, DARK_CHROME));
-monaco.editor.defineTheme("octo-light", theme("vs", LIGHT, LIGHT_CHROME));
+for (const name of Object.keys(CHROME) as Theme[]) {
+  monaco.editor.defineTheme(`octo-${name}`, theme(name === "light" ? "vs" : "vs-dark", CODE_PALETTES[name], CHROME[name]));
+}
 
 // One palette in the app (Ctrl/Cmd+K): Monaco's own command palette (F1) is switched off for every editor.
 monaco.editor.addKeybindingRule({ keybinding: monaco.KeyCode.F1, command: "-editor.action.quickCommand" });
 
-export function themeName(mode: "dark" | "light"): string {
+export function themeName(mode: Theme): string {
   return `octo-${mode}`;
 }
 

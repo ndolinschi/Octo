@@ -73,7 +73,7 @@ export function SearchField({
         props.className,
       )}
     >
-      {props.align === "rows" ? (
+      {props.align === "rows" || variant === "header" ? (
         <span aria-hidden className="grid size-4 shrink-0 place-items-center">
           <Glyph icon={Search} size={14} className="text-fg-3" />
         </span>

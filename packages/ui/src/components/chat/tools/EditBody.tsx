@@ -65,7 +65,7 @@ export function EditBody({ views, start, failed, raw }: { views: readonly EditVi
         </>
       }
     >
-      {failed && <p className="px-3 pt-2 text-err">Not applied: {failed}</p>}
+      {failed && <p className="border-b border-line px-3 py-2 text-err">Not applied: {failed}</p>}
       <DiffPreview sections={rows} numbered={numbered} all={all} onLine={goto} label={`Changes to ${shown}`} />
     </BodyFrame>
   );

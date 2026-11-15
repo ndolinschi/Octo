@@ -66,8 +66,8 @@ export function DelegationGroup({
 
   return (
     // Polish step 3, C3: no frame of its own. A meta caption ("3 agents · 1/3 done") over activity rows on the steps' glyph column.
-    <section aria-label={uses.length === 1 ? "Delegated task" : `${caption} in parallel`} className="@container">
-      <p className="flex h-6 min-w-0 items-center gap-1.5 text-xs text-fg-3">
+    <section data-activity="" aria-label={uses.length === 1 ? "Delegated task" : `${caption} in parallel`} className="@container">
+      <p className="flex h-6 min-w-0 items-center gap-1.5 pl-6 text-xs text-fg-3">
         <span className="shrink-0 whitespace-nowrap">{caption}</span>
         {status && <span aria-hidden>·</span>}
         {status && <span className="min-w-0 truncate tabular-nums">{status}</span>}

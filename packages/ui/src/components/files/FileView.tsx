@@ -367,7 +367,7 @@ function textWidth(text: string, font: string): number {
 const CRUMB_PAD = 8;
 const SEP = 14;
 /** The floor never takes more than this (a very long name is shortened in the middle instead). */
-const CRUMB_FLOOR_CAP = 200;
+const CRUMB_FLOOR_CAP = 120;
 const GAP = 2;
 const FILE_CHROME = CRUMB_PAD + 14 + 8;
 
@@ -420,7 +420,7 @@ function Crumbs({ folder, path }: { folder: string; path: string }) {
     : 0;
   const Icon = fileIcon(name);
   // A crumb is a quiet link: no padding of its own, so its width is the text plus the CRUMB_PAD the fit model counts.
-  const crumb = "h-6 px-1 text-fg-3 hover:text-fg";
+  const crumb = "h-ctl-xs px-1 text-fg-3 hover:text-fg";
   const dirOf = (i: number) => all.slice(0, i + 1).join("/");
   const hidden = plan.hidden.map((i) => (i < 0 ? { label: folder, path: "" } : { label: all[i] ?? "", path: dirOf(i) }));
   return (
@@ -458,7 +458,7 @@ function Crumbs({ folder, path }: { folder: string; path: string }) {
         </Fragment>
       ))}
       {(plan.folder || hidden.length > 0) && <Sep />}
-      <span aria-current="page" className="flex h-6 min-w-0 items-center gap-2 px-1 text-sm font-medium text-fg" title={name}>
+      <span aria-current="page" className="flex h-ctl-xs min-w-0 items-center gap-2 px-1 text-sm font-medium text-fg" title={name}>
         <Glyph icon={Icon} size={14} className="shrink-0 text-fg-3" />
         <span className="min-w-0 overflow-hidden">{crumbName(name, plan)}</span>
       </span>
@@ -486,7 +486,7 @@ function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string;
           const r = button.current?.getBoundingClientRect();
           if (r) setMenu(menu ? null : { x: r.left, y: r.bottom + 4 });
         }}
-        className={cn("h-6 px-1 text-fg-3 hover:text-fg", menu && "bg-active text-fg")}
+        className={cn("h-ctl-xs px-1 text-fg-3 hover:text-fg", menu && "bg-active text-fg")}
       >
         …
       </Button>
@@ -507,7 +507,7 @@ function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string;
 
 /** The separator: quieter than the crumbs it separates. */
 function Sep() {
-  return <Glyph icon={ChevronRight} size={14} className="shrink-0 text-fg-3 opacity-70" />;
+  return <Glyph icon={ChevronRight} size={14} className="shrink-0 text-fg-3" />;
 }
 
 /** Preview | Source for Markdown (remembered per tab): the app's `Segmented` (a track, the chosen one raised). */

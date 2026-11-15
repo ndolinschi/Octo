@@ -11,6 +11,7 @@ const FolderPicker = lazy(() => import("../shared/FolderPicker").then((m) => ({ 
 import { Glyph } from "../primitives/Glyph";
 import { useId, useState, type FormEvent } from "react";
 import { cn } from "../../lib/cn";
+import { FIELD } from "../../lib/controls";
 import { errorMessage } from "../../lib/format";
 import { folderName, labelsForFolders } from "../../lib/folderPick";
 import { canRun, choosable, chipLabel, useProviders } from "../../lib/providers";
@@ -509,10 +510,7 @@ function FolderField(props: {
         aria-expanded={open}
         title={props.path || undefined}
         onClick={() => setOpen((o) => !o)}
-        className={cn(
-          "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-input-border bg-panel px-3 text-left text-sm hover:bg-hover data-invalid:border-err",
-          open && "border-fg",
-        )}
+        className={cn(FIELD, "flex h-ctl-md min-w-0 flex-1 items-center gap-2 px-3 text-left hover:bg-hover data-invalid:border-err", open && "border-fg")}
       >
         <Glyph icon={FolderOpen} size={14} className="shrink-0 text-fg-3" />
         <span className={cn("min-w-0 flex-1 truncate", props.path ? "font-mono text-xs text-fg" : "text-fg-3")} dir={props.path ? "rtl" : undefined}>

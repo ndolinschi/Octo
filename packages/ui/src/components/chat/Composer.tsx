@@ -432,7 +432,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const chips = (
     <>
       {props.mode && (
-        <Suspense fallback={<span aria-hidden className="size-7 shrink-0" />}>
+        <Suspense fallback={<span aria-hidden className="h-7 w-20 shrink-0 @max-[460px]/composer:w-7" />}>
           <ModeChip
             value={props.mode.value}
             isDefault={props.mode.isDefault}
@@ -460,7 +460,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ) : undefined
           }
           bare={false}
-          short
           disabled={disabled}
           onOpenChange={onChip}
         />
@@ -623,7 +622,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             Message Octo
           </label>
           {/* C6: the top padding sits outside the scrolling text, so a long prompt never scrolls it away. */}
-          <div data-composer-pad className="relative pt-3 pb-3">
+          <div data-composer-pad className="relative pt-3 pb-2">
             <Suspense fallback={null}>
               <ComposerHighlight text={text} area={area} />
             </Suspense>
@@ -663,7 +662,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className="octo-composer-input relative block w-full resize-none overscroll-contain bg-transparent px-3 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
             />
           </div>
-          <div data-composer-row className="box-content flex h-7 min-w-0 items-center gap-1 px-1.5 pb-1.5">
+          <div data-composer-row className="box-content flex h-7 min-w-0 items-center gap-1 px-1.5 pb-2">
             <IconButton
               ref={plus}
               icon={Plus}

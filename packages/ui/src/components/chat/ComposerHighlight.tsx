@@ -35,7 +35,7 @@ export function ComposerHighlight({ text, area }: { text: string; area: RefObjec
       ref={layer}
       aria-hidden
       data-composer-highlight
-      className="octo-composer-input pointer-events-none absolute inset-x-0 top-3 bottom-0 overflow-hidden px-3 wrap-anywhere whitespace-pre-wrap text-transparent"
+      className="octo-composer-input pointer-events-none absolute inset-x-0 top-3 bottom-2 overflow-hidden px-3 wrap-anywhere whitespace-pre-wrap text-transparent"
     >
       {spans?.map((s, i) =>
         s.kind === "text" ? (

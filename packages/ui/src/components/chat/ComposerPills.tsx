@@ -55,7 +55,7 @@ export function ComposerPills(props: {
   const images = props.images ?? [];
   if (!props.files.length && !props.comments && !props.queue.length && !images.length) return null;
   return (
-    <ul aria-label="Attached to your next message" className="flex flex-wrap gap-1.5 px-2 pt-2">
+    <ul aria-label="Attached to your next message" className="flex flex-wrap gap-1.5 px-3 pt-2">
       {props.queue.map((q) => (
         <Pill
           key={q.id}

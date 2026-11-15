@@ -12,12 +12,13 @@ import { settingsHref } from "../../lib/route";
 import { openShortcuts } from "../../lib/openShortcuts";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
-import { Card, ListFrame } from "../primitives/Card";
+import { ListFrame } from "../primitives/Card";
 import { ListRow } from "../primitives/ListRow";
 import { ScrollArea } from "../primitives/ScrollArea";
 import { SearchField } from "../primitives/SearchField";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { Select } from "../primitives/Select";
+import { SkeletonList } from "../primitives/Skeleton";
 import { CommandsSection } from "./CommandsSection";
 import { AppearanceSection, GeneralSection } from "./GeneralSection";
 import { HarnessSettingsProvider } from "./harnessSettings";
@@ -42,7 +43,7 @@ const CONTENT: Record<SectionId, (projectId: string | null) => ReactNode> = {
   models: (projectId) => <ModelsSection projectId={projectId} />,
   editor: (projectId) => <EditorSection projectId={projectId} />,
   integrations: () => (
-    <Suspense fallback={<p className="h-9" aria-busy />}>
+    <Suspense fallback={<SkeletonList count={4} size="lg" />}>
       <IntegrationsView />
     </Suspense>
   ),
@@ -178,11 +179,11 @@ export function SettingsPage(props: {
                 {searching ? "Search" : index ? "Settings" : sectionLabel(section)}
               </h1>
               {index && !searching ? (
-                <Card surface="panel" padding="sm">
+                <ListFrame>
                   {SECTIONS.map((x) =>
                     sectionLocked(device, x.id) ? (
                       // Remote access: what this device may not change stays listed, disabled, with where to change it.
-                      <ListRow key={x.id} size="lg" title={x.label} description={ON_YOUR_COMPUTER} disabled />
+                      <ListRow key={x.id} size="lg" title={x.label} description={ON_YOUR_COMPUTER} disabled className="rounded-none px-4" />
                     ) : (
                       <ListRow
                         key={x.id}
@@ -190,6 +191,7 @@ export function SettingsPage(props: {
                         title={x.label}
                         trailing={<Glyph icon={ChevronRight} size={16} className="text-fg-3" />}
                         trailingShown
+                        className="rounded-none px-4"
                         onClick={() => {
                           markFromList();
                           window.location.hash = settingsHref(x.id);
@@ -197,7 +199,7 @@ export function SettingsPage(props: {
                       />
                     ),
                   )}
-                </Card>
+                </ListFrame>
               ) : searching ? (
                 <Results query={query} results={results} onOpen={open} list={resultList} />
               ) : (

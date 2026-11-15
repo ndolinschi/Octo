@@ -196,7 +196,7 @@ function Picker(props: {
   return (
     // R1 (polish step 6b): the picker is a `Panel` (header 40, title at 16, view tabs with the frame's hairline, one filter row,
     // the list inset 8). The container query folds the freshness words into the refresh button's tooltip in a narrow group.
-    <div ref={quiet} className={cn("@container h-full min-h-0", PANEL_COLUMN)}>
+    <div ref={quiet} className="@container h-full min-h-0">
       <Panel
         name="review"
         title="Pull requests"
@@ -242,7 +242,10 @@ function Picker(props: {
             // line of its own above the chips, with balanced vertical breathing room and full-width FilterTabs so fade-x works cleanly.
             <div
               data-panel-filters
-              className="box-content flex min-h-9 shrink-0 items-center gap-x-2 gap-y-2 px-pane @max-[560px]:flex-wrap @max-[560px]:pt-2 @max-[560px]:pb-1 touch:min-h-ctl-lg"
+              className={cn(
+                "flex min-h-9 shrink-0 items-center gap-x-2 gap-y-2 px-pane @max-[560px]:flex-wrap @max-[560px]:py-1.5 touch:min-h-ctl-lg",
+                PANEL_COLUMN,
+              )}
             >
               <FilterTabs<PullRequestFilter>
                 label="Show"
@@ -265,7 +268,7 @@ function Picker(props: {
                 size="sm"
                 onKeyDown={(e) => e.key === "Enter" && submitSearch()}
                 inputProps={{ spellCheck: false, autoComplete: "off" }}
-                className="ml-auto w-56 shrink-0 @max-[560px]:ml-0 @max-[560px]:w-full"
+                className="ml-auto max-w-56 min-w-44 flex-1 @max-[560px]:ml-0 @max-[560px]:max-w-none @max-[560px]:min-w-full @max-[560px]:flex-none"
               />
             </div>
           )}
@@ -293,7 +296,9 @@ function Picker(props: {
             <BranchList api={api} folder={folder} opening={opening} onOpen={(id, input) => void run(id, input)} />
           ) : state.loading ? (
             <PanelBody>
-              <SkeletonList count={7} size="md" twoLine shimmer widths={[70, 52, 64, 44, 58, 66, 48]} />
+              <div className={PANEL_COLUMN}>
+                <SkeletonList count={7} size="md" twoLine shimmer widths={[70, 52, 64, 44, 58, 66, 48]} />
+              </div>
             </PanelBody>
           ) : ready && !available && resume.length === 0 ? (
             <PanelEmpty
@@ -315,12 +320,14 @@ function Picker(props: {
             </PanelEmpty>
           ) : state.error && !ready && resume.length === 0 ? (
             <PanelBody>
-              <ErrorNotice
-                title="The pull requests did not load"
-                fields={{ ...listFailure(state.error), details: state.error, action: "retry" }}
-                onRetry={reload}
-                retrying={updating}
-              />
+              <div className={PANEL_COLUMN}>
+                <ErrorNotice
+                  title="The pull requests did not load"
+                  fields={{ ...listFailure(state.error), details: state.error, action: "retry" }}
+                  onRetry={reload}
+                  retrying={updating}
+                />
+              </div>
             </PanelBody>
           ) : available && rows.length === 0 && !typed && resume.length === 0 ? (
             <PanelEmpty title="No open pull requests">
@@ -328,75 +335,77 @@ function Picker(props: {
             </PanelEmpty>
           ) : (
             <PanelBody>
-              {/* The list is not available, but reviews in progress are: say why above them (a tone, no outline). */}
-              {state.error && !ready && (
-                <div className="pb-3">
-                  <ErrorNotice
-                    title="The pull requests did not load"
-                    fields={{ ...listFailure(state.error), details: state.error, action: "retry" }}
-                    onRetry={reload}
-                    retrying={updating}
-                  />
-                </div>
-              )}
-              {ready && !available && (
-                <section aria-label="Pull requests are not available" className="octo-in-card mb-3 flex flex-col gap-2 rounded-md bg-raised p-4">
-                  <h2 className="text-heading text-fg">{unavailableTitle(ready.reason)}</h2>
-                  <p className="text-sm text-fg-2">{ready.message ?? "Pull requests cannot be listed for this project."}</p>
-                  {ready.command && (
-                    <>
-                      <p className="text-xs text-fg-3">Run this in a terminal, then come back and reload:</p>
-                      <CommandLine command={ghInstallCommand(ready.command, navigator.platform).command} />
-                      <OtherSystems command={ready.command} />
-                    </>
-                  )}
-                  <div>
-                    <Button size="sm" variant="secondary" onClick={reload}>
-                      Reload
-                    </Button>
+              <div className={PANEL_COLUMN}>
+                {/* The list is not available, but reviews in progress are: say why above them (a tone, no outline). */}
+                {state.error && !ready && (
+                  <div className="pb-3">
+                    <ErrorNotice
+                      title="The pull requests did not load"
+                      fields={{ ...listFailure(state.error), details: state.error, action: "retry" }}
+                      onRetry={reload}
+                      retrying={updating}
+                    />
                   </div>
-                </section>
-              )}
-              {/* B2: with reviews in progress listed, "nothing open" says so above them (it is about the pull requests). */}
-              {available && shown.length === 0 && !typed && resume.length > 0 && <p className="px-2 pb-2 text-sm text-fg-3">{emptyText}</p>}
-              {/* R7: the rows are one Tab stop; ↑/↓/Home/End move between them. */}
-              {/* A maximised review is 1400 wide: the rows keep Home's column (880, left-aligned as every panel body), so the time
-                  and the counts stay near the title they belong to. */}
-              <div ref={list} className="flex flex-col gap-1.5">
-                {typed && available && (
-                  <ListRow
-                    size="md"
-                    disabled={opening === "address"}
-                    leading={opening === "address" ? <Spinner /> : <Glyph icon={GitBranch} size={14} />}
-                    title={typed.kind === "number" ? `Open pull request #${typed.pr}` : "Open this address"}
-                    tip={`${typed.kind === "number" ? `Open pull request #${typed.pr}` : "Open this address"} (Enter)`}
-                    onClick={submitSearch}
-                  />
                 )}
-                {resume.length > 0 && (
-                  <section aria-label="Reviews in progress" className="flex flex-col gap-1.5 pb-2">
-                    <h2 className="flex h-ctl-md items-center px-2 text-xs font-medium text-fg-3">Reviews in progress</h2>
-                    {resume.map((r) => (
-                      <OpenRow key={r.id} r={r} now={now} onOpen={() => props.onOpen(r.id)} />
-                    ))}
+                {ready && !available && (
+                  <section aria-label="Pull requests are not available" className="octo-in-card mb-3 flex flex-col gap-2 rounded-md bg-raised p-4">
+                    <h2 className="text-heading text-fg">{unavailableTitle(ready.reason)}</h2>
+                    <p className="text-sm text-fg-2">{ready.message ?? "Pull requests cannot be listed for this project."}</p>
+                    {ready.command && (
+                      <>
+                        <p className="text-xs text-fg-3">Run this in a terminal, then come back and reload:</p>
+                        <CommandLine command={ghInstallCommand(ready.command, navigator.platform).command} />
+                        <OtherSystems command={ready.command} />
+                      </>
+                    )}
+                    <div>
+                      <Button size="sm" variant="secondary" onClick={reload}>
+                        Reload
+                      </Button>
+                    </div>
                   </section>
                 )}
-                {available &&
-                  shown.map((r) => (
-                    <PullRow
-                      key={`${r.repo ?? ""}#${r.number}`}
-                      r={r}
-                      showRepo={menu?.rowsShowRepo === true}
-                      now={now}
-                      busy={opening === `pr${r.number}`}
-                      onOpen={() => openRow(r)}
+                {/* B2: with reviews in progress listed, "nothing open" says so above them (it is about the pull requests). */}
+                {available && shown.length === 0 && !typed && resume.length > 0 && <p className="px-2 pb-2 text-sm text-fg-3">{emptyText}</p>}
+                {/* R7: the rows are one Tab stop; ↑/↓/Home/End move between them. */}
+                {/* A maximised review is 1400 wide: the rows keep Home's column (880, left-aligned as every panel body), so the time
+                    and the counts stay near the title they belong to. */}
+                <div ref={list} className="flex flex-col gap-1.5">
+                  {typed && available && (
+                    <ListRow
+                      size="md"
+                      disabled={opening === "address"}
+                      leading={opening === "address" ? <Spinner /> : <Glyph icon={GitBranch} size={14} />}
+                      title={typed.kind === "number" ? `Open pull request #${typed.pr}` : "Open this address"}
+                      tip={`${typed.kind === "number" ? `Open pull request #${typed.pr}` : "Open this address"} (Enter)`}
+                      onClick={submitSearch}
                     />
-                  ))}
+                  )}
+                  {resume.length > 0 && (
+                    <section aria-label="Reviews in progress" className="flex flex-col gap-1.5 pb-2">
+                      <h2 className="flex h-ctl-md items-center px-2 text-xs font-medium text-fg-3">Reviews in progress</h2>
+                      {resume.map((r) => (
+                        <OpenRow key={r.id} r={r} now={now} onOpen={() => props.onOpen(r.id)} />
+                      ))}
+                    </section>
+                  )}
+                  {available &&
+                    shown.map((r) => (
+                      <PullRow
+                        key={`${r.repo ?? ""}#${r.number}`}
+                        r={r}
+                        showRepo={menu?.rowsShowRepo === true}
+                        now={now}
+                        busy={opening === `pr${r.number}`}
+                        onOpen={() => openRow(r)}
+                      />
+                    ))}
+                </div>
+                {available && shown.length === 0 && !typed && resume.length === 0 && <PanelEmpty>{emptyText}</PanelEmpty>}
+                {ready?.truncated && (
+                  <p className="px-2 pt-2 text-xs text-fg-3">This repository has more open pull requests than are listed. Search by number to find the rest.</p>
+                )}
               </div>
-              {available && shown.length === 0 && !typed && resume.length === 0 && <PanelEmpty>{emptyText}</PanelEmpty>}
-              {ready?.truncated && (
-                <p className="px-2 pt-2 text-xs text-fg-3">This repository has more open pull requests than are listed. Search by number to find the rest.</p>
-              )}
             </PanelBody>
           )}
         </div>

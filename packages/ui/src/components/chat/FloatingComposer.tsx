@@ -57,7 +57,7 @@ export function FloatingComposer({ onHeight, rest = false }: { onHeight?(px: num
   }, []);
   const onFocus = (e: FocusEvent<HTMLDivElement>) => {
     // The send button keeps its place when pressed in the one-line form (expanding would move it from under the pointer).
-    if (e.target instanceof HTMLElement && e.target.closest("[data-composer-row] > :last-child")) return;
+    if (e.target instanceof HTMLElement && e.target.closest("[data-composer-row] [data-action]")) return;
     if (document.documentElement.dataset.input === "pointer" || Date.now() - tabAt.current < OWN_FOCUS_MS) setFocused(true);
   };
   const onBlur = (e: FocusEvent<HTMLDivElement>) => {

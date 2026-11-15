@@ -77,6 +77,7 @@ export function ContextRing(props: { used: number | null | undefined; size: numb
         title={`Context (${MOD_LABEL}⇧U)`}
         data-context-ring
         onClick={() => setOpen((o) => !o)}
+        className={share <= 0.5 ? "w-7 justify-center rounded-full px-0" : undefined}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden data-gauge className="-rotate-90">
           <circle cx="8" cy="8" r="6.75" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-fg-3" />

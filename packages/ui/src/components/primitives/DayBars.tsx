@@ -44,7 +44,8 @@ export function DayBars({
     return () => ro.disconnect();
   }, []);
   const n = days.length;
-  const bar = n > 0 ? Math.max(1, Math.floor((width - GAP * (n - 1)) / n)) : 0;
+  const gap = n > 0 && width > 0 && (width - GAP * (n - 1)) / n < 2 ? 1 : GAP;
+  const bar = n > 0 ? Math.max(1, Math.floor((width - gap * (n - 1)) / n)) : 0;
   const { scale, heights } = barHeights(
     days.map((d) => d.value),
     height,
@@ -78,7 +79,7 @@ export function DayBars({
         onBlur={() => setActive(null)}
         onPointerLeave={() => setActive(null)}
         className="flex items-end rounded-xs"
-        style={{ height, gap: GAP }}
+        style={{ height, gap }}
       >
         {width > 0 &&
           days.map((d, i) => (

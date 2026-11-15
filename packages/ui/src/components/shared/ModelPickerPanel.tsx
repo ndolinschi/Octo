@@ -373,7 +373,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         }}
       />
       {agent && (
-        <div className="mx-1 mt-1 flex h-row shrink-0 items-center gap-1">
+        <div className="flex h-row shrink-0 items-center gap-1 border-b border-line px-1">
           <Button variant="quiet" size="xs" icon={ChevronLeft} onClick={back} className="min-w-0 flex-1 justify-start">
             <span className="truncate">{agent.label}</span>
           </Button>

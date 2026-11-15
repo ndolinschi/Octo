@@ -1,4 +1,4 @@
-import { useId, type AriaAttributes, type AriaRole, type MouseEventHandler, type ReactNode } from "react";
+import { useId, type AriaAttributes, type AriaRole, type MouseEventHandler, type PointerEventHandler, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { emptyNode, nodeText, rowHeight, selectionAria, type RowSize } from "../../lib/listRow";
 import { MiddleText } from "./MiddleText";
@@ -47,6 +47,7 @@ export function ListRow(props: {
   truncate?: "end" | "middle";
   tone?: "default" | "quiet";
   onClick?: MouseEventHandler<HTMLElement>;
+  onPointerMove?: PointerEventHandler<HTMLDivElement>;
   href?: string;
   role?: AriaRole;
   id?: string;
@@ -82,7 +83,7 @@ export function ListRow(props: {
     ...(props.level === undefined ? {} : { "aria-level": props.level }),
   };
   const main = cn(
-    "flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-sm px-2 text-left text-sm",
+    "flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-[inherit] px-2 text-left text-sm",
     interactive && "press-row focus-inset",
     disabled && "pointer-events-none",
   );
@@ -130,6 +131,7 @@ export function ListRow(props: {
   );
   return (
     <div
+      onPointerMove={props.onPointerMove}
       className={cn(
         "group flex min-w-0 items-center rounded-sm",
         rowHeight(props.size ?? "sm", twoLine),

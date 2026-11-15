@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
+import { FIELD } from "../../lib/controls";
 import { middleTruncate } from "../../lib/format";
 import { canRun, chipLabel, chipParts } from "../../lib/providers/providers";
 import { useProviders } from "../../lib/providers/useProviders";
@@ -72,8 +73,9 @@ export function ModelPicker(props: ModelPickerProps) {
           data-model-picker
           onClick={() => setOpen(!open)}
           className={cn(
-            "flex h-row-nav w-full min-w-0 press items-center gap-1.5 rounded-sm border border-line-strong bg-raised px-3 text-left text-sm whitespace-nowrap text-fg hover:bg-hover disabled:pointer-events-none disabled:text-fg-3",
-            open && "bg-active",
+            FIELD,
+            "flex h-ctl-md w-full min-w-0 press items-center gap-1.5 px-3 text-left whitespace-nowrap hover:bg-hover disabled:pointer-events-none disabled:text-fg-3",
+            open && "border-fg bg-active",
             toned && "text-warn",
             props.className,
           )}

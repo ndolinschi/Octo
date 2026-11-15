@@ -20,11 +20,11 @@ export function ThinkingRow({ text, after = false }: { text: string; after?: boo
       <ActivityRow
         state={running ? "running" : "done"}
         verb={running ? "Thinking" : "Thought"}
-        detail={open ? undefined : <span className="octo-thinking-tail opacity-80">{tail}</span>}
+        detail={open ? undefined : <span className="octo-thinking-tail">{tail}</span>}
         open={open}
         onOpenChange={setOpen}
       >
-        <div className="max-h-60 overflow-y-auto overscroll-contain border-l border-line pl-3 text-sm leading-5 whitespace-pre-wrap text-fg-3">{shown}</div>
+        <div className="max-h-60 overflow-y-auto overscroll-contain text-sm leading-5 whitespace-pre-wrap text-fg-3">{shown}</div>
       </ActivityRow>
     </div>
   );
@@ -38,8 +38,8 @@ export function PlanList({ entries }: { entries: PlanEntry[] }) {
   const done = entries.filter(DONE).length;
   return (
     // Polish step 3, C3: no frame; a meta caption over the steps' rows, like a delegation round.
-    <section data-plan aria-label={`Plan, ${done} of ${entries.length} done`}>
-      <p className="flex h-6 items-center gap-1.5 text-xs text-fg-3">
+    <section data-plan data-activity="" aria-label={`Plan, ${done} of ${entries.length} done`}>
+      <p className="flex h-6 items-center gap-1.5 pl-6 text-xs text-fg-3">
         <span>Plan</span>
         <span aria-hidden>·</span>
         <span className="tabular-nums">

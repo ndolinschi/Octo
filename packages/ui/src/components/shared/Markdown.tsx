@@ -3,7 +3,7 @@ import { Button } from "../primitives/Button";
 import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useCopy } from "../../lib/hooks";
+import { useCopy, useScrollFade } from "../../lib/hooks";
 import { InlineCode } from "./FileLink";
 import { NUMERIC_CELL } from "../../lib/numericCell";
 import { remarkSoftBreaks } from "../../lib/softBreaks";
@@ -76,6 +76,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   const lang = /language-([\w+-]+)/.exec(className)?.[1];
   const code = textOf(children).replace(/\n$/, "");
   const pre = useRef<HTMLPreElement>(null);
+  useScrollFade(pre, "x");
   const [scrolls, setScrolls] = useState(false);
   useEffect(() => {
     const el = pre.current;
@@ -88,7 +89,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   }, [code]);
   return (
     // Card inset 12 on all sides: a 20px caption row, 8 below it, then 20px code lines.
-    <div className="my-3 overflow-hidden rounded-md bg-code-bg p-card">
+    <div className="my-3 overflow-hidden rounded-md border border-line/70 bg-code-bg p-card">
       <div className="mb-2 flex h-5 items-center">
         <span className="font-mono text-xs text-fg-3">{lang ?? "text"}</span>
         <Button variant="quiet" size="xs" icon={copied ? Check : Copy} onClick={() => copy(code)} className="-my-0.5 -mr-2 ml-auto">
@@ -100,7 +101,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
           focus a scroller by itself); one that fits is not. */}
       <pre
         ref={pre}
-        className="octo-code overflow-x-auto font-mono text-xs leading-5"
+        className="octo-code overflow-x-auto fade-x font-mono text-xs leading-5"
         {...(scrolls ? { tabIndex: 0, role: "region", "aria-label": `Code, ${lang ?? "text"}` } : {})}
       >
         <code>

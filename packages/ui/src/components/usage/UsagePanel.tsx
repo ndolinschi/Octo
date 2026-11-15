@@ -47,7 +47,7 @@ export function UsagePanel() {
   const quiet = useRef<HTMLDivElement>(null);
   useQuietOpen(quiet);
   return (
-    <div ref={quiet} data-usage className={cn("h-full min-h-0", PANEL_COLUMN)}>
+    <div ref={quiet} data-usage className="h-full min-h-0">
       <Panel
         name="usage"
         title="Usage"
@@ -56,7 +56,7 @@ export function UsagePanel() {
       >
         <div className="flex h-full min-h-0 flex-col">
           {view.segment !== "limits" && (
-            <PanelFilters className="flex-wrap gap-y-1.5 py-1">
+            <PanelFilters className={cn("flex-wrap gap-y-1.5 py-1", PANEL_COLUMN)}>
               <div className="max-w-36 min-w-28 flex-1">
                 <Select
                   size="sm"
@@ -90,7 +90,7 @@ export function UsagePanel() {
               <PanelEmpty title="No usage in this range">Tokens appear here after a request or an agent gets a model response.</PanelEmpty>
             ) : (
               <PanelBody fade>
-                <div className="@container/usage flex w-full flex-col gap-3">
+                <div className={cn("@container/usage flex flex-col gap-3", PANEL_COLUMN)}>
                   {view.segment === "model" && <UsageByModel load={reports} view={view} />}
                   {view.segment === "agent" && <UsageByAgent load={reports} view={view} />}
                   {view.segment === "day" && <UsageByDay load={reports} view={view} now={now} />}

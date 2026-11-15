@@ -23,7 +23,7 @@ const TALL_HEIGHT =
 
 /** The panel look of every popup list that floats on its own (slash and mention menus; the pickers get it from `Popover`). */
 export const POPUP_PANEL =
-  "octo-overlay fixed z-[60] flex flex-col overflow-hidden rounded-xl border border-transparent bg-overlay text-sm shadow-pop [--octo-origin:0%_100%]";
+  "octo-overlay fixed z-[60] flex flex-col overflow-hidden rounded-xl bg-overlay text-sm shadow-pop forced-colors:border forced-colors:border-[CanvasText] [--octo-origin:0%_100%]";
 
 /** The DOM id of a row's option, for `aria-activedescendant` (the owner of the keys sets it on its input). */
 export function popupOptionId(listId: string, rowId: string): string {
@@ -72,6 +72,7 @@ export function PopupList(props: {
   const gate = useRef(createPointerGate());
   useScrollFade(list, "y");
   const { activeId, query = "" } = props;
+  const hasLead = props.sections.some((s) => s.rows.some((r) => r.lead !== undefined));
   const count = props.sections.reduce((n, s) => n + s.rows.length, 0);
 
   useLayoutEffect(() => {
@@ -144,12 +145,14 @@ export function PopupList(props: {
                   className={cn(
                     "group flex min-w-0 items-center gap-2 rounded-md px-2 press-row touch:h-ctl-lg",
                     r.sub ? "h-10" : "h-row",
-                    r.disabled ? "text-fg-3" : on ? "bg-active text-fg" : "text-fg",
+                    r.disabled ? "text-fg-3" : on ? "bg-active text-fg" : "text-fg hover:bg-hover/50",
                   )}
                 >
-                  <span aria-hidden className="grid size-4 shrink-0 place-items-center text-fg-3">
-                    {r.lead}
-                  </span>
+                  {hasLead && (
+                    <span aria-hidden className="grid size-4 shrink-0 place-items-center text-fg-3">
+                      {r.lead}
+                    </span>
+                  )}
                   {r.content !== undefined ? (
                     r.content
                   ) : (

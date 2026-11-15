@@ -279,7 +279,7 @@ function SecretInput({ field, domId, describedBy, invalid, state }: ControlProps
         label={shown ? "Hide" : "Show"}
         pressed={shown}
         size="sm"
-        className="absolute top-1 right-1 phone:top-2 phone:right-2"
+        className="absolute top-0.5 right-0.5 touch:top-1.5 touch:right-1.5"
         onClick={() => setShown((s) => !s)}
       />
     </div>

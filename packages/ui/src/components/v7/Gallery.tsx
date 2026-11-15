@@ -209,7 +209,7 @@ function Pane({ height = 520, children }: { height?: number; children: ReactNode
   );
 }
 
-function Changes({ theme, loadMonaco }: { theme: "dark" | "light"; loadMonaco(): Promise<DiffMonaco> }) {
+function Changes({ theme, loadMonaco }: { theme: import("../../lib/theme").Theme; loadMonaco(): Promise<DiffMonaco> }) {
   const [last, setLast] = useState<string>("none yet");
   const label = (turn: TurnChanges) => TURN_LABELS[turn.turn_id] ?? earlierRequestLabel(turn, Date.now());
   const view = (mode: "ready" | "empty" | "loading" | "error", revert: RevertMode = "ok", extra: { height?: number } = {}) => (

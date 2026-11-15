@@ -16,7 +16,7 @@ import { SettingsGroup } from "./parts";
 /**
  * Decision 89: Providers is a list and a detail, as one group of the page (polish step 6a, S1): the caption says how many
  * are connected; the surface is split by a hairline into the fixed list column (groups, rows of one height) and the
- * detail of the selected provider, equal in height. Below the container's floor (`@3xl`) the page is the list alone and a row opens the detail with a back
+ * detail of the selected provider, equal in height. Below the container's floor (`@2xl`) the page is the list alone and a row opens the detail with a back
  * control. Settings → Agents is gone: everything it showed is in the detail (89 f).
  */
 export function ProvidersSection() {
@@ -59,9 +59,9 @@ export function ProvidersSection() {
         )}
         {list && (
           // S1: one surface split by a hairline, list | detail, equal heights (the grid stretches both). Below the
-          // container's floor (`@3xl`) it is the list alone, and a row opens the detail with a back control (89 e).
+          // container's floor (`@2xl`) it is the list alone, and a row opens the detail with a back control (89 e).
           <div className="@container/providers">
-            <div className="grid min-w-0 @3xl/providers:grid-cols-[var(--spacing-settings-list)_minmax(0,1fr)]">
+            <div className="grid min-w-0 @2xl/providers:grid-cols-[var(--spacing-settings-list)_minmax(0,1fr)]">
               <ProviderRows
                 groups={groups}
                 selectedId={selected?.id}
@@ -72,11 +72,11 @@ export function ProvidersSection() {
                 }}
                 onExpand={setExpanded}
                 unpicked={!detailOpen}
-                className={cn("min-w-0 @3xl/providers:border-r @3xl/providers:border-line", detailOpen ? "@max-3xl/providers:hidden" : "")}
+                className={cn("min-w-0 @2xl/providers:border-r @2xl/providers:border-line", detailOpen ? "@max-2xl/providers:hidden" : "")}
               />
               {selected && (
-                <div className={cn("flex min-w-0 flex-col", !detailOpen && "@max-3xl/providers:hidden")}>
-                  <div className={cn("px-3 pt-3 @3xl/providers:hidden", phone && "hidden")}>
+                <div className={cn("flex min-w-0 flex-col", !detailOpen && "@max-2xl/providers:hidden")}>
+                  <div className={cn("px-2 pt-2 @2xl/providers:hidden", phone && "hidden")}>
                     <Button variant="quiet" size="sm" icon={ArrowLeft} onClick={() => setDetailOpen(false)}>
                       Providers
                     </Button>

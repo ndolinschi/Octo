@@ -118,11 +118,11 @@ function OtherBody({ use, kind, output, failed, raw }: { use: ToolUse; kind: Too
   return (
     <BodyFrame kind="other" raw={raw} lead={count ? <span>{count}</span> : output !== null && !output.trim() && !failed && <span>No output</span>}>
       {pairs.length > 0 && (
-        <dl className={cn("grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1", INSET)}>
+        <dl className={cn("grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)] gap-x-4 gap-y-1", INSET)}>
           {pairs.map((p) => (
             <div key={p.key} className="contents">
               <dt className="text-fg-3">{p.key}</dt>
-              <dd className={cn("min-w-0 break-words text-fg-2", p.mono && "font-mono")}>{p.value}</dd>
+              <dd className={cn("min-w-0 wrap-anywhere text-fg-2", p.mono && "font-mono")}>{p.value}</dd>
             </div>
           ))}
         </dl>

@@ -120,10 +120,7 @@ export function SettingsRow(props: {
         </div>
       </div>
       {(props.control || props.status) && (
-        <div
-          data-settings-control
-          className="flex h-5 shrink-0 items-center justify-end gap-3 max-settings:h-auto max-settings:min-h-5 max-settings:flex-wrap max-settings:justify-start"
-        >
+        <div data-settings-control className="flex min-h-5 shrink-0 flex-wrap items-center justify-end gap-3 max-settings:justify-start">
           {props.status && <span className="flex min-w-0 items-center empty:hidden max-settings:order-last">{props.status}</span>}
           {props.control}
         </div>

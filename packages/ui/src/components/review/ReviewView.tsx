@@ -47,7 +47,7 @@ type ComposerState = { kind: "line"; anchor: Anchor; suggest: boolean } | { kind
 export function ReviewView(props: {
   api: ReviewApi;
   reviewId: string;
-  theme: "dark" | "light";
+  theme: import("../../lib/theme").Theme;
   commands: ReviewCommandsKit | null;
   loadMonaco(): Promise<ReviewMonaco>;
   onBack(): void;
@@ -79,7 +79,7 @@ export function ReviewView(props: {
 function Ready(props: {
   api: ReviewApi;
   reviewId: string;
-  theme: "dark" | "light";
+  theme: import("../../lib/theme").Theme;
   commands: ReviewCommandsKit | null;
   loadMonaco(): Promise<ReviewMonaco>;
   onBack(): void;

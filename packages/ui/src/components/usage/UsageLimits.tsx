@@ -52,7 +52,7 @@ function LimitRow({ limit, now }: { limit: Limit; now: number }) {
           <span className={cn("block h-full min-w-0.5 rounded-full", left < LOW ? "bg-err" : "bg-fg-3")} style={{ width: `${spent * 100}%` }} />
         )}
       </span>
-      <div className="flex h-4 items-center gap-3 text-xs text-fg-3 tabular-nums">
+      <div className="flex min-h-4 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-fg-3 tabular-nums">
         {reset && <span>{reset}</span>}
         <span>{observedLabel(limit.observed_at, now)}</span>
         {/* Stale is said, not dimmed (decision 36: a dimmed block fell under 4.5:1). */}
@@ -117,7 +117,7 @@ export function UsageLimits() {
       {settled && limits.status !== "error" && (
         <InfoSection title="Subscription limits of coding agents" labelId="usage-plan-limits">
           {agents.map((a) => (
-            <ListRow key={a.id} leading={<Glyph icon={GLYPH.agent} size={14} />} title={a.label} meta="Coding agent" tone="quiet" />
+            <ListRow key={a.id} size="md" leading={<Glyph icon={GLYPH.agent} size={14} />} title={a.label} meta="Coding agent" tone="quiet" />
           ))}
           <p className="px-2 pt-1 text-xs text-fg-3">
             {agents.length

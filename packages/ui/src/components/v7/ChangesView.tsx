@@ -1,4 +1,4 @@
-import { PanelEmpty } from "../primitives/Panel";
+import { PanelBody, PanelEmpty } from "../primitives/Panel";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { TurnChanges } from "@octo/agent-client";
 import { useMediaQuery } from "../../lib/hooks";
@@ -7,7 +7,7 @@ import { usePhone } from "../../lib/phone";
 import { DIFF_SPLIT_MIN, diffLayout, earlierRequestLabel, filesChanged, neighbours, rowKey, splitPath } from "../../lib/v7/changes";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
-import { SkeletonRows } from "../primitives/InfoList";
+import { SkeletonList } from "../primitives/Skeleton";
 import { FloatRoom } from "../primitives/floatRoom";
 import { Presence } from "../primitives/Presence";
 import type { DiffMonaco } from "./DiffEditor";
@@ -21,7 +21,7 @@ const TWO_COLUMNS_MIN = 720;
 
 export type ChangesViewProps = {
   api: ChangesApi;
-  theme: "dark" | "light";
+  theme: import("../../lib/theme").Theme;
   /** The files feature's Monaco loader (the dock passes it; Monaco is a value only there). */
   loadMonaco(): Promise<DiffMonaco>;
   /** Bump on `change.recorded` to reload the list. */
@@ -92,7 +92,12 @@ export function ChangesView(props: ChangesViewProps) {
   };
 
   let body;
-  if (c.turns.status === "loading") body = <SkeletonRows count={6} />;
+  if (c.turns.status === "loading")
+    body = (
+      <PanelBody>
+        <SkeletonList count={6} size="md" shimmer />
+      </PanelBody>
+    );
   else if (c.turns.status === "error")
     body = (
       <Empty title="The changes did not load" text={`${c.turns.message}.`}>
@@ -144,9 +149,9 @@ export function ChangesView(props: ChangesViewProps) {
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-panel" data-v7-changes>
       {props.focusTurn != null && props.onShowAll && (
-        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3 text-sm text-fg-2">
+        <div className="flex h-ctl-lg shrink-0 items-center gap-2 border-b border-line px-3 text-sm text-fg-2">
           <span className="min-w-0 flex-1 truncate">Showing one request</span>
-          <Button variant="ghost" size="sm" className="max-md:h-10" onClick={props.onShowAll}>
+          <Button variant="quiet" size="sm" className="max-md:h-10" onClick={props.onShowAll}>
             Show all
           </Button>
         </div>
@@ -154,10 +159,7 @@ export function ChangesView(props: ChangesViewProps) {
       <div ref={box} className="flex min-h-0 min-w-0 flex-1">
         {body ? (
           // A flex column, so an empty or failed load is the frame's one centred empty state (P1, B4).
-          <div className="flex min-h-0 flex-1 flex-col overflow-auto px-2 pt-1 pb-2">
-            {body}
-            <FloatRoom />
-          </div>
+          <div className="flex min-h-0 flex-1 flex-col">{body}</div>
         ) : two ? (
           <>
             <nav aria-label="Changed files" className="@container/list flex w-72 shrink-0 flex-col gap-2 overflow-y-auto border-r border-line px-2 pt-1 pb-2">
@@ -203,7 +205,7 @@ function RevertDialog({ confirm, onCancel, onConfirm }: { confirm: NonNullable<C
       onClose={onCancel}
       footer={
         <>
-          <Button variant="ghost" onClick={onCancel}>
+          <Button variant="quiet" onClick={onCancel}>
             Cancel
           </Button>
           <Button variant="primary" onClick={onConfirm}>

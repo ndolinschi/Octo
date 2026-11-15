@@ -33,7 +33,7 @@ import { isPending, useOrchestrators } from "../../state/orchestrators";
 import { useSessionIndex } from "../../state/sessionIndex";
 import { mainSessions, sessionGlyph, sessionMeta, sessionTitle } from "../../lib/sessions/tree";
 import { useModal } from "../primitives/useModal";
-import { popupListKey } from "../primitives/popupNav";
+import { createPointerGate, popupListKey } from "../primitives/popupNav";
 
 /** The settings sections and rows the palette searches (`settings/settingsIndex`; the app passes its loader: a feature may not import another). */
 export type SettingsIndex = {
@@ -118,6 +118,8 @@ export function CommandPalette(props: {
   const nav = useNav();
   const panel = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
+  const gate = useRef(createPointerGate());
+  const fromPointer = useRef(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const [agents, setAgents] = useState<Agent[] | null>(null);
@@ -403,6 +405,10 @@ export function CommandPalette(props: {
   });
 
   useEffect(() => {
+    if (fromPointer.current) {
+      fromPointer.current = false;
+      return;
+    }
     list.current?.querySelector(`#${CSS.escape(optionId(current))}`)?.scrollIntoView({ block: "nearest" });
   });
 
@@ -437,7 +443,7 @@ export function CommandPalette(props: {
         aria-modal="true"
         aria-label="Command palette"
         data-state={state}
-        className="octo-overlay relative flex max-h-[70vh] w-full max-w-[560px] flex-col overflow-hidden rounded-xl border border-transparent bg-overlay shadow-pop"
+        className="octo-overlay relative flex max-h-[70vh] w-full max-w-[560px] flex-col overflow-hidden rounded-xl bg-overlay shadow-pop forced-colors:border forced-colors:border-[CanvasText]"
       >
         <div className={cn("flex shrink-0 items-center", phone && "border-b border-line pr-1")}>
           <SearchField
@@ -485,6 +491,12 @@ export function CommandPalette(props: {
                     role="option"
                     size="md"
                     selected={i === current}
+                    className="rounded-md"
+                    onPointerMove={(e) => {
+                      if (!gate.current(e) || i === current) return;
+                      fromPointer.current = true;
+                      setSelected(i);
+                    }}
                     onClick={item.run}
                     leading={
                       item.glyph ? <StateGlyph state={item.glyph} box={16} /> : item.pending ? <Skeleton shape="circle" className="size-3.5" /> : <span />

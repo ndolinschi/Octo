@@ -174,7 +174,7 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
               aria-describedby={bodyError ? `${id}-body-error` : undefined}
             />
           ) : (
-            <div className="min-h-[12rem] rounded-md border border-input-border px-3 py-2">
+            <div className="min-h-[12rem] rounded-md border border-field-edge bg-panel px-3 py-2">
               {body.trim() ? <Markdown text={body} className="octo-prose octo-prose-sm" /> : <p className="text-sm text-fg-3">Nothing to preview yet.</p>}
             </div>
           )}

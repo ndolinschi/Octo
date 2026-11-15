@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import type { StreakPreset } from "../../lib/streakPresets";
+import type { Theme } from "../../lib/theme";
 
 const Streak = lazy(() => import("./Streak"));
 
@@ -11,15 +12,7 @@ const Streak = lazy(() => import("./Streak"));
  * The canvas code loads on first use (its own chunk); until then, and if it fails, the panel stays plain.
  * Pass one of the presets of `lib/streakPresets.ts`.
  */
-export function StreakLayer({
-  preset,
-  theme,
-  mono = false,
-}: {
-  preset: StreakPreset;
-  theme: "dark" | "light";
-  /** Decision 31's Mono backdrop. */ mono?: boolean;
-}) {
+export function StreakLayer({ preset, theme, mono = false }: { preset: StreakPreset; theme: Theme; /** Decision 31's Mono backdrop. */ mono?: boolean }) {
   return (
     <div aria-hidden data-streak-band className="octo-streak-layer pointer-events-none absolute inset-x-0 top-0 overflow-hidden">
       <Suspense fallback={null}>

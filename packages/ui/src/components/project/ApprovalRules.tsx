@@ -53,7 +53,7 @@ export function ApprovalRules({ projectId }: { projectId: string }) {
   };
   return (
     <div data-approval-rules>
-      <Button variant="quiet" iconEnd={open ? ChevronDown : ChevronRight} aria-expanded={open} onClick={() => setOpen((o) => !o)} className="-ml-2">
+      <Button variant="quiet" iconEnd={open ? ChevronDown : ChevronRight} aria-expanded={open} onClick={() => setOpen((o) => !o)} className="-ml-3">
         Always allowed
       </Button>
       {open && (
