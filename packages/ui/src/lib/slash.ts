@@ -56,6 +56,15 @@ export const OCTO_COMMAND_NAMES: readonly string[] = [
   "new",
 ];
 
+/**
+ * A command whose argument is optional: Enter runs it (`/new` an empty session, `/model` the picker, `/review` the tab) and Tab puts
+ * its name in the text to add the argument. A required argument (`/mode`, `/remember`, an agent's command) is completed on both.
+ */
+export function argsOptional(row: Pick<SlashRow, "group" | "name" | "args">): boolean {
+  if (row.group !== "octo" || !row.args) return false;
+  return row.args.startsWith("[") || row.name === NEW_COMMAND.name || row.name === "model";
+}
+
 /** The word after a `/` at the very start of the text, up to the caret; null when the text does not start with a slash command being typed. */
 export function slashQuery(text: string, caret: number): string | null {
   const m = /^\/([^\s/]*)$/.exec(text.slice(0, caret));

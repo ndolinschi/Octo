@@ -38,7 +38,7 @@ export const SlashMenu = forwardRef<
     query: string;
     listId: string;
     onActive(id: string | null): void;
-    onChoose(row: SlashRow): void;
+    onChoose(row: SlashRow, how: "run" | "complete"): void;
     onClose(): void;
   }
 >(function SlashMenu(props, handle) {
@@ -74,7 +74,7 @@ export const SlashMenu = forwardRef<
       ...(phone ? { sub: describe(row) } : { detail: describe(row) }),
       ...(row.args && !phone ? { hint: argsText(row.args) } : {}),
       disabled: !row.available,
-      run: () => props.onChoose(row),
+      run: () => props.onChoose(row, "run"),
     })),
   }));
   useImperativeHandle(
@@ -87,7 +87,7 @@ export const SlashMenu = forwardRef<
         }
         if (!rows.length) return false;
         if (e.key === "Enter" || e.key === "Tab") {
-          if (activeRow) props.onChoose(activeRow);
+          if (activeRow) props.onChoose(activeRow, e.key === "Tab" ? "complete" : "run");
           return true;
         }
         const to = popupMove(

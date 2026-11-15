@@ -3793,3 +3793,30 @@ WebKit build; `apps/web/scripts/phone-flow.sh` was not run (it needs Go 1.26, th
 - **Now.** Creating or changing a project never checks readiness (harness `internal/project/service.go`: no `checkModels`, no `no_provider`); the project lists what cannot run in `models_unavailable`. Unknown agents and malformed models stay `400`. `ProjectDialog` shows one calm block above the buttons per provider that cannot run (`ModelNotice`, text from `lib/errors/modelReadiness.ts`): the sentence plus "You can create the project now and log in later, or choose another model.", the login command to copy, "Choose another model" (opens "Models and agents") and "Check again" (`recheckAgent`). "Create project" stays on; red is only a refusal of the create itself. "New project" always opens the dialog.
 - **Demo.** `?claude=loggedout`: Claude Code is the default agent and not logged in (providers, plugin list, config); a demo create or patch is never refused and reads back `models_unavailable`.
 - **Verified.** Real harness (built-in plugins, a fake `claude` whose probe says logged out, fake ACP agent behind `npx`, no key): create returns 201, the dialog closes and the project opens, a request in it fails with "Claude Code is not logged in." with `claude auth login` and "Check again". Not verified: a real Claude Code, the packaged macOS app. Known and left: the empty project's sentence (`chat/EmptyProject.tsx`) still says "its provider is not connected" for a logged-out agent and has no actions.
+
+## As built — commands, a simpler composer, dropdowns and scrolling (2026-11-15, after the owner's hand test)
+
+The owner, using the app: "the commands hardly work", "`/clear` takes effect late", "the prompt input is too big, too
+complicated", "scrolling closes dropdowns".
+
+- **Commands.** Every Octo command was run three ways (menu and Enter, typed in full, with an argument) on the demo and
+  against a real `harness serve` with the mock model. What did not behave: Enter on `/new`, `/model` and `/review` in the
+  menu only inserted the name (their argument is optional: `argsOptional`, Enter and a click now run them, Tab inserts);
+  the palette's "New session" offered the first project of the list, not the open one. `/clear` and `/compact` gave no
+  sign of life while the service worked: the service summarises the session before it answers
+  (`apps/harness/internal/orchestrator/clear.go`, a model call: 40–55 ms with the mock, seconds with a real model). The
+  composer now clears at once and shows "Starting a new session…" / "Compacting the conversation…" until the answer, and
+  a second Enter is ignored (`lib/slashPending.ts`); the view follows the answer within 70 ms. The service still answers
+  late: making `clear` answer first and summarise after is a harness change, not made. `scripts/slash-commands.mjs`
+  checks each command's result on the demo (Chromium, WebKit, the phone).
+- **The composer is one box and one row** (decision 91's "four controls" is now three and two): "+", the mode and the
+  model on the left; the context ring and Send on the right. The folder chip and the session chip are rows of the "+"
+  menu ("Folders: …", "Session: …", the same menus as before) and of the phone's "+" sheet. The model chip shows the short
+  name with the agent's mark. A line over the field ("Sends to "…", not the default session") appears only when the tab's
+  session is not the default. The queue is one line at every width. Heights at 1440: idle 74 → 68, with two queued
+  167 → 101, three lines of text 118 → 112.
+- **Dropdowns and scrolling**: see the commit that carries `primitives/popupScroll.ts`.
+
+Not verified: the review keys (j k ] [ n p v c); the palette on the phone; `/export`, `/context`, `/memory`, `/settings`
+by result on the live service (clear, compact, new, model, rewind and export were). Open: a project's Run menu does not
+offer the commands found in `package.json` (only a review's does); `/review` ignores its argument.

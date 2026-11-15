@@ -84,8 +84,10 @@ export const ComposerMenu = forwardRef<
     onPick(pick: MenuPick): void;
     /** `escape`: Esc closed it (opened by the button, focus goes back to the button; after a pick or a click it goes to the text). */
     onClose(reason?: "escape"): void;
-    /** Direction 7: the mode, model and folder chips, which the phone's "+" sheet carries (the row has no room for them). */
+    /** Direction 7: the mode and model chips, which the phone's "+" sheet carries (the row has no room for them). */
     chips?: ReactNode;
+    /** "Folders" and "Session": what the request goes to, one entry each (they were chips of the control row); they open their own menus. */
+    sendTo?: readonly { id: string; label: string; icon: LucideIcon; run(): void }[];
   }
 >(function ComposerMenu(props, handle) {
   const { bridge } = useApp();
@@ -130,6 +132,9 @@ export const ComposerMenu = forwardRef<
       },
       { id: "attach:file", group: "Attach", label: "Mention a file", hint: "Type @", icon: AtSign, match: "mention file path", pick: { insert: "@" } },
     ];
+    for (const t of props.sendTo ?? []) {
+      out.push({ id: `to:${t.id}`, group: "This message", label: t.label, hint: "Open", icon: t.icon, match: t.label, pick: { run: t.run } });
+    }
     const files = code?.loadedFiles ?? [];
     const hits = query ? files.filter((f) => `${f.folder}/${f.path}`.toLowerCase().includes(query)) : files;
     // Ranked: name matches before path matches, then shorter paths.
@@ -179,7 +184,7 @@ export const ComposerMenu = forwardRef<
       for (const [id, label, icon, run] of actions) out.push({ id: `action:${id}`, group: "Project", label, hint: "Run", icon, match: label, pick: { run } });
     }
     return query ? out.filter((e) => e.group === "Files" || e.match.toLowerCase().includes(query)) : out;
-  }, [code?.loadedFiles, agents, props.pendingComments, props.onOpenComments, props.onPickImage, ws, query]);
+  }, [code?.loadedFiles, agents, props.pendingComments, props.onOpenComments, props.onPickImage, props.sendTo, ws, query]);
 
   // Entries are keyed by id; the selection survives the list changing under it while its row is still there.
   const current = entries.find((e) => e.id === selected) ?? entries[0] ?? null;
@@ -282,6 +287,13 @@ export const ComposerMenu = forwardRef<
     return (
       <PhoneComposerSheet
         chips={props.chips}
+        sendTo={props.sendTo?.map((t) => ({
+          ...t,
+          run: () => {
+            onClose();
+            t.run();
+          },
+        }))}
         // 7i: dismissing the sheet (Close, the scrim, Esc, the system Back) gives focus back to the "+" that opened it.
         onClose={() => onClose("escape")}
         onImage={() => {

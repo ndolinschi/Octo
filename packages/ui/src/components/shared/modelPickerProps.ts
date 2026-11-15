@@ -17,6 +17,8 @@ export type ModelPickerProps = {
   disabled?: boolean;
   /** `chip`: the composer's and the title bar's one model control; `field`: the project dialog (a 32px input-like button). */
   variant?: "chip" | "field";
+  /** The chip shows the model alone ("Opus 5.5", the agent's mark in front); the full name stays in the tooltip and the list. */
+  short?: boolean;
   /** The composer sheds the label when its row is too narrow. */
   bare?: boolean;
   /** Where the list opens: above a control at the bottom of the window, below one at the top. */

@@ -1,9 +1,7 @@
 import type { Folder } from "@octo/agent-client";
-import { lazy, Suspense, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { GLYPH } from "../primitives/glyphs";
 import { Presence } from "../primitives/Presence";
-import { Chip } from "../primitives/Chip";
 import { ModelPicker } from "../shared/ModelPicker";
 
 /** The folder menu opens on a click: its own chunk (shared with every other menu), warmed after the first paint. */
@@ -39,6 +37,7 @@ export function ModelChip(
     value: string;
     title?: string | undefined;
     unavailable?: boolean;
+    short?: boolean;
     onChoose(value: string): void;
     onChooseUnverified?: (value: string) => void;
   },
@@ -50,6 +49,7 @@ export function ModelChip(
       onChoose={props.onChoose}
       onChooseUnverified={props.onChooseUnverified}
       bare={props.bare}
+      {...(props.short ? { short: true } : {})}
       disabled={props.disabled}
       side="top"
       warn={props.unavailable === true}
@@ -61,44 +61,44 @@ export function ModelChip(
   );
 }
 
+/** The label of the folders entry in the "+" menu: the first one's name (+N). */
+export function foldersLabel(folders: readonly Folder[]): string {
+  const [first] = folders;
+  return first ? (folders.length > 1 ? `${first.label} +${folders.length - 1}` : first.label) : "No folder";
+}
+
 /**
- * The folders the orchestrator works in: the first one's name (+N). The menu lists them, adds one with the folder
- * picker (decision 49) and leads to settings.
+ * The folders the orchestrator works in, opened from the "+" menu's "Folders" entry (it was a chip of the control row): the menu
+ * lists them, adds one with the folder picker (decision 49) and leads to settings. It closes itself through `onClose`.
  */
-export function FolderChip(props: ChipProps & { folders: Folder[]; onAdd?: ((path: string) => void) | undefined }) {
-  const { ref, open, setOpen, at } = useChipMenu(props.onOpenChange);
+export function FolderMenu(props: {
+  anchor: RefObject<HTMLElement | null>;
+  folders: Folder[];
+  onAdd?: ((path: string) => void) | undefined;
+  onClose(): void;
+  onOpenChange(open: boolean): void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(true);
   const [picking, setPicking] = useState(false);
   const ws = useOptionalWorkspace();
-  const onOpenChange = props.onOpenChange;
+  const { onClose, onOpenChange } = props;
   const add = props.onAdd;
-  const [first] = props.folders;
-  const label = first ? (props.folders.length > 1 ? `${first.label} +${props.folders.length - 1}` : first.label) : "No folder";
-  const pos = open ? at() : null;
+  useEffect(() => {
+    if (!menuOpen && !picking) onClose();
+  }, [menuOpen, picking, onClose]);
+  const r = props.anchor.current?.getBoundingClientRect();
+  const pos = r ? { x: r.left, y: r.top - MENU_GAP } : { x: 0, y: 0 };
   return (
     <>
-      <Chip
-        ref={ref}
-        icon={GLYPH.files}
-        name="Folders"
-        label={label}
-        bare={props.bare}
-        open={open}
-        warn={!first}
-        disabled={props.disabled}
-        aria-haspopup="menu"
-        data-chip="folder"
-        onClick={() => setOpen(!open)}
-        className="max-w-48"
-      />
-      <Presence show={pos !== null} exitMs={0}>
-        {pos && (
+      <Presence show={menuOpen} exitMs={0}>
+        {menuOpen && (
           <Suspense fallback={null}>
             <Menu
               label="Folders"
               x={pos.x}
               y={pos.y}
               above
-              onClose={() => setOpen(false)}
+              onClose={() => setMenuOpen(false)}
               items={[
                 ...props.folders.map((f) => ({ id: f.id, label: f.label, title: f.path, run: () => ws?.openTool("files") })),
                 ...(props.folders.length ? [{ id: "sep", separator: true as const }] : []),
@@ -124,7 +124,7 @@ export function FolderChip(props: ChipProps & { folders: Folder[]; onAdd?: ((pat
         {picking && add && (
           <Suspense fallback={null}>
             <FolderPicker
-              anchor={ref}
+              anchor={props.anchor}
               label="Add a folder"
               side="top"
               current={props.folders.map((f) => f.path)}

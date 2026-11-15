@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SlashCommands } from "@octo/agent-client";
-import { OCTO_COMMAND_NAMES, OCTO_FALLBACK, octoCommandFor, parseSlash, slashQuery } from "./slash";
+import { argsOptional, NEW_COMMAND, OCTO_COMMAND_NAMES, OCTO_FALLBACK, octoCommandFor, parseSlash, slashQuery } from "./slash";
 import { slashGroups } from "./slashRows";
 
 const CMDS: SlashCommands = {
@@ -73,4 +73,15 @@ test("/new is an Octo command even when the harness does not list it, and takes 
   const none: SlashCommands = { octo: [], agent: null };
   assert.equal(octoCommandFor("/new", none)?.args, "");
   assert.ok(OCTO_COMMAND_NAMES.includes("new"));
+});
+
+test("Enter runs a command whose argument is optional; a required one is completed", () => {
+  const row = (name: string, args?: string, group: "octo" | "agent" = "octo") => ({ group, name, args });
+  assert.equal(argsOptional(row(NEW_COMMAND.name, "text")), true);
+  assert.equal(argsOptional(row("model", "<name>")), true);
+  assert.equal(argsOptional(row("review", "[pr]")), true);
+  assert.equal(argsOptional(row("mode", "ask|plan|agent")), false);
+  assert.equal(argsOptional(row("remember", "<text>")), false);
+  assert.equal(argsOptional(row("compact")), false);
+  assert.equal(argsOptional(row("review", "[pr]", "agent")), false);
 });

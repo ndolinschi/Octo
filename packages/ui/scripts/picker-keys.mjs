@@ -145,7 +145,6 @@ const marks = [
   ["plus", '[aria-haspopup="listbox"]', true],
   ["mode", '[aria-haspopup="menu"][aria-label^="Mode"]', false],
   ["model", "[data-model-picker]", false],
-  ["folder", '[aria-haspopup="menu"][aria-label^="Folders"]', false],
 ];
 for (const [name, sel, hold] of marks) {
   const el = chip(sel);
@@ -157,6 +156,28 @@ for (const [name, sel, hold] of marks) {
   await page.evaluate((s) => document.querySelector(`[data-composer] ${s}`)?.setAttribute("data-picker-opener", "1"), sel);
   await el.click();
   await contract(name, { opener: "[data-picker-opener]", hold });
+  await page.evaluate(() => document.querySelector("[data-picker-opener]")?.removeAttribute("data-picker-opener"));
+}
+
+// The "+" menu's "Folders" and "Session" entries open their own menus on the "+" (they were chips of the row).
+for (const [name, entry] of [
+  ["folders", /^Folders:/],
+  ["session", /^Session:/],
+]) {
+  const plus = chip('[aria-haspopup="listbox"]');
+  await plus.focus();
+  await page.evaluate(() => document.querySelector('[data-composer] [aria-haspopup="listbox"]')?.setAttribute("data-picker-opener", "1"));
+  await plus.click();
+  await page.waitForTimeout(300);
+  const row = page.locator('[data-composer-menu] [role="option"]', { hasText: entry }).first();
+  if (!(await row.count())) {
+    note(name, `no "${entry.source}" entry in the + menu`);
+    await page.keyboard.press("Escape");
+    continue;
+  }
+  await row.click();
+  await page.waitForTimeout(300);
+  await contract(name, { opener: "[data-picker-opener]", hold: false });
   await page.evaluate(() => document.querySelector("[data-picker-opener]")?.removeAttribute("data-picker-opener"));
 }
 

@@ -638,12 +638,17 @@ export const GROUPS = {
     },
     {
       name: "folder-chip-menu",
-      text: "The folder chip's menu (project folders and add).",
+      text: 'The folders menu, opened from the + menu\'s "Folders" entry (project folders and add).',
       sizes: "one",
       run: async (page, env) => {
         await boot(page, env);
         await project(page, env, "Atlas API");
-        await click(page, /^Folders:/);
+        await page.locator('[data-composer] [aria-haspopup="listbox"]').first().click();
+        await page.waitForTimeout(300);
+        await page
+          .locator('[data-composer-menu] [role="option"]', { hasText: /^Folders:/ })
+          .first()
+          .click();
         await page.waitForTimeout(500);
       },
     },

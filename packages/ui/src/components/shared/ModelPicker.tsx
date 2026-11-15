@@ -42,6 +42,8 @@ export function ModelPicker(props: ModelPickerProps) {
   // Decision 53 d: a setting whose provider cannot run it now is said where it is used.
   const broken = props.warn === true || (list !== null && props.value !== "" && !canRun(list, props.value));
   const tip = props.warn !== true && broken ? "This model's provider is not connected. Open the list to connect it or choose another." : props.tip;
+  const parts = props.short === true || typeof label !== "string" ? null : chipParts(text);
+  const shown = props.short === true ? (chipParts(text)?.model ?? text) : text;
   const toned = broken && props.problemShown !== true;
   const variant = props.variant ?? "chip";
   const side = props.side ?? "top";
@@ -93,8 +95,8 @@ export function ModelPicker(props: ModelPickerProps) {
           </Suspense>
         }
         name={props.label}
-        label={text}
-        parts={typeof label === "string" ? chipParts(text) : null}
+        label={shown}
+        parts={parts}
         bare={props.bare ?? false}
         open={open}
         disabled={props.disabled ?? false}
@@ -102,7 +104,7 @@ export function ModelPicker(props: ModelPickerProps) {
         aria-haspopup="dialog"
         data-model-picker
         onClick={() => setOpen(!open)}
-        tip={tip}
+        tip={tip ?? `${props.label}: ${text}`}
         className={cn("max-w-60", props.className)}
       />
       {panel}

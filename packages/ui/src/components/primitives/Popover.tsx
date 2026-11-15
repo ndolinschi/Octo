@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { usePresence } from "./Presence";
 import { useLatest } from "../../lib/hooks";
+import { useCloseOnScroll } from "./popupScroll";
 
 const EDGE = 8;
 const GAP = 6;
@@ -12,7 +13,7 @@ const FOCUSABLE = 'a[href],button:not([disabled]),textarea:not([disabled]),input
  * A small non-modal panel anchored to the control that opened it (problems list, pending comments).
  * Opens above or below the anchor (flipping to fit), aligned to its start or end edge; focus moves in
  * on open and back to the anchor on close; Tab and Shift+Tab cycle inside it (decision 95, `popupNav`); Esc, a click outside,
- * focus moved elsewhere or scrolling the page closes it.
+ * focus moved elsewhere or a scroll that moves the anchor (`popupScroll`) closes it.
  * Enter/exit motion is the overlay one (instant when opened from the keyboard). Wrap in <Presence>.
  */
 export function Popover(props: {
@@ -102,13 +103,6 @@ export function Popover(props: {
       const t = e.target as Node;
       if (!ref.current?.contains(t) && !anchor.current?.contains(t)) onClose();
     };
-    // Only a scroll that moves the anchor closes it: a live transcript scrolling elsewhere must not (v6.3 part 2).
-    const scrolled = (e: Event) => {
-      const t = e.target;
-      if (t instanceof Node && ref.current?.contains(t)) return;
-      const a = anchor.current;
-      if (t === document || (t instanceof Node && a && t.contains(a))) onClose();
-    };
     const key = (e: KeyboardEvent) => {
       if (e.key === "Tab") return cycle(e);
       if (e.key !== "Escape") return;
@@ -139,18 +133,19 @@ export function Popover(props: {
     };
     const el = ref.current;
     document.addEventListener("pointerdown", outside, true);
-    document.addEventListener("scroll", scrolled, true);
     document.addEventListener("keydown", key, true);
     el?.addEventListener("focusout", left);
     window.addEventListener("resize", onClose);
     return () => {
       document.removeEventListener("pointerdown", outside, true);
-      document.removeEventListener("scroll", scrolled, true);
       document.removeEventListener("keydown", key, true);
       el?.removeEventListener("focusout", left);
       window.removeEventListener("resize", onClose);
     };
   }, [open, onClose, anchor]);
+
+  // Only a scroll that moves the anchor closes it: a live transcript scrolling elsewhere must not (v6.3 part 2).
+  useCloseOnScroll(open, ref, () => anchor.current, onClose);
 
   return createPortal(
     <div

@@ -250,6 +250,12 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
+  /* The window itself never scrolls (every screen scrolls in its own box): no elastic bounce of the page under a wheel or
+     trackpad gesture that no box takes (macOS WebKit fires `scroll` on the document for it, which closed popups). */
+  html,
+  body {
+    overscroll-behavior: none;
+  }
   body {
     margin: 0;
     background: var(--octo-window);
@@ -1747,8 +1753,8 @@
 /* end audit C: typeface */
 
 /* round 3: narrow — the composer's control row sheds by the composer's own width (container queries, not the window): the
-   model chip's label truncates first (it shrinks), then goes icon-only; the mode chip goes icon-only before it; the folder
-   chip last. "+", the context ring and Send / Stop never shrink. The accessible names keep the labels. */
+   model chip's label truncates first (it shrinks), then goes icon-only; the mode chip goes icon-only before it. "+", the
+   context ring and Send / Stop never shrink. The accessible names keep the labels. */
 [data-composer-row] [data-model-picker] {
   flex-shrink: 1;
 }
@@ -1773,17 +1779,6 @@
     display: none;
   }
 }
-@container composer (width < 320px) {
-  [data-composer-row] [data-chip="folder"] {
-    width: var(--spacing-ctl-sm);
-    justify-content: center;
-    padding-inline: 0;
-  }
-  [data-composer-row] [data-chip="folder"] [data-chip-label] {
-    display: none;
-  }
-}
-
 /* round 3: words (B8): a table fills its column, a table wider than it fades at the edge that has more (the scrollbar stays),
    and an unbroken token in a cell breaks instead of stretching the table. */
 .octo-table-frame {
@@ -2181,48 +2176,6 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 /* The desktop's window row and status bar have no place on the phone: the header and the "⋯" sheet carry what they hold. */
 [data-phone] :is([data-title-bar], header[aria-label="Window"]:not([data-phone-header]), [data-status-bar]) {
   display: none;
-}
-[data-phone] [data-composer-session] {
-  display: none;
-}
-/* Balance pass: the session chip (the row's last chip) takes the free room itself, so it, not the model or folder chip, is
-   the one cut when the row is tight. On the phone it is hidden and the spacer pushes Send to the end again. */
-:root:not([data-phone]) [data-composer-session] + [data-composer-spacer] {
-  display: none;
-}
-[data-composer-session="row"] {
-  container: composer-session / inline-size;
-  min-width: var(--spacing-ctl-sm);
-}
-/* R2: a narrow composer (beside a panel) keeps the chip in the row as its glyph alone (it repeats the tab's title), so the
-   box never grows a floor for it; the spacer takes the free room again. */
-@container composer (max-width: 479.98px) {
-  [data-composer-session="row"] {
-    flex: none;
-    min-width: 0;
-  }
-  [data-composer-session="row"] [data-composer-chip] {
-    width: var(--spacing-ctl-sm);
-    padding: 0;
-    justify-content: center;
-  }
-  [data-composer-session="row"] [data-chip-label] {
-    display: none;
-  }
-  :root:not([data-phone]) [data-composer-session] + [data-composer-spacer] {
-    display: block;
-  }
-}
-/* Too little room for words: the chip is its glyph alone (the session's name is in its tooltip and accessible name). */
-@container composer-session (max-width: 119.98px) {
-  [data-composer-session] [data-composer-chip] {
-    width: var(--spacing-ctl-sm);
-    padding: 0;
-    justify-content: center;
-  }
-  [data-composer-session] [data-chip-label] {
-    display: none;
-  }
 }
 [data-phone]
   [data-composer-row]

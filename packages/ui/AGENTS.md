@@ -24,6 +24,7 @@ node packages/ui/scripts/flicker.mjs --url http://localhost:1420   # decisions 6
 node packages/ui/scripts/width-stability.mjs --url http://localhost:1420   # decision 79: must print "width-stability: ok" (also at --width 900 --height 600)
 node packages/ui/scripts/frame-colours.mjs --url http://localhost:1420   # decision 81: no warn/error/accent border, outline or ring (approval, form, plan, failed turn, review screens)
 node packages/ui/scripts/scroll-on-send.mjs --url http://localhost:1420   # rule: sending scrolls to the sent message and re-pins to the bottom
+node packages/ui/scripts/slash-commands.mjs --url http://localhost:1420   # every Octo slash command (typed, with an argument, from the menu, by click; `--phone`): the result is checked; must print "slash-commands: ok"
 node packages/ui/scripts/stick-on-open.mjs --url http://localhost:1420   # a long conversation opens at its end and lets go only when the reader scrolls (wheel, keys, stream)
 node packages/ui/scripts/composer-fit.mjs --url http://localhost:1420   # the composer grows a line at a time, then scrolls; also with the script fallback (no field-sizing)
 node packages/ui/scripts/scroll-anchor.mjs --url http://localhost:1420   # 30 steps up the Stress test: the text under the eyes never jumps (native and manual anchoring)

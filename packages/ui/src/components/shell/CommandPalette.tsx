@@ -302,18 +302,21 @@ export function CommandPalette(props: {
         glyph: sessionGlyph(s),
         run: go(() => navigate(s.project_id, null, s.id)),
       }));
-    const newSessions: Item[] = (projects ?? []).map((p) => ({
-      id: `n:${p.id}`,
-      label: `New session in ${p.name}`,
-      search: "new session start conversation",
-      run: go(() => {
-        void bridge.createSession(p.id).then(
-          ({ session }) => navigate(p.id, null, session.id),
-          // Not made (offline, refused): the sidebar's "+" says why; here nothing changes.
-          () => undefined,
-        );
-      }),
-    }));
+    // The open project's row comes first: "New session" must not start one in whichever project is listed first.
+    const newSessions: Item[] = [...(projects ?? [])]
+      .sort((a, b) => Number(b.id === pid) - Number(a.id === pid))
+      .map((p) => ({
+        id: `n:${p.id}`,
+        label: `New session in ${p.name}`,
+        search: "new session start conversation",
+        run: go(() => {
+          void bridge.createSession(p.id).then(
+            ({ session }) => navigate(p.id, null, session.id),
+            // Not made (offline, refused): the sidebar's "+" says why; here nothing changes.
+            () => undefined,
+          );
+        }),
+      }));
     // One real (substring) hit anywhere drops every loose letter-by-letter hit: "key" is not "Knock every yellow".
     const strict = [tabRows, projectRows, sessionRows, loaded, agentRows, actions, newSessions, settingRows].some((l) =>
       l.some((i) => fieldScore(q, i.label, i.search ?? i.detail).sub),

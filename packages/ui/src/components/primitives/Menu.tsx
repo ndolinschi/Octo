@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { usePresence } from "./Presence";
 import { createPointerGate, popupListKey, popupTarget } from "./popupNav";
+import { useCloseOnScroll } from "./popupScroll";
 
 export type MenuItem =
   | {
@@ -33,7 +34,7 @@ const ITEM = '[data-menu-item]:not([aria-disabled="true"])';
  * A small context menu at a point (pointer position or a control's corner), or opening upwards from it with `above`. It appears
  * and leaves instantly (no animation). Keys follow decision 95's one contract (`popupNav`; a menu has no text field): ↑/↓ wrap,
  * Home/End jump, Tab / Shift+Tab move to the next / previous item (focus stays in the menu), type-ahead moves; Enter/Space runs;
- * Esc, a click outside, resizing the window or scrolling closes. Rows look like `PopupList`'s: a 16px leading slot (the check of a
+ * Esc, a click outside, resizing the window or a scroll that moves the opener (`popupScroll`) closes. Rows look like `PopupList`'s: a 16px leading slot (the check of a
  * choice), 28px, 40px under `touch:`. Focus moves into the menu on open and back to the opener when it starts closing (unless the
  * chosen item moved it elsewhere).
  */
@@ -95,36 +96,18 @@ export function Menu(props: {
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
     const close = () => onClose();
-    // A scroll that moves the opener closes the menu; a live transcript scrolling elsewhere does not. Add. 8a: nor does a
-    // `scroll` event that moved nothing, or one on the opener itself (Monaco's input textarea, whose focus hops on a right
-    // click in macOS WebKit, fires one): an ancestor closes the menu only once its offset differs from the one at opening.
-    const o0 = opener.current;
-    const at = new Map<Element, string>();
-    for (let el = o0?.parentElement ?? null; el; el = el.parentElement) at.set(el, `${String(el.scrollTop)},${String(el.scrollLeft)}`);
-    const page = `${String(window.scrollX)},${String(window.scrollY)}`;
-    const scrolled = (e: Event) => {
-      const t = e.target;
-      const o = opener.current;
-      if (t === document) {
-        if (`${String(window.scrollX)},${String(window.scrollY)}` !== page) onClose();
-        return;
-      }
-      if (!(t instanceof Element) || ref.current?.contains(t) || t === o) return;
-      if (o && !t.contains(o)) return;
-      const before = at.get(t);
-      if (before === undefined || before !== `${String(t.scrollTop)},${String(t.scrollLeft)}`) onClose();
-    };
     document.addEventListener("pointerdown", outside, true);
     window.addEventListener("blur", close);
     window.addEventListener("resize", close);
-    document.addEventListener("scroll", scrolled, true);
     return () => {
       document.removeEventListener("pointerdown", outside, true);
       window.removeEventListener("blur", close);
       window.removeEventListener("resize", close);
-      document.removeEventListener("scroll", scrolled, true);
     };
   }, [open, onClose]);
+
+  // Decision: one scroll rule for every popup (`popupScroll`): closes only when the opener was left behind.
+  useCloseOnScroll(open, ref, () => opener.current, onClose);
 
   const items = () => [...(ref.current?.querySelectorAll<HTMLElement>(ITEM) ?? [])];
   const move = (key: string) => {

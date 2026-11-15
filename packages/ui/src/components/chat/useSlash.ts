@@ -7,6 +7,12 @@ import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { ComposerMode } from "./composerMode";
 import { useInlineNotes } from "./notesContext";
 
+/** Fetches the runner's chunk (called when `/` opens the menu), so the first command does not wait for the network. */
+export function preloadSlashRunner(): void {
+  // A failed fetch is retried by the real `import()` when a command runs, which reports it.
+  void import("./slashRun").catch(() => undefined);
+}
+
 /** The commands of the open project (`getSlashCommands`), refetched on `slash_commands.updated`; null until known or without the endpoint. */
 export function useSlashCommands(): SlashCommands | null {
   const { bridge } = useApp();

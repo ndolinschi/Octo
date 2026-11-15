@@ -22,12 +22,6 @@ export function queueCountLabel(n: number): string {
   return `${n} queued`;
 }
 
-/**
- * R2: below this width (a composer in a narrow column beside a panel) the queue is one summary row, "2 queued · Then rename
- * the helper…", that unfolds into the list; a header, a row per message and the field stacked four floors high there.
- */
-export const QUEUE_SUMMARY_BELOW = 480;
-
 /** The summary row's text: the count, then the next message's first line (or the reason it waits). */
 export function queueSummary(messages: readonly { text: string }[], note?: string | null): string {
   const next = messages[0] ? queueLine(messages[0].text) : "";

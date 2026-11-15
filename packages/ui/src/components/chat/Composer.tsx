@@ -1,5 +1,6 @@
 import type { Folder, TierPolicy } from "@octo/agent-client";
 import { ArrowUp, Clock, Plus, Square } from "lucide-react";
+import { GLYPH } from "../primitives/glyphs";
 import { flushSync } from "react-dom";
 import {
   forwardRef,
@@ -26,8 +27,8 @@ import { Presence } from "../primitives/Presence";
 import { withAttachments } from "./attachments";
 import type { ComposerMenuHandle, MenuPick } from "./ComposerMenu";
 import { modeNote } from "../../lib/modes";
-import { FolderChip, ModelChip } from "./ComposerChips";
-import type { ComposerSession } from "./SessionChip";
+import { FolderMenu, foldersLabel, ModelChip } from "./ComposerChips";
+import type { ComposerSession } from "./SessionMenu";
 import type { ComposerMode } from "./composerMode";
 import type { QueuedMessage } from "./ComposerPills";
 import { useAttachments } from "./useAttachments";
@@ -37,8 +38,9 @@ import type { FileInputHandle } from "../primitives/FileInput";
 import { useAgentName } from "./agentName";
 import { errorCode as errorCodeOf, structuredError } from "../../lib/format";
 import type { SlashMenuHandle } from "./SlashMenu";
-import { octoCommandFor, slashQuery, type SlashRow } from "../../lib/slash";
-import { useSlashCommands, useSlashRunner } from "./useSlash";
+import { argsOptional, octoCommandFor, slashQuery, type SlashRow } from "../../lib/slash";
+import { preloadSlashRunner, useSlashCommands, useSlashRunner } from "./useSlash";
+import { pendingLine } from "../../lib/slashPending";
 import { useComposerText, type ComposerDraft } from "./useComposerText";
 import { SENDING_NOTICE_MS } from "../../lib/constants";
 import { clearStopping, markStopping, STILL_STOPPING_MS, useStopping } from "../../lib/stopping";
@@ -60,8 +62,8 @@ const RoutingLine = lazy(() => import("./RoutingLine").then((m) => ({ default: m
 const SlashMenu = lazy(() => import("./SlashMenu").then((m) => ({ default: m.SlashMenu })));
 /** The context gauge shows once the harness reports the context's size (after the project's state loads): warmed after first paint. */
 const ContextRing = lazy(() => import("./ContextRing").then((m) => ({ default: m.ContextRing })));
-/** Decision 96: the session chip at the top of the box (its own chunk; its row is reserved meanwhile, so nothing moves). */
-const SessionChip = lazy(() => import("./SessionChip").then((m) => ({ default: m.SessionChip })));
+/** Decision 96: the "+" menu's "Session" entry opens this (its own chunk). */
+const SessionMenu = lazy(() => import("./SessionMenu").then((m) => ({ default: m.SessionMenu })));
 /** The hidden file input behind "Attach image…": its own chunk, fetched with the composer's first render (entry budget). */
 const FileInput = lazy(() => import("../primitives/FileInput").then((m) => ({ default: m.FileInput })));
 const ComposerHighlight = lazy(() => import("./ComposerHighlight").then((m) => ({ default: m.ComposerHighlight })));
@@ -144,6 +146,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [activeOption, setActiveOption] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [chipOpen, setChipOpen] = useState(0);
+  // The "+" menu's "Folders" and "Session" entries open their own menu on the "+" (they were chips of the control row).
+  const [sub, setSub] = useState<"folders" | "session" | null>(null);
   const box = useRef<HTMLFormElement>(null);
   const plus = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<ComposerMenuHandle>(null);
@@ -154,6 +158,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const slashCommands = useSlashCommands();
   const openModel = useCallback((query: string) => setModelRequest((r) => ({ n: (r?.n ?? 0) + 1, query })), []);
   const runSlash = useSlashRunner({ mode: props.mode, openModel });
+  const [command, setCommand] = useState<string | null>(null);
   const startNew = useNewSession();
   const [started, setStarted] = useState<StartedSession | null>(null);
   const slashListId = useId();
@@ -193,11 +198,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     [area, place, modeChoose, attach],
   );
 
-  const overlay = menu !== null || slash !== null || commentsOpen || chipOpen > 0;
+  const overlay = menu !== null || slash !== null || commentsOpen || chipOpen > 0 || sub !== null;
   const onOverlay = props.onOverlay;
   useEffect(() => onOverlay?.(overlay), [overlay, onOverlay]);
   useEffect(() => () => onOverlay?.(false), [onOverlay]);
   const onChip = useCallback((open: boolean) => setChipOpen((n) => Math.max(0, n + (open ? 1 : -1))), []);
+  // Closing the menu a "+" entry opened gives focus back to the "+", as the chips' menus did to their chip.
+  const closeSub = useCallback(() => {
+    setSub(null);
+    requestAnimationFrame(() => plus.current?.focus());
+  }, []);
 
   const disabled = props.disabledReason !== null;
   const pendingComments = props.comments?.count ?? 0;
@@ -220,6 +230,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   /** The refusal of a message too long to send (until the text is edited). */
   const [refused, setRefused] = useState<string | null>(null);
 
+  /** Runs an Octo command; one that waits for the model shows its line at once and ignores a second Enter meanwhile. */
+  const runOcto = async (name: string, args: string) => {
+    if (command !== null) return;
+    if (pendingLine(name) === null) {
+      await runSlash(name, args);
+      return;
+    }
+    setCommand(name);
+    try {
+      await runSlash(name, args);
+    } finally {
+      setCommand(null);
+    }
+  };
+
   const outgoing = () => withAttachments(text.trim(), attach.files);
   const queue = () => {
     const message = outgoing();
@@ -229,33 +254,32 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     attach.clear();
     pics.clear();
   };
+  // Addition 9: `/new <text>` goes to a new session (with its mentions and images); this one gets nothing and keeps working.
+  const runNew = async (args: string, kept: string) => {
+    setSlash(null);
+    setStarted(null);
+    setError(null);
+    setText("");
+    const result = await startNew(withAttachments(args, attach.files), pics.ready);
+    if (result && "failed" in result) {
+      setText(kept);
+      setError(result.failed);
+      return;
+    }
+    attach.clear();
+    pics.clear();
+    if (result) setStarted(result.started);
+  };
   const submit = async () => {
     if (!canSend) return;
     // An Octo command typed out in full runs here; an agent's is sent as typed (B11).
     const octo = octoCommandFor(text, slashCommands);
-    // Addition 9: `/new <text>` goes to a new session (with its mentions and images); this one gets nothing and keeps working.
-    if (octo?.command.name === "new") {
-      setSlash(null);
-      setStarted(null);
-      setError(null);
-      const kept = text;
-      setText("");
-      const result = await startNew(withAttachments(octo.args, attach.files), pics.ready);
-      if (result && "failed" in result) {
-        setText(kept);
-        setError(result.failed);
-        return;
-      }
-      attach.clear();
-      pics.clear();
-      if (result) setStarted(result.started);
-      return;
-    }
+    if (octo?.command.name === "new") return runNew(octo.args, text);
     setStarted(null);
     if (octo && attach.files.length === 0) {
       setText("");
       setSlash(null);
-      await runSlash(octo.command.name, octo.args);
+      await runOcto(octo.command.name, octo.args);
       return;
     }
     // P2-6: a message over the harness's body limit is not sent (a short one never waits for the check).
@@ -295,6 +319,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const q = slashQuery(value, caret);
     setSlash(q === null ? null : { query: q });
     if (q !== null) {
+      preloadSlashRunner();
       setMenu(null);
       return;
     }
@@ -336,15 +361,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     place(before + lead + insert + after, (before + lead + insert).length + (insert === p.insert ? 0 : 1));
   };
 
-  const chooseSlash = (row: SlashRow) => {
+  const chooseSlash = (row: SlashRow, how: "run" | "complete") => {
     setSlash(null);
-    // A command that takes an argument, and every agent command, goes into the text to be completed; the rest run now.
-    if (row.group === "agent" || row.args) {
+    // A command that needs an argument, and every agent command, goes into the text to be completed; one whose argument is
+    // optional runs on Enter or a click (Tab completes it); the rest run now.
+    if (row.group === "agent" || (row.args && !(how === "run" && argsOptional(row)))) {
       place(`/${row.name} `);
       return;
     }
+    if (row.name === "new") {
+      void runNew("", "/new");
+      return;
+    }
     setText("");
-    void runSlash(row.name, "");
+    void runOcto(row.name, "");
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -397,6 +427,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     else picker.current?.open();
   };
   const agentName = useAgentName(model?.value);
+  const folders = props.folders;
+  const sessionTitle = props.session?.title;
+  const sendTo = useMemo(
+    () => [
+      { id: "folders", label: `Folders: ${foldersLabel(folders)}`, icon: GLYPH.files, run: () => setSub("folders") },
+      ...(sessionTitle !== undefined ? [{ id: "session", label: `Session: ${sessionTitle}`, icon: GLYPH.sessions, run: () => setSub("session") }] : []),
+    ],
+    [folders, sessionTitle],
+  );
   const action = props.running ? (hasContent ? "queue" : "stop") : "send";
   // The mode, model and folder chips: on the control row, and (direction 7, phone) in the "+" menu, which shows them there only.
   const chips = (
@@ -430,11 +469,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ) : undefined
           }
           bare={false}
+          short
           disabled={disabled}
           onOpenChange={onChip}
         />
       )}
-      <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={false} disabled={disabled} onOpenChange={onChip} />
     </>
   );
 
@@ -516,9 +555,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </a>
         </p>
       )}
+      {command !== null && (
+        <p role="status" data-command-pending className="octo-fade mb-2 px-3 text-sm text-fg-3">
+          {pendingLine(command)}
+        </p>
+      )}
       {stillStopping && (
         <p role="status" data-still-stopping className="octo-fade mb-2 px-3 text-sm text-fg-3">
           Still stopping — a running command has to finish
+        </p>
+      )}
+      {props.session && !props.session.isDefault && (
+        // The request goes to the session the tab shows; when that is not the project's default one, say so (one quiet line).
+        <p data-sends-to className="mb-2 min-w-0 truncate px-3 text-sm text-fg-3">
+          Sends to “{props.session.title}”, not the default session
         </p>
       )}
       {props.mode && modeNote(props.mode.value) && <p className="mb-2 px-3 text-sm text-fg-3">{modeNote(props.mode.value)}</p>}
@@ -622,7 +672,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className="octo-composer-input relative block w-full resize-none overscroll-contain bg-transparent px-3 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
             />
           </div>
-          <div data-composer-row className="flex h-10 min-w-0 items-center gap-1 px-1.5 pb-1.5">
+          <div data-composer-row className="box-content flex h-7 min-w-0 items-center gap-1 px-1.5 pb-1.5">
             <IconButton
               ref={plus}
               icon={Plus}
@@ -635,17 +685,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               onClick={() => setMenu((m) => (m?.mode === "button" ? null : { mode: "button" }))}
             />
             {chips}
-            {props.session && (
-              // Balance pass: the session the composer sends to is the last chip of the control row (it was a line of its own at
-              // the top of the box). It takes the row's free room (the spacer gives way, styles.css), so it is the one to shorten.
-              // R2: a narrow composer (beside a panel) shows it as its glyph alone: the session is the one the tab's title names, so
-              // a line of its own only repeated that title; the name stays in its tooltip, its accessible name and its menu.
-              <span data-composer-session="row" className="flex min-w-0 flex-1">
-                <Suspense fallback={<span aria-hidden className="h-ctl-sm" />}>
-                  <SessionChip session={props.session} bare={false} disabled={false} onOpenChange={onChip} />
-                </Suspense>
-              </span>
-            )}
             <span data-composer-spacer className="min-w-0 flex-1" />
             {props.context.used && props.context.size ? (
               <Suspense fallback={null}>
@@ -702,10 +741,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               onPick={pick}
               onClose={closeMenu}
               chips={chips}
+              sendTo={sendTo}
             />
           </Suspense>
         )}
       </Presence>
+      {sub === "folders" && <FolderMenu anchor={plus} folders={props.folders} onAdd={props.onAddFolder} onClose={closeSub} onOpenChange={onChip} />}
+      {sub === "session" && props.session && (
+        <Suspense fallback={null}>
+          <SessionMenu anchor={plus} session={props.session} onClose={closeSub} />
+        </Suspense>
+      )}
     </div>
   );
 });

@@ -206,7 +206,7 @@ function Shell() {
       void import("../components/chat/ComposerPills").catch(() => undefined);
       void import("../components/shell/SidebarDrawer").catch(() => undefined);
       void import("../components/chat/ContextRing").catch(() => undefined);
-      void import("../components/chat/SessionChip").catch(() => undefined);
+      void import("../components/chat/SessionMenu").catch(() => undefined);
     };
     if (Reflect.has(window, "requestIdleCallback")) {
       const id = window.requestIdleCallback(warm, { timeout: 500 });
