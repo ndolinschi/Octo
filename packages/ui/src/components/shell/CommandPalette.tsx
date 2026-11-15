@@ -65,6 +65,10 @@ const SUGGESTED = ["x:new", "w:tool-files", "w:tool-review", "x:settings", "x:sh
 const KEYBOARD_ONLY = new Set(["x:shortcuts", "x:help"]);
 const THEMES = [
   ["dark", "Dark"],
+  ["cursor", "Cursor"],
+  ["claude", "Claude Code"],
+  ["codex", "Codex"],
+  ["opencode", "OpenCode"],
   ["light", "Light"],
   ["system", "System"],
 ] as const;

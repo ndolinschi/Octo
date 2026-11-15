@@ -6,7 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useHost } from "./host";
 import { useMediaQuery } from "../lib/hooks";
 import { choiceCodec, PREFS, usePersistentState } from "../lib/storage";
-import { themeCodec, type Theme, type ThemePref } from "./themePref";
+import { themeCodec, themeMode, type Theme, type ThemeMode, type ThemePref } from "./themePref";
 import { HEALTH_POLL_ONLINE_MS, PROJECTS_POLL_BUSY_MS, PROJECTS_POLL_IDLE_MS } from "../lib/constants";
 import { createRequiredContext } from "../lib/context";
 
@@ -18,7 +18,7 @@ function causeOf(e: unknown): OfflineCause {
   if (errorCode(e) === "invalid_response") return "unreadable";
   return isUnanswered(e) ? "unanswered" : null;
 }
-export type { Theme, ThemePref };
+export type { Theme, ThemeMode, ThemePref };
 
 type AppValue = {
   bridge: Bridge;
@@ -41,8 +41,8 @@ type AppValue = {
   config: BridgeConfig | null;
   retry(): void;
   refreshProjects(): Promise<void>;
-  /** The theme in effect. */
-  theme: Theme;
+  /** The theme polarity in effect. */
+  theme: ThemeMode;
   /** What the user chose; "system" follows the OS. */
   themePref: ThemePref;
   /** False when the host dictates the theme. */
@@ -75,7 +75,8 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
   const [backdropPref, setBackdropPref] = usePersistentState(PREFS.backdrop, backdropCodec, { persistInitial: false });
   const plain = useMediaQuery("(prefers-reduced-transparency: reduce), (forced-colors: active)");
   const backdrop: Backdrop = plain ? "off" : backdropPref;
-  const theme: Theme = host.theme ?? (themePref === "system" ? (systemLight ? "light" : "dark") : themePref);
+  const resolvedTheme: Theme = host.theme ?? (themePref === "system" ? (systemLight ? "light" : "dark") : themePref);
+  const theme: ThemeMode = themeMode(resolvedTheme);
   const [attempt, setAttempt] = useState(0);
   const healthRef = useRef<Health>("checking");
 
@@ -83,11 +84,11 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
     // Swap without every colour transition firing at once.
     const root = document.documentElement;
     root.dataset.themeSwitching = "";
-    root.dataset.theme = theme;
+    root.dataset.theme = resolvedTheme;
     void root.offsetHeight;
     const id = requestAnimationFrame(() => delete root.dataset.themeSwitching);
     return () => cancelAnimationFrame(id);
-  }, [theme]);
+  }, [resolvedTheme]);
 
   const refreshProjects = useCallback(async () => {
     try {

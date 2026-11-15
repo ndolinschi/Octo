@@ -1,13 +1,13 @@
 /* Octo design tokens. Hosts must `@import "tailwindcss"` before this file. */
 @source "./";
 
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant dark (&:where(:not([data-theme="light"]), :not([data-theme="light"]) *));
 
 /* Neutral greys; colour means state: ok (done), err (failed), accent (activity: running, unseen), link.
    v6 surfaces: a near-black neutral window holds LIGHTER panels as cards (8px gutters, radius 12, faint
    edge + 1px inner top highlight); raised boxes sit on panels; overlays float above everything. */
 :root,
-:root[data-theme="dark"] {
+:root:not([data-theme="light"]) {
   color-scheme: dark;
   /* Polish trial T4: three tones about 4 % lightness apart (window 4 %, panel 9 %, raised 13.5 %), neutral hue. */
   --octo-window: #0b0b0b;
@@ -61,6 +61,113 @@
   --octo-ctx-tools: #8a8a8a;
   --octo-ctx-system: #5e5e5e;
   --octo-ctx-other: #474747;
+}
+
+/* Cursor: cool charcoal-slate surfaces with electric blue accents. */
+:root[data-theme="cursor"] {
+  --octo-window: #111113;
+  --octo-panel: #18181b;
+  --octo-raised: #212126;
+  --octo-overlay: #26262c;
+  --octo-code-bg: #1b1b1f;
+  --octo-fg: #ededf0;
+  --octo-fg-2: #b8b8c2;
+  --octo-fg-3: #8a8a96;
+  --octo-accent: #4da3ff;
+  --octo-link: #6bb5ff;
+  --octo-ok: #4ec9b0;
+  --octo-err: #f17878;
+  --octo-warn: #e5b567;
+  --octo-primary: #ededf0;
+  --octo-primary-fg: #141416;
+  --octo-drop: rgb(77 163 255 / 0.11);
+  --octo-drop-edge: rgb(77 163 255 / 0.45);
+  --octo-selection: rgb(77 163 255 / 0.3);
+  --octo-comment-line: rgb(77 163 255 / 0.08);
+  --octo-ctx-messages: #4da3ff;
+  --octo-bubble: #254b73;
+  --octo-bubble-fg: #ffffff;
+}
+
+/* Claude Code: warm espresso-charcoal surfaces with terracotta-amber accents. */
+:root[data-theme="claude"] {
+  --octo-window: #141311;
+  --octo-panel: #1c1a17;
+  --octo-raised: #26231f;
+  --octo-overlay: #2b2823;
+  --octo-code-bg: #1f1d1a;
+  --octo-fg: #f2efe9;
+  --octo-fg-2: #c7c0b5;
+  --octo-fg-3: #9c9488;
+  --octo-accent: #d97757;
+  --octo-link: #e58d70;
+  --octo-ok: #68b87d;
+  --octo-err: #eb7a72;
+  --octo-warn: #e0a960;
+  --octo-primary: #f2efe9;
+  --octo-primary-fg: #171512;
+  --octo-drop: rgb(217 119 87 / 0.12);
+  --octo-drop-edge: rgb(217 119 87 / 0.45);
+  --octo-selection: rgb(217 119 87 / 0.28);
+  --octo-comment-line: rgb(217 119 87 / 0.09);
+  --octo-ctx-messages: #d97757;
+  --octo-ctx-notes: #e0a960;
+  --octo-bubble: #8c4730;
+  --octo-bubble-fg: #ffffff;
+}
+
+/* Codex: deep ink-slate surfaces with emerald-mint accents. */
+:root[data-theme="codex"] {
+  --octo-window: #0d0f12;
+  --octo-panel: #14171c;
+  --octo-raised: #1d2128;
+  --octo-overlay: #22272f;
+  --octo-code-bg: #171a20;
+  --octo-fg: #eef1f6;
+  --octo-fg-2: #b7c0cd;
+  --octo-fg-3: #8893a3;
+  --octo-accent: #38b889;
+  --octo-link: #52c99d;
+  --octo-ok: #4cc38a;
+  --octo-err: #f07b78;
+  --octo-warn: #dfb064;
+  --octo-primary: #eef1f6;
+  --octo-primary-fg: #0f1216;
+  --octo-drop: rgb(56 184 137 / 0.11);
+  --octo-drop-edge: rgb(56 184 137 / 0.45);
+  --octo-selection: rgb(56 184 137 / 0.28);
+  --octo-comment-line: rgb(56 184 137 / 0.08);
+  --octo-ctx-messages: #38b889;
+  --octo-ctx-summary: #52c99d;
+  --octo-bubble: #1f634c;
+  --octo-bubble-fg: #ffffff;
+}
+
+/* OpenCode: midnight graphite surfaces with violet-indigo accents. */
+:root[data-theme="opencode"] {
+  --octo-window: #0b0b0e;
+  --octo-panel: #131318;
+  --octo-raised: #1c1c24;
+  --octo-overlay: #22222b;
+  --octo-code-bg: #17171d;
+  --octo-fg: #ececf2;
+  --octo-fg-2: #bcbcc9;
+  --octo-fg-3: #8d8d9e;
+  --octo-accent: #9b8aff;
+  --octo-link: #b0a3ff;
+  --octo-ok: #5dc286;
+  --octo-err: #f27c85;
+  --octo-warn: #e3b368;
+  --octo-primary: #ececf2;
+  --octo-primary-fg: #111116;
+  --octo-drop: rgb(155 138 255 / 0.12);
+  --octo-drop-edge: rgb(155 138 255 / 0.45);
+  --octo-selection: rgb(155 138 255 / 0.28);
+  --octo-comment-line: rgb(155 138 255 / 0.09);
+  --octo-ctx-messages: #9b8aff;
+  --octo-ctx-tool_results: #c084fc;
+  --octo-bubble: #4b3f8c;
+  --octo-bubble-fg: #ffffff;
 }
 
 :root[data-theme="light"] {
@@ -837,7 +944,7 @@
 /* Fenced code in prose: the editor's plain-text colour (lib/codePalette.ts), so a block does not change
    colour when the highlighter's token colours arrive. */
 :root,
-:root[data-theme="dark"] {
+:root:not([data-theme="light"]) {
   --octo-code-text: #d8d8d8;
 }
 :root[data-theme="light"] {
@@ -1002,7 +1109,7 @@
   box-shadow: inset 0 1px 0 var(--octo-card-highlight);
 }
 :root,
-:root[data-theme="dark"] {
+:root:not([data-theme="light"]) {
   /* 72% (decision 32) left 12px fg-3 at 3.4–3.6:1 where the core passes behind a card: raised to 85% (measured
      ≥ 4.5 at the worst pixel; decision 21b: raise the surface before dimming the band). */
   --octo-card-alpha: 85%;
@@ -2318,7 +2425,7 @@ article:not(:has([data-turn-changes])):is(:hover, :focus-within) [data-restore] 
    F4 moves them to the theme blocks with the other tokens. Not scoped to `[data-conv]`: a session's transcript in the
    Sessions tab and Memory draw the same request (it lost its card there when the classes moved here). */
 :root,
-:root[data-theme="dark"] {
+:root:not([data-theme="light"]):not([data-theme="cursor"]):not([data-theme="claude"]):not([data-theme="codex"]):not([data-theme="opencode"]) {
   --octo-bubble: #3a786b; /* white text 5.15:1 */
   --octo-bubble-fg: #ffffff;
 }

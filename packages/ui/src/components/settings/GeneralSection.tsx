@@ -3,6 +3,7 @@ import { PREFS, sidebarViewCodec, usePersistentState, writePref } from "../../li
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { Segmented } from "../primitives/Segmented";
+import { Select } from "../primitives/Select";
 import { Spinner } from "../primitives/Status";
 import { Switch } from "../primitives/Switch";
 import { ToneDot } from "../shared/providers/ProviderRows";
@@ -10,6 +11,7 @@ import { SaveStatus, SettingsGroup, SettingsRow } from "./parts";
 import { useSave } from "./useSave";
 import { startupCodec, useMotionPref } from "./prefs";
 import type { Backdrop, ThemePref } from "../../state/app";
+import { THEME_CHOICES } from "../../state/themePref";
 
 export function GeneralSection() {
   const [startup, setStartup] = usePersistentState(PREFS.startup, startupCodec);
@@ -98,11 +100,11 @@ function BridgeRow() {
   );
 }
 
-const THEMES = [
-  { id: "system", label: "System" },
-  { id: "dark", label: "Dark" },
-  { id: "light", label: "Light" },
-] as const satisfies readonly { id: ThemePref; label: string }[];
+const THEME_OPTIONS = THEME_CHOICES.map((t) => ({
+  value: t.id,
+  label: t.label,
+  ...("description" in t ? { description: t.description } : {}),
+}));
 
 const BACKDROPS = [
   { id: "vivid", label: "Vivid" },
@@ -132,7 +134,14 @@ export function AppearanceSection() {
         status={<SaveStatus state={themeSaved} />}
         control={
           canChooseTheme ? (
-            <Segmented label="Theme" options={THEMES} value={themePref} onChange={(v) => void saveTheme(now(() => setThemePref(v)))} />
+            <Select
+              size="sm"
+              label="Theme"
+              value={themePref}
+              options={THEME_OPTIONS}
+              onChange={(v) => void saveTheme(now(() => setThemePref(v as ThemePref)))}
+              className="w-40"
+            />
           ) : undefined
         }
       />

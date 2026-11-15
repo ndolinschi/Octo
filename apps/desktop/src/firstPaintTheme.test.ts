@@ -49,6 +49,10 @@ test("first paint: follows the system theme when nothing is stored", () => {
 
 test("first paint: a stored light or dark choice wins over the system", () => {
   assert.equal(run({ light: true, stored: "dark" }).theme(), "dark");
+  assert.equal(run({ light: true, stored: "cursor" }).theme(), "cursor");
+  assert.equal(run({ light: true, stored: "claude" }).theme(), "claude");
+  assert.equal(run({ light: true, stored: "codex" }).theme(), "codex");
+  assert.equal(run({ light: true, stored: "opencode" }).theme(), "opencode");
   assert.equal(run({ light: false, stored: "light" }).theme(), "light");
 });
 

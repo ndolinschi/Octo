@@ -19,6 +19,10 @@ function fakeStorage(initial: Record<string, string>) {
 
 test("theme: values stored since v6 load; anything else is system", () => {
   assert.equal(themeCodec.parse("dark"), "dark");
+  assert.equal(themeCodec.parse("cursor"), "cursor");
+  assert.equal(themeCodec.parse("claude"), "claude");
+  assert.equal(themeCodec.parse("codex"), "codex");
+  assert.equal(themeCodec.parse("opencode"), "opencode");
   assert.equal(themeCodec.parse("light"), "light");
   assert.equal(themeCodec.parse("system"), "system");
   assert.equal(themeCodec.parse(null), "system");
