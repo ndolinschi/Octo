@@ -22,6 +22,84 @@ export function tabsOverflow(avail: number, n: number): boolean {
   return avail > 0 && n > 0 && n * TAB_MIN + TAB_GAP * (n - 1) > avail;
 }
 
+/**
+ * C2 (V3, only whole tabs): the narrowest a tab with a long title (a file, a session) is drawn; its title truncates down to this
+ * (about 13 characters). A tab whose title fits in less is never narrower than its whole title and its close place.
+ */
+export const TAB_FLOOR = 144;
+
+/** A tab's unsqueezed width: its parts and whole title (`natural`), plus the close place when it keeps one, within TAB_MIN…TAB_MAX. */
+export function tabWant(natural: number, close: boolean): number {
+  return Math.min(TAB_MAX, Math.max(TAB_MIN, natural + (close ? TAB_CLOSE_ROOM : 0)));
+}
+
+/** The narrowest the tab is drawn: its whole title, or `TAB_FLOOR` for a long one. */
+export function tabFloor(natural: number, close: boolean): number {
+  return Math.min(tabWant(natural, close), TAB_FLOOR);
+}
+
+export type StripTab<T> = {
+  id: T;
+  /** The tab's parts and whole title without the close place (px); undefined while it has never been laid out. */
+  natural: number | undefined;
+  /** It keeps its close place (the active tab, an unsaved file, or every tab while the strip is not short). */
+  close: boolean;
+  /** Always shown: the active tab and the pinned Orchestrator tab. */
+  keep: boolean;
+};
+
+/**
+ * C2 (V3): which tabs the strip shows. When every tab fits at its floor, all of them; otherwise the kept ones (the active tab
+ * first), then the most recently used (`recent`, most recent first) while they fit beside the "All tabs" button (`allRoom`),
+ * which then lists the rest. Shown tabs keep strip order. Nothing measured (`natural` undefined) shows everything, so a tab is
+ * measured before it can be hidden; the answer depends only on these numbers, never on the widths drawn, so there is no
+ * measure → change → measure loop.
+ */
+export function fitStrip<T>(i: { room: number; tabs: readonly StripTab<T>[]; recent: readonly T[]; allRoom: number }): { shown: T[]; hidden: number } {
+  const all = i.tabs.map((t) => t.id);
+  if (i.room <= 0 || i.tabs.some((t) => t.natural === undefined)) return { shown: all, hidden: 0 };
+  const floor = new Map(i.tabs.map((t) => [t.id, tabFloor(t.natural ?? 0, t.close)]));
+  const total = (ids: Iterable<T>) => {
+    let sum = 0;
+    let n = 0;
+    for (const id of ids) {
+      sum += floor.get(id) ?? 0;
+      n += 1;
+    }
+    return sum + TAB_GAP * Math.max(0, n - 1);
+  };
+  if (total(all) <= i.room) return { shown: all, hidden: 0 };
+  const budget = i.room - i.allRoom;
+  const picked = new Set(i.tabs.filter((t) => t.keep).map((t) => t.id));
+  let used = total(picked);
+  const order = [...i.recent.filter((id) => floor.has(id)), ...all.filter((id) => !i.recent.includes(id))];
+  for (const id of order) {
+    if (picked.has(id)) continue;
+    const w = (floor.get(id) ?? 0) + (picked.size > 0 ? TAB_GAP : 0);
+    if (used + w > budget) continue;
+    picked.add(id);
+    used += w;
+  }
+  const shown = all.filter((id) => picked.has(id));
+  return { shown, hidden: all.length - shown.length };
+}
+
+/**
+ * C2 (V3): a drag measures the shown tabs only, so its index `k` (into `shown`, "before shown[k]", `shown.length` = after the
+ * last) becomes an index into `tabs` (the group's tabs, what `layout.move` takes): before the first shown tab at or after `k`
+ * that is in the group, else after the last such one before it. Identity when nothing is hidden.
+ */
+export function shownToLayoutIndex<T>(shown: readonly T[], tabs: readonly T[], k: number): number {
+  if (shown.length === tabs.length && shown.every((t, j) => tabs[j] === t)) return k;
+  const inGroup = (j: number) => {
+    const t = shown[j];
+    return t === undefined ? -1 : tabs.indexOf(t);
+  };
+  for (let j = Math.max(0, k); j < shown.length; j++) if (inGroup(j) >= 0) return inGroup(j);
+  for (let j = Math.min(k, shown.length) - 1; j >= 0; j--) if (inGroup(j) >= 0) return inGroup(j) + 1;
+  return Math.min(k, tabs.length);
+}
+
 export type Slot = { left: number; width: number };
 
 /**

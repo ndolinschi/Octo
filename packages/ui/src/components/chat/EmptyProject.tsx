@@ -19,6 +19,7 @@ export function EmptyTitle({ project }: { project: Project }) {
     list && model && !noKey && !canRun(list, model)
       ? `${chipLabel(model, list)} can't run yet: its provider is not connected. Pick another model below, or connect one in Settings.`
       : null;
+  const folder = project.folders[0]?.label;
   const noFolder = project.folders.length === 0 ? "No folder is chosen, so agents have nothing to work in. Choose one with the folder button below." : null;
   return (
     // Balance pass: on the composer's text edge (12px in), like Home's one left edge (F5): no centred heading over the left-aligned
@@ -37,6 +38,12 @@ export function EmptyTitle({ project }: { project: Project }) {
       {noKey && (
         <p data-nokey className="relative mt-2 text-sm text-fg-2" title={config.builtin_loop?.reason}>
           No API key yet. Pick a coding agent in the model menu below, or add a key in Settings.
+        </p>
+      )}
+      {/* C4: one line on what Octo does here, no tour; a problem's sentence takes its place (two grey paragraphs would compete). */}
+      {!stuck && !noFolder && !noKey && folder && (
+        <p data-orient className="relative mt-2 text-sm text-fg-3">
+          Octo edits {folder} and runs its commands; you can undo any change.
         </p>
       )}
     </div>

@@ -2,7 +2,9 @@ import { focusSoon, focusSurfaceSoon } from "../../lib/focus";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMediaQuery, useLatest } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
-import { loadPref, numberCodec, PREFS, usePersistentState, writePref, type Codec } from "../../lib/storage";
+import { loadPref, numberCodec, PREFS, readPref, usePersistentState, writePref, type Codec } from "../../lib/storage";
+import { changedFileCount } from "../../lib/statusBar";
+import { useApp } from "../app";
 import { useNav, type WorkspaceApi } from "../nav";
 import { useProject } from "../project";
 import { sessionRoot } from "@octo/agent-client";
@@ -23,7 +25,7 @@ import {
 } from "../../lib/constants";
 import { createRequiredContext } from "../../lib/context";
 import { SIDE_PINNED, TabMemory, USAGE_VIEW } from "./tabMemory";
-import { jumpIndex, mruOrder, mruTouch, pushClosed, takeClosed, toMoveIndex, type Closed } from "./tabStrip";
+import { jumpIndex, mruOrder, mruTouch, pushClosed, shownToLayoutIndex, takeClosed, toMoveIndex, type Closed } from "./tabStrip";
 import { useTabKeys } from "./useTabKeys";
 import { dockFits, dockNeeds, groupFloors } from "./floors";
 import { TREE_MIN, useFileView } from "../fileView";
@@ -124,6 +126,10 @@ export type WorkspaceValue = {
   cycle(step: number, order: TabId[]): void;
   /** The focused group's tabs in most-recently-used order (taken when a Ctrl+Tab walk starts). */
   mruOrder(): TabId[];
+  /** C2: `tabs` most recently used first (never-used ones after, in order): what a short strip keeps shown. */
+  recentOf(tabs: readonly TabId[]): TabId[];
+  /** C2: the tabs a group's strip shows (null: all), so a drop index measured over them lands in the group's own order. */
+  stripShown(group: string, shown: readonly TabId[] | null): void;
   walkGroup(): string;
   /** Ends a Ctrl+Tab walk: the tab it stopped on becomes the most recent. */
   endCycle(): void;
@@ -220,6 +226,8 @@ export function WorkspaceProvider({
     },
     [projectId, chatSessionRef],
   );
+  // C3: read before the layout below saves its first value — no saved layout means this is the project's first open here.
+  const [firstOpen] = useState(() => readPref(PREFS.layout(projectId)) === null);
   const [layout, setLayout] = usePersistentState(PREFS.layout(projectId), L.layoutCodec, { debounceMs: PERSIST_LAYOUT_MS });
   const layoutRef = useRef(layout);
   const [dockWidth, setDockWidth] = useState(0);
@@ -231,6 +239,7 @@ export function WorkspaceProvider({
   const [memory] = useState(() => new TabMemory());
   const code = useRef<CodeLink | null>(null);
   const mru = useRef<TabId[]>([]);
+  const shownByStrip = useRef(new Map<string, readonly TabId[]>());
   const cycling = useRef(false);
   const [closedTabs, setClosedTabs] = useState<Closed<TabId>[]>([]);
   const selfNav = useRef<string | null>(null);
@@ -364,6 +373,32 @@ export function WorkspaceProvider({
   );
 
   const chatRoot = chatSession ? sessionRoot(state, chatSession) : "";
+  // C3: on a project's first open, once its recorded changes are known and the dock is measured, a wide window shows
+  // Changes beside the conversation (`firstLayout`). Once, then the saved layout decides.
+  const { bridge } = useApp();
+  const [firstChanges, setFirstChanges] = useState<number | null>(null);
+  useEffect(() => {
+    if (!firstOpen || !bridge.listChanges) return;
+    let live = true;
+    bridge.listChanges(projectId).then(
+      (turns) => live && setFirstChanges(changedFileCount(turns)),
+      // No readable changes: the project opens without the panel, as it always did; the Changes tab says why when opened.
+      () => live && setFirstChanges(0),
+    );
+    return () => {
+      live = false;
+    };
+  }, [firstOpen, bridge, projectId]);
+  const firstDone = useRef(false);
+  useEffect(() => {
+    if (firstDone.current || firstChanges === null || dockWidth <= 0) return;
+    firstDone.current = true;
+    const next = docked
+      ? L.firstLayout({ saved: false, window: window.innerWidth, inner: dockWidth - GROUP_GAP, changedFiles: firstChanges, layout: layoutRef.current })
+      : null;
+    if (next) commit(next, { route: false });
+  }, [firstChanges, dockWidth, docked, commit, layoutRef]);
+
   const value = useMemo<WorkspaceValue>(() => {
     const isVisible = (tab: TabId) => {
       const g = L.groupOf(layout, tab);
@@ -522,8 +557,13 @@ export function WorkspaceProvider({
       // A dropped tab keeps focus on its own button (the drag moved it: its old button is gone).
       drop: (tab, target) => {
         const current = layoutRef.current;
-        if (target.kind === "strip") commit(L.move(current, tab, target.group, target.index), { focusTab: tab });
-        else if (target.kind === "into") commit(L.move(current, tab, target.group), { focusTab: tab });
+        if (target.kind === "strip") {
+          // C2: the drag measured the shown tabs only; hidden ones ("All tabs") keep their places.
+          const shown = shownByStrip.current.get(target.group);
+          const groupTabs = current.groups.find((g) => g.id === target.group)?.tabs ?? [];
+          const index = shown ? shownToLayoutIndex(shown, groupTabs, target.index) : target.index;
+          commit(L.move(current, tab, target.group, index), { focusTab: tab });
+        } else if (target.kind === "into") commit(L.move(current, tab, target.group), { focusTab: tab });
         else commit(L.split(current, tab, target.group, target.side), { focusTab: tab });
         // The drag ends after the move: if that left focus on nothing, the moved tab's button takes it.
         focusSoon(() => tabButton(document, tab), { onlyIfLost: true, delay: 80 });
@@ -540,6 +580,11 @@ export function WorkspaceProvider({
       },
       equalize: () => commit(L.equalize(layoutRef.current)),
       walkGroup: () => (narrowRef.current ? "all" : L.focusedGroup(layoutRef.current).id),
+      recentOf: (tabs) => mruOrder(mru.current, tabs),
+      stripShown: (group, shown) => {
+        if (shown) shownByStrip.current.set(group, shown);
+        else shownByStrip.current.delete(group);
+      },
       mruOrder: () => {
         const current = layoutRef.current;
         return mruOrder(mru.current, narrowRef.current ? L.allTabs(current) : L.focusedGroup(current).tabs);

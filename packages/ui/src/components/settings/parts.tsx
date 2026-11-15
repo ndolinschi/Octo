@@ -59,9 +59,10 @@ export function SettingsGroup(props: {
           {props.label}
         </SectionHeader>
       )}
-      {props.description && <p className="px-settings-inset pb-1 text-xs text-fg-3">{props.description}</p>}
+      {/* The rows' reading measure (SettingsRow's 56ch) plus the inset on both sides. */}
+      {props.description && <p className="max-w-[59ch] px-settings-inset pb-1 text-xs text-pretty text-fg-3">{props.description}</p>}
       <ListFrame>{props.children}</ListFrame>
-      {props.footer && <div className="px-settings-inset pt-1 text-xs text-fg-3">{props.footer}</div>}
+      {props.footer && <div className="max-w-[59ch] px-settings-inset pt-1 text-xs text-pretty text-fg-3">{props.footer}</div>}
     </section>
   );
 }
@@ -114,7 +115,8 @@ export function SettingsRow(props: {
             )}
             {props.help && <IconButton icon={CircleHelp} label="More about this setting" size="xs" title={props.help} className="-my-0.5" />}
           </div>
-          {!one && <div className="text-xs break-words text-fg-3">{props.description}</div>}
+          {/* The row spans the 880 column; its explanation keeps a reading measure (~75 characters of 12px Inter) instead. */}
+          {!one && <div className="max-w-[56ch] text-xs text-pretty break-words text-fg-3">{props.description}</div>}
         </div>
       </div>
       {(props.control || props.status) && (

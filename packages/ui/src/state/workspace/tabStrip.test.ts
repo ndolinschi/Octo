@@ -19,6 +19,12 @@ import {
   tabsOverflow,
   takeClosed,
   toMoveIndex,
+  fitStrip,
+  shownToLayoutIndex,
+  tabFloor,
+  tabWant,
+  TAB_CLOSE_ROOM,
+  TAB_FLOOR,
 } from "./tabStrip";
 
 test("overflow (decision 83): tabs shrink to TAB_MIN each before the strip scrolls", () => {
@@ -128,4 +134,56 @@ test("endPlan folds the agents first, then Run, and does not flap", () => {
   assert.deepEqual(endPlan({ ...e, room: 190, agentsCompact: true, runCompact: true }), { agentsCompact: false, runCompact: false }, "everything fits again");
   assert.deepEqual(endPlan({ ...e, room: 96, agents: 0 }), { agentsCompact: false, runCompact: false }, "nothing to fold");
   assert.deepEqual(endPlan({ ...e, tabs: 3, room: 196, agents: 0 }), { agentsCompact: false, runCompact: true }, "three tabs: Run folds");
+});
+
+/* C2 (V3): only whole tabs; the rest in "All tabs". Tools are ~70–100px of parts and title; a file with a long name ~260. */
+const tool = (id: string, natural = 80, o: { keep?: boolean; close?: boolean } = {}) => ({ id, natural, close: o.close ?? true, keep: o.keep ?? false });
+
+test("fitStrip: a tab is never drawn narrower than its whole title, a long title not below TAB_FLOOR", () => {
+  assert.equal(tabWant(80, true), 80 + TAB_CLOSE_ROOM);
+  assert.equal(tabFloor(80, true), 80 + TAB_CLOSE_ROOM, "a short title keeps all of itself and the close place");
+  assert.equal(tabFloor(50, false), TAB_MIN, "decision 83: never under TAB_MIN");
+  assert.equal(tabFloor(300, true), TAB_FLOOR, "a long file name truncates, but not below the floor");
+  assert.equal(tabWant(400, true), TAB_MAX);
+});
+
+test("fitStrip: everything fits → all shown; unmeasured or unmeasured room → all shown", () => {
+  const tabs = ["a", "b", "c"].map((id) => tool(id));
+  assert.deepEqual(fitStrip({ room: 1000, tabs, recent: [], allRoom: 40 }), { shown: ["a", "b", "c"], hidden: 0 });
+  assert.deepEqual(fitStrip({ room: 3 * 104 + 2 * TAB_GAP, tabs, recent: [], allRoom: 40 }).hidden, 0, "exactly fits");
+  assert.deepEqual(fitStrip({ room: 0, tabs, recent: [], allRoom: 40 }).hidden, 0);
+  assert.deepEqual(fitStrip({ room: 100, tabs: [...tabs, { id: "d", natural: undefined, close: true, keep: false }], recent: [], allRoom: 40 }).hidden, 0);
+});
+
+test("fitStrip: short → the active tab stays, then the most recent ones; strip order kept; the oldest go to All tabs", () => {
+  const tabs = ["files", "changes", "memory", "notes", "usage", "agents"].map((id) => tool(id, 80, { keep: id === "agents" }));
+  // 104 each; room for the "All tabs" button (40) and three tabs: 3 * 104 + 2 * 4 = 320.
+  const r = fitStrip({ room: 360, tabs, recent: ["agents", "files", "usage", "notes"], allRoom: 40 });
+  assert.deepEqual(r, { shown: ["files", "usage", "agents"], hidden: 3 });
+  const never = fitStrip({ room: 360, tabs, recent: [], allRoom: 40 });
+  assert.deepEqual(never.shown, ["files", "changes", "agents"], "never-used tabs: strip order after the kept one");
+});
+
+test("fitStrip: a big recent tab that does not fit leaves room to a smaller older one", () => {
+  const tabs = [tool("a", 80, { keep: true }), tool("long-file", 400), tool("b", 80)];
+  const r = fitStrip({ room: 104 + 4 + 104 + 40 + 20, tabs, recent: ["a", "long-file", "b"], allRoom: 40 });
+  assert.deepEqual(r, { shown: ["a", "b"], hidden: 1 });
+});
+
+test("fitStrip: the active tab is shown even when it alone is wider than the room", () => {
+  const r = fitStrip({ room: 60, tabs: [tool("a"), tool("b", 80, { keep: true })], recent: ["a"], allRoom: 40 });
+  assert.deepEqual(r, { shown: ["b"], hidden: 1 });
+});
+
+test("shownToLayoutIndex: a drag index over the shown tabs → the group's index", () => {
+  const all = ["a", "b", "c", "d", "e"];
+  assert.equal(shownToLayoutIndex(all, all, 3), 3, "identity when nothing is hidden");
+  const shown = ["a", "c", "e"];
+  assert.equal(shownToLayoutIndex(shown, all, 0), 0, "before a");
+  assert.equal(shownToLayoutIndex(shown, all, 1), 2, "before c");
+  assert.equal(shownToLayoutIndex(shown, all, 2), 4, "before e");
+  assert.equal(shownToLayoutIndex(shown, all, 3), 5, "after the last shown");
+  // Narrow (one strip for every group): a shown tab from another group is skipped.
+  assert.equal(shownToLayoutIndex(["x", "a", "y", "c"], ["a", "b", "c"], 2), 2, "before c, past the other group's y");
+  assert.equal(shownToLayoutIndex(["a", "x"], ["a", "b"], 1), 1, "after a when nothing of the group follows");
 });

@@ -10,7 +10,7 @@ import { formatTokens } from "../../lib/format";
 export function CompactedMarker({ marker }: { marker: CompactionMarker }) {
   const size = marker.summary_tokens ? ` into a summary of about ${formatTokens(marker.summary_tokens)} tokens` : "";
   const label = compactionLabel(marker);
-  const cut = label.startsWith("Rewound");
+  const cut = label.startsWith("Restored");
   const count = marker.message_count ? `${marker.message_count} messages were ` : "Everything above was ";
   return (
     <div

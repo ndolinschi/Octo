@@ -99,7 +99,7 @@ export function rewound(state: ProjectState, messageId: number, label: string, a
   // messages stay). Without a root (an older harness) every agent is.
   const inScope = (id: string) => root === undefined || ancestorsOf(state, id).some((a) => a.id === root) || id === root;
   const present = Object.entries(state.compactions).some(
-    ([agentId, list]) => inScope(agentId) && list.some((c) => c.upto_message_id === messageId - 1 && c.label?.startsWith("Rewound")),
+    ([agentId, list]) => inScope(agentId) && list.some((c) => c.upto_message_id === messageId - 1 && c.label?.startsWith("Restored")),
   );
   if (soft && present) return state;
   const cutAt = Object.values(state.messages)

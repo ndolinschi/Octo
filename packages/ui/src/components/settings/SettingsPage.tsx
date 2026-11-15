@@ -56,7 +56,7 @@ const CONTENT: Record<SectionId, (projectId: string | null) => ReactNode> = {
 
 /**
  * Decision 59: Settings is a page (`#/settings/<section>`), not a dialog. The settings navigation takes the sidebar's
- * place; the content is one centred column (880px, `settings-page`) of groups; the row sections use its left 660px (`settings-rows`). Below 760px the navigation is a select on top and
+ * place; the content is one centred column (880px, `settings-page`) of groups; rows and tables take its full width (one left and one right edge). Below 760px the navigation is a select on top and
  * rows stack their control under the text. Escape (outside a field with text) goes back.
  */
 export function SettingsPage(props: {
@@ -201,9 +201,9 @@ export function SettingsPage(props: {
               ) : searching ? (
                 <Results query={query} results={results} onOpen={open} list={resultList} />
               ) : (
-                // Cross-part leftovers (a): the row sections keep a reading measure (`settings-rows`) from the same left edge, so a
-                // row's control sits near its label; Providers keeps the column for its list | detail surface.
-                <div className={cn("flex flex-col gap-6", section !== "providers" && section !== "usage" && "max-w-settings-rows")}>
+                // B (a+b): every section, rows and tables alike, takes the whole centred column, so the page has one left
+                // and one right edge; a row's explanation keeps its own reading measure (SettingsRow).
+                <div className="flex flex-col gap-6">
                   {sectionLocked(device, section) ? (
                     // Reached by a link or a search result: the harness would refuse every change here.
                     <Notice tone="info">{`${sectionLabel(section)} can't be changed from this device. ${ON_YOUR_COMPUTER}.`}</Notice>

@@ -4,7 +4,7 @@ import type { CompactionMarker } from "@octo/agent-client";
 
 /** The marker's text once a rewind cut the conversation (parity B5; it shares the compaction marker's line). */
 export function rewoundLabel(acpReset: boolean): string {
-  return acpReset ? `Rewound to here · ${AGENT_RESET}` : "Rewound to here";
+  return acpReset ? `Restored to here · ${AGENT_RESET}` : "Restored to here";
 }
 
 /** The marker's words for a coding agent that lost its own history in a rewind (it starts over from a recap). */

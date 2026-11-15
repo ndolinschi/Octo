@@ -3,6 +3,7 @@ import { useMemo, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { formatTokens } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
+import { costCellShort } from "../../lib/usage/costCell";
 import { costCellText, usageCsv, usageTotals, type RoleRow, type UsageRow, type UsageTotals } from "../../lib/usage/model";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
@@ -32,7 +33,7 @@ function tokenTitle(n: number, what: string): string {
 
 /** The cost as text; "no price" is dotted-underlined and says in its tooltip why and what to do (decision 90: a state explains itself). */
 function CostText({ r }: { r: UsageRow }) {
-  const text = costCellText(r.cost);
+  const text = costCellShort(r.cost);
   if (r.cost.spent !== null) return <>{text}</>;
   return (
     <span title={costTitle(r)} className="cursor-help underline decoration-dotted underline-offset-2">
@@ -84,6 +85,7 @@ function costTitle(r: UsageRow): string {
     const none = "No price is known for this model, so its cost isn't counted. Add it to prices.toml in Octo's data folder.";
     return r.cost.equivalent > 0 ? `${none} The subscription part is not spend.` : none;
   }
+  // The cell is short (`costCellShort`); its tooltip keeps the whole sentence.
   if (r.cost.equivalent > 0) return `${costCellText(r.cost)}: the subscription part is not spend`;
   return `$${r.cost.spent.toFixed(4)}${r.cost.estimated ? " (estimated from prices)" : " (reported by the provider)"}`;
 }

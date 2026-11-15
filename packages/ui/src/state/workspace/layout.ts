@@ -406,3 +406,23 @@ export function deserialize(raw: string | null): Layout | null {
 
 /** The stored layout (`octo.layout.{projectId}`); nothing usable stored reads as Chat alone. */
 export const layoutCodec: Codec<Layout> = { parse: (raw) => deserialize(raw) ?? initialLayout(), stringify: serialize };
+
+/** C3: from this window width a project with recorded changes first opens with Changes beside the conversation. */
+export const SIDE_FIRST_WINDOW = 1600;
+/** C3: the width Changes takes then (path, +/− counts), about a quarter of a 1680px window. */
+export const SIDE_FIRST_WIDTH = 432;
+
+/**
+ * C3: the layout a project opens with the first time (no saved layout): on a window of `SIDE_FIRST_WINDOW` or more, a project
+ * whose agents have recorded changes gets Changes in a second group `SIDE_FIRST_WIDTH` wide (`inner`: the row's width for the
+ * groups, the gap taken off); focus stays on the conversation. Null: keep `layout` — a saved one, a narrow window, a project
+ * without changes, or a layout the person has already changed. Closing the panel saves the layout without it, so it is never
+ * offered again for that project.
+ */
+export function firstLayout(i: { saved: boolean; window: number; inner: number; changedFiles: number; layout: Layout }): Layout | null {
+  if (i.saved || i.window < SIDE_FIRST_WINDOW || i.changedFiles <= 0 || i.inner <= SIDE_FIRST_WIDTH) return null;
+  const [only, ...rest] = i.layout.groups;
+  if (!only || rest.length > 0 || only.tabs.length !== 1 || only.tabs[0] !== CHAT) return null;
+  const next = open(i.layout, toolTab("changes"), { newAfter: only.id, size: (only.size * SIDE_FIRST_WIDTH) / i.inner });
+  return next.groups.length === 2 ? { ...next, focused: only.id } : null;
+}

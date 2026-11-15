@@ -18,5 +18,5 @@ test("errors have a next step or fall through", () => {
 test("marker label", () => {
   assert.equal(compactionLabel({}), "History compacted");
   assert.equal(compactionLabel({ label: "history compacted", manual: true }), "History compacted · manual");
-  assert.equal(compactionLabel({ label: "Rewound to here" }), "Rewound to here");
+  assert.equal(compactionLabel({ label: "Restored to here" }), "Restored to here");
 });

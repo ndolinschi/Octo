@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CHAT,
+  firstLayout,
+  SIDE_FIRST_WIDTH,
   MAX_GROUPS,
   activate,
   agentTab,
@@ -623,4 +625,29 @@ test("besideChat: the group right of the orchestrator's, else a new half-width g
   assert.deepEqual(besideChat(layoutOf([group("a", [NOTES], 0.3), group("b", [CHAT], 0.4), group("c", [DETAILS], 0.3)])), { group: "c" });
   const full = layoutOf([group("a", [NOTES], 0.25), group("b", [AGENTS], 0.25), group("c", [DETAILS], 0.25), group("d", [CHAT], 0.25)]);
   assert.deepEqual(besideChat(full), { group: "d" }, "at the cap, the last group");
+});
+
+test("C3: first open on a wide window with recorded changes → Changes beside the conversation, ~432px, focus stays", () => {
+  const base = initialLayout();
+  const next = firstLayout({ saved: false, window: 1680, inner: 1392, changedFiles: 8, layout: base });
+  assert.ok(next);
+  assert.equal(next.groups.length, 2);
+  const [chat, side] = next.groups;
+  assert.deepEqual(chat?.tabs, [CHAT]);
+  assert.deepEqual(side?.tabs, [toolTab("changes")]);
+  assert.equal(Math.round((side?.size ?? 0) * 1392), SIDE_FIRST_WIDTH);
+  assert.equal(next.focused, chat?.id, "the conversation keeps focus");
+});
+
+test("C3: no panel with a saved layout, under 1600px, without changes, or once the layout was changed", () => {
+  const base = initialLayout();
+  const go = (o: Partial<Parameters<typeof firstLayout>[0]>) => firstLayout({ saved: false, window: 1920, inner: 1632, changedFiles: 3, layout: base, ...o });
+  assert.ok(go({}));
+  assert.equal(go({ saved: true }), null);
+  assert.equal(go({ window: 1599 }), null);
+  assert.ok(go({ window: 1600 }));
+  assert.equal(go({ changedFiles: 0 }), null, "an empty project opens without a panel");
+  assert.equal(go({ inner: 0 }), null, "not measured");
+  const touched = open(base, toolTab("files"), { newAfter: base.focused, size: 0.4 });
+  assert.equal(go({ layout: touched }), null);
 });

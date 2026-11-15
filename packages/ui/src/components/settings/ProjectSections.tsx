@@ -236,9 +236,9 @@ export function UsageSection({ projectId }: { projectId: string | null }) {
   return (
     <>
       <UsageByProject holdFooter={!below} onSettled={setUsageSettled} />
-      {!below && slow && usageSettled && <SkeletonList count={2} size="lg" twoLine className="max-w-settings-rows" />}
-      {/* Round 3: the table takes the 880 column (project names); the row groups keep their reading measure. */}
-      <div hidden={!below} className="flex max-w-settings-rows flex-col gap-6">
+      {!below && slow && usageSettled && <SkeletonList count={2} size="lg" twoLine />}
+      {/* B (b): the table and the row groups take the same column, so Usage has one left and one right edge. */}
+      <div hidden={!below} className="flex flex-col gap-6">
         <Limits onSettled={setLimitsSettled} />
         <PerProject
           label="Budget"

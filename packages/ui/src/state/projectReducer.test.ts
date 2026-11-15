@@ -132,7 +132,7 @@ test("a rewind cuts the request and everything after it, hides later sub-agents 
   });
   s = projectReducer(s, { type: "messages", agentId: "a", messages: [at(1, 9, "user"), at(2, 9), at(3, 11, "user"), at(4, 11)] });
   s = projectReducer(s, { type: "messages", agentId: "late", messages: [at(5, 12, "assistant", "late")] });
-  s = projectReducer(s, { type: "rewound", messageId: 3, label: "Rewound to here", at: "2026-11-10T13:00:00Z" });
+  s = projectReducer(s, { type: "rewound", messageId: 3, label: "Restored to here", at: "2026-11-10T13:00:00Z" });
   assert.deepEqual(
     s.messages.a?.map((m) => m.id),
     [1, 2],
@@ -141,17 +141,17 @@ test("a rewind cuts the request and everything after it, hides later sub-agents 
   assert.equal(s.messages.late, undefined);
   assert.deepEqual(
     s.compactions.a?.map((c) => [c.upto_message_id, c.label]),
-    [[2, "Rewound to here"]],
+    [[2, "Restored to here"]],
   );
   // Applied again (the event, then the dialog's result): one marker, with the later label.
-  s = projectReducer(s, { type: "rewound", messageId: 3, label: "Rewound to here · agent session reset", at: "2026-11-10T13:00:01Z" });
+  s = projectReducer(s, { type: "rewound", messageId: 3, label: "Restored to here · agent session reset", at: "2026-11-10T13:00:01Z" });
   assert.deepEqual(
     s.compactions.a?.map((c) => c.label),
-    ["Rewound to here · agent session reset"],
+    ["Restored to here · agent session reset"],
   );
   // The event arriving after the dialog's result does not replace the richer label.
-  s = projectReducer(s, { type: "rewound", messageId: 3, label: "Rewound to here", at: "2026-11-10T13:00:02Z", soft: true });
-  assert.equal(s.compactions.a?.[0]?.label, "Rewound to here · agent session reset");
+  s = projectReducer(s, { type: "rewound", messageId: 3, label: "Restored to here", at: "2026-11-10T13:00:02Z", soft: true });
+  assert.equal(s.compactions.a?.[0]?.label, "Restored to here · agent session reset");
 });
 
 test("the reducer never mutates the state it is given", () => {

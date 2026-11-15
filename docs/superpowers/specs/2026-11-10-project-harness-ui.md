@@ -3693,3 +3693,36 @@ Not seen on screen: a request with an image, with mentions and a comment card, a
 bubble; text selection inside it; forced colours; the router's detail in Settings; a 409 in the new dialog. Open: on the
 phone Memory shows two back arrows (header and `ListDetail`); after Back from an agent opened in Agents the address
 keeps the agent's route; "Rewound to here" in `lib/compact.ts`.
+
+## As built — the premium pass, wave 4: Settings width, whole tabs, first open, the empty project (2026-11-15)
+
+The designer's sketches (kept in the session's scratchpad) were taken as built here; two of the owner's balance questions
+stay open (the top bar's command buttons; the text field's hairline).
+
+- **Settings on a wide window** (the owner's question 4a/4b, decided by the orchestrator on "do it yourself"): the 880
+  column stays centred and rows, cards and the usage table fill it, so every section has one left and one right edge
+  (at 1680: cards 554–1386, controls end at 1374, text starts at 566; before, rows ended at 1214 and the usage table at
+  1381). A row's description is at most 56ch (the longest line 105–110 → 61–75 characters). The phone is unchanged.
+- **Tabs are whole** (decisions 25 and 83 revised): a strip shows only tabs whose label fits (a tab's floor is its whole
+  label and its close button, 144 for long file names; the middle cut of a long name stays); the active and the pinned
+  tab always show; the rest go, least recently used first, into "All tabs" as "+N" right after "+". Widths come from
+  measured parts, kept per tab, with no measure-change-measure loop (`state/workspace/tabStrip.ts` `fitStrip`). Arrows,
+  Home and End walk hidden tabs too; a drag's index is mapped through the hidden ones. At 1440 with eight tool tabs:
+  three whole tabs and "+5" (before: five, the active one cut to "Se…").
+- **First open on a wide window**: with no saved layout, a window of 1600px or more and recorded changes, the project
+  opens Changes beside the conversation at 432px; an empty project opens alone; closing the panel is remembered with the
+  layout. Not on the phone, not with a saved layout. The panel appears after the changes answer, so the divider moves
+  once on that first open.
+- **The empty project** (decisions 52 and 91f revised): at most three suggestions from what the folder holds — an empty
+  folder's own pair; "Run the tests and fix what fails" when the project's commands include tests or lint; "What is this
+  project?" when there is a README; "Explain the structure of …"; "What changed recently?" only with a `.git` folder.
+  "Review my uncommitted changes" is gone (the harness has no git status and it showed without git). Their room is
+  reserved and they fade in (no shift). One line under the heading: "Octo edits {folder} and runs its commands; you can
+  undo any change.", hidden while a problem notice shows.
+- **Usage table**: the cost cell is "≈ $9.00" with the sentence in its tooltip (Cost 194 → 66px, Project 227 → 363).
+- The marker after a restore reads "Restored to here".
+
+Not seen on screen (unit tests only): the suggestions for an empty folder and for a folder with only a README (the demo
+gives every project the same commands and hides `.git`); a tab dragged from another group into a strip with hidden tabs.
+Not verified: WebKit for this wave; the first-open panel on a phone (it is off outside the docked layout).
+`--spacing-settings-rows` is no longer used.

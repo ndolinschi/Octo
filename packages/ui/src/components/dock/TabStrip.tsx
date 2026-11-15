@@ -2,13 +2,13 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type Keyb
 import { cn } from "../../lib/cn";
 import { flushSync } from "react-dom";
 import { useOptionalComments } from "../../state/comments";
-import { useScrollFade } from "../../lib/hooks";
+import { useLatest, useScrollFade } from "../../lib/hooks";
 import { useCode } from "../../state/code";
 import { useProject } from "../../state/project";
-import { toolTab, type TabId } from "../../state/workspace/layout";
+import { closable, toolTab, type TabId } from "../../state/workspace/layout";
 import { SIDE_PAD, useChrome } from "../../state/chrome";
 import { ProjectActions, ProjectTeamLine } from "../shell/ProjectBar";
-import { endPlan, RUN_FREED, slotShift, TAB_MIN, tabsOverflow } from "../../state/workspace/tabStrip";
+import { endPlan, fitStrip, RUN_FREED, slotShift, TAB_MIN, tabFloor } from "../../state/workspace/tabStrip";
 import { MOD, useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Presence } from "../primitives/Presence";
 import { dragStep, pressTab, takeSettle, useDrag } from "./drag";
@@ -18,6 +18,7 @@ import { Tab } from "./Tab";
 import { useStripFit } from "./useStripFit";
 import { type FileKey } from "../../lib/files";
 import { ChevronDown, Plus } from "lucide-react";
+import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { Glyph } from "../primitives/Glyph";
 import { StateGlyph } from "../primitives/StateGlyph";
@@ -43,9 +44,11 @@ function stripShortfall(el: HTMLElement): number {
   return Math.max(0, Math.round(used - inner));
 }
 
-/** Room the "+" takes after the tabs (28 + the 4px gap), and the "all tabs" button when the strip scrolls (24 + 4). */
+/** Room the "+" takes after the tabs (28 + the 4px gap), and the "All tabs" button ("+N ⌄": 53px with one digit, + the gap). */
 const PLUS_ROOM = 32;
-const ALL_TABS_ROOM = 28;
+const ALL_TABS_ROOM = 58;
+/** Its second digit (ten or more tabs in the strip). */
+const ALL_TABS_DIGIT = 8;
 /** Clear of the 20px edge fade, so the selected tab's label and close button are never under it. */
 const SCROLL_MARGIN = 24;
 
@@ -127,16 +130,34 @@ export function TabStrip(props: {
   };
 
   // Tab count and the active tab do not change during a drag, so sizes hold still under the pointer. The tabs get the
-  // strip minus the "+" (decision 25: it follows the last tab) and, once they scroll, the "all tabs" button.
+  // strip minus the "+" (decision 25: it follows the last tab) and, once some are hidden, the "All tabs" button.
   const reserved = PLUS_ROOM;
-  const overflow = tabsOverflow(room - reserved, props.tabs.length);
+  const infos = new Map(props.tabs.map((t) => [t, tabInfo(t, ctx)]));
   const signature = props.tabs
     .map((t) => {
-      const i = tabInfo(t, ctx);
-      return `${t}|${i.label}|${i.detail ?? ""}|${i.comments}`;
+      const i = infos.get(t);
+      return `${t}|${i?.label}|${i?.detail ?? ""}|${i?.comments}`;
     })
     .join("\n");
-  const fit = useStripFit(list, room - reserved, signature);
+  const fit = useStripFit(list, room - reserved, signature, props.tabs);
+  // C2 (V3): only whole tabs. A tab keeps its close place unless the strip is short (decision 90); the active and the pinned
+  // Orchestrator tab always show; the rest show by recency while they fit at their floor, and "All tabs" (+N) lists the others.
+  const allRoom = ALL_TABS_ROOM + (props.tabs.length > 10 ? ALL_TABS_DIGIT : 0);
+  const keepsClose = (t: TabId) => !fit.overlay || t === props.active || infos.get(t)?.status === "modified";
+  const { shown, hidden } = fitStrip({
+    room: room - reserved,
+    tabs: props.tabs.map((t) => ({ id: t, natural: fit.naturals.get(t), close: keepsClose(t), keep: t === props.active || !closable(t) })),
+    recent: ws.recentOf(props.tabs),
+    allRoom,
+  });
+  const overflow = hidden > 0;
+  const shownKey = shown.join("\n");
+  const shownNow = useLatest(shown);
+  const { stripShown } = ws;
+  useLayoutEffect(() => {
+    stripShown(props.groupId, overflow ? shownNow.current : null);
+    return () => stripShown(props.groupId, null);
+  }, [stripShown, props.groupId, overflow, shownKey, shownNow]);
   const end = endPlan({
     room: room - reserved - ends.short,
     tabs: props.tabs.length,
@@ -150,7 +171,7 @@ export function TabStrip(props: {
   if (end.runCompact !== compactRun) setCompactRun(end.runCompact);
   // Decision 90: the review's own header carries the commands (run in its worktree), so the top row does not repeat them.
   const reviewActive = ws.layout.groups.some((g) => g.active === toolTab("review"));
-  const listWidth = room > 0 ? room - reserved - (overflow ? ALL_TABS_ROOM : 0) : 0;
+  const listWidth = room > 0 ? room - reserved - (overflow ? allRoom : 0) : 0;
   const pickerHere = ws.picker !== null && ws.picker.group === props.groupId;
   const button = (tab: TabId) => (list.current ? tabButton(list.current, tab) : null);
 
@@ -195,7 +216,8 @@ export function TabStrip(props: {
     const go = (j: number) => {
       const next = props.tabs[(j + props.tabs.length) % props.tabs.length];
       if (next === undefined) return;
-      ws.activate(next);
+      // C2: the next tab may be one the strip hides; activating shows it, so render before focusing its button.
+      flushSync(() => ws.activate(next));
       button(next)?.focus();
     };
     const keys: Record<string, () => void> = {
@@ -250,8 +272,9 @@ export function TabStrip(props: {
           style={listWidth > 0 ? { maxWidth: listWidth } : undefined}
           className="flex min-w-0 shrink items-center gap-1 overflow-x-auto fade-x"
         >
-          {props.tabs.map((tab, i) => {
-            const info = tabInfo(tab, ctx);
+          {shown.map((tab, i) => {
+            const info = infos.get(tab) ?? tabInfo(tab, ctx);
+            const natural = fit.naturals.get(tab);
             return (
               <Tab
                 key={tab}
@@ -261,6 +284,7 @@ export function TabStrip(props: {
                 focusedGroup={props.focused}
                 shift={shiftOf(tab, i)}
                 overlayClose={fit.overlay}
+                minWidth={natural === undefined ? TAB_MIN : tabFloor(natural, keepsClose(tab))}
                 dragging={!drag ? null : drag.tab === tab ? (drag.attached ? "self-attached" : "self-detached") : "other"}
                 onPress={(e) => {
                   if (e.button !== 0) return;
@@ -271,7 +295,7 @@ export function TabStrip(props: {
                 onClose={() => ws.requestClose([tab])}
                 onMaximise={() => ws.toggleMaximise(tab)}
                 onMenu={(x, y) => openMenuAt(tab, x, y)}
-                onKeyDown={(e) => onKeyDown(e, i)}
+                onKeyDown={(e) => onKeyDown(e, props.tabs.indexOf(tab))}
               />
             );
           })}
@@ -288,17 +312,22 @@ export function TabStrip(props: {
           onClick={() => (pickerHere ? ws.closePicker() : ws.openPicker(props.groupId))}
         />
         {overflow && (
-          <IconButton
+          // C2 (V3): how many tabs the strip does not show; the list has every tab of the strip.
+          <Button
             ref={allButton}
-            icon={ChevronDown}
-            label={`All tabs (${props.tabs.length})`}
-            size="xs"
+            variant="quiet"
+            size="sm"
+            iconEnd={ChevronDown}
+            aria-label={`All tabs (${hidden} more)`}
+            title={`${hidden} more ${hidden === 1 ? "tab" : "tabs"}`}
             data-all-tabs
             aria-haspopup="dialog"
             aria-expanded={allOpen}
             onClick={() => setAllOpen((o) => !o)}
-            className={cn("ml-auto", allOpen && "bg-active text-fg")}
-          />
+            className={cn("shrink-0 tabular-nums", allOpen && "bg-active text-fg")}
+          >
+            {`+${hidden}`}
+          </Button>
         )}
       </div>
       {/* Decision 91g: the sub-agents are one quiet "N agents" button at the end of the strip, before the commands. Polish step 2

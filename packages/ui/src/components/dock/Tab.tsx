@@ -16,7 +16,7 @@ import type { TabInfo } from "./tabInfo";
  * holds the kind icon, or the state ring for an Orchestrator / Agent tab that is not idle (decision 29). The trailing
  * slot holds the unsaved dot and the close button, which shows on hover, focus and the active tab only (24px hit area).
  * Decision 83: the width is the content's (icon, title, close, insets) up to `TAB_MAX`, the title truncating (full name in the
- * tooltip); a short strip shrinks tabs evenly down to `TAB_MIN` (never fewer than four characters of the title). The close place
+ * tooltip); a short strip shrinks tabs evenly down to their floor (C2: the whole title, or `TAB_FLOOR` for a long one); what does not fit goes to "All tabs". The close place
  * is reserved, so hover and state changes never move anything; decision 90: in a short strip an inactive tab gives the place up
  * and its close button shows over the end of the title on hover and focus, still without a width change.
  */
@@ -29,6 +29,8 @@ export function Tab(props: {
   shift: number;
   /** The strip is short (decision 90): an inactive tab keeps no close place; its close button shows over the end of the title. */
   overlayClose: boolean;
+  /** C2: the narrowest it is drawn (its whole title and close place, or `TAB_FLOOR` for a long title); TAB_MIN by default. */
+  minWidth?: number;
   dragging: "self-attached" | "self-detached" | "other" | null;
   onPress(e: PointerEvent): void;
   onClose(): void;
@@ -41,7 +43,7 @@ export function Tab(props: {
   const canClose = closable(tab);
   const name = info.name ?? info.label;
   const slot = !props.overlayClose || selected || info.status === "modified";
-  const style: CSSProperties = { maxWidth: TAB_MAX, minWidth: TAB_MIN };
+  const style: CSSProperties = { maxWidth: TAB_MAX, minWidth: props.minWidth ?? TAB_MIN };
   if (props.shift) style.transform = `translateX(${props.shift}px)`;
   return (
     <div

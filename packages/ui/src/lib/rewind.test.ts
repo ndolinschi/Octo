@@ -35,7 +35,7 @@ test("reasons, labels and errors", () => {
   assert.match(conflictReason("modified_outside"), /outside/);
   assert.equal(conflictReason("new_reason"), "new_reason");
   assert.match(rewoundLabel(true), /agent starts over/);
-  assert.equal(rewoundLabel(false), "Rewound to here");
+  assert.equal(rewoundLabel(false), "Restored to here");
   assert.match(rewindError("turn_in_progress") ?? "", /Stop it/);
   assert.equal(rewindError("x"), null);
 });
