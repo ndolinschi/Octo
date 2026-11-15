@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, CornerDownRight } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ReviewFile, ReviewFileDiff } from "@octo/agent-client";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { hunksToTexts } from "../../lib/review/changes";
@@ -60,6 +60,11 @@ export function DiffPane(props: {
 }) {
   const f = props.file;
   const [firstLine, setFirstLine] = useState<number | null>(null);
+  useEffect(() => {
+    if (props.diff.status !== "ready" || f.image || f.binary || props.diff.diff.too_large || props.diff.diff.hunks.length === 0) {
+      setFirstLine(null);
+    }
+  }, [f.path, f.image, f.binary, props.diff]);
   const canOpen = props.onOpenAt !== undefined && f.status !== "deleted" && !f.binary;
   const { dir, name } = splitPath(f.path);
   const loading = useDelayedLoading(props.diff.status === "loading");

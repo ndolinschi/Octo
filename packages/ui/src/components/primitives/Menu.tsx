@@ -1,6 +1,6 @@
 import { Check, type LucideIcon } from "lucide-react";
 import { Glyph } from "./Glyph";
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { usePresence } from "./Presence";
@@ -47,8 +47,10 @@ export function Menu(props: {
   onClose(): void;
   above?: boolean;
   /** Opens leftwards from x (its right edge on x). */ alignEnd?: boolean;
+  /** Trigger element excluded from click-outside closing so clicking it toggles cleanly. */
+  ignoreRef?: RefObject<HTMLElement | null>;
 }) {
-  const { onClose } = props;
+  const { onClose, ignoreRef } = props;
   const ref = useRef<HTMLDivElement>(null);
   const gate = useRef(createPointerGate());
   const opener = useRef<HTMLElement | null>(null);
@@ -64,12 +66,15 @@ export function Menu(props: {
     if (!el) return;
     const { width, height } = el.getBoundingClientRect();
     const flipX = props.alignEnd || props.x + width + EDGE > window.innerWidth;
-    const flipY = props.above || props.y + height + EDGE > window.innerHeight;
+    const canFlipY = props.y - height >= EDGE;
+    const flipY = props.above ? canFlipY : props.y + height + EDGE > window.innerHeight && canFlipY;
+    const rawLeft = flipX ? props.x - width : props.x;
+    const rawTop = flipY ? props.y - height : props.y;
     setPos({
-      left: Math.max(EDGE, flipX ? props.x - width : props.x),
-      top: Math.max(EDGE, flipY ? props.y - height : props.y),
+      left: Math.min(Math.max(EDGE, rawLeft), Math.max(EDGE, window.innerWidth - width - EDGE)),
+      top: Math.min(Math.max(EDGE, rawTop), Math.max(EDGE, window.innerHeight - height - EDGE)),
     });
-  }, [props.x, props.y, props.above, props.alignEnd]);
+  }, [props.x, props.y, props.above, props.alignEnd, props.items]);
 
   // Focus goes back to the opener unless the chosen item already moved it somewhere else (a rename field, a dialog):
   // only while it is still in a menu (this one, also when React has already let go of its ref) or on nothing.
@@ -94,7 +99,8 @@ export function Menu(props: {
   useEffect(() => {
     if (!open) return;
     const outside = (e: Event) => {
-      if (!ref.current?.contains(e.target as Node)) onClose();
+      const t = e.target as Node;
+      if (!ref.current?.contains(t) && !ignoreRef?.current?.contains(t)) onClose();
     };
     const close = () => onClose();
     document.addEventListener("pointerdown", outside, true);
@@ -105,7 +111,7 @@ export function Menu(props: {
       window.removeEventListener("blur", close);
       window.removeEventListener("resize", close);
     };
-  }, [open, onClose]);
+  }, [open, onClose, ignoreRef]);
 
   // Decision: one scroll rule for every popup (`popupScroll`): closes only when the opener was left behind.
   useCloseOnScroll(open, ref, () => opener.current, onClose);
@@ -129,7 +135,7 @@ export function Menu(props: {
       else move(key);
       return;
     }
-    if (e.key.length === 1 && /\S/.test(e.key)) {
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && /\S/.test(e.key)) {
       const hit = enabled.find((a) => a.label.toLowerCase().startsWith(e.key.toLowerCase()));
       if (hit)
         items()

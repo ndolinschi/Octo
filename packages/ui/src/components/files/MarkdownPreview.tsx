@@ -45,7 +45,12 @@ export function MarkdownPreview({ file, bottomRoom, onOpen }: { file: OpenFile; 
           if (external || e.metaKey || e.ctrlKey || e.shiftKey) return;
           e.preventDefault();
           if (href.startsWith("#")) {
-            const id = decodeURIComponent(href.slice(1));
+            let id = href.slice(1);
+            try {
+              id = decodeURIComponent(id);
+            } catch {
+              // Keep raw fragment if percent-encoding is malformed.
+            }
             const target = [...(root.current?.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6") ?? [])].find((h) => slug(h.textContent ?? "") === id);
             target?.scrollIntoView({ block: "start" });
             return;

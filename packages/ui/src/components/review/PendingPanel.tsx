@@ -64,6 +64,7 @@ export function PendingPanel(props: {
   return (
     <aside
       ref={box}
+      data-pending-panel=""
       tabIndex={-1}
       role="dialog"
       aria-label="Pending comments and findings"

@@ -85,6 +85,7 @@ export function SessionTree(props: SessionTreeProps) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<GlobalSession | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState<{ projectId?: string; anchor: RefObject<HTMLElement | null> } | null>(null);
   const list = useRef<HTMLUListElement>(null);
@@ -373,11 +374,25 @@ export function SessionTree(props: SessionTreeProps) {
         <ConfirmDelete
           {...deleteCopy(deleting)}
           busy={busy}
-          error={error}
-          onClose={() => setDeleting(null)}
+          error={deleteError}
+          onClose={() => {
+            setDeleting(null);
+            setDeleteError(null);
+          }}
           onConfirm={() => {
             const del = bridge.deleteSession;
-            if (del) void act(() => del(deleting.project_id, deleting.id)).then((ok) => ok && setDeleting(null));
+            if (!del) return;
+            setDeleteError(null);
+            setBusy(true);
+            void del(deleting.project_id, deleting.id)
+              .then(
+                () => {
+                  activity.refreshSessions();
+                  setDeleting(null);
+                },
+                (e: unknown) => setDeleteError(failureText(e)),
+              )
+              .finally(() => setBusy(false));
           }}
         />
       )}

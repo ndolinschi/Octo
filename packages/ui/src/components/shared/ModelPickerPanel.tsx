@@ -486,8 +486,9 @@ function OtherField(props: { draft: string; label: string; example: string; onDr
         if (e.key === "Enter") {
           e.preventDefault();
           props.onCommit();
-        } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        } else if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Escape") {
           e.preventDefault();
+          e.stopPropagation();
           props.onLeave();
         }
       }}

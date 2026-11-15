@@ -77,12 +77,9 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
   const show = () => {
     if (props.disabled) return;
     setWidth(trigger.current?.offsetWidth ?? 0);
-    setActive(
-      Math.max(
-        0,
-        options.findIndex((o) => o.value === value),
-      ),
-    );
+    const match = options.findIndex((o) => o.value === value && !o.disabled);
+    const first = options.findIndex((o) => !o.disabled);
+    setActive(match >= 0 ? match : first >= 0 ? first : 0);
     setOpen(true);
   };
   const choose = (i: number) => {

@@ -111,7 +111,8 @@ function Ready(props: {
   const [pick, setPick] = useState<string | null>(null);
   const [opened, setOpened] = useState<ReadonlySet<ReviewGroup>>(new Set());
   const nav = useMemo(() => navigableFiles(shownSections, opened, pick), [shownSections, opened, pick]);
-  const file = files.find((f) => f.path === pick) ?? nav[0] ?? files[0] ?? null;
+  const pool = filterSince ? nav : files;
+  const file = pool.find((f) => f.path === pick) ?? nav[0] ?? (filterSince ? null : (files[0] ?? null));
   const path = file?.path ?? null;
 
   const [overview, setOverview] = useState(false);
@@ -253,7 +254,10 @@ function Ready(props: {
   const jumpTo = (w: { path: string; line?: number | undefined; side?: "new" | "old" | undefined }) => {
     select(w.path);
     setPendingOpen(false);
-    if (w.line !== undefined) setHint(`${w.path}:${w.line}. Press j or k to move between changes.`);
+    if (w.line !== undefined) {
+      setScrollTo({ n: ++seq.current, side: w.side ?? "new", line: w.line });
+      setHint(`${w.path}:${w.line}. Press j or k to move between changes.`);
+    }
   };
 
   // The panel returns focus to its opener; opened from the header's "⋯" that opener is gone, so the review takes it back
@@ -290,9 +294,17 @@ function Ready(props: {
     return problem;
   };
 
-  const composerEl = composer && file && (
-    <ComposerFor key={composer.n} state={composer.state} path={file.path} after={after} onSave={(v) => saveComposer(composer, v)} onCancel={closeComposer} />
-  );
+  const composerEl =
+    composer && (file || composer.state.kind === "general" || (composer.state.kind === "edit" && !composer.state.comment.path)) ? (
+      <ComposerFor
+        key={composer.n}
+        state={composer.state}
+        path={file?.path ?? ""}
+        after={after}
+        onSave={(v) => saveComposer(composer, v)}
+        onCancel={closeComposer}
+      />
+    ) : null;
 
   const here = comments.filter((c) => c.path === path && c.line !== undefined);
   const commented: Marked[] = here.map((c) => ({ side: c.side ?? "new", start: c.start_line ?? c.line ?? 1, end: c.line ?? 1 }));
@@ -481,9 +493,14 @@ function Ready(props: {
             )}
           </div>
         ) : (
-          <Notice title={filterSince ? "Nothing changed since your review" : "No changed files"}>
-            {filterSince ? "Turn off “Only what changed since your review” to read the whole pull request." : "This review has no file changes."}
-          </Notice>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              <Notice title={filterSince ? "Nothing changed since your review" : "No changed files"}>
+                {filterSince ? "Turn off “Only what changed since your review” to read the whole pull request." : "This review has no file changes."}
+              </Notice>
+            </div>
+            {composerEl}
+          </div>
         )}
       </div>
       {kit && <kit.Panel />}
@@ -497,7 +514,7 @@ function Ready(props: {
           onEdit={(c) => {
             setPendingOpen(false);
             setComposer({ n: ++seq.current, state: { kind: "edit", comment: c } });
-            if (c.path) setPick(c.path);
+            if (c.path) select(c.path);
           }}
           onDelete={(c) => void actions.deleteComment(c)}
           onDecide={(f: ReviewFinding, d) => void actions.decideFinding(f, d)}
@@ -558,9 +575,11 @@ function ComposerFor(props: { state: ComposerState; path: string; after: string;
   }
   if (s.kind === "edit") {
     const c = s.comment;
+    const canSuggest = c.suggestion !== undefined || (c.path !== undefined && c.line !== undefined && (c.side ?? "new") === "new");
     return (
       <Composer
         heading={`Edit comment · ${commentWhere(c)}`}
+        {...(canSuggest ? { suggestFor: commentWhere(c) } : {})}
         initialBody={c.body}
         initialSuggestion={c.suggestion}
         linesText=""

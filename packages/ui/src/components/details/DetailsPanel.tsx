@@ -297,6 +297,8 @@ function PluginsInUse() {
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
+    setLoad(null);
+    setFailed(false);
     Promise.all([bridge.listLanguageServers(projectId), bridge.listPlugins()]).then(
       ([servers, plugins]) =>
         !cancelled && setLoad({ servers: servers.filter((s) => s.available), agents: plugins.flatMap((p) => p.agents).filter((a) => a.available) }),

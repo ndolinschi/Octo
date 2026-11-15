@@ -8,6 +8,7 @@ import { useCloseOnScroll } from "./popupScroll";
 const EDGE = 8;
 const GAP = 6;
 const FOCUSABLE = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
+const openStack: HTMLDivElement[] = [];
 
 /**
  * A small non-modal panel anchored to the control that opened it (problems list, pending comments).
@@ -101,13 +102,19 @@ export function Popover(props: {
 
   useEffect(() => {
     if (!open) return;
+    const el = ref.current;
+    if (el) openStack.push(el);
+    const isTop = () => openStack.length === 0 || openStack[openStack.length - 1] === el;
     const outside = (e: Event) => {
       const t = e.target as Node;
-      if (!ref.current?.contains(t) && !anchor.current?.contains(t)) onClose();
+      if (el?.contains(t) || anchor.current?.contains(t)) return;
+      const idx = el ? openStack.indexOf(el) : -1;
+      if (idx >= 0 && openStack.slice(idx + 1).some((child) => child.contains(t))) return;
+      onClose();
     };
     const key = (e: KeyboardEvent) => {
       if (e.key === "Tab") return cycle(e);
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || !isTop()) return;
       e.preventDefault();
       e.stopPropagation();
       anchor.current?.focus({ preventScroll: true });
@@ -116,7 +123,6 @@ export function Popover(props: {
     // Decision 95 (`popupNav`): Tab and Shift+Tab cycle through the panel's focusable elements; focus never leaves it while open.
     // Only while focus is in this panel: a popup opened from it (a `Select`'s list) is portalled outside and cycles its own.
     const cycle = (e: KeyboardEvent) => {
-      const el = ref.current;
       if (!el || !(document.activeElement instanceof Node) || !el.contains(document.activeElement)) return;
       const nodes = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((n) => n.tabIndex >= 0 && n.offsetParent !== null);
       e.preventDefault();
@@ -129,16 +135,19 @@ export function Popover(props: {
     // re-rendered) and a move into another popup layer (a `Select` or `Menu` opened from this panel) do not.
     const left = (e: FocusEvent) => {
       const to = e.relatedTarget;
-      if (!(to instanceof Element) || ref.current?.contains(to) || anchor.current?.contains(to)) return;
+      if (!(to instanceof Element) || el?.contains(to) || anchor.current?.contains(to)) return;
       if (to.closest('[role="menu"],[role="listbox"],[role="dialog"]')) return;
       onClose();
     };
-    const el = ref.current;
     document.addEventListener("pointerdown", outside, true);
     document.addEventListener("keydown", key, true);
     el?.addEventListener("focusout", left);
     window.addEventListener("resize", onClose);
     return () => {
+      if (el) {
+        const idx = openStack.lastIndexOf(el);
+        if (idx >= 0) openStack.splice(idx, 1);
+      }
       document.removeEventListener("pointerdown", outside, true);
       document.removeEventListener("keydown", key, true);
       el?.removeEventListener("focusout", left);

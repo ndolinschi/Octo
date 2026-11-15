@@ -26,6 +26,7 @@ function Figure({ label, src }: { label: string; src: string }) {
   const [failed, setFailed] = useState(false);
   // Probe the address off-screen, so a broken image says so in words instead of showing a broken-image icon.
   useEffect(() => {
+    setFailed(false);
     const probe = new Image();
     probe.onerror = () => setFailed(true);
     probe.src = src;

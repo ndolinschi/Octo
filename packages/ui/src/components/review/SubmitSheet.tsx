@@ -52,7 +52,7 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
           (e: unknown) => alive && setPreview({ status: "error", message: errorMessage(e) }),
         );
       },
-      tick === 0 ? 0 : 250,
+      body.length === 0 && tick === 0 ? 0 : 250,
     );
     return () => {
       alive = false;

@@ -53,8 +53,15 @@ export function newSinceMyReview(r: PullRequestRow): boolean {
 export function mergePages(pages: readonly PullRequestList[]): PullRequestList | null {
   const first = pages[0];
   if (!first) return null;
-  const seen = new Set<number>();
-  const prs = pages.flatMap((p) => p.prs).filter((r) => (seen.has(r.number) ? false : (seen.add(r.number), true)));
+  const seen = new Set<string>();
+  const prs = pages
+    .flatMap((p) => p.prs)
+    .filter((r) => {
+      const k = `${r.repo ?? ""}#${r.number}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
   const last = pages[pages.length - 1];
   return { ...first, prs, next_page: last?.next_page ?? null, ...(last?.stale ? { stale: true } : {}) };
 }

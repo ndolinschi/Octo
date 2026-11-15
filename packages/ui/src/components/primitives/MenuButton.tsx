@@ -36,7 +36,17 @@ export function MenuButton(props: { label: string; text: string; items: MenuItem
         <Glyph icon={ChevronDown} size={14} className="shrink-0 text-fg-3" />
       </button>
       <Presence show={menu !== null} exitMs={0}>
-        {menu && <Menu label={props.label} x={menu.x} y={menu.y} alignEnd={props.alignEnd ?? false} items={props.items} onClose={() => setMenu(null)} />}
+        {menu && (
+          <Menu
+            label={props.label}
+            x={menu.x}
+            y={menu.y}
+            alignEnd={props.alignEnd ?? false}
+            ignoreRef={button}
+            items={props.items}
+            onClose={() => setMenu(null)}
+          />
+        )}
       </Presence>
     </>
   );

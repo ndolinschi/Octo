@@ -25,6 +25,8 @@ export function NoteDetail(props: {
 }) {
   const { note, load } = props;
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   return (
     <article className={cn("flex flex-col gap-4 pb-4", DETAIL_COLUMN)} aria-label={note.title}>
       <DetailHeader
@@ -40,7 +42,7 @@ export function NoteDetail(props: {
           <>
             {/* P2 (B34): labelled quiet buttons, as Memory's file detail — Edit first, then the pin, the "⋯" last. A pinned note
                 says "Pinned" (pressed); pressing it unpins. */}
-            <Button variant="quiet" size="sm" icon={Pencil} aria-label={`Edit ${note.title}`} onClick={props.onEdit}>
+            <Button variant="quiet" size="sm" icon={Pencil} aria-label={`Edit ${note.title}`} disabled={load.status !== "ok"} onClick={props.onEdit}>
               Edit
             </Button>
             <Button
@@ -68,6 +70,11 @@ export function NoteDetail(props: {
           {props.pinError}
         </Notice>
       )}
+      {deleteError && (
+        <Notice tone="error" className="px-2">
+          {deleteError}
+        </Notice>
+      )}
       {confirming && (
         <FormActions
           note={
@@ -78,10 +85,23 @@ export function NoteDetail(props: {
           label={`Delete ${note.title}`}
           className="px-2"
         >
-          <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>
+          <Button size="sm" variant="quiet" disabled={deleting} onClick={() => setConfirming(false)}>
             Cancel
           </Button>
-          <Button size="sm" variant="danger" onClick={() => void props.onDelete()} autoFocus>
+          <Button
+            size="sm"
+            variant="danger"
+            loading={deleting}
+            onClick={() => {
+              setDeleting(true);
+              setDeleteError(null);
+              void props
+                .onDelete()
+                .catch((e: unknown) => setDeleteError(e instanceof Error ? e.message : "Could not delete the note."))
+                .finally(() => setDeleting(false));
+            }}
+            autoFocus
+          >
             Delete note
           </Button>
         </FormActions>

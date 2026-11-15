@@ -23,6 +23,7 @@ import { fileIcon } from "../primitives/fileIcons";
 import { usePresence } from "../primitives/Presence";
 import { PopupList, popupOptionId, POPUP_PANEL } from "../primitives/PopupList";
 import { popupMove } from "../primitives/popupNav";
+import { useCloseOnScroll } from "../primitives/popupScroll";
 import { useLatest } from "../../lib/hooks";
 import { usePhone } from "../../lib/phone";
 import { PhoneComposerSheet } from "./PhoneComposerSheet";
@@ -103,7 +104,7 @@ export const ComposerMenu = forwardRef<
   const setSelected = (id: string) => setPick({ query, id });
   const panel = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
-  const [pos, setPos] = useState<{ left: number; bottom: number; width: number } | null>(null);
+  const [pos, setPos] = useState<{ left: number; bottom?: number; top?: number; width: number; maxHeight: number } | null>(null);
   const { onActive, onClose } = props;
   // Direction 7: on the phone the "+" opens a sheet first (attach, mention or run, mode, model, folder); "Mention" opens this list.
   const [sheet, setSheet] = useState(usePhone() && props.query === null);
@@ -202,12 +203,16 @@ export const ComposerMenu = forwardRef<
     if (r && b) {
       const width = Math.min(b.width, 480, window.innerWidth - 16);
       const gap = props.anchor.current === props.box.current ? GAP : CHIP_GAP;
-      setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)), bottom: window.innerHeight - r.top + gap, width });
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+      const below = r.top < 140 && window.innerHeight - r.bottom > r.top;
+      const maxHeight = Math.max(120, below ? window.innerHeight - r.bottom - 14 : r.top - 14);
+      setPos(below ? { left, top: r.bottom + gap, width, maxHeight } : { left, bottom: window.innerHeight - r.top + gap, width, maxHeight });
     }
     const onResize = () => close.current();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [props.anchor, props.box, close]);
+  useCloseOnScroll(state === "open" && !sheet, panel, () => props.anchor.current, close.current);
 
   // Opened by the button, the search field takes focus once the panel exists (it renders after `pos`).
   const placed = pos !== null;
@@ -309,7 +314,8 @@ export const ComposerMenu = forwardRef<
       data-composer-menu
       data-inline={props.query !== null || undefined}
       data-state={state}
-      style={{ left: pos.left, bottom: pos.bottom, width: pos.width }}
+      inert={state === "closed"}
+      style={pos}
       className={POPUP_PANEL}
     >
       {props.query === null && (

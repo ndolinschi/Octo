@@ -127,6 +127,9 @@ function RunBody({ v, withLine }: { v: RunView; withLine: boolean }) {
   const box = useRef<HTMLPreElement>(null);
   const following = useRef(true);
   useLayoutEffect(() => {
+    following.current = true;
+  }, [run.id]);
+  useLayoutEffect(() => {
     const el = box.current;
     if (el && following.current) el.scrollTop = el.scrollHeight;
   }, [text, run.id]);

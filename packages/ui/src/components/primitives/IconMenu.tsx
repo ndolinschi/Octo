@@ -31,7 +31,7 @@ export function IconMenu(props: { label: string; items: MenuItem[]; icon?: Lucid
         }}
       />
       <Presence show={menu !== null} exitMs={0}>
-        {menu && <Menu label={props.label} x={menu.x} y={menu.y} alignEnd items={props.items} onClose={() => setMenu(null)} />}
+        {menu && <Menu label={props.label} x={menu.x} y={menu.y} alignEnd ignoreRef={button} items={props.items} onClose={() => setMenu(null)} />}
       </Presence>
     </>
   );

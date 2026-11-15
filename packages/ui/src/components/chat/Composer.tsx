@@ -245,7 +245,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const outgoing = () => withAttachments(text.trim(), attach.files);
   const queue = () => {
-    const message = outgoing();
+    const message = outgoing() || (pics.ready.length ? "See the attached image." : "");
     if (!message || disabled) return;
     props.queue.add(message);
     setText("");

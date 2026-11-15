@@ -20,7 +20,9 @@ export function useReviewKeys(root: RefObject<HTMLElement | null>, run: (action:
     if (!el) return;
     const onKeyDown = (e: KeyboardEvent) => {
       const t = e.target instanceof Element ? e.target : null;
-      const action = reviewKeyAction(e, { editable: t ? isEditable(t) : false, inMonaco: t ? t.closest(".monaco-editor") !== null : false });
+      if (t?.closest("[data-pending-panel]")) return;
+      const inMonaco = t !== null && t.closest(".monaco-editor") !== null && t.closest(".octo-thread-zone") === null;
+      const action = reviewKeyAction(e, { editable: t ? isEditable(t) : false, inMonaco });
       if (!action) return;
       e.preventDefault();
       e.stopPropagation();

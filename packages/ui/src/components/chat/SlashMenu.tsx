@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useState, type KeyboardEvent, type RefObject } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { SlashCommands } from "@octo/agent-client";
 import type { SlashRow } from "../../lib/slash";
@@ -6,6 +6,7 @@ import { slashGroups } from "../../lib/slashRows";
 import type { PickerSection } from "../../lib/picker";
 import { PopupList, popupOptionId, POPUP_PANEL } from "../primitives/PopupList";
 import { popupMove } from "../primitives/popupNav";
+import { useCloseOnScroll } from "../primitives/popupScroll";
 import { useLatest } from "../../lib/hooks";
 import { usePhone } from "../../lib/phone";
 import { MODE_LABEL } from "../../lib/modeLabels";
@@ -44,18 +45,36 @@ export const SlashMenu = forwardRef<
 >(function SlashMenu(props, handle) {
   const { groups, rows } = slashGroups(props.commands, props.query);
   const [selected, setSelected] = useState<string | null>(null);
-  const [pos, setPos] = useState<{ left: number; bottom: number; width: number } | null>(null);
+  const [pos, setPos] = useState<{ left: number; bottom?: number; top?: number; width: number; maxHeight: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const { box } = props;
   const close = useLatest(props.onClose);
   // Fixed and in a portal (the composer's own ancestors clip), measured from the box. A window resize closes it, as it closes
   // `Menu` and `Popover` (B9): the box moves after the resize (the sidebar folds), so a measure on `resize` was stale.
   useLayoutEffect(() => {
     const r = box.current?.getBoundingClientRect();
-    if (r) setPos({ left: r.left, bottom: window.innerHeight - r.top + 6, width: r.width });
+    if (r) {
+      const below = r.top < 140 && window.innerHeight - r.bottom > r.top;
+      const maxHeight = Math.max(120, below ? window.innerHeight - r.bottom - 14 : r.top - 14);
+      setPos(
+        below
+          ? { left: r.left, top: r.bottom + 6, width: r.width, maxHeight }
+          : { left: r.left, bottom: window.innerHeight - r.top + 6, width: r.width, maxHeight },
+      );
+    }
     const onResize = () => close.current();
+    const outside = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!panelRef.current?.contains(t) && !box.current?.contains(t)) close.current();
+    };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    document.addEventListener("pointerdown", outside, true);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      document.removeEventListener("pointerdown", outside, true);
+    };
   }, [box, close]);
+  useCloseOnScroll(true, panelRef, () => box.current, props.onClose);
   const enabled = rows.filter((r) => r.available);
   const activeRow = enabled.find((r) => r.id === selected) ?? enabled[0] ?? null;
   const { onActive, listId } = props;
@@ -87,7 +106,8 @@ export const SlashMenu = forwardRef<
         }
         if (!rows.length) return false;
         if (e.key === "Enter" || e.key === "Tab") {
-          if (activeRow) props.onChoose(activeRow, e.key === "Tab" ? "complete" : "run");
+          if (!activeRow) return false;
+          props.onChoose(activeRow, e.key === "Tab" ? "complete" : "run");
           return true;
         }
         const to = popupMove(
@@ -106,7 +126,7 @@ export const SlashMenu = forwardRef<
   if (!pos) return null;
   return createPortal(
     // The text keeps focus: the list stops mouse presses from blurring it.
-    <div data-slash-menu style={pos} className={POPUP_PANEL}>
+    <div ref={panelRef} data-slash-menu style={pos} className={POPUP_PANEL}>
       <PopupList
         id={props.listId}
         label="Commands"
