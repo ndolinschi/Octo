@@ -52,7 +52,7 @@ export function CommandsSection({ projectId }: { projectId: string | null }) {
   if (!project) return null;
   return (
     <>
-      <ScopeRow projects={sorted} value={project.id} onChange={choose} description="Commands and review settings belong to one project." />
+      <ScopeRow projects={sorted} value={project.id} onChange={choose} description="Pick a project: these settings are per project." />
       <ProjectCommands key={project.id} project={project} update={update} />
     </>
   );
@@ -86,7 +86,7 @@ function ProjectCommands({ project, update }: { project: Project; update: Update
       <SettingsGroup
         label="Commands"
         id="row-project-commands"
-        footer="Run from the header of a pull request (in its own worktree) or by name. Only you start them; an agent never can."
+        footer="Start them from a pull request's Run menu or by name. Only you can start them; agents can't."
       >
         {commands.length === 0 && <SettingsRow title="No commands yet" description="Add the ones you run often: tests, a dev server, a build." />}
         {commands.map((c, i) => (
@@ -94,8 +94,9 @@ function ProjectCommands({ project, update }: { project: Project; update: Update
             key={c.name}
             title={c.name}
             description={
-              <span className="font-mono text-xs">
-                {c.command}
+              // The command line in mono; the words about it in the row's own face.
+              <span className="text-xs">
+                <span className="font-mono">{c.command}</span>
                 {c.pinned ? " · in the header" : ""}
               </span>
             }
@@ -141,11 +142,12 @@ function ProjectCommands({ project, update }: { project: Project; update: Update
           rowId="review-prefer"
           title="Diff layout"
           htmlFor={preferId}
-          description="Side by side only when each side has room; narrower panes always use one column."
+          description="Side by side needs room; narrow panes use one column."
           status={<SaveStatus state={saved} />}
           control={
             <div className={SELECT_W}>
               <Select
+                size="sm"
                 id={preferId}
                 label="Diff layout"
                 value={review.prefer}

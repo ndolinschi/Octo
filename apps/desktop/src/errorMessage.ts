@@ -2,5 +2,5 @@
 export function errorMessage(e: unknown): string {
   if (typeof e === "string" && e.trim()) return e.trim();
   if (e instanceof Error && e.message) return e.message;
-  return "The harness could not be started.";
+  return "Octo's local service could not be started.";
 }

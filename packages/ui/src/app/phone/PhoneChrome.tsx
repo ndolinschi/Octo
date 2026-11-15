@@ -1,6 +1,7 @@
-import { Menu as MenuIcon } from "lucide-react";
+import { ArrowLeft, Menu as MenuIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { IconButton } from "../../components/primitives/IconButton";
+import { backToSections } from "../../components/settings/sectionBack";
 import { SECTIONS } from "../../components/settings/settingsIndex";
 import { useShell } from "../../state/shell";
 import { useVisualViewport } from "./useVisualViewport";
@@ -12,8 +13,8 @@ import { useTouchHelpers } from "./useTouchHelpers";
  * to Home and Settings from there (A9.4).
  */
 export function screenTitle(hash: string, projectShown: boolean): string | null {
-  // Balance pass: in a section the header names the section (the page's own title goes to a screen reader only, and the page's
-  // "Settings" back control is the one place that says Settings).
+  // Balance pass: in a section the header names the section (the page's own title goes to a screen reader only, and the bar's
+  // "Back to Settings" control, A9.1, is the way back to the list).
   const section = /^#\/settings\/([a-z-]+)/.exec(hash)?.[1];
   const known = section ? SECTIONS.find((s) => s.id === section) : undefined;
   if (known) return known.label;
@@ -42,11 +43,18 @@ export default function PhoneChrome({ projectShown }: { projectShown: boolean })
   useVisualViewport();
   const tip = useTouchHelpers();
   const title = screenTitle(hash, projectShown);
+  // A9.1: in a settings section the bar's button is the one way back to the list of sections (the page has no second one);
+  // the menu is on the list's bar.
+  const inSection = /^#\/settings\/[a-z-]+/.test(hash);
   return (
     <>
       {title !== null && (
         <header aria-label="Window" data-phone-header className="octo-phone-header absolute inset-x-0 top-0 z-20 flex items-center gap-1 bg-window px-1">
-          <IconButton icon={MenuIcon} label="Menu" size="lg" aria-expanded={sidebarOpen} onClick={toggleSidebar} />
+          {inSection ? (
+            <IconButton icon={ArrowLeft} label="Back to Settings" size="lg" onClick={backToSections} />
+          ) : (
+            <IconButton icon={MenuIcon} label="Menu" size="lg" aria-expanded={sidebarOpen} onClick={toggleSidebar} />
+          )}
           <h1 className="min-w-0 flex-1 truncate text-title text-fg">{title}</h1>
         </header>
       )}

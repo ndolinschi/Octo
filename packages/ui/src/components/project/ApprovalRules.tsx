@@ -54,7 +54,7 @@ export function ApprovalRules({ projectId }: { projectId: string }) {
   return (
     <div data-approval-rules>
       <Button variant="quiet" iconEnd={open ? ChevronDown : ChevronRight} aria-expanded={open} onClick={() => setOpen((o) => !o)} className="-ml-2">
-        Always-allowed requests
+        Always allowed
       </Button>
       {open && (
         <div className="mt-2 flex flex-col gap-1 text-sm">

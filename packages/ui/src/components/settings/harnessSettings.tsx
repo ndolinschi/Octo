@@ -43,7 +43,7 @@ export function HarnessSettingsProvider({ children }: { children: ReactNode }) {
 
   const save = useCallback(
     async (update: SettingsUpdate) => {
-      if (!bridge.putSettings) throw new Error("This connection cannot change the settings of Octo's local service");
+      if (!bridge.putSettings) throw new Error("This window can't change the settings of Octo's local service");
       const view = await bridge.putSettings(update);
       setLoad({ status: "ready", view });
       // Keys, the router switch and default models change what can run: the pickers re-read the providers.

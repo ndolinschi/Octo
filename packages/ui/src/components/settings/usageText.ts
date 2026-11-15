@@ -17,7 +17,7 @@ export function resetsIn(iso: string | null | undefined, now: number): string {
   if (min < 60) return `Resets in ${Math.max(1, min)} min`;
   const h = Math.round(min / 60);
   if (h < 48) return `Resets in ${h} h`;
-  return `Resets in ${Math.round(h / 24)} days`;
+  return `Resets in ${Math.round(h / 24)} d`;
 }
 
 const usd = (n: number) => `$${n.toFixed(2)}`;

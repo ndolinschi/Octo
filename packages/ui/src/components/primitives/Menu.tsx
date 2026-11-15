@@ -95,11 +95,24 @@ export function Menu(props: {
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
     const close = () => onClose();
-    // A scroll that moves the opener closes the menu; a live transcript scrolling elsewhere does not.
+    // A scroll that moves the opener closes the menu; a live transcript scrolling elsewhere does not. Add. 8a: nor does a
+    // `scroll` event that moved nothing, or one on the opener itself (Monaco's input textarea, whose focus hops on a right
+    // click in macOS WebKit, fires one): an ancestor closes the menu only once its offset differs from the one at opening.
+    const o0 = opener.current;
+    const at = new Map<Element, string>();
+    for (let el = o0?.parentElement ?? null; el; el = el.parentElement) at.set(el, `${String(el.scrollTop)},${String(el.scrollLeft)}`);
+    const page = `${String(window.scrollX)},${String(window.scrollY)}`;
     const scrolled = (e: Event) => {
       const t = e.target;
       const o = opener.current;
-      if (t === document || (t instanceof Node && !ref.current?.contains(t) && (!o || t.contains(o)))) onClose();
+      if (t === document) {
+        if (`${String(window.scrollX)},${String(window.scrollY)}` !== page) onClose();
+        return;
+      }
+      if (!(t instanceof Element) || ref.current?.contains(t) || t === o) return;
+      if (o && !t.contains(o)) return;
+      const before = at.get(t);
+      if (before === undefined || before !== `${String(t.scrollTop)},${String(t.scrollLeft)}`) onClose();
     };
     document.addEventListener("pointerdown", outside, true);
     window.addEventListener("blur", close);
@@ -182,7 +195,7 @@ export function Menu(props: {
             }}
             className={cn(
               // Radius 6 = menu radius (10) − its padding (4).
-              "flex items-center gap-2 rounded-md px-2 outline-none focus-visible:shadow-none touch:h-ctl-lg",
+              "group/item flex items-center gap-2 rounded-md px-2 outline-none focus-visible:shadow-none touch:h-ctl-lg",
               item.sub ? "h-10" : "h-row",
               item.disabled ? "text-fg-3" : "text-fg focus:bg-active",
             )}
@@ -194,12 +207,13 @@ export function Menu(props: {
             {item.sub ? (
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate">{item.label}</span>
-                <span className="truncate text-xs text-fg-3">{item.sub}</span>
+                <span className="truncate text-xs text-fg-3 group-focus/item:text-fg-2">{item.sub}</span>
               </span>
             ) : (
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
             )}
-            {item.detail && <span className="shrink-0 pl-4 text-xs text-fg-3">{item.detail}</span>}
+            {/* 5f: on the highlighted item the meta steps up to fg-2 (fg-3 on `active` was 4.06:1), as a selected ListRow's does. */}
+            {item.detail && <span className="shrink-0 pl-4 text-xs text-fg-3 group-focus/item:text-fg-2">{item.detail}</span>}
             {item.shortcut && <kbd className="shrink-0 pl-4 font-sans text-xs text-fg-2">{item.shortcut}</kbd>}
           </div>
         ) : "caption" in item ? (

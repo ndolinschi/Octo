@@ -29,10 +29,8 @@ import { EditorSection, MemorySection, UsageSection } from "./ProjectSections";
 import { ProvidersSection } from "./ProvidersSection";
 import { SettingsGroup, SettingsRow } from "./parts";
 import { SettingsNav } from "./SettingsNav";
+import { markFromList } from "./sectionBack";
 import { searchSettings, SECTIONS, sectionLabel, sectionOf, type IndexedRow, type SectionId } from "./settingsIndex";
-
-/** Direction 7: the phone's section screen was opened from the list in this visit (its Back is then the history's). */
-let fromList = false;
 
 const IntegrationsView = lazy(() => import("./IntegrationsView").then((m) => ({ default: m.IntegrationsView })));
 
@@ -76,7 +74,7 @@ export function SettingsPage(props: {
   const index = phone && props.section === "";
   const [query, setQuery] = useState("");
   const searching = query.trim() !== "";
-  const results = useMemo(() => searchSettings(query), [query]);
+  const results = useMemo(() => searchSettings(query, { phone }), [query, phone]);
   const scroller = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState<string | null>(null);
   const { connect, restart, onBack } = props;
@@ -110,11 +108,6 @@ export function SettingsPage(props: {
     return () => window.clearTimeout(id);
   }, [target, section]);
 
-  const backToSections = () => {
-    if (fromList) window.history.back();
-    else window.location.replace(settingsHref(""));
-    fromList = false;
-  };
   const open = (r: IndexedRow) => {
     setQuery("");
     window.location.hash = settingsHref(r.section);
@@ -149,17 +142,13 @@ export function SettingsPage(props: {
       <SettingsActionsProvider value={actions}>
         <div data-settings className="flex h-full overflow-hidden bg-window text-fg">
           <SettingsNav section={section} searching={searching} query={query} onQuery={setQuery} onBack={onBack} onSearchKey={searchKeys} />
-          <ScrollArea ref={scroller} role="main" aria-labelledby="settings-title" className="min-w-0 flex-1 overflow-x-hidden">
+          <ScrollArea ref={scroller} role="main" aria-labelledby="octo-page-title" className="min-w-0 flex-1 overflow-x-hidden">
             <div
               // S1: one column for every section (Providers included) and one left edge (`settings-inset`) for the title, the
               // group captions and the rows' labels.
               className="mx-auto flex w-full max-w-settings-page flex-col gap-6 px-6 pt-8 pb-10 max-sm:px-4 max-sm:pt-4"
             >
-              {phone && !index && !searching && (
-                <Button variant="quiet" icon={ArrowLeft} onClick={backToSections} className="-ml-2 self-start">
-                  Settings
-                </Button>
-              )}
+              {/* A9.1: on the phone the way back to the list is the header's "←" (PhoneChrome, `sectionBack`), not a link here. */}
               {index && <SearchField label="Search settings" value={query} onChange={setQuery} onKeyDown={searchKeys} />}
               {/* S4: under the floor the page's Back and the section menu are one header line, the search under it. */}
               <div className={cn("flex flex-col gap-2 settings:hidden", phone && "hidden")}>
@@ -179,9 +168,12 @@ export function SettingsPage(props: {
                 <SearchField label="Search settings" value={query} onChange={setQuery} onKeyDown={searchKeys} />
               </div>
               <h1
-                id="settings-title"
+                // 4: the title a route change focuses (lib/routeFocus.ts): programmatic focus, so no ring.
+                id="octo-page-title"
+                data-page-title
+                tabIndex={-1}
                 // The phone's header names the open section; the title here is for a screen reader only.
-                className={cn("px-settings-inset text-display font-medium text-fg", !searching && (index || phone) && "sr-only")}
+                className={cn("px-settings-inset text-display font-medium text-fg focus-visible:shadow-none", !searching && (index || phone) && "sr-only")}
               >
                 {searching ? "Search" : index ? "Settings" : sectionLabel(section)}
               </h1>
@@ -199,7 +191,7 @@ export function SettingsPage(props: {
                         trailing={<Glyph icon={ChevronRight} size={16} className="text-fg-3" />}
                         trailingShown
                         onClick={() => {
-                          fromList = true;
+                          markFromList();
                           window.location.hash = settingsHref(x.id);
                         }}
                       />
@@ -234,29 +226,37 @@ export function SettingsPage(props: {
  */
 function AboutPage() {
   const { version, demo, bridgeUrl, shell } = useApp();
+  const phone = usePhone();
   return (
     <>
       <SettingsGroup label="Versions">
         <SettingsRow
           rowId="version"
           title="Harness version"
-          description={demo ? "Demo data, in memory: no local service runs." : "The version of Octo's local service (the harness) this window uses."}
+          description={demo ? "Demo data: no local service runs." : "The version of Octo's local service (the harness) this window uses."}
           control={<span className="text-sm text-fg-2 tabular-nums">{version ?? "Unknown"}</span>}
         />
         {/* S6: a sentence a person would write. */}
         <SettingsRow
           title="App"
-          description={demo ? `The ${shell} app, running on demo data in memory.` : `The ${shell} app, connected to Octo's local service at ${bridgeUrl}.`}
+          description={demo ? `The ${shell} app, running on demo data.` : `The ${shell} app, connected to Octo's local service at ${bridgeUrl}.`}
         />
       </SettingsGroup>
-      <SettingsGroup label="Help">
-        <SettingsRow
-          rowId="shortcuts"
-          title="Keyboard shortcuts"
-          description="Every shortcut in one list. Press ? anywhere outside a text field."
-          control={<Button onClick={openShortcuts}>Show shortcuts</Button>}
-        />
-      </SettingsGroup>
+      {/* A8: no keyboard on the phone, so no shortcuts list there. */}
+      {!phone && (
+        <SettingsGroup label="Help">
+          <SettingsRow
+            rowId="shortcuts"
+            title="Keyboard shortcuts"
+            description="Every shortcut in one list. Press ? outside a text field."
+            control={
+              <Button size="sm" onClick={openShortcuts}>
+                Show shortcuts
+              </Button>
+            }
+          />
+        </SettingsGroup>
+      )}
     </>
   );
 }
@@ -284,8 +284,10 @@ function Results({
     <div ref={list} role="status" className="flex flex-col gap-6">
       {sections.map((s) => (
         <section key={s.id} className="flex flex-col gap-1" aria-label={s.label}>
-          <SectionHeader className="px-settings-inset">{s.label}</SectionHeader>
-          <ListFrame className="px-2">
+          <SectionHeader line="tight" className="px-settings-inset">
+            {s.label}
+          </SectionHeader>
+          <ListFrame className="p-[3px]">
             {results
               .filter((r) => r.section === s.id)
               .map((r) => (

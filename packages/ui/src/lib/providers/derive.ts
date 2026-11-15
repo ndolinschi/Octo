@@ -76,7 +76,7 @@ export function deriveProviders(input: { config: BridgeConfig | null; plugins: r
     kind: "router",
     label: "Octo router",
     state: config?.router === true ? "ready" : routerOn ? "error" : "not_connected",
-    reason: config?.router !== true && routerOn ? "Switched on, but the harness does not see it" : "",
+    reason: config?.router !== true && routerOn ? "Switched on, but Octo's local service can't find it" : "",
     install_hint: "",
     login_hint: "",
     models: config?.router === true ? models : [],

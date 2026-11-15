@@ -60,7 +60,7 @@ function ReportRow({ diag, retry }: { diag: DiagLoad; retry(): void }) {
   const { bridgeUrl, shell } = useApp();
   const [copied, copy] = useCopy();
   if (diag.status === "unavailable")
-    return <SettingsRow rowId="diagnostics" title="Copy diagnostic report" description="This connection does not offer diagnostics." />;
+    return <SettingsRow rowId="diagnostics" title="Copy diagnostic report" description="This window can't make a diagnostic report." />;
   if (diag.status === "error")
     return <LoadErrorRow what="the diagnostic report" message={diag.message} hint="Retry once Octo's local service is running." onRetry={retry} />;
   const problems = diag.status === "ready" ? diag.d.problems.length : 0;
@@ -95,7 +95,7 @@ function TraceRow() {
       rowId="trace"
       title="Record what agents send and receive"
       htmlFor={s ? id : undefined}
-      help="One file per agent session in the data folder's traces folder (the agent protocol, ACP), secrets removed, size-capped. Turn it on to diagnose a failing agent, then send the file with the report."
+      help="Saves what each agent sends and receives to a file in the data folder, with secrets removed. Turn it on to diagnose a failing agent, then attach the file to your report."
       description={s ? "Saves each agent conversation to a file in the data folder, secrets removed." : "Not available on this connection."}
       status={<SaveStatus state={saved} restart={s ? harness.needsRestart(s.id) : false} onRestart={restart} />}
       control={
@@ -157,6 +157,7 @@ function ChildEnvRow() {
       status={<SaveStatus state={saved} />}
       control={
         <TextField
+          size="sm"
           id={id}
           value={draft ?? stored}
           disabled={!s.editable}

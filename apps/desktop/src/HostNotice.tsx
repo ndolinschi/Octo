@@ -21,7 +21,7 @@ export function HostNotice({ notice, retrying, onRetry, onDismiss }: { notice: N
         </p>
         {notice.logTail ? (
           <button type="button" className={button} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-            {open ? "Hide" : "Details"}
+            {open ? "Hide details" : "Details"}
           </button>
         ) : null}
         <button type="button" className={button} disabled={retrying} onClick={onRetry}>
@@ -36,7 +36,7 @@ export function HostNotice({ notice, retrying, onRetry, onDismiss }: { notice: N
           // A scrollable region must be reachable by keyboard.
           // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
           tabIndex={0}
-          aria-label="Router log"
+          aria-label="Octo router log"
           className="mx-3 mb-3 max-h-56 overflow-auto rounded-md bg-code-bg p-3 font-mono text-xs leading-4 whitespace-pre-wrap text-fg-2"
         >
           {notice.logTail}

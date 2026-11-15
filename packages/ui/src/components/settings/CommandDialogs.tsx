@@ -39,13 +39,13 @@ export function CommandDialog(props: {
   return (
     <Dialog
       title={props.initial ? "Edit command" : "Add a command"}
-      description="Runs in a shell when you press its button, never by an agent."
+      description="Runs in a terminal only when you press its button; agents never run it."
       onClose={props.onClose}
       footer={
         <>
           {props.onRemove && (
             <Button variant="danger" disabled={busy} onClick={() => void run(props.onRemove ?? (async () => null))} className="mr-auto">
-              Remove
+              Delete
             </Button>
           )}
           <Button variant="quiet" onClick={props.onClose}>
@@ -114,7 +114,7 @@ export function OfferedDialog(props: {
   return (
     <Dialog
       title="Commands offered in a review"
-      description="They appear under Run in a pull request's header and run in its own worktree. With none ticked, every command is offered."
+      description="They appear under Run in a pull request's header and run in the review's copy of the code. With none ticked, every command is offered."
       onClose={props.onClose}
       footer={
         <>

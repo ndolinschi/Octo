@@ -16,7 +16,7 @@ export const CONTROL_W = {
   lg: "w-64 max-settings:w-full",
 } as const;
 
-/** S2: every select in a settings row is this one width (the model names need it; a short list reads the same). */
+/** S2: every select in a settings row is this one width (the model names need it; a short list reads the same), and every row control is 28px tall (`size="sm"`; a switch 24). */
 export const SELECT_W = CONTROL_W.lg;
 
 /**
@@ -33,13 +33,33 @@ export const CONTROL_CAP = "@md:[&_[data-field-row]]:grid-cols-[repeat(3,minmax(
  * (`settings-inset`, the rows' own padding), the same edge as the page title. Below the settings breakpoint (760px) a row's
  * control goes under its text.
  */
-export function SettingsGroup(props: { label: ReactNode; children: ReactNode; id?: string | undefined; footer?: ReactNode; aside?: ReactNode }) {
+export function SettingsGroup(props: {
+  /** The caption; leave it out when the page title already names the only group (Remote access), and give `name` instead. */
+  label?: ReactNode;
+  /** The group's accessible name when it has no caption. */
+  name?: string;
+  children: ReactNode;
+  id?: string | undefined;
+  footer?: ReactNode;
+  /** One meta line between the caption and the surface: what the group's rows are (Integrations). */
+  description?: ReactNode;
+  aside?: ReactNode;
+}) {
   const labelId = useId();
+  const captioned = props.label !== undefined;
   return (
-    <section aria-labelledby={labelId} id={props.id} className="flex scroll-mt-6 flex-col gap-1">
-      <SectionHeader id={labelId} aside={props.aside} className="px-settings-inset">
-        {props.label}
-      </SectionHeader>
+    <section
+      {...(captioned ? { "aria-labelledby": labelId } : props.name ? { "aria-label": props.name } : {})}
+      id={props.id}
+      className="flex scroll-mt-6 flex-col gap-1"
+    >
+      {/* The side columns' caption rule on the page: a 20px line, 4px over its surface, on the rows' text edge. */}
+      {captioned && (
+        <SectionHeader id={labelId} aside={props.aside} line="tight" className="px-settings-inset">
+          {props.label}
+        </SectionHeader>
+      )}
+      {props.description && <p className="px-settings-inset pb-1 text-xs text-fg-3">{props.description}</p>}
       <ListFrame>{props.children}</ListFrame>
       {props.footer && <div className="px-settings-inset pt-1 text-xs text-fg-3">{props.footer}</div>}
     </section>
@@ -74,7 +94,7 @@ export function SettingsRow(props: {
       id={props.rowId ? `row-${props.rowId}` : undefined}
       data-settings-row
       className={cn(
-        "flex min-h-settings-row scroll-mt-6 gap-4 px-settings-inset py-3 max-settings:flex-col max-settings:items-stretch max-settings:gap-2",
+        "flex min-h-settings-row scroll-mt-6 gap-4 px-settings-row-inset py-3 max-settings:flex-col max-settings:items-stretch max-settings:gap-2",
         one ? "items-center" : "items-start",
         props.className,
       )}

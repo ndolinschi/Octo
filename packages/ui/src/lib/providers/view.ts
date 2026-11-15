@@ -38,7 +38,7 @@ export const stateTone = (p: Pick<Provider, "state">): Tone => TONE[p.state];
 
 const count = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
-/** The one dim line under a row's name: "Ready · 16 models", "Not logged in", "Not installed", "Not connected". */
+/** The one dim line under a row's name: "Ready · 16 models", "Not logged in", "Not installed", "Not set up". */
 export function rowStatus(p: Pick<Provider, "state" | "models">): string {
   if (p.state === "ready" && p.models.length > 0) return `Ready · ${count(p.models.length, "model")}`;
   return stateText(p.state);
@@ -113,7 +113,7 @@ export function primaryAction(p: Pick<Provider, "state" | "kind">): PrimaryActio
 /** One line: what using this provider costs. */
 export function billingLine(p: Pick<Provider, "kind" | "flat_rate">): string {
   if (p.flat_rate) return "Included in your subscription: no charge per token.";
-  return p.kind === "router" ? "Per token, through the router's upstream key." : "Per token, billed to your API key.";
+  return p.kind === "router" ? "Per token, billed through your Octo router key." : "Per token, billed to your API key.";
 }
 
 /** Why it is not ready, in plain words and without repeating the state; "" when the provider is ready. */
@@ -123,14 +123,14 @@ export function reasonLine(p: Pick<Provider, "state" | "kind" | "reason" | "prob
       return "";
     case "not_supported": {
       const r = plainReason(p).trim();
-      return r || "This agent's command line cannot work with Octo.";
+      return r || "Octo can't use this agent.";
     }
     case "not_installed":
       return "This agent is not on this computer yet. Install it and log in once in a terminal, then press Check again.";
     case "not_logged_in":
       return "Installed, but not logged in. Log in once in a terminal, then press Check again.";
     case "not_connected":
-      return p.kind === "api" ? "Add an API key to bill per token through your own account." : "Switch the router on and give it an upstream key.";
+      return p.kind === "api" ? "Add an API key to bill per token through your own account." : "Turn the Octo router on and add its provider key.";
     case "error": {
       const r = plainReason(p).trim();
       return r ? `Not working: ${r.replace(/\.$/, "")}.` : "Not working. Check again, or copy the diagnostic report from Privacy and data.";

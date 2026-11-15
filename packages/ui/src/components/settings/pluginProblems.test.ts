@@ -10,12 +10,12 @@ const plugins = [
 test("plainPluginProblem: a duplicate names both plugins and the one used", () => {
   assert.equal(
     plainPluginProblem("systems", 'languageServers[1]: duplicate id "gopls" (already defined by web-tools)', plugins),
-    "Two plugins define the gopls language server; the one from web-tools is used.",
+    "Two plugins define the gopls language help entry; the one from web-tools is used.",
   );
   // The harness's current wording names no owner: it is found in the list.
   assert.equal(
     plainPluginProblem("systems", 'languageServers[1]: duplicate language server id "gopls"', plugins),
-    "Two plugins define the gopls language server; the one from web-tools is used.",
+    "Two plugins define the gopls language help entry; the one from web-tools is used.",
   );
   assert.equal(plainPluginProblem("systems", 'agents[0]: duplicate agent id "x"', plugins), "systems defines the x agent twice; the first one is used.");
 });
@@ -23,7 +23,7 @@ test("plainPluginProblem: a duplicate names both plugins and the one used", () =
 test("plainPluginProblem: anything else says which part is wrong", () => {
   assert.equal(
     plainPluginProblem("systems", "toolServers[0]: url: must be http or https", plugins),
-    "One tool server in systems is set up wrongly and was skipped.",
+    "One extra tool in systems is set up wrongly and was skipped.",
   );
   assert.equal(plainPluginProblem("systems", "plugin.json: unexpected end of JSON input", plugins), "systems could not be loaded completely.");
 });

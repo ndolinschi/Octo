@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useRef } from "react";
 import { cn } from "../../../lib/cn";
 import { useRowKeys } from "../../../lib/hooksMore";
+import { useRovingRows } from "../../../lib/rovingRows";
 import type { ProviderGroupView, ProviderRowView, Tone } from "../../../lib/providers";
 import { Glyph } from "../../primitives/Glyph";
 import { ListRow } from "../../primitives/ListRow";
@@ -36,6 +37,8 @@ export function ProviderRows(props: {
 }) {
   const list = useRef<HTMLDivElement>(null);
   useRowKeys(list);
+  // 6h: the list is one Tab stop; ↑/↓ move between the providers.
+  useRovingRows(list);
   return (
     <div
       ref={list}
@@ -48,9 +51,11 @@ export function ProviderRows(props: {
         props.className,
       )}
     >
-      {props.groups.map((g) => (
-        <div key={g.id} role="group" aria-label={g.label} className="flex flex-col">
-          <SectionHeader inset as="h3">
+      {/* The side columns' caption rule: on the rows' glyph column, a 20px line 16px under the row above and 4px over its
+          first row (the first 8px under the list's top, so it lines up with the detail's 12px inset). */}
+      {props.groups.map((g, i) => (
+        <div key={g.id} role="group" aria-label={g.label} className={cn("flex flex-col", i === 0 ? "mt-2" : "mt-4")}>
+          <SectionHeader inset as="h3" line="tight" className="mb-1">
             {g.label}
           </SectionHeader>
           {g.rows.map((r) => (

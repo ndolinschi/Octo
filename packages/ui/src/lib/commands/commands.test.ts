@@ -73,11 +73,11 @@ const cmd = (name: string, extra: Partial<ProjectCommand> = {}): ProjectCommand 
 test("the same limits as the harness", () => {
   assert.equal(commandsProblem([cmd("a"), cmd("b")]), null);
   assert.match(commandsProblem([cmd("a"), cmd("A")]) ?? "", /Two commands/);
-  assert.match(commandsProblem([cmd("a/b")]) ?? "", /slash/);
+  assert.match(commandsProblem([cmd("a/b")]) ?? "", /can only use letters/);
   assert.match(commandsProblem([cmd(" ")]) ?? "", /needs a name/);
   assert.match(commandsProblem([{ name: "x", command: " " }]) ?? "", /no command line/);
   assert.match(commandsProblem([cmd("a", { cwd: "../x" })]) ?? "", /inside the project/);
-  assert.match(commandsProblem([cmd("a", { pinned: true }), cmd("b", { pinned: true }), cmd("c", { pinned: true })]) ?? "", /Pin at most 2/);
+  assert.match(commandsProblem([cmd("a", { pinned: true }), cmd("b", { pinned: true }), cmd("c", { pinned: true })]) ?? "", /Only 2 commands can be buttons/);
 });
 
 test("suggestions, names and pins", () => {

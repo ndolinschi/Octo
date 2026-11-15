@@ -20,14 +20,17 @@ export function Switch(props: { checked: boolean; onChange(next: boolean): void;
       className={cn(
         "touch-hit relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border border-transparent transition-[background-color] duration-150 disabled:opacity-50",
         props.checked ? "bg-primary" : "bg-active",
+        // 6d: forced colours drop both fills; the track gets an edge, and on is the system's highlight.
+        "forced-colors:border-[CanvasText] forced-colors:forced-color-adjust-none",
+        props.checked ? "forced-colors:bg-[Highlight]" : "forced-colors:bg-[Canvas]",
         props.className,
       )}
     >
       <span
         aria-hidden
         className={cn(
-          "absolute top-0.5 left-0.5 size-5 rounded-full shadow-float transition-[translate] duration-150 ease-out-quint",
-          props.checked ? "translate-x-4 bg-primary-fg" : "bg-fg-2",
+          "absolute top-0.5 left-0.5 size-5 rounded-full shadow-float transition-[translate] duration-150 ease-out-quint forced-color-adjust-none",
+          props.checked ? "translate-x-4 bg-primary-fg forced-colors:bg-[HighlightText]" : "bg-fg-2 forced-colors:bg-[CanvasText]",
         )}
       />
     </button>

@@ -46,7 +46,7 @@ test("rowStatus: one short line per state", () => {
   assert.equal(rowStatus(p("x", "ready", { models: models(1) })), "Ready · 1 model");
   assert.equal(rowStatus(at(2)), "Not logged in");
   assert.equal(rowStatus(at(4)), "Not installed");
-  assert.equal(rowStatus(at(0)), "Not connected");
+  assert.equal(rowStatus(at(0)), "Not set up");
 });
 
 test("providerGroups: fixed order, empty groups omitted, 'Not set up' folded to one row when something is connected", () => {

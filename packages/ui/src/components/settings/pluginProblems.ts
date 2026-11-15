@@ -1,7 +1,7 @@
 import type { Plugin } from "@octo/agent-client";
 
 const DUPLICATE = /^(languageServers|agents)\[\d+\]: duplicate (?:language server |agent )?id "([^"]+)"(?: \(already defined by ([^)]+)\))?/;
-const PART: Record<string, string> = { languageServers: "language server", agents: "agent", toolServers: "tool server" };
+const PART: Record<string, string> = { languageServers: "language help entry", agents: "agent", toolServers: "extra tool" };
 
 /**
  * B9: a plugin manifest problem in plain words (the raw text stays under Details). A duplicate id names both plugins and

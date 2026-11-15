@@ -44,23 +44,33 @@ export function SettingsNav(props: {
   useRowKeys(sections);
   const device = useHost().remoteDevice;
   return (
-    <nav aria-label="Settings" className="flex h-full w-sidebar shrink-0 flex-col bg-window py-gutter pl-gutter max-settings:hidden">
+    <nav aria-label="Settings" className="flex h-full w-sidebar shrink-0 flex-col bg-window pl-gutter max-settings:hidden">
+      {/* The sidebar's frame (8 gutter, 8 inset): "Back" on the sidebar's first row, every glyph on x=24, every label on x=48. */}
       <div className="flex min-h-0 flex-1 flex-col gap-2 p-pane">
-        <ListRow size="md" tone="quiet" title="Back" tip="Back to the app" leading={<Glyph icon={ArrowLeft} size={16} />} onClick={props.onBack} />
-        <SearchField label="Search settings" value={props.query} onChange={props.onQuery} onKeyDown={props.onSearchKey} />
+        <ListRow
+          size="md"
+          tone="quiet"
+          title="Back"
+          tip="Back to the app"
+          leading={<Glyph icon={ArrowLeft} size={16} className="text-fg-2" />}
+          onClick={props.onBack}
+        />
+        <SearchField label="Search settings" align="rows" value={props.query} onChange={props.onQuery} onKeyDown={props.onSearchKey} />
         <ScrollArea ref={sections} className="flex min-h-0 flex-1 flex-col">
-          {/* G14: three quiet groups. A caption is a 32px row with its text on the rows' text edge (the sidebar's "Projects"). */}
+          {/* G14: three quiet groups, captioned by the sidebar's one rule for both side columns (SessionTree's "Projects"): the
+              caption on the rows' glyph column (8 inset), a 20px line 16px under the block above (the search field, the last row)
+              and 4px over its first row. Not headings: the page's h1 is the first heading (the groups are named by aria-labelledby). */}
           {GROUPS.map((g, i) => (
-            <div key={g.title} role="group" aria-labelledby={`settings-nav-${i}`} className={cn("flex flex-col", i > 0 && "mt-2")}>
-              <h2 id={`settings-nav-${i}`} className="flex h-row-nav shrink-0 items-center pl-8 text-xs text-fg-3">
+            <div key={g.title} role="group" aria-labelledby={`settings-nav-${i}`} className={cn("flex flex-col", i === 0 ? "mt-2" : "mt-4")}>
+              <div id={`settings-nav-${i}`} data-side-caption className="mb-1 flex h-5 shrink-0 items-center pl-2 text-xs text-fg-3">
                 {g.title}
-              </h2>
+              </div>
               {g.sections.map((s) => (
                 <ListRow
                   key={s.id}
                   size="md"
                   title={s.label}
-                  leading={<Glyph icon={GLYPHS[s.id]} size={16} />}
+                  leading={<Glyph icon={GLYPHS[s.id]} size={16} className="text-fg-2" />}
                   {...(sectionLocked(device, s.id)
                     ? // Remote access: a section the device may not change (the harness refuses it) stays in the list, disabled.
                       { description: ON_YOUR_COMPUTER, disabled: true }

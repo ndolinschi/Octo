@@ -39,3 +39,9 @@ test("the index: one name for the main model, plain words for the trace (polish 
   assert.ok(searchSettings("acp").some((r) => r.id === "trace"));
   assert.ok(!SETTINGS_INDEX.some((r) => /orchestrator|wire trace/i.test(r.title)));
 });
+
+test("searchSettings: the phone leaves out the desktop-only rows (A8: keyboard shortcuts)", () => {
+  assert.ok(searchSettings("shortcuts").some((r) => r.id === "shortcuts"));
+  assert.ok(!searchSettings("shortcuts", { phone: true }).some((r) => r.id === "shortcuts"));
+  assert.ok(searchSettings("theme", { phone: true }).some((r) => r.id === "theme"));
+});

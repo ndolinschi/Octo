@@ -16,9 +16,9 @@ test("notices: nothing, garbage and entries without a message give an empty list
   assert.deepEqual(parseNotices([{ kind: "k", message: "m" }]), [{ kind: "k", message: "m", logTail: "" }]);
 });
 
-test("notices: the router notice says Octo runs without the router", () => {
+test("notices: the router notice says Octo works without the router", () => {
   const s = noticeSummary({ kind: "router_failed", message: "The router did not answer /health within 20 s.", logTail: "" });
-  assert.equal(s.includes("runs without it"), true);
+  assert.equal(s.includes("works without it"), true);
   assert.equal(s.includes("did not answer"), true);
   assert.equal(noticeSummary({ kind: "other", message: "hello", logTail: "" }), "hello");
 });

@@ -3628,3 +3628,32 @@ and `spacing-audit.mjs` still look for some of the old strings until the scripts
 only for the phone's Back, the conversation and Monaco), a live harness, 1100 and 1680 for the panels. Known and open:
 the demo shows a failed request's text twice; `aria-allowed-role` on the composer's textarea; small touch-zone overlaps
 at "Go to line N" and "Raw"; Shift+Tab in the composer still switches the mode (the owner's call).
+
+## As built — the premium pass, wave 2: Settings, primitives, tokens (2026-11-15)
+
+- **Settings navigation** (the owner's screenshot: "the titles have crooked gaps"). Group titles follow the sidebar's rule
+  and are no longer headings (`role="group"`, `aria-labelledby`): on the icon column (x 24), a 20px line, 16px over and 4px
+  under. Measured against the project sidebar at 1440: rows 16 / 236 / 32, icons at 24, labels at 48, first row at y 48 in
+  both. The search field's icon sits on the icon column (`SearchField align="rows"`).
+- **Settings pages.** A group's caption is 20px with 4px to its surface and 24px between groups (`SectionHeader
+  line="tight"`); a row's text starts on the caption's and the page title's line (`--spacing-settings-row-inset`); controls
+  in rows are 28px, the switch 24; quiet buttons end on the controls' right edge. Remote access says its name once and has
+  one red action; General's "Sidebar shows" and the Commands footnote are one line; Models has one warning line and no
+  "Project" caption over "Settings for"; Integrations' explanation is over its list. Not changed (the owner's call): the
+  660px rows at the left of the 880 column, and Usage and budget's two right edges.
+- **Phone.** A provider's detail is a history layer; a section's header has "Back to Settings" and the page's own link is
+  gone (`settings/sectionBack.ts`); "Keyboard shortcuts" is not offered; segments are 32 in a 36 track.
+- **Tokens** (WCAG, computed): key hints 3.13 → 5.95 (light, `fg-3`; the opacity is gone, only the frame is dimmed); light
+  `--octo-ok` 4.35 → 5.29 on a selected row; dark `--octo-input-border` 2.89 → 3.43 on a selected row; a menu item's meta
+  under the highlight 4.06 → 6.07. `--octo-field-edge` (the hairline, 1.51 / 1.38) is unchanged: the owner's decision.
+- **Primitives.** `ListRow` builds its name from the title, the glyph's label, the description and the meta (`treeitem
+  "Changelog bot Failed 50m"`), passes `aria-haspopup`, and gives an empty meta no room. `Menu` closes on a scroll only
+  when its opener's ancestor really moved (WebKit with a macOS user agent closed the editor's context menu after ~280 ms;
+  it now stays). `Segmented` with nothing chosen draws each segment as its own tile. Forced colours: the switch, the
+  chosen segment, primary buttons, the selected row and provider marks are visible. A provider mark's letter is a whole
+  size (≥ 9) and only from 20px. `-webkit-text-size-adjust: 100%`; `-webkit-backdrop-filter` beside `backdrop-filter`.
+- **Words** in Settings, providers, the project dialog, the desktop host and the web client follow wave 1's list ("Language
+  help", "Extra tools", "Add a device", "Remove", "Subscription limits", "Model choice", "This window can't …").
+
+Not verified: Safari and iOS; the model picker's menu after the `Menu` change; forced colours in WebKit; the pairing
+screen's safe-area padding on a device. Kept: "Full history / Recent window", the names Auto / Ceiling / Fixed.

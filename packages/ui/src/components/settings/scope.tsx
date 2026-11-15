@@ -34,7 +34,8 @@ export function ScopeRow(props: {
 }) {
   const id = useId();
   return (
-    <SettingsGroup label="Project">
+    // No caption: "Settings for" names the choice, and a caption over it made four headings in a row (Models).
+    <SettingsGroup name="Project">
       <SettingsRow
         title="Settings for"
         htmlFor={id}
@@ -42,6 +43,7 @@ export function ScopeRow(props: {
         control={
           <div className={SELECT_W}>
             <Select
+              size="sm"
               id={id}
               label="Settings for"
               value={props.value}

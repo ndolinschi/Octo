@@ -79,7 +79,7 @@ test("pickerView: only what can run; the API's models grouped, every ready agent
   assert.deepEqual(
     v.unavailable.map((r) => (r.kind === "connect" ? [r.label, r.state, r.action] : null)),
     [
-      ["Octo router", "Not connected", "Connect"],
+      ["Octo router", "Not set up", "Connect"],
       ["Grok", "Not installed", "How to connect"],
     ],
   );

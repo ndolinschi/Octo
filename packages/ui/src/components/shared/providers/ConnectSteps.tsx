@@ -30,7 +30,7 @@ function useSettingsView() {
     };
   }, [bridge]);
   const save = async (update: SettingsUpdate) => {
-    if (!bridge.putSettings) throw new Error("This connection cannot change Octo's settings");
+    if (!bridge.putSettings) throw new Error("This window can't change Octo's settings");
     const view = await bridge.putSettings(update);
     setLoad({ status: "ready", view });
     await refreshProviders(bridge);
@@ -66,11 +66,11 @@ export function KeyLink({ kind }: { kind: string }) {
   if (!page) return null;
   return (
     <p className="text-xs text-fg-3">
-      Get a key at{" "}
+      Get a key from{" "}
       <a href={page.href} target="_blank" rel="noreferrer noopener" className="text-link underline-offset-2 hover:underline">
         {page.host}
       </a>
-      {kind === "router" ? " or your router's provider." : "."}
+      {kind === "router" ? ", or from the provider behind your router." : "."}
     </p>
   );
 }
@@ -135,7 +135,7 @@ export function AgentSteps({ provider: p }: { provider: Provider }) {
                   <Rich text={s.text} />
                 </p>
               ))}
-            {!s.text && <p className="text-sm text-fg-3">The agent's plugin gives no instructions; see its documentation.</p>}
+            {!s.text && <p className="text-sm text-fg-3">No setup steps are available; see the agent's documentation.</p>}
           </li>
         ))}
       </ol>
@@ -160,11 +160,10 @@ export function KeySteps({ provider, upstream }: { provider: Provider; upstream:
       // Decision 89 d: the sentence in plain words; the variable to set is under "Details", like the agents' steps.
       <div role={load.status === "error" ? "alert" : undefined} className="flex flex-col gap-1">
         <p className="text-sm text-fg-2">
-          {load.status === "error" ? `${load.message}. ` : ""}This connection cannot set keys: Octo's local service accepts them only from this computer. Set
-          the key on the computer it runs on.
+          {load.status === "error" ? `${load.message}. ` : ""}This window can't set keys. Set it on the computer Octo runs on.
         </p>
         <Details
-          text={`Set \`${provider.kind === "api" ? SETTING_IDS.anthropicApiKey : SETTING_IDS.routerUpstreamKey}\` in the environment of Octo's local service, then restart it.`}
+          text={`Add \`${provider.kind === "api" ? SETTING_IDS.anthropicApiKey : SETTING_IDS.routerUpstreamKey}\` to Octo's environment, then restart Octo.`}
         />
       </div>
     );
@@ -178,9 +177,9 @@ export function KeySteps({ provider, upstream }: { provider: Provider; upstream:
     <div className="flex flex-col gap-4">
       {provider.kind === "router" && router && !upstream && (
         <div className="flex flex-wrap items-center gap-3">
-          <p className="min-w-0 flex-1 text-sm text-fg-2">{router.value === true ? "The router is switched on." : "The router is switched off."}</p>
+          <p className="min-w-0 flex-1 text-sm text-fg-2">{router.value === true ? "Octo router: on." : "Octo router: off."}</p>
           <Button size="sm" disabled={!router.editable} onClick={() => void settings.save({ set: { [router.id]: router.value !== true } })}>
-            {router.value === true ? "Switch off" : "Switch on"}
+            {router.value === true ? "Turn off" : "Turn on"}
           </Button>
         </div>
       )}
@@ -188,7 +187,7 @@ export function KeySteps({ provider, upstream }: { provider: Provider; upstream:
         <p className="text-sm text-fg-2">{key.note ?? `The key is set by the ${key.source}; change it there.`}</p>
       ) : (
         <SecretForm
-          label={provider.kind === "api" ? "Anthropic API key" : "Upstream key (for example OpenRouter)"}
+          label={provider.kind === "api" ? "Anthropic API key" : "Provider key (for example OpenRouter)"}
           set={key?.set === true}
           hint={key?.hint}
           placeholder={provider.kind === "api" ? "sk-ant-…" : "sk-or-…"}

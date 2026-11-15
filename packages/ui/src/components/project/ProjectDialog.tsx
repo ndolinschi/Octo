@@ -193,7 +193,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   return (
     <Dialog
       title={editing ? "Project settings" : "New project"}
-      {...(editing ? { description: "Changes apply from the next turn." } : {})}
+      {...(editing ? { description: "Changes apply from the next request." } : {})}
       onClose={props.onClose}
       footer={
         confirmDelete ? (
@@ -230,7 +230,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
           <p className="-mb-2 flex items-center gap-1.5 text-xs text-fg-3">
             Your earlier draft is back.
             <Button variant="link" tone="quiet" onClick={clearDraft}>
-              Clear
+              Discard draft
             </Button>
           </p>
         )}
@@ -346,9 +346,9 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
             onClick={() => setAdvanced((a) => !a)}
             className="-ml-3"
           >
-            Models and delegation
+            Models and agents
           </Button>
-          <p className="text-xs text-fg-3">Which models do the work, how deep helper agents may go, and an optional spending cap.</p>
+          <p className="text-xs text-fg-3">Which models do the work, how many levels of agents may start agents, and an optional budget.</p>
           {advanced && (
             <div className="mt-3 grid gap-3">
               {/* The same notice as Settings → Models: said once above the group, not by the tone of each value. */}
@@ -358,10 +358,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                   provider in Settings → Providers.
                 </Notice>
               )}
-              <p className="text-xs text-fg-3">
-                Fast is the cheapest and quickest, for simple work. Balanced suits most tasks. Deep costs the most and thinks hardest, for the difficult parts.
-                Helper agents get the tier that fits their task.
-              </p>
+              <p className="text-xs text-fg-3">Fast: quick, cheap work. Balanced: most tasks. Deep: hard problems, highest cost.</p>
               <div className="grid gap-3 @min-[520px]/dialog:grid-cols-2">
                 {MODEL_FIELDS.map((m) => (
                   // Decision 27 / ACP in the UI: a model, a tier's model or an ACP agent on a subscription; any other id by typing it.
@@ -384,7 +381,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
               </div>
               {router && (
                 <Field
-                  label="Routing"
+                  label="Model choice"
                   hint={
                     <span className="grid gap-0.5">
                       {TIER_POLICIES.map((p) => (
@@ -396,7 +393,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                   }
                 >
                   <Segmented<TierPolicy>
-                    label="Routing policy"
+                    label="Model choice"
                     value={policy}
                     onChange={setPolicy}
                     options={TIER_POLICIES.map((p) => ({ id: p.value, label: p.label, title: p.detail }))}
@@ -424,7 +421,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                   },
                   {
                     id: `${id}-depth`,
-                    label: "Max delegation depth",
+                    label: "Max agent depth",
                     control: (
                       <TextField
                         id={`${id}-depth`}
@@ -443,9 +440,9 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                 hint={
                   <>
                     {spent
-                      ? `Spent ${spent.text}. Checked between steps, so a running step can go over; empty means no cap.`
+                      ? `Spent ${spent.text}. Checked between steps, so a step already running can go over.`
                       : "Budget in US dollars, checked between steps: a running step can go over."}{" "}
-                    Delegation depth is the levels of sub-agents that may spawn their own, 1–8.
+                    Agent depth: how many levels of agents may start other agents (1–8).
                   </>
                 }
                 status={

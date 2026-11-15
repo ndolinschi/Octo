@@ -5,6 +5,6 @@ import { errorMessage } from "./errorMessage";
 test("errorMessage", () => {
   assert.equal(errorMessage("  The harness did not answer.  "), "The harness did not answer.");
   assert.equal(errorMessage(new Error("boom")), "boom");
-  assert.equal(errorMessage(undefined), "The harness could not be started.");
-  assert.equal(errorMessage(""), "The harness could not be started.");
+  assert.equal(errorMessage(undefined), "Octo's local service could not be started.");
+  assert.equal(errorMessage(""), "Octo's local service could not be started.");
 });

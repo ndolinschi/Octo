@@ -9,7 +9,7 @@ export const ROUTER_PROVIDER = "router";
 
 const STATE_TEXT: Record<ProviderState, string> = {
   ready: "Ready",
-  not_connected: "Not connected",
+  not_connected: "Not set up",
   not_logged_in: "Not logged in",
   not_installed: "Not installed",
   not_supported: "Not supported",
@@ -22,7 +22,7 @@ export function canUseAnyway(p: Pick<Provider, "kind" | "state">): boolean {
 }
 
 /** What the "experimental" word says on hover (decision 2026-11-12). */
-export const EXPERIMENTAL_TIP = "This agent's launch command comes from its documentation and has not been run with Octo.";
+export const EXPERIMENTAL_TIP = "Octo has not tested this agent yet.";
 
 /** The state as one or two words (rows, chips). */
 export function stateText(state: ProviderState): string {

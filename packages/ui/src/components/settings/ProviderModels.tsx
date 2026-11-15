@@ -34,7 +34,7 @@ export function ProviderModels({ provider: p }: { provider: Provider }) {
         aside={
           p.kind === "agent" &&
           bridge.refreshProviderModels && (
-            <Button variant="quiet" size="xs" icon={RefreshCw} loading={refreshing} onClick={() => void refresh()}>
+            <Button variant="quiet" size="xs" icon={RefreshCw} loading={refreshing} onClick={() => void refresh()} className="-mr-2">
               Refresh
             </Button>
           )
@@ -43,7 +43,7 @@ export function ProviderModels({ provider: p }: { provider: Provider }) {
         {/* S5: the count and "updated …" are meta in the caption line. */}
         Models · {modelsSummary(p, now)}
       </SectionTitle>
-      {p.models_error && <Notice tone="warn">The last look failed: {p.models_error.replace(/\.$/, "")}. The list below is what was known before.</Notice>}
+      {p.models_error && <Notice tone="warn">Could not refresh: {p.models_error.replace(/\.$/, "")}. Showing the earlier list.</Notice>}
       {p.models_note && <p className="text-xs text-fg-3">{p.models_note}</p>}
       {p.models.length === 0 ? (
         <p className="text-sm text-fg-2">{p.kind === "agent" ? "The agent picks its own model." : "No models listed."}</p>
@@ -63,7 +63,7 @@ export function ProviderModels({ provider: p }: { provider: Provider }) {
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="min-w-0 truncate">{agentModelLabel(m)}</span>
                     {m.id === p.default_model && <span className="shrink-0 rounded-xs bg-hover px-1.5 text-xs leading-4 text-fg-3">default</span>}
-                    {m.stale && <span className="shrink-0 text-xs text-fg-3">not advertised last time</span>}
+                    {m.stale && <span className="shrink-0 text-xs text-fg-3">not listed last time</span>}
                   </span>
                 ) : (
                   agentModelLabel(m)

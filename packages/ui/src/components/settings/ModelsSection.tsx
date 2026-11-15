@@ -45,7 +45,7 @@ export function ModelsSection(props: { projectId?: string | null }) {
             choose(v);
             setScope("project");
           }}
-          description="New projects start with the defaults; each project can then change its own."
+          description="Each project can change its own models."
         />
       )}
       {projectScope && list && <ProjectModels key={project.id} project={project} list={list} update={update} />}
@@ -59,11 +59,9 @@ export function ModelsSection(props: { projectId?: string | null }) {
               onApply={(next) => harness.save({ set: Object.fromEntries(MODEL_ROWS.flatMap((d, i) => (next[i] !== undefined ? [[d.id, next[i]]] : []))) })}
             />
           )}
-          <SettingsGroup label="Defaults for new projects" footer={TIERS_NOTE}>
+          <SettingsGroup label="Default models" footer={TIERS_NOTE}>
             {loading && <SkeletonList count={MODEL_ROWS.length} size="lg" twoLine />}
-            {harness.load.status === "unavailable" && (
-              <SettingsRow title="Not available here" description="This connection cannot change the default models." />
-            )}
+            {harness.load.status === "unavailable" && <SettingsRow title="Not available here" description="This window can't change the default models." />}
             {harness.load.status === "error" && (
               <LoadErrorRow what="settings" message={harness.load.message} hint="Retry once Octo's local service is running." onRetry={harness.reload} />
             )}
@@ -104,6 +102,7 @@ function DefaultModelRow({ def, list }: { def: ModelRow; list: ProviderList }) {
         // The width sits on a wrapper: the select's own `w-full` would win over a `w-64` on it and size it by its text.
         <div className={SELECT_W}>
           <Select
+            size="sm"
             id={id}
             label={def.title}
             value={value}

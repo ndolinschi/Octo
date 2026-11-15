@@ -91,7 +91,7 @@ export function UsageByProject({ holdFooter, onSettled }: { holdFooter: boolean;
     <SettingsGroup
       label="Usage by project"
       id="row-usage"
-      footer={holdFooter ? undefined : "Tokens as each model reported them. A project on a subscription shows what it would have cost, not spend."}
+      footer={holdFooter ? undefined : "Tokens as each model reported them. On a subscription, cost shows what it would have been."}
     >
       <SettingsRow
         title="Period"
@@ -99,6 +99,7 @@ export function UsageByProject({ holdFooter, onSettled }: { holdFooter: boolean;
         control={
           <div className={SELECT_W}>
             <Select
+              size="sm"
               id="usage-period"
               label="Period"
               value={period}

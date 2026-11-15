@@ -13,7 +13,7 @@ test("resetsIn: relative, never a log timestamp", () => {
   assert.equal(resetsIn("2026-11-14T08:00:10Z", now), "Resets any moment");
   assert.equal(resetsIn("2026-11-14T07:00:00Z", now), "Resets any moment");
   assert.equal(resetsIn("2026-11-14T11:00:00Z", now), "Resets in 3 h");
-  assert.equal(resetsIn("2026-11-17T08:00:00Z", now), "Resets in 3 days");
+  assert.equal(resetsIn("2026-11-17T08:00:00Z", now), "Resets in 3 d");
   assert.equal(resetsIn(null, now), "No reset time reported");
 });
 

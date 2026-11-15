@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
+import { useHistoryLayer } from "../../lib/historyLayer";
+import { usePhone } from "../../lib/phone";
 import { defaultProviderId, providerGroups, useProviders } from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { ArrowLeft } from "lucide-react";
@@ -25,6 +27,10 @@ export function ProvidersSection() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [routerOpen, setRouterOpen] = useState(false);
+  // A1.5: on the phone the detail is a history layer over the list, so the system Back (and the header's "←") closes it
+  // and lands on the list, not on the list of sections; the header's "←" is its only back control there.
+  const phone = usePhone();
+  useHistoryLayer(phone && detailOpen, () => setDetailOpen(false));
   const openRouter = () => {
     setRouterOpen(true);
     window.setTimeout(() => document.getElementById("row-router-group")?.scrollIntoView({ block: "start", behavior: "smooth" }), 50);
@@ -70,7 +76,7 @@ export function ProvidersSection() {
               />
               {selected && (
                 <div className={cn("flex min-w-0 flex-col", !detailOpen && "@max-3xl/providers:hidden")}>
-                  <div className="px-3 pt-3 @3xl/providers:hidden">
+                  <div className={cn("px-3 pt-3 @3xl/providers:hidden", phone && "hidden")}>
                     <Button variant="quiet" size="sm" icon={ArrowLeft} onClick={() => setDetailOpen(false)}>
                       Providers
                     </Button>

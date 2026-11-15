@@ -18,16 +18,16 @@ export const MODEL_ROWS = [
     field: "fast",
     rowId: "tier-fast",
     title: "Fast tier",
-    description: "Small, quick tasks handed to a helper.",
-    projectDescription: "Small, quick tasks handed to a helper.",
+    description: "Small, quick tasks handed to an agent.",
+    projectDescription: "Small, quick tasks handed to an agent.",
   },
   {
     id: SETTING_IDS.modelBalanced,
     field: "balanced",
     rowId: "tiers",
     title: "Balanced tier",
-    description: "Most work handed to a helper.",
-    projectDescription: "Most work handed to a helper.",
+    description: "Most work handed to an agent.",
+    projectDescription: "Most work handed to an agent.",
   },
   {
     id: SETTING_IDS.modelDeep,
@@ -42,8 +42,7 @@ export const MODEL_ROWS = [
 export type ModelRow = (typeof MODEL_ROWS)[number];
 
 /** B7: what a tier is, said once where the tiers are set (Models), in the words the provider detail and Details use too. */
-export const TIERS_NOTE =
-  "Tiers: when the main model hands a task to a helper, it gives the task a tier by how hard it is (Fast, Balanced or Deep), and that tier's model does it.";
+export const TIERS_NOTE = "Each task handed to an agent gets a tier by difficulty; that tier's model runs it.";
 
 /**
  * A3: a model that can run in place of `value`, on a connected agent: the same model when the agent lists it (Claude Code runs

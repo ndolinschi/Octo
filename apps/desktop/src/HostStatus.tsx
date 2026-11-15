@@ -20,12 +20,12 @@ export function HostStatus({ state, retrying, onRetry }: { state: Exclude<HostSt
         </p>
         {state.log ? (
           <>
-            <p className="mt-4 text-xs text-fg-3">Last lines of the harness log</p>
+            <p className="mt-4 text-xs text-fg-3">Last lines of Octo's service log</p>
             <pre
               // A scrollable region must be reachable by keyboard.
               // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
               tabIndex={0}
-              aria-label="Harness log"
+              aria-label="Service log"
               className="mt-1 max-h-64 overflow-auto rounded-md bg-code-bg p-3 font-mono text-xs leading-4 whitespace-pre-wrap text-fg-2"
             >
               {state.log}

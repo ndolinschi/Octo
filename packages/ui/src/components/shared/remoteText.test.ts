@@ -37,11 +37,8 @@ test("a device's line", () => {
   const now = Date.parse("2026-11-14T12:00:00Z");
   const d: RemoteDevice = { id: "d", name: "iPhone", status: "pending", read_only: false, paired_at: "2026-11-14T12:00:00Z", online: false };
   assert.equal(deviceLine(d, now), "Paired just now. Waiting for you to allow it.");
-  assert.equal(deviceLine({ ...d, status: "active", online: true }, now), "Can read, send and answer · paired just now · connected now");
-  assert.equal(
-    deviceLine({ ...d, status: "active", read_only: true, last_seen: "2026-11-14T10:00:00Z" }, now),
-    "Can only read · paired just now · last seen 2h ago",
-  );
+  assert.equal(deviceLine({ ...d, status: "active", online: true }, now), "Paired just now · connected now");
+  assert.equal(deviceLine({ ...d, status: "active", read_only: true, last_seen: "2026-11-14T10:00:00Z" }, now), "Paired just now · last seen 2h ago");
 });
 
 test("the status bar item", () => {

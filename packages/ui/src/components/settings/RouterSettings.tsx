@@ -23,7 +23,7 @@ export function RouterSettings(props: { open?: boolean; onOpen?(open: boolean): 
       <SettingsRow
         title="Octo router"
         // B7: the router by what it does for a person, and what happens without it.
-        description="Optional. Picks a cheaper model for small tasks and can cap spending. While it is off, each task runs on the model its tier names."
+        description="Optional. Uses cheaper models for small tasks and can cap spending. When off, each task uses its tier's model."
         control={
           <Button
             variant="quiet"
@@ -32,6 +32,8 @@ export function RouterSettings(props: { open?: boolean; onOpen?(open: boolean): 
             aria-expanded={open}
             aria-controls={panelId}
             onClick={() => setOpen((o) => !o)}
+            // A quiet button's text ends on the row's control edge, as a boxed control's frame does.
+            className="-mr-2"
           >
             {open ? "Hide" : "Show"}
           </Button>
@@ -39,9 +41,7 @@ export function RouterSettings(props: { open?: boolean; onOpen?(open: boolean): 
       />
       {open && (
         <div id={panelId} className="divide-y divide-line">
-          {harness.load.status === "unavailable" && (
-            <SettingsRow title="Not available here" description="This connection cannot read or change Octo's settings." />
-          )}
+          {harness.load.status === "unavailable" && <SettingsRow title="Not available here" description="This window can't read or change Octo's settings." />}
           {harness.load.status === "loading" && <SkeletonList count={1} size="lg" twoLine />}
           {harness.load.status === "error" && (
             <LoadErrorRow what="settings" message={harness.load.message} hint="Octo's local service answers only on this computer." onRetry={harness.reload} />
@@ -74,7 +74,7 @@ function SecretRow({ id, rowId, target }: { id: string; rowId: string; target: s
       control={
         locked ? undefined : (
           <Button size="sm" onClick={() => connect(target)}>
-            {s.set ? "Replace" : "Set key"}
+            {s.set ? "Replace key" : "Add key"}
           </Button>
         )
       }
@@ -94,7 +94,7 @@ function RouterSwitch() {
       rowId="router"
       title="Use the Octo router"
       htmlFor={id}
-      description={s.editable ? "Octo starts the router that comes with the app; models are then reached through it." : (s.note ?? `Set by the ${s.source}`)}
+      description={s.editable ? "Octo starts the router that comes with the app and sends model requests through it." : (s.note ?? `Set by the ${s.source}`)}
       status={<SaveStatus state={saved} restart={harness.needsRestart(s.id)} onRestart={restart} />}
       control={
         <Switch
@@ -132,6 +132,7 @@ function RouterUrl() {
       status={<SaveStatus state={saved} restart={harness.needsRestart(s.id)} onRestart={restart} />}
       control={
         <TextField
+          size="sm"
           id={id}
           value={value}
           disabled={!s.editable}

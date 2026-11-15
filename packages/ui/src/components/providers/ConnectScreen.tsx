@@ -36,21 +36,21 @@ export function ConnectScreen() {
             <h1 id="connect-title" className="text-display text-fg">
               <span className="octo-lead">Connect a provider</span> to start.
             </h1>
-            <p className="text-sm text-fg-2">Octo runs models through an agent on this machine, an API key, or the Octo router. One is enough.</p>
+            <p className="text-sm text-fg-2">Octo needs one of these: a coding agent on this computer, an API key, or the Octo router.</p>
           </div>
           {providers.status === "loading" && <SkeletonList count={4} size="lg" twoLine />}
           {providers.status === "error" && !list && (
             <Notice
               form="block"
               tone="error"
-              title="Couldn't check this machine."
+              title="Couldn't check this computer."
               actions={
                 <Button size="sm" onClick={() => void providers.refresh()}>
                   Retry
                 </Button>
               }
             >
-              {providers.message.replace(/\.$/, "")}. Check that the harness is running.
+              {providers.message.replace(/\.$/, "")}. Check that Octo&apos;s local service is running.
             </Notice>
           )}
           {list && (

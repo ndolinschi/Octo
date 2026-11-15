@@ -37,16 +37,14 @@ export function AgentPrefs({ agent }: { agent: Provider }) {
     <>
       <section className="flex flex-col gap-1">
         <SectionTitle aside={<SaveStatus state={preferredState} />}>Preferred model</SectionTitle>
-        <FieldRow
-          fields={[
-            {
-              id: `${base}-preferred`,
-              label: "Model",
-              control: control("preferred", preferredModel(agent, local), "Preferred model", (m) => save(agent.id, { preferred_model: m }), runPreferred),
-            },
-          ]}
-          hint="Used whenever this provider is chosen."
-        />
+        {/* The caption names the one field (a "Model" label under "Preferred model" said it twice); the select's name is its label. */}
+        <div className="flex flex-col gap-1.5">
+          {/* The tiers' grid, so this select is exactly as wide as a tier's below it. */}
+          <div className="grid grid-cols-1 gap-x-3 @md:grid-cols-3 @md:[&>*]:max-w-64">
+            {control("preferred", preferredModel(agent, local), "Preferred model", (m) => save(agent.id, { preferred_model: m }), runPreferred)}
+          </div>
+          <p className="pt-1 text-xs text-fg-3">Used whenever this provider is chosen.</p>
+        </div>
       </section>
       <section className="flex flex-col gap-1">
         <SectionTitle aside={<SaveStatus state={state} />}>Tiers</SectionTitle>
@@ -56,7 +54,7 @@ export function AgentPrefs({ agent }: { agent: Provider }) {
             label: r.label,
             control: control(r.id, roleModel(agent, r.id, local), r.label, (m) => save(agent.id, { roles: { [r.id]: m } })),
           }))}
-          hint="Work handed to a helper gets a tier by how hard it is (Fast, Balanced, Deep); pick which of this provider's models does each."
+          hint="Work handed to an agent gets a tier by difficulty. Choose which of this provider's models handles each."
         />
       </section>
     </>

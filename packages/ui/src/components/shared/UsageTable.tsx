@@ -56,7 +56,7 @@ function Cells({ r, dim }: { r: UsageRow; dim?: boolean }) {
       <td className={cn(TD, WIDE)} title={tokenTitle(r.input, "input tokens")}>
         {formatTokens(r.input)}
       </td>
-      <td className={cn(TD, WIDE)} title={tokenTitle(r.cached, "cached tokens (cache reads and writes)")}>
+      <td className={cn(TD, WIDE)} title={tokenTitle(r.cached, "cached tokens (reused from earlier requests)")}>
         {formatTokens(r.cached)}
       </td>
       <td className={cn(TD, WIDE)} title={tokenTitle(r.output, "output tokens")}>
@@ -81,11 +81,11 @@ function Cells({ r, dim }: { r: UsageRow; dim?: boolean }) {
 
 function costTitle(r: UsageRow): string {
   if (r.cost.spent === null) {
-    const none = "No price for this model, so its cost is not counted. Add the model to prices.toml in Octo's data folder.";
+    const none = "No price is known for this model, so its cost isn't counted. Add it to prices.toml in Octo's data folder.";
     return r.cost.equivalent > 0 ? `${none} The subscription part is not spend.` : none;
   }
   if (r.cost.equivalent > 0) return `${costCellText(r.cost)}: the subscription part is not spend`;
-  return `$${r.cost.spent.toFixed(4)}${r.cost.estimated ? " (estimated from the price table)" : " (reported by the source)"}`;
+  return `$${r.cost.spent.toFixed(4)}${r.cost.estimated ? " (estimated from prices)" : " (reported by the provider)"}`;
 }
 
 function Bar({ share }: { share: number }) {
@@ -103,12 +103,13 @@ function Body({ r, nested, onToggle }: { r: UsageTableRow; nested: boolean; onTo
   const dim = nested;
   return (
     <tr className={cn("h-row border-t border-line first:border-t-0", dim && "text-fg-3")}>
-      <td className={cn("w-full max-w-0 px-2 text-left", nested && "pl-6")}>
+      {/* 6h: the model (or project) names the row's numbers for a screen reader's table navigation. */}
+      <th scope="row" className={cn("w-full max-w-0 px-2 text-left font-normal", nested && "pl-6")}>
         <div className="flex min-w-0 items-center gap-1">
           {r.expandable && (
             <IconButton
               icon={r.open ? ChevronDown : ChevronRight}
-              label={`${r.open ? "Collapse" : "Expand"} ${r.label}`}
+              label={`${r.open ? "Show fewer" : "Show all"} ${r.label}`}
               size="xs"
               aria-expanded={r.open === true}
               className="-ml-1"
@@ -120,7 +121,7 @@ function Body({ r, nested, onToggle }: { r: UsageTableRow; nested: boolean; onTo
           </span>
         </div>
         <span className="hidden pb-1 text-xs text-fg-3 tabular-nums @max-xl/utable:block">{detail(r)}</span>
-      </td>
+      </th>
       <Cells r={r} dim={dim} />
       <Bar share={r.share} />
     </tr>

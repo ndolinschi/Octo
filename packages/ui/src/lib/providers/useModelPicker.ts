@@ -105,7 +105,7 @@ export function useModelPicker(bridge: Bridge, opts: Omit<PickerOptions, "hidden
   );
   const refreshModels = useCallback(
     async (agentId: string): Promise<string | null> => {
-      if (!bridge.refreshProviderModels) return "This harness cannot look up an agent's models. Update it, or use “Other model…”.";
+      if (!bridge.refreshProviderModels) return "Octo's local service can't list this agent's models. Update it, or use “Other model…”.";
       setRefreshing(true);
       try {
         const p = await bridge.refreshProviderModels(agentId);

@@ -10,16 +10,16 @@ import { ProviderMark } from "../../primitives/ProviderMark";
 import { AgentSteps, KeySteps } from "./ConnectSteps";
 import { ToneDot } from "./ProviderRows";
 
-/** What a provider needs, in one sentence (decision 53). */
-function describe(p: Provider): string {
+/** What a provider needs, in one sentence (decision 53): the one source for the connect screen and the connect sheet. */
+export function describe(p: Provider): string {
   if (p.state === "not_supported") return plainReason(p);
-  if (isReady(p)) return p.kind === "agent" ? "Logged in and ready. Pick it, or one of its models, in any model picker." : "Connected.";
+  if (isReady(p)) return p.kind === "agent" ? "Ready. Choose it, or one of its models, from the model menu." : "Connected.";
   if (p.kind === "agent")
     return p.state === "not_installed"
-      ? "Not installed on this computer. Install it and log in once in a terminal, then press Check again."
-      : "Installed, but not logged in. Log in once in a terminal, then press Check again.";
+      ? "Not installed on this computer. Install it and log in once in a terminal, then check again."
+      : "Installed, but not logged in. Log in once in a terminal, then check again.";
   if (p.kind === "api") return "Bill per token with your own Anthropic API key.";
-  return "Route requests through the Octo router: one key upstream (for example OpenRouter), many models.";
+  return "Use the Octo router: one provider key (for example OpenRouter) gives you many models.";
 }
 
 /**

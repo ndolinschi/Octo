@@ -30,7 +30,15 @@ export function sectionLabel(id: SectionId): string {
   return SECTIONS.find((s) => s.id === id)?.label ?? id;
 }
 
-export type IndexedRow = { section: SectionId; id: string; title: string; description: string; keywords?: string };
+export type IndexedRow = {
+  section: SectionId;
+  id: string;
+  title: string;
+  description: string;
+  keywords?: string;
+  /** A8: a row the phone does not show (it has no keyboard). */
+  desktopOnly?: true;
+};
 
 export const SETTINGS_INDEX: readonly IndexedRow[] = [
   { section: "general", id: "startup", title: "On startup", description: "What the app shows when it opens", keywords: "launch open home last project" },
@@ -61,30 +69,30 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
     section: "providers",
     id: "providers",
     title: "Providers",
-    description: "What can run a model: an API key, the router, agents",
+    description: "Ways to run models: coding agents, an API key, the Octo router",
     keywords: "connect reconnect remove login install claude copilot grok codex agents subscription acp models roles preferred model",
   },
   {
     section: "providers",
     id: "api-key",
     title: "Anthropic API key",
-    description: "Bill per token through your own key (in the API provider)",
+    description: "Pay per token with your own Anthropic key",
     keywords: "secret key anthropic",
   },
   {
     section: "providers",
     id: "router",
     title: "Use the Octo router",
-    description: "Route requests through the bundled router",
+    description: "Send model requests through the Octo router",
     keywords: "router openrouter upstream",
   },
   { section: "providers", id: "router-url", title: "External router URL", description: "A router you run yourself", keywords: "router base url" },
   {
     section: "providers",
     id: "upstream-key",
-    title: "Router upstream key",
-    description: "The key the router forwards to (for example OpenRouter)",
-    keywords: "openrouter secret",
+    title: "Router provider key",
+    description: "The provider key the router uses (for example OpenRouter)",
+    keywords: "openrouter secret upstream",
   },
   {
     section: "models",
@@ -97,10 +105,10 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
     section: "models",
     id: "tiers",
     title: "Tiers",
-    description: "Fast, balanced and deep models for work handed to a helper",
+    description: "Fast, balanced and deep models for work handed to an agent",
     keywords: "fast balanced deep tier roles speed",
   },
-  { section: "models", id: "visible", title: "Models in pickers", description: "Which models appear when you choose one", keywords: "hide show list picker" },
+  { section: "models", id: "visible", title: "Models in menus", description: "Which models appear when you choose one", keywords: "hide show list picker" },
   {
     section: "editor",
     id: "completion",
@@ -112,14 +120,14 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
     section: "integrations",
     id: "plugins",
     title: "Integrations",
-    description: "Language servers, agents and tool servers that plugins add",
+    description: "Language help, agents and extra tools from plugins",
     keywords: "plugins lsp language server tool server mcp agents",
   },
   {
     section: "commands",
     id: "project-commands",
     title: "Project commands",
-    description: "Named shell commands you run from a review or by name",
+    description: "Commands you start yourself, from the header or by name",
     keywords: "run tests dev server build scripts pinned",
   },
   {
@@ -143,13 +151,13 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
     description: "One column, side by side, or by width",
     keywords: "split unified side by side review diff",
   },
-  { section: "usage", id: "limits", title: "Plan limits", description: "Rate limits the provider reported", keywords: "rate limit quota" },
+  { section: "usage", id: "limits", title: "Subscription limits", description: "Usage limits reported by the provider", keywords: "rate limit quota plan" },
   { section: "usage", id: "budget", title: "Budget", description: "A total spending cap per project", keywords: "spend cost usd cap limit" },
   {
     section: "memory",
     id: "context",
     title: "Context mode",
-    description: "How each project's orchestrator builds its context",
+    description: "How each project decides what the model reads",
     keywords: "memory window full history digest",
   },
   {
@@ -181,16 +189,24 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
     description: "Reach this computer from your phone through Cloudflare",
     keywords: "phone mobile tunnel cloudflare cloudflared remote pair qr devices",
   },
-  { section: "remote", id: "remote-add", title: "Pair a phone", description: "A QR code and a code that work once", keywords: "add device pairing qr code" },
+  { section: "remote", id: "remote-add", title: "Add a device", description: "A QR code and a code that work once", keywords: "add device pairing qr code" },
   { section: "about", id: "version", title: "Version", description: "Octo's local service and the app", keywords: "about build" },
-  { section: "about", id: "shortcuts", title: "Keyboard shortcuts", description: "Every shortcut in one list", keywords: "keys hotkeys help" },
+  {
+    section: "about",
+    id: "shortcuts",
+    title: "Keyboard shortcuts",
+    description: "Every shortcut in one list",
+    keywords: "keys hotkeys help",
+    desktopOnly: true,
+  },
 ];
 
 /** Rows whose title, description, keywords or section match every word of `query`, in index order. */
-export function searchSettings(query: string): IndexedRow[] {
+export function searchSettings(query: string, opts?: { phone?: boolean }): IndexedRow[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [];
   return SETTINGS_INDEX.filter((r) => {
+    if (opts?.phone && r.desktopOnly) return false;
     const text = `${r.title} ${r.description} ${r.keywords ?? ""} ${sectionLabel(r.section)}`.toLowerCase();
     return words.every((w) => text.includes(w));
   });

@@ -1,6 +1,6 @@
-import type { AriaRole, MouseEventHandler, ReactNode } from "react";
+import { useId, type AriaAttributes, type AriaRole, type MouseEventHandler, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { rowHeight, selectionAria, type RowSize } from "../../lib/listRow";
+import { emptyNode, nodeText, rowHeight, selectionAria, type RowSize } from "../../lib/listRow";
 import { MiddleText } from "./MiddleText";
 
 /**
@@ -53,11 +53,29 @@ export function ListRow(props: {
   /** Tooltip with the whole title. */
   tip?: string;
   className?: string;
+  /** 6b: passed to the row's main element (a project row's `aria-haspopup="menu"`, a test hook). */
+  "aria-haspopup"?: AriaAttributes["aria-haspopup"];
+  "aria-describedby"?: string;
+  [data: `data-${string}`]: string | number | boolean | undefined;
 }) {
   const { selected = false, active = false, disabled = false } = props;
   const twoLine = props.description !== undefined;
   const interactive = props.onClick !== undefined || props.href !== undefined;
+  const ids = useId();
+  // 6c: a meta that draws nothing takes no room (the title then runs to the row's edge).
+  const hasMeta = !emptyNode(props.meta);
+  const metaText = hasMeta ? nodeText(props.meta) : "";
+  // 6a: the name is the title, then the leading slot's label (a state glyph's "Failed"), the description, the meta ("50m"),
+  // in reading order, so a screen reader hears the state and the time the eye sees. The leading slot is no longer hidden
+  // (its glyphs are `aria-hidden` themselves); the meta is read from its text, whatever the caller hid for its looks.
+  const named = props.leading !== undefined || metaText !== "";
+  const labelledBy = named
+    ? [`${ids}t`, props.leading !== undefined && `${ids}l`, twoLine && `${ids}d`, metaText !== "" && `${ids}m`].filter(Boolean).join(" ")
+    : undefined;
+  const passed = Object.fromEntries(Object.entries(props).filter(([k]) => k.startsWith("data-") || k === "aria-haspopup" || k === "aria-describedby"));
   const aria = {
+    ...passed,
+    ...(labelledBy ? { "aria-labelledby": labelledBy } : {}),
     ...selectionAria(props.role, selected),
     ...(disabled ? { "aria-disabled": true } : {}),
     ...(props.expanded === undefined ? {} : { "aria-expanded": props.expanded }),
@@ -70,25 +88,43 @@ export function ListRow(props: {
   );
   const title =
     typeof props.title === "string" && props.truncate === "middle" ? (
-      <MiddleText text={props.title} />
+      <span id={`${ids}t`} className="flex min-w-0">
+        <MiddleText text={props.title} />
+      </span>
     ) : (
-      <span className="min-w-0 truncate">{props.title}</span>
+      <span id={`${ids}t`} className="min-w-0 truncate">
+        {props.title}
+      </span>
     );
   const body = (
     <>
       {props.leading !== undefined && (
-        <span aria-hidden className="grid size-4 shrink-0 place-items-center text-fg-3">
+        <span id={`${ids}l`} className="grid size-4 shrink-0 place-items-center text-fg-3">
           {props.leading}
         </span>
       )}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-2">
           {title}
-          {props.meta !== undefined && (
-            <span className={cn("ml-auto max-w-[40%] shrink-0 truncate pl-1 text-xs", selected || active ? "text-fg-2" : "text-fg-3")}>{props.meta}</span>
+          {hasMeta && (
+            <span
+              aria-hidden={metaText !== "" || undefined}
+              className={cn("ml-auto max-w-[40%] shrink-0 truncate pl-1 text-xs", selected || active ? "text-fg-2" : "text-fg-3")}
+            >
+              {props.meta}
+            </span>
+          )}
+          {metaText !== "" && (
+            <span id={`${ids}m`} className="sr-only">
+              {metaText}
+            </span>
           )}
         </span>
-        {twoLine && <span className={cn("min-w-0 truncate text-xs", selected || active ? "text-fg-2" : "text-fg-3")}>{props.description}</span>}
+        {twoLine && (
+          <span id={`${ids}d`} className={cn("min-w-0 truncate text-xs", selected || active ? "text-fg-2" : "text-fg-3")}>
+            {props.description}
+          </span>
+        )}
       </span>
     </>
   );
@@ -98,7 +134,8 @@ export function ListRow(props: {
         "group flex min-w-0 items-center rounded-sm",
         rowHeight(props.size ?? "sm", twoLine),
         selected || active
-          ? "bg-active text-fg"
+          ? // 6d: forced colours drop the fill; the selection keeps a system-coloured edge there.
+            "bg-active text-fg forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight] forced-colors:outline-solid"
           : // B58 (polish step 2): in a listbox the keyboard's row and the pointer's row are both shown at once, so the pointer's
             // tint is half the hover tint there and never reads as a second selection.
             cn(props.tone === "quiet" ? "text-fg-2" : "text-fg", interactive && (props.role === "option" ? "hover:bg-hover/50" : "hover:bg-hover")),

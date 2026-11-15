@@ -245,6 +245,11 @@
   #root {
     height: 100%;
   }
+  /* Add. 8b: iOS enlarges text in landscape unless told not to. */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
   body {
     margin: 0;
     background: var(--octo-window);
@@ -1003,9 +1008,12 @@
   --octo-card-alpha: 90%;
   --octo-card-highlight: rgb(255 255 255 / 0.7);
 }
-@supports (backdrop-filter: blur(12px)) {
+/* Add. 8d: Safari before 18 knows only the prefixed property; both are in the condition and the rule (written by hand: the
+   build's prefixing is not relied on here). */
+@supports (backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px)) {
   .octo-card {
     background: color-mix(in srgb, var(--octo-panel) var(--octo-card-alpha), transparent);
+    -webkit-backdrop-filter: blur(12px) saturate(1.2);
     backdrop-filter: blur(12px) saturate(1.2);
   }
 }
@@ -1017,6 +1025,7 @@
 @media (forced-colors: active) {
   .octo-card {
     background: Canvas;
+    -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
   /* The heat map, token bars and day charts keep their tones (they are data, not decoration). */
@@ -1212,16 +1221,7 @@
   [data-conv] [data-rail] {
     display: none;
   }
-  /* Requests become right-aligned bubbles; answers stay full width with no card. */
-  [data-conv] [data-prompt] {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-  }
-  [data-conv] [data-prompt] > [data-bubble] {
-    max-width: 86%;
-    border-radius: var(--radius-xl);
-  }
+  /* Requests are right-aligned bubbles at every width now (R2, the request bubble's block at the end of this file). */
   [data-conv] .octo-prose {
     overflow-wrap: anywhere;
   }
@@ -1456,6 +1456,9 @@
   /* S1: the one left edge inside the column: page title, group captions, row labels and footers sit this far in from the
      surfaces' edge (a row's own side padding). */
   --spacing-settings-inset: var(--spacing-card); /* retest3: Settings rows share the card inset (12) with conversation cards */
+  /* Inside a settings surface (ListFrame, 1px edge) the rows' inset less that edge, so a row's text is on the same x as the
+     page title, the captions and the notes outside it (it was 1px right of them). */
+  --spacing-settings-row-inset: calc(var(--spacing-settings-inset) - 1px);
   /* S2: a settings row is a label line (20) and one explanation line (16) between 12px paddings: 60. A row without an
      explanation keeps the height and centres its one line. */
   --spacing-settings-row: 60px;
@@ -1590,8 +1593,8 @@
 }
 /* Polish pass F3, item 5: a wholly added or removed line carries Monaco's word decoration over the whole line too, so it read
    at line + word strength (≈ 25 %) where the conversation's diff shows a whole line at the line tint (9 / 8 %). The word tint
-   stays for words changed inside a changed line. */
-[data-review] .monaco-diff-editor .view-overlays .cdr:is(.char-insert, .char-delete)[style*="width:100%"] {
+   stays for words changed inside a changed line. R2: the same in Changes (`data-v7-changes`, ChangesView). */
+:is([data-review], [data-v7-changes]) .monaco-diff-editor .view-overlays .cdr:is(.char-insert, .char-delete)[style*="width:100%"] {
   background: transparent;
 }
 /* Polish pass F3 (B4.3): focus the app moved by itself (a panel opening, a list's search field) draws no ring until the
@@ -2185,6 +2188,8 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   padding-inline: 4px;
   font-size: 16px;
   line-height: 20px;
+  /* One line is one line: the empty field is as tall as a line of text (was 22, so the second line grew it by 18). */
+  min-height: 20px;
   /* Six lines, fewer when the keyboard leaves little room: the conversation keeps most of the screen. */
   max-height: min(120px, calc(var(--octo-vvh, 100vh) * 0.2));
 }
@@ -2221,18 +2226,19 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   container: composer-session / inline-size;
   min-width: var(--spacing-ctl-sm);
 }
-[data-composer-session="top"] {
-  display: none;
-}
-/* A narrow composer (beside a panel) has no room for it in the row: it keeps the line of its own at the top of the box. */
+/* R2: a narrow composer (beside a panel) keeps the chip in the row as its glyph alone (it repeats the tab's title), so the
+   box never grows a floor for it; the spacer takes the free room again. */
 @container composer (max-width: 479.98px) {
-  :root:not([data-phone]) [data-composer-session="top"] {
-    display: flex;
-  }
-  :root:not([data-phone]) .octo-composer:has(> [data-composer-session="top"]) > [data-composer-pad] {
-    padding-top: 4px;
-  }
   [data-composer-session="row"] {
+    flex: none;
+    min-width: 0;
+  }
+  [data-composer-session="row"] [data-composer-chip] {
+    width: var(--spacing-ctl-sm);
+    padding: 0;
+    justify-content: center;
+  }
+  [data-composer-session="row"] [data-chip-label] {
     display: none;
   }
   :root:not([data-phone]) [data-composer-session] + [data-composer-spacer] {
@@ -2368,4 +2374,81 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 /* No hover on a phone: a reply's footer (copy, time, model) is always shown, and wraps (above). */
 [data-phone] [data-conv] [data-turn-footer] {
   opacity: 1;
+}
+
+/* ── R2, owner's addition 10: the request bubble (design study A, variant V1) ─────────────────────────────────────────────
+   Right-aligned, as wide as its text (at most 80 % of the column), at every width (it was a full-width card above 480 px and
+   a bubble below). One line and nothing else (`data-one-line`, Transcript's UserPrompt) is a pill: 40 high on the desktop
+   (22 + 8 + 8 + the 1px edges), 42 on the phone (24); taller keeps radius 18 with 12 / 16 inside. Its meta (From …, Sent while
+   Octo was working) sits above it, its right edge on the text's. The fill is two variables, so another tone is two values:
+   F4 moves them to the theme blocks with the other tokens. */
+:root,
+:root[data-theme="dark"] {
+  --octo-bubble: #3a786b; /* white text 5.15:1 */
+  --octo-bubble-fg: #ffffff;
+}
+:root[data-theme="light"] {
+  --octo-bubble: #356e61; /* white text 5.91:1 */
+  --octo-bubble-fg: #ffffff;
+}
+[data-conv] [data-prompt] {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+[data-conv] [data-prompt] > [data-bubble] {
+  max-width: 80%;
+  border-radius: 18px;
+  padding: 12px 16px;
+  border-color: transparent;
+}
+[data-conv] [data-prompt] > [data-bubble][data-one-line] {
+  border-radius: 9999px;
+  padding-block: 8px;
+}
+[data-conv] [data-prompt] > [data-steered],
+[data-conv] [data-prompt] > div.text-xs {
+  padding-inline: 16px;
+}
+/* The pinned copy at the top takes the same shape, right-aligned. */
+[data-pinned-box] {
+  display: flex;
+  justify-content: flex-end;
+}
+[data-pinned-box] > button {
+  width: auto;
+  max-width: 80%;
+  border-radius: 18px;
+  padding: 12px 16px;
+}
+/* "Rewind to here" is a quiet text action under the bubble (Transcript: `top-full`, 4px, at its right), not on its edge. */
+[data-conv] [data-prompt] > [data-bubble],
+[data-pinned-box] > button {
+  background: var(--octo-bubble);
+  color: var(--octo-bubble-fg);
+}
+/* Inside the fill: the selection and "Show more" in white (the blue selection and the dim text muddied the green). */
+[data-conv] [data-prompt] > [data-bubble] ::selection,
+[data-pinned-box] > button ::selection {
+  background: rgb(255 255 255 / 0.32);
+  color: #fff;
+}
+[data-conv] [data-prompt] > [data-bubble] > button {
+  color: rgb(255 255 255 / 0.85);
+}
+[data-conv] [data-prompt] > [data-bubble] > button:hover {
+  color: #fff;
+  background: rgb(255 255 255 / 0.12);
+}
+/* The focus ring on the fill: the ring colour is the panel's, so it reads as a gap around the white text's button. */
+[data-conv] [data-prompt] > [data-bubble] > button:focus-visible {
+  box-shadow: 0 0 0 2px #fff;
+}
+@media (forced-colors: active) {
+  [data-conv] [data-prompt] > [data-bubble],
+  [data-pinned-box] > button {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
 }

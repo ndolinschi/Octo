@@ -37,6 +37,11 @@ export function SearchField({
   variant?: Variant;
   size?: ControlSize;
   shortcut?: ReactNode;
+  /**
+   * `rows`: a bordered field over a column of `ListRow`s (the settings navigation): 8px inset and the glyph in a 16px box, so
+   * the glyph is centred on the rows' glyph column and the text starts on their label edge.
+   */
+  align?: "rows";
   clearOnEscape?: boolean;
   onKeyDown?(e: KeyboardEvent<HTMLInputElement>): void;
   /** The input element's ref (focus it from a shortcut). */
@@ -59,11 +64,19 @@ export function SearchField({
       className={cn(
         "flex min-w-0 items-center gap-2",
         variant === "bordered" && cn(CONTROL[props.size ?? "md"].h, "touch:h-ctl-lg"),
-        FRAME[variant],
+        // `cn` does not merge classes: the rows' inset replaces the frame's padding instead of following it (7 + the 1px
+        // border = the rows' 8, so the glyph box is on x+8 and the text on x+32, the rows' label edge).
+        props.align === "rows" && variant === "bordered" ? cn(FIELD_FRAME, "px-[7px]") : FRAME[variant],
         props.className,
       )}
     >
-      <Glyph icon={Search} size={14} className="shrink-0 text-fg-3" />
+      {props.align === "rows" ? (
+        <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+          <Glyph icon={Search} size={14} className="text-fg-3" />
+        </span>
+      ) : (
+        <Glyph icon={Search} size={14} className="shrink-0 text-fg-3" />
+      )}
       <input
         ref={setRef}
         type="search"

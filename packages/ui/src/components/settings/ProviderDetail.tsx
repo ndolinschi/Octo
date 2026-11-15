@@ -144,7 +144,7 @@ function Reason({ provider: p, text }: { provider: Provider; text: string }) {
                 </p>
               )}
               {commands.length === 0 && (
-                <p className="text-sm text-fg-2">{s.hint ? <HintProse text={s.hint} /> : "The agent's plugin gives no instructions; see its documentation."}</p>
+                <p className="text-sm text-fg-2">{s.hint ? <HintProse text={s.hint} /> : "No setup steps are available; see the agent's documentation."}</p>
               )}
             </div>
           );

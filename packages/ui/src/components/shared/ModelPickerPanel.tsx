@@ -26,7 +26,7 @@ import type { PickerSection } from "../../lib/picker";
 import { Popover } from "../primitives/Popover";
 import type { ModelPickerProps } from "./modelPickerProps";
 
-const STALE_NOTE = "not offered in the last session";
+const STALE_NOTE = "not offered last time";
 
 /** A model typed by hand: at the top level (project settings) a model id of any provider, in an agent's list a name for that agent. */
 type Custom = { kind: "custom"; key: string; value: string; label: string; agentId: string | null };
@@ -266,7 +266,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         ),
       };
     if (r.kind === "more") return { ...base, label: r.label, quiet: true, lead: <Glyph icon={ChevronRight} size={14} className="text-fg-3" /> };
-    if (r.kind === "custom") return { ...base, label: `Use “${r.label}”`, hint: r.agentId ? "model name" : "model id" };
+    if (r.kind === "custom") return { ...base, label: `Use “${r.label}”`, hint: "model name" };
     if (r.kind === "connect") {
       const text = r.unsupported ? (r.reason ?? r.state) : r.unverified ? r.state : `${r.state} · ${r.action}`;
       // B13: beside "Check again" the state is a second dim line under the name (a 40px row), so neither the name nor the state
@@ -358,7 +358,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         variant="header"
         clearOnEscape={false}
         label={agent ? `Search ${agent.label} models` : "Search models and agents"}
-        placeholder={agent ? `Search ${agent.label} models` : props.custom ? "Search, or type a model id" : "Search models and agents"}
+        placeholder={agent ? `Search ${agent.label} models` : props.custom ? "Search, or type a model name" : "Search models and agents"}
         value={query}
         onChange={(v) => {
           setQuery(v);
@@ -385,8 +385,8 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
             onClick={() => void doRefresh()}
             title={
               agent.refreshedAt
-                ? `Ask ${agent.label} which models it offers (last read ${new Date(agent.refreshedAt).toLocaleString()})`
-                : `Ask ${agent.label} which models it offers`
+                ? `Refresh ${agent.label}'s model list (updated ${new Date(agent.refreshedAt).toLocaleString()})`
+                : `Refresh ${agent.label}'s model list`
             }
           >
             Refresh models
@@ -459,19 +459,13 @@ function UnverifiedActions({ checking, still, onCheck }: { checking: boolean; st
 
 function rowTitle(r: PickerRow | Custom | More): string {
   if (r.kind === "more") return `${r.label}: show them`;
-  if (r.kind === "custom") return r.agentId ? `Use “${r.label}” as the model name` : `Use “${r.value}” as the model id`;
+  if (r.kind === "custom") return r.agentId ? `Use “${r.label}” as the model name` : `Use “${r.value}” as the model name`;
   if (r.kind === "connect") return r.unsupported ? `${r.label}: ${r.reason ?? r.state}` : `${r.label}: ${r.state}`;
   if (r.kind === "other") return "Type the name of a model this agent accepts";
   if (r.kind === "agent") return `${r.label}: choose a model`;
   if (r.kind === "default") return "No model named: the agent uses its own default";
   const how =
-    r.source === "custom"
-      ? "added by you"
-      : r.source === "advertised"
-        ? "offered by the agent"
-        : r.source === "command"
-          ? "listed by the agent's command"
-          : null;
+    r.source === "custom" ? "added by you" : r.source === "advertised" ? "offered by the agent" : r.source === "command" ? "listed by the agent" : null;
   const note = r.stale ? STALE_NOTE : how;
   return note ? `${r.value} (${note})` : r.value;
 }

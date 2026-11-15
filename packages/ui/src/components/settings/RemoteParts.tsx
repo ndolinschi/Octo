@@ -58,7 +58,7 @@ export function PairingPanel({
   const now = useNow(1000);
   const left = countdown(pairing.expires_at, now);
   return (
-    <div data-remote-pairing className="flex gap-4 px-settings-inset py-3 max-sm:flex-col max-sm:items-center">
+    <div data-remote-pairing className="flex gap-4 px-settings-row-inset py-3 max-sm:flex-col max-sm:items-center">
       <QrImage text={pairing.link} size={168} />
       <div className="flex min-w-0 flex-1 flex-col gap-2 max-sm:items-center max-sm:text-center">
         <p className="text-sm text-fg-2">Scan with the phone's camera, or open the address there and type the code.</p>
@@ -90,7 +90,7 @@ export function PendingRow({ device, now, busy, onAllow, onDeny }: { device: Rem
       description={deviceLine(device, now)}
       control={
         <>
-          <Button size="sm" variant="danger" onClick={onDeny} disabled={busy}>
+          <Button size="sm" onClick={onDeny} disabled={busy}>
             Deny
           </Button>
           <Button size="sm" variant="primary" onClick={onAllow} disabled={busy}>
@@ -102,7 +102,7 @@ export function PendingRow({ device, now, busy, onAllow, onDeny }: { device: Rem
   );
 }
 
-/** A paired device: what it may do, when it was seen, read-only, revoke. */
+/** A paired device: when it was seen, read-only, remove. */
 export function DeviceRow({
   device,
   now,
@@ -124,11 +124,12 @@ export function DeviceRow({
       control={
         <>
           <span className="flex items-center gap-2 text-xs text-fg-2">
-            Read only
+            Read-only
             <Switch checked={device.read_only} onChange={onReadOnly} label={`${device.name} can only read`} disabled={busy} />
           </span>
-          <Button size="sm" variant="danger" onClick={onRevoke} disabled={busy}>
-            Revoke
+          {/* Red is kept for "Remove all and turn off": one device's removal is an ordinary button (it can pair again). */}
+          <Button size="sm" onClick={onRevoke} disabled={busy}>
+            Remove
           </Button>
         </>
       }

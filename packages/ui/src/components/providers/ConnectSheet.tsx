@@ -1,12 +1,13 @@
 import type { Provider } from "@octo/agent-client";
 import { useState } from "react";
 import { errorMessage } from "../../lib/format";
-import { ROUTER_PROVIDER, USE_ANYWAY_NOTE, canUseAnyway, isReady, plainReason, recheckAgent, stateText, useProviders } from "../../lib/providers";
+import { ROUTER_PROVIDER, USE_ANYWAY_NOTE, canUseAnyway, isReady, recheckAgent, stateText, useProviders } from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { Notice } from "../primitives/Notice";
 import { Spinner } from "../primitives/Status";
+import { describe } from "../shared/providers/ConnectDetail";
 import { AgentSteps, KeySteps, ROUTER_UPSTREAM } from "../shared/providers/ConnectSteps";
 
 /**
@@ -65,7 +66,7 @@ export function ConnectSheet({ target, onClose, onUseAnyway }: { target: string;
             </Button>
           }
         >
-          Couldn&apos;t check the providers. {providers.message.replace(/\.$/, "")}. Check that the harness is running.
+          Couldn&apos;t check the providers. {providers.message.replace(/\.$/, "")}. Check that Octo&apos;s local service is running.
         </Notice>
       )}
       {list && !provider && <p className="text-sm text-fg-2">Octo's local service does not list this provider any more. Close this and pick another one.</p>}
@@ -73,17 +74,6 @@ export function ConnectSheet({ target, onClose, onUseAnyway }: { target: string;
       {provider && provider.kind !== "agent" && <KeySteps provider={provider} upstream={target === ROUTER_UPSTREAM} />}
     </Dialog>
   );
-}
-
-function describe(p: Provider): string {
-  if (p.state === "not_supported") return plainReason(p);
-  if (isReady(p)) return p.kind === "agent" ? "Logged in and ready. Pick it, or one of its models, in any model picker." : "Connected.";
-  if (p.kind === "agent")
-    return p.state === "not_installed"
-      ? "Not installed on this machine. Install it, log in, then check again."
-      : "Installed, but not logged in. Log in once, then check again.";
-  if (p.kind === "api") return "Bill per token with your own Anthropic API key.";
-  return "Route requests through the Octo router: one key upstream (for example OpenRouter), many models.";
 }
 
 /** "Check again" runs the agent's login probe now (a spinner while it does); "Use anyway" only for a login the probe says is missing. */

@@ -23,6 +23,6 @@ export function parseNotices(raw: unknown): HostNotice[] {
 
 /** The one-line text of a notice: the router notice says what still works. */
 export function noticeSummary(n: HostNotice): string {
-  if (n.kind === "router_failed") return `The Octo router did not start, so Octo runs without it. ${n.message}`;
+  if (n.kind === "router_failed") return `The Octo router did not start. Octo works without it. ${n.message}`;
   return n.message;
 }

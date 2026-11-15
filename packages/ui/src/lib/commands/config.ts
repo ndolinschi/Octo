@@ -22,16 +22,16 @@ export function commandsProblem(list: readonly ProjectCommand[]): string | null 
     const name = c.name.trim();
     if (!name) return "Every command needs a name.";
     if (name.length > MAX_NAME) return `“${name.slice(0, 20)}…” is longer than ${MAX_NAME} characters. Shorten the name.`;
-    if (hasForbiddenChar(name)) return `“${name}” has a slash or a control character. Use letters, digits, spaces and dashes.`;
+    if (hasForbiddenChar(name)) return `“${name}” can only use letters, digits, spaces and dashes.`;
     const key = name.toLowerCase();
     if (seen.has(key)) return `Two commands are named “${name}”. Names must differ.`;
     seen.add(key);
     if (!c.command.trim()) return `“${name}” has no command line.`;
-    if (new TextEncoder().encode(c.command).length > MAX_COMMAND_BYTES) return `The command of “${name}” is too long (${MAX_COMMAND_BYTES} bytes at most).`;
+    if (new TextEncoder().encode(c.command).length > MAX_COMMAND_BYTES) return `The command of “${name}” is too long (max ${MAX_COMMAND_BYTES} characters).`;
     const cwd = c.cwd ?? "";
-    if (cwd.startsWith("/") || /(^|\/)\.\.(\/|$)/.test(cwd)) return `The folder of “${name}” must stay inside the project (no absolute path, no “..”).`;
+    if (cwd.startsWith("/") || /(^|\/)\.\.(\/|$)/.test(cwd)) return `The folder of “${name}” must stay inside the project: use a path inside it.`;
   }
-  if (list.filter((c) => c.pinned).length > MAX_PINNED) return `Pin at most ${MAX_PINNED} commands; the rest stay in the Run menu.`;
+  if (list.filter((c) => c.pinned).length > MAX_PINNED) return `Only ${MAX_PINNED} commands can be buttons in the header; the rest stay in the Run menu.`;
   return null;
 }
 

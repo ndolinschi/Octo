@@ -18,7 +18,7 @@ type Item = { key: string; kind: Kind; name: string; detail: string; tip: string
 type Load = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; plugins: Plugin[] };
 
 const GROUPS: { kind: Kind; label: string; footer: ReactNode }[] = [
-  { kind: "server", label: "Language servers", footer: "They give the editor go to definition, hover, and errors as you type, per language." },
+  { kind: "server", label: "Language help", footer: "Go to definition, hover and error checks in the editor, per language." },
   {
     kind: "agent",
     label: "Agents",
@@ -32,7 +32,7 @@ const GROUPS: { kind: Kind; label: string; footer: ReactNode }[] = [
       </>
     ),
   },
-  { kind: "tool", label: "Tool servers", footer: "Extra tools agents may call (MCP servers)." },
+  { kind: "tool", label: "Extra tools", footer: "Tools that agents can call." },
 ];
 
 function itemsOf(plugins: Plugin[]): Item[] {
@@ -116,13 +116,14 @@ export function IntegrationsView() {
   return (
     <div data-integrations id="row-plugins" className="flex scroll-mt-6 flex-col gap-6">
       {items.length > 0 && (
-        <div className="flex px-settings-inset">
+        // A box lines up with the boxes (the lists below); its glyph then sits on their text edge (12 inset).
+        <div className="flex">
           <SearchField label="Search integrations" value={query} onChange={setQuery} className={CONTROL_W.lg} />
         </div>
       )}
       {plugins.length === 0 && (
         <SettingsGroup label="Integrations">
-          <SettingsRow title="No plugins installed" description="Plugins add language servers, agents and tool servers. See below how to add one." />
+          <SettingsRow title="No plugins installed" description="Plugins add language help, agents and extra tools. How to add one is below." />
         </SettingsGroup>
       )}
       {plugins.length > 0 && q && shown.length === 0 && <p className="px-settings-inset text-sm text-fg-3">Nothing matches “{query.trim()}”.</p>}
@@ -131,7 +132,8 @@ export function IntegrationsView() {
         const own = q ? [] : problems.filter((p) => p.kind === g.kind || (p.kind === null && g.kind === "server"));
         if (rows.length === 0 && own.length === 0) return null;
         return (
-          <SettingsGroup key={g.kind} label={g.label} footer={g.footer}>
+          // The explanation under the caption, over its list: under the list it read as the caption of the next group.
+          <SettingsGroup key={g.kind} label={g.label} description={g.footer}>
             {rows.map((i) => (
               <SettingsRow
                 key={i.key}
@@ -149,9 +151,9 @@ export function IntegrationsView() {
         );
       })}
       <p className="px-settings-inset text-xs text-fg-3">
-        To add a plugin, put its folder (with a <code className="font-mono text-fg-2">plugin.json</code> file) in the{" "}
-        <span title="{data-dir}/plugins/, or a folder passed with --plugins-dir">plugins folder inside the data folder</span> (Privacy and data shows where),
-        then restart Octo.
+        Copy the plugin&apos;s folder (with <code className="font-mono text-fg-2">plugin.json</code>) into the{" "}
+        <span title="{data-dir}/plugins/, or a folder passed with --plugins-dir">plugins folder in Octo&apos;s data folder</span>, then restart. Privacy and
+        data shows where.
       </p>
     </div>
   );
@@ -168,7 +170,7 @@ function kindOf(raw: string): Kind | null {
 function Problem({ text, raw }: { text: string; raw: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex flex-col gap-1 px-settings-inset py-3">
+    <div className="flex flex-col gap-1 px-settings-row-inset py-3">
       <Notice
         tone="warn"
         action={

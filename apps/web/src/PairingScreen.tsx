@@ -28,13 +28,14 @@ export function PairingScreen({ base, phase, onPaired }: { base: string; phase: 
       (c) => onPaired(c.token, c.name),
       (err: unknown) => {
         setBusy(false);
-        setError(err instanceof PairingError ? { message: err.message, hint: err.hint } : { message: String(err), hint: "Try again." });
+        setError(err instanceof PairingError ? { message: err.message, hint: err.hint } : { message: String(err), hint: "Try again" });
       },
     );
   };
 
   return (
-    <main className="flex min-h-dvh flex-col items-center bg-window px-4 pt-[max(48px,env(safe-area-inset-top))] pb-[max(24px,env(safe-area-inset-bottom))] text-fg">
+    // Add. 8c: `#root` already keeps clear of the notch and the home indicator (styles.css); this screen adds only its own space.
+    <main className="flex min-h-full flex-col items-center bg-window px-4 pt-12 pb-6 text-fg">
       <div className="flex w-full max-w-sm flex-col gap-6">
         <header className="flex flex-col items-center gap-3 text-center">
           <img src="/icons/icon-128.png" alt="" width={56} height={56} className="rounded-xl" />
@@ -98,11 +99,11 @@ export function PairingScreen({ base, phase, onPaired }: { base: string; phase: 
               disabled={busy || code.replace(/-/g, "").length !== 8}
               className="h-10 rounded-md bg-primary font-medium text-primary-fg disabled:bg-active disabled:text-fg-3"
             >
-              {busy ? "Pairing…" : "Pair"}
+              {busy ? "Connecting…" : "Connect"}
             </button>
             <p id={ids.note} className="text-xs text-fg-3">
-              On your computer: Settings → Remote access → Add a device. The code works once, for five minutes. When the computer turns remote access on again
-              it gets a new address, and this phone pairs again.
+              On your computer: Settings → Remote access → Add a device. The code works once, for five minutes. If remote access is turned off and on again,
+              connect this phone again.
             </p>
           </form>
         )}

@@ -7,8 +7,8 @@ import { useSettingsActions } from "./pageContext";
 import { runnableSwap } from "./modelRows";
 
 /**
- * One notice above a group of models that share a problem: the chosen models that cannot run, named once each (the rows below
- * show only their value). A3: it says what is true — which provider they need, and which connected agent can run instead —
+ * One notice above a group of models that share a problem: the chosen models that cannot run (one is named, several are
+ * counted: each row below names its own). A3: it says what is true — which provider they need, and which connected agent can run instead —
  * and offers that switch in one click for every row at once (`onApply` gets the new value per row, `undefined` = unchanged).
  * "Undo" puts the old values back until the notice is left.
  */
@@ -47,11 +47,12 @@ export function ModelsProblem(props: { list: ProviderList; values: readonly stri
     );
   }
   const names = [...new Set(stuck.map((v) => chipLabel(v, list)))];
-  const many = names.length > 1;
+  // One line with its action: the rows below name each model ("… (not available)"), so several are counted here, not listed.
+  const subject = names.length > 1 ? `${String(names.length)} models` : (names[0] ?? "A model");
   const needAgent = stuck.find((v) => v.startsWith("acp:"));
-  const need = needAgent
-    ? `${many ? "They need" : "It needs"} ${chipLabel(needAgent.split("/")[0] ?? needAgent, list)}, which is not ready.`
-    : `${many ? "These models need" : "This model needs"} an Anthropic API key or the router.`;
+  const sentence = needAgent
+    ? `${subject} can't run: ${chipLabel(needAgent.split("/")[0] ?? needAgent, list)} is not ready.`
+    : `${subject} can't run without an Anthropic API key or the Octo router.`;
   const swaps = values.map((v) => (v !== "" && !canRun(list, v) ? (runnableSwap(list, v) ?? undefined) : undefined));
   const targets = [...new Set(swaps.filter((s): s is string => s !== undefined))];
   const agentName = targets[0] ? chipLabel(targets[0].split("/")[0] ?? targets[0], list) : null;
@@ -73,8 +74,7 @@ export function ModelsProblem(props: { list: ProviderList; values: readonly stri
         )
       }
     >
-      {names.join(", ")} cannot run. {need}
-      {agentName ? ` ${agentName} is connected and can run instead.` : ""}
+      {sentence}
       {failed ? ` ${failed}` : ""}
     </Notice>
   );

@@ -26,9 +26,9 @@ export function ProjectModels(props: { project: Project; list: ProviderList; upd
         }
       />
       <SettingsGroup
-        label={`Models of ${props.project.name}`}
+        label="Models for this project"
         id="row-project-models"
-        footer={`${TIERS_NOTE} Defaults are copied into a project when it is created; a value equal to the default counts as inherited.`}
+        footer={`${TIERS_NOTE} Changing a default later does not change existing projects.`}
       >
         {MODEL_ROWS.map((row) => {
           const d = harness.get(row.id)?.value;
@@ -60,11 +60,7 @@ function ProjectModelRow(props: {
       title={row.title}
       htmlFor={id}
       description={
-        defaultValue === null
-          ? row.projectDescription
-          : inherited
-            ? "Inherited from defaults"
-            : `Set for this project. Default: ${chipLabel(defaultValue, list)}.`
+        defaultValue === null ? row.projectDescription : inherited ? "Same as the default" : `Set for this project. Default: ${chipLabel(defaultValue, list)}.`
       }
       status={<SaveStatus state={saved} />}
       control={
@@ -75,7 +71,7 @@ function ProjectModelRow(props: {
             </Button>
           )}
           <div className={SELECT_W}>
-            <Select id={id} label={`${row.title} of ${project.name}`} value={value} options={options} onChange={set} />
+            <Select size="sm" id={id} label={`${row.title} of ${project.name}`} value={value} options={options} onChange={set} />
           </div>
         </>
       }

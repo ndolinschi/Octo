@@ -18,13 +18,27 @@ export function SectionHeader(props: {
   aside?: ReactNode;
   inset?: boolean;
   as?: "h2" | "h3" | "h4";
+  /**
+   * `tight`: the caption rule of the side columns (sidebar, settings navigation) on a page: a 20px line, its `aside` laid
+   * over the line (a 24px quiet button overhangs it by 2px each way) so the gap under the caption is the caller's alone.
+   */
+  line?: "tight";
   id?: string;
   className?: string;
 }) {
   const Heading = props.as ?? "h2";
   const title = props.level === "title";
+  const tight = props.line === "tight";
   return (
-    <div className={cn("flex min-h-ctl-sm items-center gap-2", props.inset && "px-2", title ? "text-heading text-fg" : "text-xs text-fg-3", props.className)}>
+    <div
+      className={cn(
+        "flex items-center gap-2",
+        tight ? "h-5 [&>*:not(h2,h3,h4)]:-my-0.5" : "min-h-ctl-sm",
+        props.inset && "px-2",
+        title ? "text-heading text-fg" : "text-xs text-fg-3",
+        props.className,
+      )}
+    >
       <Heading id={props.id} className="min-w-0 flex-1 truncate">
         {props.children}
       </Heading>

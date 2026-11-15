@@ -18,7 +18,7 @@ export function ProviderKey() {
   const { restart } = useSettingsActions();
   const [saved, run] = useSave();
   const [confirm, setConfirm] = useState(false);
-  // Esc while "Confirm remove key" is armed takes the confirmation back; it must not also leave Settings (capture: before the page's own Esc).
+  // Esc while "Remove key?" is armed takes the confirmation back; it must not also leave Settings (capture: before the page's own Esc).
   useEffect(() => {
     if (!confirm) return undefined;
     const onKey = (e: KeyboardEvent) => {
@@ -35,7 +35,7 @@ export function ProviderKey() {
     // S5: one label for the key ("API key", the field's own), not a caption, a state line and a field label saying it thrice.
     <section id="row-api-key" aria-label="API key" className="flex flex-col gap-3">
       {harness.load.status === "loading" && <p className="text-sm text-fg-3">Loading…</p>}
-      {harness.load.status === "unavailable" && <p className="text-sm text-fg-2">This connection cannot read or change Octo&apos;s settings.</p>}
+      {harness.load.status === "unavailable" && <p className="text-sm text-fg-2">This window can&apos;t read or change Octo&apos;s settings.</p>}
       {harness.load.status === "error" && (
         <Notice
           tone="error"
@@ -69,7 +69,7 @@ export function ProviderKey() {
                 variant={confirm ? "danger" : "secondary"}
                 onClick={() => (confirm ? void run(() => harness.save({ unset: [id] })).then(() => setConfirm(false)) : setConfirm(true))}
               >
-                {confirm ? "Confirm remove key" : "Remove key"}
+                {confirm ? "Remove key?" : "Remove key"}
               </Button>
               <SaveStatus state={saved} />
             </div>

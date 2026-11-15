@@ -34,7 +34,7 @@ export function GeneralSection() {
               value={startup}
               onChange={(v) =>
                 void run(async () => {
-                  if (!writePref(PREFS.startup, startupCodec.stringify(v))) throw new Error("Could not save. The browser's storage is full or blocked");
+                  if (!writePref(PREFS.startup, startupCodec.stringify(v))) throw new Error("Could not save: the browser's storage is full or blocked");
                   setStartup(v);
                 })
               }
@@ -44,7 +44,7 @@ export function GeneralSection() {
         <SettingsRow
           rowId="sidebar-view"
           title="Sidebar shows"
-          description="Projects with their sessions, projects only (a project opens its default session), or every session by latest activity."
+          description="How the sidebar lists your work."
           status={<SaveStatus state={savedView} />}
           control={
             <Segmented
@@ -57,7 +57,7 @@ export function GeneralSection() {
               value={view}
               onChange={(v) =>
                 void runView(async () => {
-                  if (!writePref(PREFS.sidebarView, sidebarViewCodec.stringify(v))) throw new Error("Could not save. The browser's storage is full or blocked");
+                  if (!writePref(PREFS.sidebarView, sidebarViewCodec.stringify(v))) throw new Error("Could not save: the browser's storage is full or blocked");
                   setView(v);
                 })
               }
@@ -74,7 +74,7 @@ export function GeneralSection() {
 
 function BridgeRow() {
   const { bridgeUrl, health, retry, version, demo } = useApp();
-  const state = health === "online" ? (demo ? "Demo data, in memory" : "Connected") : health === "offline" ? "Not answering" : "Connecting…";
+  const state = health === "online" ? (demo ? "Demo data" : "Connected") : health === "offline" ? "Not answering" : "Connecting…";
   return (
     <SettingsRow
       rowId="bridge"
@@ -140,7 +140,7 @@ export function AppearanceSection() {
         rowId="backdrop"
         title="Start-screen backdrop"
         description={
-          forced ? "Off while your system asks for reduced transparency or forced colours." : "Behind Home, an empty project and the first-run screen."
+          forced ? "Off while your system asks for reduced transparency or high-contrast mode." : "Behind Home, an empty project and the first-run screen."
         }
         status={<SaveStatus state={backdropSaved} />}
         control={

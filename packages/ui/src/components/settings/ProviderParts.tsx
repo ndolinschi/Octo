@@ -13,7 +13,7 @@ import { ToneDot } from "../shared/providers/ProviderRows";
  */
 export function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
-    <SectionHeader as="h3" aside={aside}>
+    <SectionHeader as="h3" aside={aside} line="tight">
       {children}
     </SectionHeader>
   );
@@ -56,17 +56,17 @@ export function RouterFacts(props: { provider: Provider; checking: boolean; onCh
     <section className="flex flex-col gap-1">
       <SectionTitle
         aside={
-          <Button variant="quiet" size="sm" aria-busy={props.checking} onClick={() => !props.checking && props.onCheck()}>
+          <Button variant="quiet" size="xs" aria-busy={props.checking} onClick={() => !props.checking && props.onCheck()} className="-mr-2">
             {props.checking ? "Checking…" : "Check again"}
           </Button>
         }
       >
         Status
       </SectionTitle>
-      <p className="text-sm text-fg-2">{p.state === "ready" ? "Ready: Octo's model requests go through the router." : `${stateText(p.state)}.`}</p>
+      <p className="text-sm text-fg-2">{p.state === "ready" ? "Ready: Octo sends model requests through the router." : `${stateText(p.state)}.`}</p>
       <p className="text-sm text-fg-2">{models}</p>
       <p className="text-sm text-fg-2">
-        Its switch and upstream key are under Router, below.
+        Turn it on and set its key under Router, below.
         {props.onSettings && (
           <Button variant="link" size="sm" className="ml-1" onClick={props.onSettings}>
             Router settings

@@ -79,6 +79,7 @@ function ProjectSelect<T extends string>(props: {
       control={
         <div className={SELECT_W}>
           <Select
+            size="sm"
             id={id}
             label={`${props.title} for ${props.project.name}`}
             value={props.value}
@@ -115,7 +116,7 @@ export function EditorSection({ projectId }: { projectId: string | null }) {
         retry={retry}
         openProject={projectId}
         scopeText="Inline completion is set per project."
-        footer="Suggests code as you type in the editor. It runs on an Anthropic API key or the router, never on an agent."
+        footer="Suggests code as you type in the editor. Uses an Anthropic API key or the Octo router; coding agents can't be used."
         row={(p) => {
           const value = p.models.completion ?? "off";
           const known = COMPLETION.some((o) => o.id === value);
@@ -140,7 +141,7 @@ export function EditorSection({ projectId }: { projectId: string | null }) {
                       </a>
                     }
                   >
-                    Cannot run: it needs an Anthropic API key or the router.
+                    Cannot run: it needs an Anthropic API key or the Octo router.
                   </Notice>
                 ) : (
                   "Suggestions on."
@@ -153,10 +154,10 @@ export function EditorSection({ projectId }: { projectId: string | null }) {
         }}
       />
       {/* B9: plugins have their own section; Editor keeps a way there (the palette's "Open integrations" lands here). */}
-      <SettingsGroup label="Language servers">
+      <SettingsGroup label="Language help">
         <SettingsRow
           title="Integrations"
-          description="Language servers, agents and tool servers that plugins add are in their own section."
+          description="Language help, agents and extra tools from plugins have their own section."
           control={
             <Button size="sm" onClick={() => (window.location.hash = settingsHref("integrations"))}>
               Open Integrations
@@ -182,7 +183,7 @@ export function MemorySection({ projectId }: { projectId: string | null }) {
       details={details}
       retry={retry}
       openProject={projectId}
-      scopeText="How the conversation is remembered is set per project."
+      scopeText="Set per project."
       footer="Full history sends the whole conversation; Recent window builds the context from memory, tasks and the last exchanges."
       row={(p) => {
         const m = p.memory ?? { context: "full", recent_exchanges: 5 };
@@ -248,7 +249,7 @@ export function UsageSection({ projectId }: { projectId: string | null }) {
           scopeText="A budget is set per project."
           // B11: what the harness does (apps/harness/docs/architecture.md, Budget): the cap is on everything the project has
           // ever spent, not per month; subscription use is not spend.
-          footer="A budget caps everything a project spends, in total (not per month). It is checked between steps: once it is used up the project starts no new work, but a step already running can go over. Subscription use does not count."
+          footer="A budget caps a project's total spending (not per month). It is checked between steps, so a step already running can go over. Subscription use is not counted."
           row={(p) => <BudgetRow key={p.id} project={p} update={update} usage={cost[p.id]} />}
         />
       </div>
@@ -276,6 +277,7 @@ function BudgetRow({ project: p, update, usage }: { project: Project; update: Up
       status={<SaveStatus state={saved} />}
       control={
         <TextField
+          size="sm"
           id={id}
           inputMode="decimal"
           value={value}
@@ -323,7 +325,7 @@ function Limits({ onSettled }: { onSettled(settled: boolean): void }) {
     };
   }, [bridge, attempt, onSettled]);
   return (
-    <SettingsGroup label="Plan limits" id="row-limits">
+    <SettingsGroup label="Subscription limits" id="row-limits">
       {load.status === "loading" && <SkeletonList count={1} size="lg" twoLine />}
       {load.status === "error" && (
         <LoadErrorRow
@@ -337,7 +339,7 @@ function Limits({ onSettled }: { onSettled(settled: boolean): void }) {
         />
       )}
       {load.status === "ready" && load.limits.length === 0 && (
-        <SettingsRow title="No limits reported yet" description="They appear after the first answer from an API that reports rate limits." />
+        <SettingsRow title="No limits reported yet" description="Limits appear after the first model answer that reports them." />
       )}
       {load.status === "ready" &&
         load.limits.map((l) => (

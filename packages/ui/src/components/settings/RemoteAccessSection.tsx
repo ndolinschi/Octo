@@ -17,7 +17,7 @@ const POLL_MS = 2000;
 /**
  * Settings → Remote access (spec 2026-11-14-remote-access-mobile-design.md, section 7): the switch (off by default; the
  * first time it explains the risk and asks once), the tunnel's address with copy, "Add a device" (QR code, code and
- * countdown), the yes/no for a device that just paired, the devices with read-only and revoke, "Revoke all and turn off",
+ * countdown), the yes/no for a device that just paired, the devices with read-only and remove, "Remove all and turn off",
  * and the install line when Cloudflare's program is missing.
  */
 export function RemoteAccessSection() {
@@ -26,19 +26,19 @@ export function RemoteAccessSection() {
   const now = useNow(30_000);
   if (load.status === "unavailable")
     return (
-      <SettingsGroup label="Remote access">
-        <SettingsRow rowId="remote" title="Remote access" description="This connection does not offer remote access." />
+      <SettingsGroup name="Remote access">
+        <SettingsRow rowId="remote" title="Remote access" description="This window can't offer remote access." />
       </SettingsGroup>
     );
   if (load.status === "loading")
     return (
-      <SettingsGroup label="Remote access">
+      <SettingsGroup name="Remote access">
         <SkeletonList count={1} size="lg" twoLine />
       </SettingsGroup>
     );
   if (load.status === "error")
     return (
-      <SettingsGroup label="Remote access">
+      <SettingsGroup name="Remote access">
         <LoadErrorRow what="remote access" message={load.message} hint="Retry once Octo's local service is running." onRetry={retry} />
       </SettingsGroup>
     );
@@ -53,9 +53,10 @@ export function RemoteAccessSection() {
   const active = s.devices.filter((d) => d.status === "active");
   return (
     <>
+      {/* No caption: the page title says "Remote access", and so does the switch row. */}
       <SettingsGroup
-        label="Remote access"
-        footer="Paired devices can read projects and files, send messages, answer approvals and stop turns. They cannot change settings, keys, plugins or remote access."
+        name="Remote access"
+        footer="Connected devices can read projects and files, send messages, answer approvals and stop work. They can't change settings, keys, plugins or remote access."
       >
         <SettingsRow
           rowId="remote"
@@ -66,7 +67,7 @@ export function RemoteAccessSection() {
         <Problem s={s} busy={busy} onCheck={() => void run((a) => a.check())} onRetry={() => void run((a) => a.enable())} />
         {s.state === "on" && s.url && <AddressRow url={s.url} />}
         {actionError && (
-          <div className="px-settings-inset py-2">
+          <div className="px-settings-row-inset py-2">
             <Notice tone="error">{actionError}</Notice>
           </div>
         )}
@@ -89,7 +90,7 @@ export function RemoteAccessSection() {
           ) : (
             <SettingsRow
               rowId="remote-add"
-              title="Pair a phone"
+              title="Pairing code"
               description={
                 s.web_app
                   ? "Shows a QR code and a code that work once, for five minutes."
@@ -97,7 +98,7 @@ export function RemoteAccessSection() {
               }
               control={
                 <Button size="sm" onClick={() => void run((a) => a.issueCode())} disabled={busy}>
-                  Add a device
+                  Show code
                 </Button>
               }
             />
@@ -109,8 +110,8 @@ export function RemoteAccessSection() {
         <SettingsGroup
           label="Devices"
           aside={
-            <Button size="xs" variant="danger" onClick={() => void run((a) => a.revokeAll())} disabled={busy}>
-              Revoke all and turn off
+            <Button size="xs" variant="danger" className="-mr-2" onClick={() => void run((a) => a.revokeAll())} disabled={busy}>
+              Remove all and turn off
             </Button>
           }
         >
@@ -178,11 +179,11 @@ function Problem({ s, busy, onCheck, onRetry }: { s: RemoteStatus; busy: boolean
   const missing = s.error?.code === "cloudflared_missing" || (s.state === "off" && !s.cloudflared.found);
   if (missing)
     return (
-      <div className="px-settings-inset py-3">
+      <div className="px-settings-row-inset py-3">
         <Notice
           form="block"
           tone="warn"
-          title="Cloudflare's tunnel program is not installed"
+          title="cloudflared is not installed"
           command={s.cloudflared.install}
           actions={
             <Button size="sm" onClick={onCheck} disabled={busy}>
@@ -190,20 +191,20 @@ function Problem({ s, busy, onCheck, onRetry }: { s: RemoteStatus; busy: boolean
             </Button>
           }
         >
-          Remote access runs it to reach this computer from your phone. Install it, then check again.
+          Remote access needs it to reach this computer from your phone. Install it, then check again.
         </Notice>
       </div>
     );
   if (s.state !== "error" || !s.error) return null;
   return (
-    <div className="px-settings-inset py-3">
+    <div className="px-settings-row-inset py-3">
       <Notice
         form="block"
         tone="error"
         title={s.error.message}
         actions={
           <Button size="sm" onClick={onRetry} disabled={busy}>
-            Try again
+            Retry
           </Button>
         }
       >
