@@ -8,7 +8,7 @@ import { useRovingRows } from "../../lib/rovingRows";
 import { aheadBehindCompact, aheadBehindText, splitName, branchOrder, hasChanges, openInput } from "../../lib/review/branches";
 import type { ReviewApi } from "../../lib/review/api";
 import { Glyph } from "../primitives/Glyph";
-import { SkeletonRows } from "../primitives/InfoList";
+import { SkeletonList } from "../primitives/Skeleton";
 import { Spinner } from "../primitives/Status";
 import { TextMenu } from "./parts";
 import { PanelBody, PanelEmpty } from "../primitives/Panel";
@@ -61,7 +61,7 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
   if (load.status === "loading")
     return (
       <PanelBody>
-        <SkeletonRows count={5} widths={[60, 48, 54, 44, 50]} />
+        <SkeletonList count={5} size="md" twoLine shimmer widths={[60, 48, 54, 44, 50]} />
       </PanelBody>
     );
   if (load.status === "error")
@@ -74,10 +74,10 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
   // the rows sit in the frame's list inset.
   return (
     <section aria-label="Local branches" className="flex h-full min-h-0 flex-col">
-      <div data-panel-filters className="box-content flex h-9 shrink-0 items-center gap-2 px-pane touch:h-ctl-lg">
-        <span className="px-2 text-xs font-medium text-fg-3">{rows.length === 1 && !api.branches ? "Current branch" : "Branches"}</span>
+      <div data-panel-filters className="box-content flex min-h-9 shrink-0 items-center gap-2 px-pane py-1 touch:min-h-ctl-lg">
+        <span className="shrink-0 px-2 text-xs font-medium text-fg-3">{rows.length === 1 && !api.branches ? "Current branch" : "Branches"}</span>
         {api.branches && (
-          <span className="ml-auto flex min-w-0 items-center">
+          <span className="ml-auto flex max-w-[65%] min-w-0 items-center">
             <TextMenu
               label="Compare against"
               text={`against ${shownBase}`}

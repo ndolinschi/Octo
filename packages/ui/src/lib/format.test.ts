@@ -16,8 +16,8 @@ import { agentDuration } from "./duration";
 
 const at = (y: number, mo: number, d: number, h: number, mi = 0) => new Date(y, mo - 1, d, h, mi).toISOString();
 
-test("separator after a 30-minute pause or a new day, and before the first request", () => {
-  assert.equal(needsSeparator(null, at(2026, 11, 10, 9)), true);
+test("separator after a 30-minute pause or a new day, and not before the first request", () => {
+  assert.equal(needsSeparator(null, at(2026, 11, 10, 9)), false);
   assert.equal(needsSeparator(at(2026, 11, 10, 9), at(2026, 11, 10, 9, 20)), false);
   assert.equal(needsSeparator(at(2026, 11, 10, 9), at(2026, 11, 10, 9, 31)), true);
   assert.equal(needsSeparator(at(2026, 11, 9, 23, 50), at(2026, 11, 10, 0, 5)), true);

@@ -80,7 +80,13 @@ export function PopupList(props: {
       fromPointer.current = null;
       return;
     }
-    list.current?.querySelector(`#${CSS.escape(popupOptionId(listId, activeId))}`)?.scrollIntoView({ block: "nearest" });
+    const box = list.current;
+    const item = box?.querySelector<HTMLElement>(`#${CSS.escape(popupOptionId(listId, activeId))}`);
+    if (!box || !item) return;
+    const br = box.getBoundingClientRect();
+    const ir = item.getBoundingClientRect();
+    if (ir.top < br.top) box.scrollTop -= br.top - ir.top;
+    else if (ir.bottom > br.bottom) box.scrollTop += ir.bottom - br.bottom;
   }, [activeId, listId]);
 
   return (

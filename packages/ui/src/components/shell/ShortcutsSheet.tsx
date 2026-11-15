@@ -122,9 +122,9 @@ export default function ShortcutsSheet() {
 function Sheet({ onClose }: { onClose(): void }) {
   return (
     <Dialog title="Keyboard shortcuts" width="xl" reading onClose={onClose}>
-      <div className="flex flex-col gap-4 @min-[520px]/dialog:block @min-[520px]/dialog:columns-2 @min-[520px]/dialog:gap-x-8">
+      <div className="flex flex-col gap-4 @min-[600px]/dialog:block @min-[600px]/dialog:columns-2 @min-[600px]/dialog:gap-x-8">
         {GROUPS.map((g) => (
-          <section key={g.title} aria-label={g.title} className="flex break-inside-avoid flex-col @min-[520px]/dialog:pb-4">
+          <section key={g.title} aria-label={g.title} className="flex break-inside-avoid flex-col @min-[600px]/dialog:pb-4">
             <SectionHeader as="h3">{g.title}</SectionHeader>
             <ul className="flex flex-col">
               {g.items.map((s) => (

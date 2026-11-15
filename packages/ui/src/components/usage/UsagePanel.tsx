@@ -56,8 +56,8 @@ export function UsagePanel() {
       >
         <div className="flex h-full min-h-0 flex-col">
           {view.segment !== "limits" && (
-            <PanelFilters>
-              <div className="w-36">
+            <PanelFilters className="flex-wrap gap-y-1.5 py-1">
+              <div className="max-w-36 min-w-28 flex-1">
                 <Select
                   size="sm"
                   label="Period"
@@ -66,7 +66,7 @@ export function UsagePanel() {
                   options={USAGE_PERIODS.map((p) => ({ value: p.id, label: p.label }))}
                 />
               </div>
-              <div className="w-36">
+              <div className="max-w-36 min-w-28 flex-1">
                 <Select
                   size="sm"
                   label="Scope"

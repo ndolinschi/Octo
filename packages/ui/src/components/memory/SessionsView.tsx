@@ -119,7 +119,7 @@ function SessionDetail(props: {
   const exchangeRows = useRef<HTMLUListElement>(null);
   // Item 9 (polish pass F3): one Tab stop; a request's "⋯" is the pointer's way, Shift+F10 the keyboard's.
   useListStops(exchangeRows);
-  if (load.status === "loading") return <SkeletonText lines={5} className="pt-4" />;
+  if (load.status === "loading") return <SkeletonText lines={5} className="px-2 pt-4" />;
   if (load.status === "error") return <MemoryError message={load.message} />;
   const { session, exchanges }: MemorySessionDetail = load.value;
   const forget = bridge.forgetExchange;
@@ -150,7 +150,7 @@ function SessionDetail(props: {
           : {})}
       />
       {session.summary && (
-        <div className="px-2 pb-2 text-fg-2">
+        <div className="px-2 pt-1 pb-3 text-fg-2">
           <Prose size="compact" text={session.summary} />
         </div>
       )}

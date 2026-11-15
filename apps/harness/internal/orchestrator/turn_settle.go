@@ -72,21 +72,65 @@ func (rt *runtime) turnWork(status projectstore.AgentStatus, reply string) memor
 	return w
 }
 
+const sessionTitlePrompt = "You name coding assistant sessions. Given the user's request and assistant's reply, output ONLY a concise 3 to 6 word title (no quotes, no trailing punctuation, no markdown)."
+
+func cleanSessionTitle(raw string) string {
+	for _, line := range strings.Split(raw, "\n") {
+		s := strings.TrimSpace(line)
+		if s == "" {
+			continue
+		}
+		s = strings.Trim(s, `"'`+"`")
+		s = strings.Join(strings.Fields(s), " ")
+		s = strings.TrimRight(s, ".,:;!?—-")
+		s = strings.TrimSpace(s)
+		if s != "" {
+			return projectstore.SessionTitle(s)
+		}
+	}
+	return ""
+}
+
+func titleInput(w memory.TurnWork) string {
+	req := strings.TrimSpace(w.Request)
+	if len(req) > 1000 {
+		req = req[:1000]
+	}
+	rep := strings.TrimSpace(w.Reply)
+	if len(rep) > 1000 {
+		rep = rep[:1000]
+	}
+	return "User request:\n" + req + "\n\nAssistant reply:\n" + rep
+}
+
+func (rt *runtime) shouldAutoNameSession(sid string) bool {
+	if sid == "" {
+		return false
+	}
+	ctx, cancel := dbCtx(context.Background())
+	defer cancel()
+	ok, err := rt.db.ShouldAutoNameSession(ctx, sid)
+	return err == nil && ok
+}
+
 // settleTurn ends the turn for the task list (memory M6). It never makes a
 // record by itself for a question that was only answered: the exchange is the
 // record. Digest sources, in order: the project's side model when the
 // built-in loop can run; else, for an ACP orchestrator that did work, one
 // prompt in its live session (30 s, never shown as a user turn); else nothing
 // (a minimal record is built from the facts the harness has). A failed digest
-// falls back the same way.
+// falls back the same way. On a session's first completed exchange, it also
+// generates a concise session title via the fast side model or live ACP agent.
 func (o *Orchestrator) settleTurn(rt *runtime, orchID string, status projectstore.AgentStatus, reply string) {
 	if rt.turnID == 0 {
 		return
 	}
 	w := rt.turnWork(status, reply)
-	viaModel := o.opts.MemoryDigest && o.builtinOff() == ""
-	viaAgent := !viaModel && o.opts.MemoryDigest && rt.isACPOrchestrator() && w.DidWork()
-	if !w.Completed || !(viaModel || viaAgent) || o.baseCtx.Err() != nil {
+	viaModel := o.builtinOff() == ""
+	viaAgent := !viaModel && rt.isACPOrchestrator()
+	wantDigest := o.opts.MemoryDigest && (viaModel || (viaAgent && w.DidWork()))
+	wantTitle := w.Completed && (viaModel || viaAgent) && rt.shouldAutoNameSession(w.SessionID)
+	if !w.Completed || !(wantDigest || wantTitle) || o.baseCtx.Err() != nil {
 		o.applySettle(rt, w, nil)
 		return
 	}
@@ -98,20 +142,46 @@ func (o *Orchestrator) settleTurn(rt *runtime, orchID string, status projectstor
 		ctx, cancel := context.WithTimeout(o.baseCtx, 90*time.Second)
 		defer cancel()
 		var d *memory.Digest
-		var err error
-		if viaModel {
-			d, err = rt.digest(ctx, orchID, w)
-		} else {
-			d, err = rt.askACPDigest(ctx, w)
-		}
-		if err != nil {
-			if errors.Is(err, context.Canceled) && o.baseCtx.Err() != nil {
-				return
+		if wantDigest {
+			var err error
+			if viaModel {
+				d, err = rt.digest(ctx, orchID, w)
+			} else {
+				d, err = rt.askACPDigest(ctx, w)
 			}
-			slog.Warn("memory digest failed", "project", rt.pid(), "via", map[bool]string{true: "model", false: "agent"}[viaModel], "err", err)
-			d = nil
+			if err != nil {
+				if errors.Is(err, context.Canceled) && o.baseCtx.Err() != nil {
+					return
+				}
+				slog.Warn("memory digest failed", "project", rt.pid(), "via", map[bool]string{true: "model", false: "agent"}[viaModel], "err", err)
+				d = nil
+			}
 		}
 		o.applySettle(rt, w, d)
+		if wantTitle && ctx.Err() == nil {
+			var raw string
+			var err error
+			if viaModel {
+				raw, err = rt.generateSessionTitle(ctx, orchID, w)
+			} else {
+				raw, err = rt.askACPTitle(ctx, w)
+			}
+			if err != nil {
+				if errors.Is(err, context.Canceled) && o.baseCtx.Err() != nil {
+					return
+				}
+				slog.Warn("session title failed", "project", rt.pid(), "via", map[bool]string{true: "model", false: "agent"}[viaModel], "err", err)
+				return
+			}
+			if title := cleanSessionTitle(raw); title != "" {
+				dbctx, dbcancel := dbCtx(context.Background())
+				updated, err := rt.db.SetAutoSessionTitle(dbctx, w.SessionID, title)
+				if err == nil && updated {
+					o.publishSession(dbctx, rt.db, w.SessionID, false)
+				}
+				dbcancel()
+			}
+		}
 	}()
 }
 
@@ -146,4 +216,20 @@ func (rt *runtime) digest(ctx context.Context, orchID string, w memory.TurnWork)
 		return nil, err
 	}
 	return &d, nil
+}
+
+// generateSessionTitle asks the project's fast/cheaper side model for a concise session title.
+func (rt *runtime) generateSessionTitle(ctx context.Context, orchID string, w memory.TurnWork) (string, error) {
+	loop := agent.Loop{
+		Client: rt.o.opts.Client, Registry: tools.NewRegistry(), Model: rt.models.SideModel(), System: sessionTitlePrompt,
+		MaxTurns: 1, Stream: false, SessionID: "title:" + orchID,
+		Sink:            &digestSink{rt: rt, agentID: orchID, role: "title"},
+		NoPromptCaching: rt.o.opts.NoPromptCaching, Limits: rt.o.opts.Limits, Router: rt.o.opts.Router,
+		Hints: rt.sideHints(), Gate: rt.loopGate(),
+	}
+	res, err := loop.Run(ctx, []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(rt.memory().Redact(titleInput(w))))})
+	if err != nil {
+		return "", err
+	}
+	return res.Text, nil
 }

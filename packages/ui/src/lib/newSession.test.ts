@@ -31,7 +31,7 @@ test("/new with text creates a session and sends the text there, with its attach
   const { deps, calls } = fake();
   const out = await runNewSession(deps, "  Check the logs  ", ["img1"]);
   assert.deepEqual(out, { kind: "started", sessionId: "s2", title: "Check the logs", waiting: false });
-  assert.deepEqual(calls, ["create Check the logs", "send s2 Check the logs img1"]);
+  assert.deepEqual(calls, ["create ", "send s2 Check the logs img1"]);
 });
 
 test("/new alone creates an empty session to open, and sends nothing", async () => {

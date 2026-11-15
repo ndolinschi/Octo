@@ -127,7 +127,7 @@ export function RewindDialog(props: {
                 <ul className="flex flex-col">
                   {report.conflicts.map((c) => (
                     <li key={`${c.folder}/${c.path}`} className="min-w-0">
-                      <span className="font-mono text-xs text-fg" title={`${c.folder}/${c.path}`}>
+                      <span className="font-mono text-xs [overflow-wrap:anywhere] text-fg" title={`${c.folder}/${c.path}`}>
                         {c.path}
                       </span>
                       <span className="text-fg-3"> · {conflictReason(c.reason)}</span>

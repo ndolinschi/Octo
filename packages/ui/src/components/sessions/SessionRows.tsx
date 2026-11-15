@@ -85,7 +85,7 @@ export function SessionRows(props: {
     );
   };
   return (
-    <ul ref={list} aria-label="Sessions" className="flex flex-col">
+    <ul ref={list} aria-label="Sessions" className="flex flex-col gap-1.5">
       {props.nodes.map((n) => {
         const expandable = n.children.length > 0;
         const shown = expandable && (props.openAll || props.open === n.session.id);
@@ -94,7 +94,7 @@ export function SessionRows(props: {
           <li key={n.session.id} data-session={n.session.id} onKeyDown={(e) => keys(e, n, props.open === n.session.id, props.onToggle)}>
             {rows(n.session, expandable ? shown : undefined)}
             {shown && (
-              <ul aria-label={`Agents of ${n.session.title}`} className="flex flex-col pl-4">
+              <ul aria-label={`Agents of ${n.session.title}`} className="flex flex-col gap-1.5 pt-1 pl-4">
                 {n.children.map((c) => (
                   <li key={c.id} data-session={c.id}>
                     {rows(c)}

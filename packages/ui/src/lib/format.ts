@@ -98,9 +98,9 @@ function dayStart(t: number): number {
   return d.getTime();
 }
 
-/** A separator goes before a request that starts > 30 min after the previous turn ended, or on another day. */
+/** A separator goes before a request that starts > 30 min after the previous turn ended, or on another day (never before the first). */
 export function needsSeparator(previousEnd: string | null, start: string): boolean {
-  if (!previousEnd) return true;
+  if (!previousEnd) return false;
   const a = Date.parse(previousEnd);
   const b = Date.parse(start);
   return b - a > SEPARATOR_GAP_MS || dayStart(a) !== dayStart(b);

@@ -65,7 +65,9 @@ export function MemoryView(props: {
 
   if (!bridge.listTasks && !bridge.listMemory && !bridge.listMemorySessions) {
     return (
-      <PaneEmpty title="This version of Octo's local service has no memory">Update it to see sessions, what is remembered and memory files here.</PaneEmpty>
+      <Panel name="memory" title="Memory">
+        <PaneEmpty title="This version of Octo's local service has no memory">Update it to see sessions, what is remembered and memory files here.</PaneEmpty>
+      </Panel>
     );
   }
 
@@ -111,7 +113,9 @@ export function MemoryView(props: {
             />
           </PanelFilters>
         }
-        views={searching ? <div className="border-b border-line" /> : <ViewTabs<MemoryTab> label="Memory" options={TABS} value={view} onChange={setView} />}
+        views={
+          searching ? <div className="mt-1 border-b border-line" /> : <ViewTabs<MemoryTab> label="Memory" options={TABS} value={view} onChange={setView} />
+        }
       >
         {searching ? (
           <SearchResults state={search} query={query} canOpenMessage={onOpenMessage !== undefined} onOpen={open} />

@@ -149,7 +149,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
   const [focusAsk, setFocusAsk] = useState(0);
   const refocus = () => setFocusAsk((n) => n + 1);
   useEffect(() => {
-    if (focusAsk > 0) input.current?.focus();
+    if (focusAsk > 0) input.current?.focus({ preventScroll: true });
   }, [focusAsk]);
   const leaveTyping = () => {
     setTyping(false);

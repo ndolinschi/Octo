@@ -6,7 +6,7 @@ import { settingsHref } from "../../lib/route";
 import { useProject } from "../../state/project";
 import { useRunsSelector, useRunsStore } from "../../state/projectRuns";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { ChevronDown, Minimize2, Play } from "lucide-react";
+import { ChevronDown, Minimize2, Play, Plus, Settings } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { MOD_LABEL } from "../../lib/keys";
 import { Button } from "../primitives/Button";
@@ -105,6 +105,7 @@ export default function ProjectCommands({
     ...commands.map((c): MenuItem => ({
       id: `run:${c.name}`,
       label: busy.has(c.name.toLowerCase()) ? `${c.name} (running)` : c.name,
+      icon: Play,
       title: c.command,
       run: () => void run(c.name),
     })),
@@ -112,6 +113,7 @@ export default function ProjectCommands({
     {
       id: "settings",
       label: commands.length > 0 ? "Edit commands in Settings" : "Add commands in Settings",
+      icon: commands.length > 0 ? Settings : Plus,
       run: openCommandSettings,
     },
   ];

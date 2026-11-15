@@ -37,6 +37,7 @@ export function Popover(props: {
   const [pos, setPos] = useState<{ left: number; top: number; origin: string } | null>(null);
 
   useLayoutEffect(() => {
+    if (!open) return;
     const el = ref.current;
     const a = anchor.current;
     if (!el || !a) return;
@@ -52,13 +53,14 @@ export function Popover(props: {
       const up = side === "top" ? height <= roomAbove || roomAbove > roomBelow : height > roomBelow && roomAbove > roomBelow;
       const left = Math.min(Math.max(EDGE, align === "start" ? r.left : r.right - width), window.innerWidth - width - EDGE);
       const top = up ? Math.max(EDGE, v.top - gap - height) : Math.min(v.bottom + gap, window.innerHeight - height - EDGE);
-      setPos({ left, top, origin: `${align === "start" ? "0%" : "100%"} ${up ? "100%" : "0%"}` });
+      const origin = `${align === "start" ? "0%" : "100%"} ${up ? "100%" : "0%"}`;
+      setPos((prev) => (prev && prev.left === left && prev.top === top && prev.origin === origin ? prev : { left, top, origin }));
     };
     place();
     const ro = new ResizeObserver(place);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [anchor, side, align, edge, gap]);
+  }, [open, anchor, side, align, edge, gap]);
 
   // Decision 56: while a popover of the composer is open, the "Jump to latest" button hides (it would sit under it).
   useEffect(() => {
@@ -155,7 +157,7 @@ export function Popover(props: {
       tabIndex={-1}
       data-state={state}
       inert={!open}
-      style={pos ? ({ left: pos.left, top: pos.top, "--octo-origin": pos.origin } as CSSProperties) : { left: -9999, top: 0 }}
+      style={pos ? ({ left: pos.left, top: pos.top, "--octo-origin": pos.origin } as CSSProperties) : { left: 0, top: 0, visibility: "hidden" }}
       className={cn(
         "octo-overlay fixed z-[60] flex max-h-[min(420px,calc(100dvh-24px))] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-xl border border-transparent bg-overlay text-sm shadow-pop focus:outline-none focus-visible:shadow-pop",
         props.className,

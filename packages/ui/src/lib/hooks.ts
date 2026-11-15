@@ -141,8 +141,13 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
     const movedUp = !shrank && distance > 1;
     lastTop.current = el.scrollTop;
     if (gliding.current) {
-      if (!end) return;
-      gliding.current = false;
+      if (end) {
+        gliding.current = false;
+      } else if (movedUp && (pointerHeld.current || performance.now() - lastInput.current <= 1000)) {
+        gliding.current = false;
+      } else {
+        return;
+      }
     }
     // A reflow (the group resized, a tab moved, WebKit re-anchoring) that leaves a following reader short of the end is
     // not the reader scrolling away: only the reader scrolling up lets go.
@@ -179,7 +184,8 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
   const scrollToBottom = useCallback((smooth = false) => {
     const el = ref.current;
     if (!el) return;
-    const animate = smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "reduced";
+    const animate = smooth && !reduced;
     gliding.current = animate;
     el.scrollTo({ top: el.scrollHeight, behavior: animate ? "smooth" : "auto" });
     atBottomRef.current = true;
@@ -188,6 +194,7 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
 
   /** Stop following new content (before a programmatic scroll elsewhere). */
   const release = useCallback(() => {
+    gliding.current = false;
     atBottomRef.current = false;
     setAtBottom(false);
   }, []);
@@ -198,7 +205,7 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
   }, [initialStick]);
 
   useLayoutEffect(() => {
-    if (atBottomRef.current) scrollToBottom();
+    if (atBottomRef.current) scrollToBottom(gliding.current);
   }, deps);
 
   // Reflow (a group resized, a prompt expanded, the composer shrank) keeps a reader at the bottom there;
@@ -219,7 +226,12 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
       const wasHidden = hidden.current;
       hidden.current = false;
       if (atBottomRef.current) {
-        el.scrollTop = el.scrollHeight;
+        if (gliding.current && !wasHidden) {
+          el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+        } else {
+          gliding.current = false;
+          el.scrollTop = el.scrollHeight;
+        }
         lastHeight.current = el.scrollHeight;
         if (wasHidden) setAtBottom(true);
       }

@@ -1,5 +1,5 @@
 import type { Bridge, PluginAgent } from "@octo/agent-client";
-import { AtSign, Image as ImageIcon, MessageSquare, Search, type LucideIcon } from "lucide-react";
+import { AtSign, MessageSquare, Paperclip, Search, type LucideIcon } from "lucide-react";
 import { GLYPH } from "../primitives/glyphs";
 import { Glyph } from "../primitives/Glyph";
 import {
@@ -124,10 +124,10 @@ export const ComposerMenu = forwardRef<
       {
         id: "attach:image",
         group: "Attach",
-        label: "Attach image…",
+        label: "Attach file…",
         hint: "From this computer",
-        icon: ImageIcon,
-        match: "attach image picture photo screenshot",
+        icon: Paperclip,
+        match: "attach file image picture photo screenshot document",
         pick: { run: props.onPickImage },
       },
       { id: "attach:file", group: "Attach", label: "Mention a file", hint: "Type @", icon: AtSign, match: "mention file path", pick: { insert: "@" } },
@@ -212,7 +212,7 @@ export const ComposerMenu = forwardRef<
   // Opened by the button, the search field takes focus once the panel exists (it renders after `pos`).
   const placed = pos !== null;
   useEffect(() => {
-    if (props.query === null && placed && !sheet) search.current?.focus();
+    if (props.query === null && placed && !sheet) search.current?.focus({ preventScroll: true });
   }, [props.query, placed, sheet]);
   // Focus that leaves the "+" menu's search for anything but the menu or its button closes it (decision 95); a move to nothing
   // (the window lost focus) does not.

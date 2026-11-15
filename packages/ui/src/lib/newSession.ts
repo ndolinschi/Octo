@@ -32,7 +32,7 @@ export async function runNewSession(deps: NewSessionDeps, text: string, attachme
   const body = text.trim();
   let created: { session: { id: string; title: string } };
   try {
-    created = await deps.create(body ? { title: newSessionTitle(body) } : {});
+    created = await deps.create({});
   } catch (error) {
     return { kind: "create-failed", error };
   }

@@ -45,24 +45,31 @@ export function KnowledgeView(props: {
   useListStops(rows);
 
   if (props.load.status === "error") return <MemoryError message={props.load.message} onRetry={props.reload} />;
-  if (props.load.status === "loading") return <SkeletonList count={6} size="md" twoLine />;
+  if (props.load.status === "loading")
+    return (
+      <div className="px-pane pt-1">
+        <SkeletonList count={6} size="md" twoLine />
+      </div>
+    );
   const canAdd = bridge.rememberFact !== undefined;
   if (tasks?.length === 0 && items.length === 0 && !adding) {
     return (
-      <PaneEmpty
-        title="Nothing remembered yet"
-        {...(canAdd
-          ? {
-              actions: (
-                <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
-                  Remember something
-                </Button>
-              ),
-            }
-          : {})}
-      >
-        Decisions, preferences and facts Octo keeps appear here, grouped by task.
-      </PaneEmpty>
+      <div className="h-full px-pane">
+        <PaneEmpty
+          title="Nothing remembered yet"
+          {...(canAdd
+            ? {
+                actions: (
+                  <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
+                    Remember something
+                  </Button>
+                ),
+              }
+            : {})}
+        >
+          Decisions, preferences and facts Octo keeps appear here, grouped by task.
+        </PaneEmpty>
+      </div>
     );
   }
   return (
@@ -78,7 +85,7 @@ export function KnowledgeView(props: {
             <RememberedList items={items} now={now} focus={props.focus.fact} onOpenMessage={props.onOpenMessage} onForgotten={props.reload} />
           )}
         </section>
-        <section aria-label="Tasks" className="pt-4">
+        <section aria-label="Tasks" className="pt-5">
           <SectionHeader inset>Tasks</SectionHeader>
           <PanelFilters flush>
             <FilterTabs<TaskStatus>

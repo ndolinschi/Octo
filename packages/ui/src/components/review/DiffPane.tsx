@@ -71,7 +71,7 @@ export function DiffPane(props: {
       <div data-diff-bar className="flex h-ctl-lg shrink-0 items-center gap-1 border-b border-line px-2 touch:h-auto touch:min-h-ctl-lg touch:py-1">
         {props.picker ?? (
           <span className="flex min-w-0 flex-1 items-baseline gap-2 pl-2">
-            <span className="min-w-0 shrink-0 truncate text-sm font-medium text-fg" title={f.path}>
+            <span className="min-w-0 shrink truncate text-sm font-medium text-fg" title={f.path}>
               {name}
             </span>
             <span className="min-w-0 truncate text-xs text-fg-3 @max-md/diff:hidden">{f.old_path ? `renamed from ${f.old_path}` : dir}</span>

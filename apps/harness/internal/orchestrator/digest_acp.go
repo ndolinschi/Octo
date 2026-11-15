@@ -50,6 +50,33 @@ func (rt *runtime) askACPDigest(ctx context.Context, w memory.TurnWork) (*memory
 	return &d, nil
 }
 
+const titleAsk = "\n\nThis is a bookkeeping request from the harness, not from the user: answer with the title text only, " +
+	"in one message; do not use tools and do not continue the work."
+
+// askACPTitle asks the orchestrator's live ACP session for a concise session title.
+func (rt *runtime) askACPTitle(ctx context.Context, w memory.TurnWork) (string, error) {
+	s := rt.o.acp.session(rt.key())
+	s.digestMu.Lock()
+	defer s.digestMu.Unlock()
+	s.mu.Lock()
+	client, sessID, alive := s.client, s.sessID, s.aliveLocked() && s.sessID != "" && !s.busy
+	s.mu.Unlock()
+	if !alive {
+		return "", errNoLiveSession
+	}
+	ctx, cancel := context.WithTimeout(ctx, ACPDigestTimeout)
+	defer cancel()
+	h := &digestHandler{rt: rt}
+	stop, err := client.PromptWith(ctx, sessID, sessionTitlePrompt+"\n\n"+rt.memory().Redact(titleInput(w))+titleAsk, nil, h)
+	if err != nil {
+		return "", fmt.Errorf("title prompt: %w", err)
+	}
+	if stop != acp.StopEndTurn {
+		return "", fmt.Errorf("the agent stopped with %q instead of answering", stop)
+	}
+	return h.answer(), nil
+}
+
 // digestHandler is the acp.Handler of the digest prompt: it keeps the agent's
 // text and refuses every permission request and file access.
 type digestHandler struct {

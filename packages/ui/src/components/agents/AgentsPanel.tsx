@@ -88,7 +88,7 @@ export function AgentsPanel() {
           />
         )}
         {fold && open && (
-          <ul className="flex flex-col pl-6" aria-label={`Started by ${n.agent.role}`}>
+          <ul className="flex flex-col gap-1.5 pt-1 pl-6" aria-label={`Started by ${n.agent.role}`}>
             {n.children.map((c) => (
               <li key={c.agent.id}>
                 <AgentRow
@@ -135,13 +135,13 @@ export function AgentsPanel() {
               {groups.running.length > 0 && (
                 <section aria-labelledby="agents-running" className="flex flex-col">
                   <SectionHeader inset id="agents-running">{`Running ${groups.running.length}`}</SectionHeader>
-                  <ul className="flex flex-col">{groups.running.map((n) => node(n, true))}</ul>
+                  <ul className="flex flex-col gap-1.5">{groups.running.map((n) => node(n, true))}</ul>
                 </section>
               )}
               {groups.finished.length > 0 && (
                 <section aria-labelledby="agents-finished" className="flex flex-col">
                   <SectionHeader inset id="agents-finished">{`Finished ${groups.finished.length}`}</SectionHeader>
-                  <ul className="flex flex-col">{groups.finished.map((n) => node(n, false))}</ul>
+                  <ul className="flex flex-col gap-1.5">{groups.finished.map((n) => node(n, false))}</ul>
                 </section>
               )}
             </div>

@@ -101,13 +101,13 @@ function TriageRow(props: { items: { triage: Triage }[]; loading: boolean; value
             <Card padding="none">
               <ListRow
                 size="lg"
-                className="px-2"
+                className="px-2 @max-[420px]/home:gap-1.5 @max-[420px]/home:px-1.5"
                 selected={on}
                 // Polish step 2 (F5): a tile with nothing in it is wholly quiet — words, count and glyph.
                 tone={quiet ? "quiet" : "default"}
                 onClick={() => props.onChange(on ? null : t)}
                 leading={<StateGlyph state={TRIAGE_GLYPH[t]} size={14} box={16} quiet={quiet} className={STILL} />}
-                title={TRIAGE_LABEL[t]}
+                title={<span className="@max-[420px]/home:text-xs">{TRIAGE_LABEL[t]}</span>}
                 meta={<span className={cn("tabular-nums", quiet ? "text-fg-3" : "text-fg")}>{props.loading ? "–" : n}</span>}
                 tip={`${TRIAGE_LABEL[t]}: ${props.loading ? "loading" : n}`}
               />

@@ -281,3 +281,40 @@ func TestAgentSessionsFollowTheirAgent(t *testing.T) {
 		t.Fatalf("reports = %+v / %+v", r, again)
 	}
 }
+
+func TestAutoSessionTitle(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	db, err := s.Create(ctx, NewProject{Name: "p", ModelsJSON: "{}", MaxDepth: 1, OrchestratorModel: "m-orch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	main, err := db.CreateMainSession(ctx, MainSessionCreate{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := db.ShouldAutoNameSession(ctx, main.ID); err != nil || !ok {
+		t.Fatalf("ShouldAutoNameSession(new) = %v, %v", ok, err)
+	}
+	if updated, err := db.SetAutoSessionTitle(ctx, main.ID, "Fix smooth scroll"); err != nil || !updated {
+		t.Fatalf("SetAutoSessionTitle = %v, %v", updated, err)
+	}
+	info, err := db.SessionInfoOf(ctx, main.ID)
+	if err != nil || info.Title != "Fix smooth scroll" {
+		t.Fatalf("after auto name = %+v, %v", info, err)
+	}
+	custom := "My custom title"
+	if _, err := db.PatchSession(ctx, main.ID, &custom, nil); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := db.ShouldAutoNameSession(ctx, main.ID); err != nil || ok {
+		t.Fatalf("ShouldAutoNameSession(edited) = %v, %v", ok, err)
+	}
+	if updated, err := db.SetAutoSessionTitle(ctx, main.ID, "Should not overwrite"); err != nil || updated {
+		t.Fatalf("SetAutoSessionTitle(edited) = %v, %v", updated, err)
+	}
+}

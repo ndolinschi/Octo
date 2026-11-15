@@ -111,7 +111,7 @@ export function UsageByDay({ load, view, now }: { load: Load<UsageData>; view: U
   const rows = useMemo(() => (data ? usageRows(data.days.buckets, (b) => dayLabel(b.key), "key-desc") : []), [data]);
   return (
     <UsageState load={load} first="Day" empty={!data || !hasUsage(data.days)}>
-      <section aria-label="Tokens per day" className="px-2 pt-1">
+      <section aria-label="Tokens per day" className="px-2">
         {daysWithData(days) >= 2 ? (
           <DayBars
             label={`Tokens per day, last ${span} days`}

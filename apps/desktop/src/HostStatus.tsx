@@ -5,7 +5,18 @@ export function HostStatus({ state, retrying, onRetry }: { state: Exclude<HostSt
   if (state.phase === "starting") {
     return (
       <main className="grid h-full place-items-center bg-window px-6 text-fg" role="status" aria-live="polite">
-        <p className="text-sm text-fg-2">Starting Octo…</p>
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="grid size-12 place-items-center rounded-xl border border-line bg-panel shadow-sm">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <circle cx="12" cy="12" r="7" className="stroke-line" strokeWidth="2" />
+              <circle cx="12" cy="12" r="7" className="octo-ring-turn stroke-fg" strokeWidth="2" strokeLinecap="round" strokeDasharray="16 28" />
+            </svg>
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <p className="text-sm font-medium text-fg">Starting Octo</p>
+            <p className="text-xs text-fg-3">Preparing local workspace and services…</p>
+          </div>
+        </div>
       </main>
     );
   }

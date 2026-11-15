@@ -62,9 +62,7 @@ const RoutingLine = lazy(() => import("./RoutingLine").then((m) => ({ default: m
 const SlashMenu = lazy(() => import("./SlashMenu").then((m) => ({ default: m.SlashMenu })));
 /** The context gauge shows once the harness reports the context's size (after the project's state loads): warmed after first paint. */
 const ContextRing = lazy(() => import("./ContextRing").then((m) => ({ default: m.ContextRing })));
-/** Decision 96: the "+" menu's "Session" entry opens this (its own chunk). */
-const SessionMenu = lazy(() => import("./SessionMenu").then((m) => ({ default: m.SessionMenu })));
-/** The hidden file input behind "Attach image…": its own chunk, fetched with the composer's first render (entry budget). */
+/** The hidden file input behind "Attach file…": its own chunk, fetched with the composer's first render (entry budget). */
 const FileInput = lazy(() => import("../primitives/FileInput").then((m) => ({ default: m.FileInput })));
 const ComposerHighlight = lazy(() => import("./ComposerHighlight").then((m) => ({ default: m.ComposerHighlight })));
 
@@ -147,7 +145,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [chipOpen, setChipOpen] = useState(0);
   // The "+" menu's "Folders" and "Session" entries open their own menu on the "+" (they were chips of the control row).
-  const [sub, setSub] = useState<"folders" | "session" | null>(null);
+  const [sub, setSub] = useState<"folders" | null>(null);
   const box = useRef<HTMLFormElement>(null);
   const plus = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<ComposerMenuHandle>(null);
@@ -423,19 +421,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   };
   const inlineOpen = menu?.mode === "inline";
   const pickImage = () => {
-    if (host.pickImages) void host.pickImages().then(pics.add, () => undefined);
+    if (host.pickImages) void host.pickImages().then(attach.add, () => undefined);
     else picker.current?.open();
   };
   const agentName = useAgentName(model?.value);
   const folders = props.folders;
-  const sessionTitle = props.session?.title;
-  const sendTo = useMemo(
-    () => [
-      { id: "folders", label: `Folders: ${foldersLabel(folders)}`, icon: GLYPH.files, run: () => setSub("folders") },
-      ...(sessionTitle !== undefined ? [{ id: "session", label: `Session: ${sessionTitle}`, icon: GLYPH.sessions, run: () => setSub("session") }] : []),
-    ],
-    [folders, sessionTitle],
-  );
+  const sendTo = useMemo(() => [{ id: "folders", label: `Folders: ${foldersLabel(folders)}`, icon: GLYPH.files, run: () => setSub("folders") }], [folders]);
   const action = props.running ? (hasContent ? "queue" : "stop") : "send";
   // The mode, model and folder chips: on the control row, and (direction 7, phone) in the "+" menu, which shows them there only.
   const chips = (
@@ -632,7 +623,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             Message Octo
           </label>
           {/* C6: the top padding sits outside the scrolling text, so a long prompt never scrolls it away. */}
-          <div data-composer-pad className="relative pt-3">
+          <div data-composer-pad className="relative pt-3 pb-3">
             <Suspense fallback={null}>
               <ComposerHighlight text={text} area={area} />
             </Suspense>
@@ -723,7 +714,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         </form>
       </div>
       <Suspense fallback={null}>
-        <FileInput ref={picker} label="Attach images" accept="image/png,image/jpeg,image/webp,image/gif,image/*" multiple onFiles={pics.add} />
+        <FileInput ref={picker} label="Attach files" multiple onFiles={attach.add} />
       </Suspense>
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
@@ -747,11 +738,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         )}
       </Presence>
       {sub === "folders" && <FolderMenu anchor={plus} folders={props.folders} onAdd={props.onAddFolder} onClose={closeSub} onOpenChange={onChip} />}
-      {sub === "session" && props.session && (
-        <Suspense fallback={null}>
-          <SessionMenu anchor={plus} session={props.session} onClose={closeSub} />
-        </Suspense>
-      )}
     </div>
   );
 });

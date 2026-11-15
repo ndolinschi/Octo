@@ -125,7 +125,7 @@ function FileDetail(props: { projectId: string; file: MemoryFile; now: number; o
               ),
             })}
       />
-      {file.summary && <p className="px-2 pb-2 text-sm break-words text-fg-2">{file.summary}</p>}
+      {file.summary && <p className="px-2 pt-1 pb-3 text-sm break-words text-fg-2">{file.summary}</p>}
       <div className="px-2">
         {load.status === "loading" && <SkeletonText lines={4} className="pt-2" />}
         {load.status === "error" && <MemoryError message={load.message} onRetry={() => setRevision((r) => r + 1)} />}

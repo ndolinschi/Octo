@@ -152,7 +152,7 @@ function AnsweredForm({
             <span className="text-fg-3"> · {line.text}</span>
           </span>
           {secrets.length > 0 && (
-            <span className="flex shrink-0 gap-1">
+            <span className="flex flex-wrap justify-end gap-1">
               {secrets.map((id) => (
                 <Button key={id} variant="quiet" size="xs" aria-expanded={changing === id} onClick={() => setChanging(changing === id ? null : id)}>
                   {secrets.length > 1 ? `Change ${titleOf(id)}` : "Change"}

@@ -26,21 +26,26 @@ export function SearchResults(props: { state: SearchState; query: string; canOpe
   const { state, query } = props;
   if (state.status === "idle")
     return (
-      <div className="px-pane">
+      <div className="h-full px-pane pt-2">
         <PanelEmpty>Type two letters or more to search requests, knowledge, files and notes.</PanelEmpty>
       </div>
     );
-  if (state.status === "loading") return <SkeletonList count={5} size="md" twoLine shimmer />;
+  if (state.status === "loading")
+    return (
+      <div className="px-pane pt-2">
+        <SkeletonList count={5} size="md" twoLine shimmer />
+      </div>
+    );
   if (state.status === "error") return <MemoryError message={state.message} />;
   if (state.count === 0) {
     return (
-      <div className="px-pane">
+      <div className="h-full px-pane pt-2">
         <PanelEmpty>{emptyText(query, state.message)}. Try one word.</PanelEmpty>
       </div>
     );
   }
   return (
-    <ScrollArea className="h-full min-h-0 px-pane pt-1 pb-6">
+    <ScrollArea className="h-full min-h-0 px-pane pt-2 pb-6">
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- ↑/↓/Home/End between the result rows */}
       <div role="region" aria-label="Results" onKeyDown={moveInList}>
         {state.groups.map((g) => (

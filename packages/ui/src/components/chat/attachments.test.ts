@@ -14,6 +14,8 @@ test("refusals name the file and a way forward", () => {
   assert.match(refusal("photo.png", "image/png", 10) ?? "", /image/);
   assert.match(refusal("big.log", "", 300 * 1024) ?? "", /256 KB/);
   assert.equal(refusal("a.ts", "", 10), null);
+  assert.equal(refusal("report.pdf", "application/pdf", 1024), null);
+  assert.equal(refusal("archive.bin", "application/octet-stream", 1024), null);
 });
 
 test("attachments go after the text as fenced blocks that outlast any fence inside", () => {

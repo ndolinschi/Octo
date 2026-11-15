@@ -83,8 +83,8 @@ function CheckAgain({ provider, onCheck, onUseAnyway }: { provider: Provider; on
   const [failure, setFailure] = useState("");
   if (isReady(provider)) return null;
   return (
-    <span className="mr-auto flex flex-col gap-1 max-[420px]:mr-0">
-      <span className="flex items-center gap-3 max-[420px]:flex-col max-[420px]:items-stretch">
+    <span className="mr-auto flex min-w-0 flex-col gap-1 max-[420px]:mr-0">
+      <span className="flex flex-wrap items-center gap-3 max-[420px]:flex-col max-[420px]:items-stretch">
         <Button
           onClick={() => {
             setChecked(true);

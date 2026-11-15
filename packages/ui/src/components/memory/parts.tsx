@@ -10,7 +10,7 @@ import { Notice } from "../primitives/Notice";
 /** A read failure with its next step: "Retry" when the view can retry (rule 20; decision 81: a glyph, not a red sentence). */
 export function MemoryError({ message, onRetry }: { message: string; onRetry?: (() => void) | undefined }) {
   return (
-    <div className="p-4">
+    <div className="px-pane py-4">
       <Notice
         form="block"
         tone="error"

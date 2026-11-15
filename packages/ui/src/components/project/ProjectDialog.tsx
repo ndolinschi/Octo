@@ -207,7 +207,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
       footer={
         confirmDelete ? (
           <>
-            <p className="basis-full text-sm text-fg-2 max-[420px]:order-last sm:flex-1 sm:basis-0">
+            <p className="basis-full text-sm text-fg-2 max-[420px]:order-last max-[420px]:basis-auto sm:flex-1 sm:basis-0">
               Delete <span className="text-fg">{props.project?.name}</span> and its history? This can't be undone.
             </p>
             <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
@@ -236,7 +236,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
     >
       <form id={id} onSubmit={submit} noValidate className="@container flex flex-col gap-5">
         {hadDraft && (
-          <p className="-mb-2 flex items-center gap-1.5 text-xs text-fg-3">
+          <p className="-mb-2 flex flex-wrap items-center gap-1.5 text-xs text-fg-3">
             Your earlier draft is back.
             <Button variant="link" tone="quiet" onClick={clearDraft}>
               Discard draft

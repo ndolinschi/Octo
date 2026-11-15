@@ -86,7 +86,7 @@ export function DetailsPanel() {
 /** A captioned group of rows: the caption, an optional quiet action at its right, then the rows. */
 function InfoSection(props: { title: string; labelId: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section aria-labelledby={props.labelId} className="flex flex-col">
+    <section aria-labelledby={props.labelId} className="flex flex-col gap-1">
       <SectionHeader inset id={props.labelId} as="h3" {...(props.aside ? { aside: props.aside } : {})}>
         {props.title}
       </SectionHeader>
@@ -440,7 +440,7 @@ function Outputs() {
     <InfoSection title={all ? "Files written" : "Outputs"} labelId="details-files" aside={toggle}>
       {groups === null && (
         <div className={cn(!slow && "opacity-0")}>
-          <SkeletonList count={3} />
+          <SkeletonList count={3} size="md" />
         </div>
       )}
       {!all && writes !== null && (

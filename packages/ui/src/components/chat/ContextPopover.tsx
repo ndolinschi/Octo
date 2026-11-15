@@ -41,8 +41,8 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
   // "Open context details": the window report itself (decision 93 c), a sheet over whatever is open.
   if (details) return <ContextReport onClose={props.onClose} />;
   return (
-    <Popover anchor={props.anchor} label="Context" side="top" align="end" onClose={props.onClose} className="w-[min(340px,calc(100vw-16px))]">
-      <div className="flex flex-col gap-3 p-3 text-sm">
+    <Popover anchor={props.anchor} label="Context" side="top" align="end" onClose={props.onClose} className="w-[min(340px,calc(100vw-24px))]">
+      <div className="flex min-h-0 flex-col gap-3 overflow-y-auto p-3 text-sm">
         <div className="flex flex-col gap-0.5">
           {/* 7c: focus lands here on open (the buttons may not exist yet while the numbers load, and focus fell to the page);
               Esc returns it to the ring (Popover). Programmatic focus: no ring. */}
@@ -98,7 +98,7 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
             {note}
           </p>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {compact && view.source === "harness" && (
             <Button
               size="sm"

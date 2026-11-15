@@ -136,7 +136,7 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
       footer={
         <>
           {/* B2: what will happen (or why nothing can yet) is the note; the primary keeps a short label. */}
-          <span id={noteId} className="min-w-0 flex-1 basis-48 text-xs text-fg-3">
+          <span id={noteId} className="min-w-0 flex-1 basis-48 text-xs text-fg-3 max-[420px]:basis-auto">
             {ok || !ready ? submitText(review, verdict, ready ? ready.comments.length : count, hasBody, replies.length) : SUBMIT_EMPTY_TEXT}
           </span>
           <Button variant="ghost" onClick={props.onClose}>

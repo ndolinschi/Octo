@@ -51,6 +51,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
   const size = props.size ?? "md";
   const side = props.side ?? "bottom";
   const trigger = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [width, setWidth] = useState(0);
   const [active, setActive] = useState(0);
@@ -61,9 +62,16 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
   const typed = useRef({ text: "", at: 0 });
   const gate = useRef(createPointerGate());
 
-  // Keeps the active row visible while arrows walk a list taller than the popover.
+  // Keeps the active row visible while arrows walk a list taller than the popover without scrolling ancestor containers.
   useEffect(() => {
-    if (open) document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: "nearest" });
+    if (!open) return;
+    const box = listRef.current;
+    const item = document.getElementById(`${listId}-${active}`);
+    if (!box || !item) return;
+    const br = box.getBoundingClientRect();
+    const ir = item.getBoundingClientRect();
+    if (ir.top < br.top) box.scrollTop -= br.top - ir.top;
+    else if (ir.bottom > br.bottom) box.scrollTop += ir.bottom - br.bottom;
   }, [open, active, listId]);
 
   const show = () => {
@@ -160,6 +168,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
       <Presence show={open}>
         <Popover anchor={trigger} label={props.label} side={side} gap={4} onClose={() => setOpen(false)}>
           <div
+            ref={listRef}
             id={listId}
             role="listbox"
             tabIndex={0}

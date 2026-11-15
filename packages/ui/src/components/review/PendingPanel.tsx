@@ -71,7 +71,7 @@ export function PendingPanel(props: {
     >
       <header className="flex h-ctl-lg shrink-0 items-center gap-2 border-b border-line pr-2 pl-4">
         <h2 className="text-heading text-fg">Pending</h2>
-        <span className="text-xs text-fg-3">Posted only when you submit</span>
+        <span className="min-w-0 truncate text-xs text-fg-3">Posted only when you submit</span>
         <IconButton icon={X} label="Close" onClick={props.onClose} className="ml-auto max-md:size-10" />
       </header>
       {props.findings.length > 0 && (
@@ -198,8 +198,8 @@ function FindingCard(props: {
         </Button>
         {f.verdict && <span className="ml-auto shrink-0 text-xs text-fg-3">{f.verdict}</span>}
       </div>
-      <p className="text-sm text-fg">{f.statement}</p>
-      {f.scenario && <p className="text-xs text-fg-2">{f.scenario}</p>}
+      <p className="text-sm [overflow-wrap:anywhere] text-fg">{f.statement}</p>
+      {f.scenario && <p className="text-xs [overflow-wrap:anywhere] text-fg-2">{f.scenario}</p>}
       {f.patch && <pre className="overflow-x-auto rounded-sm bg-code-bg px-2 py-1.5 font-mono text-xs leading-5 text-fg">{f.patch}</pre>}
       {f.status === "new" && reason === null && (
         <div className="flex gap-2">

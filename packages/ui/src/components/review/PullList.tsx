@@ -18,7 +18,7 @@ import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
 import { Notice as ViewNotice } from "../primitives/Notice";
 import { SearchField } from "../primitives/SearchField";
-import { SkeletonRows } from "../primitives/InfoList";
+import { SkeletonList } from "../primitives/Skeleton";
 import { MiddleText } from "../primitives/MiddleText";
 import { Panel, PanelBody, PanelEmpty } from "../primitives/Panel";
 import { FilterTabs } from "../primitives/FilterTabs";
@@ -234,16 +234,17 @@ function Picker(props: {
         <div className="flex h-full min-h-0 flex-col">
           {view === "pulls" && (available || state.loading) && (
             // R1: the frame's one filter row (36, the chips then the search). In a narrow group (under 560) the search takes a
-            // line of its own above the chips, so neither is cut to a stub.
+            // line of its own above the chips, with balanced vertical breathing room and full-width FilterTabs so fade-x works cleanly.
             <div
               data-panel-filters
-              className="box-content flex min-h-9 shrink-0 items-center gap-x-2 gap-y-1 px-pane @max-[560px]:flex-wrap @max-[560px]:pt-1 touch:min-h-ctl-lg"
+              className="box-content flex min-h-9 shrink-0 items-center gap-x-2 gap-y-2 px-pane @max-[560px]:flex-wrap @max-[560px]:pt-1.5 @max-[560px]:pb-2 touch:min-h-ctl-lg"
             >
               <FilterTabs<PullRequestFilter>
                 label="Show"
                 value={filter}
                 onChange={setFilter}
                 bare
+                className="@max-[560px]:w-full"
                 options={PULL_FILTERS.map((f) => ({
                   id: f.id,
                   // Until the list is in, the count is a figure-space placeholder of its width: the chips do not grow on arrival.
@@ -259,7 +260,7 @@ function Picker(props: {
                 size="sm"
                 onKeyDown={(e) => e.key === "Enter" && submitSearch()}
                 inputProps={{ spellCheck: false, autoComplete: "off" }}
-                className="ml-auto w-56 shrink-0 @max-[560px]:order-first @max-[560px]:w-full"
+                className="ml-auto w-56 shrink-0 @max-[560px]:ml-0 @max-[560px]:w-full"
               />
             </div>
           )}
@@ -287,7 +288,7 @@ function Picker(props: {
             <BranchList api={api} folder={folder} opening={opening} onOpen={(id, input) => void run(id, input)} />
           ) : state.loading ? (
             <PanelBody>
-              <SkeletonRows count={7} widths={[70, 52, 64, 44, 58, 66, 48]} />
+              <SkeletonList count={7} size="md" twoLine shimmer widths={[70, 52, 64, 44, 58, 66, 48]} />
             </PanelBody>
           ) : ready && !available && resume.length === 0 ? (
             <PanelEmpty
@@ -356,7 +357,7 @@ function Picker(props: {
               {/* R7: the rows are one Tab stop; ↑/↓/Home/End move between them. */}
               {/* A maximised review is 1400 wide: the rows keep Home's column (880, left-aligned as every panel body), so the time
                   and the counts stay near the title they belong to. */}
-              <div ref={list} className="flex flex-col">
+              <div ref={list} className="flex flex-col gap-1.5">
                 {typed && available && (
                   <ListRow
                     size="md"

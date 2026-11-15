@@ -533,6 +533,42 @@ func (d *DB) PatchSession(ctx context.Context, id string, title *string, archive
 	return d.SessionInfoOf(ctx, id)
 }
 
+// ShouldAutoNameSession reports whether id is a main session on its first exchange whose title was not
+// manually edited by the user.
+func (d *DB) ShouldAutoNameSession(ctx context.Context, id string) (bool, error) {
+	if id == "" {
+		return false, nil
+	}
+	var kind string
+	var edited bool
+	var exchanges int
+	err := d.sql.QueryRowContext(ctx, `SELECT s.kind, s.title_edited,
+		(SELECT COUNT(*) FROM exchanges e WHERE e.session_id = s.id AND e.removed = 0)
+		FROM sessions s WHERE s.id = ?`, id).Scan(&kind, &edited, &exchanges)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return kind == KindMain && !edited && exchanges <= 1, nil
+}
+
+// SetAutoSessionTitle sets a session's title only if it has not been manually edited (title_edited = 0).
+// It returns whether a row was updated.
+func (d *DB) SetAutoSessionTitle(ctx context.Context, id, title string) (bool, error) {
+	title = strings.TrimSpace(title)
+	if id == "" || title == "" {
+		return false, nil
+	}
+	res, err := d.sql.ExecContext(ctx, `UPDATE sessions SET title = ? WHERE id = ? AND title_edited = 0`, title, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // DeleteSession removes a session: for a main session its exchanges, the orchestrator messages stored in it, its
 // compaction rows and the agent sessions it started (their agents are hidden like a rewound one, their messages
 // removed), all of them from the search index too. The current main session cannot be deleted

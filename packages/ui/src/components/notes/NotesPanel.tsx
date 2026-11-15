@@ -167,7 +167,7 @@ export function NotesPanel() {
               shown.length === 0 ? (
                 <PanelEmpty>No note matches "{query}".</PanelEmpty>
               ) : (
-                <ul ref={noteList} aria-label="Notes" className="flex flex-col">
+                <ul ref={noteList} aria-label="Notes" className="flex flex-col gap-1.5">
                   {shown.map((n) => (
                     <li key={n.id}>
                       <NoteRow note={n} now={now} active={current?.id === n.id && mode.kind !== "new"} onPick={() => select(n.id)} />

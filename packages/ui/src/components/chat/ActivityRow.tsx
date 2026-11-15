@@ -115,8 +115,8 @@ export function ActivityRow(props: {
       {props.error && <p className="-mt-1 truncate pb-1 pl-6 text-xs text-err">{props.error}</p>}
       {props.note && <p className="-mt-1 truncate pb-1 pl-6 text-xs text-fg-3">{props.note}</p>}
       {nested && open && (
-        // C1: what a row opens sits on the row's text line (16 glyph + 8 gap), so the nesting reads at a glance.
-        <div id={id} data-activity-body className="mt-1 mb-1 pl-6">
+        // C1: a subtle tree guide under the parent's glyph center (7px) with 16px indent puts nested content on the parent's text line (24px).
+        <div id={id} data-activity-body className="mt-0.5 mb-2 ml-[7px] flex flex-col gap-0.5 border-l border-line pl-4">
           {props.children}
         </div>
       )}

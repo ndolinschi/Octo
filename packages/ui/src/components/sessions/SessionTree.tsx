@@ -145,12 +145,19 @@ export function SessionTree(props: SessionTreeProps) {
     const anchor = el ?? (e.currentTarget instanceof HTMLElement ? e.currentTarget : null);
     setMenu({ project: p, open, anchor, ...menuPoint(e, anchor) });
   };
+  const createSession = (projectId: string) => {
+    void act(async () => {
+      const { session } = await bridge.createSession(projectId, {});
+      window.location.hash = hrefFor(projectId, null, session.id);
+      props.onPick();
+    });
+  };
   const projectMenuItems = (m: { project: ProjectSummary; open: boolean; anchor: HTMLElement | null }): MenuItem[] => [
     {
       id: "new",
       label: "New session",
       disabled: !props.canCreate,
-      run: () => setCreating({ projectId: m.project.id, anchor: { current: m.anchor } }),
+      run: () => createSession(m.project.id),
     },
     { id: "toggle", label: m.open ? "Hide sessions" : "Show sessions", run: () => toggle(m.project.id, !m.open) },
   ];
@@ -267,7 +274,15 @@ export function SessionTree(props: SessionTreeProps) {
         <div data-side-caption className="mt-4 mb-1 flex h-5 shrink-0 items-center pr-0.5 pl-2">
           <h2 className="text-xs text-fg-3">{props.mode === "sessions" ? "Sessions" : "Projects"}</h2>
           {props.mode === "sessions" && (
-            <NewButton label="New session" disabled={!props.canCreate || !projects?.length} onOpen={(anchor) => setCreating({ anchor })} />
+            <NewButton
+              label="New session"
+              disabled={!props.canCreate || !projects?.length}
+              onOpen={(anchor) => {
+                const target = props.activeProjectId ?? (projects?.length === 1 ? projects[0]?.id : null);
+                if (target) createSession(target);
+                else setCreating({ anchor });
+              }}
+            />
           )}
         </div>
       )}
@@ -283,7 +298,7 @@ export function SessionTree(props: SessionTreeProps) {
         onKeyDown={onKeyDown}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain fade-y"
       >
-        {loading && <SkeletonList count={3} size="lg" twoLine />}
+        {loading && <SkeletonList count={3} size="md" />}
         {props.mode === "sessions"
           ? flat.map((s) => sessionRow(s, false))
           : projectRows.map(({ p, sessions, active, open, shown, hidden }) => (
@@ -302,7 +317,7 @@ export function SessionTree(props: SessionTreeProps) {
                     if (!open) toggle(p.id, true);
                     props.onPick();
                   }}
-                  onNew={(anchor) => setCreating({ projectId: p.id, anchor })}
+                  onNew={() => createSession(p.id)}
                   onMenu={(e) => openProjectMenu(p, open, e)}
                 />
                 {open && (shown.length > 0 || hidden > 0) && (
@@ -401,10 +416,9 @@ function ProjectRow(props: {
   canCreate: boolean;
   onToggle(): void;
   onOpen(): void;
-  onNew(anchor: RefObject<HTMLElement | null>): void;
+  onNew(): void;
   onMenu(e: MouseEvent): void;
 }) {
-  const plus = useRef<HTMLButtonElement>(null);
   const phone = usePhone();
   const { running } = projectSummary(props.sessions);
   const latest = mainSessions(props.sessions)[0];
@@ -437,14 +451,13 @@ function ProjectRow(props: {
       <span data-tree-actions role="none" className="absolute top-1 right-1 flex touch:top-2">
         {!phone && (
           <IconButton
-            ref={plus}
             icon={Plus}
             size="xs"
             tabIndex={-1}
             aria-hidden="true"
             label={`New session in ${props.project.name}`}
             disabled={!props.canCreate}
-            onClick={() => props.onNew(plus)}
+            onClick={props.onNew}
           />
         )}
         <IconButton

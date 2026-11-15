@@ -114,7 +114,7 @@ export function UsageLimits() {
             ))}
           </InfoSection>
         ))}
-      {settled && (
+      {settled && limits.status !== "error" && (
         <InfoSection title="Subscription limits of coding agents" labelId="usage-plan-limits">
           {agents.map((a) => (
             <ListRow key={a.id} leading={<Glyph icon={GLYPH.agent} size={14} />} title={a.label} meta="Coding agent" tone="quiet" />

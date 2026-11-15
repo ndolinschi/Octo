@@ -226,7 +226,7 @@ export const FileTree = forwardRef<
               {...common}
               aria-disabled={row.kind === "loading" || undefined}
               aria-busy={row.kind === "loading" || undefined}
-              className="flex h-row shrink-0 items-center gap-1 rounded-sm pr-1 text-xs text-fg-3 focus-inset touch:h-ctl-lg"
+              className="flex h-row shrink-0 items-center gap-1 rounded-sm px-1 text-xs text-fg-3 focus-inset touch:h-ctl-lg"
             >
               <Indent px={indent} />
               <span className="grid size-6 shrink-0 place-items-center">{row.kind === "loading" && <Spinner size={10} />}</span>

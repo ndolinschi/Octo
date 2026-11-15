@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check, type LucideIcon } from "lucide-react";
 import { Glyph } from "./Glyph";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
@@ -11,6 +11,7 @@ export type MenuItem =
   | {
       id: string;
       label: string;
+      icon?: LucideIcon;
       shortcut?: string;
       /** Dim text after the label (a role, a remote). */ detail?: string;
       /** A second, dim line under the label: what the row does (the row grows to 40px). */ sub?: string;
@@ -143,6 +144,8 @@ export function Menu(props: {
     item.run();
   };
 
+  const hasLeading = props.items.some((item) => isAction(item) && (item.checked !== undefined || item.icon !== undefined));
+
   return createPortal(
     <div
       ref={ref}
@@ -183,10 +186,11 @@ export function Menu(props: {
               item.disabled ? "text-fg-3" : "text-fg focus:bg-active",
             )}
           >
-            {/* The same 16px leading slot as `PopupList`'s rows, so every popup's text starts on one line. */}
-            <span aria-hidden className="grid size-4 shrink-0 place-items-center">
-              {item.checked && <Glyph icon={Check} size={14} />}
-            </span>
+            {hasLeading && (
+              <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+                {item.checked ? <Glyph icon={Check} size={14} /> : item.icon ? <Glyph icon={item.icon} size={14} className="text-fg-3" /> : null}
+              </span>
+            )}
             {item.sub ? (
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate">{item.label}</span>
@@ -200,7 +204,7 @@ export function Menu(props: {
             {item.shortcut && <kbd className="shrink-0 pl-4 font-sans text-xs text-fg-2">{item.shortcut}</kbd>}
           </div>
         ) : "caption" in item ? (
-          <p key={item.id} title={item.title} className="px-2 py-1 pl-8 text-xs text-fg-3">
+          <p key={item.id} title={item.title} className={cn("px-2 py-1 text-xs text-fg-3", hasLeading && "pl-8")}>
             {item.caption}
           </p>
         ) : (

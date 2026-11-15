@@ -80,9 +80,9 @@ export function Panel(props: {
 }
 
 /** The filter row: `FilterTabs` (with `bare`) first, then a search, 8px apart, centred in 36px. */
-export function PanelFilters(props: { children: ReactNode; /** Inside a scroller that already has the 8px inset. */ flush?: boolean }) {
+export function PanelFilters(props: { children: ReactNode; /** Inside a scroller that already has the 8px inset. */ flush?: boolean; className?: string }) {
   return (
-    <div data-panel-filters className={cn("flex h-9 shrink-0 items-center gap-2 touch:h-ctl-lg", !props.flush && "px-pane")}>
+    <div data-panel-filters className={cn("flex min-h-9 shrink-0 items-center gap-2 touch:min-h-ctl-lg", !props.flush && "px-pane", props.className)}>
       {props.children}
     </div>
   );

@@ -142,4 +142,4 @@ export function usePersistentState<T>(
 }
 
 /** Decision 96: what the sidebar lists (Settings → General → "Sidebar shows") — projects with their sessions (default), projects only, or sessions only. */
-export const sidebarViewCodec = choiceCodec(["tree", "projects", "sessions"] as const, "tree");
+export const sidebarViewCodec = choiceCodec(["tree", "projects", "sessions"] as const, "sessions");

@@ -21,7 +21,7 @@ export function OfflineState() {
   // answered. Either way the app checks again by itself (1–30 s, on focus); Retry checks now.
   if (cause === "unreadable" || cause === "unanswered") {
     return (
-      <section aria-labelledby="offline-title" className="grid h-full place-items-center px-6">
+      <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6">
         <div className="w-full max-w-[440px] min-w-0">
           <h1 id="offline-title" className="text-title text-fg">
             {cause === "unreadable" ? "Octo's local service sent a reply Octo can't read" : "Octo's local service didn't answer in time"}
@@ -30,7 +30,7 @@ export function OfflineState() {
             {cause === "unreadable" ? "It's running, but its reply was not valid." : "It took the request but sent nothing back."} Octo keeps trying by itself;
             if it keeps happening, restart Octo.
           </p>
-          <div className="mt-5 flex gap-2">
+          <div className="mt-5 flex flex-wrap gap-2">
             {retryButton}
             {host.restart && (
               <Button variant="secondary" size="sm" onClick={host.restart}>
@@ -45,7 +45,7 @@ export function OfflineState() {
   // A15: the service answered and refused this window's API token (it restarted with a new one). Not "nothing answered".
   if (refused) {
     return (
-      <section aria-labelledby="offline-title" className="grid h-full place-items-center px-6">
+      <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6">
         <div className="w-full max-w-[440px] min-w-0">
           <h1 id="offline-title" className="text-title text-fg">
             Octo's local service didn't accept this window
@@ -61,7 +61,7 @@ export function OfflineState() {
               keeps it in <code className="font-mono text-xs">api-token</code> in its data directory).
             </p>
           )}
-          <div className="mt-5 flex gap-2">
+          <div className="mt-5 flex flex-wrap gap-2">
             {host.managesHarness ? (
               host.restart && (
                 <Button variant="primary" size="sm" onClick={host.restart}>
@@ -82,13 +82,13 @@ export function OfflineState() {
   // The packaged app starts the harness itself: no command to run, no address to set; Retry, and a restart when the host has one.
   if (host.managesHarness) {
     return (
-      <section aria-labelledby="offline-title" className="grid h-full place-items-center px-6">
+      <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6">
         <div className="w-full max-w-[440px] min-w-0">
           <h1 id="offline-title" className="text-title text-fg">
             Octo's local service isn't running.
           </h1>
           <p className="mt-1 text-sm text-fg-2">Octo starts it for you. Try again, or restart Octo if it keeps failing.</p>
-          <div className="mt-5 flex gap-2">
+          <div className="mt-5 flex flex-wrap gap-2">
             <Button variant="primary" size="sm" onClick={retry} disabled={health === "checking"}>
               {health === "checking" ? "Checking…" : "Retry"}
             </Button>
@@ -103,7 +103,7 @@ export function OfflineState() {
     );
   }
   return (
-    <section aria-labelledby="offline-title" className="grid h-full place-items-center px-6">
+    <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6">
       {/* B56: a grid item may shrink under its content (the command line), so the block fits a 390px window. */}
       <div className="w-full max-w-[440px] min-w-0">
         <h1 id="offline-title" className="text-title text-fg">

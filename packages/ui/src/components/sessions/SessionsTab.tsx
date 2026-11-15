@@ -68,7 +68,11 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
   useHistoryLayer(usePhone() && picked !== null, () => setSelected(null));
 
   if (!bridge.listSessions) {
-    return <PanelEmpty title="This version of Octo's local service has no sessions">Update it to see the project's sessions here.</PanelEmpty>;
+    return (
+      <Panel name="sessions" title="Sessions">
+        <PanelEmpty title="This version of Octo's local service has no sessions">Update it to see the project's sessions here.</PanelEmpty>
+      </Panel>
+    );
   }
   // Counts only where they answer a question (what works now, what is archived): five counts do not fit the list column.
   const options: Filter<SessionFilter>[] = FILTERS.map((f) => ({

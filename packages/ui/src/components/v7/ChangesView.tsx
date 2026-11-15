@@ -169,7 +169,7 @@ export function ChangesView(props: ChangesViewProps) {
         ) : showDiff && diff ? (
           diff
         ) : (
-          <nav aria-label="Changed files" className="@container/list flex flex-1 flex-col gap-2 overflow-y-auto px-2 pt-1 pb-2">
+          <nav aria-label="Changed files" className="@container/list flex min-w-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pt-1 pb-2">
             {list}
             <FloatRoom />
           </nav>

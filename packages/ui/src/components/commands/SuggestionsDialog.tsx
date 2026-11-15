@@ -67,21 +67,23 @@ export function SuggestionsDialog({ onClose }: { onClose(): void }) {
           </p>
         )}
         {load.status === "ready" && open.length === 0 && <p className="text-fg-3">Everything the project's files suggest is already a command.</p>}
-        <ul className="flex flex-col">
-          {open.map((s) => (
-            <li key={`${s.source}:${s.name}`} className="flex min-h-10 items-center gap-3">
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-fg">{s.name}</span>
-                <span className="truncate font-mono text-xs text-fg-3">
-                  {s.command} · {s.source}
+        {open.length > 0 && (
+          <ul className="flex flex-col gap-1">
+            {open.map((s) => (
+              <li key={`${s.source}:${s.name}`} className="flex min-h-10 items-center gap-3">
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-fg">{s.name}</span>
+                  <span className="truncate font-mono text-xs text-fg-3">
+                    {s.command} · {s.source}
+                  </span>
                 </span>
-              </span>
-              <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => void add(s)} className="max-md:h-10">
-                Add
-              </Button>
-            </li>
-          ))}
-        </ul>
+                <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => void add(s)} className="max-md:h-10">
+                  Add
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
         {problem && (
           <p role="alert" className="text-xs text-err">
             {problem}
