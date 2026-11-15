@@ -206,6 +206,34 @@ func pickSessionMode(modes []acp.SessionMode, mode string) string {
 	return ""
 }
 
+// selfApproving reports a session mode in which the agent approves its own
+// edits or commands without a permission request (auto, accept-edits,
+// acceptEdits, bypassPermissions, yolo, ...).
+func selfApproving(id string) bool {
+	id = strings.ToLower(id)
+	for _, w := range []string{"auto", "accept", "bypass", "yolo", "dangerous", "skip"} {
+		if strings.Contains(id, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// askingMode is the agent's mode that asks before changes: the one named default.
+func askingMode(modes []acp.SessionMode) string {
+	for _, m := range modes {
+		if strings.EqualFold(m.ID, "default") {
+			return m.ID
+		}
+	}
+	for _, m := range modes {
+		if strings.EqualFold(strings.TrimSpace(m.Name), "default") {
+			return m.ID
+		}
+	}
+	return ""
+}
+
 // applyMode puts the live ACP session into the agent's mode matching the
 // turn's: ask/plan map to the agent's own read-only or plan mode when it
 // advertises one (session/set_mode), and agent restores the mode the session
@@ -221,6 +249,14 @@ func (s *orchSession) applyMode(ctx context.Context, rt *runtime, client *acp.Cl
 		target = pickSessionMode(modes, rt.mode)
 	} else if base != "" {
 		target = base
+		// A supervised project answers every write itself: an agent that starts in
+		// a mode approving its own edits (Antigravity's auto, accept-edits) would
+		// never ask, so its asking mode is used instead.
+		if selfApproving(base) && rt.supervised(ctx) {
+			if d := askingMode(modes); d != "" {
+				target = d
+			}
+		}
 	}
 	if target == "" || target == cur {
 		return

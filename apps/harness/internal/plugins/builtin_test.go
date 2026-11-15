@@ -221,3 +221,41 @@ func TestBuiltinGrokAndCodexFacts(t *testing.T) {
 		t.Errorf("copilot has a login probe the harness cannot source: %q", byID["copilot"].ProbeCommand)
 	}
 }
+
+// The Antigravity entry follows Google's agy acp documentation: the ACP
+// subcommand, the CLI's default install folder, the 1.5.0 minimum read from
+// `agy --version`, the tool server over stdio (HTTP MCP servers need
+// --process-per-session), only the API-key auth method (and only with
+// GEMINI_API_KEY set), never the browser or terminal sign-ins, and a copyable
+// login and install command.
+func TestBuiltinAntigravityEntry(t *testing.T) {
+	reg := plugins.Load(context.Background(), t.TempDir(), nil, nil, plugins.WithBuiltin(subscriptionagents.Manifest))
+	a, ok := reg.Agent("antigravity")
+	if !ok {
+		t.Fatal("no antigravity agent")
+	}
+	if filepath.Base(a.Command) != "agy" || strings.Join(a.Args, " ") != "acp" || a.Verified {
+		t.Fatalf("launch = %s %v verified=%v", a.Command, a.Args, a.Verified)
+	}
+	if !slices.Equal(a.SearchPaths, []string{"~/.local/bin"}) || a.MinVersion != "1.5.0" || filepath.Base(a.VersionCommand) != "agy" ||
+		!slices.Equal(a.VersionArgs, []string{"--version"}) || a.MCPTransport != plugins.MCPTransportStdio {
+		t.Fatalf("version/transport/search = %+v", a)
+	}
+	if len(a.AuthMethods) != 1 || a.AuthMethods[0].ID != "gemini-api-key" || a.AuthMethods[0].RequiresEnv != "GEMINI_API_KEY" {
+		t.Fatalf("auth methods = %+v", a.AuthMethods)
+	}
+	for _, id := range []string{"oauth-personal", "oauth-business", "agent-platform", "terminal-login"} {
+		if !slices.Contains(a.AuthSkip, id) {
+			t.Errorf("auth.skip lacks %s", id)
+		}
+	}
+	if a.LoginCmd() != "agy acp --login" || a.InstallCmd() != "curl -fsSL https://antigravity.google/cli/install.sh | bash" {
+		t.Fatalf("login %q install %q", a.LoginCmd(), a.InstallCmd())
+	}
+	if a.ProbeCommand != "" || a.ModelsCommand != nil || len(a.Models) != 0 {
+		t.Fatalf("agy documents no status command and no model list output: probe %q models %v", a.ProbeCommand, a.Models)
+	}
+	if !slices.Equal(a.BillingEnv, []string{"GEMINI_API_KEY"}) || !a.FlatRate || a.Env["GEMINI_API_KEY"] != "" {
+		t.Fatalf("billing = %v flat=%v env=%v", a.BillingEnv, a.FlatRate, a.Env)
+	}
+}

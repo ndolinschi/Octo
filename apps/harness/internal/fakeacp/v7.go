@@ -93,12 +93,7 @@ func (a *agent) permScript(ctx context.Context, cwd string) string {
 			"locations": []map[string]string{{"path": filepath.Join(cwd, "package.json")}},
 			"rawInput":  map[string]string{"command": "npm test"},
 		},
-		"options": []map[string]string{
-			{"optionId": "p-allow-once", "name": "Allow once", "kind": "allow_once"},
-			{"optionId": "p-allow-always", "name": "Always allow", "kind": "allow_always"},
-			{"optionId": "p-reject-once", "name": "Reject once", "kind": "reject_once"},
-			{"optionId": "p-reject-always", "name": "Always reject", "kind": "reject_always"},
-		},
+		"options": a.permScriptOptions(),
 	})
 	if err != nil || rpcErr != nil {
 		return "cancelled"
@@ -115,7 +110,7 @@ func (a *agent) permScript(ctx context.Context, cwd string) string {
 		return "end_turn"
 	}
 	chosen := out.Outcome.OptionID
-	if strings.HasPrefix(chosen, "p-allow") {
+	if strings.HasPrefix(chosen, "p-allow") || chosen == "allow" {
 		_ = os.WriteFile(filepath.Join(cwd, PermFile), []byte("ran\n"), 0o644)
 		a.toolUpdate("call-perm", "completed", textContent("tests passed"))
 	} else {
@@ -123,6 +118,20 @@ func (a *agent) permScript(ctx context.Context, cwd string) string {
 	}
 	a.say("permission chosen=" + chosen)
 	return "end_turn"
+}
+
+// permScriptOptions are the four option kinds, or the profile's own (agy:
+// Allow and Deny only).
+func (a *agent) permScriptOptions() []map[string]string {
+	if len(a.opts.permOptions) > 0 {
+		return a.opts.permOptions
+	}
+	return []map[string]string{
+		{"optionId": "p-allow-once", "name": "Allow once", "kind": "allow_once"},
+		{"optionId": "p-allow-always", "name": "Always allow", "kind": "allow_always"},
+		{"optionId": "p-reject-once", "name": "Reject once", "kind": "reject_once"},
+		{"optionId": "p-reject-always", "name": "Always reject", "kind": "reject_always"},
+	}
 }
 
 func (a *agent) askForm(ctx context.Context) string {

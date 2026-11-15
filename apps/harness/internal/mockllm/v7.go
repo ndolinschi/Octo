@@ -20,7 +20,9 @@ import (
 //	[ask]            request_input for an API key (secret) and a region (text)
 //
 // An orchestrator turn whose request holds [form] calls request_input itself
-// (a secret field and a text field) and then reports what came back.
+// (a secret field and a text field) and then reports what came back;
+// [schemaform] does the same with the spec's "Sign in to staging" schema
+// (email, password, remember).
 var (
 	writeMarker   = regexp.MustCompile(`\[write:([^\]]+)\]`)
 	rewriteMarker = regexp.MustCompile(`\[rewrite:([^\]]+)\]`)
@@ -32,8 +34,9 @@ var (
 )
 
 const (
-	askMarker  = "[ask]"
-	formMarker = "[form]"
+	askMarker        = "[ask]"
+	formMarker       = "[form]"
+	schemaFormMarker = "[schemaform]"
 )
 
 func rolePath(p, role string) string {
@@ -103,13 +106,31 @@ func inputSchemaCall(title, reason string) map[string]any {
 	}
 }
 
-// formReply is the orchestrator's [form] flow: ask, then report the result.
+// signInSchemaCall is request_input with a schema (spec 2026-11-15, A.1).
+func signInSchemaCall() map[string]any {
+	return map[string]any{
+		"title": "Sign in to staging", "reason": "The smoke tests log in as a test user.",
+		"schema": map[string]any{
+			"type": "object", "required": []string{"email", "password"},
+			"properties": orderedJSON(`{
+				"email": {"type": "string", "format": "email", "title": "Email", "x-octo": {"placeholder": "you@example.com"}},
+				"password": {"type": "string", "format": "password", "title": "Password", "minLength": 8},
+				"remember": {"type": "boolean", "title": "Keep me signed in for this project", "default": true}}`),
+		},
+	}
+}
+
+// orderedJSON keeps a JSON object's key order through re-encoding (a map would sort it).
+func orderedJSON(s string) json.RawMessage { return json.RawMessage(s) }
+
+// formReply is the orchestrator's [form] and [schemaform] flow: ask, then report the result.
 func formReply(r *request, anchor int, ask string) reply {
 	if r.assistantCountFrom(anchor) == 0 {
-		return reply{
-			Text:  "I need two values from you before I can continue.",
-			Calls: []call{{Name: "request_input", Input: inputSchemaCall("Credentials", "Needed to call the service.")}},
+		in := inputSchemaCall("Credentials", "Needed to call the service.")
+		if strings.Contains(ask, schemaFormMarker) {
+			in = signInSchemaCall()
 		}
+		return reply{Text: "I need two values from you before I can continue.", Calls: []call{{Name: "request_input", Input: in}}}
 	}
 	result := "(no result)"
 	for _, m := range r.Messages[anchor+1:] {

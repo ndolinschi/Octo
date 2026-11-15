@@ -230,3 +230,49 @@ Verified: Go tests with the scripted agent (`[mcp-spawn-lazy]`, `[mcp-spawn-gues
 a real `harness serve` with the mock model for the cancel (12 s turn stored as 12 s, interruption results at the stop
 time), `gofmt`, `go vet`, `go test -race ./...`. Not verified: real Claude Code showing the instructions to the model
 and getting the first call right; other agents as orchestrator; the UI reload against a live harness.
+
+### As built — Antigravity (`agy`) support (2026-11-15, harness)
+
+Owner: "we need good agy support". Sources, read 2026-11-15: antigravity.google/docs/cli/acp, /docs/ide/extensions/acp
+(flags, authMethods, capabilities, errors), /docs/cli/reference, /docs/getting-started?tab=cli (installer,
+`~/.local/bin/agy`, `agy --version`), the CHANGELOG.md of google-antigravity/antigravity-cli (1.5.0 added `agy acp`;
+1.5.2 cancel and permission fixes; 1.5.4 Auto mode in ACP; 1.5.8 Auto is the default mode; 1.5.9 context-window usage
+and "Authentication required" fixes), the ACP registry (`antigravity-acp` 1.5.0 is a separate `agy_acp_server.par`
+download). Not documented anywhere I found: `agy update`, a non-interactive sign-in status command, the text output of
+`agy models`, the exact `type` of each auth method, whether agy advertises `mcpCapabilities.http` without
+`--process-per-session`, terms for third-party clients.
+
+- Manifest `antigravity`: `agy acp`; new fields `searchPaths` (`~/.local/bin`), `version` (`agy --version`, min
+  1.5.0), `mcpTransport: "stdio"` (agy's HTTP MCP servers need `--process-per-session`); `auth.methods` only
+  `gemini-api-key` with `requiresEnv: GEMINI_API_KEY`, `auth.skip` the Google, Enterprise, ADC and terminal sign-ins
+  (the default policy would have called `authenticate` with `oauth-personal`, a browser sign-in); `auth.command`
+  `agy acp --login`; `billingEnv: GEMINI_API_KEY`; the installer as install and update line; `verified` stays false.
+  No login probe, no model names, no roles (none documented).
+- Version check (`plugins.versioner`, like the login prober: background, every 10 min, 5 s timeout, forced by
+  recheck): only a version read and lower than `min` makes the agent unavailable; providers list it `not_installed`
+  with the new catalogue error `AgentTooOld` ("Antigravity 1.4.12 is too old for Octo; it needs 1.5.0 or newer.",
+  the installer line, `recheck_provider`); project create/patch and an orchestrator turn refuse it with the same error (a
+  sub-agent spawn gets the existing "unavailable agent" tool error; the agent is no longer offered); `harness doctor` prints
+  `version:` per agent and a problem line (`AgentReport.version`, `DiagnosticsVersion` in agent-client).
+- ACP client: a permission request still open when the prompt is cancelled is withdrawn (its context ends) and
+  answered `cancelled`, so the agent's own `cancelled` reply is read; before, the reader stayed blocked on the approval
+  card and the agent was killed after `CancelGrace` (3 s) — for every agent, not only agy. A banner or escape codes
+  before `{"jsonrpc"` on the same stdout line are dropped (lines without a message were already skipped).
+- Orchestrator: in a supervised project an agent whose starting mode approves its own changes (`auto`, `accept…`,
+  `bypass…`, `yolo`, …) is switched to its `default` mode for Agent turns; full access keeps the agent's mode.
+- Scripted agent: profile `OCTO_FAKEACP_PROFILE=agy` (`internal/fakeacp/agy.go`): `--version`, no `acp` before 1.5.0,
+  a stdout banner, the five auth methods, -32000 "Authentication required" without a saved sign-in, four modes starting
+  in `auto`, model and thinking-level config options, Allow/Deny permission options, `agy acp --login`.
+
+Verified (scripted agent, fake `agy` scripts, no real agy): Go tests in `internal/acp` (`agy_test.go`: handshake
+through the banner, signed out never calls `authenticate`, the default policy would try `oauth-personal`, API key and
+saved sign-in, models and modes, old version, Stop during a permission request ends in < 3 s with the process alive —
+fails without the fix), `internal/plugins` (version parse, too old → unavailable → recheck clears it, no guessing,
+`searchPaths`, the built-in entry), `internal/orchestrator` (`agy_profile_test.go`: modes per access, signed out,
+Stop during an approval; `agy_internal_test.go`), `internal/providers`, `internal/diag`, `internal/usererr`; a real
+`harness doctor` with a fake `agy` (1.5.9 ready, 1.4.12 too old, found only in `~/.local/bin`); `e2e-acp-orchestrator.sh`
+scenario 4 (built-in entry, fake `agy` as the only CLI on PATH: signed out → "Antigravity is not logged in.";
+`agy acp --login` → request works over the stdio relay; 1.4.12 → too old after recheck). Gates: `gofmt -l` clean and `go vet ./...` clean (whole harness tree); `go test -race` passed for acp, plugins, providers, diag, usererr, cmd/harness and the agy/ACP tests of orchestrator; the full `go test -race ./...` (429 s) passed 49 packages and failed only in work in progress of a parallel executor (internal/bridge `TestUsageGroupsAcrossProjects`; orchestrator did not build then because of bridge/project form changes); orchestrator alone later: a data race in `TestLiveStreamIsNotHeldBackByASlowCheckpointWrite` (test hook `SetBeforeCheckpointWrite` vs `sink.go:170`, files untouched here) and the package exceeded a 15-minute timeout on the loaded machine; `e2e-acp-orchestrator.sh` passed (all four scenarios).
+Not verified: anything on a real agy (owner's run: LIVE-CHECKLIST block "B-agy", AG1–AG15) — the version output
+format, which auth methods and capabilities it really advertises, its mode ids and whether ACP sessions start in
+`auto`, its model and permission option shapes, banner output, `session/load` behaviour, the UI showing "too old".

@@ -78,6 +78,7 @@ func cmdDoctor(args []string) error {
 		func(in *diag.Inputs) {
 			in.DataDirWhy = dirWhy
 			in.ShowProbeOutput = showOutput && !asJSON
+			in.CheckVersion = func(a plugins.Agent) plugins.VersionReport { return a.CheckVersion(ctx) }
 			// The desktop app starts the router and gives the harness its address;
 			// doctor starts nothing, so with the router switched on and no address
 			// the built-in loop is simply not checked, not broken.

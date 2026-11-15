@@ -14,7 +14,6 @@ import (
 	"sync"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
-	"github.com/ndolinschi/Octo/apps/harness/internal/secrets"
 )
 
 // Field kinds.
@@ -47,12 +46,18 @@ var (
 	ErrNotFound = errors.New("inputs: no such open form")
 )
 
-// ValidationError is a refused submission or schema; it names fields, never values.
-type ValidationError struct{ Msg string }
+// ValidationError is a refused submission or schema; it names fields, never
+// values. Fields (a refused answer only) holds a message by property id.
+type ValidationError struct {
+	Msg    string
+	Fields map[string]string
+}
 
 func (e *ValidationError) Error() string { return e.Msg }
 
-func bad(format string, args ...any) error { return &ValidationError{fmt.Sprintf(format, args...)} }
+func bad(format string, args ...any) error {
+	return &ValidationError{Msg: fmt.Sprintf(format, args...)}
+}
 
 // Field is one input of a form.
 type Field struct {
@@ -69,17 +74,22 @@ type Input struct {
 	ID      string `json:"id"`
 	AgentID string `json:"agent_id"`
 	// SessionID is the main session whose turn asks (schema 15).
-	SessionID  string  `json:"session_id,omitempty"`
-	AgentLabel string  `json:"agent_label"`
-	TurnID     int64   `json:"turn_id"`
-	Title      string  `json:"title"`
-	Reason     string  `json:"reason"`
-	Fields     []Field `json:"fields"`
-	CreatedAt  string  `json:"created_at"`
+	SessionID  string `json:"session_id,omitempty"`
+	AgentLabel string `json:"agent_label"`
+	TurnID     int64  `json:"turn_id"`
+	Title      string `json:"title"`
+	Reason     string `json:"reason"`
+	// Fields is the legacy form, kept on the wire for old clients: empty for
+	// a form opened with a schema.
+	Fields []Field `json:"fields"`
+	// Schema is always set: the given one, or Fields converted (FromFields).
+	Schema    Schema  `json:"schema"`
+	Source    *Source `json:"source,omitempty"`
+	CreatedAt string  `json:"created_at"`
 }
 
-// Answer is what the user submitted: Skip, or Values by field id (strings;
-// booleans for confirm fields).
+// Answer is what the user submitted: Skip, or Values by property id (strings,
+// numbers, booleans, lists of strings).
 type Answer struct {
 	Skip   bool           `json:"skip"`
 	Values map[string]any `json:"values"`
@@ -88,7 +98,7 @@ type Answer struct {
 // Result is a validated answer.
 type Result struct {
 	Status string
-	// Values are the non-secret fields' values (text, select, path as strings, confirm as bool).
+	// Values are the non-secret fields' values, typed (string, float64 or int64, bool, []string).
 	Values map[string]any
 	// Secrets are the secret fields' values by field id. They go to the secret
 	// store and nowhere else.
@@ -97,8 +107,8 @@ type Result struct {
 
 // Validate checks a form schema.
 func Validate(title string, fields []Field) error {
-	if strings.TrimSpace(title) == "" || len(title) > 200 {
-		return bad("title is required (at most 200 characters)")
+	if err := ValidateTitle(title); err != nil {
+		return err
 	}
 	if len(fields) == 0 || len(fields) > MaxFields {
 		return bad("a form takes 1 to %d fields", MaxFields)
@@ -122,69 +132,6 @@ func Validate(title string, fields []Field) error {
 		seen[f.ID] = true
 	}
 	return nil
-}
-
-// check validates an answer against the form. Messages name fields only.
-func check(in Input, a Answer) (Result, error) {
-	if a.Skip {
-		return Result{Status: StatusSkipped}, nil
-	}
-	res := Result{Status: StatusSubmitted, Values: map[string]any{}, Secrets: map[string]string{}}
-	byID := map[string]Field{}
-	for _, f := range in.Fields {
-		byID[f.ID] = f
-	}
-	for id := range a.Values {
-		if _, ok := byID[id]; !ok {
-			return res, bad("unknown field %q", id)
-		}
-	}
-	for _, f := range in.Fields {
-		v, given := a.Values[f.ID]
-		if f.Kind == KindConfirm {
-			b, isBool := v.(bool)
-			if given && !isBool {
-				return res, bad("field %q takes true or false", f.ID)
-			}
-			if !given && f.Required {
-				return res, bad("field %q is required", f.ID)
-			}
-			if given {
-				res.Values[f.ID] = b
-			}
-			continue
-		}
-		s, isStr := v.(string)
-		if given && !isStr {
-			return res, bad("field %q takes a string", f.ID)
-		}
-		if strings.TrimSpace(s) == "" {
-			if f.Required {
-				return res, bad("field %q is required", f.ID)
-			}
-			continue
-		}
-		if len(s) > MaxTextBytes {
-			return res, bad("field %q is too long", f.ID)
-		}
-		switch f.Kind {
-		case KindSelect:
-			if !slices.Contains(f.Options, s) {
-				return res, bad("field %q: not one of the options", f.ID)
-			}
-		case KindSecret:
-			if len(s) < secrets.MinLen {
-				return res, bad("field %q: a secret needs at least %d characters", f.ID, secrets.MinLen)
-			}
-			if !secrets.ValidName(f.ID) {
-				return res, bad("field %q cannot name a secret", f.ID)
-			}
-			res.Secrets[f.ID] = s
-			continue
-		}
-		res.Values[f.ID] = s
-	}
-	return res, nil
 }
 
 type item struct {
@@ -213,6 +160,12 @@ func New(publish func(pid, typ string, fields map[string]any), changed func(pid 
 // returned too).
 func (m *Manager) Request(ctx context.Context, pid string, in Input) (Result, error) {
 	in.ID, in.CreatedAt = projectstore.NewID("inp"), projectstore.Now()
+	if in.Fields == nil {
+		in.Fields = []Field{}
+	}
+	if in.Schema.Properties == nil {
+		in.Schema = FromFields(in.Fields)
+	}
 	it := &item{in: in, ch: make(chan Result, 1)}
 	m.mu.Lock()
 	if m.pending[pid] == nil {
@@ -250,9 +203,9 @@ func (m *Manager) Submit(pid, id string, a Answer, store func(Result) error) err
 	if it == nil {
 		return ErrNotFound
 	}
-	res, err := check(it.in, a)
-	if err != nil {
-		return err
+	res, errs := CheckAnswer(it.in.Schema, a)
+	if errs != nil {
+		return &ValidationError{Msg: Describe(it.in.Schema, errs), Fields: errs}
 	}
 	m.mu.Lock()
 	if it.done {

@@ -23,6 +23,7 @@ func samples() map[string]*Error {
 		"AgentNotLoggedIn":       AgentNotLoggedIn("GitHub Copilot", "copilot login", long),
 		"AgentNotInstalled":      AgentNotInstalled("GitHub Copilot", "npm install -g @github/copilot", long),
 		"AgentLaunchRejected":    AgentLaunchRejected("Antigravity", "agy", "unexpected argument 'acp'", "Update agy."),
+		"AgentTooOld":            AgentTooOld("Antigravity", "1.4.12", "1.5.0", "curl -fsSL https://antigravity.google/cli/install.sh | bash", long),
 		"AgentExitedDuringStart": AgentExitedDuringStart("Claude Code", long),
 		"AgentTimedOut":          AgentTimedOut("Claude Code", long),
 		"AgentRefusedToolServer": AgentRefusedToolServer("Claude Code", "method not supported"),
@@ -110,6 +111,9 @@ func samples() map[string]*Error {
 		"ApplyConflict":         ApplyConflict("src/a.go"),
 		"CoordinationOff":       CoordinationOff(),
 		"SessionSlotsFull":      SessionSlotsFull(3),
+
+		"FormAnswerRefused":    FormAnswerRefused(2, "email: Enter an email address like name@example.com; password: Required"),
+		"FormAnswerRefusedOne": FormAnswerRefused(1, "email: Required"),
 	}
 }
 

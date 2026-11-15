@@ -11,6 +11,7 @@ const (
 	CodeAgentNotLoggedIn   = "agent_not_logged_in"
 	CodeAgentNotInstalled  = "agent_not_installed"
 	CodeAgentLaunchFailed  = "agent_launch_rejected"
+	CodeAgentTooOld        = "agent_too_old"
 	CodeAgentExitedOnStart = "agent_exited_on_start"
 	CodeAgentTimedOut      = "agent_timed_out"
 	CodeAgentNoToolServer  = "agent_tool_server_refused"
@@ -54,6 +55,17 @@ func AgentLaunchRejected(label, cli, stderrFirst, startHint string) *Error {
 		Code: CodeAgentLaunchFailed, Message: label + " did not start the way Octo asked.",
 		Hint: hint, Command: cli + " --help", Action: ActionUpdateAgent,
 		Details: clip(strings.TrimSpace(startHint + " " + fmt.Sprintf("Its launch command was rejected: %s", stderrFirst))),
+	}
+}
+
+// AgentTooOld: the installed CLI reported a version older than the lowest one
+// its launch command works with, so Octo does not start it. updateCommand is a
+// copyable update or reinstall line ("" when unknown); details the technical text.
+func AgentTooOld(label, have, min, updateCommand, details string) *Error {
+	return &Error{
+		Code:    CodeAgentTooOld,
+		Message: fmt.Sprintf("%s %s is too old for Octo; it needs %s or newer.", label, have, min),
+		Hint:    "Update it, then check again.", Command: updateCommand, Action: ActionRecheckProvider, Details: clip(details),
 	}
 }
 

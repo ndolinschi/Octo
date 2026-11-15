@@ -42,6 +42,8 @@ type Error struct {
 	CanForce bool
 	// Details is extra machine-readable data of the error (rewind_conflict lists the files).
 	Details any
+	// Fields is a refused form answer's message by property id (error.fields).
+	Fields map[string]string
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }

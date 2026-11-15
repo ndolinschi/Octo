@@ -102,7 +102,33 @@ type Agent struct {
 	// AuthMethods and AuthSkip steer which ACP auth methods are tried.
 	AuthMethods []AuthMethodRef `json:"-"`
 	AuthSkip    []string        `json:"-"`
+
+	// VersionCommand and VersionArgs print the CLI's version (manifest
+	// `version.command`, resolved like the agent's own command); MinVersion is
+	// the lowest version the launch command works with (`version.min`).
+	VersionCommand string   `json:"-"`
+	VersionArgs    []string `json:"-"`
+	MinVersion     string   `json:"-"`
+	// Version is the last version check (filled by the registry, like
+	// LoggedIn). VersionTooOld repeats Version.TooOld: the installed CLI is
+	// older than MinVersion, so Available is false and UnavailableReason says so.
+	Version       VersionReport `json:"-"`
+	VersionTooOld bool          `json:"-"`
+	// MCPTransport is the manifest's `mcpTransport`: "stdio" makes the harness
+	// hand the agent its tool server as a stdio relay even when the agent
+	// advertises HTTP MCP support; "" (auto) follows the advertisement.
+	MCPTransport string `json:"-"`
+	// SearchPaths are folders (manifest `searchPaths`, "~" expanded) where the
+	// agent's program is looked for when it is not on PATH.
+	SearchPaths []string `json:"-"`
+
+	// commandFound: the agent's own program was found at load (Available may
+	// later turn false for a CLI that is too old; the check must still rerun).
+	commandFound bool
 }
+
+// MCPTransportStdio is the `mcpTransport` value that forces the stdio relay.
+const MCPTransportStdio = "stdio"
 
 type ToolServer struct {
 	URL string `json:"url"`

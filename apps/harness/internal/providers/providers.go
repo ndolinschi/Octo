@@ -351,6 +351,10 @@ func (s *Service) agentProvider(a plugins.Agent) Provider {
 	case a.Unsupported != "":
 		p.State = StateNotSupported
 		p.Problem = usererr.ProviderNotSupported(p.Label, a.Unsupported)
+	case a.VersionTooOld:
+		// Installed, but older than the launch command needs: not startable until updated.
+		p.State = StateNotInstalled
+		p.Problem = usererr.AgentTooOld(p.Label, a.Version.Version, a.MinVersion, a.InstallCmd(), a.TooOldDetails())
 	case !a.Available:
 		p.State = StateNotInstalled
 		p.Problem = usererr.AgentNotInstalled(p.Label, a.InstallCmd(), strings.TrimSpace(a.UnavailableReason+" "+a.InstallHint))

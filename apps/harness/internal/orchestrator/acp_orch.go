@@ -228,7 +228,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 	s.mu.Lock()
 	s.client, s.token, s.pluginID, s.model, s.cwd, s.sessID = client, token, ag.ID, t.recorded(), cwd, ""
 	s.mu.Unlock()
-	servers, warn := rt.o.mcpServers(ag.Label, client.Capabilities(), rt.pid(), token)
+	servers, warn := rt.o.mcpServers(ag.Label, mcpCaps(ag, client.Capabilities()), rt.pid(), token)
 	s.setNoMCP(warn)
 
 	c, cancel := dbCtx(ctx)
@@ -311,6 +311,16 @@ func (s *orchSession) loadWithFallback(ctx context.Context, client *acp.Client, 
 		}
 	}
 	return err
+}
+
+// mcpCaps is what the agent advertised, minus HTTP MCP support when its
+// manifest says the tool server must go over stdio (Antigravity: its HTTP MCP
+// servers need a process per session, `agy acp --process-per-session`).
+func mcpCaps(ag plugins.Agent, caps acp.Capabilities) acp.Capabilities {
+	if ag.MCPTransport == plugins.MCPTransportStdio {
+		caps.MCPHTTP, caps.MCPSSE = false, false
+	}
+	return caps
 }
 
 // mcpServers builds the session's mcpServers entry: the HTTP endpoint when the

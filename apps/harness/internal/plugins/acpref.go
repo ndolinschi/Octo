@@ -50,7 +50,11 @@ func ValidateACPRef(ref string, agents []Agent) error {
 			return nil // refused as 422 model_unavailable with its reason by the provider check
 		}
 		if !a.Available {
-			return fmt.Errorf("ACP agent %q is loaded but not available (its command was not found)", id)
+			why := "its command was not found"
+			if a.UnavailableReason != "" {
+				why = a.UnavailableReason
+			}
+			return fmt.Errorf("ACP agent %q is loaded but not available (%s)", id, why)
 		}
 		switch {
 		case model == "":

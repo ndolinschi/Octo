@@ -219,3 +219,46 @@ func TestConnSkipsGarbageLines(t *testing.T) {
 		}
 	}
 }
+
+// A CLI that prints a banner, an update notice or escape codes on stdout before
+// its first message (agy and its auto-updater are the reason) still gets
+// through: lines without a message are skipped, a prefix before `{"jsonrpc"`
+// on the same line is dropped.
+func TestConnToleratesBannerAndPrefixedMessages(t *testing.T) {
+	p := newPeer(t)
+	p.send(t, `Antigravity CLI 1.5.9 — a new version is available, run the installer to update`)
+	p.send(t, "\x1b[2K\x1b[1G{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"n\":1}}")
+	p.send(t, `{"level":"info","msg":"not a message"}`)
+	p.send(t, `[agy] ready {"jsonrpc":"2.0","method":"session/update","params":{"n":2}}`)
+	deadline := time.After(5 * time.Second)
+	for {
+		p.rec.mu.Lock()
+		n := len(p.rec.notified)
+		p.rec.mu.Unlock()
+		if n == 2 {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("got %d notifications, want 2", n)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+func TestParseWire(t *testing.T) {
+	for _, c := range []struct {
+		line string
+		ok   bool
+	}{
+		{`{"jsonrpc":"2.0","id":1,"result":{}}`, true},
+		{"\x1b[0m{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}", true},
+		{`Updating agy... {"jsonrpc":"2.0","method":"x"}`, true},
+		{`Updating agy...`, false},
+		{`prefix {"jsonrpc": broken`, false},
+	} {
+		if _, ok := parseWire([]byte(c.line)); ok != c.ok {
+			t.Errorf("parseWire(%q) ok = %v, want %v", c.line, ok, c.ok)
+		}
+	}
+}

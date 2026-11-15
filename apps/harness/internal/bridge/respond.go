@@ -61,6 +61,10 @@ func writeErr(w http.ResponseWriter, err error) {
 			// rewind_conflict: the report of the files, which stays machine data.
 			body["details"] = pe.Details
 		}
+		if pe.Fields != nil {
+			// A refused form answer: a message by property id, never a value.
+			body["fields"] = pe.Fields
+		}
 		writeJSON(w, status, map[string]any{"error": body})
 		return
 	}

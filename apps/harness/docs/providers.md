@@ -66,6 +66,23 @@ A probe is a guess made earlier by another process; the agent's own session is t
 
 A manifest agent has `verified` (default false) and `verifiedNote`. `GET /v1/providers` gives `experimental: true` (and `experimental_note`) for an agent that is not verified: its launch command comes from documentation and has not been run with Octo. Only `claude-code`, `grok` and `copilot` are verified in the built-in manifest. `harness doctor` prints it. A start-up failure caused by rejected launch arguments is explained in the turn error (see `acp-orchestrator.md`).
 
+### An agent CLI that is too old (2026-11-15)
+
+A manifest agent may carry `version` (`{"command": [...], "min": "1.5.0"}`; built-in: Antigravity, `agy --version`, 1.5.0).
+The version is read in the background and on `POST /v1/providers/{id}/recheck`; when a version was read and is lower than
+`min`, the agent is `not_installed` with `problem` "<Agent> <version> is too old for Octo; it needs <min> or newer.", the
+install line as `command` (running the installer again updates) and `recheck_provider`; choosing it is refused with 422
+`model_unavailable` (not forceable). Output without a version, a failure or a timeout change nothing.
+
+### Antigravity
+
+Not run with Octo (experimental). It has no login probe (agy documents no non-interactive status command): its login is
+`unchecked` until a session says otherwise. Model discovery opens a throw-away `agy acp` session, so a signed-out agy shows
+`models_problem` "Antigravity is not logged in." with `agy acp --login` before any request; the first request fails with the
+same notice. Models come only from agy's own model picker (its session config option): no names in the manifest, no `roles`,
+so the fast, balanced and deep tiers on Antigravity use agy's own default until the user sets roles (`PUT /v1/providers/antigravity/prefs`).
+Details: `acp-orchestrator.md`, "Antigravity (`agy`)".
+
 ### Agent models
 
 `models` is, in this order and each id once (the first source wins): the manifest's `models` (`source: "manifest"`, with the manifest's `modelLabels`), what the manifest's `modelsCommand` printed (`"command"`), every model the agent advertised in a session the harness opened or discovered (`"advertised"`) and the names typed by the user (`"custom"`). `seen_at` is when a session last advertised a model. `stale: true` flags an **advertised** model the agent's latest session did not advertise; it is kept, never dropped (a manifest alias is the CLI's own name and is never flagged). `default_model` is the manifest's `defaultModel`, else the model the agent reported as current.

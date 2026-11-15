@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"time"
 )
@@ -12,6 +13,8 @@ type Registry struct {
 	agents  map[string]Agent
 	servers map[string]LanguageServer
 	probes  *prober
+	// versions caches the version checks of agents whose manifest has one.
+	versions *versioner
 }
 
 // StartProbes turns on background login probing until ctx ends: every agent
@@ -25,6 +28,12 @@ func (r *Registry) StartProbes(ctx context.Context) {
 	r.probes.ctx = ctx
 	r.probes.mu.Unlock()
 	r.probes.refresh(r.allAgents())
+	if r.versions != nil {
+		r.versions.mu.Lock()
+		r.versions.ctx = ctx
+		r.versions.mu.Unlock()
+		r.versions.refresh(r.allAgents())
+	}
 }
 
 // OnProbeChange registers f to be called (from a probe goroutine, no locks
@@ -37,12 +46,23 @@ func (r *Registry) OnProbeChange(f func()) {
 	r.probes.mu.Lock()
 	r.probes.onChange = f
 	r.probes.mu.Unlock()
+	if r.versions != nil {
+		r.versions.mu.Lock()
+		r.versions.onChange = f
+		r.versions.mu.Unlock()
+	}
 }
 
-// Recheck runs the agent's login probe now, joining one already running, and
-// returns the agent with the fresh result. The second value is false for an
+// Recheck runs the agent's login probe (and its version check, when the
+// manifest has one) now, joining one already running, and returns the agent
+// with the fresh result. The second value is false for an
 // unknown id.
 func (r *Registry) Recheck(ctx context.Context, id string) (Agent, bool) {
+	if r != nil && r.versions != nil {
+		if raw, ok := r.agents[id]; ok {
+			r.versions.sync(ctx, raw)
+		}
+	}
 	return r.probeNow(ctx, id, 0)
 }
 
@@ -65,6 +85,16 @@ func (r *Registry) probeNow(ctx context.Context, id string, minAge time.Duration
 	return a, true
 }
 
+// refreshAll lets stale login probes and version checks rerun in the background.
+func (r *Registry) refreshAll() {
+	if r.probes != nil {
+		r.probes.refresh(r.allAgents())
+	}
+	if r.versions != nil {
+		r.versions.refresh(r.allAgents())
+	}
+}
+
 func (r *Registry) allAgents() []Agent {
 	var out []Agent
 	for _, p := range r.plugins {
@@ -79,6 +109,13 @@ func (r *Registry) withState(a Agent) Agent {
 		a.ProbeDone = r.probes.done(a.ID)
 		a.LastReport = r.probes.lastReport(a.ID)
 	}
+	if r.versions != nil && a.HasVersionCheck() {
+		a.Version = r.versions.report(a.ID)
+		if a.Version.TooOld && a.Available {
+			a.VersionTooOld, a.Available = true, false
+			a.UnavailableReason = fmt.Sprintf("%s %s is installed; Octo needs %s or newer", baseName(a.Command), a.Version.Version, a.MinVersion)
+		}
+	}
 	// An API key forwarded to a subscription agent makes it bill per token.
 	a.FlatRate = a.FlatRateIn(a.ResolvedEnv())
 	return a
@@ -89,9 +126,7 @@ func (r *Registry) Plugins() []Plugin {
 	if r == nil {
 		return []Plugin{}
 	}
-	if r.probes != nil {
-		r.probes.refresh(r.allAgents())
-	}
+	r.refreshAll()
 	out := slices.Clone(r.plugins)
 	for i := range out {
 		out[i].Agents = r.agentsWithState(out[i].Agents)
@@ -114,9 +149,7 @@ func (r *Registry) Agents() []Agent {
 	if r == nil {
 		return out
 	}
-	if r.probes != nil {
-		r.probes.refresh(r.allAgents())
-	}
+	r.refreshAll()
 	for _, p := range r.plugins {
 		out = append(out, r.agentsWithState(p.Agents)...)
 	}

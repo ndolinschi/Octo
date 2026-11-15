@@ -47,6 +47,11 @@ type run struct {
 	sessionID string
 	h         Handler
 	ctx       context.Context
+	// permCtx bounds the answer to a permission request: it ends when the
+	// prompt is cancelled, so a question still waiting for the user (an
+	// approval card) is withdrawn and the reader is free to receive the agent's
+	// "cancelled" answer, instead of the agent being killed after CancelGrace.
+	permCtx context.Context
 }
 
 // ExitError is ErrClosed for an agent process that ended: its message names how
@@ -264,8 +269,10 @@ func (c *Client) PromptWith(ctx context.Context, sessionID, prompt string, image
 	sess := newSessionResult{SessionID: sessionID}
 	runCtx, endRun := context.WithCancel(context.WithoutCancel(ctx))
 	defer endRun()
+	permCtx, stopPerms := context.WithCancel(runCtx)
+	defer stopPerms()
 	c.mu.Lock()
-	c.active = &run{sessionID: sess.SessionID, h: h, ctx: runCtx}
+	c.active = &run{sessionID: sess.SessionID, h: h, ctx: runCtx, permCtx: permCtx}
 	c.mu.Unlock()
 	c.cancelling.Store(false)
 	defer func() {
@@ -297,6 +304,7 @@ func (c *Client) PromptWith(ctx context.Context, sessionID, prompt string, image
 	case <-ctx.Done():
 	}
 	c.cancelling.Store(true)
+	stopPerms()
 	if err := c.conn.notifyPeer(methodCancel, cancelParams{SessionID: sess.SessionID}); err != nil {
 		slog.Debug("acp: send cancel", "agent", c.name, "err", err)
 	}

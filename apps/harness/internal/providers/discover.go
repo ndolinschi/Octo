@@ -208,6 +208,9 @@ func (s *Service) RefreshModels(ctx context.Context, id string) (Provider, error
 		return Provider{}, ErrUnknownAgent
 	case s.opts.Discovery == nil:
 		return Provider{}, ErrDiscoveryOff
+	case a.VersionTooOld:
+		p := usererr.AgentTooOld(a.Label, a.Version.Version, a.MinVersion, a.InstallCmd(), a.TooOldDetails())
+		return Provider{}, &NotReadyError{Reason: p.Message, Problem: p}
 	case !a.Available:
 		reason := a.UnavailableReason
 		if reason == "" {

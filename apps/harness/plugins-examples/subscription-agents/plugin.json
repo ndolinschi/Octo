@@ -201,16 +201,45 @@
     {
       "id": "antigravity",
       "label": "Antigravity",
-      "startHint": "Your agy version may predate ACP support. Update it (`agy update`) and check `agy acp --help`.",
+      "verifiedNote": "Written from Google's agy acp documentation and the CLI changelog (1.5.0 to 1.5.9, read 2026-11-15); not run with Octo yet.",
+      "startHint": "agy acp needs Antigravity CLI 1.5.0 or newer. Update agy (run the installer again) and check `agy acp --help`.",
       "flatRate": true,
+      "billingEnv": [
+        "GEMINI_API_KEY"
+      ],
       "command": "agy",
       "args": [
         "acp"
       ],
+      "searchPaths": [
+        "~/.local/bin"
+      ],
+      "version": {
+        "command": [
+          "agy",
+          "--version"
+        ],
+        "min": "1.5.0"
+      },
+      "mcpTransport": "stdio",
       "env": {},
       "auth": {
-        "hint": "Needs Antigravity CLI 1.5.0 or newer (agy acp --help). Sign in once with agy, or agy acp --login, in a terminal."
-      }
+        "methods": [
+          {
+            "id": "gemini-api-key",
+            "requiresEnv": "GEMINI_API_KEY"
+          }
+        ],
+        "skip": [
+          "oauth-personal",
+          "oauth-business",
+          "agent-platform",
+          "terminal-login"
+        ],
+        "command": "agy acp --login",
+        "hint": "Sign in once in a terminal: run `agy` and sign in with Google, or run `agy acp --login` (paste a code; works over SSH). agy acp reuses that saved sign-in. The harness hides GEMINI_API_KEY from agy so the subscription is used; to bill a Gemini API key per token on purpose, add env {\"GEMINI_API_KEY\": \"${GEMINI_API_KEY}\"} to a copy of this entry."
+      },
+      "install": "Install the Antigravity CLI 1.5.0 or newer so that `agy` is on PATH (default folder ~/.local/bin): `curl -fsSL https://antigravity.google/cli/install.sh | bash` (macOS and Linux; run it again to update)."
     },
     {
       "id": "devin",

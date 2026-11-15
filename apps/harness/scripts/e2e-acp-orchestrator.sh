@@ -4,6 +4,7 @@
 #   scenario 1 (:8821): agent without HTTP MCP  -> the harness binary itself is the stdio relay (`harness mcp-relay`)
 #   scenario 2 (:8822): agent with HTTP MCP and loadSession -> HTTP entry, session/load after a crash
 #   scenario 3 (:8823): no API key at all (see `nokey` below)
+#   scenario 4 (:8824): the built-in Antigravity entry with a fake `agy` on PATH (see `agy` below)
 # Needs Go and python3. Touches only a temp dir. No model, no network, no third-party agent CLI.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -221,7 +222,68 @@ PY
   ! pgrep -f "$TMP/fakeacp" >/dev/null || fail "fakeacp processes remain"
 }
 
+# scenario 4 (:8824): the built-in `antigravity` entry, unchanged, with a fake `agy` (the scripted agent's agy profile,
+# written from Google's documentation) as the only CLI on PATH. Built-in plugins are on here on purpose: PATH has no
+# npx, claude or other agent CLI, so nothing else can start. Signed out -> "Antigravity is not logged in." with
+# `agy acp --login`; `agy acp --login` -> the next request works, with the tool server over the stdio relay although
+# agy advertises HTTP MCP; an agy older than 1.5.0 -> after "Check again" the provider says it is too old, with the installer line.
+agy() {
+  local name=agy port=8824 base=http://127.0.0.1:8824
+  echo "== scenario $name"
+  mkdir -p "$TMP/$name-ws" "$TMP/$name-data" "$TMP/$name-bin" && printf '# E2E workspace\n' >"$TMP/$name-ws/README.md"
+  mkfake() { # $1 version
+    printf '#!/bin/sh\nOCTO_FAKEACP_PROFILE=agy OCTO_FAKEACP_AGY_VERSION=%s OCTO_FAKEACP_UNIQUE_SESSIONS=1 OCTO_FAKEACP_LOGIN_FILE=%s exec %s "$@"\n' \
+      "$1" "$TMP/$name-login" "$TMP/fakeacp" >"$TMP/$name-bin/agy"
+    chmod +x "$TMP/$name-bin/agy"
+  }
+  mkfake 1.5.9
+  env -u HARNESS_NO_BUILTIN_PLUGINS -u HARNESS_PLUGINS_DIR -u GEMINI_API_KEY PATH="$TMP/$name-bin" HOME="$TMP/$name-data" \
+    HARNESS_DEFAULT_ACCESS=full HARNESS_MODEL_DISCOVERY=0 ANTHROPIC_API_KEY=mock \
+    "$TMP/harness" serve --addr "127.0.0.1:$port" --data-dir "$TMP/$name-data" --base-url http://127.0.0.1:8820 >"$TMP/$name-data.log" 2>&1 & PIDS+=($!)
+  local serve_pid=$!
+  for _ in $(seq 60); do curl -fsS "$base/health" >/dev/null 2>&1 && break; sleep 0.2; done
+  curl -fsS "$base/health" >/dev/null 2>&1 || fail "harness with fake agy did not start: $(cat "$TMP/$name-data.log")"
+  curl -fsS "$base/v1/providers" | python3 -c '
+import json, sys
+p = [x for x in json.load(sys.stdin)["providers"] if x["id"] == "antigravity"][0]
+assert p["state"] == "ready" and p["experimental"] is True, p
+' || fail "antigravity is not listed ready and experimental"
+
+  echo "-- signed out: one plain notice with the login command"
+  PID=$(curl -fsS -X POST "$base/v1/projects" -H 'content-type: application/json' \
+    -d "{\"name\":\"agy\",\"folders\":[{\"path\":\"$TMP/$name-ws\"}],\"models\":{\"orchestrator\":\"acp:antigravity\"}}" | jget 'd["id"]')
+  ORCH=$(curl -fsS "$base/v1/projects/$PID" | jget 'd["orchestrator_agent_id"]')
+  ask "$base" "$PID" "hello" >/dev/null
+  curl -fsS "$base/v1/projects/$PID/agents" | python3 -c '
+import json, sys
+o = [a for a in json.load(sys.stdin)["agents"] if not a["parent_id"]][0]
+assert o["error"] == "Antigravity is not logged in.", o
+' || fail "signed-out agy was not reported as not logged in"
+
+  echo "-- agy acp --login, then the request works with the stdio relay"
+  "$TMP/$name-bin/agy" acp --login >/dev/null
+  t1=$(ask "$base" "$PID" "[mcp-info] which tools")
+  echo "$t1"
+  grep -q "mcp-info: transport=stdio" <<<"$t1" || fail "agy did not get the stdio relay: $t1"
+
+  echo "-- an agy older than 1.5.0 is too old after Check again"
+  mkfake 1.4.12
+  curl -fsS -X POST "$base/v1/providers/antigravity/recheck" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+p = d.get("provider", d)
+pr = p["problem"]
+assert p["state"] == "not_installed" and pr["message"] == "Antigravity 1.4.12 is too old for Octo; it needs 1.5.0 or newer." \
+  and pr["command"] == "curl -fsSL https://antigravity.google/cli/install.sh | bash" and pr["action"] == "recheck_provider", p
+' || fail "an old agy was not reported as too old"
+
+  kill -TERM "$serve_pid"
+  for _ in $(seq 100); do kill -0 "$serve_pid" 2>/dev/null || break; sleep 0.1; done
+  ! pgrep -f "$TMP/fakeacp" >/dev/null || fail "fakeacp processes remain"
+}
+
 scenario stdio 8821 "" stdio no
 scenario http 8822 ',"OCTO_FAKEACP_MCP_HTTP":"1","OCTO_FAKEACP_LOAD_SESSION":"1"' http yes
 nokey
+agy
 echo "OK: ACP orchestrator e2e passed"

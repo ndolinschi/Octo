@@ -31,6 +31,9 @@ func (rt *runtime) acpAgents() []plugins.Agent {
 // for an unknown id, an available agent or one Octo does not support.
 func (rt *runtime) missingAgent(id string) *usererr.Error {
 	for _, a := range rt.o.agents() {
+		if a.ID == id && a.VersionTooOld {
+			return usererr.AgentTooOld(a.Label, a.Version.Version, a.MinVersion, a.InstallCmd(), a.TooOldDetails())
+		}
 		if a.ID == id && !a.Available && a.Unsupported == "" {
 			details := strings.Join(slices.DeleteFunc([]string{a.UnavailableReason, a.InstallHint}, func(s string) bool { return s == "" }), ". ")
 			return usererr.AgentNotInstalled(a.Label, a.InstallCmd(), details)

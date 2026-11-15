@@ -89,6 +89,17 @@ type manifestAgent struct {
 	// StartHint is added to the message of a start-up failure caused by rejected
 	// launch arguments (what version or flag the CLI needs).
 	StartHint string `json:"startHint"`
+	// Version, when set, is a command that prints the CLI's version and the
+	// lowest version the launch command works with: an older CLI is listed as
+	// not available with that reason before anything starts it.
+	Version *manifestVersion `json:"version"`
+	// MCPTransport is "stdio" (always hand the tool server over the stdio
+	// relay) or empty / "auto" (HTTP when the agent advertises it).
+	MCPTransport string `json:"mcpTransport"`
+	// SearchPaths are extra folders (absolute or starting with "~/") where the
+	// agent's command is looked for when it is not on PATH: the vendor's
+	// default install folder, which an app started from the Dock may not have.
+	SearchPaths []string `json:"searchPaths"`
 }
 
 // manifestModelsCommand runs a command and reads model ids from its output:
@@ -267,6 +278,21 @@ func (a manifestAgent) validate() error {
 	}
 	if len(a.ModelArg) > 0 && !slices.ContainsFunc(a.ModelArg, func(s string) bool { return strings.Contains(s, ModelPlaceholder) }) {
 		return fmt.Errorf("modelArg must contain %s", ModelPlaceholder)
+	}
+	if a.Version != nil {
+		if err := a.Version.validate(); err != nil {
+			return err
+		}
+	}
+	switch a.MCPTransport {
+	case "", "auto", MCPTransportStdio:
+	default:
+		return fmt.Errorf("mcpTransport %q must be auto or stdio", a.MCPTransport)
+	}
+	for _, p := range a.SearchPaths {
+		if !strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "~/") && !isWindowsAbs(p) {
+			return fmt.Errorf("searchPaths: %q must be an absolute folder or start with ~/", p)
+		}
 	}
 	switch n := countOf(a.Args, ModelArgsPlaceholder); {
 	case n > 1:

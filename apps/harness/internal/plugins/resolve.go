@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -23,6 +24,54 @@ func resolveCommand(command, pluginDir string) (string, bool) {
 		return p, true
 	}
 	return command, isExecutable(command)
+}
+
+// resolveCommandIn is resolveCommand, then, for a bare name PATH does not have,
+// the first executable of that name in one of the search folders ("~/" is the
+// user's home). The folders are where a vendor installs its CLI by default.
+func resolveCommandIn(command, pluginDir string, search []string) (string, bool) {
+	path, ok := resolveCommand(command, pluginDir)
+	if ok || filepath.IsAbs(command) || strings.ContainsAny(command, `/\`) {
+		return path, ok
+	}
+	for _, dir := range search {
+		dir = expandHome(dir)
+		if dir == "" {
+			continue
+		}
+		for _, name := range executableNames(command) {
+			if cand := filepath.Join(dir, name); isExecutable(cand) {
+				return cand, true
+			}
+		}
+	}
+	return path, false
+}
+
+// expandHome replaces a leading "~/" with the user's home; "" when it has none.
+func expandHome(dir string) string {
+	rest, ok := strings.CutPrefix(dir, "~/")
+	if !ok {
+		return dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, rest)
+}
+
+// executableNames are the file names a command may have (on Windows with the
+// usual extensions).
+func executableNames(command string) []string {
+	if runtime.GOOS != "windows" {
+		return []string{command}
+	}
+	return []string{command, command + ".exe", command + ".cmd", command + ".bat"}
+}
+
+func isWindowsAbs(p string) bool {
+	return len(p) >= 3 && p[1] == ':' && (p[2] == '\\' || p[2] == '/')
 }
 
 func isExecutable(path string) bool {

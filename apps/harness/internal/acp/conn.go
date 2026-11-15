@@ -2,6 +2,7 @@ package acp
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -84,9 +85,9 @@ func (c *conn) readLoop(ctx context.Context) error {
 			continue
 		}
 		c.tr.Received(line)
-		var m wireMessage
-		if err := json.Unmarshal(line, &m); err != nil {
-			slog.Debug("acp: skipping non-JSON line", "bytes", len(line), "err", err)
+		m, ok := parseWire(line)
+		if !ok {
+			slog.Debug("acp: skipping non-JSON line", "bytes", len(line))
 			continue
 		}
 		c.dispatch(ctx, m)
@@ -98,6 +99,28 @@ func (c *conn) readLoop(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// jsonrpcStart is where a JSON-RPC message begins inside a line that carries
+// other output before it.
+var jsonrpcStart = []byte(`{"jsonrpc"`)
+
+// parseWire reads one line as a JSON-RPC message. A CLI may write a banner, an
+// update notice or terminal escape codes to stdout before its first message,
+// sometimes without a newline: such a prefix is dropped when the rest of the
+// line is a message. Lines that hold no message are reported as not ok.
+func parseWire(line []byte) (wireMessage, bool) {
+	var m wireMessage
+	if json.Unmarshal(line, &m) == nil {
+		return m, true
+	}
+	if i := bytes.Index(line, jsonrpcStart); i > 0 {
+		m = wireMessage{}
+		if json.Unmarshal(line[i:], &m) == nil {
+			return m, true
+		}
+	}
+	return wireMessage{}, false
 }
 
 func (c *conn) dispatch(ctx context.Context, m wireMessage) {

@@ -15,19 +15,20 @@ func (a *agent) currentModel() string {
 // sessionResult is the session/new answer, advertising models when configured.
 func (a *agent) sessionResult() map[string]any {
 	res := map[string]any{"sessionId": a.sid()}
-	if a.opts.modes {
+	if modes := a.opts.modes(); len(modes) > 0 {
 		a.mu.Lock()
 		cur := a.mode
 		a.mu.Unlock()
-		res["modes"] = map[string]any{"currentModeId": cur, "availableModes": []map[string]string{
-			{"id": "default", "name": "Default"}, {"id": "ask", "name": "Ask", "description": "read-only"}, {"id": "plan", "name": "Plan"},
-		}}
+		res["modes"] = map[string]any{"currentModeId": cur, "availableModes": modes}
 	}
 	if len(a.opts.models) == 0 || a.opts.via == "none" {
 		return res
 	}
 	cur := a.currentModel()
 	switch a.opts.via {
+	case "agy":
+		res["configOptions"] = a.agyConfigOptions(cur)
+		return res
 	case "config", "config-grouped":
 		options := make([]map[string]string, len(a.opts.models))
 		for i, m := range a.opts.models {
@@ -76,6 +77,10 @@ func (a *agent) handleAuthenticate(m message) {
 		a.authenticateCustom(m, p.MethodID)
 		return
 	}
+	if a.opts.auth == authAgy {
+		a.authenticateAgy(m, p.MethodID)
+		return
+	}
 	if err := json.Unmarshal(m.Params, &p); err != nil || p.MethodID != AuthUnattended || a.opts.auth != "ok" {
 		a.respondError(m.ID, -32602, "unknown or unsupported auth method")
 		return
@@ -101,6 +106,10 @@ func (a *agent) handleSetModel(m message) {
 	}
 	if err := json.Unmarshal(m.Params, &p); err != nil {
 		a.respondError(m.ID, -32602, "invalid params")
+		return
+	}
+	if p.ConfigID != "" && p.ConfigID != "model" && a.opts.profile == ProfileAgy {
+		a.respond(m.ID, map[string]any{}) // the thinking level: accepted, not modelled
 		return
 	}
 	if p.ModelID == "" {

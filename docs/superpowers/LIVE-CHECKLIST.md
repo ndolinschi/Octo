@@ -115,15 +115,78 @@ B10 **Sessions.** Open "Show sessions" from the palette (or the sidebar chevron 
 - Message a finished sub-agent. *Expect:* "Continued" (it works again) when its conversation was kept, a plain sentence
   when it was not; a working agent takes a "Steered" message. *Send:* the sentence you got. **(first time live)**
 
-B11 **Antigravity after `agy update`.** Run `agy update`, then pick Antigravity. *Expect:* it starts in agent mode; if
-its command is rejected the notice says the version may not support the Agent Client Protocol and names `agy`; after the
-update it works. *Send:* the notice and the doctor output. **(no run recorded for Antigravity)**
+B11 **Antigravity.** Run the block "B-agy. Antigravity (agy)" below instead (it replaces the old one-step check).
+**(no run recorded for Antigravity)**
 
 B12 **Errors in the person's words.** Provoke one of: wrong model, an agent that exits at once, a timeout. *Expect:* one
 sentence, one next step, a "Details" fold with the technical text; never "ACP", "exit status", a stack or a tool id.
 *Send:* the sentence and the Details text.
 
 B13 **Grok (and every agent) sees the terminal's environment.** Quit Octo, start it from Finder/Dock (not from a terminal), with Grok logged in from a terminal. *Expect:* Settings → Agents shows Grok ready (or "Check again" turns it ready) instead of "Grok is not logged in"; `harness.log` has one line `login shell environment forwarded: <names>` (names only, e.g. LANG, XDG_CONFIG_HOME, SSH_AUTH_SOCK); `harness doctor --data-dir <app data>/harness` lists the same names under "login-shell variables child processes get". If Grok is still "not logged in", run `harness doctor --show-probe-output` and send it with the log line; that separates an environment problem from the probe or login-state itself. **(first time live; the forwarding is verified with fake shells only, not on macOS)**
+
+## B-agy. Antigravity (agy)
+
+Everything here was built from Google's documentation and the CLI changelog only (2026-11-15); no real `agy` has run
+with Octo. Before you start: `export HARNESS_ACP_TRACE=1` (or Settings → the same switch) so each agy process writes a
+trace under `{data-dir}/traces/`. Send the trace file with any failure (read it first: prompts and file contents are in it).
+
+AG1 **Install or update.** `curl -fsSL https://antigravity.google/cli/install.sh | bash` (or `agy update` if your version
+has it), then `agy --version` and `agy acp --help`. *Expect:* 1.5.0 or newer; `acp --help` prints a usage text.
+*Send:* both outputs and `which agy`.
+
+AG2 **Doctor sees it.** `harness doctor --data-dir <app data>/harness`. *Expect:* `antigravity (Antigravity): available,
+login unknown`, `command:` the path from AG1 (also when it is only in `~/.local/bin`), `version: version 1.x.y (needs
+1.5.0 or newer)`, `probe: this agent has no login probe`, `experimental`. *Send:* the antigravity block.
+
+AG3 **Too old is said before the start** (only if you still have an agy older than 1.5.0, or point a copied entry's
+`command` at an old one). *Expect:* Settings → Agents: "Antigravity 1.4.x is too old for Octo; it needs 1.5.0 or newer.",
+the installer line to copy, "Check again"; after updating, "Check again" turns it ready without a restart. *Send:* the notice.
+
+AG4 **Signed out.** Sign out (`/logout` in an interactive `agy`), restart Octo, pick Antigravity as the project's main agent,
+send "hello". *Expect:* one notice "Antigravity is not logged in." with `agy acp --login` to copy and "Check again"; no
+browser window opens by itself. *Send:* the notice and the trace's `session/new` answer.
+
+AG5 **Sign in.** `agy acp --login` in a terminal (or sign in inside `agy`), then "Check again" / send again. *Expect:* the
+request runs. *Send:* nothing if it works.
+
+AG6 **Main agent, a file edit with an approval.** Project with access **supervised**, Antigravity main agent: "add a line
+'hello from agy' to README.md". *Expect:* live activity (Thinking, tool rows), an approval card with Allow / Deny for the
+edit (Octo switches agy from its own `auto` mode to `default` in supervised projects); Allow → the file changes and the
+change is listed under Changes. *Send:* a screenshot of the card and the trace lines `session/set_mode` and
+`session/request_permission`.
+
+AG7 **Full access keeps agy's own mode.** The same request in a project with access **full**. *Expect:* no card for edits
+inside the project (agy's `auto` approves them itself); commands that leave agy's sandbox may still ask. *Send:* what asked.
+
+AG8 **Models.** The model chip under Antigravity. *Expect:* the models of your account with agy's names (from agy's own model
+picker), the current one marked; choosing one switches it for the next request. *Send:* the list and the trace's
+`session/new` answer (`configOptions`).
+
+AG9 **Helper on agy.** In a project whose main agent is Claude Code (or the built-in loop), ask it to "delegate to
+antigravity: list the files in src". *Expect:* a sub-agent row "acp:antigravity" that finishes with a report. *Send:* the
+row and any error.
+
+AG10 **Plan and Ask.** Switch the composer to Plan, ask for a change. *Expect:* a plan card, no file changed (trace:
+`session/set_mode` with `plan`). Ask mode: an answer, no change (agy has no ask mode; Octo denies writes). *Send:* the plan.
+
+AG11 **Stop.** Ask for something long ("run the full test suite and fix failures"), press Stop while a tool runs or while
+an approval card waits. *Expect:* the turn ends "Stopped" within about a second, open tool rows end, the card disappears;
+the next request answers at once (same agy process: `harness doctor` or `ps` shows one `agy acp` per session). *Send:* the
+time it took and the trace's last lines.
+
+AG12 **Resume after a restart.** After a few exchanges, quit and reopen Octo, open the same session, ask "what did I ask
+you before?". *Expect:* the answer knows (trace: `session/load` with the stored id; if agy refuses it, Octo starts a new
+session with a recap). *Send:* the answer and whether `session/load` succeeded.
+
+AG13 **Images and "/".** Paste a screenshot and ask about it; type `/`. *Expect:* agy reads the image; the "/" menu lists
+agy's own commands under Octo's. *Send:* the image answer and the list.
+
+AG14 **Sign out mid-way.** Sign out in a terminal while Octo is open, send a request. *Expect:* "Antigravity is not logged
+in." (not a crash or a silent turn), then AG5 brings it back. *Send:* the notice and agy's own error text from the trace.
+
+AG15 **Report.** `harness doctor --json --data-dir <app data>/harness > doctor.json` and the trace files of the run.
+*Send:* both, and the steps that did not match their *Expect*. When all pass, the `antigravity` entry can get
+`"verified": true` in `plugins-examples/subscription-agents/plugin.json`.
 
 ## C. Review on your fork with a real `gh`
 

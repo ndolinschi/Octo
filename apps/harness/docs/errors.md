@@ -58,6 +58,7 @@ the bridge writes them (`writeProblem`, `writeError`, `errorBody`). `writeError(
 | `AgentNotLoggedIn` | "<Agent> is not logged in." (command: the login command, action `recheck_provider`) |
 | `AgentNotInstalled` | "<Agent> is not installed." (`recheck_provider`) |
 | `AgentLaunchRejected` | "<Agent> did not start the way Octo asked." (`update_agent`) |
+| `AgentTooOld` | "<Agent> <version> is too old for Octo; it needs <min> or newer." Hint "Update it, then check again."; command: the install line (running the installer again updates); code `agent_too_old` (`recheck_provider`). From the manifest's `version` check, before anything starts the agent (2026-11-15, Antigravity). |
 | `AgentExitedDuringStart` | "<Agent> stopped while starting." (`retry`) |
 | `AgentTimedOut` | "<Agent> did not answer in time." (`retry`) |
 | `AgentRefusedToolServer` | "<Agent> could not use Octo's tools this time; the request ran without delegation and notes." (`update_agent`) |
@@ -135,3 +136,11 @@ is now per session (20 waiting messages of one session).
 | `stream_gone` (410), `query_token_refused` (401) | `Remote(code)` | "The live updates stopped." / "A token in the address is not accepted here." | long poll / `?token=` on the tunnel listener |
 
 `TestRemoteWording` holds every code to the sentence rules.
+
+## Added 2026-11-15 (schema forms, phase A1)
+
+`catalogue_forms.go`, with samples in `TestCatalogueWording`:
+
+| Code (status) | Constructor | Message | When |
+| --- | --- | --- | --- |
+| `invalid_request` (400) | `FormAnswerRefused(n, technical)` | "One answer in the form needs attention." / "Some answers in the form need attention." (hint "Fix the marked fields, then submit again.", `details` "id: message; …") | `POST /v1/projects/{pid}/inputs/{id}` with an answer the form refuses; the body also carries `error.fields {id: message}` ([v7.md](./v7.md) §4). Never a value. |

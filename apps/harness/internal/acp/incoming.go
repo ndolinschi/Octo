@@ -105,7 +105,18 @@ func (c *Client) request(_ context.Context, method string, params json.RawMessag
 		if c.cancelling.Load() {
 			return permissionResult{Outcome: permissionOutcome{Outcome: "cancelled"}}, nil
 		}
-		if id := r.h.RequestPermission(r.ctx, req); id != "" {
+		pctx := r.permCtx
+		if pctx == nil {
+			pctx = r.ctx
+		}
+		id := r.h.RequestPermission(pctx, req)
+		if pctx.Err() != nil {
+			// The prompt was cancelled while the question was open: whatever the
+			// handler settled on, the answer is "cancelled" (ACP's rule for a
+			// permission request outstanding at session/cancel).
+			return permissionResult{Outcome: permissionOutcome{Outcome: "cancelled"}}, nil
+		}
+		if id != "" {
 			return permissionResult{Outcome: permissionOutcome{Outcome: "selected", OptionID: id}}, nil
 		}
 		return permissionResult{Outcome: permissionOutcome{Outcome: "cancelled"}}, nil

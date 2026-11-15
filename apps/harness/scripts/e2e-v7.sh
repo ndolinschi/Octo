@@ -158,6 +158,27 @@ grep -q "$SECRET" "$TMP/harness.log" && fail "the secret is in the harness log"
 grep -q "$SECRET" "$TMP/mock.log" && fail "the secret reached the model server"
 curl -fsS -X DELETE "$BASE/v1/projects/$P5/secrets/api_key" -o /dev/null
 
+echo "== schema form: normalised schema, refusal by field, password as a secret"
+post POST "/v1/projects/$P5/messages" '{"text":"[schemaform] sign in"}' >/dev/null
+waitfor "the schema form" has_n "$P5" inputs 1
+inp=$(curl -fsS "$BASE/v1/projects/$P5/inputs")
+iid=$(jget 'd["inputs"][0]["id"]' <<<"$inp")
+[ "$(jget 'd["inputs"][0]["schema"]["x-octo"]["order"]' <<<"$inp")" = "['email', 'password', 'remember']" ] || fail "schema order: $inp"
+code=$(curl -s -o "$TMP/bad2.json" -w '%{http_code}' -X POST "$BASE/v1/projects/$P5/inputs/$iid" -H 'content-type: application/json' -d '{"values":{"email":"not-an-email"}}')
+[ "$code" = 400 ] && [ "$(jget 'sorted(d["error"]["fields"])' <"$TMP/bad2.json")" = "['email', 'password']" ] && ! grep -q not-an-email "$TMP/bad2.json" \
+  || fail "schema refusal: $code $(cat "$TMP/bad2.json")"
+post POST "/v1/projects/$P5/inputs/$iid" "{\"values\":{\"email\":\"qa@example.com\",\"password\":\"$SECRET\",\"remember\":true}}" >/dev/null
+idle "$P5"
+[ "$(curl -fsS "$BASE/v1/projects/$P5/secrets" | jget '[s["name"] for s in d["secrets"]]')" = "['password']" ] || fail "schema secret names"
+for a in $(curl -fsS "$BASE/v1/projects/$P5/agents" | jget '" ".join(a["id"] for a in d["agents"])'); do
+  curl -fsS "$BASE/v1/projects/$P5/agents/$a/messages" | grep -q "$SECRET" && fail "the password is in a transcript"
+done
+curl -fsS "$BASE/v1/projects/$P5/agents/$(curl -fsS "$BASE/v1/projects/$P5" | jget 'd["orchestrator_agent_id"]')/messages" \
+  | grep -q 'secret:password' || fail "the model was not told use_as secret:password"
+grep -q "$SECRET" "$TMP/harness.log" && fail "the password is in the harness log"
+grep -q "$SECRET" "$TMP/mock.log" && fail "the password reached the model server"
+curl -fsS -X DELETE "$BASE/v1/projects/$P5/secrets/password" -o /dev/null
+
 echo "== memory (M1): task record, digest, search, files"
 P6=$(newproject memory full)
 post POST "/v1/projects/$P6/messages" '{"text":"quick: Нужно уложиться в бюджет проекта [goal: Уложиться в бюджет] [decision: Не превышать бюджет] [fact: The dev server port is 8790] [quote: Нужно уложиться в бюджет]"}' >/dev/null

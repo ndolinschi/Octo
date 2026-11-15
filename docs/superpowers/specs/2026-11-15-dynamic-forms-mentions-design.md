@@ -538,4 +538,34 @@ coordination tools of parallel sessions phase 4 (`list_sessions`, `message_sessi
 
 ## As built
 
-Nothing built yet.
+**Phase A1 — schema forms in the harness (2026-11-15).** Built: `internal/inputs/schema.go` (types, ordered
+`Properties`), `schema_parse.go` + `schema_prop.go` + `schema_octo.go` (`ParseSchema(raw, Origin)`: limits, strict
+keywords, normalised `x-octo.order`), `schema_check.go` (`CheckAnswer`, errors by id in the card's words, typed values),
+`schema_fields.go` (`FromFields`, `ValidateTitle`, `Describe`); `Input` gains `schema` (always set), `source`
+(`{kind:"tool"}`), `fields` is `[]` for a schema form; the manager checks every answer with `CheckAnswer`.
+`request_input` takes `schema` or `fields` (one shared definition for built-in agents and the MCP list of an ACP Octo);
+a 400 refusal carries `error.fields` (`project.Error.Fields`, `usererr.FormAnswerRefused`); mock marker `[schemaform]`;
+`e2e-v7.sh` gained a schema-form step; `apps/harness/docs/v7.md` §4 and `errors.md` updated.
+Criteria: 1 (`inputs/schema_test.go` `TestSignInSchemaOpensANormalisedForm`, bridge `TestSchemaFormRefusesByField…`),
+2 (`TestFromFieldsKeepsLegacyAnswers`, bridge `TestLegacyFormCarriesTheConvertedSchema`, `v7_forms_test.go` and
+`e2e-v7.sh` unchanged and green), 3 (`TestParseSchemaRefuses`, `TestRequestInputFormOf`), 4 and 5 (bridge
+`TestSchemaFormRefusesByFieldAndKeepsThePasswordSecret` with the existing leak scan), 6 and 7 (`TestCheckAnswer`) — all
+verified with the mock model. Not built: `internal/fakeacp/v7.go` has no `[schemaform]` (it belongs to concurrent work);
+the ACP path is covered only by the shared tool definition, not by a fakeacp run. Decisions taken where the text was
+silent: unknown keywords are refused except listed annotations (`$schema`, `$id`, `$comment`, `title`, `description`,
+`additionalProperties`; per property `$comment`, `examples`, `uniqueItems`), which are dropped; `visible_when` cannot
+depend on a password or an array field; choice values and titles ≤ 200 characters, submit label ≤ 40; an empty array
+or blank string is "not answered" (minItems applies to a non-empty answer); a `date-time` needs seconds and an offset;
+a required legacy confirm now must be `true` (before, `false` was accepted; the UI already required ticking);
+`items` may carry `enumNames` (as the client accepts). The Go side of criterion 8: `inputs/fixture_test.go` reads
+`packages/agent-client/src/fixtures/forms.json` (6 forms, 50 cases) and agrees on every case.
+
+### Phase A2 — client and UI (2026-11-15)
+
+Built (commit `c797e31`): the wire types, `lib/schemaForm`, the one renderer `shared/SchemaForm`, the input card on the
+schema, the demo forms and `packages/ui/scripts/schema-forms.mjs`. Details and the differences from this contract are in
+the UI spec ("As built — schema forms in the client and the UI"). Criteria 8–13 pass (8 on both sides: the shared fixture
+gives the same verdict in Go and TypeScript for its 50 cases). Seen against a real `harness serve` with the mock model
+(`[schemaform]`): refusal by field, the answered summary, no password in the page.
+
+Phases A3, A4, B1, B2, C1 and C2: not built.

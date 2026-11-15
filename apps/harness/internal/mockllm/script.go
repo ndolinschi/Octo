@@ -69,7 +69,7 @@ func orchestratorReply(r *request) reply {
 	if rep, ok := memoryReply(r, anchor, ask); ok {
 		return rep
 	}
-	if strings.Contains(ask, formMarker) && r.hasTool("request_input") {
+	if (strings.Contains(ask, formMarker) || strings.Contains(ask, schemaFormMarker)) && r.hasTool("request_input") {
 		return formReply(r, anchor, ask)
 	}
 	if strings.Contains(ask, essayMarker) {

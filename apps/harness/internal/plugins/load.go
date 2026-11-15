@@ -26,7 +26,7 @@ type Connector func(ctx context.Context, baseURL string) error
 func Load(ctx context.Context, dataDir string, extraDirs []string, connect Connector, opts ...LoadOption) *Registry {
 	b := &builder{
 		ctx: ctx, connect: connect,
-		reg:   &Registry{plugins: []Plugin{}, agents: map[string]Agent{}, servers: map[string]LanguageServer{}, probes: newProber()},
+		reg:   &Registry{plugins: []Plugin{}, agents: map[string]Agent{}, servers: map[string]LanguageServer{}, probes: newProber(), versions: newVersioner()},
 		names: map[string]string{}, tools: map[string]bool{}, loaded: map[string]bool{},
 	}
 	b.scan(filepath.Join(dataDir, "plugins"), false)
@@ -177,11 +177,15 @@ func (b *builder) populate(p *Plugin, m manifest) {
 			p.Errors = append(p.Errors, fmt.Sprintf("agents[%d]: duplicate agent id %q", i, a.ID))
 			continue
 		}
-		l, ok := launch(a.manifestCommand, p.Dir)
+		l, ok := launchIn(a.manifestCommand, p.Dir, a.SearchPaths)
 		reason := ""
 		if !ok {
 			reason = "the agent's program was not found on PATH"
+			if len(a.SearchPaths) > 0 {
+				reason += " or in " + strings.Join(a.SearchPaths, ", ")
+			}
 		}
+		found := ok
 		for _, req := range a.Requires {
 			if _, found := resolveCommand(req, p.Dir); !found && ok {
 				ok, reason = false, fmt.Sprintf("%q is required and was not found on PATH", req)
@@ -195,6 +199,16 @@ func (b *builder) populate(p *Plugin, m manifest) {
 		}
 		if reason := strings.TrimSpace(a.Unsupported); reason != "" {
 			ag.Unsupported, ag.Available, ag.UnavailableReason = reason, false, reason
+		}
+		ag.commandFound = found
+		ag.MCPTransport = a.MCPTransport
+		if ag.MCPTransport == "auto" {
+			ag.MCPTransport = ""
+		}
+		ag.SearchPaths = slices.Clone(a.SearchPaths)
+		if v := a.Version; v != nil {
+			ag.VersionCommand, _ = resolveCommandIn(v.Command[0], p.Dir, a.SearchPaths)
+			ag.VersionArgs, ag.MinVersion = slices.Clone(v.Command[1:]), strings.TrimSpace(v.Min)
 		}
 		ag.Roles = maps.Clone(a.Roles)
 		ag.ModelLabels, ag.ModelsNote = maps.Clone(a.ModelLabels), strings.TrimSpace(a.ModelsNote)
@@ -240,8 +254,10 @@ func (b *builder) connectTool(p *Plugin, base string) {
 	}
 }
 
-func launch(c manifestCommand, dir string) (Launch, bool) {
-	path, ok := resolveCommand(c.Command, dir)
+func launch(c manifestCommand, dir string) (Launch, bool) { return launchIn(c, dir, nil) }
+
+func launchIn(c manifestCommand, dir string, search []string) (Launch, bool) {
+	path, ok := resolveCommandIn(c.Command, dir, search)
 	return Launch{Command: path, Args: slices.Clone(c.Args), Env: c.Env, Dir: dir}, ok
 }
 

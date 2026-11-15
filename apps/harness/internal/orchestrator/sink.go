@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
@@ -128,7 +129,8 @@ func (s *agentSink) TextDelta(text string) {
 var checkpointEvery = 500 * time.Millisecond
 
 // beforeCheckpointWrite runs just before a checkpoint is written; a test makes it slow to stand in for a slow disk.
-var beforeCheckpointWrite = func() {}
+// It is read on the writer goroutine and set from tests, so it sits behind an atomic pointer.
+var beforeCheckpointWrite atomic.Pointer[func()]
 
 // checkpointLocked makes sure a checkpoint write is scheduled: at once when
 // the last one is old enough, else when it will be. The write itself never
@@ -167,7 +169,9 @@ func (s *agentSink) checkpointLater() {
 
 	s.ckWrite.Lock()
 	defer s.ckWrite.Unlock()
-	beforeCheckpointWrite()
+	if f := beforeCheckpointWrite.Load(); f != nil {
+		(*f)()
+	}
 	c, cancel := dbCtx(context.Background())
 	err := s.rt.db.SavePartial(c, s.agentID, s.rt.redact(text))
 	cancel()

@@ -102,9 +102,17 @@ type options struct {
 	mcpHTTP     bool
 	mcpReject   bool
 	unique      bool
-	modes       bool
+	modesOn     bool
 	commands    []map[string]any
 	promptImage bool
+
+	// The agy profile (EnvProfile=agy) and what it sets.
+	profile         string
+	embeddedContext bool
+	modeList        []map[string]string
+	startMode       string
+	permOptions     []map[string]string
+	savedLogin      bool
 }
 
 func optionsFromEnv(args []string) options {
@@ -113,7 +121,7 @@ func optionsFromEnv(args []string) options {
 		via: os.Getenv(EnvModelsVia), refuseUnk: os.Getenv(EnvRefuseModel) == "1",
 		loadSession: os.Getenv(EnvLoadSession) == "1", loadFail: os.Getenv(EnvLoadFail) == "1", mcpHTTP: os.Getenv(EnvMCPHTTP) == "1",
 		mcpReject: os.Getenv(EnvMCPReject) == "1", promptUsage: os.Getenv(EnvPromptUsage), unique: os.Getenv(EnvUniqueSessions) == "1",
-		modes: os.Getenv(EnvModes) == "1", commands: parseCommandList(os.Getenv(EnvCommands)), promptImage: os.Getenv(EnvPromptImage) == "1",
+		modesOn: os.Getenv(EnvModes) == "1", commands: parseCommandList(os.Getenv(EnvCommands)), promptImage: os.Getenv(EnvPromptImage) == "1",
 	}
 	for _, m := range strings.Split(os.Getenv(EnvModels), ",") {
 		if m = strings.TrimSpace(m); m != "" {
@@ -121,6 +129,9 @@ func optionsFromEnv(args []string) options {
 		}
 	}
 	o.loadAuthMethods()
+	if os.Getenv(EnvProfile) == ProfileAgy {
+		o.applyAgyProfile()
+	}
 	for i, a := range args {
 		if (a == "--model" || a == "-m") && i+1 < len(args) {
 			o.startModel = args[i+1]
@@ -134,6 +145,9 @@ func (o options) any() bool { return o.auth != "" || len(o.models) > 0 || o.star
 func (o options) authMethods() []any {
 	if o.auth == authCustom {
 		return o.methods
+	}
+	if o.auth == authAgy {
+		return agyAuthMethods()
 	}
 	interactive := map[string]any{"id": AuthInteractive, "name": "Browser login", "type": "terminal"}
 	if o.auth == "interactive" {

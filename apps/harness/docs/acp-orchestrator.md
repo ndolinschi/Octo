@@ -72,9 +72,15 @@ curl -XPOST localhost:8790/v1/projects -d '{"name":"demo","folders":[{"path":"/a
   with `source: "acp"` (cost only when the agent reports USD) and the context window. Thinking chunks and `plan` updates are
   published as `message.thinking_delta` and `agent.plan`, and every transition of what an agent does as `agent.activity`; see "Live activity" below.
 - **Cancel.** `POST /v1/projects/{pid}/cancel` sends `session/cancel`; the turn ends `cancelled` and the session stays usable (an agent
-  that ignores the cancel for 3 s is killed and restarted by the next request).
+  that ignores the cancel for 3 s is killed and restarted by the next request). A permission request still waiting for the user at that
+  moment (an approval card) is withdrawn (auto-denied "the turn was cancelled") and answered `cancelled`, so the agent's own
+  `cancelled` answer to the prompt is read at once; before 2026-11-15 the reader stayed blocked on the card and the agent was killed after 3 s.
 - **Permissions.** `session/request_permission` goes through `permission.Decide`, today auto-approve (the first `allow_once`, else `allow_always`, else
   cancel); `fs/read_text_file` and `fs/write_text_file` are confined to the project folders. The agent's own process is not sandboxed.
+- **Session modes.** Ask and Plan turns switch to the agent's own read-only or plan mode when it advertises one (`session/set_mode`), an
+  Agent turn back to the mode the session started in. In a **supervised** project an agent whose starting mode approves its own changes
+  (an id containing `auto`, `accept`, `bypass`, `yolo`, `dangerous` or `skip`: Antigravity starts in `auto`) is switched to its `default`
+  mode for Agent turns, so every change reaches Octo as a permission request; a full-access project keeps the agent's mode.
 - **Environment.** The agent gets the allow-listed environment (`internal/childenv`) plus the manifest `env`, never the harness's provider keys.
 
 ## The agents to start with: Claude Code, Copilot, Grok
@@ -88,6 +94,35 @@ The built-in manifest lists them first. `GET /v1/plugins` gives each `available`
 | `grok` | the Grok CLI with `grok` on PATH (from x.ai); the entry's command line (`grok agent stdio`) is unverified against a real install | run `grok login` (browser) | an `XAI_API_KEY` in the harness environment is forwarded to Grok and **switches it to per-token billing**; unset it to stay on the subscription |
 
 The wording is in `plugins-examples/subscription-agents/plugin.json` (`install` and `auth.hint` per entry); copy the plugin to change it.
+
+## Antigravity (`agy`)
+
+Written from Google's documentation (antigravity.google/docs/cli/acp, /docs/ide/extensions/acp, /docs/cli/reference,
+/docs/getting-started) and the CLI's changelog (1.5.0 to 1.5.9), read 2026-11-15; **not run with Octo** (`verified: false`).
+Built-in entry `antigravity` in `plugins-examples/subscription-agents/plugin.json`:
+
+| What | Octo does | Source |
+| --- | --- | --- |
+| Launch | `agy acp`; `agy` from PATH, else `~/.local/bin/agy` (the installer's folder; manifest `searchPaths`) | docs: ACP page, getting started |
+| Version | `agy --version` in the background; below 1.5.0 (`acp` was added in 1.5.0) the agent is listed not installed with "Antigravity 1.4.12 is too old for Octo; it needs 1.5.0 or newer." and the installer line, before anything starts it; "Check again" re-reads it | changelog 1.5.0 |
+| Old version anyway | an `agy` that rejects `acp` (`unknown command "acp"`) gives "Antigravity did not start the way Octo asked." with the start hint | launch rejection, below |
+| Banner on stdout | lines that hold no JSON-RPC message are skipped; a banner or escape codes before `{"jsonrpc"` on the same line are dropped | defensive; the docs say nothing about stdout |
+| Sign-in | there is no non-interactive status command, so no login probe: the login shows "unchecked" until the first session. `session/new` refused with "Authentication required" (-32000) gives "Antigravity is not logged in." with `agy acp --login` to copy and "Check again". The harness tries only `gemini-api-key`, and only when `GEMINI_API_KEY` is in agy's environment (it is hidden unless a copied entry forwards it); `oauth-personal`, `oauth-business`, `agent-platform` and `terminal-login` are never tried (browser, ADC or terminal sign-ins) | docs: authMethods table |
+| Billing | flat-rate (the subscription); `GEMINI_API_KEY` forwarded on purpose switches it to per-token (`billingEnv`) | docs |
+| Tool server | over the stdio relay (`mcpTransport: "stdio"`), because agy's HTTP MCP servers need `--process-per-session` | docs: flags table |
+| Models | no list in the manifest (they depend on the account): discovery opens a throw-away session and reads agy's model config option; the user picks one per session (`session/set_config_option`) or types a name | docs: "Session options exposed as pickers: model, thinking level" |
+| Thinking level | not set by Octo; agy keeps its own (the config option `thought_level` is ignored) | docs |
+| Modes | Plan maps to agy's `plan`; agy has no ask mode, so Ask turns keep the mode and the harness denies writes; supervised projects switch agy from `auto` to `default` (see "Session modes") | changelog 1.5.0, 1.5.4, 1.5.8 |
+| Permissions | agy offers Allow and Deny; Octo's card maps allow/deny onto them; Stop withdraws a waiting card and ends the turn without killing agy | docs; changelog 1.5.2 |
+| Images | sent when agy advertises `promptCapabilities.image` (the docs say images and embedded resources are supported) | docs |
+| Resume | `session/load` when advertised (agy supports load and resume), else the recap | docs |
+| Slash commands, plan, diffs, usage | the generic paths: `available_commands_update` → the "/" menu, `plan` → the plan card, diff tool content → tool rows, `usage_update` (agy 1.5.9 sends the context window) → the context meter | docs; changelog 1.5.9 |
+| Logs | agy writes its own log to `~/.gemini/antigravity-cli/log/acp-*.log`; Octo's wire trace (`HARNESS_ACP_TRACE=1`) works for agy like for any agent | docs |
+
+Not done, on purpose: steering a running turn with a second `session/prompt` (agy supports it; Octo queues the message), elicitation
+forms (agy falls back to chat), `session/resume` (load is used), `--sandbox`, `--process-per-session`, `--dangerously-skip-permissions`.
+The test double is the scripted agent's agy profile (`OCTO_FAKEACP_PROFILE=agy`, `internal/fakeacp/agy.go`); the live steps are in
+`docs/superpowers/LIVE-CHECKLIST.md`, block "Antigravity (agy)".
 
 ## An agent that does not start in agent mode
 
@@ -158,6 +193,6 @@ An agent at work is never just a spinner. For ACP orchestrators, ACP sub-agents 
 - `agent.plan {agent_id, entries:[{content, status, priority}]}`: the agent's whole plan each time; the latest is on the agent row as `plan` (null when none; cleared when the next turn starts; schema version 4).
 - `tool.updated {agent_id, tool_use_id, status?, title?, locations?, summary?}`: what a `tool_call_update` changed. The tool row itself (`message.created` with the `tool_use`, and `tool.started`) is published when the agent announces the call, not when it ends (this was already so; it is now tested with a 400 ms tool).
 
-Text chunks are published as they arrive (no batching at all, so well inside the 50 ms bound); with no stored secret nothing is held back, with one at most its length minus one byte, until the next chunk or the end of the message. `available_commands_update` and `current_mode_update` are ignored without error.
+Text chunks are published as they arrive (no batching at all, so well inside the 50 ms bound); with no stored secret nothing is held back, with one at most its length minus one byte, until the next chunk or the end of the message. `current_mode_update` is ignored without error (`available_commands_update` feeds the "/" menu).
 
 The scripted agent has markers for these flows: `[live]` (thought, plan, a tool with title/status updates, 20 text chunks 20 ms apart, each carrying its send time), `[slow-tool]`, `[quiet]`, `[secret-thought:VALUE]`. Tests measure the first event reaching an SSE subscriber within 100 ms of the agent sending it and the 20 chunks arriving over about 400 ms.

@@ -29,6 +29,11 @@ func ChildMode() bool { return os.Getenv(EnvChild) == "1" }
 func Main() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if os.Getenv(EnvProfile) == ProfileAgy {
+		if code, done := agyCLI(os.Args[1:]); done {
+			return code
+		}
+	}
 	opts := optionsFromEnv(os.Args[1:])
 	a := &agent{in: os.Stdin, out: os.Stdout, log: os.Stderr, exit: os.Exit, pending: map[int64]chan reply{},
 		opts: opts, model: opts.initialModel()}
@@ -139,8 +144,8 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		if a.opts.loadSession {
 			caps["loadSession"] = true
 		}
-		if a.opts.promptImage {
-			caps["promptCapabilities"] = map[string]any{"image": true}
+		if pc := a.opts.promptCaps(); len(pc) > 0 {
+			caps["promptCapabilities"] = pc
 		}
 		if a.opts.mcpHTTP {
 			caps["mcpCapabilities"] = map[string]any{"http": true, "sse": false}
@@ -165,11 +170,11 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		var p struct {
 			ModeID string `json:"modeId"`
 		}
-		if !a.opts.modes {
+		if len(a.opts.modes()) == 0 {
 			a.respondError(m.ID, -32601, "method not found: session/set_mode")
 			return
 		}
-		if err := json.Unmarshal(m.Params, &p); err != nil || (p.ModeID != "default" && p.ModeID != "ask" && p.ModeID != "plan") {
+		if err := json.Unmarshal(m.Params, &p); err != nil || !a.opts.knownMode(p.ModeID) {
 			a.respondError(m.ID, -32602, "unknown mode")
 			return
 		}
@@ -188,7 +193,7 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		}
 		a.mu.Lock()
 		a.cwd = p.Cwd
-		authed := a.authed
+		authed := a.authed || a.opts.savedLogin
 		a.mu.Unlock()
 		if a.opts.auth != "" && !authed {
 			a.respondError(m.ID, -32000, "Authentication required")
@@ -209,7 +214,7 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 			a.sess = fmt.Sprintf("fake-%d-%d", os.Getpid(), a.nSess)
 		}
 		a.loaded = false
-		a.mode = "default"
+		a.mode = a.opts.firstMode()
 		a.mcpSrvs = p.McpServers
 		a.mu.Unlock()
 		a.closeMCP()

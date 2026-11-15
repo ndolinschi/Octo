@@ -40,6 +40,9 @@ type AgentReport struct {
 	Experimental bool `json:"experimental"`
 	// Unsupported says why the agent cannot work with Octo (its CLI has no ACP mode); empty when it can.
 	Unsupported string `json:"unsupported,omitempty"`
+	// Version is the CLI's version check, for an agent whose manifest has one
+	// (nil otherwise): the version read, the lowest that works, too_old.
+	Version *plugins.VersionReport `json:"version,omitempty"`
 }
 
 // Requirement is one command an agent needs on PATH and whether it was found.
@@ -122,7 +125,10 @@ type Inputs struct {
 	// Probe, when set, runs each agent's login probe now (doctor); otherwise the
 	// cached background result is reported.
 	Probe func(plugins.Agent) plugins.ProbeReport
-	Env   []string
+	// CheckVersion, when set, runs each agent's version check now (doctor);
+	// otherwise the cached background result is reported.
+	CheckVersion func(plugins.Agent) plugins.VersionReport
+	Env          []string
 	// DataDirWhy says why DataDir was chosen (doctor).
 	DataDirWhy string
 	// ShowProbeOutput: see Report.ShowProbeOutput.
@@ -210,10 +216,28 @@ func Build(in Inputs) Report {
 		} else {
 			ar.Probe = a.LastProbe()
 		}
+		if a.HasVersionCheck() && a.Unsupported == "" {
+			v := a.Version
+			switch {
+			case !a.Available && !a.VersionTooOld:
+				v = plugins.VersionReport{Reason: "not checked: the agent's program was not found"}
+			case in.CheckVersion != nil:
+				v = in.CheckVersion(a)
+			case !v.Ran && v.Reason == "":
+				v.Reason = "not checked yet"
+			}
+			v.Min = a.MinVersion
+			ar.Version = &v
+			if v.TooOld {
+				ar.Available = false
+			}
+		}
 		r.Agents = append(r.Agents, ar)
 		switch {
 		case a.Unsupported != "":
 			// Not a problem to fix: the agent is listed as not supported.
+		case ar.Version != nil && ar.Version.TooOld:
+			r.Problems = append(r.Problems, fmt.Sprintf("%s: too old (%s). Update it: %s", a.ID, ar.Version.Reason, a.InstallHint))
 		case !a.Available:
 			r.Problems = append(r.Problems, fmt.Sprintf("%s: not available (%s). %s", a.ID, a.UnavailableReason, a.InstallHint))
 		case ar.Probe.LoggedIn != nil && !*ar.Probe.LoggedIn:
@@ -293,6 +317,8 @@ func (r Report) Text() string {
 		switch {
 		case a.Unsupported != "":
 			state = "not supported: " + a.Unsupported
+		case a.Version != nil && a.Version.TooOld:
+			state = "too old: update it"
 		case !a.Available:
 			state = "not installed / not available"
 		case a.Probe.LoggedIn != nil && !*a.Probe.LoggedIn:
@@ -317,6 +343,9 @@ func (r Report) Text() string {
 			for _, l := range a.Probe.Output {
 				fmt.Fprintf(&b, "      | %s\n", l)
 			}
+		}
+		if v := a.Version; v != nil {
+			fmt.Fprintf(&b, "    version: %s\n", v.Reason)
 		}
 		for _, q := range a.Requires {
 			fmt.Fprintf(&b, "    requires %s: %s\n", q.Command, q.Found)

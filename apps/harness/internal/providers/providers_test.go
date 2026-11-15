@@ -12,6 +12,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/providers"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 type rig struct {
@@ -364,5 +365,26 @@ func TestRefreshPublishesOnlyOnChange(t *testing.T) {
 	r.svc.Record("claude-code", []string{"a", "b"}, "a")
 	if len(r.events()) != 4 {
 		t.Fatalf("a re-advertisement published: %v", r.events())
+	}
+}
+
+// An agent CLI older than its manifest's minimum (Antigravity before 1.5.0, no
+// `agy acp`) is listed as not installed with its own message, the version and
+// the update line, and choosing it is refused before anything starts it.
+func TestTooOldAgentIsNotReadyWithTheUpdateLine(t *testing.T) {
+	r := newRig(t, agent("antigravity", func(a *plugins.Agent) {
+		a.Label, a.Available, a.VersionTooOld, a.MinVersion = "Antigravity", false, true, "1.5.0"
+		a.Version = plugins.VersionReport{Ran: true, Version: "1.4.12", TooOld: true, Reason: "version 1.4.12 is older than 1.5.0"}
+		a.InstallHint = "Install: `curl -fsSL https://antigravity.google/cli/install.sh | bash`"
+	}))
+	p := byID(t, r.svc.Snapshot(), "antigravity")
+	if p.State != providers.StateNotInstalled || p.Problem == nil || p.Problem.Code != usererr.CodeAgentTooOld ||
+		p.Reason != "Antigravity 1.4.12 is too old for Octo; it needs 1.5.0 or newer." ||
+		p.Problem.Command != "curl -fsSL https://antigravity.google/cli/install.sh | bash" {
+		t.Fatalf("provider = %+v / %+v", p, p.Problem)
+	}
+	u := r.svc.Check("acp:antigravity")
+	if u == nil || u.CanForce || u.Problem.Code != usererr.CodeAgentTooOld {
+		t.Fatalf("Check = %+v", u)
 	}
 }

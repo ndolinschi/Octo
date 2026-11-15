@@ -6,6 +6,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/inputs"
 	"github.com/ndolinschi/Octo/apps/harness/internal/secrets"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // Inputs lists the forms agents have open in a project.
@@ -26,6 +27,10 @@ func (s *Service) SubmitInput(ctx context.Context, pid, id string, a inputs.Answ
 	switch {
 	case errors.Is(err, inputs.ErrNotFound):
 		return notFound("form")
+	case errors.As(err, &ve) && ve.Fields != nil:
+		e := of(KindInvalid, usererr.FormAnswerRefused(len(ve.Fields), ve.Msg))
+		e.Fields = ve.Fields
+		return e
 	case errors.As(err, &ve):
 		return invalid("%s", ve.Msg)
 	case errors.Is(err, secrets.ErrInvalidName), errors.Is(err, secrets.ErrInvalidValue):
