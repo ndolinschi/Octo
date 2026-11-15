@@ -18,7 +18,8 @@ export function NewSessionButton(props: { loading: boolean; onCreate(): void }) 
     <>
       <Button
         ref={anchor}
-        variant="secondary"
+        // R2: quiet, as Notes' "New note": the label ends on the rows' text edge, no framed third right edge.
+        variant="quiet"
         size="sm"
         icon={Plus}
         loading={props.loading}

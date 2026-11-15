@@ -34,6 +34,7 @@ import { useModelNames } from "../../state/modelNames";
 import { canRun } from "../../lib/providers/providers";
 import { useProviders } from "../../lib/providers/useProviders";
 import { PanelPurpose } from "../shared/PanelPurpose";
+import { PANEL_COLUMN } from "../../lib/panelColumn";
 
 /** Rows shown before "Show all" / "Show more" (contract v6 decision 17). */
 const PAGE = 8;
@@ -65,10 +66,10 @@ export function DetailsPanel() {
   if (!project) return null;
   return (
     // Rows reaching the fold fade out instead of being cut (the list's scrollbar is hidden, like the sidebar's).
-    <div ref={quiet} data-details className="h-full min-h-0">
+    <div ref={quiet} data-details className={cn("h-full min-h-0", PANEL_COLUMN)}>
       <Panel name="details" title="Details" lead={<PanelPurpose tool="details" />}>
         <PanelBody fade>
-          <div ref={rows} className="flex w-full max-w-details flex-col gap-4">
+          <div ref={rows} className="flex w-full flex-col gap-4">
             <Folders />
             <Context />
             <Team />

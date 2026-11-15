@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { agentGlyph, arcPath, dashArray, glyphGeometry, glyphLabel, orchestratorGlyph, ringRadius, type GlyphState } from "./stateGlyph";
 
-const ALL: GlyphState[] = ["working", "queued", "needs", "unseen", "idle", "failed"];
+const ALL: GlyphState[] = ["working", "queued", "needs", "unseen", "idle", "failed", "stopped"];
 
 test("every state but idle is a ring of one diameter (one family), inside its box", () => {
   for (const size of [12, 14] as const) {
@@ -16,9 +16,9 @@ test("every state but idle is a ring of one diameter (one family), inside its bo
 test("each state differs by line style or mark, not only by colour", () => {
   const sig = ALL.map((s) => {
     const g = glyphGeometry(s);
-    return JSON.stringify([g.ring, g.dash !== null, g.arc !== null, g.dot, g.bar !== null, g.alert !== null]);
+    return JSON.stringify([g.ring, g.dash !== null, g.arc !== null, g.dot, g.bar !== null, g.alert !== null, g.square !== null]);
   });
-  assert.equal(new Set(sig).size, ALL.length - 0, "six distinct shapes");
+  assert.equal(new Set(sig).size, ALL.length - 0, "seven distinct shapes");
 });
 
 test("queued has six dashes summing to the circumference", () => {
@@ -64,6 +64,7 @@ test("state mapping from agents and orchestrators", () => {
   assert.equal(agentGlyph("failed"), "failed");
   assert.equal(agentGlyph("completed"), "idle");
   assert.equal(agentGlyph("completed", true), "unseen");
+  assert.equal(agentGlyph("cancelled"), "stopped");
   assert.equal(orchestratorGlyph("new"), "queued");
   assert.equal(orchestratorGlyph("idle", true), "unseen");
   assert.equal(orchestratorGlyph("working", true), "working", "working wins over unseen");

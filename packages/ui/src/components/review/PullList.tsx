@@ -2,6 +2,7 @@ import { GitBranch, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { refusalRepoChoices, repoMenu, type OpenReviewInput, type PullRequestFilter, type PullRequestRow, type ReviewSummary } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
+import { PANEL_COLUMN } from "../../lib/panelColumn";
 import { errorMessage, timeAgo } from "../../lib/format";
 import { useRowKeys } from "../../lib/hooksMore";
 import { useQuietOpen } from "../../lib/quietFocus";
@@ -190,7 +191,7 @@ function Picker(props: {
   return (
     // R1 (polish step 6b): the picker is a `Panel` (header 40, title at 16, view tabs with the frame's hairline, one filter row,
     // the list inset 8). The container query folds the freshness words into the refresh button's tooltip in a narrow group.
-    <div ref={quiet} className="@container h-full min-h-0">
+    <div ref={quiet} className={cn("@container h-full min-h-0", PANEL_COLUMN)}>
       <Panel
         name="review"
         title="Pull requests"
@@ -236,7 +237,7 @@ function Picker(props: {
             // line of its own above the chips, so neither is cut to a stub.
             <div
               data-panel-filters
-              className="box-content flex min-h-9 max-w-home shrink-0 items-center gap-x-2 gap-y-1 px-pane @max-[560px]:flex-wrap @max-[560px]:pt-1 touch:min-h-ctl-lg"
+              className="box-content flex min-h-9 shrink-0 items-center gap-x-2 gap-y-1 px-pane @max-[560px]:flex-wrap @max-[560px]:pt-1 touch:min-h-ctl-lg"
             >
               <FilterTabs<PullRequestFilter>
                 label="Show"
@@ -323,7 +324,7 @@ function Picker(props: {
             <PanelBody>
               {/* The list is not available, but reviews in progress are: say why above them (a tone, no outline). */}
               {state.error && !ready && (
-                <div className="max-w-home pb-3">
+                <div className="pb-3">
                   <ErrorNotice
                     title="The pull requests did not load"
                     fields={{ ...listFailure(state.error), details: state.error, action: "retry" }}
@@ -333,7 +334,7 @@ function Picker(props: {
                 </div>
               )}
               {ready && !available && (
-                <section aria-label="Pull requests are not available" className="octo-in-card mb-3 flex max-w-home flex-col gap-2 rounded-md bg-raised p-4">
+                <section aria-label="Pull requests are not available" className="octo-in-card mb-3 flex flex-col gap-2 rounded-md bg-raised p-4">
                   <h2 className="text-heading text-fg">{unavailableTitle(ready.reason)}</h2>
                   <p className="text-sm text-fg-2">{ready.message ?? "Pull requests cannot be listed for this project."}</p>
                   {ready.command && (
@@ -351,11 +352,11 @@ function Picker(props: {
                 </section>
               )}
               {/* B2: with reviews in progress listed, "nothing open" says so above them (it is about the pull requests). */}
-              {available && shown.length === 0 && !typed && resume.length > 0 && <p className="max-w-home px-2 pb-2 text-sm text-fg-3">{emptyText}</p>}
+              {available && shown.length === 0 && !typed && resume.length > 0 && <p className="px-2 pb-2 text-sm text-fg-3">{emptyText}</p>}
               {/* R7: the rows are one Tab stop; ↑/↓/Home/End move between them. */}
               {/* A maximised review is 1400 wide: the rows keep Home's column (880, left-aligned as every panel body), so the time
                   and the counts stay near the title they belong to. */}
-              <div ref={list} className="flex max-w-home flex-col">
+              <div ref={list} className="flex flex-col">
                 {typed && available && (
                   <ListRow
                     size="md"

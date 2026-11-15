@@ -6,6 +6,8 @@ test("usageRangeText names the range, and the scope only when it is all projects
   assert.equal(usageRangeText({ period: "30d", scope: "project" }), "30 days");
   assert.equal(usageRangeText({ period: "7d", scope: "all" }), "7 days, all projects");
   assert.equal(usageRangeText({ period: "all", scope: "project" }), "All time");
+  // R2: the same words as the period menu.
+  assert.equal(usageRangeText({ period: "session", scope: "project" }), "Since app start");
 });
 
 test("isUsageView rejects unknown values, including the pre-86 shape", () => {

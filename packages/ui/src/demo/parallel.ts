@@ -41,6 +41,8 @@ export function addTalk(rec: ProjectRecord, rootId: string, talk: readonly (read
   talk.forEach(([q, a], i) => {
     const t = startMs + i * 600_000;
     rec.messages.push({ id: rec.nextMessageId++, agent_id: rootId, role: "user", content: [{ type: "text", text: q }], created_at: new Date(t).toISOString() });
+    // A request that failed before an answer has no assistant message (the harness writes none; the failure is the error notice).
+    if (a === "") return;
     rec.messages.push({
       id: rec.nextMessageId++,
       agent_id: rootId,

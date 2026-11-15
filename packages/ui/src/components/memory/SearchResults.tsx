@@ -14,7 +14,7 @@ import { ScrollArea } from "../primitives/ScrollArea";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { SkeletonList } from "../primitives/Skeleton";
 import { FloatRoom } from "../primitives/floatRoom";
-import { DETAIL_MAX, MemoryError, ROW_TAIL, RowLine } from "./parts";
+import { MemoryError, ROW_TAIL, RowLine } from "./parts";
 import type { SearchState } from "./useMemorySearch";
 
 /**
@@ -42,7 +42,7 @@ export function SearchResults(props: { state: SearchState; query: string; canOpe
   return (
     <ScrollArea className="h-full min-h-0 px-pane pt-1 pb-6">
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- ↑/↓/Home/End between the result rows */}
-      <div role="region" aria-label="Results" onKeyDown={moveInList} className={DETAIL_MAX}>
+      <div role="region" aria-label="Results" onKeyDown={moveInList}>
         {state.groups.map((g) => (
           <section key={g.id} aria-label={g.label} className="pt-1">
             <SectionHeader inset className="pr-8" aside={<span className="tabular-nums">{g.hits.length}</span>}>

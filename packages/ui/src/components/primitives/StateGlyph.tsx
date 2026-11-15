@@ -56,6 +56,7 @@ export function StateGlyph(props: {
           </g>
         )}
         {g.bar && <line {...g.bar} strokeLinecap="round" />}
+        {g.square && <rect x={g.square.x} y={g.square.x} width={g.square.side} height={g.square.side} rx={g.square.rx} fill="currentColor" stroke="none" />}
       </svg>
       {props.label && <span className="sr-only">{glyphLabel(props.state)}</span>}
     </span>

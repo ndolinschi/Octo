@@ -15,11 +15,18 @@ const LISTED = 8;
 type Phase = { kind: "loading" } | { kind: "ready"; report: RewindReport } | { kind: "error"; message: string };
 
 /**
- * Parity B5, decision 62: "Rewind to here". A dry run first: what will be restored or deleted, how much of the conversation
- * goes, and the files that block it (changed outside Octo since the agent's last edit). Nothing is touched until "Rewind";
+ * Parity B5, decision 62; R2 checkpoints: "Restore to here". The dialog is the preview: a dry run first, what will be restored
+ * or deleted (paths only: the harness reports no contents), how much of the conversation goes, and the files that block it
+ * (changed outside Octo since the agent's last edit). Nothing is touched until "Restore";
  * if a file changed meanwhile the harness refuses (409 `rewind_conflict`) and the dialog reads the report again.
  */
-export function RewindDialog(props: { messageId: number; onClose(): void; onDone(report: RewindReport): void }) {
+export function RewindDialog(props: {
+  messageId: number;
+  /** `next`: restoring to the end of a reply cuts the request after it; `this`: `/rewind` cuts the newest request. */
+  which?: "next" | "this";
+  onClose(): void;
+  onDone(report: RewindReport): void;
+}) {
   const { bridge } = useApp();
   const { projectId, applyRewind } = useProject();
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
@@ -34,7 +41,7 @@ export function RewindDialog(props: { messageId: number; onClose(): void; onDone
         alive &&
         setPhase({
           kind: "error",
-          message: rewindError(errorCode(e)) ?? `Could not check the rewind: ${errorMessage(e).replace(/\.$/, "")}. Close this and try again.`,
+          message: rewindError(errorCode(e)) ?? `Could not check what would change: ${errorMessage(e).replace(/\.$/, "")}. Close this and try again.`,
         }),
     );
     return () => {
@@ -55,7 +62,10 @@ export function RewindDialog(props: { messageId: number; onClose(): void; onDone
         const report = await bridge.rewind(projectId, { message_id: messageId, dry_run: true }).catch(() => null);
         setPhase(report ? { kind: "ready", report } : { kind: "error", message: "A file changed since this was checked. Close this and try again." });
       } else {
-        setPhase({ kind: "error", message: rewindError(errorCode(e)) ?? `Could not rewind: ${errorMessage(e).replace(/\.$/, "")}. Close this and try again.` });
+        setPhase({
+          kind: "error",
+          message: rewindError(errorCode(e)) ?? `Could not restore: ${errorMessage(e).replace(/\.$/, "")}. Close this and try again.`,
+        });
       }
     } finally {
       setBusy(false);
@@ -67,8 +77,8 @@ export function RewindDialog(props: { messageId: number; onClose(): void; onDone
   return (
     <Dialog
       width="sm"
-      title="Rewind to this request?"
-      description="The conversation goes back to just before it, and the files the agents changed since are put back."
+      title="Restore to this point?"
+      description="Files go back to how they were at this point, and everything after it is removed. Nothing changes until you press Restore."
       onClose={props.onClose}
       footer={
         <>
@@ -77,7 +87,7 @@ export function RewindDialog(props: { messageId: number; onClose(): void; onDone
           </Button>
           <Button variant="primary" disabled={report === null || blocked || busy} onClick={() => void confirm()} aria-busy={busy}>
             {busy && <Spinner size={12} className="text-current" />}
-            Rewind
+            Restore
           </Button>
         </>
       }
@@ -96,7 +106,7 @@ export function RewindDialog(props: { messageId: number; onClose(): void; onDone
         {report && (
           <>
             <p className="text-fg-2">
-              {cutSummary(report)} {filesSummary(report)}
+              {cutSummary(report, props.which ?? "next")} {filesSummary(report)}
             </p>
             {report.files.length > 0 && !blocked && (
               <ul className="flex flex-col font-mono text-xs" aria-label="Files">
@@ -113,7 +123,7 @@ export function RewindDialog(props: { messageId: number; onClose(): void; onDone
             )}
             {blocked && (
               <div role="alert" data-rewind-conflicts className="flex flex-col gap-1.5">
-                <p className="text-err">Nothing was changed. These files block the rewind:</p>
+                <p className="text-err">Nothing was changed. These files block the restore:</p>
                 <ul className="flex flex-col">
                   {report.conflicts.map((c) => (
                     <li key={`${c.folder}/${c.path}`} className="min-w-0">
@@ -124,7 +134,7 @@ export function RewindDialog(props: { messageId: number; onClose(): void; onDone
                     </li>
                   ))}
                 </ul>
-                <p className="text-fg-3">Save or undo those changes yourself, then rewind again.</p>
+                <p className="text-fg-3">Save or undo those changes yourself, then restore again.</p>
               </div>
             )}
             {report.acp_session_reset && !blocked && <p className="text-fg-3">{ACP_RESET_NOTE}</p>}

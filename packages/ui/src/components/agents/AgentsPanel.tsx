@@ -5,6 +5,7 @@ import type { Agent } from "@octo/agent-client";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { agentGroups, foldLine, type AgentNode } from "../../lib/agentGroups";
+import { cn } from "../../lib/cn";
 import { formatDuration } from "../../lib/format";
 import { agentDuration } from "../../lib/duration";
 import { useNow } from "../../lib/hooks";
@@ -25,6 +26,7 @@ import { Panel, PanelBody, PanelEmpty } from "../primitives/Panel";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { PanelPurpose } from "../shared/PanelPurpose";
+import { PANEL_COLUMN } from "../../lib/panelColumn";
 
 const AGENTS_TAB = toolTab("agents");
 const EXPANDED = slot("expanded", isBooleanRecord);
@@ -109,7 +111,7 @@ export function AgentsPanel() {
   const quiet = useRef<HTMLDivElement>(null);
   useQuietOpen(quiet);
   return (
-    <div ref={quiet} data-agents className="h-full min-h-0">
+    <div ref={quiet} data-agents className={cn("h-full min-h-0", PANEL_COLUMN)}>
       <Panel
         name="agents"
         title="Agents"
@@ -129,7 +131,7 @@ export function AgentsPanel() {
           </PanelEmpty>
         ) : (
           <PanelBody ref={scroller} onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)}>
-            <div ref={rows} className="flex w-full max-w-details flex-col gap-4">
+            <div ref={rows} className="flex w-full flex-col gap-4">
               {groups.running.length > 0 && (
                 <section aria-labelledby="agents-running" className="flex flex-col">
                   <SectionHeader inset id="agents-running">{`Running ${groups.running.length}`}</SectionHeader>

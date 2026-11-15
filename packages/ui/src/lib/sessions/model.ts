@@ -117,7 +117,17 @@ export function filterCounts(list: readonly ProjectSession[]): Record<SessionFil
 
 /** The glyph of a session's state: the ring family of decision 29. A stopped session rests like an idle one; `queued` (waiting for a free slot) is the dashed ring. */
 export function glyphOf(state: ProjectSessionState): GlyphState {
-  return state === "working" ? "working" : state === "waiting" ? "needs" : state === "failed" ? "failed" : state === "queued" ? "queued" : "idle";
+  return state === "working"
+    ? "working"
+    : state === "waiting"
+      ? "needs"
+      : state === "failed"
+        ? "failed"
+        : state === "queued"
+          ? "queued"
+          : state === "stopped"
+            ? "stopped"
+            : "idle";
 }
 
 const STATE_WORD: Record<ProjectSessionState, string> = {

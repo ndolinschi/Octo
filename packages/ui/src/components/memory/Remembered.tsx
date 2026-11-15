@@ -10,6 +10,7 @@ import { useBlockFloating } from "../../state/workspace/useFloatingHere";
 import { cn } from "../../lib/cn";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
+import { IconButton } from "../primitives/IconButton";
 import { IconMenu } from "../primitives/IconMenu";
 import { ListRow } from "../primitives/ListRow";
 import { Notice } from "../primitives/Notice";
@@ -25,11 +26,11 @@ export function RememberedHeader(props: { count: number; onAdd?: (() => void) | 
       aside={
         <>
           <span className="tabular-nums">{props.count}</span>
-          {props.onAdd && (
-            <Button variant="quiet" size="xs" icon={Plus} className="-mr-2" onClick={props.onAdd}>
-              Add
-            </Button>
-          )}
+          {/* R2: the count ends on the rows' date edge and the add button sits in their "⋯" column (24px, the row's 4px
+              tail), so the header has the list's two right edges and no third one. */}
+          <span className="-mr-1 grid size-6 shrink-0 place-items-center">
+            {props.onAdd && <IconButton icon={Plus} size="xs" label="Remember something" onClick={props.onAdd} />}
+          </span>
         </>
       }
     >

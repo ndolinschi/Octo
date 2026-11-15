@@ -23,19 +23,37 @@ export function filesSummary(report: Pick<RewindReport, "files">): string {
   return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
 }
 
-/** "Removes this request and 13 later messages." */
-export function cutSummary(report: Pick<RewindReport, "messages_cut" | "agents_cut">): string {
+/**
+ * "Removes the next request and 13 later messages." R2 (checkpoints): "Restore to here" under a reply restores to the end of
+ * that reply, which cuts the request after it (`next`); `/rewind` cuts the newest request itself (`this`).
+ */
+export function cutSummary(report: Pick<RewindReport, "messages_cut" | "agents_cut">, which: "next" | "this" = "next"): string {
   const later = Math.max(0, report.messages_cut - 1);
-  const messages = later === 0 ? "Removes this request." : `Removes this request and ${later} later ${later === 1 ? "message" : "messages"}`;
-  const agents = report.agents_cut > 0 ? ` and hides ${report.agents_cut} ${report.agents_cut === 1 ? "sub-agent" : "sub-agents"}` : "";
+  const request = which === "next" ? "the next request" : "your last request";
+  const messages = later === 0 ? `Removes ${request}.` : `Removes ${request} and ${later} later ${later === 1 ? "message" : "messages"}`;
+  const agents = report.agents_cut > 0 ? ` and hides ${report.agents_cut} ${report.agents_cut === 1 ? "agent" : "agents"}` : "";
   return `${messages.replace(/\.$/, "")}${agents}.`;
 }
 
 export const ACP_RESET_NOTE = "The agent starts over from a recap of what is left.";
 
-/** Rewinding is refused with these codes; each reads as one sentence with a next step. */
+/** The action's one name in the app (R2, checkpoints); the slash command keeps its name, `/rewind`. */
+export const RESTORE_LABEL = "Restore to here";
+
+/** The accessible name of a reply's restore action: the action, then the start of the reply's request. */
+export function restoreName(request: string): string {
+  const line =
+    request
+      .split("\n")
+      .find((l) => l.trim() !== "")
+      ?.trim() ?? "";
+  const short = line.length > 48 ? `${line.slice(0, 47).trimEnd()}…` : line;
+  return short ? `${RESTORE_LABEL}: ${short}` : RESTORE_LABEL;
+}
+
+/** Restoring is refused with these codes; each reads as one sentence with a next step. */
 export function rewindError(code: string | null): string | null {
-  if (code === "turn_in_progress") return "Octo is still working. Stop it or wait, then rewind.";
+  if (code === "turn_in_progress") return "Octo is still working. Stop it or wait, then restore.";
   if (code === "invalid_request") return "That request is no longer in the session. Close this and try another one.";
   return null;
 }

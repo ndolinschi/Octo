@@ -3,7 +3,7 @@ import type { Approval, ApprovalAnswer, ApprovalOption } from "@octo/agent-clien
 import { answerFor, keyAction, optionAnswer, type ApprovalAction, type Resolution } from "../../lib/v7/approval";
 import { describeRule, ruleError } from "../../lib/v7/rules";
 import { errorMessage } from "../../lib/format";
-import { FOCUSED_ONCE, quietFocus } from "../../lib/v7/quietFocus";
+import { FOCUSED_ONCE, quietFocus } from "../../lib/quietFocus";
 
 /** Which control is waiting for the bridge (its button shows the pressed state; the others are disabled). */
 export type Busy = ApprovalAction | `option:${string}` | null;

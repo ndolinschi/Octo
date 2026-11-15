@@ -42,8 +42,18 @@ export function FormField(props: Props) {
       </div>
     );
   }
+  // R2: a row of choices with none picked says so in its label ("Region · choose one"), not in a stray word beside the track.
+  const options = field.options ?? [];
+  const unchosen = field.kind === "select" && options.length <= CHOICES_MAX && !(typeof props.value === "string" && options.includes(props.value));
   return (
-    <Field label={field.label} htmlFor={domId} hint={field.help} error={error ?? null} errorId={errorId} optional={!field.required}>
+    <Field
+      label={unchosen ? `${field.label} · choose one` : field.label}
+      htmlFor={domId}
+      hint={field.help}
+      error={error ?? null}
+      errorId={errorId}
+      optional={!field.required}
+    >
       <Control {...props} described={described} />
     </Field>
   );
@@ -67,18 +77,13 @@ function Control(props: Props & { described: string | undefined }) {
             aria-invalid={error ? true : undefined}
             className="flex flex-wrap items-center gap-x-3 gap-y-1"
           >
+            {/* Three equal segments do not say that none is chosen yet: the field's label does until one is. */}
             <Segmented
               label={field.label}
               options={options.map((o) => ({ id: o, label: o }))}
               value={value}
               onChange={(v) => !props.disabled && props.onChange(v)}
             />
-            {/* Three equal segments did not say that none is chosen yet: the row says so until one is. */}
-            {!options.includes(value) && (
-              <span aria-hidden className="text-xs text-fg-3">
-                None chosen
-              </span>
-            )}
           </div>
         );
       }

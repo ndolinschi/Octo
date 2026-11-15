@@ -1,4 +1,5 @@
 /** Seed content for the demo file system; loaded lazily on first file access. */
+import { BILLING_FILES, SMALL_FILES } from "./reviewFiles";
 import type { DemoFile } from "./store";
 
 type Seed = Record<string, string | { binary: true } | { size: number }>;
@@ -679,5 +680,9 @@ export function seedFolder(label: string, mtime: string): Map<string, DemoFile> 
     else if ("binary" in value) tree.set(path, { content: "", mtime, binary: true, size: 18_342 });
     else tree.set(path, { content: "", mtime, size: value.size });
   }
+  // R2: the review's pull request is on this folder: its files exist here at their new content, so "Go to line" and a line
+  // number in the review's diff open the file (they found "path not found" before).
+  if (label === "atlas-api")
+    for (const f of [...BILLING_FILES, ...SMALL_FILES]) if (f.after !== null && !tree.has(f.path)) tree.set(f.path, { content: f.after, mtime });
   return tree;
 }

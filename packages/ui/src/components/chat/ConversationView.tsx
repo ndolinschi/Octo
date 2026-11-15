@@ -95,7 +95,9 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const composer = useRef<ComposerHandle>(null);
   const isOrchestrator = agent?.parent_id === null;
   const composerProps = useOrchestratorComposer(tab);
-  const [rewinding, setRewinding] = useState<number | null>(null);
+  // R2 checkpoints: the request a restore cuts, and whether it is the one after a reply ("Restore to here") or `/rewind`'s newest.
+  const [rewinding, setRewinding] = useState<{ id: number; which: "next" | "this" } | null>(null);
+  const restoreTo = useCallback((id: number) => setRewinding({ id, which: "next" }), []);
   const keepEditing = useCallback(() => composer.current?.refinePlan(), []);
   const anyRunning = state.agentOrder.some((id) => state.agents[id]?.status === "running");
   const now = useNow(anyRunning);
@@ -153,7 +155,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   );
   const newestRequest = requests[requests.length - 1]?.id;
   useEffect(() => {
-    rewindRef.current = newestRequest === undefined ? undefined : () => setRewinding(newestRequest);
+    rewindRef.current = newestRequest === undefined ? undefined : () => setRewinding({ id: newestRequest, which: "this" });
     return () => {
       rewindRef.current = undefined;
     };
@@ -344,7 +346,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
                     promptAuthor={isOrchestrator ? "You" : parent ? (parent.parent_id === null ? (project?.name ?? "Assistant") : roleName(parent)) : "Parent"}
                     hideFirstPrompt={!isOrchestrator}
                     onKeepEditing={isOrchestrator ? keepEditing : undefined}
-                    onRewind={isOrchestrator && bridge.rewind ? setRewinding : undefined}
+                    onRewind={isOrchestrator && bridge.rewind ? restoreTo : undefined}
                   />
                 </Suspense>
                 {isOrchestrator && (
@@ -400,7 +402,8 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
         {rewinding !== null && (
           <Suspense fallback={null}>
             <RewindDialog
-              messageId={rewinding}
+              messageId={rewinding.id}
+              which={rewinding.which}
               onClose={() => setRewinding(null)}
               onDone={(report) => {
                 setRewinding(null);

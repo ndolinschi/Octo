@@ -33,11 +33,13 @@ export function BodyFrame(props: { kind: string; children?: ReactNode; lead?: Re
   return (
     <div data-tool-body={props.kind} className={FRAME}>
       {props.children}
-      <div className={cn("flex min-h-8 min-w-0 flex-wrap items-center gap-x-3 px-3 py-1 text-fg-3", content && "border-t border-line")}>
+      {/* R2: on touch the line is as tall as a touch target and its actions 8px apart, so "Copy command" / "Raw" and the code
+          above (a diff's last line number, a table's Copy) never share a touch zone. */}
+      <div className={cn("flex min-h-8 min-w-0 flex-wrap items-center gap-x-3 px-3 py-1 text-fg-3 touch:min-h-11", content && "border-t border-line")}>
         {props.lead !== undefined && props.lead !== null && props.lead !== false && (
           <span className="flex min-w-0 items-center gap-1.5 tabular-nums">{props.lead}</span>
         )}
-        <span className="ml-auto flex shrink-0 items-center gap-4">
+        <span className="ml-auto flex shrink-0 items-center gap-4 touch:gap-6">
           {props.actions}
           {props.raw && (
             <TextAction onClick={() => setRaw((r) => !r)} pressed={raw} title={raw ? "Hide raw input and result" : "Show raw input and result"}>

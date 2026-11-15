@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import type { QueuedMessage } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { errorCode, errorMessage } from "../../lib/format";
-import { queueCountLabel, queueLine, queueView } from "../../lib/v7/queue";
+import { QUEUE_SUMMARY_BELOW, queueCountLabel, queueLine, queueSummary, queueView } from "../../lib/v7/queue";
 import { queuedModeTag, STEER_REASON, steerOutcome } from "../../lib/v7/steerQueue";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
@@ -15,6 +15,7 @@ import { Presence } from "../primitives/Presence";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { Sheet } from "../primitives/Sheet";
 import { usePhone } from "../../lib/phone";
+import { useElementWidth } from "./useWidth";
 
 export type QueueListProps = {
   paused: boolean;
@@ -70,6 +71,12 @@ function QueueBody(props: QueueListProps) {
   const [steering, setSteering] = useState<ReadonlySet<string>>(new Set());
   const [learned, setLearned] = useState(false);
   const unsupported = props.steerUnsupported === true || learned;
+  // R2: in a narrow composer the queue is one summary row until it is unfolded (`QUEUE_SUMMARY_BELOW`).
+  // A callback ref: the section mounts only once something is queued, after this component.
+  const [frame, setFrame] = useState<HTMLElement | null>(null);
+  const width = useElementWidth(frame);
+  const [unfolded, setUnfolded] = useState(false);
+  const narrow = width !== null && width < QUEUE_SUMMARY_BELOW;
 
   // Removed rows disappear at once (optimistic); the next `queue.updated` confirms or, after a failure, they return.
   const messages = props.messages.filter((m) => !hidden.has(m.id));
@@ -113,8 +120,24 @@ function QueueBody(props: QueueListProps) {
   };
 
   const count = messages.length;
+  const sectionClass = "@container/queue flex min-w-0 flex-col border-b border-line p-1 text-sm";
+  if (narrow && !unfolded && !props.paused && error === null)
+    return (
+      <section ref={setFrame} aria-label={queueCountLabel(count)} data-queue-summary className={sectionClass}>
+        <ListRow
+          tone="quiet"
+          leading={<Clock size={14} />}
+          title={queueSummary(messages, props.waiting)}
+          tip={messages.map((m) => queueLine(m.text)).join("\n")}
+          expanded={false}
+          onClick={() => setUnfolded(true)}
+          trailing={<Glyph icon={ChevronDown} size={14} className="mx-1.5 text-fg-3" />}
+          trailingShown
+        />
+      </section>
+    );
   return (
-    <section aria-label={queueCountLabel(count)} className="@container/queue flex min-w-0 flex-col border-b border-line p-1 text-sm">
+    <section ref={setFrame} aria-label={queueCountLabel(count)} className={sectionClass}>
       {/* Round 3: narrow — the sentence is one info glyph's tooltip in the header (it took three lines of the card at 390). */}
       <SectionHeader
         inset
@@ -122,8 +145,11 @@ function QueueBody(props: QueueListProps) {
         as="h3"
         aside={
           view.shown.length > 0 ? (
-            <span data-steer-reason={unsupported ? "" : undefined} className="inline-flex">
-              <IconButton icon={Info} size="xs" label={unsupported ? STEER_REASON : "Sent one by one when the current reply ends."} />
+            <span className="inline-flex">
+              <span data-steer-reason={unsupported ? "" : undefined} className="inline-flex">
+                <IconButton icon={Info} size="xs" label={unsupported ? STEER_REASON : "Sent one by one when the current reply ends."} />
+              </span>
+              {narrow && <IconButton icon={ChevronUp} size="xs" label="Fold the queue" aria-expanded onClick={() => setUnfolded(false)} />}
             </span>
           ) : undefined
         }

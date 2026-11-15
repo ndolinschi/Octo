@@ -130,7 +130,8 @@ export function TurnChanges({ turnId }: { turnId: number }) {
   const named = turn.files.slice(0, NAMED);
   const rest = turn.files.length - named.length;
   return (
-    <div data-turn-changes className="-mt-2 flex min-w-0 flex-col">
+    // R2: on touch 8px more below, so the file names' touch zones stay off the reply's Copy under them.
+    <div data-turn-changes className="-mt-2 flex min-w-0 flex-col touch:mb-3">
       {/* One line when it fits; in a narrow column the names take a line of their own on the text edge. */}
       <div className="@container/changes min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-fg-3">
@@ -147,7 +148,8 @@ export function TurnChanges({ turnId }: { turnId: number }) {
             ref={chips}
             role="group"
             aria-label="Changed files"
-            className="flex h-6 min-w-0 items-center gap-1.5 @max-xl/changes:order-last @max-xl/changes:basis-full @max-xl/changes:pl-6"
+            // R2: on touch, a names line of its own keeps 20px from the actions above it (their 44px touch zones).
+            className="flex h-6 min-w-0 items-center gap-1.5 @max-xl/changes:order-last @max-xl/changes:basis-full @max-xl/changes:pl-6 touch:@max-xl/changes:mt-5"
           >
             {named.map((f, i) => {
               const key = keys[i] ?? "";

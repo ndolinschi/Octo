@@ -50,7 +50,7 @@ export async function runSlash(d: SlashDeps, name: string, args: string): Promis
         return true;
       case "rewind":
         if (rewindLast) rewindLast();
-        else push?.({ kind: "info", text: "There is nothing to rewind to yet." });
+        else push?.({ kind: "info", text: "There is nothing to restore to yet." });
         return true;
       case "export": {
         if (!(await saveConversation(bridge, projectId))) return false;

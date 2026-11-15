@@ -2,6 +2,7 @@ import type { Agent, Message, ProjectSession } from "@octo/agent-client";
 import { MessageSquareShare } from "lucide-react";
 import { useState } from "react";
 import { formatTokens } from "../../lib/format";
+import { DETAIL_COLUMN } from "../../lib/panelColumn";
 import { EMPTY_FIRST_LINE, EMPTY_SESSION_LINE } from "../../lib/sessions/carry";
 import { canDelete, detailLine, earlierSession, hasNoRequests, isDefaultSession, isWorking, parentOf } from "../../lib/sessions/model";
 import { roleText } from "../../lib/orchestrator";
@@ -21,8 +22,8 @@ import { useCompact } from "./useCompact";
 import { useSessionActions } from "./useSessionActions";
 import { useSessionConversation } from "./useSessionConversation";
 
-/** The reading width of a detail pane, as Memory's. */
-const DETAIL_MAX = "w-full max-w-3xl";
+/** The reading width of a detail pane (R2: the one detail column of every tab). */
+const DETAIL_MAX = DETAIL_COLUMN;
 
 /**
  * One session: its header with actions, for an agent its task, who started it and its usage, then the conversation in the

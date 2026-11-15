@@ -1934,6 +1934,13 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--octo-focus);
 }
+/* R2: line numbers are 20px apart: their touch zone (touch-hit, 44px) stays within the row, or each one covered its
+   neighbours' and the action line's. */
+@media (pointer: coarse), (max-width: 767.98px) {
+  .octo-diff-go::after {
+    inset-block: 0;
+  }
+}
 
 /* ============================================================================================================================
    Direction 7: the phone layout. `OctoApp` sets `data-phone` on the root element from `PHONE_QUERY` (lib/phone.ts); the `phone:`
@@ -2072,37 +2079,6 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 }
 [data-phone] [data-conv] [data-rail] {
   display: none;
-}
-/* A2: on touch "Rewind to here" is folded under the bubble (no height, still focusable and read) and opens when the bubble is
-   tapped (`data-revealed`, chat/useTapReveal) or the action has keyboard focus. */
-@media (pointer: coarse) {
-  [data-prompt] > [data-rewind] {
-    display: grid;
-    grid-template-rows: 0fr;
-    transition: grid-template-rows 160ms var(--ease-out-quint);
-  }
-  [data-prompt] > [data-rewind] > div {
-    min-height: 0;
-    overflow: hidden;
-    padding-inline: 4px;
-  }
-  [data-prompt] > [data-rewind] > div > button {
-    margin-block: 4px 2px;
-  }
-  [data-prompt][data-revealed] > [data-rewind],
-  [data-prompt] > [data-rewind]:focus-within {
-    grid-template-rows: 1fr;
-  }
-  /* Open, the button's 44px touch zone (touch-hit) reaches past the fold's box. */
-  [data-prompt][data-revealed] > [data-rewind] > div,
-  [data-prompt] > [data-rewind]:focus-within > div {
-    overflow: visible;
-  }
-}
-@media (pointer: coarse) and (prefers-reduced-motion: reduce) {
-  [data-prompt] > [data-rewind] {
-    transition: none;
-  }
 }
 [data-phone] [data-conv] pre {
   overflow-x: auto;
@@ -2376,12 +2352,26 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   opacity: 1;
 }
 
+/* R2 checkpoints (owner's addition 11 b): "Restore to here" in a reply's footer is the reply's mark when it changed files
+   (shown at all times), and appears on hover or focus under a reply that did not (on the phone: focus only, no hover). */
+article:not(:has([data-turn-changes])) [data-restore] {
+  opacity: 0;
+  transition: opacity 100ms;
+}
+article:not(:has([data-turn-changes])):is(:hover, :focus-within) [data-restore] {
+  opacity: 1;
+}
+[data-phone] article:not(:has([data-turn-changes])):hover [data-restore]:not(:focus-visible) {
+  opacity: 0;
+}
+
 /* ── R2, owner's addition 10: the request bubble (design study A, variant V1) ─────────────────────────────────────────────
    Right-aligned, as wide as its text (at most 80 % of the column), at every width (it was a full-width card above 480 px and
    a bubble below). One line and nothing else (`data-one-line`, Transcript's UserPrompt) is a pill: 40 high on the desktop
    (22 + 8 + 8 + the 1px edges), 42 on the phone (24); taller keeps radius 18 with 12 / 16 inside. Its meta (From …, Sent while
    Octo was working) sits above it, its right edge on the text's. The fill is two variables, so another tone is two values:
-   F4 moves them to the theme blocks with the other tokens. */
+   F4 moves them to the theme blocks with the other tokens. Not scoped to `[data-conv]`: a session's transcript in the
+   Sessions tab and Memory draw the same request (it lost its card there when the classes moved here). */
 :root,
 :root[data-theme="dark"] {
   --octo-bubble: #3a786b; /* white text 5.15:1 */
@@ -2391,23 +2381,23 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   --octo-bubble: #356e61; /* white text 5.91:1 */
   --octo-bubble-fg: #ffffff;
 }
-[data-conv] [data-prompt] {
+[data-prompt] {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
 }
-[data-conv] [data-prompt] > [data-bubble] {
+[data-prompt] > [data-bubble] {
   max-width: 80%;
   border-radius: 18px;
   padding: 12px 16px;
   border-color: transparent;
 }
-[data-conv] [data-prompt] > [data-bubble][data-one-line] {
+[data-prompt] > [data-bubble][data-one-line] {
   border-radius: 9999px;
   padding-block: 8px;
 }
-[data-conv] [data-prompt] > [data-steered],
-[data-conv] [data-prompt] > div.text-xs {
+[data-prompt] > [data-steered],
+[data-prompt] > div.text-xs {
   padding-inline: 16px;
 }
 /* The pinned copy at the top takes the same shape, right-aligned. */
@@ -2421,31 +2411,30 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   border-radius: 18px;
   padding: 12px 16px;
 }
-/* "Rewind to here" is a quiet text action under the bubble (Transcript: `top-full`, 4px, at its right), not on its edge. */
-[data-conv] [data-prompt] > [data-bubble],
+[data-prompt] > [data-bubble],
 [data-pinned-box] > button {
   background: var(--octo-bubble);
   color: var(--octo-bubble-fg);
 }
 /* Inside the fill: the selection and "Show more" in white (the blue selection and the dim text muddied the green). */
-[data-conv] [data-prompt] > [data-bubble] ::selection,
+[data-prompt] > [data-bubble] ::selection,
 [data-pinned-box] > button ::selection {
   background: rgb(255 255 255 / 0.32);
   color: #fff;
 }
-[data-conv] [data-prompt] > [data-bubble] > button {
+[data-prompt] > [data-bubble] > button {
   color: rgb(255 255 255 / 0.85);
 }
-[data-conv] [data-prompt] > [data-bubble] > button:hover {
+[data-prompt] > [data-bubble] > button:hover {
   color: #fff;
   background: rgb(255 255 255 / 0.12);
 }
 /* The focus ring on the fill: the ring colour is the panel's, so it reads as a gap around the white text's button. */
-[data-conv] [data-prompt] > [data-bubble] > button:focus-visible {
+[data-prompt] > [data-bubble] > button:focus-visible {
   box-shadow: 0 0 0 2px #fff;
 }
 @media (forced-colors: active) {
-  [data-conv] [data-prompt] > [data-bubble],
+  [data-prompt] > [data-bubble],
   [data-pinned-box] > button {
     border-color: CanvasText;
     background: Canvas;

@@ -23,6 +23,12 @@ export function quietFocus(el: Focusable | null | undefined, options: { preventS
   el.focus({ preventScroll: options.preventScroll ?? true });
 }
 
+/**
+ * 7g: the approvals that already took focus once in this window (a card takes quiet focus as it appears): a card that mounts
+ * again (a moved tab) does not take it again. R2: one module for quiet focus (it was `lib/v7/quietFocus.ts` too).
+ */
+export const FOCUSED_ONCE = new Set<string>();
+
 /** The attribute on a panel root whose programmatic focus draws no ring until the first key or press inside it. */
 export const QUIET_ROOT_ATTR = "data-quiet-root";
 

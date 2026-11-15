@@ -13,7 +13,7 @@ import { SectionHeader } from "../primitives/SectionHeader";
 import { SkeletonList } from "../primitives/Skeleton";
 import { Button } from "../primitives/Button";
 import { FloatRoom } from "../primitives/floatRoom";
-import { DETAIL_MAX, MemoryError, PaneEmpty } from "./parts";
+import { MemoryError, PaneEmpty } from "./parts";
 import { AddFact, RememberedHeader, RememberedList } from "./Remembered";
 import { TaskList } from "./TaskList";
 
@@ -67,7 +67,8 @@ export function KnowledgeView(props: {
   }
   return (
     <ScrollArea className="h-full min-h-0 px-pane pt-1 pb-6">
-      <div ref={rows} className={DETAIL_MAX}>
+      {/* R2: a list under the panel's full-width search runs the full width (one right edge with the search and the header). */}
+      <div ref={rows}>
         <section aria-label="Remembered">
           <RememberedHeader count={items.length} onAdd={canAdd && !adding ? () => setAdding(true) : undefined} />
           {adding && <AddFact onDone={() => setAdding(false)} onKept={props.reload} />}

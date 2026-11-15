@@ -121,7 +121,8 @@ const SEEDS: Seed[] = [
         "The upload test fails about one run in five. Find out why.",
         "The test races the temp-file cleanup: the file can vanish before the assertion reads it.",
       ],
-      ["Fix it.", "The request failed before an answer: the model returned an error."],
+      // R2: no answer text: the error notice under the request says why (the harness writes no reply for it).
+      ["Fix it.", ""],
     ],
     agents: [
       {

@@ -67,7 +67,8 @@ export function ActivityRow(props: {
     ) : props.state === "failed" ? (
       <StateGlyph state="failed" size={14} />
     ) : props.state === "stopped" ? (
-      <StateGlyph state="idle" size={14} />
+      // R2 (design study B d): the ring with a square, as heavy as ⊘ and ! beside it (idle's dot read as idle).
+      <StateGlyph state="stopped" size={14} />
     ) : props.state === "needs" ? (
       <StateGlyph state="needs" size={14} />
     ) : props.state === "pending" ? (

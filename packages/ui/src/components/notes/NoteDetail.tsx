@@ -1,7 +1,9 @@
 import type { Note } from "@octo/agent-client";
 import { Pencil, Pin } from "lucide-react";
 import { useState } from "react";
+import { cn } from "../../lib/cn";
 import { formatRelative } from "../../lib/format";
+import { DETAIL_COLUMN } from "../../lib/panelColumn";
 import { Button } from "../primitives/Button";
 import { IconMenu } from "../primitives/IconMenu";
 import { Notice } from "../primitives/Notice";
@@ -24,7 +26,7 @@ export function NoteDetail(props: {
   const { note, load } = props;
   const [confirming, setConfirming] = useState(false);
   return (
-    <article className="flex w-full max-w-3xl flex-col gap-4 pb-4" aria-label={note.title}>
+    <article className={cn("flex flex-col gap-4 pb-4", DETAIL_COLUMN)} aria-label={note.title}>
       <DetailHeader
         title={note.title}
         meta={[

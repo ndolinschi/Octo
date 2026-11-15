@@ -3657,3 +3657,39 @@ at "Go to line N" and "Raw"; Shift+Tab in the composer still switches the mode (
 
 Not verified: Safari and iOS; the model picker's menu after the `Menu` change; forced colours in WebKit; the pairing
 screen's safe-area padding on a device. Kept: "Full history / Recent window", the names Auto / Ceiling / Fixed.
+
+## As built — the premium pass, wave 3: panel edges, the request bubble, checkpoints (2026-11-15)
+
+- **One left and one right edge in every panel** (the orchestrator's own walk of every tool tab beside the conversation:
+  Agents and Details ended at x 1277 where Changes ended at 1415 and header buttons at 1423). One rule, `lib/panelColumn.ts`:
+  a list fills its panel; a panel that is one column (Agents, Details, Usage, Side question, Review's list) and a detail
+  (a note, a session, a memory file) stop at 720px together with their header. Measured at 1440 in a 636px panel: title
+  813, glyphs 813–817, text 837, meta 1415 (1387 where rows have a "⋯" column) in every panel. "New note" and "New session"
+  are quiet buttons whose text ends on the rows' edge; Memory's count sits on the dates' edge.
+- **The request bubble** (the owner's picture; sketches first, then V1): a person's request is a filled bubble on the
+  right, as wide as its text and at most 80 % of the column; one line is a pill (40px, 42 on the phone), more lines have an
+  18px radius. `--octo-bubble` is #3a786b in dark and #356e61 in light with white text (5.15 and 5.91:1; the picture's
+  #4a9887 gives 3.42). Labels ("Sent while Octo was working") sit over the bubble. Replies stay plain text. The colour is
+  two variables; the same shape with a neutral fill is a change of two values. The 18px radius is outside the 6 / 8 / 12
+  scale on purpose (a large surface).
+- **Checkpoints: "Restore to here"** replaces "Rewind to here" everywhere. It is in a reply's footer on the right, on the
+  edge of "Open changes": always shown under a reply that changed files, on hover or focus otherwise, never under the
+  last reply; disabled with a reason while Octo works. The dialog ("Restore to this point?", "Restore") is the preview:
+  it lists the files that come back and the requests that go; the harness gives paths only, so no content preview is
+  promised. The bubble has no action any more (wave 1's tap-to-reveal is removed). `/rewind` keeps its name.
+- **The stopped glyph** is a ring with a square (the weight of "failed" and "needs you"); idle stays a dot.
+- **The composer in a narrow column** (beside a panel): the session chip is an icon in the control row and the queue is
+  one line ("2 queued · Then rename…") that opens: 193 → 111px. A form's segments with nothing chosen say "· choose one"
+  in the field's label.
+- **Review**: a thread opened in the list leaves one quiet line ("Thread open above") at its place in the diff instead of
+  a second copy. **Changes**: a wholly added line carries the line tint only, as in Review.
+- Focus set by the app when a panel opens draws no ring in any panel (`lib/quietFocus.ts`, one module).
+- **Demo**: a failed request has no reply text (it was shown twice); a turn with five changed files ("+2 more"); the
+  review's files exist, so "Go to line" opens them; `?router=on` adds a router provider. A test forbids "harness",
+  "bridge", "orchestrator" and "worktree" in the demo's and the error catalogue's readable strings.
+- Phone touch zones in a tool body: 23 overlaps → 4 (left: "Copy table" against "Raw", 4px, in `DataTable`).
+
+Not seen on screen: a request with an image, with mentions and a comment card, and the "Sent while…" label in the new
+bubble; text selection inside it; forced colours; the router's detail in Settings; a 409 in the new dialog. Open: on the
+phone Memory shows two back arrows (header and `ListDetail`); after Back from an agent opened in Agents the address
+keeps the agent's route; "Rewound to here" in `lib/compact.ts`.

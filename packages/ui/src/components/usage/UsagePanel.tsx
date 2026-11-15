@@ -16,6 +16,7 @@ import { UsageByAgent, UsageByDay, UsageByModel, usageEmpty } from "./UsageViews
 import { useUsageReports } from "./useUsage";
 import { ViewTabs } from "../primitives/ViewTabs";
 import { PanelPurpose } from "../shared/PanelPurpose";
+import { PANEL_COLUMN } from "../../lib/panelColumn";
 
 const TAB = toolTab("usage");
 
@@ -46,14 +47,13 @@ export function UsagePanel() {
   const quiet = useRef<HTMLDivElement>(null);
   useQuietOpen(quiet);
   return (
-    <div ref={quiet} data-usage className="h-full min-h-0">
+    <div ref={quiet} data-usage className={cn("h-full min-h-0", PANEL_COLUMN)}>
       <Panel
         name="usage"
         title="Usage"
         lead={<PanelPurpose tool="usage" />}
         views={<ViewTabs label="Usage" options={items} value={view.segment} onChange={(segment) => setView({ segment })} />}
       >
-        {/* The table needs a wider measure than the label / value rows of Limits; both stay left-aligned on the frame's inset. */}
         <div className="flex h-full min-h-0 flex-col">
           {view.segment !== "limits" && (
             <PanelFilters>
@@ -90,7 +90,7 @@ export function UsagePanel() {
               <PanelEmpty title="No usage in this range">Tokens appear here after a request or an agent gets a model response.</PanelEmpty>
             ) : (
               <PanelBody fade>
-                <div className={cn("@container/usage flex w-full flex-col gap-3", view.segment === "limits" ? "max-w-details" : "max-w-home")}>
+                <div className="@container/usage flex w-full flex-col gap-3">
                   {view.segment === "model" && <UsageByModel load={reports} view={view} />}
                   {view.segment === "agent" && <UsageByAgent load={reports} view={view} />}
                   {view.segment === "day" && <UsageByDay load={reports} view={view} now={now} />}

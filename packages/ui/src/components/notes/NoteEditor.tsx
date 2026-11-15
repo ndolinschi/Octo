@@ -1,6 +1,8 @@
 import { NOTE_LIMITS, type Note, type NoteDocument, type NoteInput } from "@octo/agent-client";
 import { useId, useRef, useState } from "react";
+import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
+import { DETAIL_COLUMN } from "../../lib/panelColumn";
 import { useBlockFloating } from "../../state/workspace/useFloatingHere";
 import { charCount, autoDescription, parseTags, pinState } from "../../lib/notes";
 import { Button } from "../primitives/Button";
@@ -84,7 +86,7 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
     <form
       noValidate
       aria-label={note ? `Edit ${note.title}` : "New note"}
-      className="flex w-full max-w-3xl flex-col gap-4 pb-4"
+      className={cn("flex flex-col gap-4 pb-4", DETAIL_COLUMN)}
       onSubmit={(e) => {
         e.preventDefault();
         void save();

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { JARGON, readable } from "../lib/errors/plain";
+import { INSIDE_WORDS } from "../lib/errors/words";
 import { createDemoBridge } from "./bridge";
 import { ACP_WARNING } from "./routed";
 
@@ -20,6 +21,8 @@ test("no demo fixture a person can read carries protocol vocabulary", async () =
   for (const s of seen.filter(Boolean)) {
     assert.doesNotMatch(s, FORBIDDEN, s);
     assert.doesNotMatch(s, JARGON, s);
+    // R2: and the product's inside words (harness, bridge, orchestrator, worktree), outside commands and paths.
+    assert.doesNotMatch(s, INSIDE_WORDS, s);
   }
   assert.ok(seen.filter(Boolean).length > 2);
 });

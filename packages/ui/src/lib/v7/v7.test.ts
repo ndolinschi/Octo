@@ -3,7 +3,7 @@ import test from "node:test";
 import type { Approval, ChangeDetail, InputField, InputRequest } from "@octo/agent-client";
 import { answerFor, approvalDeadline, approvalItems, diffBlocks, formatCountdown, keyAction, optionAnswer, resolutionCause, resolutionLabel } from "./approval";
 import { answeredLine, buildAnswer, fieldsInError, initialValues, localAnswered, validate } from "./form";
-import { queueLine, queueView, withoutQueued } from "./queue";
+import { queueLine, queueSummary, queueView, withoutQueued } from "./queue";
 import { diffLayout, earlierRequestLabel, netDiff, netIds, revertOrder, revertProblem, sourceLabel, splitPath, turnRevertOrder } from "./changes";
 
 const approval = (id: string, created_at: string): Approval => ({
@@ -121,6 +121,12 @@ test("queue: one line per message, folds past three", () => {
   assert.deepEqual(queueView([1, 2, 3, 4, 5], false), { shown: [1, 2], hidden: 3 });
   assert.deepEqual(queueView([1, 2, 3, 4, 5], true), { shown: [1, 2, 3, 4, 5], hidden: 0 });
   assert.deepEqual(withoutQueued([{ id: "q1", text: "", created_at: "" }], "q1"), []);
+});
+
+test("queue: the narrow summary row names the count and the next message", () => {
+  assert.equal(queueSummary([{ text: "\nThen rename   the helper\nmore" }, { text: "After that" }]), "2 queued · Then rename the helper");
+  assert.equal(queueSummary([{ text: "  " }]), "1 queued");
+  assert.equal(queueSummary([{ text: "x" }], "paused"), "1 queued · paused");
 });
 
 const detail = (over: Partial<ChangeDetail>): ChangeDetail => ({

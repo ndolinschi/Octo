@@ -119,6 +119,11 @@ function seed(rec: ProjectRecord): V7 {
     };
     real(7, "src/http/retry.ts", RETRY_BEFORE, RETRY_AFTER);
     real(8, "src/http/client.ts", CLIENT_BEFORE, CLIENT_AFTER);
+    // R2: five files in this request (the one the chat shows), so the reply's "N files changed" line shows its "+N more"
+    // (three names, then the rest).
+    real(9, "src/http/index.ts", 'export * from "./client";\n', 'export * from "./client";\nexport * from "./retry";\n');
+    real(10, "src/http/timeouts.ts", "", "export const REQUEST_TIMEOUT_MS = 10_000;\n");
+    real(11, "docs/retries.md", "# Retries\n", "# Retries\n\nUp to 5 attempts; each one is logged with its delay.\n");
   }
   v.approvals.push({
     id: newId("apr"),

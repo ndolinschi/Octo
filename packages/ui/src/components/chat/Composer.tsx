@@ -564,15 +564,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {...attach.dropProps}
           className={cn("octo-composer @container/composer relative isolate flex flex-col bg-raised", disabled && "opacity-80")}
         >
-          {props.session && (
-            // A narrow composer (beside a panel) has no room for the session chip in the control row: there it keeps a line of its
-            // own at the top of the box (styles.css shows one of the two places, never both).
-            <div data-composer-session="top" className="flex min-w-0 px-1.5 pt-1.5">
-              <Suspense fallback={<span aria-hidden className="h-ctl-sm" />}>
-                <SessionChip session={props.session} bare={false} disabled={false} onOpenChange={onChip} />
-              </Suspense>
-            </div>
-          )}
           {slots?.queue?.({ onCount: noCount })}
           {(pics.images.length > 0 || attach.files.length > 0 || props.queue.items.length > 0 || pendingComments > 0) && (
             <Suspense fallback={null}>
@@ -647,6 +638,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             {props.session && (
               // Balance pass: the session the composer sends to is the last chip of the control row (it was a line of its own at
               // the top of the box). It takes the row's free room (the spacer gives way, styles.css), so it is the one to shorten.
+              // R2: a narrow composer (beside a panel) shows it as its glyph alone: the session is the one the tab's title names, so
+              // a line of its own only repeated that title; the name stays in its tooltip, its accessible name and its menu.
               <span data-composer-session="row" className="flex min-w-0 flex-1">
                 <Suspense fallback={<span aria-hidden className="h-ctl-sm" />}>
                   <SessionChip session={props.session} bare={false} disabled={false} onOpenChange={onChip} />

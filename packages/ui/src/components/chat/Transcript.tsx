@@ -1,5 +1,6 @@
 import { errorFieldsOf, type Agent, type ErrorFields, type Message, type PlanEntry, type TurnOutcome } from "@octo/agent-client";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, History } from "lucide-react";
+import { RESTORE_LABEL, restoreName } from "../../lib/rewind";
 
 import { markSteered } from "../../lib/v7/steer";
 import { lazy, memo, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
@@ -29,7 +30,6 @@ import { useProject } from "../../state/project";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { useTurnLine } from "./useTurnLine";
-import { useTapReveal } from "./useTapReveal";
 import { providerIdOf, useAgentName, useLoginHint } from "./agentName";
 import { LazyMarkdown as Markdown, markdownPart } from "./LazyMarkdown";
 import { readyLazy, usePartsReady } from "./readyLazy";
@@ -241,13 +241,11 @@ export const Transcript = memo(function Transcript(props: {
               {separator && turn.prompt && <TimeSeparator at={turn.prompt.created_at} now={minute} />}
               {turn.prompt && !hidePrompt && (
                 <UserPrompt
-                  messageId={turn.prompt.id}
                   text={promptText(turn.prompt)}
                   content={turn.prompt.content}
                   author={props.promptAuthor}
                   external={!isOrchestrator}
                   steered={steeredAt.has(i)}
-                  onRewind={isOrchestrator && !running ? props.onRewind : undefined}
                 />
               )}
               <AssistantTurn
@@ -267,6 +265,10 @@ export const Transcript = memo(function Transcript(props: {
                 end={end}
                 footer={isOrchestrator}
                 usage={last ? usageLine : null}
+                // R2 checkpoints: "Restore to here" under a reply cuts the request after it (none after the newest reply).
+                restoreTo={isOrchestrator && props.onRewind ? turns[i + 1]?.prompt?.id : undefined}
+                restoreBusy={running}
+                onRestore={props.onRewind}
               />
               {props.onKeepEditing && turn.prompt && i >= turns.length - PLAN_TURNS && !(last && running) && (
                 <Suspense fallback={null}>
@@ -380,22 +382,18 @@ function untilFound(el: HTMLDivElement | null) {
 
 /** Prompts longer than eight lines collapse, with a toggle to read them in full; code comments show as cards. */
 const UserPrompt = memo(function UserPrompt({
-  messageId,
   text: raw,
   content,
   author,
   external,
   steered,
-  onRewind,
 }: {
-  messageId: number;
   text: string;
   /** The prompt message's blocks (a stable array: a filtered copy made each render re-rendered every prompt on every delta). */
   content: Message["content"];
   author: string;
   external: boolean;
   steered: boolean;
-  onRewind: ((messageId: number) => void) | undefined;
 }) {
   const { prose: text, comments } = useMemo(() => splitComments(raw), [raw]);
   const images = useMemo(() => content.filter((b) => b.type === "image"), [content]);
@@ -403,17 +401,19 @@ const UserPrompt = memo(function UserPrompt({
   const longWord = useMemo(() => hasLongWord(text), [text]);
   const compact = useTranscript().density === "compact";
   const box = useRef<HTMLDivElement>(null);
-  const root = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
+  // The bubble's shape: one line of prose and nothing else is a pill; anything taller keeps the large radius.
+  const [oneLine, setOneLine] = useState(false);
   const id = useId();
-  // A2: on touch the rewind action opens under the bubble when the bubble is tapped, not under every prompt at all times.
-  const revealed = useTapReveal(root);
 
   useLayoutEffect(() => {
     const el = box.current;
     if (!el || expanded) return;
-    const check = () => setOverflows(el.scrollHeight > el.clientHeight + 1);
+    const check = () => {
+      setOverflows(el.scrollHeight > el.clientHeight + 1);
+      setOneLine(el.clientHeight <= parseFloat(getComputedStyle(el).lineHeight) * 1.5);
+    };
     check();
     const ro = new ResizeObserver(check);
     ro.observe(el);
@@ -421,20 +421,20 @@ const UserPrompt = memo(function UserPrompt({
   }, [text, expanded]);
 
   return (
-    <div ref={root} data-prompt data-revealed={revealed || undefined} className="group/prompt relative">
+    <div data-prompt className="relative">
+      {/* The bubble's meta (who sent it, that it landed mid-reply) sits above it, outside the fill, in the meta tone. */}
+      {external ? <div className="mb-1 text-xs text-fg-3">From {author}</div> : <span className="sr-only">{author}: </span>}
+      {steered && (
+        <div data-steered className="mb-1 text-xs text-fg-3">
+          Sent while Octo was working
+        </div>
+      )}
       <div
         data-bubble
-        className={cn(
-          "rounded-md border border-transparent bg-raised text-fg transition-[box-shadow] duration-300",
-          compact ? "p-2 text-sm" : "p-card text-base",
-        )}
+        data-one-line={(oneLine && !external && !steered && images.length === 0 && comments.length === 0) || undefined}
+        // R2 (owner's addition 10): the shape, padding and fill are the request bubble's block in styles.css (`--octo-bubble`).
+        className={cn("border border-transparent transition-[box-shadow] duration-300", compact ? "text-sm" : "text-base")}
       >
-        {external ? <div className="mb-0.5 text-xs text-fg-3">From {author}</div> : <span className="sr-only">{author}: </span>}
-        {steered && (
-          <div data-steered className="mb-0.5 text-xs text-fg-3">
-            Sent while Octo was working
-          </div>
-        )}
         {text && (
           <div ref={box} id={id} data-long-word={longWord || undefined} className={cn("wrap-anywhere whitespace-pre-wrap", !expanded && "line-clamp-8")}>
             {text}
@@ -458,23 +458,6 @@ const UserPrompt = memo(function UserPrompt({
           </div>
         )}
       </div>
-      {onRewind && (
-        // On the bubble's lower edge, in the gap to the answer: it takes no room and shows on hover or focus. On touch (no hover)
-        // it opens under the bubble, at its right, when the bubble is tapped (`data-revealed`) or the action has keyboard focus;
-        // folded, it keeps no height and stays in the tab order and the accessibility tree (styles.css, `[data-rewind]`).
-        <div data-rewind>
-          <div>
-            <Button
-              variant="secondary"
-              size="xs"
-              onClick={() => onRewind(messageId)}
-              className="absolute right-3 -bottom-3 z-10 rounded-full bg-overlay opacity-0 shadow-float group-focus-within/prompt:opacity-100 group-hover/prompt:opacity-100 pointer-coarse:relative pointer-coarse:right-auto pointer-coarse:bottom-auto pointer-coarse:ml-auto pointer-coarse:flex pointer-coarse:w-fit pointer-coarse:border-transparent pointer-coarse:bg-transparent pointer-coarse:text-fg-3 pointer-coarse:opacity-100 pointer-coarse:shadow-none"
-            >
-              Rewind to here
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 });
@@ -501,6 +484,11 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   footer?: boolean;
   /** "model · in / out" of the newest finished turn (decision 86 d). */
   usage?: string | null;
+  /** R2 checkpoints: the request after this reply, which "Restore to here" cuts; none for the newest reply. */
+  restoreTo?: number | undefined;
+  /** Octo is working: the restore is refused (409), so the action says so instead of opening the dialog. */
+  restoreBusy?: boolean;
+  onRestore?: ((messageId: number) => void) | undefined;
 }) {
   const { turn, live, streaming } = props;
   const ctx = useTranscript();
@@ -587,7 +575,18 @@ const AssistantTurn = memo(function AssistantTurn(props: {
         </Suspense>
       )}
       {props.footer && !live && reply && turn.lastAt && (
-        <TurnFooter reply={reply} at={turn.lastAt} now={props.now} usage={props.usage ?? null} compact={compact} />
+        <TurnFooter
+          reply={reply}
+          at={turn.lastAt}
+          now={props.now}
+          usage={props.usage ?? null}
+          compact={compact}
+          restore={
+            props.restoreTo !== undefined && props.onRestore && turn.prompt
+              ? { to: props.restoreTo, name: restoreName(promptText(turn.prompt)), busy: props.restoreBusy === true, run: props.onRestore }
+              : null
+          }
+        />
       )}
     </article>
   );
@@ -649,7 +648,21 @@ const ENDINGS_WAIT_MS = 800;
  * (the time never breaks as "3d / ago"); the usage gives way first (ellipsis from the right). `compact` (a narrow pane) keeps
  * the time only and puts the usage in its tooltip.
  */
-function TurnFooter({ reply, at, now, usage, compact }: { reply: string; at: string; now: number; usage: string | null; compact: boolean }) {
+function TurnFooter({
+  reply,
+  at,
+  now,
+  usage,
+  compact,
+  restore,
+}: {
+  reply: string;
+  at: string;
+  now: number;
+  usage: string | null;
+  compact: boolean;
+  restore: { to: number; name: string; busy: boolean; run(messageId: number): void } | null;
+}) {
   const [copied, copy] = useCopy();
   const when = new Date(at).toLocaleString();
   return (
@@ -663,6 +676,24 @@ function TurnFooter({ reply, at, now, usage, compact }: { reply: string; at: str
         {timeAgo(at, now)}
       </time>
       {usage && !compact && <span className="min-w-0 truncate whitespace-nowrap tabular-nums">· {usage}</span>}
+      {restore && (
+        // R2 checkpoints: at the reply's right, its text on the "Open changes" edge above (-mr-2). Always shown under a reply
+        // that changed files, on hover or focus under one that did not (styles.css, `[data-restore]`). While Octo works the
+        // harness refuses a restore: the action stays and says why instead of opening the dialog.
+        <Button
+          variant="quiet"
+          size="xs"
+          icon={History}
+          data-restore
+          aria-label={restore.name}
+          aria-disabled={restore.busy || undefined}
+          title={restore.busy ? "Octo is still working… Stop it or wait, then restore." : "Restore the session to the end of this reply"}
+          onClick={() => !restore.busy && restore.run(restore.to)}
+          className="-mr-2 ml-auto shrink-0 text-fg-3 hover:text-fg aria-disabled:opacity-60"
+        >
+          {RESTORE_LABEL}
+        </Button>
+      )}
     </div>
   );
 }

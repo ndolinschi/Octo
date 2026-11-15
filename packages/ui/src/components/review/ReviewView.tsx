@@ -1,3 +1,4 @@
+import { MessageSquare } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Review, ReviewComment, ReviewFinding, ReviewGroup, ReviewThread } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
@@ -12,6 +13,7 @@ import { reviewDiffLayout } from "../../lib/review/diffLayout";
 import { repliesByThread, stepThread, threadRows, threadsOfFile, unresolvedTotal, type ThreadRow } from "../../lib/review/threads";
 import { Button } from "../primitives/Button";
 import { Checkbox } from "../primitives/Checkbox";
+import { Glyph } from "../primitives/Glyph";
 import { SkeletonRows } from "../primitives/InfoList";
 import { Presence } from "../primitives/Presence";
 import { CheckoutBanner, CheckoutMenu, checkoutItems, DirtyDialog } from "./Checkout";
@@ -342,6 +344,15 @@ function Ready(props: {
   };
   const renderZone = (key: string) => {
     const t = threadList.find((x) => x.id === key);
+    // R2: a thread unfolded in the list above the diff is not drawn twice: its place in the code keeps one quiet line that says
+    // where it is (the zone measures itself, so the code closes up). Folding it in the list brings the card back here.
+    if (t && threadsOpen && currentThread === t.id)
+      return (
+        <div data-thread-above className="flex h-ctl-sm max-w-thread items-center gap-1.5 pr-4 font-sans text-xs text-fg-3">
+          <Glyph icon={MessageSquare} size={14} />
+          Thread open above
+        </div>
+      );
     return t ? (
       // R4: the card starts on the code's left edge and keeps a reading width; no side inset of its own.
       <div className="max-w-thread py-2 pr-4 font-sans">

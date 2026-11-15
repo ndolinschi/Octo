@@ -29,6 +29,25 @@ function refreshFails(): boolean {
   return knob("refresh") === "fail";
 }
 const refreshFindsNothing = () => knob("refresh") === "none";
+/** `?router=on`: a detected, switched-on Octo router (the default demo has none). */
+const routerOn = () => knob("router") === "on";
+const ROUTER_URL = "http://127.0.0.1:8791";
+const ROUTER_PROVIDER: Provider = {
+  id: "router",
+  kind: "router",
+  label: "Octo router",
+  state: "ready",
+  reason: "",
+  install_hint: "",
+  login_hint: "",
+  models: [
+    { id: "claude-haiku-5-5", label: "Haiku 5.5", source: "catalogue" },
+    { id: "claude-sonnet-5-5", label: "Sonnet 5.5", source: "catalogue" },
+    { id: "claude-opus-5-5", label: "Opus 5.5", source: "catalogue" },
+  ],
+  default_model: "claude-sonnet-5-5",
+  flat_rate: false,
+};
 
 const CLAUDE_LOGIN = "Log in once: run `claude` and type /login (or run `claude auth login`).";
 const CLAUDE_INSTALL = "Install Node.js and the Claude Code CLI: `npm install -g @anthropic-ai/claude-code`";
@@ -140,7 +159,7 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
 } {
   const none = options.none ?? noneFromUrl();
   // The file: id → value. Secrets are kept only to know they are set; they are never returned.
-  const file = new Map<string, string | boolean | string[]>([["HARNESS_ACP_TRACE", false]]);
+  const file = new Map<string, string | boolean | string[]>([["HARNESS_ACP_TRACE", false], ...(routerOn() ? ([["OCTO_ROUTER_ENABLED", true]] as const) : [])]);
   const restart = new Set<string>();
   /** Per agent: names typed by the user (`custom-models`), and whether a refresh has found its models. */
   const custom = new Map<string, string[]>();
@@ -170,7 +189,7 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
 
   const providers = (): ProvidersResponse => {
     const apiReady = file.has("ANTHROPIC_API_KEY");
-    // The router is listed only while one is detected; the demo never has one.
+    // The router is listed only while one is detected (`?router=on`, below).
     const list: Provider[] = owner
       ? ownerProviders(apiReady)
       : [
@@ -244,6 +263,9 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
             flat_rate: true,
           },
         ];
+    // R2: `?router=on` — an Octo router is detected (and switched on in the settings), so Settings → Providers lists it and
+    // its detail can be seen; with `?providers=owner` too.
+    if (routerOn()) list.unshift(ROUTER_PROVIDER);
     const withCustom = (p: Provider): Provider => {
       const found =
         !refreshed.has(p.id) || refreshFindsNothing() ? [] : p.id === "codex" ? CODEX_FOUND : p.id === "claude-code" && claudeEmpty ? CLAUDE_ALIASES : [];
@@ -369,7 +391,9 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
         path_for_children: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
         env_set: [...file.keys()].filter((k) => k !== "HARNESS_ACP_TRACE"),
         builtin_loop: file.has("ANTHROPIC_API_KEY") ? { available: true } : { available: false, reason: "No API key and no router" },
-        router: { base_url: "", detected: false, capabilities: [] },
+        router: routerOn()
+          ? { base_url: ROUTER_URL, detected: true, capabilities: ["autoroute", "route_hints", "result_headers", "budget_key"] }
+          : { base_url: "", detected: false, capabilities: [] },
         agents: p.providers
           .filter((x) => x.kind === "agent")
           .map((a) => ({

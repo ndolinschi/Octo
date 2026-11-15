@@ -55,12 +55,12 @@ export function sessionGlyph(s: Pick<ProjectSession, "state" | "needs_you">): Gl
     queued: "queued",
     failed: "failed",
     idle: "idle",
-    stopped: "idle",
+    stopped: "stopped",
   };
   return by[s.state];
 }
 
-const RANK: Record<GlyphState, number> = { needs: 5, failed: 4, working: 3, queued: 2, unseen: 1, idle: 0 };
+const RANK: Record<GlyphState, number> = { needs: 5, failed: 4, working: 3, queued: 2, unseen: 1, stopped: 0, idle: 0 };
 
 /**
  * A project's glyph from its sessions: needs you > failed > working > queued > idle (unseen is the caller's, from the

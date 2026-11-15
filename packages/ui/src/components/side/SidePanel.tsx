@@ -1,8 +1,10 @@
 import { BridgeError, type SideMessage } from "@octo/agent-client";
 import { useQuietOpen } from "../../lib/quietFocus";
 import { ArrowUp, Pin, Square } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
+import { PANEL_COLUMN } from "../../lib/panelColumn";
 import { useStickToBottom } from "../../lib/hooks";
 import { settingsHref } from "../../lib/route";
 import { useApp } from "../../state/app";
@@ -11,7 +13,6 @@ import { toolTab } from "../../state/workspace/layout";
 import { SIDE_PINNED } from "../../state/workspace/tabMemory";
 import { useTabMemory } from "../../state/workspace/useTabMemory";
 import { Button } from "../primitives/Button";
-import { Card } from "../primitives/Card";
 import { FloatRoom } from "../primitives/floatRoom";
 import { IconButton } from "../primitives/IconButton";
 import { Notice } from "../primitives/Notice";
@@ -125,7 +126,7 @@ export function SidePanel() {
   const quiet = useRef<HTMLDivElement>(null);
   useQuietOpen(quiet);
   return (
-    <div ref={quiet} data-side className="h-full min-h-0">
+    <div ref={quiet} data-side className={cn("h-full min-h-0", PANEL_COLUMN)}>
       <Panel
         name="side"
         title="Side question"
@@ -192,11 +193,7 @@ export function SidePanel() {
               )}
               {list.map((ex) => (
                 <div key={ex.id} data-side-exchange className="flex flex-col gap-2">
-                  {ex.question && (
-                    <Card padding="md">
-                      <p className="text-sm wrap-anywhere text-fg">{ex.question.text}</p>
-                    </Card>
-                  )}
+                  {ex.question && <SideQuestion text={ex.question.text} />}
                   {ex.answer ? (
                     <Markdown text={ex.answer.text} className="octo-prose octo-prose-sm" />
                   ) : pending?.side_id === ex.id ? (
@@ -303,6 +300,32 @@ function Answering({ pending }: { pending: NonNullable<ReturnType<typeof useProj
           {label}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * R2 (owner's addition 11 c): the question in the request bubble's form (styles.css, `[data-prompt] > [data-bubble]`):
+ * right-aligned, as wide as its text, a pill on one line.
+ */
+function SideQuestion({ text }: { text: string }) {
+  const box = useRef<HTMLParagraphElement>(null);
+  const [oneLine, setOneLine] = useState(false);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const check = () => setOneLine(el.clientHeight <= parseFloat(getComputedStyle(el).lineHeight) * 1.5);
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text]);
+  return (
+    <div data-prompt className="relative">
+      <div data-bubble data-one-line={oneLine || undefined} className="border border-transparent text-sm">
+        <p ref={box} className="wrap-anywhere whitespace-pre-wrap">
+          {text}
+        </p>
+      </div>
     </div>
   );
 }

@@ -6,7 +6,7 @@ export type UsageSegment = "model" | "agent" | "day" | "limits";
 export type UsagePeriod = "session" | "today" | "7d" | "30d" | "all";
 export type UsageView = { segment: UsageSegment; period: UsagePeriod; scope: "project" | "all"; roles: boolean };
 export const DEFAULT_USAGE_VIEW: UsageView = { segment: "model", period: "all", scope: "project", roles: false };
-/** "This session" reads usage since the window opened: the harness has no per-session report. */
+/** "Since app start" reads usage since the window opened: the harness has no per-session report. */
 export const SESSION_STARTED_AT = Date.now();
 
 const SEGMENTS: readonly unknown[] = ["model", "agent", "day", "limits"];
@@ -18,7 +18,8 @@ export function isUsageView(v: unknown): v is UsageView {
   return SEGMENTS.includes(segment) && PERIODS.includes(period) && (scope === "project" || scope === "all") && typeof roles === "boolean";
 }
 
-const PERIOD_TEXT: Record<UsagePeriod, string> = { session: "This session", today: "Today", "7d": "7 days", "30d": "30 days", all: "All time" };
+// R2: "Since app start", the same words as the period menu (`USAGE_PERIODS`); "This session" read as the chat's session.
+const PERIOD_TEXT: Record<UsagePeriod, string> = { session: "Since app start", today: "Today", "7d": "7 days", "30d": "30 days", all: "All time" };
 
 /** The Usage range / scope menu button's text (decision 33): "30 days", or "30 days, all projects". */
 export function usageRangeText(view: Pick<UsageView, "period" | "scope">): string {

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { agentLabelOf, allPlainStrings, commandOf, JARGON, plainError, stripJargon } from "./plain";
+import { INSIDE_WORDS } from "./words";
+
+test("the inside words: prose is caught, commands, paths and the version label are not", () => {
+  for (const s of ["Octo's harness stopped.", "The bridge is offline.", "the orchestrator", "Open the worktree."]) assert.match(s, INSIDE_WORDS, s);
+  for (const s of ["Run `harness doctor`.", "apps/harness/docs", "Harness version 1.2", "HARNESS_MODEL_FAST", "go run ./cmd/harness serve"])
+    assert.doesNotMatch(s, INSIDE_WORDS, s);
+});
 
 const RAW = [
   "ACP agent GitHub Copilot could not start: not logged in (exit status 1). Run `copilot login` in a terminal, then reopen this list.",
@@ -16,11 +23,15 @@ const RAW = [
 ];
 
 test("no produced string contains protocol vocabulary", () => {
-  for (const s of allPlainStrings()) assert.doesNotMatch(s, JARGON, s);
+  for (const s of allPlainStrings()) {
+    assert.doesNotMatch(s, JARGON, s);
+    assert.doesNotMatch(s, INSIDE_WORDS, s);
+  }
   for (const raw of RAW) {
     for (const agent of [undefined, "Claude Code"]) {
       const p = plainError(raw, { agent });
       assert.doesNotMatch(p.sentence, JARGON, `${raw} -> ${p.sentence}`);
+      assert.doesNotMatch(p.sentence, INSIDE_WORDS, `${raw} -> ${p.sentence}`);
       assert.match(p.sentence, /[.!?]$/);
       if (p.next?.kind === "command") assert.ok(p.next.command.length > 0);
     }

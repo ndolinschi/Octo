@@ -74,7 +74,7 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
   // the rows sit in the frame's list inset.
   return (
     <section aria-label="Local branches" className="flex h-full min-h-0 flex-col">
-      <div data-panel-filters className="box-content flex h-9 max-w-home shrink-0 items-center gap-2 px-pane touch:h-ctl-lg">
+      <div data-panel-filters className="box-content flex h-9 shrink-0 items-center gap-2 px-pane touch:h-ctl-lg">
         <span className="px-2 text-xs font-medium text-fg-3">{rows.length === 1 && !api.branches ? "Current branch" : "Branches"}</span>
         {api.branches && (
           <span className="ml-auto flex min-w-0 items-center">
@@ -91,7 +91,7 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
         <PanelEmpty title="No local branches">This folder has no branch to review. Create one, or switch to Pull requests.</PanelEmpty>
       ) : (
         <PanelBody>
-          <div ref={list} className="flex max-w-home flex-col">
+          <div ref={list} className="flex flex-col">
             {rows.map((b) => (
               <BranchRow
                 key={b.name}

@@ -16,7 +16,7 @@ const OCTO: SlashCommands["octo"] = [
   },
   { name: "mode", description: "Choose Agent, Ask or Plan for the next message", args: "ask|plan|agent", available: true, endpoint: "ui:mode" },
   { name: "model", description: "Choose the model", available: true, endpoint: "ui:model" },
-  { name: "rewind", description: "Cut back to your last request and restore files", available: true, endpoint: "POST /v1/projects/{id}/rewind" },
+  { name: "rewind", description: "Restore the session to an earlier request", available: true, endpoint: "POST /v1/projects/{id}/rewind" },
   { name: "export", description: "Download the conversation as Markdown", available: true, endpoint: "GET /v1/projects/{id}/export" },
   {
     name: "review",

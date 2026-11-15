@@ -97,7 +97,7 @@ test("glyphs: waiting needs you, stopped rests", () => {
   assert.equal(glyphOf("working"), "working");
   assert.equal(glyphOf("waiting"), "needs");
   assert.equal(glyphOf("failed"), "failed");
-  assert.equal(glyphOf("stopped"), "idle");
+  assert.equal(glyphOf("stopped"), "stopped");
 });
 
 test("row: day, exchanges and model on the second line; 'default' or the last activity at the right", () => {

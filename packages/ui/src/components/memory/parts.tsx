@@ -1,6 +1,7 @@
 import "./memory.css";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { errorMessage } from "../../lib/format";
+import { DETAIL_COLUMN } from "../../lib/panelColumn";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { PanelEmpty } from "../primitives/Panel";
@@ -28,8 +29,8 @@ export function MemoryError({ message, onRetry }: { message: string; onRetry?: (
   );
 }
 
-/** The reading width of a detail pane: prose and rows stop growing at 48rem, so a maximised pane does not make 150-character lines. */
-export const DETAIL_MAX = "max-w-3xl";
+/** The reading width of a detail pane (R2: the one detail column of every tab, `DETAIL_COLUMN`). */
+export const DETAIL_MAX = DETAIL_COLUMN;
 
 /**
  * Rows with a "⋯" reserve its width at the right (the row's `trailing` slot); rows without actions reserve the same, so

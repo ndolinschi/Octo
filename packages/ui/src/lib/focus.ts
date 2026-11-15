@@ -1,3 +1,5 @@
+import { quietFocus } from "./quietFocus";
+
 /**
  * Moves focus to an element that may not exist yet (a tab that is about to mount, a composer behind a
  * closing dialog): looks for it every frame until `timeout`. With `onlyIfLost`, it only acts while focus
@@ -11,9 +13,10 @@ export function focusSoon(
     onlyIfLost?: boolean;
     /** Focus here also counts as lost (a placeholder holder). */ holder?: () => Element | null;
     /** Stop looking (checked every frame): the reason to move focus is gone. */ abort?: () => boolean;
+    /** R2: the app moves this focus by itself: no ring until the person's first key there (`quietFocus`). */ quiet?: boolean;
   } = {},
 ): void {
-  const { timeout = 1000, delay = 0, onlyIfLost = false, holder, abort } = options;
+  const { timeout = 1000, delay = 0, onlyIfLost = false, holder, abort, quiet = false } = options;
   const until = performance.now() + delay + timeout;
   // Lost: nothing focused, or the focused element was removed or hidden (a tab panel that just went away).
   const lost = () => {
@@ -35,7 +38,8 @@ export function focusSoon(
     }
     const el = find();
     if (el && el.isConnected && el.offsetParent !== null) {
-      el.focus({ preventScroll: true });
+      if (quiet) quietFocus(el);
+      else el.focus({ preventScroll: true });
       return;
     }
     if (performance.now() < until) requestAnimationFrame(step);
@@ -103,6 +107,7 @@ export function focusSurfaceSoon(root: () => HTMLElement | null, wait = 1000): v
     },
     {
       timeout: wait + 1500,
+      quiet: true,
       // The person moved focus somewhere else meanwhile (opened a menu, clicked a field): a panel whose content arrives
       // late must not take it back — that closed the tab picker a moment after it opened.
       abort: () => {

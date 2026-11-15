@@ -70,7 +70,8 @@ export function Panel(props: {
         {props.children}
       </div>
       {props.footer !== undefined && (
-        <p data-panel-footer className="line-clamp-2 shrink-0 px-4 py-1 text-xs text-fg-3">
+        // R2: a hairline over the footer, so the list's last row ends on an edge instead of under a loose caption.
+        <p data-panel-footer className="line-clamp-2 shrink-0 border-t border-line px-4 py-1.5 text-xs text-fg-3">
           {props.footer}
         </p>
       )}

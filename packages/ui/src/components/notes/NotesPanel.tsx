@@ -138,7 +138,8 @@ export function NotesPanel() {
               accept=".md,.markdown,.txt,text/markdown,text/plain"
               onFiles={(files) => files[0] && void importFile(files[0])}
             />
-            <Button variant="secondary" size="sm" icon={Plus} onClick={() => setMode({ kind: "new" })} disabled={mode.kind === "new"}>
+            {/* R2: quiet, so its label ends on the rows' text edge (a framed button added a third right edge to the panel). */}
+            <Button variant="quiet" size="sm" icon={Plus} onClick={() => setMode({ kind: "new" })} disabled={mode.kind === "new"}>
               New note
             </Button>
           </>

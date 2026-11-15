@@ -5,10 +5,12 @@ import type { AgentStatus } from "@octo/agent-client";
  * by line style and motion first, colour second (so it survives colour blindness and forced colours):
  * working = faint ring + a turning 90° arc · queued = dashed ring (6 dashes) · needs = ring + an exclamation mark (pulsing) ·
  * unseen = ring + filled disc · idle = a small quiet dot with no ring (polish step 2, F2: a thin ring read as a radio button;
- * revises decision 29's idle ring) · failed = ring + a short diagonal bar. Pure geometry here; the SVG is
+ * revises decision 29's idle ring) · failed = ring + a short diagonal bar · stopped = ring + a small filled square (R2,
+ * design study B(d): the media "stop"; it was idle's dot, which read lighter than ✓, ⊘ and ! beside it, and as idle). Pure
+ * geometry here; the SVG is
  * `primitives/StateGlyph.tsx`.
  */
-export type GlyphState = "working" | "queued" | "needs" | "unseen" | "idle" | "failed";
+export type GlyphState = "working" | "queued" | "needs" | "unseen" | "idle" | "failed" | "stopped";
 export type GlyphSize = 12 | 14;
 
 export const GLYPH_STROKE = 1.5;
@@ -22,6 +24,7 @@ export const GLYPH_TONE: Record<GlyphState, "fg" | "fg-3" | "warn" | "accent" | 
   unseen: "accent",
   idle: "fg-3",
   failed: "err",
+  stopped: "fg-3",
 };
 
 const LABEL: Record<GlyphState, string> = {
@@ -31,6 +34,7 @@ const LABEL: Record<GlyphState, string> = {
   unseen: "New activity",
   idle: "Idle",
   failed: "Failed",
+  stopped: "Stopped",
 };
 
 export function glyphLabel(state: GlyphState): string {
@@ -62,6 +66,8 @@ export type Geometry = {
   alert: { x: number; y1: number; y2: number; cy: number; dr: number } | null;
   /** The failed state's bar. */
   bar: { x1: number; y1: number; x2: number; y2: number } | null;
+  /** The stopped state's filled square, centred (side and corner radius). */
+  square: { x: number; side: number; rx: number } | null;
 };
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
@@ -89,6 +95,12 @@ export function arcPath(c: number, r: number, deg = 90): string {
   return `M${round(c)} ${round(c - r)}A${r} ${r} 0 ${deg > 180 ? 1 : 0} 1 ${x} ${y}`;
 }
 
+/** The stopped square: about the inner diameter's half, on whole pixels so it stays crisp (4px at 14, 3px at 12). */
+function stopSquare(c: number, inner: number): { x: number; side: number; rx: number } {
+  const side = Math.round(inner * 0.94);
+  return { x: round(c - side / 2), side, rx: 0.75 };
+}
+
 export function glyphGeometry(state: GlyphState, size: GlyphSize = 12): Geometry {
   const c = size / 2;
   const r = ringRadius(size);
@@ -110,13 +122,15 @@ export function glyphGeometry(state: GlyphState, size: GlyphSize = 12): Geometry
         ? { x: round(c), y1: round(c - inner * 0.62), y2: round(c + inner * 0.12), cy: round(c + inner * 0.55), dr: round(Math.max(0.6, inner * 0.2)) }
         : null,
     bar: state === "failed" ? { x1: round(c - d), y1: round(c + d), x2: round(c + d), y2: round(c - d) } : null,
+    square: state === "stopped" ? stopSquare(c, inner) : null,
   };
 }
 
-/** A sub-agent's ring: running → working, failed → failed, everything finished → idle (or unseen when asked). */
+/** A sub-agent's ring: running → working, failed → failed, stopped → stopped (R2), everything finished → idle (or unseen when asked). */
 export function agentGlyph(status: AgentStatus, unseen = false): GlyphState {
   if (status === "running") return "working";
   if (status === "failed") return "failed";
+  if (status === "cancelled") return "stopped";
   return unseen ? "unseen" : "idle";
 }
 

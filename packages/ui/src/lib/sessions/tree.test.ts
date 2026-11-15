@@ -62,7 +62,7 @@ test("the project's glyph sums up its sessions: needs you > failed > working > q
 });
 
 test("a session's glyph and meta", () => {
-  assert.equal(sessionGlyph(s("a", 1, { state: "stopped" })), "idle");
+  assert.equal(sessionGlyph(s("a", 1, { state: "stopped" })), "stopped");
   assert.equal(sessionGlyph(s("a", 1, { needs_you: true })), "needs");
   assert.equal(sessionMeta(s("a", 1, { state: "working" }), NOW), null);
   assert.equal(sessionMeta(s("a", 1, { state: "queued" }), NOW), "queued");
