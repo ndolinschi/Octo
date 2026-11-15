@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -43,16 +42,13 @@ func TestUnsupportedAndExperimentalAgents(t *testing.T) {
 		}
 	}
 
-	var er apiForceError
-	e.createProject(t, map[string]string{"orchestrator": "acp:nope"}, http.StatusUnprocessableEntity, &er)
-	if er.Error.Code != "model_unavailable" || er.Error.Provider != "nope" || er.Error.Reason != "Nope does not work with Octo yet." || er.Error.CanForce == nil || *er.Error.CanForce {
-		t.Fatalf("refusal = %+v", er)
+	// Creating a project on an unsupported agent is not refused either: it is stored and listed as unusable.
+	var p struct {
+		Unusable []struct{ Provider, Reason string } `json:"models_unavailable"`
 	}
-	body := map[string]any{"name": "p", "folders": []map[string]string{{"path": e.dir}},
-		"models": map[string]string{"orchestrator": "acp:nope/x"}, "force_unverified": true}
-	e.into(t, "POST", "/v1/projects", body, http.StatusUnprocessableEntity, &er)
-	if !strings.Contains(er.Error.Reason, "does not work") {
-		t.Fatalf("forced refusal = %+v", er)
+	e.createProject(t, map[string]string{"orchestrator": "acp:nope"}, http.StatusCreated, &p)
+	if len(p.Unusable) != 1 || p.Unusable[0].Provider != "nope" || p.Unusable[0].Reason != "Nope does not work with Octo yet." {
+		t.Fatalf("create = %+v", p)
 	}
 	if status, _ := e.do(t, "POST", "/v1/providers/nope/recheck", nil); status != http.StatusOK {
 		t.Fatalf("recheck status = %d", status)

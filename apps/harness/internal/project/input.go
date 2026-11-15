@@ -27,8 +27,9 @@ type Input struct {
 	Instructions *string        `json:"instructions"`
 	Folders      *[]FolderInput `json:"folders"`
 	Models       *config.Models `json:"models"`
-	// ForceUnverified accepts a model of an agent the login probe says is logged
-	// out (the probe is advisory); a model that is not installed is still refused.
+	// ForceUnverified is accepted and ignored: a project is never refused for a
+	// model whose agent is not ready, so there is nothing to force. Kept so an
+	// older client's body still decodes.
 	ForceUnverified bool `json:"force_unverified"`
 	MaxDepth        *int `json:"max_depth"`
 	// BudgetUSD is the project's spend cap; JSON null removes it.

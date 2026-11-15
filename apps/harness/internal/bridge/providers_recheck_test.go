@@ -22,15 +22,8 @@ type recheckEntry struct {
 	ID, State, Login string
 }
 
-type apiForceError struct {
-	Error struct {
-		Code, Message, Provider, Reason string
-		CanForce                        *bool `json:"can_force"`
-	} `json:"error"`
-}
-
-// Decision 2026-11-12: the login probe is advisory. Rule 3 (recheck), rule 4
-// (can_force and force_unverified, not_installed never forced).
+// Decision 2026-11-12: the login probe is advisory. Rule 3 (recheck); creating
+// a project is never refused for it (2026-11-15).
 func TestRecheckAndUseAnywayOverHTTP(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses sh")
@@ -40,35 +33,25 @@ func TestRecheckAndUseAnywayOverHTTP(t *testing.T) {
 		agentManifest("ghost", map[string]any{"command": "definitely-not-installed-xyz", "install": "npm i -g ghost"}))
 	waitUntil(t, "the probe", func() bool { return e.providers(t).entry(t, "grok").State == "not_logged_in" })
 
-	// A refusal for a login says it can be forced; one for a missing command cannot.
-	var er apiForceError
-	e.createProject(t, map[string]string{"orchestrator": "acp:grok"}, http.StatusUnprocessableEntity, &er)
-	if er.Error.Code != "model_unavailable" || er.Error.CanForce == nil || !*er.Error.CanForce || er.Error.Provider != "grok" {
-		t.Fatalf("grok refusal = %+v", er)
-	}
+	// A model of a logged-out agent is stored as chosen (no refusal, nothing to force) and listed as unusable.
 	body := func(model string) map[string]any {
 		return map[string]any{"name": "p", "folders": []map[string]string{{"path": e.dir}},
-			"models": map[string]string{"orchestrator": model}, "force_unverified": true}
+			"models": map[string]string{"orchestrator": model}}
 	}
-	// An agent that is not installed is refused as unknown to the project (400), force or not.
+	// An agent that is not installed is refused as unknown to the project (400).
 	e.wantError(t, "POST", "/v1/projects", body("acp:ghost"), http.StatusBadRequest, "invalid_request")
 
-	// Use anyway: accepted and stored; reading still lists it as unusable.
 	var p struct {
 		ID       string
 		Models   struct{ Orchestrator string }
 		Unusable []struct{ Field, Model string } `json:"models_unavailable"`
 	}
 	e.into(t, "POST", "/v1/projects", body("acp:grok"), http.StatusCreated, &p)
-	if p.Models.Orchestrator != "acp:grok" {
-		t.Fatalf("stored = %q", p.Models.Orchestrator)
+	if p.Models.Orchestrator != "acp:grok" || len(p.Unusable) != 1 || p.Unusable[0].Field != "orchestrator" {
+		t.Fatalf("stored = %+v", p)
 	}
-	// A model switch on an existing project takes the same path.
-	e.into(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"models": map[string]string{"deep": "acp:grok"}},
-		http.StatusUnprocessableEntity, &er)
-	if er.Error.CanForce == nil || !*er.Error.CanForce {
-		t.Fatalf("patch refusal = %+v", er)
-	}
+	// A model switch on an existing project is the same; force_unverified from an older client is ignored.
+	e.into(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"models": map[string]string{"deep": "acp:grok"}}, http.StatusOK, &p)
 	e.into(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"models": map[string]string{"deep": "acp:grok"}, "force_unverified": true},
 		http.StatusOK, &p)
 	if p.Models.Orchestrator != "acp:grok" {

@@ -21,7 +21,9 @@ import { Field } from "../primitives/Field";
 import { FieldRow } from "../primitives/FieldRow";
 import { Notice } from "../primitives/Notice";
 import { TextArea, TextField } from "../primitives/TextField";
+import { notReady } from "../../lib/errors/modelReadiness";
 import { ApprovalRules } from "./ApprovalRules";
+import { ModelNotice } from "./ModelNotice";
 
 type FolderRow = { key: number; path: string };
 
@@ -77,6 +79,13 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
             .map((v) => chipLabel(v, list)),
         ),
       ]
+    : [];
+  const issues = list
+    ? notReady(
+        list,
+        MODEL_FIELDS.map((m) => models[m.key]),
+        editing,
+      )
     : [];
   // B2: a new project starts on models that can run when one is connected (never over a choice the person made).
   const ready = providers.status === "ready" ? providers.list : null;
@@ -350,14 +359,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
           </Button>
           <p className="text-xs text-fg-3">Which models do the work, how many levels of agents may start agents, and an optional budget.</p>
           {advanced && (
-            <div className="mt-3 grid gap-3">
-              {/* The same notice as Settings → Models: said once above the group, not by the tone of each value. */}
-              {providers.status === "ready" && unrunnable.length > 0 && (
-                <Notice tone="warn">
-                  {unrunnable.join(", ")} {unrunnable.length > 1 ? "cannot run: their providers are" : "cannot run: its provider is"} not connected. Connect a
-                  provider in Settings → Providers.
-                </Notice>
-              )}
+            <div id={`${id}-models`} className="mt-3 grid gap-3">
               <p className="text-xs text-fg-3">Fast: quick, cheap work. Balanced: most tasks. Deep: hard problems, highest cost.</p>
               <div className="grid gap-3 @min-[520px]/dialog:grid-cols-2">
                 {MODEL_FIELDS.map((m) => (
@@ -464,24 +466,18 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
           )}
         </div>
         {props.project && <ApprovalRules projectId={props.project.id} />}
-        {/* B2: the same warning as inside the section, so it is not hidden while the section is folded. */}
-        {!advanced && providers.status === "ready" && unrunnable.length > 0 && (
-          <Notice
-            tone="warn"
-            action={
-              <Button variant="link" onClick={() => setAdvanced(true)}>
-                Choose models
-              </Button>
-            }
-          >
-            {unrunnable.join(", ")} can't run yet: {unrunnable.length > 1 ? "their providers are" : "its provider is"} not connected.
-          </Notice>
-        )}
-        {error && (
-          <p role="alert" className="text-sm text-err">
-            {error}
-          </p>
-        )}
+        {/* Decision 2026-11-15: a model that cannot run is said calmly with the way forward; Create stays on. */}
+        {issues.map((issue) => (
+          <ModelNotice
+            key={issue.text}
+            issue={issue}
+            onChoose={() => {
+              setAdvanced(true);
+              requestAnimationFrame(() => document.getElementById(`${id}-models`)?.scrollIntoView({ block: "nearest" }));
+            }}
+          />
+        ))}
+        {error && <Notice tone="error">{error}</Notice>}
       </form>
     </Dialog>
   );

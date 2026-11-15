@@ -205,11 +205,11 @@ done = first("tool.finished", lambda d: d["tool_use_id"] == "call-live")
 assert row < done, (row, done)
 assert any(t == "tool.updated" and d.get("title") == "Read README.md" for t, d in evs), "no tool.updated"
 PY
-  echo "-- a project on a built-in model is refused while nothing can run it; a new project runs its tiers on the one ready agent"
-  code=$(curl -sS -o "$TMP/$name-422.json" -w '%{http_code}' -X POST "$base/v1/projects" -H 'content-type: application/json' \
+  echo "-- a project on a built-in model nothing can run is still created (listed as unusable); a new project runs its tiers on the one ready agent"
+  code=$(curl -sS -o "$TMP/$name-201.json" -w '%{http_code}' -X POST "$base/v1/projects" -H 'content-type: application/json' \
     -d "{\"name\":\"builtin\",\"folders\":[{\"path\":\"$TMP/$name-ws\"}],\"models\":{\"orchestrator\":\"claude-opus-5-5\"}}")
-  [ "$code" = 422 ] || fail "creating a project on an unusable model answered $code, want 422"
-  [ "$(jget 'd["error"]["code"]+"/"+d["error"]["provider"]' <"$TMP/$name-422.json")" = model_unavailable/api ] || fail "422 body: $(cat "$TMP/$name-422.json")"
+  [ "$code" = 201 ] || fail "creating a project on an unusable model answered $code, want 201"
+  [ "$(jget 'd["models"]["orchestrator"]+"/"+d["models_unavailable"][0]["provider"]' <"$TMP/$name-201.json")" = claude-opus-5-5/api ] || fail "201 body: $(cat "$TMP/$name-201.json")"
   [ "$(curl -fsS "$base/v1/providers" | jget 'd["suggested"]["orchestrator"]')" = acp:scripted ] || fail "suggested is not the one ready agent"
   t2=$(ask "$base" "$PID" "[mcp-spawn-builtin] spawn without agent")
   # the project got the suggested models (acp:scripted in every slot), so a tier-based spawn runs on the agent

@@ -40,7 +40,8 @@ func TestServeProvidersFollowTheAPIKeyLive(t *testing.T) {
 	if r := get(); r.Connected != 0 || len(r.Providers) != 1 || r.Providers[0].ID != "api" || r.Providers[0].State != "not_connected" {
 		t.Fatalf("before: %+v", r)
 	}
-	if status, body := create(); status != 409 || !strings.Contains(body, "no_provider") {
+	// A project never waits for a provider: it is created and lists its models as unusable.
+	if status, body := create(); status != 201 || strings.Contains(body, `"models_unavailable":[]`) {
 		t.Fatalf("create without a provider = %d %s", status, body)
 	}
 

@@ -73,8 +73,18 @@ const PLUGINS: Plugin[] = [
   },
 ];
 
+/** `?claude=loggedout` (or `?providers=none`): Claude Code's login probe says no, as in the providers list. */
+const claudeLoggedOut = (): boolean => {
+  if (typeof window === "undefined") return false;
+  const q = new URLSearchParams(window.location.search);
+  return q.get("claude") === "loggedout" || q.get("providers") === "none";
+};
+
 export function demoPlugins(enabled: boolean): Plugin[] {
-  return enabled ? structuredClone(PLUGINS) : [];
+  if (!enabled) return [];
+  const out = structuredClone(PLUGINS);
+  if (claudeLoggedOut()) for (const a of out.flatMap((p) => p.agents)) if (a.id === "claude-code") a.logged_in = false;
+  return out;
 }
 
 export function demoLanguageServers(enabled: boolean): LanguageServerInfo[] {

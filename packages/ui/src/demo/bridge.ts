@@ -64,6 +64,8 @@ function trace(event: string, detail: unknown): void {
 }
 
 /** The harness's built-in tiers (`config.DefaultModels`): new projects plan on the balanced tier. */
+const claudeLoggedOut = (): boolean => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("claude") === "loggedout";
+
 const DEFAULT_MODELS: Models = {
   orchestrator: "claude-sonnet-5-5",
   fast: "claude-haiku-5-5",
@@ -487,7 +489,9 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     updated_at: p.updated_at,
   });
 
-  const { refuse: refuseModels, ...providerMethods } = demoProviders();
+  const { unusable, ...providerMethods } = demoProviders();
+  /** A project as read: the stored models that cannot run now are listed, never refused (as the harness does). */
+  const withIssues = (p: Project): Project => ({ ...clone(p), models_unavailable: unusable(p.models) });
   const remote = createDemoRemote();
   const bridge: Bridge = {
     remoteAccess: () => Promise.resolve(remote),
@@ -507,7 +511,10 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const codex = { value: "acp:codex" as const, id: "codex", label: "Codex", models: [] };
       return {
         pick_folder: true,
-        default_models: { ...DEFAULT_MODELS },
+        // `?claude=loggedout`: the owner's setup, Claude Code the default agent and not logged in.
+        default_models: claudeLoggedOut()
+          ? { ...DEFAULT_MODELS, orchestrator: "acp:claude-code", fast: "acp:claude-code", balanced: "acp:claude-code", deep: "acp:claude-code" }
+          : { ...DEFAULT_MODELS },
         default_max_depth: 3,
         // An Octo router in front of the harness (decision 37), unless the no-key variant is asked for.
         router: !nokey,
@@ -526,17 +533,15 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     createProject: async (input) => {
       await delay();
       if (!input.name.trim()) throw new BridgeError(400, "invalid", "name is required");
-      refuseModels(input.models, input.force_unverified);
       const rec = makeProject(input, Date.now());
       records.set(rec.project.id, rec);
-      return clone(rec.project);
+      return withIssues(rec.project);
     },
-    getProject: async (id) => (await delay(), clone(get(id).project)),
+    getProject: async (id) => (await delay(), withIssues(get(id).project)),
     updateProject: async (id, patch) => {
       await delay();
       const rec = get(id);
       const p = rec.project;
-      refuseModels(patch.models, patch.force_unverified);
       if (patch.name !== undefined) p.name = patch.name;
       if (patch.description !== undefined) p.description = patch.description;
       if (patch.instructions !== undefined) p.instructions = patch.instructions;
@@ -555,8 +560,8 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       if (patch.folders) p.folders = dedupeFolders(patch.folders);
       p.folder_count = p.folders.length;
       p.updated_at = new Date().toISOString();
-      emit(rec, { type: "project.updated", project: clone(p) });
-      return clone(p);
+      emit(rec, { type: "project.updated", project: withIssues(p) });
+      return withIssues(p);
     },
     deleteProject: async (id) => {
       await delay();

@@ -33,7 +33,7 @@ node packages/ui/scripts/ui-tour.mjs --url http://localhost:1420 --out /tmp/tour
 
 Every UI script takes `--browser chromium|webkit` (`scripts/browser.mjs`; WebKit is Playwright's Linux build, not Safari).
 
-Demo knobs: `?demo=one|many|empty`, `?lsp=fail-once|slow|exit`, `?plugins=none`, `?claude=empty`, `?refresh=fail|none`, `?providers=none|owner` (the owner's live set of twelve), `?router=on`, `?remote=on|missing`. Without `?demo` the app uses the
+Demo knobs: `?demo=one|many|empty`, `?lsp=fail-once|slow|exit`, `?plugins=none`, `?claude=empty|loggedout`, `?refresh=fail|none`, `?providers=none|owner` (the owner's live set of twelve), `?router=on`, `?remote=on|missing`. Without `?demo` the app uses the
 harness at `VITE_HARNESS_BRIDGE_URL` (default `http://127.0.0.1:8790`).
 
 ## Rules that are easy to break

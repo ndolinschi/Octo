@@ -18,7 +18,7 @@ All five are additive: existing fields stay. Where a route used to return techni
 
 | Surface | Fields |
 | --- | --- |
-| HTTP error body `{"error": {...}}` (every route) | `code`, `message`, and when set `hint`, `command`, `action`, `details`. `model_unavailable` also `provider`, `reason`, `can_force`. `rewind_conflict`: `details` stays the report object (machine data). |
+| HTTP error body `{"error": {...}}` (every route) | `code`, `message`, and when set `hint`, `command`, `action`, `details`. `model_unavailable` (now only sent by the retired checks of older builds) also `provider`, `reason`, `can_force`. `rewind_conflict`: `details` stays the report object (machine data). |
 | `turn.finished` | `error` (the plain message; for a completed turn with a notice `warning: <message>`), `hint`, `command`, `action`, `details`; a notice also as `notice: {message, hint, command, action, details}` |
 | `project.attention` | `error` (plain message) with `hint`, `command`, `action`, `details` |
 | `side.error` | `error` (plain message), `code`, `hint`, `command`, `action`, `details` |

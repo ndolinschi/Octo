@@ -274,8 +274,8 @@ function Shell() {
   };
   const newProject = () => {
     setDrawerOpen(false);
-    if (noProvider) navigate(null);
-    else setCreating(true);
+    // Decision 2026-11-15: a project is a folder and settings; it is never held back for a provider (the dialog says what is not ready).
+    setCreating(true);
   };
   const openSettings = (section = "general") => {
     setDrawerOpen(false);

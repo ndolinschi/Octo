@@ -48,17 +48,10 @@ States: `ready`, `not_connected` (API, router), `not_supported` (an agent whose 
 
 A probe is a guess made earlier by another process; the agent's own session is the truth.
 
-1. **Fresh before refusing.** Before a request is refused for `not_logged_in` (project create or patch, model switch), the agent's probe is re-run synchronously, at most once per 5 s per agent (`plugins.Registry.Fresh`). A probe that now passes lets the request through.
+1. **Fresh before refusing.** Before a request is refused for `not_logged_in` (a model switch inside a running project, a sent request), the agent's probe is re-run synchronously, at most once per 5 s per agent (`plugins.Registry.Fresh`). A probe that now passes lets the request through.
 2. **Negative results expire fast.** A "not logged in" result is probed again after 15 s whenever providers are being read (any request that lists them), a positive one after the usual minute.
 3. **`POST /v1/providers/{id}/recheck`** (no body) runs the probe now, joining one already running, and answers `200` with the provider entry exactly as `GET /v1/providers` lists it (`state`, `login`, ...); `providers.updated` follows when the picture changed. `404 not_found` for an id that is not an agent. An unsupported or uninstalled agent is answered without running anything.
-4. **Use anyway.** A `422 model_unavailable` has `can_force`: `true` when the refusal rests on the login probe alone, `false` otherwise (`not_installed`, `not_supported`, the API or router not connected):
-
-```json
-{ "error": { "code": "model_unavailable", "message": "models.orchestrator \"acp:grok\" cannot run: Grok is not logged in. Log in once ...",
-             "provider": "grok", "reason": "Grok is not logged in. Log in once ...", "can_force": true } }
-```
-
-   `POST /v1/projects` and `PATCH /v1/projects/{id}` accept `"force_unverified": true` next to `models`: a model of a not-logged-in agent is then accepted and stored (reading the project still lists it in `models_unavailable`). The agent starts normally; if it is really logged out, the turn fails with the agent's own error and the login hint.
+4. **Creating a project never needs a login.** `POST /v1/projects` and `PATCH /v1/projects/{id}` store the models as sent, whatever the state of their providers (not logged in, not installed, too old, not supported, API or router not connected, nothing connected at all); there is no `model_unavailable` or `no_provider` answer there any more (decision 2026-11-15: a project is a folder and settings). `force_unverified` is still read and ignored, so an older client's body works. The project lists the models that cannot run in `models_unavailable`; the client says so calmly (login steps, "Check again", "Choose another model") and the request that is sent later fails with the agent's own error and the login hint. Unknown agents and malformed models stay `400 invalid_request`.
 5. **Why, without leaking.** `harness doctor` and `GET /v1/diagnostics` give each agent's `probe`: `rule` (`pattern`, `exit_status`, `exit_0`, `other_exit`, `timeout`, `not_started`, `none`), `exit_status` (null when it did not exit), `duration_ms`, `dir` (the working directory) and `env_names` (names only, never values). `harness doctor --show-probe-output` also prints the first 20 lines of each probe's output (text only: it is never in JSON, never in `/v1/diagnostics`, never sent to a model). A built-in agent's probe runs in the user's home directory like a terminal; a plugin directory's agent in that directory.
 6. **Same environment as a terminal.** The probe and the agent get HOME, USER, LOGNAME, XDG_*, PATH, SHELL, LANG, LC_*, TMPDIR, SSH_AUTH_SOCK and on macOS `__CF_USER_TEXT_ENCODING` when the harness process has them (`childenv`'s allow-list; a test asserts each). Everything else stays dropped (no `*KEY*`, `*TOKEN*`, `ANTHROPIC_*`, `XAI_*`, ...). `__CF_USER_TEXT_ENCODING` was missing before.
 
@@ -118,8 +111,7 @@ What a project created without models gets: the current defaults (`HARNESS_MODEL
 
 ## Model checks
 
-- `POST /v1/projects` with nothing ready: `409 no_provider`.
-- `POST`/`PATCH /v1/projects` naming a model whose provider is not ready: `422 model_unavailable`, `{"error": {"code", "message", "provider", "reason"}}` (`reason` is a sentence with the hint). On PATCH only models that differ from the stored ones are checked, so a client may send the whole object back. Unknown agents or models stay `400 invalid_request`, checked first.
+- `POST`/`PATCH /v1/projects` never refuse a model because its provider is not ready (since 2026-11-15; before, `422 model_unavailable` / `409 no_provider` with `can_force`). Unknown agents or models stay `400 invalid_request`. A project created with nothing ready keeps the server defaults.
 - A new project's four models come from `suggested`, overlaid by what the request names.
 - Reading never fails: `GET /v1/projects/{id}` lists unusable stored models in `models_unavailable: [{field, model, provider, reason}]` (always an array). A project whose orchestrator equals the server default while the built-in loop is off still runs on a ready agent (`EffectiveOrchestrator`); it is listed anyway.
 

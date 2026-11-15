@@ -70,9 +70,8 @@ export type ProjectInput = {
   folders?: { path: string; label?: string }[];
   models?: Partial<Models>;
   /**
-   * Accept a model of an agent the login probe says is logged out (answer to a 422 `model_unavailable` whose
-   * `BridgeError.can_force` is true). The agent then starts normally and, if it really is logged out, the turn fails
-   * with its own message. A missing command is never forced.
+   * For a harness that still refuses a model of a logged-out agent (422 `model_unavailable` with `can_force`): accept it
+   * anyway. The current harness never refuses and ignores this.
    */
   force_unverified?: boolean;
   max_depth?: number;

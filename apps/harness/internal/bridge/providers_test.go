@@ -278,17 +278,21 @@ func waitUntil(t *testing.T, what string, cond func() bool) {
 	}
 }
 
-func TestCreateProjectWithNothingConnectedIs409(t *testing.T) {
+// A project is a folder and settings: nothing connected does not stop it. The
+// stored models are the defaults and the project lists them as unusable.
+func TestCreateProjectWithNothingConnectedStillCreates(t *testing.T) {
 	e := newProvEnv(t, "")
-	var er apiError
-	e.createProject(t, nil, http.StatusConflict, &er)
-	if er.Error.Code != "no_provider" || er.Error.Message == "" {
-		t.Fatalf("error = %+v", er)
+	var p struct {
+		Models  struct{ Orchestrator string }
+		Unavail []project.ModelIssue `json:"models_unavailable"`
 	}
-	// Even a request that names models: nothing can run them.
-	e.createProject(t, map[string]string{"orchestrator": "claude-sonnet-5-5"}, http.StatusConflict, &er)
-	if er.Error.Code != "no_provider" {
-		t.Fatalf("error = %+v", er)
+	e.createProject(t, nil, http.StatusCreated, &p)
+	if p.Models.Orchestrator == "" || len(p.Unavail) == 0 {
+		t.Fatalf("project = %+v", p)
+	}
+	e.createProject(t, map[string]string{"orchestrator": "claude-sonnet-5-5"}, http.StatusCreated, &p)
+	if p.Models.Orchestrator != "claude-sonnet-5-5" {
+		t.Fatalf("orchestrator = %q", p.Models.Orchestrator)
 	}
 }
 
@@ -326,40 +330,40 @@ func TestCreateProjectUsesTheSuggestedModels(t *testing.T) {
 	})
 }
 
-func TestModelUnavailableOnCreateAndPatch(t *testing.T) {
+// A model whose agent is not logged in, or whose provider is not connected, is
+// stored as chosen on create and patch (no refusal); the project lists it under
+// models_unavailable so the client can say so and offer the steps.
+func TestUnreadyModelsAreStoredOnCreateAndPatch(t *testing.T) {
 	e := newProvEnv(t, "", agentManifest("scripted", nil), notLoggedIn("copilot"))
 	waitUntil(t, "the probe", func() bool { return e.providers(t).entry(t, "copilot").State == "not_logged_in" })
 
-	var er apiError
-	e.createProject(t, map[string]string{"orchestrator": "acp:copilot"}, http.StatusUnprocessableEntity, &er)
-	if er.Error.Code != "model_unavailable" || er.Error.Provider != "copilot" ||
-		er.Error.Reason != "Copilot is not logged in." || er.Error.Command != "copilot login" || er.Error.Action != "recheck_provider" || er.Error.Hint == "" {
-		t.Fatalf("create = %+v", er)
+	type proj struct {
+		ID      string
+		Models  struct{ Orchestrator, Fast, Deep string }
+		Unavail []project.ModelIssue `json:"models_unavailable"`
+	}
+	var p proj
+	e.createProject(t, map[string]string{"orchestrator": "acp:copilot"}, http.StatusCreated, &p)
+	if p.Models.Orchestrator != "acp:copilot" || len(p.Unavail) != 1 || p.Unavail[0].Provider != "copilot" || p.Unavail[0].Reason != "Copilot is not logged in." {
+		t.Fatalf("create = %+v", p)
 	}
 	// A built-in model with no key: the API is the provider.
-	e.createProject(t, map[string]string{"fast": "claude-haiku-5-5"}, http.StatusUnprocessableEntity, &er)
-	if er.Error.Code != "model_unavailable" || er.Error.Provider != "api" || er.Error.Reason == "" {
-		t.Fatalf("create api = %+v", er)
+	e.createProject(t, map[string]string{"fast": "claude-haiku-5-5"}, http.StatusCreated, &p)
+	if p.Models.Fast != "claude-haiku-5-5" || len(p.Unavail) != 1 || p.Unavail[0].Provider != "api" {
+		t.Fatalf("create api = %+v", p)
 	}
 
-	var p struct {
-		ID     string
-		Models struct{ Orchestrator string }
-	}
 	e.createProject(t, nil, http.StatusCreated, &p)
 	if p.Models.Orchestrator != "acp:scripted" {
 		t.Fatalf("orchestrator = %q", p.Models.Orchestrator)
 	}
-	e.into(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"models": map[string]string{"deep": "acp:copilot"}},
-		http.StatusUnprocessableEntity, &er)
-	if er.Error.Code != "model_unavailable" || er.Error.Provider != "copilot" {
-		t.Fatalf("patch = %+v", er)
+	e.into(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"models": map[string]string{"deep": "acp:copilot"}}, http.StatusOK, &p)
+	if p.Models.Deep != "acp:copilot" || len(p.Unavail) != 1 {
+		t.Fatalf("patch = %+v", p)
 	}
-	// Unknown agents stay a 400 (invalid_request), checked first.
+	// An agent that does not exist is a real mistake: still a 400.
 	e.wantError(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"models": map[string]string{"deep": "acp:ghost"}},
 		http.StatusBadRequest, "invalid_request")
-	// A patch that sends an unchanged, usable model back is fine.
-	e.into(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"models": map[string]string{"orchestrator": "acp:scripted"}}, http.StatusOK, nil)
 }
 
 func TestReadingAProjectNeverFailsOnUnusableModels(t *testing.T) {

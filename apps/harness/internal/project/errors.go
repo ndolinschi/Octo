@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
-	"github.com/ndolinschi/Octo/apps/harness/internal/providers"
 	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
@@ -114,18 +113,3 @@ func storeErr(err error) error {
 	}
 	return err
 }
-
-// modelUnavailable is 422: the model's provider cannot run it now. The
-// catalogue form is the provider's own problem (not logged in, not installed,
-// ...); the models.<field> technical sentence is its details.
-func modelUnavailable(field, model string, u *providers.Unavailable) *Error {
-	p := *u.Problem
-	p.Details = fmt.Sprintf("models.%s %q cannot run: %s", field, model, u.Reason)
-	return &Error{
-		Kind: KindUnprocessable, Code: "model_unavailable", Provider: u.Provider, Reason: u.Reason, CanForce: u.CanForce,
-		Message: p.Message, User: &p,
-	}
-}
-
-// noProvider is 409: no provider is connected, so no project can run.
-func noProvider() *Error { return of(KindConflict, usererr.NoProvider()) }

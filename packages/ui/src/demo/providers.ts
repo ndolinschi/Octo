@@ -1,6 +1,7 @@
 import {
   BridgeError,
   type Bridge,
+  type ModelIssue,
   type Models,
   type Diagnostics,
   type Provider,
@@ -18,7 +19,9 @@ import { ownerProviders } from "./providersOwner";
  * logged in, Grok not installed, no API key, no router. `?providers=none` (or `none: true`): Claude Code is not
  * logged in either, so Home shows the connect screen; entering any API key connects the API. `?providers=owner` is the
  * owner's live set of twelve (`providersOwner.ts`). "Check again" on a logged-out agent keeps it logged out, unless
- * `?recheck=ok` (the user has logged in since); "Use anyway" (`force_unverified`) works either way.
+ * `?recheck=ok` (the user has logged in since). `?claude=loggedout` is Claude Code alone not logged in (the New project dialog and the
+ * empty project then show the calm "log in later or choose another model" notice). A create or patch is never refused for an unready
+ * agent; the project lists it in `models_unavailable`.
  */
 export type DemoProvidersOptions = { none?: boolean };
 
@@ -136,7 +139,9 @@ const BUILTIN: Record<string, string> = {
 };
 
 function noneFromUrl(): boolean {
-  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("providers") === "none";
+  if (typeof window === "undefined") return false;
+  const q = new URLSearchParams(window.location.search);
+  return q.get("providers") === "none" || q.get("claude") === "loggedout";
 }
 
 const delay = () => new Promise((r) => setTimeout(r, 120));
@@ -154,8 +159,8 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
     | "getDiagnostics"
   >
 > & {
-  /** The 422 `model_unavailable` a create or patch gets for a model whose agent cannot run (`can_force` for a login only). */
-  refuse(models: Partial<Models> | undefined, force: boolean | undefined): void;
+  /** The stored models that cannot run now, as a project lists them (`models_unavailable`); a create or patch is never refused for them. */
+  unusable(models: Partial<Models>): ModelIssue[];
 } {
   const none = options.none ?? noneFromUrl();
   // The file: id → value. Secrets are kept only to know they are set; they are never returned.
@@ -324,16 +329,16 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
       trace("recheck", { id });
       return providers().providers.find((x) => x.id === id) ?? null;
     },
-    refuse: (models, force) => {
-      for (const value of Object.values(models ?? {})) {
-        if (typeof value !== "string" || !value.startsWith("acp:")) continue;
+    unusable: (models) => {
+      const out: ModelIssue[] = [];
+      for (const [field, value] of Object.entries(models)) {
+        if (typeof value !== "string" || !value.startsWith("acp:") || field === "tier_policy") continue;
         const p = providers().providers.find((x) => x.id === value.slice(4).split("/")[0]);
         if (!p || p.state === "ready") continue;
-        const canForce = p.state === "not_logged_in";
-        if (canForce && force) continue;
-        const reason = `${p.label} is ${canForce ? "not logged in" : "not installed"}. ${canForce ? p.login_hint : p.install_hint}`;
-        throw new BridgeError(422, "model_unavailable", `models cannot run: ${reason}`, { provider: p.id, reason, can_force: canForce });
+        const loggedOut = p.state === "not_logged_in";
+        out.push({ field, model: value, provider: p.id, reason: `${p.label} is ${loggedOut ? "not logged in" : "not installed"}.` });
       }
+      return out;
     },
     setProviderPrefs: async (id, change) => {
       await delay();

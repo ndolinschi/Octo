@@ -6,7 +6,7 @@ Product docs for the Go agent harness (`apps/harness/`). Operational notes and b
 | --- | --- |
 | [architecture.md](./architecture.md) | Modules, project server, data flow, tools, CLI, Octo integration |
 | [settings.md](./settings.md) | `GET`/`PUT /v1/settings`: the settings list (ids, kinds, apply mode), `harness.env` writing, router settings for the desktop shell, security rules |
-| [providers.md](./providers.md) | `GET /v1/providers` (API, router, ACP agents: state, models, hints, suggested defaults), the `providers.updated` event, `422 model_unavailable` / `409 no_provider`, live API key, failed-turn retry |
+| [providers.md](./providers.md) | `GET /v1/providers` (API, router, ACP agents: state, models, hints, suggested defaults), the `providers.updated` event, a project is never refused for an unready provider (`models_unavailable`), live API key, failed-turn retry |
 | [v7.md](./v7.md) | Changes per turn and diffs (bash snapshots, limits), approvals (built-in and ACP), the message queue, forms and secrets: exact API, events, decisions |
 | [review.md](./review.md) | Pull-request review (RV1): `gh` adapter, local-branch source, git worktrees, reading order, viewed marks, pending comments, submit: exact API, safety rules |
 | [sessions.md](./sessions.md) | Project sessions: main and agent sessions, new / resume / stop / message, `session.*` events, schema 13 |

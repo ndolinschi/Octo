@@ -103,12 +103,6 @@ type ProviderSource interface {
 	Snapshot() providers.Response
 }
 
-// FreshChecker is what a ProviderSource can add: a check that re-runs a stale
-// login probe before refusing and honours force_unverified (providers.Service).
-type FreshChecker interface {
-	CheckFresh(ctx context.Context, model string, force bool) *providers.Unavailable
-}
-
 type Defaults struct {
 	Models   config.Models
 	MaxDepth int
@@ -323,16 +317,13 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 		return Project{}, err
 	}
 	base := s.Defaults().Models
+	// A project is a folder and settings: it never waits for a provider or an
+	// agent login. A project that names no models gets what can run now, else
+	// the defaults as they are; readiness is said when a request is sent.
 	if s.provider != nil {
-		snap := s.provider.Snapshot()
-		if snap.Connected == 0 {
-			return Project{}, noProvider()
-		}
-		// A project that names no models gets what can run now.
-		sg := snap.Suggested
-		base.Orchestrator, base.Fast, base.Balanced, base.Deep = sg.Orchestrator, sg.Fast, sg.Balanced, sg.Deep
-		if err := s.checkModels(ctx, snap, in.Models, nil, in.ForceUnverified); err != nil {
-			return Project{}, err
+		if snap := s.provider.Snapshot(); snap.Connected > 0 {
+			sg := snap.Suggested
+			base.Orchestrator, base.Fast, base.Balanced, base.Deep = sg.Orchestrator, sg.Fast, sg.Balanced, sg.Deep
 		}
 	}
 	models, err := mergeModels(base, in.Models)
@@ -422,13 +413,6 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 	if in.Models != nil {
 		if err := s.ValidateModels(in.Models); err != nil {
 			return Project{}, err
-		}
-		if s.provider != nil {
-			// Only a model that changes is checked: a client that sends the
-			// whole object back must still be able to edit the rest.
-			if err := s.checkModels(ctx, s.provider.Snapshot(), in.Models, &cur.Models, in.ForceUnverified); err != nil {
-				return Project{}, err
-			}
 		}
 		merged, err := mergeModels(cur.Models, in.Models)
 		if err != nil {
@@ -559,37 +543,6 @@ func modelFields(m config.Models) []struct{ field, model string } {
 		list = append(list, struct{ field, model string }{"auto_candidates", c})
 	}
 	return list
-}
-
-// checkModels is the first model of over (a create or patch body) that cannot
-// run according to snap, as a 422; fields equal to cur's are skipped. A refusal
-// for a login is checked again with a fresh probe first, and force lets it
-// through (the login probe is advisory).
-func (s *Service) checkModels(ctx context.Context, snap providers.Response, over, cur *config.Models, force bool) error {
-	if over == nil {
-		return nil
-	}
-	have := map[string]bool{}
-	if cur != nil {
-		for _, f := range modelFields(*cur) {
-			have[f.field+"\x00"+f.model] = true
-		}
-	}
-	for _, f := range modelFields(*over) {
-		if f.model == "" || have[f.field+"\x00"+f.model] {
-			continue
-		}
-		u := providers.CheckIn(snap, f.model)
-		if u != nil && u.CanForce {
-			if fc, ok := s.provider.(FreshChecker); ok {
-				u = fc.CheckFresh(ctx, f.model, force)
-			}
-		}
-		if u != nil {
-			return modelUnavailable(f.field, f.model, u)
-		}
-	}
-	return nil
 }
 
 // ModelIssue is a model a project stores that cannot run now.

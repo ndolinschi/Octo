@@ -319,8 +319,8 @@ export interface Bridge {
    * What can run a model right now (connect first, choose second): the built-in API loop, a detected router and every
    * ACP agent, each with a state, its models and how to make it ready, plus the models a new project would get.
    * Optional: only the HTTP bridge implements it; hosts check for presence. Refetch on `providers.updated`.
-   * Creating or patching a project with a model whose provider is not ready answers 422 `model_unavailable`
-   * (`BridgeError.provider` / `.reason`); creating with nothing connected answers 409 `no_provider`.
+   * Creating or patching a project is never refused for a model whose provider is not ready (since 2026-11-15): the
+   * project lists it in `models_unavailable`. An older harness answers 422 `model_unavailable` / 409 `no_provider`.
    */
   listProviders?(): Promise<ProvidersResponse>;
   /**
