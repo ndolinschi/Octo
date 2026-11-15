@@ -1456,9 +1456,6 @@
   /* S1: the one left edge inside the column: page title, group captions, row labels and footers sit this far in from the
      surfaces' edge (a row's own side padding). */
   --spacing-settings-inset: var(--spacing-card); /* retest3: Settings rows share the card inset (12) with conversation cards */
-  /* Inside a settings surface (ListFrame, 1px edge) the rows' inset less that edge, so a row's text is on the same x as the
-     page title, the captions and the notes outside it (it was 1px right of them). */
-  --spacing-settings-row-inset: calc(var(--spacing-settings-inset) - 1px);
   /* S2: a settings row is a label line (20) and one explanation line (16) between 12px paddings: 60. A row without an
      explanation keeps the height and centres its one line. */
   --spacing-settings-row: 60px;
@@ -1610,11 +1607,6 @@
 }
 /* ── /polish step 6b: review ── */
 /* cross-part leftovers (after the six polish steps) */
-@theme {
-  /* (a) The row sections of Settings (all but Providers) are this wide from the page column's left edge: a row's control sits
-     within reach of its label at 1440 (was ~800px away across the 880 column). Providers keeps the column for list | detail. */
-  --spacing-settings-rows: 660px;
-}
 /* (b) A project row's name takes the room an empty meta leaves. The 24px column comes back only while the sessions chevron
    shows there (hover, focus, open; always on touch and when narrow: T2), so the chevron never covers the name. A row without
    the chevron also lets a short meta ("1h") take only its own width. */

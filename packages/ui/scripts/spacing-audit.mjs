@@ -40,6 +40,12 @@ const ALLOW = [
   },
   {
     rule: "scale",
+    selector: "[data-phone] .octo-diff-code",
+    reason:
+      "the hanging indent of a wrapped diff line (styles.css, `--diff-hang`): the line's own indentation in ch (min(--diff-lead, 16ch) + 2ch, set per line by DiffPreview), so a continuation lines up under the code; content geometry, not authored spacing; only on the phone, only where the line wraps",
+  },
+  {
+    rule: "scale",
     selector: ".sr-only",
     reason: "the visually hidden pattern (1px box, -1px margins): never laid out for the eye",
   },
@@ -779,10 +785,18 @@ const STATES = [
     async run(page, ctx) {
       await openProject(page, ctx, "Docs site");
       await waitChat(page);
-      const group = page.getByRole("button", { name: /Ran 1 command, read 1 file/ }).first();
-      if (!(await group.count())) skip("no tabular tool call in Docs site");
+      // The newest reply's work is one "Worked for 4s" line that holds the run's groups ("Called 2 tools"): open both, then the
+      // call whose result is a table (a shell or file read shows its text as it is; the demo's tables request uses two other tools).
+      const worked = page.getByRole("button", { name: /^Worked for/, expanded: false }).last();
+      if (await worked.count()) await worked.click({ timeout: T });
+      const group = page.getByRole("button", { name: /Called 2 tools/ }).first();
+      try {
+        await group.waitFor({ timeout: T });
+      } catch {
+        skip("no tabular tool call in Docs site");
+      }
       await group.click({ timeout: T });
-      await page.locator("article button[aria-controls]", { hasText: "pnpm astro build" }).first().click({ timeout: T });
+      await page.locator("article button", { hasText: "build_timings" }).first().click({ timeout: T });
       try {
         await page.locator("[data-tool-table] table").first().waitFor({ timeout: T });
       } catch {
@@ -802,9 +816,14 @@ const STATES = [
         const menu = page.locator("[data-phone-header] button").first();
         if (await menu.isVisible().catch(() => false)) await menu.click({ timeout: T });
       }
-      await settle(page, 300);
-      const btn = page.getByRole("button", { name: "New project", exact: true }).first();
-      if (!(await btn.count())) skip("no New project button");
+      // On the phone "New project" is a row of the navigation sheet (the menu), and the sheet takes a moment to open: wait for it
+      // (a count taken at once found none under load).
+      const btn = page.getByRole("button", { name: "New project", exact: true }).filter({ visible: true }).first();
+      try {
+        await btn.waitFor({ state: "visible", timeout: T });
+      } catch {
+        skip("no New project button");
+      }
       await btn.click({ timeout: T });
       try {
         await page.getByRole("dialog").first().waitFor({ timeout: T });

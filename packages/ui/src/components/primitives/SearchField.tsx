@@ -16,6 +16,11 @@ const FRAME: Record<Variant, string> = {
   bare: "px-0",
 };
 
+// `align="rows"`: the frame's edge is an overlay (`after`) that takes no room, so the field's own 8px padding is the rows' 8: the
+// glyph box is on x+8 and the text on x+32, the rows' label edge. The edge is a real border, so forced-colors keeps it.
+const ROWS_FRAME =
+  "relative rounded-md bg-panel px-2 text-sm text-fg after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-field-edge after:transition-[border-color] after:duration-100 focus-within:after:border-fg touch:text-input-touch";
+
 /**
  * The one search input (decision 90): a 14px search glyph, the text, a clear button while there is text, and a `shortcut`
  * slot (a `KeyHint`) while it is empty. Esc clears the text first (`clearOnEscape`); with nothing to clear it passes the
@@ -64,9 +69,7 @@ export function SearchField({
       className={cn(
         "flex min-w-0 items-center gap-2",
         variant === "bordered" && cn(CONTROL[props.size ?? "md"].h, "touch:h-ctl-lg"),
-        // `cn` does not merge classes: the rows' inset replaces the frame's padding instead of following it (7 + the 1px
-        // border = the rows' 8, so the glyph box is on x+8 and the text on x+32, the rows' label edge).
-        props.align === "rows" && variant === "bordered" ? cn(FIELD_FRAME, "px-[7px]") : FRAME[variant],
+        props.align === "rows" && variant === "bordered" ? ROWS_FRAME : FRAME[variant],
         props.className,
       )}
     >

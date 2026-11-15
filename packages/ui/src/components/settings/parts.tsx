@@ -95,7 +95,7 @@ export function SettingsRow(props: {
       id={props.rowId ? `row-${props.rowId}` : undefined}
       data-settings-row
       className={cn(
-        "flex min-h-settings-row scroll-mt-6 gap-4 px-settings-row-inset py-3 max-settings:flex-col max-settings:items-stretch max-settings:gap-2",
+        "flex min-h-settings-row scroll-mt-6 gap-4 px-settings-inset py-3 max-settings:flex-col max-settings:items-stretch max-settings:gap-2",
         one ? "items-center" : "items-start",
         props.className,
       )}

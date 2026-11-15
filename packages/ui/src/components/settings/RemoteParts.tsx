@@ -58,7 +58,7 @@ export function PairingPanel({
   const now = useNow(1000);
   const left = countdown(pairing.expires_at, now);
   return (
-    <div data-remote-pairing className="flex gap-4 px-settings-row-inset py-3 max-sm:flex-col max-sm:items-center">
+    <div data-remote-pairing className="flex gap-4 px-settings-inset py-3 max-sm:flex-col max-sm:items-center">
       <QrImage text={pairing.link} size={168} />
       <div className="flex min-w-0 flex-1 flex-col gap-2 max-sm:items-center max-sm:text-center">
         <p className="text-sm text-fg-2">Scan with the phone's camera, or open the address there and type the code.</p>

@@ -16,7 +16,7 @@ export function VisibleModels({ list }: { list: ProviderList }) {
   return (
     <SettingsGroup label="Models in menus" id="row-visible" footer="Hidden models stay usable by projects that already chose them.">
       {/* The search is the list's first row (a 40px band on the rows' text edge), not a field hung on the caption line. */}
-      <div className="flex h-ctl-lg items-center px-settings-row-inset">
+      <div className="flex h-ctl-lg items-center px-settings-inset">
         <SearchField variant="bare" label="Search models" value={query} onChange={setQuery} className="h-full flex-1" />
       </div>
       {all.length === 0 && <SettingsRow title="No models yet" description="Connect a provider: its models appear here." />}

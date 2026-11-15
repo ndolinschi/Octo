@@ -170,7 +170,7 @@ function kindOf(raw: string): Kind | null {
 function Problem({ text, raw }: { text: string; raw: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex flex-col gap-1 px-settings-row-inset py-3">
+    <div className="flex flex-col gap-1 px-settings-inset py-3">
       <Notice
         tone="warn"
         action={

@@ -67,7 +67,7 @@ export function RemoteAccessSection() {
         <Problem s={s} busy={busy} onCheck={() => void run((a) => a.check())} onRetry={() => void run((a) => a.enable())} />
         {s.state === "on" && s.url && <AddressRow url={s.url} />}
         {actionError && (
-          <div className="px-settings-row-inset py-2">
+          <div className="px-settings-inset py-2">
             <Notice tone="error">{actionError}</Notice>
           </div>
         )}
@@ -179,7 +179,7 @@ function Problem({ s, busy, onCheck, onRetry }: { s: RemoteStatus; busy: boolean
   const missing = s.error?.code === "cloudflared_missing" || (s.state === "off" && !s.cloudflared.found);
   if (missing)
     return (
-      <div className="px-settings-row-inset py-3">
+      <div className="px-settings-inset py-3">
         <Notice
           form="block"
           tone="warn"
@@ -197,7 +197,7 @@ function Problem({ s, busy, onCheck, onRetry }: { s: RemoteStatus; busy: boolean
     );
   if (s.state !== "error" || !s.error) return null;
   return (
-    <div className="px-settings-row-inset py-3">
+    <div className="px-settings-inset py-3">
       <Notice
         form="block"
         tone="error"

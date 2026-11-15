@@ -112,8 +112,8 @@ export function UsageByProject({ holdFooter, onSettled }: { holdFooter: boolean;
           </div>
         }
       />
-      {/* The cells' own 8px plus this land the table's first and last text on the rows' edges (`settings-row-inset`). */}
-      <div className="px-[calc(var(--spacing-settings-row-inset)-var(--spacing)*2)] py-1">
+      {/* The cells' own 8px plus this land the table's first and last text on the rows' edges (`settings-inset`, 12). */}
+      <div className="px-1 py-1">
         {/* Not for a fast answer (no flash); the rows' own height, one per project the app knows. Nothing under the table is shown
             until it has answered (`holdFooter`, UsageSection), so the real rows replacing these move nothing. */}
         {report.status === "loading" && slow && <UsageTableSkeleton first="Project" rows={Math.min(Math.max(projects?.length ?? 3, 1), 8)} />}

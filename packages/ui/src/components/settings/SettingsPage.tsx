@@ -287,7 +287,7 @@ function Results({
           <SectionHeader line="tight" className="px-settings-inset">
             {s.label}
           </SectionHeader>
-          <ListFrame className="p-[3px]">
+          <ListFrame className="p-1">
             {results
               .filter((r) => r.section === s.id)
               .map((r) => (

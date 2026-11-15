@@ -44,13 +44,16 @@ export async function acpOrchestratorHistory(ctx: Ctx): Promise<void> {
   await sleep(ctx, 0);
 }
 
-/** A request whose tools return tables (decision 44): a CSV report and a JSON list of flat records. */
+/**
+ * A request whose tools return tables (decision 44): a CSV report and a JSON list of flat records. The tools are not a shell or a
+ * file read (those have their own bodies, which show the text as it is): a result is a table in the body of any other tool.
+ */
 export async function tablesTurn(ctx: Ctx): Promise<void> {
   await turn(ctx, "Which docs pages are the slowest to build, and which links are still broken?", async (c, orch) => {
     await act(c, orch, [
       {
-        name: "bash",
-        input: { command: "pnpm astro build --timings --format csv" },
+        name: "build_timings",
+        input: { site: "docs", format: "csv" },
         result: [
           "page,ms,images,size_kb",
           "guide/deploy,1840,14,312",
@@ -62,8 +65,8 @@ export async function tablesTurn(ctx: Ctx): Promise<void> {
         ms: 900,
       },
       {
-        name: "read_file",
-        input: { path: "reports/links.json" },
+        name: "link_report",
+        input: { site: "docs", status: "broken" },
         result: JSON.stringify(
           [
             { page: "guide/auth", link: "/guide/tokens", status: 404 },
