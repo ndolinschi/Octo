@@ -1,5 +1,5 @@
 import { Eye, EyeOff } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useState, type FocusEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import type { Draft } from "../../lib/schemaForm/draft";
 import type { NormalForm, SchemaField } from "../../lib/schemaForm/schema";
@@ -137,7 +137,7 @@ function Control(props: ControlProps) {
     "aria-invalid": invalid || undefined,
     "aria-describedby": describedBy,
     "aria-required": field.required || undefined,
-    onBlur: () => state.blur(field.id),
+    onBlur: (e: FocusEvent<HTMLElement>) => state.blur(field.id, e.relatedTarget),
     placeholder: p["x-octo"]?.placeholder,
   };
   switch (widget) {
@@ -272,7 +272,7 @@ function SecretInput({ field, domId, describedBy, invalid, state }: ControlProps
         placeholder={field.prop["x-octo"]?.placeholder}
         className="pr-10 font-mono"
         onInput={() => state.clearError(field.id)}
-        onBlur={() => state.blur(field.id)}
+        onBlur={(e) => state.blur(field.id, e.relatedTarget)}
       />
       <IconButton
         icon={shown ? EyeOff : Eye}

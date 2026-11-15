@@ -80,7 +80,10 @@ export function useSchemaForm(props: { form: NormalForm; onSubmit(answer: InputA
   );
 
   const blur = useCallback(
-    (id: string) => {
+    (id: string, to?: EventTarget | null) => {
+      // Focus that goes to a button of this form (Submit, Skip) is the press of that button: an error painted now would
+      // move the button under the pointer and the click would be lost. Submit checks every field itself.
+      if (to instanceof HTMLButtonElement && to.form !== null && to.form === controls.current.get(id)?.closest("form")) return;
       const f = form.fields.find((x) => x.id === id);
       if (!f) return;
       const s = secrets();
