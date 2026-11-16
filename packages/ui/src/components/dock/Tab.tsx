@@ -102,7 +102,12 @@ export function Tab(props: {
           data-tab-label
           data-bold={info.label}
           aria-hidden={info.name ? true : undefined}
-          className="flex min-w-0 flex-col overflow-hidden after:invisible after:h-0 after:font-medium after:whitespace-nowrap after:content-[attr(data-bold)]"
+          className={cn(
+            "flex min-w-0 flex-col overflow-hidden after:invisible after:h-0 after:font-medium after:whitespace-nowrap after:content-[attr(data-bold)]",
+            !slot &&
+              canClose &&
+              "group-focus-within/tab:[mask-image:linear-gradient(to_right,#000_calc(100%-26px),transparent_calc(100%-4px))] group-hover/tab:[mask-image:linear-gradient(to_right,#000_calc(100%-26px),transparent_calc(100%-4px))]",
+          )}
         >
           <span className={cn("min-w-0 truncate", selected && "font-medium")}>
             {info.label}
@@ -136,8 +141,8 @@ export function Tab(props: {
               onPointerDown={(e) => e.stopPropagation()}
               onClick={props.onClose}
               className={cn(
-                // A 24px hit area around the 16px slot (decision 36); without a slot it sits over the title's end on an opaque surface.
-                slot ? "absolute -inset-1" : "absolute top-1/2 right-1 -translate-y-1/2 bg-raised",
+                // A 24px hit area around the 16px slot (decision 36); without a slot it sits over the faded title end.
+                slot ? "absolute -inset-1" : "absolute top-1/2 right-1 -translate-y-1/2",
                 selected && info.status !== "modified" ? "" : "opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100",
               )}
             />
