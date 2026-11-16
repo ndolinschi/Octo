@@ -25,3 +25,16 @@ export function transcriptSession(list: readonly ProjectSession[], currentId: st
   const later = list.some((s) => s.kind === "main" && s.id !== currentId && startedMs(s) > startedMs(current));
   return later ? currentId : undefined;
 }
+
+export type SessionTabMode = "loading" | "conversation" | "detail";
+
+/**
+ * How a `session:<id>` tab renders: wait until initial sync completes if the session is not yet in state, show the
+ * conversation for parallel main sessions (even before `synced > 0` if already upserted), and show detail for an agent
+ * session or an older harness without parallel sessions.
+ */
+export function sessionTabMode(input: { parallel: boolean; kind: "main" | "agent" | undefined; synced: number }): SessionTabMode {
+  if (input.kind === undefined && input.synced === 0) return "loading";
+  if (input.parallel && (input.kind === "main" || input.kind === undefined)) return "conversation";
+  return "detail";
+}

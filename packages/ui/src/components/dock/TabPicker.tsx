@@ -1,31 +1,39 @@
 import type { Agent } from "@octo/agent-client";
 import { roleText } from "../../lib/orchestrator";
-import { FileSearch, SquareArrowOutUpRight } from "lucide-react";
-import { useEffect, useMemo, type RefObject } from "react";
+import { FileSearch, Plus, SquareArrowOutUpRight } from "lucide-react";
+import { useEffect, useMemo, useState, type RefObject } from "react";
+import { CLOCK_MINUTE_MS } from "../../lib/constants";
+import { errorMessage, structuredError } from "../../lib/format";
+import { useNow } from "../../lib/hooks";
 import { MOD_LABEL } from "../../lib/keys";
 import { filterSections, type PickerRow, type PickerSection } from "../../lib/picker";
+import { sessionChoiceMeta, sessionChoices } from "../../lib/sessions/picker";
+import { sessionGlyph, sessionTitle } from "../../lib/sessions/tree";
 import { agentGlyph } from "../../lib/stateGlyph";
 import { useCode } from "../../state/code";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
-import { allTabs, toolTab, type ToolTab } from "../../state/workspace/layout";
+import { allTabs, sessionTab, toolTab, type ToolTab } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { fileIcon } from "../primitives/fileIcons";
 import { Glyph } from "../primitives/Glyph";
+import { Notice } from "../primitives/Notice";
 import { GLYPH } from "../primitives/glyphs";
 import { Picker } from "../primitives/Picker";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { useShowFiles } from "../files/useShowFiles";
+import { useCreateProjectSession, useSyncProjectSessions } from "../shell/sessionSwitcher";
 import { TOOL_TABS } from "./tabInfo";
 
 const AGENTS_SHOWN = 6;
 const FILES_SHOWN = 6;
+const SESSIONS_SHOWN = 6;
 
 /**
  * The "+" at the end of a strip (and `Ctrl/Cmd+T`, decision 25): one searchable list — the tools (Agents, Notes, Files,
- * Details, Usage, Side question), "Open file…" and, once something is typed, matching project files; running and recent
- * agents; the project's settings and "Open in editor". This replaces the tool buttons the strip used to carry
- * (decision 24: the strip carries tabs only).
+ * Details, Usage, Side question), "Open file…" and, once something is typed, matching project files; project sessions and
+ * "New session"; running and recent agents; the project's settings and "Open in editor". This replaces the tool buttons
+ * the strip used to carry (decision 24: the strip carries tabs only).
  */
 export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement | null>; onClose(): void }) {
   const ws = useWorkspace();
@@ -33,8 +41,13 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
   const files = useShowFiles();
   const { state, project } = useProject();
   const { openProjectInEditor } = useHost();
+  const createSession = useCreateProjectSession();
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const now = useNow(false, CLOCK_MINUTE_MS);
   const { indexFiles } = code;
   useEffect(() => indexFiles(), [indexFiles]);
+  useSyncProjectSessions(Boolean(project));
   const open = new Set(allTabs(ws.layout));
 
   const agents = useMemo(() => {
@@ -45,6 +58,20 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
     const rank = (a: Agent) => (a.status === "running" ? 1 : 0);
     return list.sort((a, b) => rank(b) - rank(a) || Date.parse(b.started_at ?? b.created_at) - Date.parse(a.started_at ?? a.created_at)).slice(0, AGENTS_SHOWN);
   }, [state.agentOrder, state.agents]);
+
+  const handleNewSession = async () => {
+    if (creating) return;
+    setError(null);
+    setCreating(true);
+    try {
+      const created = await createSession("tab");
+      if (created) onClose();
+      else setCreating(false);
+    } catch (e) {
+      setError(structuredError(e)?.message ?? errorMessage(e));
+      setCreating(false);
+    }
+  };
 
   const sections = (query: string): PickerSection[] => {
     const tools: PickerRow[] = (Object.entries(TOOL_TABS) as [ToolTab, (typeof TOOL_TABS)[ToolTab]][]).map(([tool, t]) => ({
@@ -72,6 +99,28 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
             run: () => code.openFile(f.folder, f.path),
           }))
       : [];
+    const activeId = ws.chatSessionId ?? state.sessions.defaultId;
+    const allMains = sessionChoices(state.sessions.list);
+    const shownMains = q ? allMains : allMains.slice(0, SESSIONS_SHOWN);
+    const sessionRows: PickerRow[] = [
+      ...shownMains.map<PickerRow>((s) => ({
+        id: `session:${s.id}`,
+        label: sessionTitle(s),
+        lead: <StateGlyph state={sessionGlyph(s)} size={12} box={16} />,
+        ...sessionChoiceMeta(s, { activeId, openTab: open.has(sessionTab(s.id)), now, markActiveHint: true }),
+        run: () => ws.openSession(s.id),
+      })),
+      {
+        id: "new-session",
+        label: "New session",
+        detail: "Open in new tab",
+        lead: <Glyph icon={Plus} size={14} />,
+        keepOpen: true,
+        busy: creating,
+        disabled: creating,
+        run: () => void handleNewSession(),
+      },
+    ];
     const agentRows: PickerRow[] = agents.map((a) => ({
       id: `agent:${a.id}`,
       label: roleText(a.role),
@@ -90,6 +139,7 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
     const rest = filterSections(
       [
         { title: "Open", rows: tools },
+        { title: "Sessions", rows: sessionRows },
         { title: "Agents", rows: agentRows },
         { title: "Project", rows: projectRows },
       ],
@@ -98,5 +148,21 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
     return fileRows.length ? [...rest.slice(0, 1), { title: "Files", rows: fileRows }, ...rest.slice(1)] : rest;
   };
 
-  return <Picker anchor={anchor} label="Open a tab" placeholder="Open a tool, file or agent" sections={sections} onClose={onClose} align="end" />;
+  return (
+    <Picker
+      anchor={anchor}
+      label="Open a tab"
+      placeholder="Open a tool, session, file or agent"
+      sections={sections}
+      onClose={onClose}
+      align="end"
+      footer={
+        error ? (
+          <div className="border-t border-line px-3 py-2">
+            <Notice tone="error">{error}</Notice>
+          </div>
+        ) : undefined
+      }
+    />
+  );
 }

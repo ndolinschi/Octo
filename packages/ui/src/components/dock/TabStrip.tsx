@@ -299,7 +299,7 @@ export function TabStrip(props: {
           ref={plus}
           icon={Plus}
           label="Open a tab"
-          title={`Open a tool, file or agent (${MOD}T)`}
+          title={`Open a tool, session, file or agent (${MOD}T)`}
           data-tab-plus
           aria-haspopup="dialog"
           aria-expanded={pickerHere}

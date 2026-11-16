@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { useActivity } from "../../state/activity";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { requestSession } from "../../state/workspace/sessionsStart";
@@ -24,12 +25,13 @@ export function useOpenSessions(): (projectId: string) => void {
 
 /**
  * Opens the project's active (or default/new) session in its own `session:<id>` tab, resolving via `listSessions` or
- * `createSession` when called right after initial project setup.
+ * `createSession` when called right after initial project setup, and updating `state.sessions` synchronously beforehand.
  */
 export function useOpenSessionTab(): (projectId: string) => Promise<void> {
   const { bridge } = useApp();
+  const activity = useActivity();
   const ws = useOptionalWorkspace();
-  const { state } = useProject();
+  const { state, applySession } = useProject();
   const current = state.sessions.currentId;
   const list = state.sessions.list;
   return useCallback(
@@ -38,16 +40,20 @@ export function useOpenSessionTab(): (projectId: string) => Promise<void> {
       let sessionId = current ?? list.find((s) => s.kind === "main" && (s.default || s.current))?.id ?? list[0]?.id ?? null;
       if (!sessionId && bridge.listSessions) {
         try {
-          const sessions = await bridge.listSessions(projectId);
+          const sessions = await bridge.listSessions(projectId, { limit: 200, archived: "all" });
+          for (const s of sessions) applySession({ kind: "upsert", session: s });
           sessionId =
             sessions.find((s) => s.kind === "main" && (s.default || s.current))?.id ?? sessions.find((s) => s.kind === "main")?.id ?? sessions[0]?.id ?? null;
         } catch {
           /* fall through to create */
         }
       }
-      if (!sessionId && bridge.createSession) {
+      if (!sessionId) {
         try {
           const { session } = await bridge.createSession(projectId, {});
+          applySession({ kind: "upsert", session });
+          if (session.default ?? session.current) applySession({ kind: "current", id: session.id, previous: current ?? "" });
+          activity.refreshSessions();
           sessionId = session.id;
         } catch {
           /* fall through to sessions tool */
@@ -56,6 +62,6 @@ export function useOpenSessionTab(): (projectId: string) => Promise<void> {
       if (sessionId) ws.openSession(sessionId);
       else ws.openTool("sessions");
     },
-    [bridge, ws, current, list],
+    [bridge, activity, ws, current, list, applySession],
   );
 }

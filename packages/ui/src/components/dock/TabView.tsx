@@ -1,6 +1,7 @@
 import { sessionRoot } from "@octo/agent-client";
 import { lazy, Suspense, useCallback, useState } from "react";
 import { resolveSessionRoute } from "../../lib/route";
+import { sessionTabMode } from "../../lib/sessions/current";
 import { SessionScope } from "../../state/session";
 import { FileViewSkeleton } from "../files/EditorSkeleton";
 import { useProject } from "../../state/project";
@@ -202,9 +203,10 @@ function SessionTab({ sessionId, tab }: { sessionId: string; tab: TabId }) {
   const ws = useOptionalWorkspace();
   const { state, parallel, synced } = useProject();
   const known = state.sessions.list.find((x) => x.id === sessionId);
+  const mode = sessionTabMode({ parallel, kind: known?.kind, synced });
+  if (mode === "loading") return null;
   // A main session's own tab is its conversation (decision 96: two sessions side by side); an agent session's, its detail.
-  if (parallel && (known?.kind === "main" || (known === undefined && synced > 0)))
-    return <SessionConversation sessionId={sessionId} tab={tab} onFollow={(next) => ws?.followSession(sessionId, next)} />;
+  if (mode === "conversation") return <SessionConversation sessionId={sessionId} tab={tab} onFollow={(next) => ws?.followSession(sessionId, next)} />;
   return (
     <Suspense fallback={null}>
       <SessionPane sessionId={sessionId} renderTranscript={renderSessionTranscript} onClose={ws ? () => ws.dropTab(tab) : undefined} />

@@ -43,7 +43,7 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
   const ws = useWorkspace();
   const code = useCode();
   const counts = useOptionalComments()?.counts;
-  const { state, project, projectId } = useProject();
+  const { state, project, projectId, applySession } = useProject();
   const { bridge, projects } = useApp();
   const activity = useActivity();
   // Remote access: on a paired device the commands and project settings are the computer's; sends need the permission.
@@ -125,8 +125,9 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
               onClick={then(() => {
                 bridge.createSession(projectId).then(
                   ({ session }) => {
+                    applySession({ kind: "upsert", session });
                     activity.refreshSessions();
-                    navigate(projectId, null, session.id);
+                    ws.showSession(session.id);
                   },
                   (e: unknown) => setProblem(`The session was not created: ${errorMessage(e).replace(/\.$/, "")}. Try again from the menu.`),
                 );

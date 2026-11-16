@@ -1,21 +1,30 @@
+import { sessionChoices } from "../../lib/sessions/picker";
 import { useProject } from "../../state/project";
 import { CHAT, closable, type TabId } from "../../state/workspace/layout";
 import { MOD, useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Menu, type MenuItem } from "../primitives/Menu";
-import { useOpenSessionTab } from "../shell/openSessions";
+import { sessionMenuItems, useCreateProjectSession, useSyncProjectSessions } from "../shell/sessionSwitcher";
 
 /** The context menu of a tab (decision 25; "Maximise" is decision 78). `tabs` are the tabs of the strip it opened in. */
 export default function TabMenu(props: { tab: TabId; x: number; y: number; tabs: readonly TabId[]; maximised: boolean; onClose(): void }) {
   const ws = useWorkspace();
-  const { project } = useProject();
-  const openSessionTab = useOpenSessionTab();
+  const { project, state } = useProject();
+  const createSession = useCreateProjectSession();
   const { tab } = props;
+  useSyncProjectSessions(tab === CHAT && Boolean(project));
   const at = props.tabs.indexOf(tab);
   const items: MenuItem[] = [];
   if (tab === CHAT && project) {
+    const sessions = sessionChoices(state.sessions.list);
+    const activeId = ws.chatSessionId ?? state.sessions.defaultId;
     items.push(
-      { id: "session-tab", label: "Open session in new tab", run: () => void openSessionTab(project.id) },
-      { id: "sessions", label: "Show sessions", run: () => ws.openTool("sessions") },
+      ...sessionMenuItems({
+        sessions,
+        activeId,
+        onSelect: (id) => ws.showSession(id),
+        onCreate: (target) => void createSession(target).catch(() => ws.openTool("sessions")),
+        onShowAll: () => ws.openTool("sessions"),
+      }),
       { id: "sep-session", separator: true },
     );
   }

@@ -59,7 +59,7 @@ export function ProjectActions() {
             <ErrorNotice
               fields={failure}
               raw={failure.message}
-              title="Could not export"
+              title={failure.title ?? "Could not export"}
               actions={
                 <Button size="sm" variant="quiet" onClick={() => setFailure(null)}>
                   Dismiss

@@ -11,11 +11,12 @@ import { SessionDetail } from "./SessionDetail";
  * Sessions tab; when the session is deleted the tab says so and can be closed.
  */
 export function SessionPane(props: { sessionId: string; renderTranscript: TranscriptSlot; onClose?: (() => void) | undefined }) {
-  const { state } = useProject();
+  const { state, synced } = useProject();
   const now = useNow(false, CLOCK_MINUTE_MS);
   const list = state.sessions.list;
   const session = list.find((s) => s.id === props.sessionId);
   if (!session) {
+    if (synced === 0) return null;
     return (
       <div className="flex h-full min-h-0 flex-col">
         <EmptyState title="This session is gone">It was deleted. Close this tab, or open the Sessions tab to pick another.</EmptyState>

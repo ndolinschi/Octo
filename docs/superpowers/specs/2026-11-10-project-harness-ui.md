@@ -3861,3 +3861,38 @@ offer the commands found in `package.json` (only a review's does); `/review` ign
 `go test` in `apps/harness` (blocked in this VM by `proxy.golang.org` HTTP 403 fetching uncached `modernc.org/sqlite@v1.62.0`);
 live streaming/scroll smoothness in WebKit/Tauri or against a real ACP agent CLI.
 
+## As built — session selector, gone-guard & model picker hover stability (2026-11-16)
+
+- **Project session selection & creation across entry points.**
+  - Workspace header (`shell/ProjectTeam.tsx`): always renders the quiet Sessions button (`[data-sessions-button]`) opening lazy
+    `shell/ProjectSessionPicker.tsx` (switch `Chat` to any live main session, open any session in its own tab via trailing action,
+    start `"New session"` / `"New session in new tab"`, or open `"All sessions…"`), while keeping the `"N agents"` control
+    when running/team agents exist.
+  - Strip `"+"` / `Ctrl/Cmd+T` (`dock/TabPicker.tsx`, `TabStrip.tsx`, `state/workspace/paletteCommands.ts`): added a searchable
+    `"Sessions"` section listing project main sessions (`"in Chat"` / `"open"` / `"default"`) plus `"New session"` (`"Open in new tab"`).
+  - Project `"⋯"` menu (`shell/ProjectActionsMenu.tsx`, `ProjectBar.tsx`) and pinned `Chat` tab context menu (`dock/TabMenu.tsx`):
+    replaced blind tab creation with `shell/sessionSwitcher.ts` (`useSyncProjectSessions`, `useCreateProjectSession`,
+    `sessionMenuItems` with `"New session"`, `"New session in new tab"`, up to 5 `"Switch session"` radio items, and `"Show sessions"`
+    / `"All sessions (N)…"`).
+  - Extracted lazy-only pure helpers in `lib/sessions/picker.ts` (`sessionChoices`, `sessionChoiceMeta`) so the initial entry chunk
+    stays within budget (`check-bundle-size.mjs`).
+- **Eliminated false "session no longer exists / is gone" races.**
+  - `lib/sessions/current.ts` (`sessionTabMode`) + `dock/TabView.tsx` (`SessionTab`) + `sessions/SessionPane.tsx`: wait until initial
+    sync completes (`synced > 0`) before falling through to `SessionPane` / `"This session is gone"` when a `session:<id>` tab is
+    opened before `state.sessions` receives its entry.
+  - `shell/openSessions.ts`, `shell/sessionSwitcher.ts`, and `dock/phone/PhoneMoreSheet.tsx`: upsert the newly created session into
+    `state.sessions` (and refresh activity sessions) before navigating or opening its tab.
+- **Model picker non-setup agent hover stability (`shared/ModelPickerPanel.tsx`).**
+  - Removed the hover-reactive `unverifiedNote` paragraph above `<PopupList>` that dynamically mounted/unmounted whenever the cursor
+    moved onto/off an unverified `"Not set up"` agent, eliminating the ~38 px height/position jump (`Popover` `ResizeObserver`) that
+    caused the dropdown to flicker while moving the cursor across unverified agents. Kept `USE_ANYWAY_NOTE` in the row's native
+    tooltip (`rowTitle`) and in `ConnectSheet` (opened on click/Enter).
+
+**Verified.** `pnpm format:check`, `pnpm lint` (0 errors across `agent-client`, `ui`, `desktop`), `pnpm --filter @octo/agent-client test`,
+`pnpm --filter @octo/ui test` (including `lib/sessions/picker.test.ts` and `shell/sessionSwitcher.test.ts`), `pnpm test:scripts`,
+`pnpm --filter @octo/desktop build`, `node scripts/check-bundle-size.mjs`, `gofmt -l .` in `apps/harness`, and headless Chromium
+CDP end-to-end checks on `?demo=1` (header session picker, `+` TabPicker `"Sessions"`, reload with persisted `session:<id>` tab,
+project `"⋯"` menu, `Chat` tab context menu, single-session project, and `ModelPickerPanel` 0 px height/position shift when moving the
+cursor across `connect:copilot` / `connect:grok` non-setup agents, with zero console/page errors).
+**Not verified.** Live `harness serve` with real CLI agents in Tauri/WebKit; `go vet` / `go test` in `apps/harness` (blocked in build VM
+by `proxy.golang.org` HTTP 403 for uncached `modernc.org/sqlite@v1.62.0`).

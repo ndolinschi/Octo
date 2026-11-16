@@ -4,33 +4,37 @@ import { saveConversation } from "../../lib/download";
 import { MOD_LABEL } from "../../lib/keys";
 import { budgetState } from "../../lib/modelsMore";
 import { mayChangeProject, ON_YOUR_COMPUTER } from "../../lib/remoteDevice";
+import { sessionChoices } from "../../lib/sessions/picker";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Menu } from "../primitives/Menu";
-import { useOpenSessionTab } from "./openSessions";
+import { sessionMenuItems, useCreateProjectSession, useSyncProjectSessions } from "./sessionSwitcher";
 
 /** A failed action in the shape `ErrorNotice` takes: the harness's `message`, `hint`, `action`, `details`. */
-export type Failure = NonNullable<ReturnType<typeof structuredError>>;
+export type Failure = NonNullable<ReturnType<typeof structuredError>> & { title?: string };
 
 /** The "⋯" menu of the project's actions. Its own chunk: `ProjectActions` loads it when the menu is first opened. */
 export default function ProjectActionsMenu(props: {
   x: number;
   y: number;
   onClose(): void;
-  /** A failed action (the export): the owner shows it as the standard error notice, with the harness's own message. */
+  /** A failed action (session create or export): the owner shows it as the standard error notice, with the harness's own message. */
   onFailure(failure: Failure): void;
 }) {
   const { project, state } = useProject();
   const { openProjectInEditor, remoteDevice } = useHost();
   const { bridge } = useApp();
   const ws = useOptionalWorkspace();
-  const openSessionTab = useOpenSessionTab();
+  const createSession = useCreateProjectSession();
+  useSyncProjectSessions(Boolean(project));
   if (!project) return null;
   const tokens = totalTokens(state);
   const total = tokens.input + tokens.output;
   const budget = budgetState(project.spent_usd, project.budget_usd);
+  const sessions = sessionChoices(state.sessions.list);
+  const activeId = ws?.chatSessionId ?? state.sessions.defaultId;
   return (
     <Menu
       label="Project actions"
@@ -39,8 +43,18 @@ export default function ProjectActionsMenu(props: {
       alignEnd
       onClose={props.onClose}
       items={[
-        { id: "session-tab", label: "Open session in new tab", disabled: !ws, run: () => void openSessionTab(project.id) },
-        { id: "sessions", label: "Show sessions", disabled: !ws, run: () => ws?.openTool("sessions") },
+        ...sessionMenuItems({
+          sessions,
+          activeId,
+          disabled: !ws,
+          onSelect: (id) => ws?.showSession(id),
+          onCreate: (target) =>
+            void createSession(target).catch((e: unknown) =>
+              props.onFailure({ ...(structuredError(e) ?? { message: errorMessage(e) }), title: "Could not start session" }),
+            ),
+          onShowAll: () => ws?.openTool("sessions"),
+        }),
+        { id: "sep-tools", separator: true },
         { id: "agents", label: "Show agents", disabled: !ws, run: () => ws?.openTool("agents") },
         { id: "details", label: "Show project details", disabled: !ws, run: () => ws?.openTool("details") },
         { id: "usage", label: "Show usage", disabled: !ws, run: () => ws?.openTool("usage") },
@@ -64,7 +78,10 @@ export default function ProjectActionsMenu(props: {
               {
                 id: "export",
                 label: "Export session (Markdown)",
-                run: () => void saveConversation(bridge, project.id).catch((e: unknown) => props.onFailure(structuredError(e) ?? { message: errorMessage(e) })),
+                run: () =>
+                  void saveConversation(bridge, project.id).catch((e: unknown) =>
+                    props.onFailure({ ...(structuredError(e) ?? { message: errorMessage(e) }), title: "Could not export" }),
+                  ),
               },
             ]
           : []),

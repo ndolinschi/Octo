@@ -248,7 +248,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         : "Nothing can run yet. Connect a provider."
       : null;
   const rowOf = (r: PickerRow | Custom | More): PickerSection["rows"][number] => {
-    const base = { id: r.key, title: rowTitle(r), run: () => act(r) };
+    const base = { id: r.key, title: rowTitle(r, props.onChooseUnverified !== undefined), run: () => act(r) };
     if (r.kind === "other" && typing)
       return {
         ...base,
@@ -338,8 +338,6 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
     last.rows.push(rowOf(r));
   });
 
-  const activeRow = at >= 0 ? entries[at] : undefined;
-  const unverifiedNote = activeRow?.kind === "connect" && activeRow.unverified && props.onChooseUnverified !== undefined;
   const why = agent ? emptyListNote({ ...agent, error: refreshNote ?? agent.error }, refreshing) : null;
   // An empty list explains itself in the dim line; a short list with a failed look keeps the warning.
   const error = agent && !why ? (refreshNote ?? agent.error) : "";
@@ -400,7 +398,6 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
           {why.note && <span className="mt-0.5 line-clamp-2 block">{why.note}</span>}
         </p>
       )}
-      {unverifiedNote && <p className="shrink-0 px-3 pt-1.5 text-xs text-fg-3">{USE_ANYWAY_NOTE}</p>}
       {error && (
         <p role="alert" className="shrink-0 px-3 pt-1.5 text-xs text-warn">
           {error}
@@ -458,10 +455,13 @@ function UnverifiedActions({ checking, still, onCheck }: { checking: boolean; st
   );
 }
 
-function rowTitle(r: PickerRow | Custom | More): string {
+function rowTitle(r: PickerRow | Custom | More, canUseAnyway: boolean): string {
   if (r.kind === "more") return `${r.label}: show them`;
   if (r.kind === "custom") return r.agentId ? `Use “${r.label}” as the model name` : `Use “${r.value}” as the model name`;
-  if (r.kind === "connect") return r.unsupported ? `${r.label}: ${r.reason ?? r.state}` : `${r.label}: ${r.state}`;
+  if (r.kind === "connect") {
+    if (r.unsupported) return `${r.label}: ${r.reason ?? r.state}`;
+    return r.unverified && canUseAnyway ? `${r.label}: ${r.state}. ${USE_ANYWAY_NOTE}` : `${r.label}: ${r.state}`;
+  }
   if (r.kind === "other") return "Type the name of a model this agent accepts";
   if (r.kind === "agent") return `${r.label}: choose a model`;
   if (r.kind === "default") return "No model named: the agent uses its own default";
