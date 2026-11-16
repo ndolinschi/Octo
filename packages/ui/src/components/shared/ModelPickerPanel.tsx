@@ -373,8 +373,8 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         }}
       />
       {agent && (
-        <div className="flex h-row shrink-0 items-center gap-1 border-b border-line px-1">
-          <Button variant="quiet" size="xs" icon={ChevronLeft} onClick={back} className="min-w-0 flex-1 justify-start">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-1.5 py-1">
+          <Button variant="quiet" size="xs" icon={ChevronLeft} onClick={back} className="min-w-0 shrink">
             <span className="truncate">{agent.label}</span>
           </Button>
           <Button
@@ -383,6 +383,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
             icon={RefreshCw}
             loading={refreshing}
             onClick={() => void doRefresh()}
+            className="shrink-0"
             title={
               agent.refreshedAt
                 ? `Refresh ${agent.label}'s model list (updated ${new Date(agent.refreshedAt).toLocaleString()})`
@@ -394,14 +395,14 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         </div>
       )}
       {why && (
-        <p className="mx-1 shrink-0 px-2 pt-1 text-xs text-fg-3">
+        <p className="shrink-0 px-3 pt-1.5 text-xs text-fg-3">
           {why.reason}
           {why.note && <span className="mt-0.5 line-clamp-2 block">{why.note}</span>}
         </p>
       )}
-      {unverifiedNote && <p className="mx-1 shrink-0 px-2 pt-1 text-xs text-fg-3">{USE_ANYWAY_NOTE}</p>}
+      {unverifiedNote && <p className="shrink-0 px-3 pt-1.5 text-xs text-fg-3">{USE_ANYWAY_NOTE}</p>}
       {error && (
-        <p role="alert" className="mx-1 shrink-0 px-2 pt-1 text-xs text-warn">
+        <p role="alert" className="shrink-0 px-3 pt-1.5 text-xs text-warn">
           {error}
         </p>
       )}
