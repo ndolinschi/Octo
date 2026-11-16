@@ -33,7 +33,8 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
   const list = state.sessions.list;
   const actions = useSessionActions();
   const ws = useOptionalWorkspace();
-  const now = useNow(false, CLOCK_MINUTE_MS);
+  const counts = useMemo(() => filterCounts(list), [list]);
+  const now = useNow(counts.agents > 0, counts.agents > 0 ? 1000 : CLOCK_MINUTE_MS);
   const [asked] = useState(() => peekQueuedSession(projectId));
   // The request is now this tab's: clear it (also what a tab that mounts again must not see).
   useEffect(() => {
@@ -62,7 +63,6 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
   );
 
   const nodes = useMemo(() => visibleNodes(list, filter, filter === "agents" ? agentsOf : null), [list, filter, agentsOf]);
-  const counts = useMemo(() => filterCounts(list), [list]);
   const picked = selected !== null ? (list.find((s) => s.id === selected) ?? null) : null;
   // Direction 7: on the phone a chosen session is a screen of its own over the list, so Back returns to the list.
   useHistoryLayer(usePhone() && picked !== null, () => setSelected(null));
@@ -79,7 +79,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
     id: f.id,
     label: f.label,
     title: f.title,
-    ...((f.id === "working" || f.id === "archived") && counts[f.id] > 0 ? { count: counts[f.id] } : {}),
+    ...((f.id === "working" || f.id === "agents" || f.id === "archived") && counts[f.id] > 0 ? { count: counts[f.id] } : {}),
   }));
   return (
     <div data-sessions className="h-full min-h-0">
@@ -210,7 +210,7 @@ function emptyText(filter: SessionFilter): string {
     case "working":
       return "Nothing is working right now.";
     case "agents":
-      return "Octo hasn't started any agents yet.";
+      return "No agents are running right now.";
     case "archived":
       return "No archived sessions. Archive one from its menu to keep the list short.";
     default:

@@ -65,11 +65,11 @@ test("All: main sessions newest first, each with its agents oldest first, archiv
   );
 });
 
-test("Mine lists the main sessions alone; Agents the agent sessions flat; Archived both kinds", () => {
+test("Mine lists the main sessions alone; Agents only running agent sessions; Archived both kinds", () => {
   assert.ok(visibleNodes(list, "mine").every((n) => n.children.length === 0 && n.session.kind === "main"));
   assert.deepEqual(
     visibleNodes(list, "agents").map((n) => n.session.id),
-    ["a3", "a1", "a2"],
+    ["a3"],
   );
   assert.deepEqual(
     visibleNodes(list, "archived").map((n) => n.session.id),
@@ -90,7 +90,7 @@ test("Working keeps the working main session and an idle one only for its workin
 });
 
 test("counts per filter", () => {
-  assert.deepEqual(filterCounts(list), { all: 3, working: 2, mine: 3, agents: 3, archived: 2 });
+  assert.deepEqual(filterCounts(list), { all: 3, working: 2, mine: 3, agents: 1, archived: 2 });
 });
 
 test("glyphs: waiting needs you, stopped rests", () => {
@@ -107,7 +107,16 @@ test("row: day, exchanges and model on the second line; 'default' or the last ac
   assert.equal(row.tail, "default");
   assert.equal(sessionRow(s("m1", { last_activity_at: "2026-11-11T09:00:00Z" }), NOW, name).tail, "Yesterday");
   const a = sessionRow(agent("a1", "m2", { model: "haiku", title: "Map the repository" }), NOW, name);
-  assert.equal(a.description, "haiku");
+  assert.equal(a.description, "Idle · haiku");
+  const live = sessionRow(agent("a3", "m3", { model: "opus", state: "working", title: "Inspect logs" }), NOW, name, {
+    role: "Code explorer",
+    statusText: "Reading files…",
+    glyph: "working",
+    tail: "12s",
+  });
+  assert.equal(live.description, "Code explorer · Reading files… · Opus 5.5");
+  assert.equal(live.glyph, "working");
+  assert.equal(live.tail, "12s");
   assert.equal(sessionRow(s("e", { title: " " }), NOW, name).title, "New session");
 });
 
@@ -154,12 +163,16 @@ test("sidebar: five most recent, 'more' past five; two main sessions make a proj
   assert.equal(hasSeveral([s("a"), s("b")]), true);
 });
 
-test("Agents can be limited to the agent sessions of one main session", () => {
+test("Agents can be limited to the running agent sessions of one main session", () => {
   assert.deepEqual(
     visibleNodes(list, "agents", "m2").map((n) => n.session.id),
-    ["a1", "a2"],
+    [],
   );
-  assert.equal(visibleNodes(list, "agents", null).length, 3);
+  assert.deepEqual(
+    visibleNodes(list, "agents", "m3").map((n) => n.session.id),
+    ["a3"],
+  );
+  assert.equal(visibleNodes(list, "agents", null).length, 1);
   assert.equal(visibleNodes(list, "all", "m2").length, 3);
 });
 

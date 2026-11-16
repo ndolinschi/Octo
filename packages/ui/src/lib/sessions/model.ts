@@ -13,7 +13,7 @@ export const FILTERS: readonly { id: SessionFilter; label: string; title: string
   { id: "all", label: "All", title: "All sessions" },
   { id: "working", label: "Working", title: "Sessions that are working or waiting for you" },
   { id: "mine", label: "Mine", title: "Sessions you started" },
-  { id: "agents", label: "Agents", title: "Sessions of agents Octo started" },
+  { id: "agents", label: "Agents", title: "Running agent sessions" },
   { id: "archived", label: "Archived", title: "Archived sessions" },
 ];
 
@@ -65,8 +65,8 @@ function childrenOf(list: readonly ProjectSession[], main: ProjectSession, keep:
 /**
  * What a filter shows, in order. `all`: the main sessions newest first, each with its agent sessions; `working`: the main
  * sessions that work or wait, and a main session that is idle but has a working agent shows just those agents; `mine`: the
- * main sessions alone; `agents`: every agent session on its own, newest first (only those of main session `agentsOf` when
- * given); `archived`: archived sessions of both kinds.
+ * main sessions alone; `agents`: running agent sessions on their own, newest first (only those of main session `agentsOf`
+ * when given); `archived`: archived sessions of both kinds.
  */
 export function visibleNodes(list: readonly ProjectSession[], filter: SessionFilter, agentsOf: string | null = null): SessionNode[] {
   const live = (s: ProjectSession) => !s.archived;
@@ -84,7 +84,7 @@ export function visibleNodes(list: readonly ProjectSession[], filter: SessionFil
         .map((m) => ({ session: m, children: [] }));
     case "agents":
       return list
-        .filter((s) => s.kind === "agent" && live(s) && (agentsOf === null || s.parent_session_id === agentsOf))
+        .filter((s) => s.kind === "agent" && live(s) && isWorking(s) && (agentsOf === null || s.parent_session_id === agentsOf))
         .sort(newest)
         .map((a) => ({ session: a, children: [] }));
     case "archived":
@@ -110,7 +110,7 @@ export function filterCounts(list: readonly ProjectSession[]): Record<SessionFil
     all: live.filter((s) => s.kind === "main").length,
     working: live.filter(isWorking).length,
     mine: live.filter((s) => s.kind === "main").length,
-    agents: live.filter((s) => s.kind === "agent").length,
+    agents: live.filter((s) => s.kind === "agent" && isWorking(s)).length,
     archived: list.length - live.length,
   };
 }
@@ -149,19 +149,33 @@ const exchangesOf = (s: ProjectSession): string => (s.exchanges > 0 ? exchangeCo
 /** What a row says: state glyph, title, "Nov 12 · 5 exchanges · Opus 5.5" and, at the right, "current" or the last activity. */
 export type SessionRowModel = { id: string; glyph: GlyphState; state: string; title: string; description: string; tail: string; current: boolean };
 
-export function sessionRow(s: ProjectSession, now: number, modelName: (value: string) => string): SessionRowModel {
+export type AgentRowMeta = {
+  role?: string | null | undefined;
+  statusText?: string | null | undefined;
+  glyph?: GlyphState | null | undefined;
+  tail?: string | null | undefined;
+};
+
+export function sessionRow(s: ProjectSession, now: number, modelName: (value: string) => string, agentMeta?: AgentRowMeta): SessionRowModel {
   // P3 (polish step 5): the count first, then the model; the date is the tail at the right (the last activity), and the day
   // the session started is in its detail. In a 280px column the line gives way at the model, not in the middle of the count.
   const parts: string[] = [];
-  if (s.kind === "main") parts.push(exchangesOf(s));
+  const state = (s.kind === "agent" && agentMeta?.statusText?.trim()) || sessionStateWord(s);
+  if (s.kind === "main") {
+    parts.push(exchangesOf(s));
+  } else {
+    const role = agentMeta?.role?.trim();
+    if (role && role !== "Agent") parts.push(role);
+    parts.push(state);
+  }
   if (s.model !== "") parts.push(modelName(s.model));
   return {
     id: s.id,
-    glyph: glyphOf(s.state),
-    state: sessionStateWord(s),
+    glyph: (s.kind === "agent" && agentMeta?.glyph) || glyphOf(s.state),
+    state,
     title: s.title.trim() === "" ? (s.kind === "main" ? "New session" : "Agent session") : s.title,
     description: parts.length > 0 ? parts.join(" · ") : formatDay(s.started_at, now),
-    tail: isDefaultSession(s) ? "default" : formatWhen(s.last_activity_at, now),
+    tail: isDefaultSession(s) ? "default" : (s.kind === "agent" && agentMeta?.tail) || formatWhen(s.last_activity_at, now),
     current: isDefaultSession(s),
   };
 }

@@ -106,7 +106,7 @@ export function AgentsPanel() {
     );
   };
 
-  const empty = groups.running.length + groups.finished.length === 0;
+  const empty = groups.running.length === 0;
   // B4.3: focus the dock moves here on opening draws no ring until the first key or press.
   const quiet = useRef<HTMLDivElement>(null);
   useQuietOpen(quiet);
@@ -120,30 +120,22 @@ export function AgentsPanel() {
       >
         {empty ? (
           <PanelEmpty
-            title="No agents yet"
+            title="No agents running"
             actions={
               <Button variant="secondary" size="sm" onClick={ws.focusChat}>
                 Give the project a task
               </Button>
             }
           >
-            They appear here when a request is split into tasks.
+            They appear here while Octo has sub-agents working.
           </PanelEmpty>
         ) : (
           <PanelBody ref={scroller} onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)}>
             <div ref={rows} className={cn("flex flex-col gap-4", PANEL_COLUMN)}>
-              {groups.running.length > 0 && (
-                <section aria-labelledby="agents-running" className="flex flex-col">
-                  <SectionHeader inset id="agents-running">{`Running ${groups.running.length}`}</SectionHeader>
-                  <ul className="flex flex-col gap-1.5">{groups.running.map((n) => node(n, true))}</ul>
-                </section>
-              )}
-              {groups.finished.length > 0 && (
-                <section aria-labelledby="agents-finished" className="flex flex-col">
-                  <SectionHeader inset id="agents-finished">{`Finished ${groups.finished.length}`}</SectionHeader>
-                  <ul className="flex flex-col gap-1.5">{groups.finished.map((n) => node(n, false))}</ul>
-                </section>
-              )}
+              <section aria-labelledby="agents-running" className="flex flex-col">
+                <SectionHeader inset id="agents-running">{`Running ${groups.running.length}`}</SectionHeader>
+                <ul className="flex flex-col gap-1.5">{groups.running.map((n) => node(n, true))}</ul>
+              </section>
             </div>
           </PanelBody>
         )}

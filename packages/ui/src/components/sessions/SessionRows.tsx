@@ -1,9 +1,14 @@
 import type { ProjectSession } from "@octo/agent-client";
 import { useEffect, useRef, type KeyboardEvent } from "react";
+import { agentWaiting, WAIT_TEXT } from "../../lib/agentWaiting";
+import { agentDuration } from "../../lib/duration";
+import { formatDuration } from "../../lib/format";
 import { useRowKeys } from "../../lib/hooksMore";
+import { agentActivity, roleText } from "../../lib/orchestrator";
 import { useRovingRows } from "../../lib/rovingRows";
-import { canDelete, sessionRow, type SessionNode } from "../../lib/sessions/model";
+import { canDelete, sessionRow, type AgentRowMeta, type SessionNode } from "../../lib/sessions/model";
 import { useModelNames } from "../../state/modelNames";
+import { useProject } from "../../state/project";
 import { IconMenu } from "../primitives/IconMenu";
 import { ListRow } from "../primitives/ListRow";
 import type { MenuItem } from "../primitives/Menu";
@@ -36,6 +41,7 @@ export function SessionRows(props: {
   };
 }) {
   const { name } = useModelNames();
+  const { state } = useProject();
   // 11g: one Tab stop for the list (↑/↓/Home/End between rows); a row's "⋯" is the pointer's way, Shift+F10 the keyboard's.
   const list = useRef<HTMLUListElement>(null);
   useRowKeys(list);
@@ -52,7 +58,22 @@ export function SessionRows(props: {
     return () => mo.disconnect();
   }, []);
   const rows = (s: ProjectSession, expanded?: boolean) => {
-    const r = sessionRow(s, props.now, name);
+    let agentMeta: AgentRowMeta | undefined;
+    if (s.kind === "agent" && s.agent_id) {
+      const a = state.agents[s.agent_id];
+      if (a) {
+        const running = a.status === "running";
+        const wait = running ? agentWaiting(state, a.id) : null;
+        const duration = running ? agentDuration(a, props.now) : null;
+        agentMeta = {
+          role: roleText(a.role),
+          statusText: wait ? WAIT_TEXT[wait] : running ? agentActivity(state, a.id) : undefined,
+          glyph: wait ? "needs" : running ? "working" : undefined,
+          tail: duration !== null ? formatDuration(duration) : undefined,
+        };
+      }
+    }
+    const r = sessionRow(s, props.now, name, agentMeta);
     const menu = props.menu;
     const items: MenuItem[] = [];
     if (menu) {
