@@ -1,13 +1,24 @@
-import { closable, type TabId } from "../../state/workspace/layout";
+import { useProject } from "../../state/project";
+import { CHAT, closable, type TabId } from "../../state/workspace/layout";
 import { MOD, useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Menu, type MenuItem } from "../primitives/Menu";
+import { useOpenSessionTab } from "../shell/openSessions";
 
 /** The context menu of a tab (decision 25; "Maximise" is decision 78). `tabs` are the tabs of the strip it opened in. */
 export default function TabMenu(props: { tab: TabId; x: number; y: number; tabs: readonly TabId[]; maximised: boolean; onClose(): void }) {
   const ws = useWorkspace();
+  const { project } = useProject();
+  const openSessionTab = useOpenSessionTab();
   const { tab } = props;
   const at = props.tabs.indexOf(tab);
   const items: MenuItem[] = [];
+  if (tab === CHAT && project) {
+    items.push(
+      { id: "session-tab", label: "Open session in new tab", run: () => void openSessionTab(project.id) },
+      { id: "sessions", label: "Show sessions", run: () => ws.openTool("sessions") },
+      { id: "sep-session", separator: true },
+    );
+  }
   if (!ws.narrow) {
     items.push(
       { id: "move", label: "Move to the other side", shortcut: `${MOD}\\`, disabled: !ws.canMoveToOtherSide(tab), run: () => ws.moveToOtherSide(tab) },

@@ -1,5 +1,6 @@
 import type { ProviderList } from "@octo/agent-client";
 import { useId, useMemo, useState } from "react";
+import { modelsPatchForSessionChoice } from "../../lib/models";
 import { useHiddenModels, useProviders } from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { Select } from "../primitives/Select";
@@ -91,6 +92,24 @@ function DefaultModelRow({ def, list }: { def: ModelRow; list: ProviderList }) {
   const value = typeof s?.value === "string" ? s.value : "";
   const options = useMemo(() => modelOptions(list, new Set(hidden), value), [list, hidden, value]);
   if (!s) return null;
+  const choose = (v: string) => {
+    const patch: Record<string, string> = { [def.id]: v };
+    if (def.field === "orchestrator") {
+      const current: Partial<Record<"fast" | "balanced" | "deep", string>> = {};
+      for (const row of MODEL_ROWS) {
+        if (row.field === "orchestrator") continue;
+        const val = harness.get(row.id)?.value;
+        if (typeof val === "string") current[row.field] = val;
+      }
+      const aligned = modelsPatchForSessionChoice(v, current);
+      for (const row of MODEL_ROWS) {
+        if (row.field === "orchestrator") continue;
+        const nextVal = aligned[row.field];
+        if (nextVal && harness.get(row.id)?.editable !== false) patch[row.id] = nextVal;
+      }
+    }
+    void run(() => harness.save({ set: patch }));
+  };
   return (
     <SettingsRow
       rowId={def.rowId}
@@ -108,7 +127,7 @@ function DefaultModelRow({ def, list }: { def: ModelRow; list: ProviderList }) {
             value={value}
             options={options}
             disabled={!s.editable || list.providers.every((p) => p.state !== "ready")}
-            onChange={(v) => void run(() => harness.save({ set: { [def.id]: v } }))}
+            onChange={choose}
           />
         </div>
       }

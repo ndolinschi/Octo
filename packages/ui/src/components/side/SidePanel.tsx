@@ -120,7 +120,8 @@ export function SidePanel() {
   const empty = load !== "loading" && list.length === 0 && !pending && load !== "error" && !failed && !noProvider;
   const showList = list.length > 0 || pending || load === "loading" || load === "error" || failed || noProvider;
   const working = pending !== null;
-  const sideModel = project ? (project.models.side ?? project.models.fast) : null;
+  const sideFallback = project?.models.orchestrator.startsWith("acp:") ? project.models.orchestrator : project?.models.fast;
+  const sideModel = project ? project.models.side || sideFallback || "" : null;
 
   // B4.3: focus the dock moves here on opening draws no ring until the first key or press.
   const quiet = useRef<HTMLDivElement>(null);
@@ -169,7 +170,7 @@ export function SidePanel() {
             </div>
           )}
           <ScrollArea ref={scroller} data-side-list className={showList ? "min-h-0 flex-1 px-pane pt-1" : "hidden"}>
-            <div className="flex w-full max-w-measure flex-col gap-4 px-2 pb-4">
+            <div className="mx-auto flex w-full max-w-measure flex-col gap-4 px-3 pb-4">
               {load === "loading" && list.length === 0 && <SkeletonList count={2} size="md" />}
               {load === "error" && list.length === 0 && (
                 <Notice
@@ -234,7 +235,7 @@ export function SidePanel() {
             </div>
             <FloatRoom />
           </ScrollArea>
-          <div className={cn("shrink-0 px-pane pb-pane", PANEL_COLUMN)}>
+          <div className={cn("mx-auto shrink-0 px-pane pb-pane", PANEL_COLUMN)}>
             <form
               className="octo-composer flex w-full max-w-measure flex-col gap-1 bg-raised p-2"
               onSubmit={(e) => {
@@ -264,7 +265,13 @@ export function SidePanel() {
                     value={sideModel}
                     onChoose={chooseModel}
                     side="top"
-                    tip={project?.models.side ? undefined : "Side questions use the Fast tier until you choose a model"}
+                    tip={
+                      project?.models.side
+                        ? undefined
+                        : project?.models.orchestrator.startsWith("acp:")
+                          ? "Side questions follow the active session until you choose a model"
+                          : "Side questions use the Fast tier until you choose a model"
+                    }
                   />
                 )}
                 <span className="ml-auto" />
@@ -276,7 +283,7 @@ export function SidePanel() {
               </div>
             </form>
             {(sendError && sendError.code !== "no_provider") || modelError ? (
-              <div id={`${SIDE_INPUT_ID}-error`} className="mt-1 w-full max-w-measure px-2">
+              <div id={`${SIDE_INPUT_ID}-error`} className="mx-auto mt-1 w-full max-w-measure px-3">
                 <Notice tone="error">{modelError ?? `Couldn't ask: ${sendError?.message}. Your question is still in the box.`}</Notice>
               </div>
             ) : null}
@@ -320,7 +327,7 @@ function SideQuestion({ text }: { text: string }) {
     return () => ro.disconnect();
   }, [text]);
   return (
-    <div data-prompt className="relative">
+    <div data-prompt className="relative -mx-3">
       <div data-bubble data-one-line={oneLine || undefined} className="border border-transparent text-sm">
         <p ref={box} className="wrap-anywhere whitespace-pre-wrap">
           {text}

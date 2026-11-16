@@ -1412,16 +1412,53 @@
   animation-play-state: paused;
 }
 
-/* (b) The line being written fades in over its last 24px (replaces the blinking caret); static, so never animated
-   behind text. */
+/* Streaming cursor: subtle opacity pulse instead of masking the last 24px of typed characters. */
 .octo-prose[data-streaming] > :last-child:not(ul, ol, pre, table, div)::after,
 .octo-prose[data-streaming] > :is(ul, ol):last-child > li:last-child::after {
-  width: 24px;
-  height: 1.3em;
-  margin-left: -24px;
-  vertical-align: -0.3em;
-  background: linear-gradient(to right, transparent, var(--octo-panel));
-  animation: none;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: var(--octo-accent);
+  animation: octo-stream-caret 1.1s ease-in-out infinite;
+}
+@keyframes octo-stream-caret {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+[data-paused] .octo-prose[data-streaming] > :last-child::after,
+[data-paused] .octo-prose[data-streaming] > :is(ul, ol):last-child > li:last-child::after {
+  animation-play-state: paused;
+}
+
+/* Smooth collapsible drawer for activity steps (GPU-friendly grid-row transition). */
+.octo-drawer-rows {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 180ms var(--ease-out-quint),
+    opacity 140ms ease-out;
+}
+.octo-drawer-rows[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+/* Calm live entrance for newly appended prompts/turns after initial load. */
+@keyframes octo-msg-in {
+  from {
+    opacity: 0;
+    translate: 0 5px;
+  }
+}
+[data-live-enter] {
+  animation: octo-msg-in 180ms var(--ease-out-quint) both;
 }
 
 /* The activity line's shimmer: a bright copy of the label seen through a moving soft window. The window and the
@@ -1712,14 +1749,57 @@
   }
 }
 /* parity */
-/* Decision 70: the composer's highlight layer tints what it understands; tint only, never a change of metrics. */
+/* Decision 70: the composer's highlight layer colors what it understands; color and background tint only, never a change of metrics. */
+[data-composer-highlight] {
+  scrollbar-width: none;
+}
+[data-composer-highlight]::-webkit-scrollbar {
+  display: none;
+}
+:where([data-composer-highlight] mark) {
+  background: transparent;
+  color: inherit;
+}
 .octo-mention {
   border-radius: var(--radius-2xs);
-  background: color-mix(in srgb, var(--octo-accent) 20%, transparent);
+  background: color-mix(in srgb, var(--octo-accent) 18%, transparent);
+  color: var(--octo-link);
 }
 .octo-command {
   border-radius: var(--radius-2xs);
   background: var(--octo-active);
+  color: var(--octo-fg);
+}
+.octo-md-heading {
+  color: var(--octo-accent);
+}
+.octo-md-tag {
+  border-radius: var(--radius-2xs);
+  background: color-mix(in srgb, var(--octo-ok) 16%, transparent);
+  color: var(--octo-ok);
+}
+.octo-md-code {
+  border-radius: var(--radius-2xs);
+  background: var(--octo-hover-in-card);
+  color: var(--octo-warn);
+}
+.octo-md-quote {
+  color: var(--octo-fg-3);
+}
+.octo-md-list {
+  color: var(--octo-accent);
+}
+.octo-md-link {
+  color: var(--octo-link);
+}
+.octo-md-strong {
+  color: var(--octo-fg);
+}
+.octo-md-em {
+  color: var(--octo-fg-2);
+}
+[data-column] [data-prompt] {
+  margin-inline: -12px;
 }
 /* /parity */
 
@@ -2291,7 +2371,7 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] [data-composer-row] > :is([data-composer-size], [data-composer-note]) {
   align-self: center;
 }
-[data-phone] [data-composer] textarea.octo-composer-input {
+[data-phone] [data-composer] .octo-composer-input {
   padding-inline: 4px;
   font-size: 16px;
   line-height: 20px;

@@ -138,6 +138,14 @@ export const ComposerMenu = forwardRef<
       out.push({ id: `to:${t.id}`, group: "This message", label: t.label, hint: "Open", icon: t.icon, match: t.label, pick: { run: t.run } });
     }
     const files = code?.loadedFiles ?? [];
+    const basenameCounts = new Map<string, number>();
+    const foldersSeen = new Set<string>();
+    for (const f of files) {
+      const base = f.path.slice(f.path.lastIndexOf("/") + 1);
+      basenameCounts.set(base, (basenameCounts.get(base) ?? 0) + 1);
+      foldersSeen.add(f.folder);
+    }
+    const multiFolder = foldersSeen.size > 1;
     const hits = query ? files.filter((f) => `${f.folder}/${f.path}`.toLowerCase().includes(query)) : files;
     // Ranked: name matches before path matches, then shorter paths.
     const name = (p: string) => p.slice(p.lastIndexOf("/") + 1).toLowerCase();
@@ -146,16 +154,19 @@ export const ComposerMenu = forwardRef<
       .sort((a, b) => Number(!name(a.path).includes(query)) - Number(!name(b.path).includes(query)) || a.path.length - b.path.length)
       .slice(0, FILES_SHOWN)
       .forEach((f) => {
+        const base = f.path.slice(f.path.lastIndexOf("/") + 1);
         const path = `${f.folder}/${f.path}`;
+        const detailed = multiFolder ? path : f.path;
+        const mention = (basenameCounts.get(base) ?? 0) <= 1 ? `@${base}` : `@${detailed}`;
         out.push({
           id: `file:${path}`,
           group: "Files",
-          label: f.path.slice(f.path.lastIndexOf("/") + 1),
+          label: base,
           detail: path,
-          hint: "Insert path",
+          hint: "Mention file",
           icon: fileIcon(f.path),
           match: path,
-          pick: { insert: `\`${path}\` ` },
+          pick: { insert: `${mention} ` },
         });
       });
     for (const a of agents) {

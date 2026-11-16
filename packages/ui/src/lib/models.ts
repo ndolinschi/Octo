@@ -1,5 +1,5 @@
 import { agentLabelOf } from "./errors/words";
-import type { AcpOrchestratorChoice } from "@octo/agent-client";
+import type { AcpOrchestratorChoice, Models } from "@octo/agent-client";
 
 /** What the UI needs of an ACP agent to name it: its id and label (from `config.acp_orchestrators` or the plugins list). */
 export type AcpName = Pick<AcpOrchestratorChoice, "id" | "label">;
@@ -13,6 +13,23 @@ export function parseAcp(value: string): { id: string; model: string | null } | 
   const id = rest.slice(0, slash);
   const model = rest.slice(slash + 1);
   return id ? { id, model: model || null } : null;
+}
+
+/**
+ * Single-provider rule for Session mode: choosing an ACP subscription agent (`acp:<id>[/<model>]`) for the Session
+ * aligns `fast`, `balanced`, `deep` (and any cross-provider `side` override) to that same agent unless already on it.
+ */
+export function modelsPatchForSessionChoice(nextOrchestrator: string, current: Partial<Pick<Models, "fast" | "balanced" | "deep" | "side">>): Partial<Models> {
+  const next = parseAcp(nextOrchestrator);
+  if (!next) return { orchestrator: nextOrchestrator };
+  const ref = `acp:${next.id}`;
+  const sameProvider = (value: string | undefined) => (value ? parseAcp(value)?.id === next.id : false);
+  const patch: Partial<Models> = { orchestrator: nextOrchestrator };
+  if (!sameProvider(current.fast)) patch.fast = ref;
+  if (!sameProvider(current.balanced)) patch.balanced = ref;
+  if (!sameProvider(current.deep)) patch.deep = ref;
+  if (current.side && !sameProvider(current.side)) patch.side = ref;
+  return patch;
 }
 
 /** "claude-sonnet-5-5-20261001" → "Sonnet 5.5"; ids that do not follow that shape are shown whole (never guessed at). */

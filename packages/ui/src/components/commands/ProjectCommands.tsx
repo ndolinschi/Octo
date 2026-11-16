@@ -6,7 +6,7 @@ import { settingsHref } from "../../lib/route";
 import { useProject } from "../../state/project";
 import { useRunsSelector, useRunsStore } from "../../state/projectRuns";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { ChevronDown, Minimize2, Play, Plus, Settings } from "lucide-react";
+import { Minimize2, Play, Plus, Settings } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { MOD_LABEL } from "../../lib/keys";
 import { Button } from "../primitives/Button";
@@ -28,20 +28,18 @@ const PINNED_SHOWN = 2;
 
 /**
  * The project's commands in the top row (decision 68), next to the project actions: the pinned ones as quiet buttons (a
- * spinner while that command runs) and a "Run" menu with all of them. Running one starts it in the project folder and shows
+ * spinner while that command runs) and a "Run" icon menu with all of them. Running one starts it in the project folder and shows
  * its "Run: name" tab; clicking one that runs just shows the tab. Only the user starts a command, never an agent.
  */
 export default function ProjectCommands({
   onRestore,
   hideCommands = false,
   collapsePinned = false,
-  compactRun = false,
   onPinnedWidth,
 }: {
   /** Set while the strip's group has the whole dock (decision 78). */ onRestore: (() => void) | null;
   /** A review is the active tab: its header has the commands (decision 90), so none are shown here. */ hideCommands?: boolean;
   /** The tabs need the room (decision 90): the pinned buttons are only in the "Run" menu. */ collapsePinned?: boolean;
-  /** The strip is narrow (decision 90): "Run" is an icon-only menu button. */ compactRun?: boolean;
   /** The width the pinned buttons take (with their gap), so the strip can decide before it folds them; 0 when none show. */ onPinnedWidth?: (
     w: number,
   ) => void;
@@ -151,33 +149,17 @@ export default function ProjectCommands({
             );
           })}
         </span>
-        {/* Polish step 2 (F3): "Run" is the same 28px quiet control as its neighbours (the `MenuButton` primitive is 24px). */}
-        {compactRun ? (
-          <IconButton
-            ref={runButton}
-            icon={Play}
-            size="sm"
-            label="Run a project command"
-            aria-haspopup="menu"
-            aria-expanded={runMenu !== null}
-            className={cn("shrink-0", runMenu && "bg-active text-fg")}
-            onClick={toggleRun}
-          />
-        ) : (
-          <Button
-            ref={runButton}
-            variant="quiet"
-            size="sm"
-            iconEnd={ChevronDown}
-            aria-label="Run a project command: Run"
-            aria-haspopup="menu"
-            aria-expanded={runMenu !== null}
-            className={cn(runMenu && "bg-active")}
-            onClick={toggleRun}
-          >
-            Run
-          </Button>
-        )}
+        {/* Run uses the Play icon button by default (matching mobile) to keep the end cluster compact. */}
+        <IconButton
+          ref={runButton}
+          icon={Play}
+          size="sm"
+          label="Run a project command"
+          aria-haspopup="menu"
+          aria-expanded={runMenu !== null}
+          className={cn("shrink-0", runMenu && "bg-active text-fg")}
+          onClick={toggleRun}
+        />
       </span>
       <Presence show={runMenu !== null} exitMs={0}>
         {runMenu && <Menu label="Run a project command" x={runMenu.x} y={runMenu.y} alignEnd items={items} onClose={() => setRunMenu(null)} />}

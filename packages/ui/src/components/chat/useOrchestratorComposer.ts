@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { withComments } from "../../lib/comments";
 import { effectiveMode, modeToSend, nextMode } from "../../lib/modes";
 import { promptText } from "../../lib/transcript";
-import { servedModel } from "../../lib/models";
+import { modelsPatchForSessionChoice, servedModel } from "../../lib/models";
 import { useApp } from "../../state/app";
 import { useOptionalComments } from "../../state/comments";
 import { useProject } from "../../state/project";
@@ -79,7 +79,7 @@ function useQueue(memory: TabMemory | undefined, tab: TabId) {
 export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "comments"> & { commentCount: number } {
   const { health, config, bridge } = useApp();
   const device = useHost().remoteDevice;
-  const { project, state, running, send, cancel, live, update, projectId, loadFailures } = useProject();
+  const { project, state, running, send, cancel, live, update, loadFailures } = useProject();
   const comments = useOptionalComments();
   const memory = useOptionalWorkspace()?.memory;
   // Decision 96: a session's draft and local queue are its own, wherever its composer is (its tab, Chat, the floating one).
@@ -152,19 +152,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   const loop = config?.builtin_loop;
   const acp = (current ?? "").startsWith("acp:");
   const noKey = loop?.available === false && !acp;
-  // Criterion 34: the session this composer sends to, on the box itself.
-  const session = scope && state.sessions.list.length > 0 ? scope.session : undefined;
-  const ws = useOptionalWorkspace();
-  const sessionChip = scope
-    ? {
-        title: session?.title.trim() || "New session",
-        isDefault: scope.isDefault,
-        onMakeDefault: () => void bridge.setDefaultSession(projectId, scope.sessionId).catch(() => undefined),
-        onShowAll: () => ws?.openTool("sessions"),
-      }
-    : null;
   return {
-    session: sessionChip,
     running,
     // P2-3: the conversation stays on screen while the service is away; the composer says why it is off.
     // Remote access: a device that may not send (read-only, or sends not allowed); the composer says where that changes.
@@ -210,7 +198,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
             if (!project || model === project.models.orchestrator) return;
             setPending(model);
             try {
-              await update({ models: { orchestrator: model }, ...(force ? { force_unverified: true } : {}) });
+              await update({ models: modelsPatchForSessionChoice(model, project.models), ...(force ? { force_unverified: true } : {}) });
             } finally {
               setPending(null);
             }

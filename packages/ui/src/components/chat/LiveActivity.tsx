@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNow } from "../../lib/hooks";
 import { useProject } from "../../state/project";
 import { ActivityRow } from "./ActivityRow";
 import { activityLine, type ActivityLine as ActivityLineKind, labelParts, runningToolOf } from "./activity";
@@ -13,18 +14,21 @@ export function ActivityLine({
   agentId,
   agentName,
   startedAt,
-  now,
+  now: nowProp,
   watched,
   current = null,
 }: {
   agentId: string;
   agentName: string;
   startedAt: number | null;
-  now: number;
+  now?: number;
   watched: boolean;
   /** The kind of step the newest row above already shows (a streaming "Thinking" row, a running tool group): the line then adds nothing. */
   current?: ActivityLineKind["kind"] | null;
 }) {
+  // Isolate the 1-second timer inside the live row so ConversationView / Transcript do not re-render every second while streaming.
+  const localNow = useNow(nowProp === undefined && watched);
+  const now = nowProp ?? localNow;
   const { state } = useProject();
   const messages = state.messages[agentId];
   const streaming = state.streaming[agentId] ?? "";
@@ -83,26 +87,62 @@ export function ActivityLine({
   );
 }
 
-/** Decision 55 e: streamed text is shown at most every 50 ms, never more often (a burst of deltas is one render). */
-export const STREAM_BATCH_MS = 50;
+/** Decision 55 e: streamed text is coalesced smoothly onto display frames at most ~once per 32ms. */
+export const STREAM_BATCH_MS = 32;
 
 export function useBatched(value: string): string {
   const [shown, setShown] = useState(value);
+  const latest = useRef(value);
+  latest.current = value;
   const last = useRef(0);
+  const timer = useRef<number | null>(null);
+  const raf = useRef<number | null>(null);
+
   useEffect(() => {
-    if (value === shown) return;
-    // Cleared (a finished reply), or the first text: show it at once.
-    if (!value || !shown) {
+    const clearScheduled = () => {
+      if (timer.current !== null) {
+        window.clearTimeout(timer.current);
+        timer.current = null;
+      }
+      if (raf.current !== null && typeof cancelAnimationFrame === "function") {
+        cancelAnimationFrame(raf.current);
+        raf.current = null;
+      }
+    };
+    if (!value) {
+      clearScheduled();
+      last.current = 0;
+      setShown("");
+      return;
+    }
+    if (!shown) {
+      clearScheduled();
       last.current = performance.now();
       setShown(value);
       return;
     }
-    const wait = Math.max(0, STREAM_BATCH_MS - (performance.now() - last.current));
-    const id = window.setTimeout(() => {
+    if (value === shown || timer.current !== null || raf.current !== null) return;
+    const commit = () => {
+      raf.current = null;
       last.current = performance.now();
-      setShown(value);
-    }, wait);
-    return () => window.clearTimeout(id);
+      setShown(latest.current);
+    };
+    const scheduleFrame = () => {
+      timer.current = null;
+      if (typeof requestAnimationFrame === "function") raf.current = requestAnimationFrame(commit);
+      else commit();
+    };
+    const wait = Math.max(0, STREAM_BATCH_MS - (performance.now() - last.current));
+    if (wait <= 4) scheduleFrame();
+    else timer.current = window.setTimeout(scheduleFrame, wait);
   }, [value, shown]);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+      if (raf.current !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(raf.current);
+    };
+  }, []);
+
   return value ? shown : "";
 }

@@ -91,7 +91,7 @@ export function SessionComposer({ session, actions }: { session: ProjectSession;
         </div>
       </form>
       {!disabled && (
-        <div className="flex min-w-0 flex-col gap-1 px-1">
+        <div className="flex min-w-0 flex-col gap-1 px-3">
           <Checkbox
             checked={report}
             onChange={setReport}

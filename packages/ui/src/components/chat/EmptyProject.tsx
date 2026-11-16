@@ -1,11 +1,9 @@
 import type { Project } from "@octo/agent-client";
 import { useApp } from "../../state/app";
 import { canRun, chipLabel, useProviders } from "../../lib/providers";
-import { StarterPrompts } from "./StarterPrompts";
 
 /**
- * Decision 52: the empty project is the streak, one line, the composer (its chips are the settings) and at most three
- * starter prompts specific to this project. No summary of folders, tiers or agents — configuration lives in controls.
+ * The empty project shows the streak, one title line, any actionable blocking notices, and the composer.
  */
 export function EmptyTitle({ project }: { project: Project }) {
   const { config, bridge } = useApp();
@@ -19,11 +17,10 @@ export function EmptyTitle({ project }: { project: Project }) {
     list && model && !noKey && !canRun(list, model)
       ? `${chipLabel(model, list)} can't run yet: its provider is not connected. Pick another model below, or connect one in Settings.`
       : null;
-  const folder = project.folders[0]?.label;
   const noFolder = project.folders.length === 0 ? "No folder is chosen, so agents have nothing to work in. Choose one with the folder button below." : null;
   return (
     // Balance pass: on the composer's text edge (12px in), like Home's one left edge (F5): no centred heading over the left-aligned
-    // composer and suggestions.
+    // composer.
     <div className="relative mx-auto w-full max-w-float px-3">
       {/* Decision 28: one sentence in two tones — the lead-in muted, the statement in fg. */}
       {/* P2-10: a long name without spaces wraps anywhere and the sentence stops at two lines; the tooltip has it all. */}
@@ -40,21 +37,6 @@ export function EmptyTitle({ project }: { project: Project }) {
           No API key yet. Pick a coding agent in the model menu below, or add a key in Settings.
         </p>
       )}
-      {/* C4: one line on what Octo does here, no tour; a problem's sentence takes its place (two grey paragraphs would compete). */}
-      {!stuck && !noFolder && !noKey && folder && (
-        <p data-orient className="relative mt-2 text-sm text-fg-3">
-          Octo edits {folder} and runs its commands; you can undo any change.
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** Under the empty project's composer: the project-specific starters only (decision 52). */
-export function EmptyFacts({ project, onPick }: { project: Project; onPick(text: string): void }) {
-  return (
-    <div className="relative mx-auto flex w-full max-w-float flex-col">
-      <StarterPrompts project={project} onPick={onPick} />
     </div>
   );
 }

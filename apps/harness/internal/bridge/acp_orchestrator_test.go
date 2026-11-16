@@ -806,3 +806,35 @@ waitChild:
 		}
 	}
 }
+
+func TestACPSessionModeAlignsAllTiersAndSide(t *testing.T) {
+	e := newACPEnv(t, nil, nil)
+	type modelsResp struct {
+		Models config.Models `json:"models"`
+	}
+
+	// Creating with an ACP orchestrator aligns omitted tiers to the same ACP provider.
+	p1 := e.acpProject(t)
+	var got1 modelsResp
+	e.into(t, "GET", "/v1/projects/"+p1.ID, nil, http.StatusOK, &got1)
+	if got1.Models.Orchestrator != "acp:scripted" || got1.Models.Fast != "acp:scripted" || got1.Models.Balanced != "acp:scripted" || got1.Models.Deep != "acp:scripted" {
+		t.Fatalf("created ACP project models = %+v", got1.Models)
+	}
+
+	// Switching an API project (even with an explicit API side override) to ACP aligns tiers and side while keeping same-provider explicit tier choices.
+	p2 := e.project(t, map[string]string{
+		"orchestrator": "claude-sonnet-5-5",
+		"fast":         "claude-haiku-5-5",
+		"balanced":     "claude-sonnet-5-5",
+		"deep":         "claude-opus-5-5",
+		"side":         "claude-haiku-5-5",
+	})
+	var got2 modelsResp
+	e.into(t, "PATCH", "/v1/projects/"+p2.ID, map[string]any{
+		"models": map[string]string{"orchestrator": "acp:scripted/some-model", "fast": "acp:scripted/fast-model"},
+	}, http.StatusOK, &got2)
+	if got2.Models.Orchestrator != "acp:scripted/some-model" || got2.Models.Fast != "acp:scripted/fast-model" ||
+		got2.Models.Balanced != "acp:scripted" || got2.Models.Deep != "acp:scripted" || got2.Models.Side != "acp:scripted" {
+		t.Fatalf("updated ACP project models = %+v", got2.Models)
+	}
+}

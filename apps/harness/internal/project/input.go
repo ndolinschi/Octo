@@ -11,6 +11,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
+	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projcfg"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
@@ -129,6 +130,37 @@ func mergeModels(base config.Models, over *config.Models) (config.Models, error)
 		base.AutoCandidates = slices.Clone(over.AutoCandidates)
 	}
 	return base, nil
+}
+
+// alignACPSessionModels aligns omitted tier slots (fast, balanced, deep) and any
+// stale cross-provider side override to the selected ACP session agent so the
+// project runs under a single subscription provider unless explicitly overridden.
+func alignACPSessionModels(merged config.Models, over *config.Models) config.Models {
+	if over == nil || over.Orchestrator == "" {
+		return merged
+	}
+	id, _, ok := plugins.ParseACPRef(merged.Orchestrator)
+	if !ok {
+		return merged
+	}
+	ref := plugins.ACPPrefix + id
+	sameProvider := func(v string) bool {
+		tid, _, tok := plugins.ParseACPRef(v)
+		return tok && tid == id
+	}
+	if over.Fast == "" && !sameProvider(merged.Fast) {
+		merged.Fast = ref
+	}
+	if over.Balanced == "" && !sameProvider(merged.Balanced) {
+		merged.Balanced = ref
+	}
+	if over.Deep == "" && !sameProvider(merged.Deep) {
+		merged.Deep = ref
+	}
+	if over.Side == "" && merged.Side != "" && !sameProvider(merged.Side) {
+		merged.Side = ref
+	}
+	return merged
 }
 
 // resolveFolders validates paths and assigns unique labels (basename by default).

@@ -54,3 +54,37 @@ test("newlines separate words and an empty text has no spans", () => {
   assert.deepEqual(kinds("a\n@README.md"), ["text:a\n", "mention:@README.md"]);
   assert.deepEqual(composerSpans(""), []);
 });
+
+test("markdown elements highlight while preserving exact character sequence", () => {
+  const sample = [
+    "# Heading with @pom.xml",
+    "Track #bug-42 with **bold**, *em*, `code`, and [docs](https://example.com).",
+    "> Quote line",
+    "- List item",
+    "```ts",
+    "const #notTag = '@ignored';",
+    "```",
+  ].join("\n");
+  const spans = composerSpans(sample);
+  assert.equal(spans.map((s) => s.text).join(""), sample);
+  assert.deepEqual(
+    spans.slice(0, 6).map((s) => `${s.kind}:${s.text}`),
+    ["md-heading:# Heading with ", "mention:@pom.xml", "text:\nTrack ", "md-tag:#bug-42", "text: with ", "md-strong:**bold**"],
+  );
+  assert.ok(spans.some((s) => s.kind === "md-em" && s.text === "*em*"));
+  assert.ok(spans.some((s) => s.kind === "md-code" && s.text === "`code`"));
+  assert.ok(spans.some((s) => s.kind === "md-link" && s.text === "[docs](https://example.com)"));
+  assert.ok(spans.some((s) => s.kind === "md-quote" && s.text === "> "));
+  assert.ok(spans.some((s) => s.kind === "md-list" && s.text === "-"));
+  assert.ok(spans.some((s) => s.kind === "md-code" && s.text.startsWith("```ts")));
+  assert.ok(!spans.some((s) => s.kind === "md-tag" && s.text === "#notTag"));
+});
+
+test("unique extensionless known files highlight as mentions while handles stay plain", () => {
+  const knownFiles = new Set(["Makefile", "Dockerfile"]);
+  const text = "Check @Makefile and @maya";
+  assert.deepEqual(
+    composerSpans(text, undefined, { knownFiles }).map((s) => `${s.kind}:${s.text}`),
+    ["text:Check ", "mention:@Makefile", "text: and @maya"],
+  );
+});

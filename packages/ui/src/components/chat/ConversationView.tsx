@@ -5,6 +5,7 @@ import { IconButton } from "../primitives/IconButton";
 import { InlineNotesProvider } from "./notesContext";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
+import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { useNow, useStickToBottom } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
 import { useChatSlots } from "../../state/chatSlots";
@@ -59,9 +60,8 @@ const SCROLL_MEMORY = slot(
 /** A row outside the scroll area with the scroll area's gutters and side padding (see the doc comment). */
 export const EDGES = "scroll-quiet overflow-hidden px-(--pad)";
 
-/** The empty project's title and facts load when an empty project shows (their own chunk; the composer is not in it). */
+/** The empty project's title loads when an empty project shows (its own chunk; the composer is not in it). */
 const EmptyTitle = lazy(() => import("./EmptyProject").then((m) => ({ default: m.EmptyTitle })));
-const EmptyFacts = lazy(() => import("./EmptyProject").then((m) => ({ default: m.EmptyFacts })));
 
 /** The turn rail appears from the first request (decision 34). */
 
@@ -91,7 +91,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const { project, state, running, ensureMessages, projectId, loadFailures, reload } = useProject();
   const agent = state.agents[agentId];
   const messages = state.messages[agentId];
-  const streaming = state.streaming[agentId];
+  const hasStreaming = (state.streaming[agentId]?.length ?? 0) > 0;
   const composer = useRef<ComposerHandle>(null);
   const isOrchestrator = agent?.parent_id === null;
   const composerProps = useOrchestratorComposer(tab);
@@ -99,14 +99,14 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const [rewinding, setRewinding] = useState<{ id: number; which: "next" | "this" } | null>(null);
   const restoreTo = useCallback((id: number) => setRewinding({ id, which: "next" }), []);
   const keepEditing = useCallback(() => composer.current?.refinePlan(), []);
-  const anyRunning = state.agentOrder.some((id) => state.agents[id]?.status === "running");
-  const now = useNow(anyRunning);
+  // Conversation-level relative labels update per minute; active 1s timers are localized inside ActivityLine, AgentHeader, and DelegationRow.
+  const now = useNow(true, CLOCK_MINUTE_MS);
   const memory = ws?.memory;
   // Decision 96: where the reader was is the session's own (Chat shows one session after another).
   const spot = useSessionScope()?.memoryKey ?? tab;
   const saved = memory?.get(spot, SCROLL_MEMORY);
   const scroll = useStickToBottom<HTMLDivElement>(
-    [messages, streaming, agent?.status, agentId],
+    [messages, hasStreaming, agent?.status, agentId],
     saved ? saved.atBottom : isOrchestrator || agent?.status === "running",
   );
 
@@ -146,7 +146,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
     if (!isOrchestrator || messages === undefined) return;
     const before = seenPrompts.current;
     seenPrompts.current = promptCount;
-    if (before !== null && promptCount > before) scrollToBottom();
+    if (before !== null && promptCount > before) scrollToBottom(true);
   }, [isOrchestrator, messages, promptCount, scrollToBottom]);
   const lastTurnStatus = isOrchestrator ? (state.lastTurn?.status ?? null) : null;
   const requests = useMemo(
@@ -170,7 +170,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
     reveal: ws ? () => ws.activate(tab) : undefined,
   });
   const { onScroll: measureStuck } = stuck;
-  useEffect(measureStuck, [messages, streaming, measureStuck]);
+  useEffect(measureStuck, [messages, hasStreaming, measureStuck]);
   // Decision 56: "Jump to latest" hides while a popover of the composer is open.
   const [overlay, setOverlay] = useState(false);
   const composerRow = useRef<HTMLDivElement>(null);
@@ -325,10 +325,10 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
             className="min-h-0 flex-1 overflow-y-auto scroll-quiet"
           >
             <div className="px-(--pad)">
-              <div data-column className="mx-auto w-full max-w-measure pt-2 pb-8">
+              <div data-column className="mx-auto w-full max-w-measure px-3 pt-2 pb-8">
                 {!isOrchestrator && (
                   <Suspense fallback={<div className="mb-5 h-12" aria-hidden />}>
-                    <AgentHeader agent={agent} now={now} />
+                    <AgentHeader agent={agent} />
                   </Suspense>
                 )}
                 {failure && (
@@ -340,6 +340,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
                   <Transcript
                     agent={agent}
                     messages={messages ?? []}
+                    loaded={messages !== undefined}
                     now={now}
                     watched={watched}
                     speaker={agent?.parent_id === null ? (project?.name ?? "Assistant") : roleName(agent)}
@@ -390,13 +391,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
           )}
         </div>
       </div>
-      {empty && (
-        <div className="relative flex-[1_0_auto] px-(--pad) pt-4 pb-8">
-          <Suspense fallback={null}>
-            <EmptyFacts project={project} onPick={(text) => composer.current?.fill(text)} />
-          </Suspense>
-        </div>
-      )}
+      {empty && <div aria-hidden className="relative flex-[1_0_auto] px-(--pad) pt-4 pb-8" />}
 
       <Presence show={rewinding !== null}>
         {rewinding !== null && (

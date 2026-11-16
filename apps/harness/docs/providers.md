@@ -112,6 +112,7 @@ What a project created without models gets: the current defaults (`HARNESS_MODEL
 ## Model checks
 
 - `POST`/`PATCH /v1/projects` never refuse a model because its provider is not ready (since 2026-11-15; before, `422 model_unavailable` / `409 no_provider` with `can_force`). Unknown agents or models stay `400 invalid_request`. A project created with nothing ready keeps the server defaults.
+- When `orchestrator` is an ACP agent (`acp:<id>[/<model>]`), Session mode aligns `fast`, `balanced`, and `deep` (and clears a stale cross-provider `side` override) to that same ACP provider (`project/input.go`, `project/service.go`), and `orchestrator/spawn.go` falls back to the ACP orchestrator's provider for sub-agent tiers.
 - A new project's four models come from `suggested`, overlaid by what the request names.
 - Reading never fails: `GET /v1/projects/{id}` lists unusable stored models in `models_unavailable: [{field, model, provider, reason}]` (always an array). A project whose orchestrator equals the server default while the built-in loop is off still runs on a ready agent (`EffectiveOrchestrator`); it is listed anyway.
 

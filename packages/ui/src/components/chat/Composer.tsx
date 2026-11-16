@@ -28,7 +28,6 @@ import { withAttachments } from "./attachments";
 import type { ComposerMenuHandle, MenuPick } from "./ComposerMenu";
 import { modeNote } from "../../lib/modes";
 import { FolderMenu, foldersLabel, ModelChip } from "./ComposerChips";
-import type { ComposerSession } from "./SessionMenu";
 import type { ComposerMode } from "./composerMode";
 import type { QueuedMessage } from "./ComposerPills";
 import { useAttachments } from "./useAttachments";
@@ -110,8 +109,6 @@ export type ComposerProps = {
   floating?: boolean;
   /** A popover of the composer opened or closed (the conversation hides "Jump to latest" meanwhile, decision 56). */
   onOverlay?(open: boolean): void;
-  /** Decision 96: the main session it sends to (parallel sessions); absent before them. */
-  session?: ComposerSession | null | undefined;
 };
 
 const noCount = () => undefined;
@@ -152,8 +149,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const slashRef = useRef<SlashMenuHandle>(null);
   const [slash, setSlash] = useState<{ query: string } | null>(null);
   const [slashActive, setSlashActive] = useState<string | null>(null);
+  const [highlightActive, setHighlightActive] = useState(false);
   const [modelRequest, setModelRequest] = useState<{ n: number; query: string } | undefined>(undefined);
   const slashCommands = useSlashCommands();
+  const commandNames = useMemo(() => slashCommands?.octo.map((c) => c.name), [slashCommands]);
   const openModel = useCallback((query: string) => setModelRequest((r) => ({ n: (r?.n ?? 0) + 1, query })), []);
   const runSlash = useSlashRunner({ mode: props.mode, openModel });
   const [command, setCommand] = useState<string | null>(null);
@@ -555,12 +554,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           Still stopping — a running command has to finish
         </p>
       )}
-      {props.session && !props.session.isDefault && (
-        // The request goes to the session the tab shows; when that is not the project's default one, say so (one quiet line).
-        <p data-sends-to className="mb-2 min-w-0 truncate px-3 text-sm text-fg-3">
-          Sends to “{props.session.title}”, not the default session
-        </p>
-      )}
       {props.mode && modeNote(props.mode.value) && <p className="mb-2 px-3 text-sm text-fg-3">{modeNote(props.mode.value)}</p>}
       {attach.note && (
         <Notice>
@@ -623,44 +616,49 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </label>
           {/* C6: the top padding sits outside the scrolling text, so a long prompt never scrolls it away. */}
           <div data-composer-pad className="relative pt-3 pb-2">
-            <Suspense fallback={null}>
-              <ComposerHighlight text={text} area={area} />
-            </Suspense>
-            <textarea
-              id={props.floating ? "octo-composer-float" : "octo-composer"}
-              ref={area}
-              rows={1}
-              value={text}
-              data-long-word={longWord || undefined}
-              disabled={disabled}
-              onChange={(e) => {
-                setText(e.target.value);
-                setRefused(null);
-                setPastingLong(false);
-                syncTrigger(e.target.value, e.target.selectionStart);
-              }}
-              onSelect={(e) => inlineOpen && syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
-              onKeyDown={onKeyDown}
-              onPaste={(e) => {
-                if (!longWord && plainShaping(e.clipboardData.getData("text/plain"))) flushSync(() => setPastingLong(true));
-                attach.onPaste(e);
-              }}
-              onBlur={() => {
-                if (inlineOpen) setMenu(null);
-                setSlash(null);
-              }}
-              placeholder={props.disabledReason ?? (phone ? "Ask anything" : "Ask anything, @ to mention a file")}
-              // 7a (ARIA 1.2): the "@" and "/" menus are listboxes driven by aria-activedescendant, so the field is a combobox
-              // (aria-expanded is not allowed on a plain textbox; aria-multiline is not allowed on a combobox). A combobox's
-              // popup is a listbox by default, so no aria-haspopup.
-              role="combobox"
-              aria-autocomplete="list"
-              aria-expanded={inlineOpen || slash !== null}
-              aria-controls={slash ? slashListId : inlineOpen ? listId : undefined}
-              aria-activedescendant={slash ? (slashActive ?? undefined) : inlineOpen && activeOption ? activeOption : undefined}
-              aria-keyshortcuts="Enter Shift+Enter Control+Enter Escape"
-              className="octo-composer-input relative block w-full resize-none overscroll-contain bg-transparent px-3 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
-            />
+            <div className="relative">
+              <Suspense fallback={null}>
+                <ComposerHighlight text={text} area={area} commands={commandNames} onActiveChange={setHighlightActive} />
+              </Suspense>
+              <textarea
+                id={props.floating ? "octo-composer-float" : "octo-composer"}
+                ref={area}
+                rows={1}
+                value={text}
+                data-long-word={longWord || undefined}
+                disabled={disabled}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  setRefused(null);
+                  setPastingLong(false);
+                  syncTrigger(e.target.value, e.target.selectionStart);
+                }}
+                onSelect={(e) => inlineOpen && syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
+                onKeyDown={onKeyDown}
+                onPaste={(e) => {
+                  if (!longWord && plainShaping(e.clipboardData.getData("text/plain"))) flushSync(() => setPastingLong(true));
+                  attach.onPaste(e);
+                }}
+                onBlur={() => {
+                  if (inlineOpen) setMenu(null);
+                  setSlash(null);
+                }}
+                placeholder={props.disabledReason ?? (phone ? "Ask anything" : "Ask anything, @ to mention a file")}
+                // 7a (ARIA 1.2): the "@" and "/" menus are listboxes driven by aria-activedescendant, so the field is a combobox
+                // (aria-expanded is not allowed on a plain textbox; aria-multiline is not allowed on a combobox). A combobox's
+                // popup is a listbox by default, so no aria-haspopup.
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={inlineOpen || slash !== null}
+                aria-controls={slash ? slashListId : inlineOpen ? listId : undefined}
+                aria-activedescendant={slash ? (slashActive ?? undefined) : inlineOpen && activeOption ? activeOption : undefined}
+                aria-keyshortcuts="Enter Shift+Enter Control+Enter Escape"
+                className={cn(
+                  "octo-composer-input relative block w-full resize-none overscroll-contain bg-transparent px-3 wrap-anywhere placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed",
+                  highlightActive ? "text-transparent caret-fg" : "text-fg",
+                )}
+              />
+            </div>
           </div>
           <div data-composer-row className="box-content flex h-7 min-w-0 items-center gap-1 px-1.5 pb-2">
             <IconButton

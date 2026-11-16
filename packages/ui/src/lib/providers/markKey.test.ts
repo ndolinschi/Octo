@@ -22,6 +22,16 @@ test("a model id gets its vendor's mark", () => {
   assert.equal(markKeyOf("Gemini-3-pro"), "gemini");
 });
 
+test("acp references get the agent mark, else fall back to the embedded model mark", () => {
+  assert.equal(markKeyOf("acp:copilot"), "copilot");
+  assert.equal(markKeyOf("acp:copilot/claude-sonnet-5"), "copilot");
+  assert.equal(markKeyOf("acp:claude-code"), "claude-code");
+  assert.equal(markKeyOf("acp:codex/gpt-5"), "codex");
+  assert.equal(markKeyOf("acp:custom/claude-sonnet-5"), "claude");
+  assert.equal(markKeyOf("acp:custom/unknown"), null);
+  assert.equal(markKeyOf("acp:"), null);
+});
+
 test("ids with no vendor mark, and our own router, have none", () => {
   assert.equal(markKeyOf("router"), null);
   assert.equal(markKeyOf("factory-droid"), null);

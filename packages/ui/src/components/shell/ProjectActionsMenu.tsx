@@ -9,6 +9,7 @@ import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Menu } from "../primitives/Menu";
+import { useOpenSessionTab } from "./openSessions";
 
 /** A failed action in the shape `ErrorNotice` takes: the harness's `message`, `hint`, `action`, `details`. */
 export type Failure = NonNullable<ReturnType<typeof structuredError>>;
@@ -25,6 +26,7 @@ export default function ProjectActionsMenu(props: {
   const { openProjectInEditor, remoteDevice } = useHost();
   const { bridge } = useApp();
   const ws = useOptionalWorkspace();
+  const openSessionTab = useOpenSessionTab();
   if (!project) return null;
   const tokens = totalTokens(state);
   const total = tokens.input + tokens.output;
@@ -37,6 +39,8 @@ export default function ProjectActionsMenu(props: {
       alignEnd
       onClose={props.onClose}
       items={[
+        { id: "session-tab", label: "Open session in new tab", disabled: !ws, run: () => void openSessionTab(project.id) },
+        { id: "sessions", label: "Show sessions", disabled: !ws, run: () => ws?.openTool("sessions") },
         { id: "agents", label: "Show agents", disabled: !ws, run: () => ws?.openTool("agents") },
         { id: "details", label: "Show project details", disabled: !ws, run: () => ws?.openTool("details") },
         { id: "usage", label: "Show usage", disabled: !ws, run: () => ws?.openTool("usage") },

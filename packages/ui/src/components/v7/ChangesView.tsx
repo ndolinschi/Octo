@@ -62,7 +62,7 @@ export function ChangesView(props: ChangesViewProps) {
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [turnBusy, setTurnBusy] = useState<number | null>(null);
   const two = width === null || width >= TWO_COLUMNS_MIN;
-  const layout = diffLayout(wideWindow ? DIFF_SPLIT_MIN : 0, two && width !== null ? width - 288 : 0);
+  const layout = diffLayout(wideWindow ? DIFF_SPLIT_MIN : 0, two && width !== null ? width - 280 : 0);
   const label = props.turnLabel ?? ((turn: TurnChanges) => earlierRequestLabel(turn, Date.now()));
 
   const index = c.selected ? c.all.findIndex((s) => s.turnId === c.selected?.turnId && s.file === c.selected.file) : -1;
@@ -149,7 +149,7 @@ export function ChangesView(props: ChangesViewProps) {
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-panel" data-v7-changes>
       {props.focusTurn != null && props.onShowAll && (
-        <div className="flex h-ctl-lg shrink-0 items-center gap-2 border-b border-line px-3 text-sm text-fg-2">
+        <div className="flex h-ctl-lg shrink-0 items-center gap-2 border-b border-line px-4 text-sm text-fg-2">
           <span className="min-w-0 flex-1 truncate">Showing one request</span>
           <Button variant="quiet" size="sm" className="max-md:h-10" onClick={props.onShowAll}>
             Show all
@@ -162,7 +162,10 @@ export function ChangesView(props: ChangesViewProps) {
           <div className="flex min-h-0 flex-1 flex-col">{body}</div>
         ) : two ? (
           <>
-            <nav aria-label="Changed files" className="@container/list flex w-72 shrink-0 flex-col gap-2 overflow-y-auto border-r border-line px-2 pt-1 pb-2">
+            <nav
+              aria-label="Changed files"
+              className="@container/list flex w-70 shrink-0 flex-col gap-2 overflow-y-auto border-r border-line px-pane pt-1 pb-4"
+            >
               {list}
               <FloatRoom />
             </nav>
@@ -171,7 +174,7 @@ export function ChangesView(props: ChangesViewProps) {
         ) : showDiff && diff ? (
           diff
         ) : (
-          <nav aria-label="Changed files" className="@container/list flex min-w-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pt-1 pb-2">
+          <nav aria-label="Changed files" className="@container/list flex min-w-0 flex-1 flex-col gap-2 overflow-y-auto px-pane pt-1 pb-4">
             {list}
             <FloatRoom />
           </nav>

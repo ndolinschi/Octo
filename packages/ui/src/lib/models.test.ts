@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { modelLabel, claudeLabel, modelName, readableModelId, parseAcp, servedModel, servedText } from "./models";
+import { modelLabel, claudeLabel, modelName, modelsPatchForSessionChoice, readableModelId, parseAcp, servedModel, servedText } from "./models";
 import { routeLine, modelIds, budgetState, distinctTails, middleEllipsis, parseBudget, truncateDistinct } from "./modelsMore";
 
 const ACP = [{ id: "claude-code", label: "Claude Code" }];
@@ -114,4 +114,42 @@ test("modelLabel: a label that is the id becomes a readable name; a real label i
   assert.equal(modelLabel({ id: "openai/gpt-5-mini", label: "openai/gpt-5-mini" }), "GPT 5 Mini");
   assert.equal(modelLabel({ id: "deepseek/deepseek-v4.1-flash", label: "deepseek/deepseek-v4.1-flash" }), "Deepseek V4.1 Flash");
   assert.equal(modelLabel({ id: "claude-opus-5-5", label: "Claude Opus 5.5" }), "Claude Opus 5.5");
+});
+
+test("modelsPatchForSessionChoice aligns all tiers and stale side override to the ACP session provider", () => {
+  assert.deepEqual(
+    modelsPatchForSessionChoice("acp:copilot/gpt-5", {
+      fast: "claude-haiku-5-5",
+      balanced: "acp:copilot/gpt-5-mini",
+      deep: "acp:claude-code",
+      side: "claude-haiku-5-5",
+    }),
+    {
+      orchestrator: "acp:copilot/gpt-5",
+      fast: "acp:copilot",
+      deep: "acp:copilot",
+      side: "acp:copilot",
+    },
+  );
+  assert.deepEqual(
+    modelsPatchForSessionChoice("acp:copilot", {
+      fast: "claude-haiku-5-5",
+      balanced: "claude-sonnet-5-5",
+      deep: "claude-opus-5-5",
+    }),
+    {
+      orchestrator: "acp:copilot",
+      fast: "acp:copilot",
+      balanced: "acp:copilot",
+      deep: "acp:copilot",
+    },
+  );
+  assert.deepEqual(
+    modelsPatchForSessionChoice("claude-sonnet-5-5", {
+      fast: "acp:copilot",
+      balanced: "acp:copilot",
+      deep: "acp:copilot",
+    }),
+    { orchestrator: "claude-sonnet-5-5" },
+  );
 });

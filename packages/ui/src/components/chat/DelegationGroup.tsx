@@ -3,6 +3,7 @@ import { usePhone } from "../../lib/phone";
 import { roleText } from "../../lib/orchestrator";
 import { agentActivity } from "../../lib/orchestrator";
 import { agentDuration } from "../../lib/duration";
+import { useNow } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
 import { spawnInput } from "../../lib/toolsMore";
 import { spawnStatus, type SpawnStatus, type ToolUse, type TurnEnd } from "../../lib/transcript";
@@ -110,8 +111,9 @@ function DelegationRow({ use, agent, status, interrupted }: { use: ToolUse; agen
   const title = agent?.title || input.title;
   const tier = agent?.tier ?? (isTier(input.tier) ? input.tier : null);
   const nested = agent ? descendantCount(state, agent.id) : 0;
-  const duration = agent ? agentDuration(agent, now) : null;
   const running = agent?.status === "running";
+  const liveNow = useNow(running);
+  const duration = agent ? agentDuration(agent, running ? liveNow : now) : null;
   // NEW-3: an approval or a form of this agent waits for the person: the row says so (waiting wins over working).
   const wait = agent?.status === "running" ? agentWaiting(state, agent.id) : null;
   // Through the failed-turn mapping (a raw "overloaded (529) after 3 retries" never shows); the raw text stays in the tooltip.

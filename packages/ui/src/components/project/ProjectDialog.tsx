@@ -1,4 +1,5 @@
 import type { Models, Project, ProjectInput, TierPolicy } from "@octo/agent-client";
+import { modelsPatchForSessionChoice } from "../../lib/models";
 import { budgetState, parseBudget, TIER_POLICIES } from "../../lib/modelsMore";
 import { ModelPicker } from "../shared/ModelPicker";
 import { Segmented } from "../primitives/Segmented";
@@ -376,7 +377,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                       problemShown={providers.status === "ready" && unrunnable.length > 0}
                       onChoose={(v) => {
                         modelsTouched.current = true;
-                        setModels((cur) => ({ ...cur, [m.key]: v }));
+                        setModels((cur) => (m.key === "orchestrator" ? { ...cur, ...modelsPatchForSessionChoice(v, cur) } : { ...cur, [m.key]: v }));
                       }}
                     />
                   </Field>

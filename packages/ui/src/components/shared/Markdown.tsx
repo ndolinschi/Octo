@@ -175,6 +175,16 @@ const COMPONENTS: Components = {
 
 const WITH_FILE_LINKS: Components = { ...COMPONENTS, code: ({ children }) => <InlineCode>{children}</InlineCode> };
 
+import { splitStableMarkdown } from "../../lib/markdownSplit";
+
+const MarkdownChunk = memo(function MarkdownChunk({ text, components }: { text: string; components: Components }) {
+  return (
+    <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={REHYPE} components={components}>
+      {text}
+    </ReactMarkdown>
+  );
+});
+
 export const Markdown = memo(function Markdown(props: {
   text: string;
   className?: string;
@@ -184,13 +194,23 @@ export const Markdown = memo(function Markdown(props: {
   /** Overrides (the file preview's links and images). */
   components?: Components;
 }) {
-  const { text, className } = props;
-  const base = props.fileLinks ? WITH_FILE_LINKS : COMPONENTS;
+  const { text, className, streaming, fileLinks, components: overrides } = props;
+  const base = fileLinks ? WITH_FILE_LINKS : COMPONENTS;
+  const resolved = useMemo(() => (overrides ? { ...base, ...overrides } : base), [base, overrides]);
+  const parts = useMemo(() => (streaming ? splitStableMarkdown(text) : null), [streaming, text]);
+
   return (
-    <div className={className ?? "octo-prose"} data-streaming={props.streaming ? "" : undefined}>
-      <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={REHYPE} components={props.components ? { ...base, ...props.components } : base}>
-        {text}
-      </ReactMarkdown>
+    <div className={className ?? "octo-prose"} data-streaming={streaming ? "" : undefined}>
+      {parts && parts.stable.length > 0 ? (
+        <>
+          {parts.stable.map((chunk, i) => (
+            <MarkdownChunk key={i} text={chunk} components={resolved} />
+          ))}
+          {parts.tail && <MarkdownChunk text={parts.tail} components={resolved} />}
+        </>
+      ) : (
+        <MarkdownChunk text={text} components={resolved} />
+      )}
     </div>
   );
 });

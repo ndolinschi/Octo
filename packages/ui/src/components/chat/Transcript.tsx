@@ -80,18 +80,30 @@ export const Transcript = memo(function Transcript(props: {
   density?: "compact" | undefined;
   /** Sessions tab: a delegation row's "Open session" selects the agent's session in place (else it opens the Sessions tab). */
   onOpenSession?: ((agentId: string) => void) | undefined;
+  /** Whether the agent's message list has completed its initial load (used to gate live-enter animation). */
+  loaded?: boolean;
 }) {
   const { agent, messages, now } = props;
+  const loaded = props.loaded ?? true;
   const { state, steered, projectId, running: projectRunning } = useProject();
   // G5: the person pressed Stop and the harness has not ended the turn yet.
   const stopping = useStopping(projectId, projectRunning) !== null;
-  // Decision 55 e: streamed text shows at most every 50 ms.
-  const streaming = useBatched(state.streaming[agent.id] ?? "");
+  // Isolate token-level streaming re-renders inside StreamingReply; Transcript only tracks whether a stream exists.
+  const hasStreaming = (state.streaming[agent.id]?.length ?? 0) > 0;
   const thinking = state.thinking[agent.id] ?? "";
   const plan = state.plan[agent.id] ?? null;
   const stoppedIds = useMemo(() => new Set(messages.filter((m) => m.stopped).map((m) => m.id)), [messages]);
   const running = agent.status === "running";
   const turns = useMemo(() => buildTurns(messages), [messages]);
+  // Only newly appended turns after initial transcript load get the subtle live-enter transition (never history loads or tab switches).
+  const baselineRef = useRef<{ agentId: string; settled: boolean; keys: Set<string> } | null>(null);
+  if (baselineRef.current?.agentId !== agent.id) {
+    baselineRef.current = { agentId: agent.id, settled: loaded, keys: new Set(loaded ? turns.map((t) => t.key) : []) };
+  } else if (!baselineRef.current.settled && loaded) {
+    baselineRef.current.settled = true;
+    for (const t of turns) baselineRef.current.keys.add(t.key);
+  }
+  const initialTurnKeys = baselineRef.current.settled ? baselineRef.current.keys : null;
   // Parity B6: the user messages that landed in a running turn (named by `message.steered`) say so.
   const steeredAt = useMemo(
     () =>
@@ -231,8 +243,17 @@ export const Transcript = memo(function Transcript(props: {
                     : cut
                       ? "cancelled"
                       : null;
+          const liveEnter = initialTurnKeys !== null && !initialTurnKeys.has(turn.key);
           return (
-            <section key={turn.key} ref={observe} data-turn-id={turn.prompt?.id} data-turn-key={turn.key} data-turn-mounted className="flex flex-col gap-4">
+            <section
+              key={turn.key}
+              ref={observe}
+              data-turn-id={turn.prompt?.id}
+              data-turn-key={turn.key}
+              data-turn-mounted
+              data-live-enter={liveEnter || undefined}
+              className="flex flex-col gap-4"
+            >
               {slots.get(i)?.map((m) => (
                 <Suspense key={`c${m.upto_message_id}`} fallback={null}>
                   <CompactedMarker marker={m} />
@@ -255,7 +276,7 @@ export const Transcript = memo(function Transcript(props: {
                 stopping={last && running && stopping}
                 watched={props.watched}
                 agentId={agent.id}
-                streaming={last ? streaming : ""}
+                hasStreaming={last && hasStreaming}
                 thinking={last && running ? thinking : ""}
                 plan={last && running ? plan : null}
                 startedAt={started}
@@ -299,7 +320,7 @@ export const Transcript = memo(function Transcript(props: {
             live
             watched={props.watched}
             agentId={agent.id}
-            streaming={streaming}
+            hasStreaming={hasStreaming}
             thinking={thinking}
             plan={plan}
             startedAt={agent.started_at}
@@ -462,6 +483,14 @@ const UserPrompt = memo(function UserPrompt({
   );
 });
 
+const StreamingReply = memo(function StreamingReply({ agentId, className }: { agentId: string; className: string }) {
+  const { state } = useProject();
+  // Decision 55 e: streamed text is coalesced smoothly onto display frames without re-rendering Transcript or earlier turns.
+  const text = useBatched(state.streaming[agentId] ?? "");
+  if (!text) return null;
+  return <Markdown text={text} className={className} streaming fileLinks />;
+});
+
 const AssistantTurn = memo(function AssistantTurn(props: {
   turn: Turn;
   speaker: string;
@@ -470,7 +499,7 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   stopping?: boolean;
   watched: boolean;
   agentId: string;
-  streaming: string;
+  hasStreaming: boolean;
   thinking: string;
   plan: PlanEntry[] | null;
   startedAt: string | null;
@@ -490,12 +519,12 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   restoreBusy?: boolean;
   onRestore?: ((messageId: number) => void) | undefined;
 }) {
-  const { turn, live, streaming } = props;
+  const { turn, live, hasStreaming } = props;
   const ctx = useTranscript();
   const compact = ctx.density === "compact";
   // Polish step 3, C1: a finished turn's tool rows fold under its "Worked for…" head; null = the default (open only when a step failed).
   const [stepsOpen, setStepsOpen] = useState<boolean | null>(null);
-  const empty = turn.items.length === 0 && !streaming && !props.thinking;
+  const empty = turn.items.length === 0 && !hasStreaming && !props.thinking;
   const start = props.startedAt ? Date.parse(props.startedAt) : null;
   const ms = turnDurationMs(start, { live, lastAt: turn.lastAt, finishedAt: props.finishedAt, stored: props.stored });
   const worked = ms !== null && ms >= 1000 ? ms : null;
@@ -515,7 +544,7 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   const reply = turn.items.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n\n");
   // The newest step row above, when it already says what the activity line would: a streaming thinking row (nothing after it), a running tool group.
   const lastItem = turn.items[turn.items.length - 1];
-  const currentStep: "thinking" | "tool" | null = streaming
+  const currentStep: "thinking" | "tool" | null = hasStreaming
     ? null
     : lastItem === undefined
       ? props.thinking
@@ -549,7 +578,7 @@ const AssistantTurn = memo(function AssistantTurn(props: {
       )}
       <Suspense fallback={null}>
         {live && props.plan && <PlanList entries={props.plan} />}
-        {live && <ThinkingRow text={props.thinking} after={turn.items.length > 0 || streaming.length > 0} />}
+        {live && <ThinkingRow text={props.thinking} after={turn.items.length > 0 || hasStreaming} />}
       </Suspense>
       {turn.items.map((item) => {
         if (item.kind === "text") return <Markdown key={item.key} text={item.text} className={prose} fileLinks />;
@@ -564,10 +593,10 @@ const AssistantTurn = memo(function AssistantTurn(props: {
           </Suspense>
         );
       })}
-      {streaming && <Markdown text={streaming} className={prose} streaming fileLinks />}
+      {hasStreaming && <StreamingReply agentId={props.agentId} className={prose} />}
       {live && props.stopping && <ActivityRow data="stopping" className="octo-fade" state="running" still={!props.watched} verb="Stopping…" />}
       {live && !props.stopping && (
-        <ActivityLine agentId={props.agentId} agentName={props.speaker} startedAt={start} now={props.now} watched={props.watched} current={currentStep} />
+        <ActivityLine agentId={props.agentId} agentName={props.speaker} startedAt={start} watched={props.watched} current={currentStep} />
       )}
       {props.footer && !live && turn.prompt && (
         <Suspense fallback={null}>

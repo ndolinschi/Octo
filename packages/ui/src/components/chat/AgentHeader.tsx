@@ -6,6 +6,7 @@ import { Glyph } from "../primitives/Glyph";
 import { useId, useState } from "react";
 import { cn } from "../../lib/cn";
 import { formatDuration } from "../../lib/format";
+import { useNow } from "../../lib/hooks";
 import { agentDuration } from "../../lib/duration";
 import { hrefFor } from "../../lib/route";
 import { useProject } from "../../state/project";
@@ -61,11 +62,13 @@ export function Breadcrumb({ agent }: { agent: Agent }) {
   );
 }
 
-export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
+export function AgentHeader({ agent, now: nowProp }: { agent: Agent; now?: number }) {
   const { state } = useProject();
   const ws = useOptionalWorkspace();
   const [briefOpen, setBriefOpen] = useState(false);
   const briefId = useId();
+  const liveNow = useNow(nowProp === undefined && agent.status === "running");
+  const now = nowProp ?? liveNow;
   const duration = agentDuration(agent, now);
   const nested = descendantCount(state, agent.id);
   const names = useModelNames();

@@ -276,3 +276,14 @@ scenario 4 (built-in entry, fake `agy` as the only CLI on PATH: signed out → "
 Not verified: anything on a real agy (owner's run: LIVE-CHECKLIST block "B-agy", AG1–AG15) — the version output
 format, which auth methods and capabilities it really advertises, its mode ids and whether ACP sessions start in
 `auto`, its model and permission option shapes, banner output, `session/load` behaviour, the UI showing "too old".
+
+### As built — single-provider ACP session alignment & tier marks (2026-11-16, harness + UI)
+
+When a project's orchestrator uses a subscription ACP agent (`acp:<id>[/<model>]`), Session mode keeps all sub-agent tiers on that same ACP provider so a user picking an ACP orchestrator does not silently mix providers across `fast`, `balanced`, `deep`, or side questions:
+
+- **Harness (`apps/harness`):** `internal/project/input.go` (`alignACPSessionModels`) and `internal/project/service.go` align unspecified/cross-provider `fast`, `balanced`, `deep` (and clear a mismatched `side` override) to the orchestrator's `acp:<id>` on create/patch; `internal/orchestrator/spawn.go` falls back to an ACP orchestrator's provider when resolving sub-agent tiers without an explicit tier override. Covered by unit tests in `internal/bridge/acp_orchestrator_test.go`.
+- **UI (`packages/ui`):** `lib/models.ts` (`modelsPatchForSessionChoice`) used by `ModelsSection.tsx` and `ProjectModels.tsx` updates `fast`, `balanced`, `deep` (and clears mismatched `side`) together when switching orchestrator to `acp:<id>`; `SidePanel.tsx` follows `orchestrator` when `models.side` is unset and `orchestrator` is `acp:*`; `lib/providers/markKey.ts` maps `acp:<id>/<model>` to the provider's mark for Details tier icons.
+
+Verified: UI Vitest/Node unit tests (`models.test.ts`, `markKey.test.ts`, 851/851 total in `@octo/ui`), `pnpm lint`, `gofmt -l .`.
+Not verified: `go vet` / `go test` in `apps/harness` (`proxy.golang.org` 403 on uncached `modernc.org/sqlite@v1.62.0` in this VM); real ACP agent execution on a user machine.
+

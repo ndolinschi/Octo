@@ -3820,3 +3820,44 @@ complicated", "scrolling closes dropdowns".
 Not verified: the review keys (j k ] [ n p v c); the palette on the phone; `/export`, `/context`, `/memory`, `/settings`
 by result on the live service (clear, compact, new, model, rewind and export were). Open: a project's Run menu does not
 offer the commands found in `package.json` (only a review's does); `/review` ignores its argument.
+
+## As built — alignment, single-provider ACP, mentions, streaming & spacing polish (2026-11-16)
+
+- **Cleaner empty/non-default chat framing.** Removed the `"Sends to “<session>”, not the default session"` banner above the
+  composer (`chat/useOrchestratorComposer.ts`, `chat/Composer.tsx`), the `"Octo edits <folder> and runs its commands; you can
+  undo any change."` footnote (`chat/EmptyProject.tsx`), and `"Suggestions"` starter-prompt cards on empty/new chats (`EmptyProject.tsx`).
+- **Unified column alignment.** Matched desktop `<textarea>` and `<ComposerHighlight>` inset (`12px`, `px-3`) with `[data-column]`
+  transcript text (`+12px` inner column on desktop via `styles.css`, keeping phone `12px` gutters), `Composer` collapsed floating
+  state, and `SidePanel` right-aligned prompt bubbles (`-mx-3` in `side/SidePanel.tsx`). Fixed `ChangesView` column width
+  (`w-70` / `280px` matching `ListDetail`), filter header bar (`px-4`), and nav padding (`px-pane pt-1 pb-4`), and aligned
+  `SessionComposer` checkbox/outcome footer to `px-3` (`12px`).
+- **Open project sessions as tabs immediately.** Added `openSessions.ts` (`openSessionTab`) and wired `ProjectTeam` (tab strip header),
+  `ProjectActionsMenu` (`⋯`), and `TabMenu` (`+` Chat) so sessions can be opened as `session:<id>` tabs right after initial
+  project setup without waiting for a sub-agent or secondary state.
+- **Icon-only `Run` trigger by default.** `ProjectCommands.tsx` now renders the top-bar command trigger as a compact `Play` icon
+  button; removed the wide `"Run ⌄"` text label and the `compactRun` tab-strip folding rule (`tabStrip.ts`).
+- **Single-provider ACP alignment & tier marks.** Switching `orchestrator` in Session mode (`settings/ModelsSection.tsx`,
+  `settings/ProjectModels.tsx`, `lib/models.ts`: `modelsPatchForSessionChoice`) aligns `fast`, `balanced`, `deep` (and clears a
+  cross-provider `side` override) to the same `acp:<id>` provider; the Go harness mirrors this in `internal/project/input.go`
+  (`alignACPSessionModels`), `service.go`, and `orchestrator/spawn.go` (defaulting an unassigned or cross-provider tier on an
+  ACP-orchestrated project to that ACP provider). Fixed tier icon resolution in `lib/providers/markKey.ts` for `acp:<id>/<model>`.
+- **Markdown highlighting in composer & smart `@` mentions.** `ComposerHighlight.tsx` tints headings (`#`), bold/italic/strikethrough,
+  inline code, `@mentions`, `/commands`, `#tasks`, blockquotes, and lists by colour/tint without changing metrics. `lib/mentions.ts`
+  and `ComposerMenu.tsx` emit `@<filename> ` when a filename is unique across project files, `@<f.path> ` when ambiguous in a
+  single-folder project, and `@<f.folder>/<f.path> ` when multi-folder.
+- **Side question panel (`SidePanel.tsx`).** `useOrchestratorComposer` / `SidePanel` follows `project.models.orchestrator` when
+  it is `acp:*` and `models.side` is unset, updated tooltip wording, and centered the exchange, composer, and error columns.
+- **Streaming smoothness, clocks & animation cadence.** Extracted `lib/markdownSplit.ts` so `Markdown.tsx` memoizes stable
+  completed blocks while `streaming`; isolated live token updates inside `StreamingReply` in `chat/Transcript.tsx` with rAF-aligned
+  `useBatched` (`LiveActivity.tsx`) and subtle CSS caret pulse + `octo-msg-in` live turn entrance (`styles.css`); localized 1 s
+  `useNow` ticks inside `ActivityRow`/`AgentHeader`/`DelegationRow` while `ConversationView` ticks every minute; replaced animated
+  height drawers with GPU-friendly CSS grid `.octo-drawer-rows` and enabled smooth `scrollToBottom(true)` on send.
+
+**Verified.** `pnpm format:check`, `pnpm lint` (0 errors across `agent-client`, `ui`, `desktop`), `pnpm --filter @octo/ui test`
+(851/851 including `mentions.test.ts`, `tabStrip.test.ts`, `models.test.ts`, `markKey.test.ts`, `markdownSplit.test.ts`),
+`pnpm --filter @octo/agent-client test`, `pnpm test:scripts`, `pnpm --filter @octo/desktop build`, `node scripts/check-bundle-size.mjs`
+(initial JS 156.48 kB gzip vs 158.90 kB budget), and `gofmt -l .` in `apps/harness`.
+**Not verified.** Live Playwright `spacing-audit.mjs` (the `playwright` npm package is not installed in the build VM); `go vet` /
+`go test` in `apps/harness` (blocked in this VM by `proxy.golang.org` HTTP 403 fetching uncached `modernc.org/sqlite@v1.62.0`);
+live streaming/scroll smoothness in WebKit/Tauri or against a real ACP agent CLI.
+

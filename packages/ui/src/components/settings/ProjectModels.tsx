@@ -1,5 +1,6 @@
 import type { Project, ProjectInput, ProviderList } from "@octo/agent-client";
 import { useId, useMemo } from "react";
+import { modelsPatchForSessionChoice } from "../../lib/models";
 import { chipLabel, useHiddenModels } from "../../lib/providers";
 import { Button } from "../primitives/Button";
 import { Select } from "../primitives/Select";
@@ -53,7 +54,12 @@ function ProjectModelRow(props: {
   const value = project.models[row.field];
   const options = useMemo(() => modelOptions(list, new Set(hidden), value), [list, hidden, value]);
   const inherited = defaultValue !== null && value === defaultValue;
-  const set = (model: string) => void run(() => props.update(project.id, { models: { [row.field]: model } }));
+  const set = (model: string) =>
+    void run(() =>
+      props.update(project.id, {
+        models: row.field === "orchestrator" ? modelsPatchForSessionChoice(model, project.models) : { [row.field]: model },
+      }),
+    );
   return (
     <SettingsRow
       rowId={`project-${row.rowId}`}

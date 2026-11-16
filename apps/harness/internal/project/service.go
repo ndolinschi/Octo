@@ -330,6 +330,7 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	if err != nil {
 		return Project{}, err
 	}
+	models = alignACPSessionModels(models, in.Models)
 	if err := validBudget(in.BudgetUSD); err != nil {
 		return Project{}, err
 	}
@@ -418,6 +419,7 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 		if err != nil {
 			return Project{}, err
 		}
+		merged = alignACPSessionModels(merged, in.Models)
 		raw, err := json.Marshal(merged)
 		if err != nil {
 			return Project{}, err

@@ -114,10 +114,14 @@ export function ActivityRow(props: {
       {/* On the row's text line (16 glyph + 8 gap), as what a row opens: it stood 8px right of the text it explains. */}
       {props.error && <p className="-mt-1 truncate pb-1 pl-6 text-xs text-err">{props.error}</p>}
       {props.note && <p className="-mt-1 truncate pb-1 pl-6 text-xs text-fg-3">{props.note}</p>}
-      {nested && open && (
-        // C1: a subtle tree guide under the parent's glyph center (7px) with 16px indent puts nested content on the parent's text line (24px).
-        <div id={id} data-activity-body className="mt-0.5 mb-2 ml-[7px] flex flex-col gap-0.5 border-l border-line pl-4">
-          {props.children}
+      {nested && (
+        <div data-activity-drawer data-open={open || undefined} inert={!open || undefined} aria-hidden={!open || undefined} className="octo-drawer-rows">
+          <div className="min-h-0 overflow-hidden">
+            {/* C1: a subtle tree guide under the parent's glyph center (7px) with 16px indent puts nested content on the parent's text line (24px). */}
+            <div id={id} data-activity-body className="mt-0.5 mb-2 ml-[7px] flex flex-col gap-0.5 border-l border-line pl-4">
+              {props.children}
+            </div>
+          </div>
         </div>
       )}
     </div>
