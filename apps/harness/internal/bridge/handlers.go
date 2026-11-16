@@ -92,9 +92,16 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
-	if err := s.svc.Delete(r.Context(), r.PathValue("pid")); err != nil {
+	pid := r.PathValue("pid")
+	if err := s.svc.Delete(r.Context(), pid); err != nil {
 		writeErr(w, err)
 		return
+	}
+	if s.browser != nil {
+		if err := s.browser.CloseProject(r.Context(), pid); err != nil {
+			// Project is already deleted; listener shutdown is best-effort.
+			_ = err
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

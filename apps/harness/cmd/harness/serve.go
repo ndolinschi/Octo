@@ -22,6 +22,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/anthropicclient"
 	"github.com/ndolinschi/Octo/apps/harness/internal/apitoken"
 	"github.com/ndolinschi/Octo/apps/harness/internal/bridge"
+	"github.com/ndolinschi/Octo/apps/harness/internal/browserproxy"
 	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
 	"github.com/ndolinschi/Octo/apps/harness/internal/codehost"
 	"github.com/ndolinschi/Octo/apps/harness/internal/commands"
@@ -335,6 +336,8 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	if err != nil {
 		return err
 	}
+	listenPort, _ := strconv.Atoi(portOf(ln.Addr()))
+	browserMgr := browserproxy.NewManager(browserproxy.Options{BlockedLoopbackPorts: []int{listenPort}})
 	orch.SetBridgeURL("http://" + net.JoinHostPort(loopbackHost(ln.Addr()), portOf(ln.Addr())))
 	settingsMgr := settings.New(settings.Options{
 		DataDir: cfg.DataDir, FromFile: cfg.EnvFromFile, ValidateModels: svc.ValidateModels,
@@ -362,7 +365,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	defer cancelRequests()
 	files := project.NewFiles(store, hub)
 	bridgeOpts := []bridge.Option{
-		bridge.WithReviews(reviews), bridge.WithCommands(cmds),
+		bridge.WithReviews(reviews), bridge.WithCommands(cmds), bridge.WithBrowserProxy(browserMgr),
 		bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo), bridge.WithFeatures(featureStore),
 		bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
 		bridge.WithDiagnostics(func() any {
@@ -404,6 +407,9 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		slog.Error("orchestrator shutdown", "err", err)
 	}
 	cmds.Shutdown(shutdownCtx)
+	if err := browserMgr.Shutdown(shutdownCtx); err != nil {
+		slog.Error("browser proxy shutdown", "err", err)
+	}
 	if err := lspMgr.Shutdown(shutdownCtx); err != nil {
 		slog.Error("language server shutdown", "err", err)
 	}

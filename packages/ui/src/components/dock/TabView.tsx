@@ -78,6 +78,8 @@ const loadReviewMonaco = () => import("../files/monaco");
 const loadReviewCommands = () => import("../commands/kit").then((m) => m.reviewCommandsKit);
 /** The output of a project command (decision 68): the commands feature's run panel in a tab, its own chunk. */
 const RunTab = lazy(() => import("../commands/RunTab"));
+/** Browser + Design Mode (singleton `tool:browser` and multi-instance `browser:<id>`): its own chunk. */
+const BrowserTab = lazy(() => import("../browser/BrowserTab"));
 /** The side question (decision 40). */
 const SidePanel = lazy(() => import("../side/SidePanel").then((m) => ({ default: m.SidePanel })));
 /** The Usage tab too (v6.2). */
@@ -107,7 +109,19 @@ export function TabView({ tab }: { tab: TabId }) {
           <RunTab name={ref.name} />
         </Suspense>
       );
+    case "browser":
+      return (
+        <Suspense fallback={null}>
+          <BrowserTab tab={tab} browserId={ref.browserId} />
+        </Suspense>
+      );
     case "tool":
+      if (ref.tool === "browser")
+        return (
+          <Suspense fallback={null}>
+            <BrowserTab tab={tab} browserId="default" />
+          </Suspense>
+        );
       if (ref.tool === "files")
         return (
           <Suspense fallback={<FileViewSkeleton />}>

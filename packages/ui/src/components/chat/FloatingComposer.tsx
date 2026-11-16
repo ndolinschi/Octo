@@ -166,9 +166,9 @@ export function FloatingComposer({ onHeight, rest = false }: { onHeight?(px: num
           {...composer}
           floating
           comments={
-            composer.commentCount
+            composer.commentCount + composer.designNoteCount > 0
               ? {
-                  count: composer.commentCount,
+                  count: composer.commentCount + composer.designNoteCount,
                   render: (open: boolean, setOpen: (open: boolean) => void) => <CommentsControl open={open} onOpenChange={setOpen} />,
                 }
               : undefined

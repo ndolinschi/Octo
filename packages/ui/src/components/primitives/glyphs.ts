@@ -6,6 +6,7 @@ import {
   ChartNoAxesColumn,
   Folder,
   Gauge,
+  Globe,
   ListTree,
   MessageCircleQuestionMark,
   MessagesSquare,
@@ -31,6 +32,8 @@ export const GLYPH = {
   notes: Notebook,
   /** The project's files (Files tool, file view). */
   files: Folder,
+  /** In-tab web browser and Design Mode visual annotations (Browser tool). */
+  browser: Globe,
   /** Facts about the project: folders, models, tokens, activity, files written (Details tool). */
   details: ChartNoAxesColumn,
   /** Tokens, cost and limits (Usage tool, Home's Tokens card). */

@@ -43,6 +43,8 @@ var rules = []rule{
 	{"*", "/v1/projects/*/secrets/**", ClassDeny},
 	{"*", "/v1/projects/*/lsp", ClassDeny},
 	{"*", "/v1/projects/*/lsp/**", ClassDeny},
+	{"*", "/v1/projects/*/browser", ClassDeny},
+	{"*", "/v1/projects/*/browser/**", ClassDeny},
 	{"*", "/v1/projects/*/commands/**", ClassDeny},
 	{"POST", "/v1/projects/*/runs/**", ClassDeny},
 	{"POST", "/v1/projects/*/complete", ClassDeny},

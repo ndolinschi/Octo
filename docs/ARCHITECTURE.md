@@ -99,6 +99,7 @@ Package map of `apps/harness/internal/` (one line each; deeper: `apps/harness/do
 | `changes`, `diff`, `approval`, `inputs`, `secrets` | v7: change tracker and snapshots, line counts, approval requests, `request_input` forms, per-project secret store |
 | `memory` | Orchestrator memory service: limits, redaction, tools, digest, search shaping |
 | `files`, `tools`, `store`, `events` | Confined file API; local and remote tools and result caps; legacy CLI session store (`harness.sqlite`); per-project event hub with `seq` |
+| `browserproxy` | Loopback-only (`127.0.0.1:0`) reverse proxy for the Browser tab: header stripping, HTML/URL rewriting, `inspector.js` injection with per-session nonce (`apps/harness/docs/browser.md`) |
 | `config`, `settings`, `childenv`, `prices`, `limits`, `diag`, `cache`, `mockllm` | Env/flags to `Config`; the settings API over `harness.env`; the child-process environment allow-list; optional `prices.toml`; rate-limit header memory; diagnostics report; remote-tool cache; scripted Messages server |
 
 ## Data locations
@@ -419,7 +420,8 @@ data. "Owner" is the owner's Linux runs. "status not recorded" where no note say
 | Memory M4 (sessions as exchanges), M5 (notes with descriptions), M6 (a task exists only when a turn did work; `project.sqlite.pre-m6`), schema 14 | Built | Go gates | A real project's migration on the owner's data |
 | Slash commands and `/clear`, `remember`, images, side question on the project's agent, itemised context | Built | Go gates; Playwright on demo data | Real agents (does each accept images; which commands each advertises) |
 | Component library (decision 90) | Primitives built; 49 `octo/no-native-controls` warnings left (`research/2026-11-12-ui-component-audit.md`) | `pnpm lint` (0 errors) | The remaining batches B3–B10 |
-| Entry bundle | 163.6 kB gzip, budget 164.6, target 158 not reached | `node scripts/check-bundle-size.mjs` | |
+| Entry bundle | 158.75 kB gzip, budget 158.90 | `node scripts/check-bundle-size.mjs` | |
+| Browser tab and Design Mode (`browserproxy` + `@octo/ui`, `apps/harness/docs/browser.md`) | Built | `go test -race ./internal/browserproxy/...`, `remoteaccess` rules test, `@octo/agent-client` and `@octo/ui` unit tests, `pnpm lint`, `check-bundle-size.mjs`, Chromium Playwright E2E + `spacing-audit` / `frame-colours` across dark/light + desktop/phone on demo data | Full `apps/harness` `go build` here (proxy 403 on `modernc.org/sqlite@v1.62.0`); live `harness serve` against real external sites / Vite HMR in Tauri/WebKit |
 | Parity backlog | B1–B7, B11–B13 built in batches 1 to 4 (slash commands, `/clear`, images, side question, always-allow, modes, plans, rewind, steer); B8–B10 not built | Go gates; Playwright on demo data | B8–B10; every item against a real agent |
 | Live checklist 4 (`docs/superpowers/LIVE-CHECKLIST.md`) | Written; the owner's run is pending | | Every item |
 | Bots | Draft; not built | | Owner questions 1–2 |

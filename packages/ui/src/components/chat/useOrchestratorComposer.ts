@@ -17,6 +17,7 @@ import type { TabId } from "../../state/workspace/layout";
 import { useSessionScope } from "../../state/session";
 import { useHost } from "../../state/host";
 import { deviceMay } from "../../lib/remoteDevice";
+import { getStagedDesignNotes, setStagedDesignNotes, useStagedDesignNotesCount } from "../../state/designNotes";
 
 /** Composers sharing a draft key (the Chat tab's and the floating one) hear each other's edits. */
 type Listener = () => void;
@@ -77,12 +78,13 @@ function useQueue(memory: TabMemory | undefined, tab: TabId) {
  * with pending code comments, stop, queue, offline reason, the draft kept in the tab memory under `tab`, the model
  * (optimistic, rolled back on failure), the router's tier policy and the context meter.
  */
-export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "comments"> & { commentCount: number } {
+export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "comments"> & { commentCount: number; designNoteCount: number } {
   const { health, config, bridge } = useApp();
   const device = useHost().remoteDevice;
   const { projectId, project, state, running, send, cancel, live, update, loadFailures, applySession } = useProject();
   const ws = useOptionalWorkspace();
   const comments = useOptionalComments();
+  const designNoteCount = useStagedDesignNotesCount(projectId);
   const memory = ws?.memory;
   // Decision 96: a session's draft and local queue are its own, wherever its composer is (its tab, Chat, the floating one).
   const scope = useSessionScope();
@@ -112,15 +114,31 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
 
   const onSend = useCallback(
     async (text: string, extra?: { attachments?: string[] }) => {
-      // Pending code comments ride along as an `octo-comments` block, then clear.
+      // Pending code comments and staged Browser Design Mode annotations ride along as fenced wire blocks, then clear.
       const prepared = comments ? await comments.prepare() : null;
+      const stagedNotes = projectId ? getStagedDesignNotes(projectId) : [];
+      const upload = bridge.uploadAttachment;
+      const preparedDesign = stagedNotes.length
+        ? await import("../../lib/browser/designNotes").then((m) =>
+            m.prepareDesignNotes(stagedNotes, upload ? (data, o) => upload(projectId, data, o) : undefined),
+          )
+        : null;
+      const withCode = prepared ? withComments(text, prepared.block) : text;
+      const body = preparedDesign ? (withCode.trim() ? `${withCode.trim()}\n\n${preparedDesign.block}` : preparedDesign.block) : withCode;
+      const attachments = [...(extra?.attachments ?? []), ...(preparedDesign?.attachments ?? [])];
       const mode = modeToSend(override, project?.mode);
-      const opts = { ...(mode ? { mode } : {}), ...(extra?.attachments?.length ? { attachments: extra.attachments } : {}) };
-      await send(prepared ? withComments(text, prepared.block) : text, Object.keys(opts).length ? opts : undefined);
+      const opts = { ...(mode ? { mode } : {}), ...(attachments.length ? { attachments } : {}) };
+      await send(body, Object.keys(opts).length ? opts : undefined);
       prepared?.commit();
+      if (preparedDesign) {
+        setStagedDesignNotes(
+          projectId,
+          getStagedDesignNotes(projectId).filter((n) => !preparedDesign.sentIds.has(n.id)),
+        );
+      }
       setOverride(null);
     },
-    [comments, send, override, project?.mode],
+    [comments, bridge.uploadAttachment, projectId, send, override, project?.mode],
   );
   const modeApi = useMemo<ComposerMode | null>(() => {
     // Without plan approval the harness predates modes: no chip.
@@ -219,6 +237,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
         }
       : undefined,
     commentCount: comments?.comments.length ?? 0,
+    designNoteCount,
     lastRequest,
     context: { used: orchestrator?.context_used, size: orchestrator?.context_size },
     serverQueue: bridge.sendOrQueueMessage !== undefined,

@@ -11,6 +11,7 @@ import { useActivity } from "../../../state/activity";
 import { useApp } from "../../../state/app";
 import { useCode } from "../../../state/code";
 import { useOptionalComments } from "../../../state/comments";
+import { getBrowserTabPins, getBrowserTabState, useBrowserTabsRevision } from "../../../state/browserTabs";
 import { useProject } from "../../../state/project";
 import { useRunsSelector, useRunsStore } from "../../../state/projectRuns";
 import { StatusSlotsContext } from "../../../state/statusSlots";
@@ -31,7 +32,7 @@ import { RemoteIndicator } from "../../status/RemoteIndicator";
 import { tabInfo, TOOL_TABS } from "../tabInfo";
 
 /** The panels the phone reaches from "⋯", in this order (direction 7). */
-const PANELS: readonly ToolTab[] = ["files", "changes", "sessions", "memory", "notes", "usage", "agents", "details", "side", "review"];
+const PANELS: readonly ToolTab[] = ["files", "browser", "changes", "sessions", "memory", "notes", "usage", "agents", "details", "side", "review"];
 
 /**
  * The phone header's "⋯" (direction 7): everything the desktop's top row and status bar carry, as one bottom sheet of 44px
@@ -44,6 +45,7 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
   const code = useCode();
   const counts = useOptionalComments()?.counts;
   const { state, project, projectId, applySession } = useProject();
+  useBrowserTabsRevision(projectId);
   const { bridge, projects } = useApp();
   const activity = useActivity();
   // Remote access: on a paired device the commands and project settings are the computer's; sends need the permission.
@@ -68,6 +70,10 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
     file: code.file,
     comments: (key: FileKey) => counts?.get(key) ?? 0,
     runStatus: (name: string) => ws.runStatuses[name.toLowerCase()] ?? null,
+    browser: (id: string) => {
+      const b = getBrowserTabState(projectId, id);
+      return { url: b.url, title: b.title, pins: getBrowserTabPins(projectId, id) };
+    },
   };
   // The action runs once the sheet has given focus back to its opener (which would otherwise take the focus, and the dock's
   // shown group, back to the conversation).

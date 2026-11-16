@@ -43,6 +43,8 @@ func TestClassifyTable(t *testing.T) {
 		{"PUT", "/v1/projects/p1/secrets/K", ClassDeny},
 		{"GET", "/v1/projects/p1/lsp", ClassDeny},
 		{"POST", "/v1/projects/p1/lsp/ts/sessions", ClassDeny},
+		{"POST", "/v1/projects/p1/browser/proxy", ClassDeny},
+		{"DELETE", "/v1/projects/p1/browser/proxy", ClassDeny},
 		{"POST", "/v1/projects/p1/commands/test/run", ClassDeny},
 		{"PUT", "/v1/projects/p1/files/content", ClassDeny},
 		{"POST", "/v1/projects/p1/changes/c1/revert", ClassDeny},

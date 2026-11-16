@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type Keyb
 import { cn } from "../../lib/cn";
 import { flushSync } from "react-dom";
 import { useOptionalComments } from "../../state/comments";
+import { getBrowserTabPins, getBrowserTabState, useBrowserTabsRevision } from "../../state/browserTabs";
 import { useLatest, useScrollFade } from "../../lib/hooks";
 import { useCode } from "../../state/code";
 import { useProject } from "../../state/project";
@@ -75,7 +76,8 @@ export function TabStrip(props: {
   const ws = useWorkspace();
   const { insetEnd } = useChrome();
   const code = useCode();
-  const { state, project } = useProject();
+  const { state, project, projectId } = useProject();
+  useBrowserTabsRevision(projectId);
   const list = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const plus = useRef<HTMLButtonElement>(null);
@@ -125,6 +127,10 @@ export function TabStrip(props: {
     file: code.file,
     comments: (key: FileKey) => counts?.get(key) ?? 0,
     runStatus: (name: string) => ws.runStatuses[name.toLowerCase()] ?? null,
+    browser: (id: string) => {
+      const b = getBrowserTabState(projectId, id);
+      return { url: b.url, title: b.title, pins: getBrowserTabPins(projectId, id) };
+    },
   };
 
   // Tab count and the active tab do not change during a drag, so sizes hold still under the pointer. The tabs get the

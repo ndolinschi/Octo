@@ -8,6 +8,7 @@ import { cn } from "../../lib/cn";
 import { formatSeparator, needsSeparator, timeAgo } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
 import { splitComments } from "../../lib/comments";
+import { splitDesignNotes } from "../../lib/browser/designNotes";
 import {
   buildTurns,
   compactionSlots,
@@ -42,6 +43,7 @@ const PlanList = lazy(() => import("./LivePanels").then((m) => ({ default: m.Pla
 const ThinkingRow = lazy(() => import("./LivePanels").then((m) => ({ default: m.ThinkingRow })));
 const PromptImages = lazy(() => import("./PromptImages").then((m) => ({ default: m.PromptImages })));
 const SentComments = lazy(() => import("./SentComments").then((m) => ({ default: m.SentComments })));
+const SentDesignNotes = lazy(() => import("./SentDesignNotes").then((m) => ({ default: m.SentDesignNotes })));
 /** The plan card loads with the first plan (parity B3). */
 const CompactedMarker = lazy(() => import("./CompactedMarker").then((m) => ({ default: m.CompactedMarker })));
 const PlanForTurn = lazy(() => import("./PlanCard").then((m) => ({ default: m.PlanForTurn })));
@@ -416,7 +418,8 @@ const UserPrompt = memo(function UserPrompt({
   external: boolean;
   steered: boolean;
 }) {
-  const { prose: text, comments } = useMemo(() => splitComments(raw), [raw]);
+  const { prose: withoutComments, comments } = useMemo(() => splitComments(raw), [raw]);
+  const { prose: text, notes: designNotes } = useMemo(() => splitDesignNotes(withoutComments), [withoutComments]);
   const images = useMemo(() => content.filter((b) => b.type === "image"), [content]);
   // P1-5: a pasted log's long word is set without kerning, or every layout of the transcript re-shapes it for seconds.
   const longWord = useMemo(() => hasLongWord(text), [text]);
@@ -452,7 +455,7 @@ const UserPrompt = memo(function UserPrompt({
       )}
       <div
         data-bubble
-        data-one-line={(oneLine && !external && !steered && images.length === 0 && comments.length === 0) || undefined}
+        data-one-line={(oneLine && !external && !steered && images.length === 0 && comments.length === 0 && designNotes.length === 0) || undefined}
         // R2 (owner's addition 10): the shape, padding and fill are the request bubble's block in styles.css (`--octo-bubble`).
         className={cn("transition-[box-shadow] duration-300 forced-colors:border", compact ? "text-sm" : "text-base")}
       >
@@ -475,6 +478,13 @@ const UserPrompt = memo(function UserPrompt({
           <div className={cn(text && "mt-3")}>
             <Suspense fallback={null}>
               <SentComments comments={comments} />
+            </Suspense>
+          </div>
+        )}
+        {designNotes.length > 0 && (
+          <div className={cn((text || comments.length > 0 || images.length > 0) && "mt-3")}>
+            <Suspense fallback={null}>
+              <SentDesignNotes notes={designNotes} />
             </Suspense>
           </div>
         )}

@@ -4,10 +4,13 @@ import { useRef, useState } from "react";
 import { linesLabel, type CodeComment } from "../../lib/comments";
 import { fileName } from "../../lib/files";
 import { cn } from "../../lib/cn";
-import { useComments } from "../../state/comments";
+import { useOptionalComments } from "../../state/comments";
+import { useStagedDesignNotesCount } from "../../state/designNotes";
+import { useProject } from "../../state/project";
 import { Popover } from "../primitives/Popover";
 import { Presence } from "../primitives/Presence";
 import { PILL } from "./ComposerPills";
+import { DesignNotesControl } from "./DesignNotesControl";
 
 function byFile(comments: CodeComment[]): { key: string; folder: string; path: string; items: CodeComment[] }[] {
   const groups = new Map<string, { key: string; folder: string; path: string; items: CodeComment[] }>();
@@ -27,7 +30,11 @@ function byFile(comments: CodeComment[]): { key: string; folder: string; path: s
  * lines, remove one, remove all). `open` / `onOpenChange` let the composer's "+" menu open it.
  */
 export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boolean): void; variant?: "pill" | "chip" }) {
-  const store = useComments();
+  const store = useOptionalComments();
+  const { projectId } = useProject();
+  const stagedDesignCount = useStagedDesignNotesCount(projectId);
+  const chip = props.variant === "chip";
+  const designCount = chip ? 0 : stagedDesignCount;
   const [ownOpen, setOwnOpen] = useState(false);
   const open = props.open ?? ownOpen;
   const setOpen = (next: boolean | ((x: boolean) => boolean)) => {
@@ -35,12 +42,12 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
     setOwnOpen(value);
     props.onOpenChange?.(value);
   };
-  const chip = props.variant === "chip";
   const anchor = useRef<HTMLButtonElement>(null);
-  const n = store.comments.length;
-  if (!n) return null;
+  const n = store?.comments.length ?? 0;
+  if (!n) return designCount > 0 ? <DesignNotesControl open={props.open} onOpenChange={props.onOpenChange} /> : null;
+  if (!store) return null;
   const label = `${n} ${n === 1 ? "comment" : "comments"}`;
-  return (
+  const pill = (
     <>
       <button
         ref={anchor}
@@ -123,5 +130,13 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
         </Popover>
       </Presence>
     </>
+  );
+  return designCount > 0 ? (
+    <span className="flex flex-wrap items-center gap-1.5">
+      {pill}
+      <DesignNotesControl />
+    </span>
+  ) : (
+    pill
   );
 }

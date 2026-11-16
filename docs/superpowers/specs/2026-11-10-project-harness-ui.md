@@ -3896,3 +3896,52 @@ project `"⋯"` menu, `Chat` tab context menu, single-session project, and `Mode
 cursor across `connect:copilot` / `connect:grok` non-setup agents, with zero console/page errors).
 **Not verified.** Live `harness serve` with real CLI agents in Tauri/WebKit; `go vet` / `go test` in `apps/harness` (blocked in build VM
 by `proxy.golang.org` HTTP 403 for uncached `modernc.org/sqlite@v1.62.0`).
+
+## As built — Browser tab and Design Mode (2026-11-16)
+
+- **Workspace and dock integration.**
+  - Added both the singleton `toolTab("browser")` (`browser`, `Alt+8`, palette `"Show browser"`, `PhoneMoreSheet` `"Browser"` row) and
+    multi-instance `browserTab(id)` (`browser:<id>`, opened from `+` `TabPicker` `"New browser tab"` or the Browser toolbar `+` button) across
+    dock split groups (`state/workspace/{layout.ts,floors.ts,WorkspaceProvider.tsx,paletteCommands.ts}`, `components/dock/{TabView.tsx,TabPicker.tsx,TabStrip.tsx,tabInfo.ts}`).
+  - Per-project browser tab state (`state/browserTabs.ts`, persisted under `octo.browserTabs.{projectId}`) tracks URL, page title, navigation
+    history, viewport preset (`full` / `tablet` 768 px / `mobile` 390 px), and Design Mode preferences (`batchMode`, active tool).
+  - `TabStrip` badges Browser tabs with pending batch pin counts (`useTabPendingNotesCount`).
+  - `components/commands/RunPanel.tsx` detects local dev-server URLs (`lib/commands/urls.ts`, ANSI-stripped `localhost` / `127.0.0.1` / `0.0.0.0` / `[::1]`
+    rewritten to `http://localhost:<port>...`) in command output and exposes `"Open in Browser"` alongside quick-open suggestions in the Browser empty state.
+- **Harness loopback proxy (`apps/harness/internal/browserproxy` + `internal/bridge/browser.go`).**
+  - `POST /v1/projects/{id}/browser/proxy` opens or reuses an isolated `http://127.0.0.1:<ephemeral-port>` reverse proxy per `(projectID, tabKey)`
+    (capped at 16 active proxies, 30 min idle eviction, graceful shutdown on bridge close; `DELETE .../browser/proxy/{sessionId}` closes explicitly).
+  - Strips `X-Frame-Options`, `Content-Security-Policy`, `Content-Security-Policy-Report-Only`, `Cross-Origin-Opener-Policy`, and `Cross-Origin-Embedder-Policy`;
+    rewrites root-relative/origin attributes, `<base href>`, `Location` redirects, and `Set-Cookie` attributes; streams SSE; proxies WebSockets (e.g. Vite HMR);
+    and injects `inspector.js` (`/__octo_inspector__/inspector.js` + per-session nonce) before `</body>`.
+  - Remote Access (`internal/remoteaccess/rules.go`) rejects `/v1/projects/{id}/browser/...` with `403` (`"Browser proxy is only available on this computer."`)
+    because ephemeral `127.0.0.1` ports are unreachable over a phone tunnel.
+  - In `?demo=1`, `BrowserTab` renders a rich self-contained interactive preview (`lib/browser/demoPage.ts`) via `<iframe srcDoc>` running the exact same
+    `INSPECTOR_JS` (`lib/browser/inspectorSource.ts`), verified byte-identical to `apps/harness/internal/browserproxy/inspector.js` in unit tests.
+- **Cursor-style Design Mode (`components/browser/*`).**
+  - `BrowserToolbar.tsx` + `DesignHintBar.tsx` (`Mod+Shift+D` toggle): element picker (`Click`, `Shift+Click` multi-select, `ArrowUp` / `ArrowDown`
+    parent/child DOM walk, `Alt+Click` straight to Chat composer, React `_debugOwner` / `_debugSource`, Vue `__vueParentComponent`, Svelte `__svelte_meta`,
+    and `data-octo-component` / `data-octo-source` extraction), area drag (`Shift` square lock, `Alt` center-out) + `MarkupCanvas.tsx` (`Draw` freehand,
+    `Rectangle`, `Ellipse`, `Arrow`, `Mod+Z` stroke undo), double-click inline `contentEditable` text editing (`Enter` commit, `Mod+L` stage, `Esc` revert),
+    live `CssInspector.tsx` (`padding-*`, `margin`, `gap`, `width`, `height`, `color`, `background-color`, `font-size`, `font-weight`, `border-radius` with
+    filter and per-property reset), and `Batch edits` switch (`Switch` + numbered corner-anchored pins on page + `PendingNotesPopover.tsx` + `Send (N)`).
+  - Element/area captures render an SVG `foreignObject` snapshot inside `inspector.js` and composite `MarkupCanvas` strokes onto a cropped `2×` PNG uploaded
+    through `bridge.uploadAttachment`.
+- **Chat staging, wire format, and transcript rendering (`lib/browser/designNotes.ts`, `components/chat/*`).**
+  - `Add to chat` / `Mod+L` / `Alt+Click` stages notes into `state/designNotes.ts`, surfaced above the composer by lazy `DesignNotesControl.tsx` (`N design notes`
+    pill + review popover).
+  - Sending formats structured metadata into a fenced `octo-design` JSONL block (`formatDesignNotesBlock`, `formatMessageWithDesignNotes`, integrated into
+    `lib/comments.ts` `splitUserMessage`) alongside uploaded cropped PNG attachments.
+  - `Transcript.tsx` strips the raw `octo-design` fence from visible prose and renders `SentDesignNotes.tsx` cards (`#pin`, `<Component>` + selector,
+    clickable `sourceFile:line` opening the Monaco editor tab, inline text diff, CSS override chips, and note prose). Demo bridge (`demo/generic.ts`,
+    `demo/slash.ts`) parses `octo-design` blocks and replies with targeted file/selector guidance.
+
+**Verified.** `gofmt -l`, `go vet ./internal/browserproxy/...`, `go test -race ./internal/browserproxy/...`, `go test -race` on `internal/remoteaccess`
+(`rules.go` / `rules_test.go`), `pnpm format:check`, `pnpm lint` (0 errors, 0 cycles), `pnpm --filter @octo/agent-client test`, `pnpm --filter @octo/ui test`
+(including `lib/browser/designNotes.test.ts`, `lib/commands/urls.test.ts`, and `state/workspace/layout.test.ts`), `pnpm --filter @octo/desktop test`,
+`pnpm test:scripts`, `pnpm --filter @octo/desktop build`, `node scripts/check-bundle-size.mjs` (`158.75 kB` gzip vs `158.90 kB` budget), and headless Chromium
+Playwright end-to-end + in-page `spacing-audit` and `frame-colours` checks across 11 dark, light, desktop (`1440×900`, `1100×800`), and phone (`390×844`) states
+with zero console/page errors and zero spacing/frame-colour violations.
+**Not verified.** Full `apps/harness` `go build ./...` / `go test ./...` (blocked in the cloud VM by sandbox proxy HTTP 403 for uncached `modernc.org/sqlite@v1.62.0`),
+and live `harness serve` proxying real external sites or Vite HMR WebSockets inside native Tauri/WebKit.
+

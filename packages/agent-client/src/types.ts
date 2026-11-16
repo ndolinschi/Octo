@@ -1677,3 +1677,11 @@ export type DirListing = {
   /** Present, with empty `entries`, when the base is missing or cannot be read. */
   error?: "not_found" | "not_readable";
 };
+
+/** `POST /v1/projects/{pid}/browser/proxy`: loopback proxy session for the Browser tab and Design Mode inspector. */
+export type BrowserProxySession = {
+  frame_url: string;
+  proxy_origin: string;
+  target_url: string;
+  nonce: string;
+};

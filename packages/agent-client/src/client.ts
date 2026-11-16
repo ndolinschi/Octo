@@ -118,6 +118,7 @@ import type {
   UsageReport,
   WriteFileInput,
   ErrorAction,
+  BrowserProxySession,
 } from "./types";
 
 /** A `Blob` without the DOM lib (this package type-checks without browser globals): what `new Blob(...)` returns where one exists. */
@@ -578,6 +579,10 @@ export interface Bridge {
   getCommandRun?(projectId: string, runId: string): Promise<CommandRun>;
   /** Ends the run's process group (SIGTERM, then SIGKILL); answers with the run once it ended. */
   stopCommandRun?(projectId: string, runId: string): Promise<CommandRun>;
+  /** Opens or updates the project's isolated loopback proxy for the Browser tab and Design Mode inspector. */
+  openBrowserProxy?(projectId: string, url: string): Promise<BrowserProxySession>;
+  /** Closes the project's loopback Browser tab proxy listener. */
+  closeBrowserProxy?(projectId: string): Promise<void>;
   listReviewComments?(projectId: string, reviewId: string): Promise<ReviewComment[]>;
   createReviewComment?(projectId: string, reviewId: string, input: ReviewCommentInput): Promise<ReviewComment>;
   updateReviewComment?(projectId: string, reviewId: string, commentId: string, patch: ReviewCommentUpdate): Promise<ReviewComment>;

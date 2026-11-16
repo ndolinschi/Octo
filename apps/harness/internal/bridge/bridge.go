@@ -32,6 +32,7 @@ type Server struct {
 	mcp      http.Handler
 	reviews  *review.Service
 	commands *commands.Service
+	browser  BrowserProxy
 
 	settings         SettingsStore
 	settingsLoopback bool
@@ -240,6 +241,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("DELETE /v1/projects/{pid}/lsp/sessions/{sid}", s.deleteLSPSession)
 	s.reviewRoutes(mux)
 	s.commandRoutes(mux)
+	s.browserRoutes(mux)
 	for _, m := range s.mounts {
 		mux.Handle(m.pattern, m.h)
 	}
