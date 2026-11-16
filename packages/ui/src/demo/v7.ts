@@ -248,6 +248,30 @@ function helperApproval(rec: ProjectRecord, v: V7): void {
   }, 1000);
 }
 
+function memoryApproval(rec: ProjectRecord, v: V7): void {
+  const orch = orchestratorOf(rec);
+  const turn = rec.messages.filter((m) => m.agent_id === orch.id && m.role === "user").at(-1)?.id ?? 0;
+  setTimeout(() => {
+    const approval: Approval = {
+      id: newId("apr"),
+      agent_id: orch.id,
+      agent_label: "orchestrator",
+      turn_id: turn,
+      kind: "memory",
+      title: "Remember project rule",
+      detail: {
+        memory_kind: "fact",
+        memory_text: "Prefer small, reviewable changes and add a failing test before fixing bugs.",
+        memory_path: "rules.md",
+      },
+      created_at: iso(),
+    };
+    v.approvals.push(approval);
+    emit(rec, { type: "approval.requested", approval: structuredClone(approval) });
+    attention(rec, v);
+  }, 200);
+}
+
 /** Adds the v7 members (and a "v7" script on `sendMessage`) to a demo bridge. */
 export function withDemoV7(base: Bridge, records: Map<string, ProjectRecord>): Bridge {
   const states = new Map<string, V7>();
@@ -274,6 +298,10 @@ export function withDemoV7(base: Bridge, records: Map<string, ProjectRecord>): B
     if (/helper approval/i.test(text)) {
       const { rec, v } = state(id);
       helperApproval(rec, v);
+    }
+    if (/memory approval/i.test(text)) {
+      const { rec, v } = state(id);
+      memoryApproval(rec, v);
     }
     return sent;
   };

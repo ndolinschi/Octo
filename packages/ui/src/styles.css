@@ -993,8 +993,7 @@
 
 /* ---------- Monaco: shapes the theme can't express (colours live in components/files/monaco.ts) ---------- */
 
-/* Code comments: commented lines carry a 2px accent rail in the line-decorations gutter and a faint
-   accent tint; the hovered line a neutral one, so the "+" target is unambiguous. */
+/* Code comments: commented lines carry a 2px accent rail in the line-decorations gutter and a faint accent tint. */
 .monaco-editor .octo-comment-rail {
   width: 2px !important;
   margin-left: 3px;
@@ -1002,9 +1001,6 @@
 }
 .monaco-editor .octo-comment-line {
   background: var(--octo-comment-line);
-}
-.monaco-editor .octo-hover-line {
-  background: var(--octo-hover);
 }
 /* Comment boxes (overlay widgets) use the UI font and our focus treatment, not Monaco's outline. */
 .monaco-editor .octo-comment-box {

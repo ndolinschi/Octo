@@ -42,8 +42,8 @@ function selectedLines(editor: Monaco.editor.IStandaloneCodeEditor): { start: nu
 }
 
 /**
- * Code comments in one editor (spec §5). Hovering a line highlights it and shows a "+" at the start
- * of its code; that, `Ctrl/Cmd+Alt+C` or the context menu opens an inline composer under the line
+ * Code comments in one editor (spec §5). Hovering a line shows a "+" in the glyph gutter;
+ * that, `Ctrl/Cmd+Alt+C` or the context menu opens an inline composer under the line
  * (or the selected lines). Commented lines carry a rail and a faint tint; pending comments show as
  * cards under their last line and follow edits (tracked decorations).
  */
@@ -87,7 +87,7 @@ export const EditorComments = memo(function EditorComments(props: {
     return () => action.dispose();
   }, [editor, monaco, open]);
 
-  /* ---------- hover: the line highlight and the "+" ---------- */
+  /* ---------- hover: the gutter "+" ---------- */
 
   const syncPlus = useCallback(
     (line: number | null) => {
@@ -137,25 +137,6 @@ export const EditorComments = memo(function EditorComments(props: {
     ];
     return () => subs.forEach((s) => s.dispose());
   }, [editor, monaco, hoverLineRef, syncPlus]);
-
-  const hoverDeco = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null);
-  useEffect(() => {
-    const col = (hoverDeco.current ??= editor.createDecorationsCollection());
-    const model = editor.getModel();
-    if (!hoverLine || !model || hoverLine > model.getLineCount()) {
-      col.clear();
-      return;
-    }
-    col.set([{ range: new monaco.Range(hoverLine, 1, hoverLine, 1), options: { isWholeLine: true, className: "octo-hover-line" } }]);
-  }, [editor, monaco, hoverLine]);
-
-  useEffect(
-    () => () => {
-      hoverDeco.current?.clear();
-      hoverDeco.current = null;
-    },
-    [],
-  );
 
   /* ---------- commented ranges: rail + tint, tracking edits ---------- */
 

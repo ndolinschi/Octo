@@ -200,6 +200,14 @@ export async function toolShowcaseTurn(ctx: Ctx): Promise<void> {
     ]);
     await act(c, orch, [
       {
+        name: "skill",
+        input: { name: "brainstorming" },
+        result: `<skill_content name="brainstorming">\n# Brainstorming\n\n- Explore intent, edge cases, and constraints before editing.\n- Keep retries bounded and observable in logs.\n</skill_content>`,
+        ms: 250,
+      },
+    ]);
+    await act(c, orch, [
+      {
         name: "edit",
         input: { folder: "atlas-api", path: "src/http/retry.ts", old_string: OLD_EDIT, new_string: NEW_EDIT },
         result: "edited src/http/retry.ts",

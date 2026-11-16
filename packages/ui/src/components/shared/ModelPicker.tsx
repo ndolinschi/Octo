@@ -107,7 +107,7 @@ export function ModelPicker(props: ModelPickerProps) {
         data-model-picker
         onClick={() => setOpen(!open)}
         tip={tip ?? `${props.label}: ${text}`}
-        className={cn("max-w-60", props.className)}
+        className={cn("max-w-72", props.className)}
       />
       {panel}
     </>

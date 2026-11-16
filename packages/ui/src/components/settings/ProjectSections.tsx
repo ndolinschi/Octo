@@ -246,25 +246,27 @@ function HarnessTextRow({
       description={s.editable ? description : (s.note ?? `Set by the ${s.source}.`)}
       status={<SaveStatus state={saved} />}
       control={
-        <TextField
-          size="sm"
-          id={id}
-          value={value}
-          disabled={!s.editable}
-          placeholder={placeholder}
-          spellCheck={false}
-          autoComplete="off"
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit();
-            if (e.key === "Escape" && draft !== null) {
-              e.preventDefault();
-              setDraft(null);
-            }
-          }}
-          className={`${widthClass} font-mono`}
-        />
+        <div className={widthClass}>
+          <TextField
+            size="sm"
+            id={id}
+            value={value}
+            disabled={!s.editable}
+            placeholder={placeholder}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape" && draft !== null) {
+                e.preventDefault();
+                setDraft(null);
+              }
+            }}
+            className="font-mono"
+          />
+        </div>
       }
     />
   );

@@ -11,12 +11,15 @@ import {
   type ImportSessionsResult,
   type MemoryExchange,
   type Message,
+  type MoveToWorktreeInput,
+  type MoveToWorktreeResult,
   type NewSessionInput,
   type ProjectSession,
   type ProjectSessionState,
   type QueuedMessage,
   type SendResult,
   type SessionsParams,
+  type Workspace,
 } from "@octo/agent-client";
 import { addRoot, addTalk, announceRoot, startIn, SYNC_PROMPT, syncRefactor } from "./parallel";
 import { clone, emit, newId, type ProjectRecord } from "./store";
@@ -196,6 +199,7 @@ type Main = {
   model: string;
   root: string;
   seed?: Seed;
+  workspace?: ProjectSession["workspace"];
   /** Its own queue (the default session's is the project's, in `v7.ts`). */
   queue: (QueuedMessage & { waiting_for: "turn" | "slot" })[];
   paused: boolean;
@@ -207,6 +211,7 @@ type Entry = {
   archived: Set<string>;
   titles: Map<string, string>;
   deleted: Set<string>;
+  workspaces: Workspace[];
   /** State of a seeded agent session after the person acted on it (stopped, continued). */
   agentState: Map<string, ProjectSessionState>;
   /** Messages the person sent to a seeded agent session. */
@@ -309,11 +314,26 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
         approvals,
       };
     });
+    const sharedWorkspace: Workspace = {
+      id: "shared",
+      kind: "shared",
+      title: "Main checkout",
+      state: "ready",
+      created_at: rec.project.created_at,
+      folders: rec.project.folders.map((f) => ({
+        workspace_id: "shared",
+        folder_id: f.id,
+        folder_label: f.label,
+        path: f.path,
+        shared: true,
+      })),
+    };
     const e: Entry = {
       mains: [first, ...seeded],
       archived: new Set(seeded.filter((m) => m.seed?.archived).map((m) => m.id)),
       titles: new Map(),
       deleted: new Set(),
+      workspaces: [sharedWorkspace],
       agentState: new Map(),
       agentTalk: new Map(),
     };
@@ -429,7 +449,7 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
       default: def,
       archived: e.archived.has(m.id),
       root_agent_id: m.root,
-      workspace: { id: "shared", kind: "shared", title: "Main checkout" },
+      workspace: m.workspace ?? { id: "shared", kind: "shared", title: "Main checkout" },
       memory: "on",
       memory_inherited: true,
       mode: "",
@@ -1075,12 +1095,55 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
         e.archived.clear();
         e.titles.clear();
         e.deleted.clear();
+        e.workspaces = e.workspaces.slice(0, 1);
         e.agentState.clear();
         e.agentTalk.clear();
         emit(rec, { type: "project.updated", project: clone(rec.project) });
       }
       importedByProject.clear();
       return { deleted_sessions, projects: records.size };
+    },
+    listWorkspaces: async (id: string): Promise<Workspace[]> => {
+      await delay();
+      return clone(entryOf(id).workspaces);
+    },
+    moveSessionToWorktree: async (id: string, sid: string, input: MoveToWorktreeInput = {}): Promise<MoveToWorktreeResult> => {
+      await delay();
+      const rec = recOf(id);
+      const e = entryOf(id);
+      const m = mainOf(id, sid);
+      if (!m) throw new BridgeError(404, "not_found", `no session ${sid}`);
+      if (running(rec, m)) throw new BridgeError(409, "workspace_in_use", "The session is running.");
+      if (m.workspace?.kind === "worktree") {
+        throw new BridgeError(409, "already_in_worktree", "This session already works in its own worktree.");
+      }
+      const branch = input.branch?.trim() || "octo/worktree";
+      const wid = newId("wrk");
+      const now = new Date().toISOString();
+      const carry = input.carry_changes ?? true;
+      const ws: Workspace = {
+        id: wid,
+        kind: "worktree",
+        title: `Worktree · ${branch}`,
+        state: "ready",
+        branch,
+        carry_changes: carry,
+        created_at: now,
+        folders: rec.project.folders.map((f) => ({
+          workspace_id: wid,
+          folder_id: f.id,
+          folder_label: f.label,
+          path: `/home/you/.octo/projects/demo/worktrees/${wid}/${f.label}`,
+          repo_root: f.path,
+          branch,
+          shared: false,
+        })),
+      };
+      e.workspaces.push(ws);
+      m.workspace = { id: wid, kind: "worktree", title: ws.title, branch };
+      emit(rec, { type: "workspace.updated", workspace: clone(ws) });
+      await announce(id, sid);
+      return { session: await find(id, sid), workspace: clone(ws) };
     },
     listImportableSessions: async (): Promise<ImportableSession[]> => {
       await delay();

@@ -12,7 +12,7 @@ export function completionMode(search: string): DemoCompletionMode {
   return v === "off" || v === "budget" || v === "fail" ? v : "on";
 }
 
-const DEMO_MODEL = "claude-haiku-5-5";
+const DEMO_MODEL = "small";
 
 /** Bodies the demo knows by function name (typed `function <name>(`, or a prefix of the name). */
 const FUNCTIONS: Record<string, (indent: string) => string> = {
