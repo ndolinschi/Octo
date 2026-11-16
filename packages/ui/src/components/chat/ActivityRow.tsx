@@ -1,5 +1,5 @@
 import { Check, ChevronRight, Circle } from "lucide-react";
-import { useId, useState, type MouseEventHandler, type ReactNode } from "react";
+import { useEffect, useId, useState, type MouseEventHandler, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { formatDuration } from "../../lib/format";
 import { Glyph } from "../primitives/Glyph";
@@ -57,6 +57,43 @@ export function ActivityRow(props: {
   const id = useId();
   const nested = props.children !== undefined && props.children !== null && props.children !== false;
   const expandable = nested || props.expands === true;
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [entering, setEntering] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (nested) {
+      if (open) {
+        setLeaving(false);
+        setEntering(true);
+      } else {
+        setEntering(false);
+        setLeaving(true);
+      }
+    }
+  }
+  useEffect(() => {
+    if (!entering) return;
+    let cancel = false;
+    let innerRaf = 0;
+    const outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(() => {
+        if (!cancel) setEntering(false);
+      });
+    });
+    return () => {
+      cancel = true;
+      cancelAnimationFrame(outerRaf);
+      cancelAnimationFrame(innerRaf);
+    };
+  }, [entering]);
+  useEffect(() => {
+    if (!leaving) return;
+    const t = window.setTimeout(() => setLeaving(false), 200);
+    return () => window.clearTimeout(t);
+  }, [leaving]);
+  const mounted = nested && (open || leaving);
+  const shown = open && !entering;
   const toggle = () => {
     props.onOpenChange?.(!open);
     setInner(!open);
@@ -114,8 +151,8 @@ export function ActivityRow(props: {
       {/* On the row's text line (16 glyph + 8 gap), as what a row opens: it stood 8px right of the text it explains. */}
       {props.error && <p className="-mt-1 truncate pb-1 pl-6 text-xs text-err">{props.error}</p>}
       {props.note && <p className="-mt-1 truncate pb-1 pl-6 text-xs text-fg-3">{props.note}</p>}
-      {nested && (
-        <div data-activity-drawer data-open={open || undefined} inert={!open || undefined} aria-hidden={!open || undefined} className="octo-drawer-rows">
+      {mounted && (
+        <div data-activity-drawer data-open={shown || undefined} inert={!shown || undefined} aria-hidden={!shown || undefined} className="octo-drawer-rows">
           <div className="min-h-0 overflow-hidden">
             {/* C1: a subtle tree guide under the parent's glyph center (7px) with 16px indent puts nested content on the parent's text line (24px). */}
             <div id={id} data-activity-body className="mt-0.5 mb-2 ml-[7px] flex flex-col gap-0.5 border-l border-line pl-4">
