@@ -206,8 +206,8 @@ func (o *Orchestrator) completeOllama(ctx context.Context, baseURL, model string
 	var out struct {
 		Response        string `json:"response"`
 		Error           string `json:"error"`
-		PromptEvalCount int    `json:"prompt_eval_count"`
-		EvalCount       int    `json:"eval_count"`
+		PromptEvalCount int64  `json:"prompt_eval_count"`
+		EvalCount       int64  `json:"eval_count"`
 	}
 	if err := json.Unmarshal(respBytes, &out); err != nil {
 		return "", agent.Usage{}, fmt.Errorf("decode ollama response: %w", err)

@@ -293,7 +293,7 @@ func TestAutoSessionTitle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	main, err := db.CreateMainSession(ctx, MainSessionCreate{})
+	main, _, err := db.CreateMainSession(ctx, NewMainSession{})
 	if err != nil {
 		t.Fatal(err)
 	}
