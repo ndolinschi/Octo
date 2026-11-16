@@ -91,7 +91,7 @@ export function Tab(props: {
         title={info.title}
         aria-description={commentsDescription(info.comments)}
         onKeyDown={props.onKeyDown}
-        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-sm px-2 text-sm focus-inset"
+        className={cn("flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 text-sm focus-inset", hasTrailing && slot && "pr-1")}
       >
         <span aria-hidden className="grid size-4 shrink-0 place-items-center">
           {info.glyph ? <StateGlyph state={info.glyph} /> : <Glyph icon={info.icon} size={14} />}
@@ -117,7 +117,7 @@ export function Tab(props: {
         {info.glyph === "needs" && <span className="sr-only"> (needs you)</span>}
       </button>
       {hasTrailing && (
-        <span role="none" className={cn("relative grid shrink-0 place-items-center", slot ? "mr-2 size-4" : "absolute top-0 right-0 h-full w-0")}>
+        <span role="none" className={cn("relative grid shrink-0 place-items-center", slot ? "mr-1.5 size-4" : "absolute top-0 right-0 h-full w-0")}>
           {info.status === "modified" && (
             <span
               aria-hidden
