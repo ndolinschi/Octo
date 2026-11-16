@@ -118,6 +118,8 @@ export const RARE_METHODS = [
   "importSessions",
   "listWorkspaces",
   "moveSessionToWorktree",
+  "openBrowserProxy",
+  "closeBrowserProxy",
 ] as const;
 
 export type RareMethod = (typeof RARE_METHODS)[number];

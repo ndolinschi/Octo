@@ -10,6 +10,7 @@ import {
   activate,
   agentTab,
   allTabs,
+  browserTab,
   canSplit,
   close,
   closable,
@@ -42,6 +43,7 @@ import {
 } from "./layout";
 
 const FILES = toolTab("files");
+const BROWSER = toolTab("browser");
 const NOTES = toolTab("notes");
 const AGENTS = toolTab("agents");
 const DETAILS = toolTab("details");
@@ -81,10 +83,11 @@ function prng(seed: number) {
 }
 
 test("tab ids: constructors and parseTabId round trip; foreign strings are rejected", () => {
-  const all = [CHAT, FILES, NOTES, AGENTS, DETAILS, agentTab("a1"), f("src/a.ts"), f("")];
+  const all = [CHAT, FILES, BROWSER, NOTES, AGENTS, DETAILS, agentTab("a1"), browserTab("b1"), f("src/a.ts"), f("")];
   for (const id of all) assert.equal(parseTabId(id), id, id);
   assert.equal(parseTabId(agentTab("x")), "agent:x");
-  for (const foreign of ["", "chat ", "Chat", "tools", "agent:", "agent", "file:", "file:nosep", "file:a/b", "x", "files:", "details2"]) {
+  assert.equal(parseTabId(browserTab("b1")), "browser:b1");
+  for (const foreign of ["", "chat ", "Chat", "tools", "agent:", "browser:", "agent", "file:", "file:nosep", "file:a/b", "x", "files:", "details2"]) {
     assert.equal(parseTabId(foreign), null, JSON.stringify(foreign));
   }
   assert.equal(parseTabId(null), null);
@@ -95,11 +98,16 @@ test("tab ids: constructors and parseTabId round trip; foreign strings are rejec
 test("tab ids: parse, build and the Chat rule", () => {
   assert.deepEqual(parseTab(CHAT), { kind: "chat" });
   assert.deepEqual(parseTab("files"), { kind: "tool", tool: "files" });
+  assert.deepEqual(parseTab("browser"), { kind: "tool", tool: "browser" });
+  assert.deepEqual(parseTab(browserTab("b1")), { kind: "browser", browserId: "b1" });
   assert.deepEqual(parseTab(agentTab("a1")), { kind: "agent", agentId: "a1" });
   assert.deepEqual(parseTab(f("src/a.ts")), { kind: "file", key: fileKey("proj", "src/a.ts") });
-  for (const bad of ["", "agent:", "file:no-nul", "tools", "Chat", "agent"]) assert.equal(parseTab(bad), null, bad);
+  for (const bad of ["", "agent:", "browser:", "file:no-nul", "tools", "Chat", "agent"]) assert.equal(parseTab(bad), null, bad);
   assert.equal(closable(CHAT), false);
   assert.equal(closable(FILES), true);
+  assert.equal(closable(BROWSER), true);
+  assert.equal(closable(browserTab("b1")), true);
+  assert.equal(shownTool(layoutOf([group("a", [CHAT], 0.5), group("b", [browserTab("b1")], 0.5)], "b")), "browser");
 });
 
 test("a fresh layout is one Chat group", () => {

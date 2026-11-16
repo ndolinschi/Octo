@@ -37,6 +37,7 @@ const TOOLS: Record<ToolTab, { label: string; icon: LucideIcon; title: string }>
   agents: tool("Agents", GLYPH.agents, TOOL_PURPOSE.agents),
   notes: tool("Notes", GLYPH.notes, TOOL_PURPOSE.notes),
   files: tool("Files", GLYPH.files, TOOL_PURPOSE.files),
+  browser: tool("Browser", GLYPH.browser, TOOL_PURPOSE.browser),
   details: tool("Details", GLYPH.details, TOOL_PURPOSE.details),
   usage: tool("Usage", GLYPH.usage, TOOL_PURPOSE.usage),
   changes: tool("Changes", GLYPH.changes, TOOL_PURPOSE.changes),
@@ -48,6 +49,30 @@ const TOOLS: Record<ToolTab, { label: string; icon: LucideIcon; title: string }>
 function firstWords(text: string, n = 6): string {
   const words = text.trim().split(/\s+/).filter(Boolean);
   return words.length > n ? `${words.slice(0, n).join(" ")}…` : words.join(" ");
+}
+
+function browserTabInfo(b?: { url: string; title: string; pins: number }): TabInfo {
+  const clean = b?.title.trim() ?? "";
+  const url = b?.url ?? "";
+  let host = "";
+  try {
+    if (url) host = new URL(url).host;
+  } catch {
+    host = url.trim();
+  }
+  const label = clean ? middleTruncate(clean, 22) : host ? middleTruncate(host, 22) : "Browser";
+  const detail = clean && host ? middleTruncate(host, 20) : undefined;
+  const full = clean ? (url ? `${clean} — ${url}` : clean) : host ? url : TOOL_PURPOSE.browser;
+  return {
+    label,
+    ...(detail ? { detail } : {}),
+    name: full,
+    title: `Browser: ${full}`,
+    icon: GLYPH.browser,
+    status: null,
+    glyph: null,
+    comments: b?.pins ?? 0,
+  };
 }
 
 type ConversationCtx = { state: ProjectState; projectName?: string | undefined; orchestratorId: string | undefined };
@@ -93,14 +118,21 @@ export function tabInfo(
     comments(key: FileKey): number;
     /** The state of a project command's latest run (decision 68). */
     runStatus(name: string): "running" | "failed" | null;
+    /** Browser tab metadata (URL, document title, pending Design Mode pin count). */
+    browser?(browserId: string): { url: string; title: string; pins: number } | undefined;
   },
 ): TabInfo {
   const ref = parseTab(tab);
   if (!ref) return { label: tab, title: tab, icon: File, status: null, glyph: null, comments: 0 };
   if (ref.kind === "chat") return conversationInfo(ctx, ctx.chatSessionId ?? ctx.state.sessions.defaultId);
   if (ref.kind === "tool") {
+    if (ref.tool === "browser") {
+      const b = ctx.browser?.("default");
+      if (b && (b.url || b.title || b.pins > 0)) return browserTabInfo(b);
+    }
     return { ...TOOLS[ref.tool], status: null, glyph: null, comments: 0 };
   }
+  if (ref.kind === "browser") return browserTabInfo(ctx.browser?.(ref.browserId));
   if (ref.kind === "agent") {
     const agent = ctx.state.agents[ref.agentId];
     // Decision 63: a sub-agent's tab is its task title (else the first words of its task), the role in the tooltip.

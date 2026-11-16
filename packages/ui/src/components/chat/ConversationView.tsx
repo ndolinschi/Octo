@@ -253,8 +253,9 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const watched = ws ? ws.watched === tab : true;
 
   const empty = showStarters;
-  const commentsSlot = composerProps.commentCount
-    ? { count: composerProps.commentCount, render: (open: boolean, setOpen: (open: boolean) => void) => <CommentsControl open={open} onOpenChange={setOpen} /> }
+  const totalNotes = composerProps.commentCount + composerProps.designNoteCount;
+  const commentsSlot = totalNotes
+    ? { count: totalNotes, render: (open: boolean, setOpen: (open: boolean) => void) => <CommentsControl open={open} onOpenChange={setOpen} /> }
     : undefined;
 
   // One tree for both layouts (contract v6 decision 13, v6.2 race fix): the header, the middle (the empty

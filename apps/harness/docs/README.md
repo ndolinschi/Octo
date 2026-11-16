@@ -13,6 +13,7 @@ Product docs for the Go agent harness (`apps/harness/`). Operational notes and b
 | [memory.md](./memory.md) | Orchestrator memory (M1 and M2): task records, memory files, FTS5 search (Russian inflections), recall, the post-turn digest, API and events |
 | [acp-orchestrator.md](./acp-orchestrator.md) | Running a project's orchestrator as an ACP agent: config, sessions, harness tools over MCP, limits; Claude Code, Copilot and Grok setup; failure messages; `harness doctor`, `GET /v1/diagnostics`, the ACP wire trace |
 | [remote-access.md](./remote-access.md) | Remote access for a paired phone: the `cloudflared` quick tunnel, the second listener and its allow-list, pairing and device tokens, long-poll events, `/v1/remote` routes, settings |
+| [browser.md](./browser.md) | Browser tab and Design Mode (`browserproxy`): loopback reverse proxy, CSP/frame stripping, `inspector.js` injection and nonce guard, Remote access block, `octo-design` wire block |
 
 ## Security
 

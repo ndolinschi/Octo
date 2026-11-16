@@ -143,9 +143,22 @@ function commentsSummary(comments: { path: string; folder: string }[]): string {
   return others > 0 ? `${head} and ${others} other ${others === 1 ? "file" : "files"}` : head;
 }
 
-/** What a request is called in the sidebar, palette and pinned prompt: its prose, else a summary of its comments. */
+const DESIGN_BLOCK = /(^|\n)(`{3,})octo-design[ \t]*\n([\s\S]*?)\n\2[ \t]*(?=\n|$)/g;
+
+/** What a request is called in the sidebar, palette and pinned prompt: its prose, else a summary of its comments or design notes. */
 export function requestTitle(text: string): string {
   const { prose, comments } = splitComments(text);
+  if (prose.includes("octo-design")) {
+    let notes = 0;
+    const clean = prose
+      .replace(DESIGN_BLOCK, (_m, lead: string, _fence: string, body: string) => {
+        notes += body.split("\n").filter((l) => l.trim().startsWith("{")).length;
+        return lead;
+      })
+      .trim();
+    if (clean) return clean;
+    if (notes > 0) return `${notes}\u00a0design ${notes === 1 ? "note" : "notes"}`;
+  }
   if (prose) return prose;
   return comments.length ? commentsSummary(comments) : text;
 }

@@ -51,6 +51,24 @@ export function withDemoSlash(base: Bridge, records: Map<string, ProjectRecord>)
   const facts = new Map<string, TaskFact>();
   const attachments = new Map<string, { data: Uint8Array; type: string }>();
   const noImages = typeof location !== "undefined" && /[?&]images=no\b/.test(location.search);
+  const attachImages = (id: string, sent: Awaited<ReturnType<NonNullable<Bridge["sendOrQueueMessage"]>>>, ids: string[]) => {
+    const msg = sent.message;
+    if (!ids.length || !msg) return sent;
+    const blocks = ids.map((attId) => {
+      const hit = attachments.get(attId);
+      return {
+        type: "image" as const,
+        attachment_id: attId,
+        media_type: hit?.type ?? "image/png",
+        width: 640,
+        height: 400,
+        name: "image.png",
+      };
+    });
+    const stored = rec(id).messages.find((m) => m.id === msg.id);
+    if (stored) stored.content = [...stored.content, ...blocks];
+    return { ...sent, message: { ...msg, content: [...msg.content, ...blocks] } };
+  };
   return {
     ...base,
     getProject: async (id) => {
@@ -61,21 +79,12 @@ export function withDemoSlash(base: Bridge, records: Map<string, ProjectRecord>)
       if (opts?.attachments?.length && noImages) throw new BridgeError(422, "images_unsupported", "The model does not accept images");
       const sent = await base.sendOrQueueMessage?.(id, text, opts);
       if (!sent) throw new BridgeError(501, "not_implemented", "no sendOrQueueMessage");
-      const ids = opts?.attachments ?? [];
-      if (ids.length && sent.message) {
-        const blocks = ids.map((attId) => ({
-          type: "image" as const,
-          attachment_id: attId,
-          media_type: "image/png",
-          width: 640,
-          height: 400,
-          name: "image.png",
-        }));
-        const stored = rec(id).messages.find((m) => m.id === sent.message?.id);
-        if (stored) stored.content = [...stored.content, ...blocks];
-        return { message: { ...sent.message, content: [...sent.message.content, ...blocks] } };
-      }
-      return sent;
+      return attachImages(id, sent, opts?.attachments ?? []);
+    },
+    sendSessionMessage: async (id, sid, text, opts) => {
+      if (opts?.attachments?.length && noImages) throw new BridgeError(422, "images_unsupported", "The model does not accept images");
+      const sent = await base.sendSessionMessage(id, sid, text, opts);
+      return attachImages(id, sent, opts?.attachments ?? []);
     },
     getSlashCommands: async (id) => {
       const r = rec(id);

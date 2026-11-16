@@ -1,6 +1,7 @@
 import { ArrowLeft, Ellipsis, Menu as MenuIcon } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { useOptionalComments } from "../../../state/comments";
+import { getBrowserTabPins, getBrowserTabState, useBrowserTabsRevision } from "../../../state/browserTabs";
 import { useCode } from "../../../state/code";
 import { useProject } from "../../../state/project";
 import { useShell } from "../../../state/shell";
@@ -31,6 +32,7 @@ export default function PhoneHeader() {
   const props = { active: focusedGroup(ws.layout).active, tabs: allTabs(ws.layout) };
   const code = useCode();
   const { state, project, projectId } = useProject();
+  useBrowserTabsRevision(projectId);
   const { toggleSidebar, sidebarOpen } = useShell();
   const counts = useOptionalComments()?.counts;
   const [more, setMore] = useState(false);
@@ -39,6 +41,7 @@ export default function PhoneHeader() {
     const r = reopenFor(tab, props.tabs);
     if (r.kind === "activate") ws.activate(r.tab);
     else if (r.kind === "tool") ws.openTool(r.tool);
+    else if (r.kind === "browser") ws.openBrowser({ browserId: r.browserId });
     else if (r.kind === "file") ws.openFileTab(r.key);
     else if (r.kind === "run") ws.openRun(r.name);
     else if (r.kind === "agent") ws.openAgent(r.agentId);
@@ -53,6 +56,10 @@ export default function PhoneHeader() {
     file: code.file,
     comments: (key: FileKey) => counts?.get(key) ?? 0,
     runStatus: (name: string) => ws.runStatuses[name.toLowerCase()] ?? null,
+    browser: (id: string) => {
+      const b = getBrowserTabState(projectId, id);
+      return { url: b.url, title: b.title, pins: getBrowserTabPins(projectId, id) };
+    },
   });
   const sid = conversationSession(props.active, ws.chatSessionId, state);
   const session = sid !== null ? state.sessions.list.find((s) => s.id === sid) : undefined;

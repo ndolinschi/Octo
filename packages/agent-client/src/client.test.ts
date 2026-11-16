@@ -353,3 +353,20 @@ test("subscribe delivers file.changed", () => {
   });
   assert.deepEqual(events, [{ type: "file.changed", seq: 4, folder: "src", path: "a.ts", source: "agent" }]);
 });
+
+test("openBrowserProxy and closeBrowserProxy call /browser/proxy routes", async () => {
+  const openRes = {
+    frame_url: "http://127.0.0.1:41234/__octo_browser/bootstrap?ticket=abc&path=%2F",
+    proxy_origin: "http://127.0.0.1:41234",
+    target_url: "http://localhost:3000/",
+    nonce: "n1",
+  };
+  const open = bridgeWith(200, JSON.stringify(openRes));
+  const session = await open.bridge.openBrowserProxy?.("p/1", "http://localhost:3000");
+  assert.deepEqual(session, openRes);
+  assert.deepEqual(open.calls, [{ url: "http://h:1/v1/projects/p%2F1/browser/proxy", method: "POST", body: '{"url":"http://localhost:3000"}' }]);
+
+  const close = bridgeWith(204, "");
+  await close.bridge.closeBrowserProxy?.("p/1");
+  assert.deepEqual(close.calls, [{ url: "http://h:1/v1/projects/p%2F1/browser/proxy", method: "DELETE", body: undefined }]);
+});

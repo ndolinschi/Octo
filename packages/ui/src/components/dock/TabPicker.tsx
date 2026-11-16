@@ -88,6 +88,13 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
         run: () => (tool === "files" ? files.show() : ws.openTool(tool)),
       }));
     tools.push({ id: "open-file", label: "Open file…", lead: <Glyph icon={FileSearch} size={14} />, title: "Filter the project's files", run: files.show });
+    tools.push({
+      id: "new-browser",
+      label: "New browser tab",
+      lead: <Glyph icon={GLYPH.browser} size={14} />,
+      title: "Open another browser tab",
+      run: () => ws.openBrowser({ newTab: true }),
+    });
     const q = query.trim().toLowerCase();
     const fileRows: PickerRow[] = q
       ? code.loadedFiles

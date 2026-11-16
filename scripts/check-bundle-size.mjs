@@ -61,8 +61,14 @@ import { gzipSync } from "node:zlib";
  * preloaded chunk (`modelsMore`, `toolsMore`: -1.05; `slashRows`, `matchMore`, `imagePlan`: -0.73; `orchestratorMore`,
  * `providersMore`: -0.25). Check for the same trap before adding a lazy-only export to a module the entry imports.
  * Budget = measured + 1.0 = 158.9; the 158.0 target is met.
+ *
+ * Browser tab + Design Mode (2026-11-16): BrowserTab (11.31 kB), demoPage/inspector (11.56 kB), designNotes serializer/parser
+ * (1.58 kB), SentDesignNotes (1.25 kB), and DesignNotesControl (inside CommentsControl) all load in lazy chunks (~27 kB gzip
+ * kept out of initial JS); first-paint entry carries only `browser:<id>` tab layout/info, `GLYPH.browser`, tab-strip pin/title
+ * state, `openBrowser`, staged design-note count subscription, and `rare.ts` forwarders: 158.10 -> 160.01 kB gzip.
+ * Budget = measured + 1.0 = 161.0.
  */
-const BUDGET_KB = 158.9;
+const BUDGET_KB = 161.0;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.resolve(process.argv[2] ?? path.join(root, "apps/desktop/dist"));

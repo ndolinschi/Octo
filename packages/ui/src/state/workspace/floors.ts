@@ -13,6 +13,7 @@ export function groupFloor(tabs: readonly TabId[], treeColumn = 0): number {
     if (!ref) continue;
     if (ref.kind === "chat") return CHAT_MIN_WIDTH;
     if (ref.kind === "file" || (ref.kind === "tool" && ref.tool === "files")) floor = Math.max(floor, EDITOR_MIN_GROUP + treeColumn);
+    if (ref.kind === "browser" || (ref.kind === "tool" && ref.tool === "browser")) floor = Math.max(floor, EDITOR_MIN_GROUP);
   }
   return floor;
 }

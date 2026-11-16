@@ -1,10 +1,12 @@
-import { Check, X } from "lucide-react";
+import { Check, Globe, X } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 import { cn } from "../../lib/cn";
 import { durationText, runStatusText, runTone, stripAnsi, type RunTone } from "../../lib/commands/format";
 import { isRunning, type RunView } from "../../lib/commands/runs";
+import { extractLocalUrls } from "../../lib/commands/urls";
 import { useNow } from "../../lib/hooks";
 import type { GlyphState } from "../../lib/stateGlyph";
+import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
 import { IconButton } from "../primitives/IconButton";
@@ -25,8 +27,10 @@ const FOLLOW_SLACK_PX = 24;
  */
 export function RunPanel({ tab }: { /** The "Run: name" tab (decision 68): fills its tab, names the command, has no close button. */ tab?: string } = {}) {
   const r = useRuns();
+  const ws = useOptionalWorkspace();
   if (!r.panelOpen && tab === undefined) return null;
   const cur = r.current;
+  const localUrl = cur ? extractLocalUrls(cur.output)[0] : undefined;
   const action =
     cur &&
     (isRunning(cur.run) ? (
@@ -68,6 +72,11 @@ export function RunPanel({ tab }: { /** The "Run: name" tab (decision 68): fills
             ))}
             {r.runs.length === 0 && <span className="px-2 text-xs text-fg-3">No runs yet</span>}
           </div>
+        )}
+        {localUrl && ws && (
+          <Button size="sm" variant="secondary" icon={Globe} onClick={() => ws.openBrowser({ url: localUrl })}>
+            Open in Browser
+          </Button>
         )}
         {action}
         {tab === undefined && <IconButton icon={X} label="Close the run panel" onClick={r.closePanel} />}

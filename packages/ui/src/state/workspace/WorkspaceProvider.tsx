@@ -8,6 +8,7 @@ import { useApp } from "../app";
 import { useNav, type WorkspaceApi } from "../nav";
 import { useProject } from "../project";
 import { sessionRoot } from "@octo/agent-client";
+import { updateBrowserTabState } from "../browserTabs";
 import { hasQueuedSession } from "./sessionsStart";
 import * as L from "./layout";
 import type { Layout, TabId, ToolTab } from "./layout";
@@ -103,6 +104,8 @@ export type WorkspaceValue = {
   closePicker(): void;
   /** Opens a file's tab: in `where.group` (in place of `where.replace`) when given, else in the side group. */
   openFileTab(key: FileKey, where?: { group: string; replace?: TabId }): void;
+  /** Opens (or focuses) a Browser tab beside the conversation, optionally navigating to `url` or opening a fresh instance. */
+  openBrowser(options?: { url?: string; newTab?: boolean; group?: string; browserId?: string }): TabId;
   /** Opens (or focuses) the "Run: name" tab of a project command beside the conversation (decision 68). */
   openRun(name: string): void;
   /** One session in a tab of its own, beside the tab it was opened from (two sessions side by side). */
@@ -481,7 +484,7 @@ export function WorkspaceProvider({
         if (tool === "side") focusSoon(() => document.getElementById("octo-side-input"), { timeout: 3000 });
         else if (tool === "files") focusTree();
         else focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
-        const roomy = tool === "files" || tool === "changes";
+        const roomy = tool === "files" || tool === "changes" || tool === "browser";
         openSide(tab, roomy ? fileFraction() : toolFraction());
         if (roomy) {
           const g = L.groupOf(layoutRef.current, tab);
@@ -504,6 +507,34 @@ export function WorkspaceProvider({
         const g = L.groupOf(layoutRef.current, L.fileTab(key));
         if (g && !g.tabs.includes(L.CHAT) && g.size < FILE_GROUP_MIN_FRACTION)
           commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
+      },
+      openBrowser: (o) => {
+        const cur = layoutRef.current;
+        const found =
+          !o?.browserId && !o?.newTab
+            ? L.allTabs(cur).find((t) => {
+                const r = L.parseTab(t);
+                return r?.kind === "browser" || (r?.kind === "tool" && r.tool === "browser");
+              })
+            : undefined;
+        const bid =
+          o?.browserId ??
+          (o?.newTab
+            ? `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
+            : found
+              ? L.parseTab(found)?.kind === "browser"
+                ? (L.parseTab(found) as { browserId: string }).browserId
+                : "default"
+              : "default");
+        const tab = o?.browserId || o?.newTab ? L.browserTab(bid) : (found ?? L.toolTab("browser"));
+        if (o?.url !== undefined) updateBrowserTabState(projectId, bid, { url: o.url });
+        if (o?.group) commit(L.open(cur, tab, { group: o.group }));
+        else openSide(tab, fileFraction());
+        const g = L.groupOf(layoutRef.current, tab);
+        if (g && !g.tabs.includes(L.CHAT) && g.size < FILE_GROUP_MIN_FRACTION)
+          commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
+        focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
+        return tab;
       },
       openRun: (name) => openSide(L.runTab(name), fileFraction()),
       openSession: (sessionId) => {

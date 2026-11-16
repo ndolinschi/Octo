@@ -1,5 +1,6 @@
 import type {
   Attachment,
+  BrowserProxySession,
   CompletionResult,
   ConversationMarker,
   FileStat,
@@ -468,6 +469,10 @@ export function createRareMethods({
     },
     getCommandRun: (id, rid) => request("GET", `${p(id)}/runs/${encodeURIComponent(rid)}`) as Promise<CommandRun>,
     stopCommandRun: (id, rid) => request("POST", `${p(id)}/runs/${encodeURIComponent(rid)}/stop`) as Promise<CommandRun>,
+    openBrowserProxy: (id, url) => request("POST", `${p(id)}/browser/proxy`, { url }) as Promise<BrowserProxySession>,
+    closeBrowserProxy: async (id) => {
+      await request("DELETE", `${p(id)}/browser/proxy`);
+    },
     listReviewComments: (id, rid) => unwrap<ReviewComment[]>(request("GET", `${p(id)}/reviews/${encodeURIComponent(rid)}/comments`), "comments"),
     createReviewComment: (id, rid, input) => request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/comments`, input) as Promise<ReviewComment>,
     updateReviewComment: (id, rid, cid, patch) =>
