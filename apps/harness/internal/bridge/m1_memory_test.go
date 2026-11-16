@@ -302,7 +302,7 @@ func TestAutoMemoryOffPromptsAndBlockedRefuses(t *testing.T) {
 	e.into(t, "POST", "/v1/projects/"+pid+"/approvals/"+ap.ID, map[string]string{"decision": approval.Allow}, http.StatusNoContent, nil)
 	collectUntilTurnFinished(t, stream)
 
-	if res := e.search(t, pid, "Tab size"); len(res.Hits) == 0 {
+	if res := e.search(t, pid, "Tab size"); !hasKind(res, "fact") {
 		t.Fatalf("expected remembered fact after allow, got %+v", res)
 	}
 
@@ -312,7 +312,7 @@ func TestAutoMemoryOffPromptsAndBlockedRefuses(t *testing.T) {
 		"text": "quick: [remember: fact | indent | Never store this]",
 	}, http.StatusAccepted, nil)
 	collectUntilTurnFinished(t, stream)
-	if res := e.search(t, pid, "Never store this"); len(res.Hits) != 0 {
+	if res := e.search(t, pid, "Never store this"); hasKind(res, "fact") {
 		t.Fatalf("blocked project still saved fact: %+v", res)
 	}
 }
