@@ -1346,3 +1346,84 @@ fn estimate_ratio_needs_a_reported_cost_and_a_gap_over_25_percent() {
         "an estimate is not compared with itself"
     );
 }
+
+#[tokio::test]
+async fn small_tier_dispatches_fim_to_ollama_with_zero_cost() {
+    let mock = spawn_mock(vec![], JEV_HIGH).await;
+    let ollama = support::spawn_scripted_server(
+        "/api/generate",
+        vec![support::Scripted::ok().with_body(
+            json!({
+                "response": "return a + b;",
+                "done": true,
+                "prompt_eval_count": 42,
+                "eval_count": 7,
+            })
+            .to_string(),
+        )],
+    )
+    .await;
+    let mut config = config_for(mock.addr);
+    config.ollama_base_url = format!("http://{}", ollama.0);
+    config.autoroute_small_model = "qwen2.5-coder:1.5b".to_string();
+    let state = AppState::new(config).unwrap();
+
+    let completion_body = json!({
+        "model": "qwen2.5-coder:1.5b",
+        "max_tokens": 128,
+        "temperature": 0.0,
+        "stop_sequences": ["\n\n"],
+        "messages": [{
+            "role": "user",
+            "content": "<file path=\"add.ts\" language=\"typescript\">\n<prefix>function add(a: number, b: number) {\n  </prefix>\n<cursor/>\n<suffix>\n}</suffix>"
+        }]
+    });
+    let response = send(
+        &state,
+        &completion_body,
+        &[
+            ("x-octo-tier-hint", "small"),
+            ("x-octo-tier-policy", "fixed"),
+            ("x-octo-task", "inline%20completion"),
+        ],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(hv(&response, "x-octo-tier"), "small");
+    assert_eq!(hv(&response, "x-octo-model"), "qwen2.5-coder:1.5b");
+    let call_id = hv(&response, "x-octo-request-id");
+    let reply = body_json(response).await;
+    assert_eq!(reply["content"][0]["text"], "return a + b;");
+    assert_eq!(reply["usage"]["input_tokens"], 42);
+    assert_eq!(reply["usage"]["output_tokens"], 7);
+
+    let captured = ollama.1.lock().unwrap().clone();
+    assert_eq!(captured.len(), 1);
+    let sent = captured[0].json();
+    assert_eq!(sent["model"], "qwen2.5-coder:1.5b");
+    assert_eq!(sent["stream"], false);
+    assert_eq!(sent["prompt"], "function add(a: number, b: number) {\n  ");
+    assert_eq!(sent["suffix"], "\n}");
+    assert!(
+        mock.messages.lock().unwrap().is_empty(),
+        "small tier must not hit OpenRouter"
+    );
+    assert_eq!(*mock.jev_hits.lock().unwrap(), 0);
+
+    let (status, row) = get(&state, &format!("/autoroute/v1/calls/{call_id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(row["tier"], "small");
+    assert_eq!(row["cost_usd"], 0.0);
+
+    // Normal low-tier traffic continues to go to OpenRouter, never small.
+    let normal = send(
+        &state,
+        &session_turn("normal-after-small"),
+        &[("x-octo-tier-hint", "fast")],
+    )
+    .await;
+    assert_eq!(normal.status(), StatusCode::OK);
+    assert_eq!(hv(&normal, "x-octo-tier"), "low");
+    assert_eq!(hv(&normal, "x-octo-model"), "low-model");
+    assert_eq!(mock.messages.lock().unwrap().len(), 1);
+}

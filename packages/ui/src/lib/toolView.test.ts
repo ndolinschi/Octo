@@ -23,10 +23,12 @@ import {
   previewRows,
   readTarget,
   resultCount,
+  skillNameOf,
   stoppedLine,
   tailLines,
   toolKind,
   turnIdAt,
+  unwrapSkillContent,
   viewState,
 } from "./toolView";
 
@@ -295,4 +297,28 @@ test("leadingColumns: spaces count one, a tab reaches the next stop", () => {
   assert.equal(leadingColumns("  \tx", 4), 4);
   assert.equal(leadingColumns("x  "), 0);
   assert.equal(leadingColumns(""), 0);
+});
+
+test("skill calls: show loaded skill name and unwrap skill_content markdown", () => {
+  assert.equal(toolKind("skill", { id: "brainstorming" }), "skill");
+  assert.equal(toolKind("other", { title: "skill", raw_input: { id: "brainstorming" } }), "skill");
+  assert.equal(skillNameOf("other", { title: "skill", raw_input: { id: "brainstorming" } }), "brainstorming");
+  assert.equal(skillNameOf("skill", {}, '<skill_content name="using-git-worktrees">\n# Title\n</skill_content>'), "using-git-worktrees");
+
+  const r = callRow("other", { title: "skill", raw_input: { id: "brainstorming" } }, () => null);
+  assert.deepEqual([r.verb, r.object, r.mono, r.qualifier, r.folder], ["Loaded skill", "brainstorming", true, "", ""]);
+
+  assert.equal(
+    groupSummary([
+      { name: "other", input: { title: "skill", raw_input: { id: "brainstorming" } } },
+      { name: "skill", input: { id: "tdd" } },
+    ]),
+    "Loaded 2 skills",
+  );
+  assert.equal(groupShortSummary([{ name: "skill", input: { id: "tdd" } }]), "1 skill");
+
+  const unwrapped = unwrapSkillContent('<skill_content name="brainstorming">\n# Heading\nBody text\n</skill_content>\n');
+  assert.equal(unwrapped.name, "brainstorming");
+  assert.equal(unwrapped.markdown, "# Heading\nBody text");
+  assert.deepEqual(unwrapSkillContent("# Plain markdown\nHello"), { name: null, markdown: "# Plain markdown\nHello" });
 });

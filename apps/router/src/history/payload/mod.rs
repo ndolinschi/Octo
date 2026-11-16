@@ -99,7 +99,9 @@ pub fn request_payload(kind: CallKind, provider: CallProvider, body: &str) -> St
     let inner = match (kind, provider) {
         (CallKind::Decision, CallProvider::OpenRouter) => decision::request(body),
         (CallKind::Messages, _) | (_, CallProvider::Claude) => claude::request(body),
-        (_, CallProvider::OpenAi | CallProvider::OpenRouter) => openai_chat::request(body),
+        (_, CallProvider::OpenAi | CallProvider::OpenRouter | CallProvider::Ollama) => {
+            openai_chat::request(body)
+        }
     };
     envelope::tagged_string(provider, inner)
 }
@@ -118,7 +120,7 @@ pub fn response_payload(
         (CallKind::Messages, _) | (_, CallProvider::Claude) => {
             claude::response(prefix, tail, response_bytes)
         }
-        (_, CallProvider::OpenAi | CallProvider::OpenRouter) => {
+        (_, CallProvider::OpenAi | CallProvider::OpenRouter | CallProvider::Ollama) => {
             openai_chat::response(prefix, tail, response_bytes)
         }
     };

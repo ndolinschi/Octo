@@ -46,6 +46,7 @@ pub struct Config {
     pub anthropic_messages_url: String,
     pub anthropic_api_version: String,
     pub anthropic_messages_path: String,
+    pub ollama_base_url: String,
     pub max_body_bytes: usize,
     pub llm_chat_backend: String,
     pub llm_messages_backend: String,
@@ -57,6 +58,7 @@ pub struct Config {
     pub history_calls_max_rows: u64,
     pub history_budget_spend_max_age_days: u64,
     pub history_prune_interval_secs: u64,
+    pub autoroute_small_model: String,
     pub autoroute_low_model: String,
     pub autoroute_mid_model: String,
     pub autoroute_high_model: String,
@@ -104,6 +106,8 @@ struct ConfigFile {
     decision: DecisionSection,
     #[serde(default)]
     anthropic: AnthropicSection,
+    #[serde(default)]
+    ollama: OllamaSection,
     #[serde(default)]
     history: HistorySection,
     #[serde(default)]
@@ -261,6 +265,24 @@ impl Default for AnthropicSection {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+struct OllamaSection {
+    #[serde(default = "default_ollama_base_url")]
+    base_url: String,
+}
+
+fn default_ollama_base_url() -> String {
+    "http://127.0.0.1:11434".to_string()
+}
+
+impl Default for OllamaSection {
+    fn default() -> Self {
+        Self {
+            base_url: default_ollama_base_url(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
 struct LlmSection {
     #[serde(default)]
     chat: ChatBackendSection,
@@ -393,6 +415,8 @@ fn default_history_database_path() -> String {
 
 #[derive(Clone, Debug, Deserialize)]
 struct AutorouteSection {
+    #[serde(default = "default_autoroute_small_model")]
+    small: String,
     #[serde(default = "default_autoroute_low_model")]
     low: String,
     #[serde(default = "default_autoroute_mid_model")]
@@ -448,6 +472,7 @@ struct AutorouteSection {
 impl Default for AutorouteSection {
     fn default() -> Self {
         Self {
+            small: default_autoroute_small_model(),
             low: default_autoroute_low_model(),
             mid: default_autoroute_mid_model(),
             high: default_autoroute_high_model(),
@@ -535,6 +560,10 @@ struct PriceRow {
     billed_as: Option<String>,
     #[serde(default)]
     source: Option<String>,
+}
+
+fn default_autoroute_small_model() -> String {
+    "qwen2.5-coder:1.5b".to_string()
 }
 
 fn default_autoroute_low_model() -> String {
@@ -783,6 +812,7 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
         anthropic_messages_url: file.anthropic.messages_url,
         anthropic_api_version: file.anthropic.api_version,
         anthropic_messages_path: file.anthropic.messages_path,
+        ollama_base_url: file.ollama.base_url,
         max_body_bytes: file.limits.max_body_bytes,
         llm_chat_backend: file.llm.chat.backend,
         llm_messages_backend: file.llm.messages.backend,
@@ -794,6 +824,7 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
         history_calls_max_rows: file.history.calls_max_rows,
         history_budget_spend_max_age_days: file.history.budget_spend_max_age_days,
         history_prune_interval_secs: file.history.prune_interval_secs,
+        autoroute_small_model: file.autoroute.small,
         autoroute_low_model: file.autoroute.low,
         autoroute_mid_model: file.autoroute.mid,
         autoroute_high_model: file.autoroute.high,

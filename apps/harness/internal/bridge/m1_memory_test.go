@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/approval"
 	"github.com/ndolinschi/Octo/apps/harness/internal/fakeacp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
@@ -54,6 +55,7 @@ func TestTurnOpensATaskRecordAndTheSideModelDigestsIt(t *testing.T) {
 	withDigest(t)
 	e := newEnv(t, nil)
 	pid, _ := e.v7Project(t, "full")
+	e.into(t, "PATCH", "/v1/projects/"+pid, map[string]any{"memory": map[string]any{"auto_memory": "allow"}}, http.StatusOK, nil)
 	stream := e.subscribe(t, pid)
 	ask := "quick: make the client retry. [goal: Retry failed requests three times] [quote: make the client retry] " +
 		"[fact: Retries use exponential backoff] [decision: back off exponentially]"
@@ -227,6 +229,7 @@ func TestSecretsNeverReachMemoryThroughATurn(t *testing.T) {
 	withDigest(t)
 	e := newEnv(t, nil)
 	pid, _ := e.v7Project(t, "full")
+	e.into(t, "PATCH", "/v1/projects/"+pid, map[string]any{"memory": map[string]any{"auto_memory": "allow"}}, http.StatusOK, nil)
 	e.into(t, "PUT", "/v1/projects/"+pid+"/secrets/api_key", map[string]string{"value": testSecret}, http.StatusNoContent, nil)
 	stream := e.subscribe(t, pid)
 	e.into(t, "POST", "/v1/projects/"+pid+"/messages", map[string]string{"text": "quick: remember that the key is " + testSecret +
@@ -259,5 +262,56 @@ func TestACPOrchestratorGetsTheMemoryToolsOverMCP(t *testing.T) {
 	ts := e.tasks(t, p.ID)
 	if len(ts) != 1 || ts[0].GoalBy != "rule" || !strings.Contains(ts[0].Goal, "look") || ts[0].StateSummary == "" {
 		t.Fatalf("tasks = %+v", ts)
+	}
+}
+
+func TestAutoMemoryOffPromptsAndBlockedRefuses(t *testing.T) {
+	e := newEnv(t, nil)
+	pid, _ := e.v7Project(t, "full")
+	stream := e.subscribe(t, pid)
+	// Even with access="full", default auto_memory="off" asks KindMemory before remembering.
+	e.into(t, "POST", "/v1/projects/"+pid+"/messages", map[string]string{
+		"text": "quick: [remember: fact | editor | Tab size is two spaces]",
+	}, http.StatusAccepted, nil)
+
+	var ap approval.Approval
+	deadline := time.Now().Add(10 * time.Second)
+	for len(ap.ID) == 0 {
+		var list struct {
+			Approvals []approval.Approval `json:"approvals"`
+		}
+		e.into(t, "GET", "/v1/projects/"+pid+"/approvals", nil, http.StatusOK, &list)
+		for _, a := range list.Approvals {
+			if a.Kind == approval.KindMemory {
+				ap = a
+				break
+			}
+		}
+		if len(ap.ID) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for KindMemory approval while auto_memory=off")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if ap.Detail.MemoryCommand != "remember" || ap.Detail.MemoryKind != "fact" || !strings.Contains(ap.Detail.MemoryText, "Tab size") {
+		t.Fatalf("memory approval detail = %+v", ap)
+	}
+	e.into(t, "POST", "/v1/projects/"+pid+"/approvals/"+ap.ID, map[string]string{"decision": approval.Allow}, http.StatusOK, nil)
+	collectUntilTurnFinished(t, stream)
+
+	if res := e.search(t, pid, "Tab size"); len(res.Hits) == 0 {
+		t.Fatalf("expected remembered fact after allow, got %+v", res)
+	}
+
+	// Blocking memory prevents future remember calls without raising an approval card.
+	e.into(t, "PATCH", "/v1/projects/"+pid, map[string]any{"memory": map[string]any{"auto_memory": "blocked"}}, http.StatusOK, nil)
+	e.into(t, "POST", "/v1/projects/"+pid+"/messages", map[string]string{
+		"text": "quick: [remember: fact | indent | Never store this]",
+	}, http.StatusAccepted, nil)
+	collectUntilTurnFinished(t, stream)
+	if res := e.search(t, pid, "Never store this"); len(res.Hits) != 0 {
+		t.Fatalf("blocked project still saved fact: %+v", res)
 	}
 }

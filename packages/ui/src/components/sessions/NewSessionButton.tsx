@@ -10,7 +10,7 @@ import { Presence } from "../primitives/Presence";
  * "New session" with a short confirmation in plain words: what the new session starts from and what it leaves behind, and
  * a link to Memory ("What it remembers"). The session is made only by the button inside it.
  */
-export function NewSessionButton(props: { loading: boolean; onCreate(): void }) {
+export function NewSessionButton(props: { loading: boolean; memoryBlocked?: boolean; onCreate(): void }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const ws = useOptionalWorkspace();
@@ -41,7 +41,7 @@ export function NewSessionButton(props: { loading: boolean; onCreate(): void }) 
               {NOT_CARRIED}
             </p>
             <div className="flex items-center gap-2">
-              {ws && (
+              {ws && !props.memoryBlocked && (
                 <Button
                   variant="link"
                   size="xs"

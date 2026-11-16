@@ -114,6 +114,8 @@ function makeProject(input: ProjectInput, createdAt: number): ProjectRecord {
       folders,
       models: { ...DEFAULT_MODELS, ...input.models },
       max_depth: input.max_depth ?? 3,
+      access: input.access ?? "supervised",
+      memory: { context: "full", recent_exchanges: 5, auto_memory: "off", ...input.memory },
       orchestrator_agent_id: orchestrator.id,
       ...(input.budget_usd ? { budget_usd: input.budget_usd, spent_usd: 0 } : {}),
     },
@@ -489,7 +491,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     updated_at: p.updated_at,
   });
 
-  const { unusable, ...providerMethods } = demoProviders();
+  const { unusable, features, ...providerMethods } = demoProviders();
   /** A project as read: the stored models that cannot run now are listed, never refused (as the harness does). */
   const withIssues = (p: Project): Project => ({ ...clone(p), models_unavailable: unusable(p.models) });
   const remote = createDemoRemote();
@@ -524,6 +526,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
           ? { available: false, reason: "No API key: set ANTHROPIC_API_KEY for Octo's local service, or run it behind an Octo router." }
           : { available: true },
         default_orchestrator: nokey && pluginsOn ? "acp:claude-code" : DEFAULT_MODELS.orchestrator,
+        features: features(),
       };
     },
     listProjects: async () => {
@@ -546,6 +549,8 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       if (patch.description !== undefined) p.description = patch.description;
       if (patch.instructions !== undefined) p.instructions = patch.instructions;
       if (patch.max_depth !== undefined) p.max_depth = patch.max_depth;
+      if (patch.access !== undefined) p.access = patch.access;
+      if (patch.memory !== undefined) p.memory = { context: "full", recent_exchanges: 5, auto_memory: "off", ...p.memory, ...patch.memory };
       if (patch.models) p.models = { ...p.models, ...patch.models };
       if (patch.budget_usd !== undefined) {
         if (patch.budget_usd === null) delete p.budget_usd;
@@ -814,6 +819,21 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       await delay();
       await ensureSeeded(get(id));
       return writeDemo(get(id), input);
+    },
+    complete: async (id, input, opts) => {
+      const rec = get(id);
+      const comp = rec.project.models.completion;
+      if (!comp || comp === "off") return null;
+      await delay();
+      if (opts?.signal?.aborted) return null;
+      const small = providerMethods.listProviders
+        ? (await providerMethods.listProviders()).providers.find((p) => p.kind === "ollama")?.default_model
+        : undefined;
+      const model = comp === "small" ? (small ?? "qwen2.5-coder:1.5b") : comp.startsWith("ollama:") ? comp.slice("ollama:".length) : comp;
+      const tail = input.prefix.split("\n").at(-1)?.trimEnd() ?? "";
+      const text = tail.endsWith("{") ? "\n  return true;\n}" : tail ? " /* completed */" : "";
+      if (!text) return null;
+      return { text, model, ms: 42 };
     },
     listPlugins: async () => (await delay(), demoPlugins(pluginsOn)),
     // Usage and limits load with the Usage tab / Home (their own chunk).

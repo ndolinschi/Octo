@@ -2,15 +2,20 @@ import type { Diagnostics } from "@octo/agent-client";
 import { SETTING_IDS } from "@octo/agent-client";
 import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
-import { errorMessage } from "../../lib/format";
+import { errorMessage, structuredError } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
+import { useActivity } from "../../state/activity";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
+import { Dialog } from "../primitives/Dialog";
+import { Notice } from "../primitives/Notice";
+import { Presence } from "../primitives/Presence";
 import { SkeletonList } from "../primitives/Skeleton";
 import { Switch } from "../primitives/Switch";
 import { TextField } from "../primitives/TextField";
 import { diagnosticReport } from "./diagnosticReport";
 import { useHarnessSettings } from "./harnessSettings";
+import { ImportSessionsDialog } from "./ImportSessionsDialog";
 import { useSettingsActions } from "./pageContext";
 import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
 import { useSave } from "./useSave";
@@ -44,6 +49,9 @@ export function PrivacySection() {
   const [diag, retry] = useDiagnostics();
   return (
     <>
+      <SettingsGroup label="Feature flags" footer="Process-wide switches stored in harness.env and applied live.">
+        <FeatureFlagRow />
+      </SettingsGroup>
       <SettingsGroup label="Report a problem">
         <ReportRow diag={diag} retry={retry} />
         <TraceRow />
@@ -52,6 +60,148 @@ export function PrivacySection() {
         {diag.status === "loading" ? <SkeletonList count={1} size="lg" twoLine /> : <DataDirRow dir={diag.status === "ready" ? diag.d.data_dir : null} />}
         <ChildEnvRow />
       </SettingsGroup>
+      <SettingsGroup label="Sessions">
+        <ImportSessionsRow />
+        <DeleteAllSessionsRow />
+      </SettingsGroup>
+    </>
+  );
+}
+
+function FeatureFlagRow() {
+  const harness = useHarnessSettings();
+  const [saved, run] = useSave();
+  const id = useId();
+  const s = harness.get(SETTING_IDS.featureAutoMemory);
+  if (harness.load.status === "loading") return <SkeletonList count={1} size="lg" twoLine />;
+  return (
+    <SettingsRow
+      rowId="feature-auto-memory"
+      title="Auto-memory prompt & digest"
+      htmlFor={s ? id : undefined}
+      help={s?.hint}
+      description={s ? "Allow agents to prompt before saving memories and update end-of-turn digests when allowed." : "Not available on this connection."}
+      status={<SaveStatus state={saved} />}
+      control={
+        s ? (
+          <Switch
+            id={id}
+            label="Auto-memory prompt & digest"
+            disabled={!s.editable}
+            checked={s.value === true}
+            onChange={(on) => void run(() => harness.save({ set: { [s.id]: on } }))}
+          />
+        ) : undefined
+      }
+    />
+  );
+}
+
+function ImportSessionsRow() {
+  const { bridge } = useApp();
+  const [open, setOpen] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const available = Boolean(bridge.listImportableSessions && bridge.importSessions);
+  return (
+    <>
+      <SettingsRow
+        rowId="import-sessions"
+        title="Import sessions"
+        description={available ? "Bring in past conversations from Claude Code, Codex, Gemini, and OpenCode." : "Not available on this connection."}
+        status={result ? <span className="text-xs text-fg-3">{result}</span> : undefined}
+        control={
+          available ? (
+            <Button size="sm" onClick={() => setOpen(true)}>
+              Import…
+            </Button>
+          ) : undefined
+        }
+      />
+      <Presence show={open}>
+        <ImportSessionsDialog
+          onClose={() => setOpen(false)}
+          onImported={(imported, skipped) => {
+            if (imported === 0 && skipped > 0) setResult("Already imported");
+            else if (imported === 1) setResult("Imported 1 session");
+            else setResult(`Imported ${imported} sessions`);
+          }}
+        />
+      </Presence>
+    </>
+  );
+}
+
+function DeleteAllSessionsRow() {
+  const { bridge, refreshProjects } = useApp();
+  const activity = useActivity();
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const available = Boolean(bridge.deleteAllSessions);
+
+  const handleConfirm = async () => {
+    if (!bridge.deleteAllSessions) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await bridge.deleteAllSessions();
+      activity.refreshSessions();
+      await refreshProjects();
+      window.dispatchEvent(new CustomEvent("octo:sessions-reset", { detail: { cleared: true } }));
+      setConfirm(false);
+      setStatus(res.deleted_sessions === 1 ? "Deleted 1 session" : `Deleted ${res.deleted_sessions} sessions`);
+    } catch (e) {
+      setError(structuredError(e)?.message ?? errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <SettingsRow
+        rowId="delete-all-sessions"
+        title="Delete all sessions"
+        description={
+          available ? "Delete every session and message across all projects. Project notes, memory, and files are kept." : "Not available on this connection."
+        }
+        status={status ? <span className="text-xs text-fg-3">{status}</span> : undefined}
+        control={
+          available ? (
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => {
+                setError(null);
+                setConfirm(true);
+              }}
+            >
+              Delete all…
+            </Button>
+          ) : undefined
+        }
+      />
+      <Presence show={confirm}>
+        <Dialog
+          title="Delete all sessions?"
+          description="Every conversation and message across all projects will be permanently deleted, and each project will start with a fresh empty session. Project notes, memory, and files are kept."
+          width="sm"
+          onClose={() => !busy && setConfirm(false)}
+          footer={
+            <>
+              <Button variant="quiet" onClick={() => setConfirm(false)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button variant="danger" loading={busy} onClick={() => void handleConfirm()}>
+                {busy ? "Deleting" : "Delete all"}
+              </Button>
+            </>
+          }
+        >
+          {error && <Notice tone="error">{error}</Notice>}
+        </Dialog>
+      </Presence>
     </>
   );
 }

@@ -81,6 +81,13 @@ func exchangesOf(t *testing.T, r *rig, pid string) []projectstore.Exchange {
 	return out
 }
 
+func enableAutoMemory(t *testing.T, r *rig, pid string) {
+	t.Helper()
+	if _, err := r.svc.Update(context.Background(), pid, project.Input{Memory: &memory.Settings{AutoMemory: memory.AutoMemoryAllow}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // Ten questions that were only answered create no task and ten exchanges (M6 rule 1), with
 // the digest on (which even finds a goal and a fact in them) and with none.
 func TestQuestionOnlyTurnsCreateNoTaskButKeepTheirExchanges(t *testing.T) {
@@ -90,6 +97,7 @@ func TestQuestionOnlyTurnsCreateNoTaskButKeepTheirExchanges(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			r := newRigWith(t, mockllm.New(0), opts)
 			pid := r.projectAt(t, t.TempDir())
+			enableAutoMemory(t, r, pid)
 			for i := 0; i < 10; i++ {
 				text := fmt.Sprintf("quick: What is about this repo, round %d [goal: Know the repo] [fact: Repo note %d]", i, i)
 				if st := r.run(t, pid, text, nil); st != "completed" {
@@ -131,6 +139,7 @@ func TestAWorkTurnMakesOneTaskWithStateAndFilesWithoutADigest(t *testing.T) {
 func TestDigestAttachesAFollowUpToTheTaskItContinuesAndARepeatJoins(t *testing.T) {
 	r := digestRig(t)
 	pid := r.projectAt(t, t.TempDir())
+	enableAutoMemory(t, r, pid)
 	r.run(t, pid, "build a calculator [goal: A calculator] [state: Parser done, brackets left] [unmet] [constraint: no deps]", nil)
 	eventually(t, "the first digest", func() bool { ts := tasksOf(t, r, pid); return len(ts) == 1 && ts[0].StateSummary != "" })
 	first := tasksOf(t, r, pid)[0]
@@ -186,6 +195,7 @@ func noKeyACP(t *testing.T, env map[string]string) (*rig, string) {
 	name := "p"
 	p, err := r.svcWithAgents(t, agent).Create(context.Background(), project.Input{
 		Name: &name, Folders: &[]project.FolderInput{{Path: t.TempDir()}}, Models: &config.Models{Orchestrator: "acp:fake"},
+		Memory: &memory.Settings{AutoMemory: memory.AutoMemoryAllow},
 	})
 	if err != nil {
 		t.Fatal(err)

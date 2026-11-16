@@ -130,3 +130,45 @@ func (s *Server) listAllSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sessions": l})
 }
+
+func (s *Server) deleteAllSessions(w http.ResponseWriter, r *http.Request) {
+	deleted, projects, err := s.svc.DeleteEveryProjectSessions(r.Context())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted_sessions": deleted, "projects": projects})
+}
+
+func (s *Server) deleteProjectSessions(w http.ResponseWriter, r *http.Request) {
+	deleted, defSID, err := s.svc.DeleteAllSessions(r.Context(), r.PathValue("pid"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted_sessions": deleted, "default_session_id": defSID})
+}
+
+func (s *Server) listImportableSessions(w http.ResponseWriter, r *http.Request) {
+	list, err := s.svc.ListImportableSessions(r.Context())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": list})
+}
+
+func (s *Server) importSessions(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Sessions []project.ImportSessionRef `json:"sessions"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	res, err := s.svc.ImportSessions(r.Context(), r.PathValue("pid"), in.Sessions)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, res)
+}

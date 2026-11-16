@@ -45,6 +45,7 @@ export function SessionsView(props: {
   const now = useNow(false, CLOCK_MINUTE_MS);
   const list = useMemo(() => (sessions.load.status === "ok" ? newestFirst(sessions.load.value) : []), [sessions.load]);
   const picked = props.selected !== null && list.some((s) => s.id === props.selected) ? props.selected : null;
+  const shownId = picked ?? list[0]?.id ?? null;
   const rows = useRef<HTMLUListElement>(null);
   useListStops(rows);
 
@@ -69,7 +70,7 @@ export function SessionsView(props: {
               <li key={s.id}>
                 <ListRow
                   size="md"
-                  selected={s.id === picked}
+                  selected={s.id === shownId}
                   // P3: the glyph column of every session list (the Sessions tab's): working, else the quiet idle dot.
                   leading={<StateGlyph state={r.working ? "working" : "idle"} />}
                   title={r.title}
@@ -84,16 +85,16 @@ export function SessionsView(props: {
         </ul>
       )}
       detail={
-        picked ? (
+        shownId ? (
           <SessionDetail
             // A new search hit in the same session opens its exchange afresh.
-            key={`${picked}:${props.focusExchange ?? ""}`}
+            key={`${shownId}:${picked === shownId ? (props.focusExchange ?? "") : ""}`}
             projectId={props.projectId}
-            id={picked}
+            id={shownId}
             tick={sessions.tick}
             onChanged={sessions.reload}
             now={now}
-            focusExchange={props.focusExchange}
+            focusExchange={picked === shownId ? props.focusExchange : null}
             onOpenMessage={props.onOpenMessage}
           />
         ) : null

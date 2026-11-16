@@ -51,6 +51,10 @@ func (f *Files) root(ctx context.Context, pid, folder string) (string, error) {
 
 // rootFor resolves a folder label; review is true for the review workspace.
 func (f *Files) rootFor(ctx context.Context, pid, folder string) (root string, review bool, err error) {
+	return f.rootForWorkspace(ctx, pid, folder, "")
+}
+
+func (f *Files) rootForWorkspace(ctx context.Context, pid, folder, workspaceID string) (root string, review bool, err error) {
 	db, err := f.store.Get(ctx, pid)
 	if errors.Is(err, projectstore.ErrNotFound) {
 		return "", false, notFound("project")
@@ -70,6 +74,21 @@ func (f *Files) rootFor(ctx context.Context, pid, folder string) (root string, r
 		}
 		return "", false, notFound("folder")
 	}
+	if workspaceID != "" && workspaceID != projectstore.SharedWorkspace {
+		p, ok, err := db.WorkspaceFolderPath(ctx, workspaceID, folder)
+		if err != nil {
+			return "", false, storeErr(err)
+		}
+		if ok {
+			return p, false, nil
+		}
+		if _, err := db.GetWorkspace(ctx, workspaceID); errors.Is(err, projectstore.ErrNotFound) {
+			return "", false, notFound("workspace")
+		} else if err != nil {
+			return "", false, storeErr(err)
+		}
+		return "", false, notFound("folder")
+	}
 	folders, err := db.Folders(ctx)
 	if err != nil {
 		return "", false, err
@@ -83,7 +102,11 @@ func (f *Files) rootFor(ctx context.Context, pid, folder string) (root string, r
 }
 
 func (f *Files) List(ctx context.Context, pid, folder, path string) ([]files.Entry, error) {
-	root, err := f.root(ctx, pid, folder)
+	return f.ListInWorkspace(ctx, pid, folder, path, "")
+}
+
+func (f *Files) ListInWorkspace(ctx context.Context, pid, folder, path, workspaceID string) ([]files.Entry, error) {
+	root, _, err := f.rootForWorkspace(ctx, pid, folder, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +118,11 @@ func (f *Files) List(ctx context.Context, pid, folder, path string) ([]files.Ent
 }
 
 func (f *Files) Read(ctx context.Context, pid, folder, path string) (FileContent, error) {
-	root, err := f.root(ctx, pid, folder)
+	return f.ReadInWorkspace(ctx, pid, folder, path, "")
+}
+
+func (f *Files) ReadInWorkspace(ctx context.Context, pid, folder, path, workspaceID string) (FileContent, error) {
+	root, _, err := f.rootForWorkspace(ctx, pid, folder, workspaceID)
 	if err != nil {
 		return FileContent{}, err
 	}
@@ -117,7 +144,11 @@ type FileBytes struct {
 // ReadBytes is Read for any file: same roots, path checks and size limit, no
 // UTF-8 check, content base64-encoded.
 func (f *Files) ReadBytes(ctx context.Context, pid, folder, path string) (FileBytes, error) {
-	root, err := f.root(ctx, pid, folder)
+	return f.ReadBytesInWorkspace(ctx, pid, folder, path, "")
+}
+
+func (f *Files) ReadBytesInWorkspace(ctx context.Context, pid, folder, path, workspaceID string) (FileBytes, error) {
+	root, _, err := f.rootForWorkspace(ctx, pid, folder, workspaceID)
 	if err != nil {
 		return FileBytes{}, err
 	}
@@ -130,6 +161,11 @@ func (f *Files) ReadBytes(ctx context.Context, pid, folder, path string) (FileBy
 
 // Write saves content; expectedMTime, when set, guards against lost updates.
 func (f *Files) Write(ctx context.Context, pid, folder, path, content string, expectedMTime *string) (FileStat, error) {
+	return f.WriteInWorkspace(ctx, pid, folder, path, content, expectedMTime, "")
+}
+
+// WriteInWorkspace saves content in the given workspace ("": main checkout).
+func (f *Files) WriteInWorkspace(ctx context.Context, pid, folder, path, content string, expectedMTime *string, workspaceID string) (FileStat, error) {
 	var expected *time.Time
 	if expectedMTime != nil {
 		t, err := time.Parse(time.RFC3339Nano, *expectedMTime)
@@ -138,7 +174,7 @@ func (f *Files) Write(ctx context.Context, pid, folder, path, content string, ex
 		}
 		expected = &t
 	}
-	root, review, err := f.rootFor(ctx, pid, folder)
+	root, review, err := f.rootForWorkspace(ctx, pid, folder, workspaceID)
 	if err != nil {
 		return FileStat{}, err
 	}
@@ -149,7 +185,11 @@ func (f *Files) Write(ctx context.Context, pid, folder, path, content string, ex
 	if err != nil {
 		return FileStat{}, fileErr(err)
 	}
-	f.hub.Publish(pid, events.FileChanged, map[string]any{"folder": folder, "path": info.Path, "source": events.SourceUser})
+	fields := map[string]any{"folder": folder, "path": info.Path, "source": events.SourceUser}
+	if workspaceID != "" && workspaceID != projectstore.SharedWorkspace {
+		fields["workspace_id"] = workspaceID
+	}
+	f.hub.Publish(pid, events.FileChanged, fields)
 	if instructions.IsInstructionFile(info.Path) {
 		f.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid})
 	}

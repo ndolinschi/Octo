@@ -110,6 +110,11 @@ export function tidyAgentLabel(label: string): string {
  * its model ("Claude Code · Opus 5.5", never the raw string), anything else whole.
  */
 export function modelName(value: string, acp: readonly AcpName[] = []): string {
+  if (value === "small") return "Small tier (Ollama)";
+  if (value.startsWith("ollama:")) {
+    const tag = value.slice("ollama:".length);
+    return tag ? `Ollama · ${tag}` : "Ollama";
+  }
   const ref = parseAcp(value);
   if (!ref) return readableModelId(value);
   const label = acp.find((a) => a.id === ref.id)?.label ?? agentLabelOf(ref.id);

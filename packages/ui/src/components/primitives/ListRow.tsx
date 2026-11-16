@@ -46,6 +46,7 @@ export function ListRow(props: {
   level?: number;
   truncate?: "end" | "middle";
   tone?: "default" | "quiet";
+  hover?: "row" | "text";
   onClick?: MouseEventHandler<HTMLElement>;
   onPointerMove?: PointerEventHandler<HTMLDivElement>;
   href?: string;
@@ -140,7 +141,17 @@ export function ListRow(props: {
             "bg-active text-fg forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight] forced-colors:outline-solid"
           : // B58 (polish step 2): in a listbox the keyboard's row and the pointer's row are both shown at once, so the pointer's
             // tint is half the hover tint there and never reads as a second selection.
-            cn(props.tone === "quiet" ? "text-fg-2" : "text-fg", interactive && (props.role === "option" ? "hover:bg-hover/50" : "hover:bg-hover")),
+            cn(
+              props.tone === "quiet" ? "text-fg-2" : "text-fg",
+              interactive &&
+                (props.hover === "text"
+                  ? props.tone === "quiet"
+                    ? "transition-colors hover:text-fg"
+                    : "transition-colors hover:text-fg-2"
+                  : props.role === "option"
+                    ? "hover:bg-hover/50"
+                    : "hover:bg-hover"),
+            ),
         disabled && "text-fg-3",
         props.className,
       )}

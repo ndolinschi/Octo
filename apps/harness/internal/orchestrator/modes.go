@@ -219,6 +219,24 @@ func selfApproving(id string) bool {
 	return false
 }
 
+// acceptsOnlyEdits reports an agent mode whose own policy is "accept edits only"
+// (approves edits, still asks for shell commands), distinct from yolo/auto.
+func acceptsOnlyEdits(id string) bool {
+	id = strings.ToLower(id)
+	return strings.Contains(id, "accept") && strings.Contains(id, "edit")
+}
+
+// acceptEditsMode finds an advertised agent mode that auto-approves edits
+// without auto-approving shell commands.
+func acceptEditsMode(modes []acp.SessionMode) string {
+	for _, m := range modes {
+		if acceptsOnlyEdits(m.ID) || acceptsOnlyEdits(m.Name) {
+			return m.ID
+		}
+	}
+	return ""
+}
+
 // askingMode is the agent's mode that asks before changes: the one named default.
 func askingMode(modes []acp.SessionMode) string {
 	for _, m := range modes {
@@ -251,10 +269,23 @@ func (s *orchSession) applyMode(ctx context.Context, rt *runtime, client *acp.Cl
 		target = base
 		// A supervised project answers every write itself: an agent that starts in
 		// a mode approving its own edits (Antigravity's auto, accept-edits) would
-		// never ask, so its asking mode is used instead.
-		if selfApproving(base) && rt.supervised(ctx) {
-			if d := askingMode(modes); d != "" {
-				target = d
+		// never ask, so its asking mode is used instead. Under accept_edits, keep
+		// an accept-edits mode or switch away from yolo/auto to askingMode so
+		// commands still ask via the harness.
+		switch rt.accessMode(ctx) {
+		case projectstore.AccessSupervised:
+			if selfApproving(base) {
+				if d := askingMode(modes); d != "" {
+					target = d
+				}
+			}
+		case projectstore.AccessAcceptEdits:
+			if selfApproving(base) && !acceptsOnlyEdits(base) {
+				if m := acceptEditsMode(modes); m != "" {
+					target = m
+				} else if d := askingMode(modes); d != "" {
+					target = d
+				}
 			}
 		}
 	}

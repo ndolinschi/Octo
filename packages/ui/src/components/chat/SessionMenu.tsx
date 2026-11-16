@@ -4,11 +4,18 @@ import { Presence } from "../primitives/Presence";
 const Menu = lazy(() => import("../primitives/Menu").then((m) => ({ default: m.Menu })));
 
 /** Decision 96: which main session the composer sends to (its title; "default" when it is the project's default one). */
-export type ComposerSession = { title: string; isDefault: boolean; onMakeDefault?: (() => void) | undefined; onShowAll(): void };
+export type ComposerSession = {
+  title: string;
+  isDefault: boolean;
+  branch?: string | null | undefined;
+  onMakeDefault?: (() => void) | undefined;
+  onMoveToWorktree?: (() => void) | undefined;
+  onShowAll(): void;
+};
 
 /**
  * The session the composer sends to, opened from the "+" menu's "Session" entry (it was a chip of the control row): its menu makes
- * the session the default and leads to the project's sessions. (A worktree session's branch joins the label with phase 3.)
+ * the session the default, moves it into a git worktree, and leads to the project's sessions.
  */
 export function SessionMenu(props: { anchor: RefObject<HTMLElement | null>; session: ComposerSession; onClose(): void }) {
   const [open, setOpen] = useState(true);
@@ -18,6 +25,7 @@ export function SessionMenu(props: { anchor: RefObject<HTMLElement | null>; sess
   }, [open, onClose]);
   const r = props.anchor.current?.getBoundingClientRect();
   const make = session.onMakeDefault;
+  const move = session.onMoveToWorktree;
   return (
     <Presence show={open} exitMs={0}>
       {open && (
@@ -30,6 +38,7 @@ export function SessionMenu(props: { anchor: RefObject<HTMLElement | null>; sess
             onClose={() => setOpen(false)}
             items={[
               ...(make && !session.isDefault ? [{ id: "default", label: "Make default", run: make }] : []),
+              ...(move ? [{ id: "worktree", label: "Move to worktree…", run: move }] : []),
               { id: "all", label: "All sessions…", run: session.onShowAll },
             ]}
           />

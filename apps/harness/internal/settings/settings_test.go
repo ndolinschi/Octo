@@ -481,3 +481,72 @@ func TestNoteExplainsLockedKeyWhileRouterIsOn(t *testing.T) {
 		t.Fatalf("editable key got a note: %+v", k)
 	}
 }
+
+func TestOllamaSettingsAndApply(t *testing.T) {
+	var gotURL, gotModel string
+	r := newRig(t, "", nil, nil, nil)
+	m := r.get(t)["HARNESS_MODEL_COMPLETION"]
+	if m.Kind != "model" || m.Group != "models" || m.Value != config.DefaultOllamaSmallModel {
+		t.Fatalf("completion setting = %+v", m)
+	}
+	r2 := settings.New(settings.Options{
+		DataDir: r.dir,
+		Apply: settings.Applier{
+			Ollama: func(baseURL, model string) { gotURL, gotModel = baseURL, model },
+		},
+	})
+	if _, err := r2.Put(settings.Update{Set: map[string]any{"HARNESS_OLLAMA_BASE_URL": "not-a-url"}}); err == nil {
+		t.Fatal("expected invalid URL error")
+	}
+	if _, err := r2.Put(settings.Update{Set: map[string]any{
+		"HARNESS_OLLAMA_BASE_URL":  "http://127.0.0.1:11435",
+		"HARNESS_MODEL_COMPLETION": "qwen2.5-coder:3b",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if gotURL != "http://127.0.0.1:11435" || gotModel != "qwen2.5-coder:3b" {
+		t.Fatalf("applied = (%q, %q)", gotURL, gotModel)
+	}
+	if _, err := r2.Put(settings.Update{Unset: []string{"HARNESS_OLLAMA_BASE_URL", "HARNESS_MODEL_COMPLETION"}}); err != nil {
+		t.Fatal(err)
+	}
+	if gotURL != config.DefaultOllamaBaseURL || gotModel != "" {
+		t.Fatalf("after unset = (%q, %q)", gotURL, gotModel)
+	}
+}
+
+func TestFeatureAutoMemoryDefaultAndApply(t *testing.T) {
+	r := newRig(t, "", nil, nil, nil)
+	s := r.get(t)[settings.IDFeatureAutoMemory]
+	if s.Kind != settings.KindBool || s.Group != settings.GroupAdvanced || s.Applies != settings.AppliesNow || s.Value != true || s.Set {
+		t.Fatalf("feature setting = %+v", s)
+	}
+	var calls []bool
+	r2 := settings.New(settings.Options{
+		DataDir: r.dir,
+		Apply: settings.Applier{
+			Features: func(id string, on bool) {
+				if id == "auto_memory" {
+					calls = append(calls, on)
+				}
+			},
+		},
+	})
+	v, err := r2.Put(settings.Update{Set: map[string]any{settings.IDFeatureAutoMemory: false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byID(v, settings.IDFeatureAutoMemory).Value != false {
+		t.Fatalf("after false = %+v", byID(v, settings.IDFeatureAutoMemory))
+	}
+	v, err = r2.Put(settings.Update{Unset: []string{settings.IDFeatureAutoMemory}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byID(v, settings.IDFeatureAutoMemory).Value != true {
+		t.Fatalf("after unset = %+v", byID(v, settings.IDFeatureAutoMemory))
+	}
+	if !slices.Equal(calls, []bool{false, true}) {
+		t.Fatalf("feature applier calls = %v, want [false true]", calls)
+	}
+}

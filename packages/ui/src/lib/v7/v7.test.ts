@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Approval, ChangeDetail, InputField, InputRequest } from "@octo/agent-client";
-import { answerFor, approvalDeadline, approvalItems, diffBlocks, formatCountdown, keyAction, optionAnswer, resolutionCause, resolutionLabel } from "./approval";
+import {
+  answerFor,
+  approvalCaption,
+  approvalDeadline,
+  approvalItems,
+  diffBlocks,
+  formatCountdown,
+  keyAction,
+  optionAnswer,
+  resolutionCause,
+  resolutionLabel,
+} from "./approval";
 import { answeredLine, SECRET_MIN_BYTES, utf8Length } from "./form";
 import { queueLine, queueSummary, queueView, withoutQueued } from "./queue";
 import { diffLayout, earlierRequestLabel, netDiff, netIds, revertOrder, revertProblem, sourceLabel, splitPath, turnRevertOrder } from "./changes";
@@ -164,4 +175,10 @@ test("changes: a turn whose request is not loaded is an earlier request with the
   assert.equal(earlierRequestLabel({ files: [at("")] } as never, now), "Earlier request");
   const label = earlierRequestLabel({ files: [at("2026-11-13T10:05:00"), at("2026-11-13T09:30:00")] } as never, now);
   assert.match(label, /^Earlier request · Today 9:30/);
+});
+
+test("approvalCaption: memory approval falls back cleanly and preserves title", () => {
+  const base = approval("m1", "2026-11-16T00:00:00Z");
+  assert.equal(approvalCaption({ ...base, kind: "memory", title: "", detail: {} }), "Enable auto memory?");
+  assert.equal(approvalCaption({ ...base, kind: "memory", title: "Remember fact?", detail: { memory_text: "Use pnpm" } }), "Remember fact?");
 });

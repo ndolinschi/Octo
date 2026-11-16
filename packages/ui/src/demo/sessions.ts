@@ -4,7 +4,11 @@ import {
   type Approval,
   type Bridge,
   type CreatedSession,
+  type DeleteAllSessionsResult,
   type GlobalSession,
+  type ImportableSession,
+  type ImportSessionRef,
+  type ImportSessionsResult,
   type MemoryExchange,
   type Message,
   type NewSessionInput,
@@ -721,6 +725,92 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
     return { messages: [...(await bridge.listMessages(id, agentId)), ...(e.agentTalk.get(sid) ?? [])], compactions: [] };
   };
 
+  type ImportSeed = {
+    provider: string;
+    provider_label: string;
+    id: string;
+    title: string;
+    cwd: string;
+    model: string;
+    hoursAgo: number;
+    talk: [string, string][];
+  };
+  const IMPORT_SEEDS: ImportSeed[] = [
+    {
+      provider: "claude_code",
+      provider_label: "Claude Code",
+      id: "claude-jwt-audit",
+      title: "Audit JWT refresh cookie flags",
+      cwd: "/Users/maya/code/atlas-api",
+      model: "claude-sonnet-5-5",
+      hoursAgo: 18,
+      talk: [
+        [
+          "Check how refresh cookies are set in atlas-api auth routes.",
+          "Checked `src/auth/login.ts` and `src/auth/refresh.ts`: `httpOnly` and `sameSite: 'lax'` are set, while `secure` is gated on `NODE_ENV === 'production'`.",
+        ],
+        [
+          "Add SameSite=Strict for the refresh endpoint.",
+          "Updated `setRefreshCookie` in `src/auth/cookies.ts` to use `sameSite: 'strict'` and verified the auth cookie tests pass.",
+        ],
+      ],
+    },
+    {
+      provider: "codex",
+      provider_label: "Codex CLI",
+      id: "codex-search-debounce",
+      title: "Debounce project search input",
+      cwd: "/Users/maya/code/atlas-web",
+      model: "gpt-5-codex",
+      hoursAgo: 42,
+      talk: [
+        [
+          "Search re-queries on every keystroke and flickers when fast typing.",
+          "Added a 150ms debounce and cancelled stale abort controllers in `useSearchQuery.ts`.",
+        ],
+      ],
+    },
+    {
+      provider: "gemini",
+      provider_label: "Gemini CLI",
+      id: "gemini-scroll-restore",
+      title: "Fix flatlist scroll restoration",
+      cwd: "/Users/maya/code/orbit-app",
+      model: "gemini-2.5-pro",
+      hoursAgo: 65,
+      talk: [
+        [
+          "Feed jumps back to top after returning from an issue detail screen.",
+          "Memoized `maintainVisibleContentPosition` key extraction and preserved scroll offset in navigation params.",
+        ],
+      ],
+    },
+    {
+      provider: "opencode",
+      provider_label: "OpenCode",
+      id: "opencode-changelog-gen",
+      title: "Add API changelog script",
+      cwd: "/Users/maya/code/docs-site",
+      model: "claude-haiku-5-5",
+      hoursAgo: 96,
+      talk: [
+        ["Generate markdown changelog notes from tagged OpenAPI specs.", "Added `scripts/diff-openapi.ts` and wired `pnpm changelog:api` in `package.json`."],
+      ],
+    },
+  ];
+  const importedByProject = new Map<string, Set<string>>();
+  const matchProject = (cwd: string): ProjectRecord | undefined => {
+    let best: { rec: ProjectRecord; len: number } | undefined;
+    for (const rec of records.values()) {
+      for (const f of rec.project.folders) {
+        if (cwd === f.path || cwd.startsWith(`${f.path}/`)) {
+          if (!best || f.path.length > best.len) best = { rec, len: f.path.length };
+        }
+      }
+    }
+    return best?.rec;
+  };
+
   return {
     ...bridge,
     listSessions: async (id, params?: SessionsParams) => {
@@ -921,6 +1011,158 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
       emit(rec, { type: "approval.resolved", id: aid, decision: answer.decision, session_id: m.id });
       if (answer.decision !== "deny") (rec.lastStatus ??= new Map()).set(m.root, "completed");
       await announce(id, m.id);
+    },
+    deleteAllSessions: async (): Promise<DeleteAllSessionsResult> => {
+      await delay();
+      fail(["session_running"]);
+      let deleted_sessions = 0;
+      const now = new Date().toISOString();
+      for (const [pid, rec] of records) {
+        const e = entryOf(pid);
+        deleted_sessions += e.mains.filter((m) => !e.deleted.has(m.id)).length;
+        if (rec.turn) rec.turn.cancelled = true;
+        rec.turn = null;
+        if (rec.turns) {
+          for (const sig of rec.turns.values()) sig.cancelled = true;
+          rec.turns.clear();
+        }
+        rec.streaming.clear();
+        rec.activeTools.clear();
+        rec.messages.length = 0;
+        rec.endings = [];
+        rec.lastStatus?.clear();
+        const prevOrch = rec.agents.find((a) => a.id === rec.project.orchestrator_agent_id);
+        const sid = newId("ses");
+        rec.agents.length = 0;
+        const freshOrch: Agent = {
+          id: newId("agt"),
+          session_id: sid,
+          project_id: pid,
+          parent_id: null,
+          depth: 0,
+          role: prevOrch?.role ?? "orchestrator",
+          title: "",
+          task: "",
+          model: prevOrch?.model ?? "claude-sonnet-5-5",
+          tier: null,
+          status: "idle",
+          result: null,
+          error: null,
+          spawn_tool_use_id: null,
+          input_tokens: 0,
+          output_tokens: 0,
+          created_at: now,
+          started_at: now,
+          finished_at: now,
+        };
+        rec.agents.push(freshOrch);
+        rec.project.orchestrator_agent_id = freshOrch.id;
+        rec.project.agent_count = 1;
+        rec.project.status = "idle";
+        rec.project.updated_at = now;
+        const freshMain: Main = {
+          id: sid,
+          title: "",
+          started_at: now,
+          last_activity_at: now,
+          model: freshOrch.model,
+          root: freshOrch.id,
+          queue: [],
+          paused: false,
+          approvals: [],
+        };
+        e.mains = [freshMain];
+        e.archived.clear();
+        e.titles.clear();
+        e.deleted.clear();
+        e.agentState.clear();
+        e.agentTalk.clear();
+        emit(rec, { type: "project.updated", project: clone(rec.project) });
+      }
+      importedByProject.clear();
+      return { deleted_sessions, projects: records.size };
+    },
+    listImportableSessions: async (): Promise<ImportableSession[]> => {
+      await delay();
+      const now = Date.now();
+      const allImported = new Set<string>();
+      for (const keys of importedByProject.values()) for (const k of keys) allImported.add(k);
+      return IMPORT_SEEDS.map((s) => {
+        const started = now - s.hoursAgo * 3_600_000;
+        const updated = started + (s.talk.length - 1) * 600_000 + 20_000;
+        const matched = matchProject(s.cwd);
+        const firstPrompt = s.talk[0]?.[0] ?? "";
+        return {
+          provider: s.provider,
+          provider_label: s.provider_label,
+          id: s.id,
+          title: s.title,
+          cwd: s.cwd,
+          model: s.model,
+          started_at: new Date(started).toISOString(),
+          updated_at: new Date(updated).toISOString(),
+          message_count: s.talk.reduce((n, [q, a]) => n + (q ? 1 : 0) + (a ? 1 : 0), 0),
+          exchange_count: s.talk.length,
+          preview: firstPrompt,
+          already_imported: allImported.has(`${s.provider}:${s.id}`),
+          ...(matched ? { matched_project_id: matched.project.id, matched_project_name: matched.project.name } : {}),
+        };
+      });
+    },
+    importSessions: async (id: string, refs: ImportSessionRef[]): Promise<ImportSessionsResult> => {
+      await delay();
+      const rec = recOf(id);
+      const e = entryOf(id);
+      let keys = importedByProject.get(id);
+      if (!keys) {
+        keys = new Set();
+        importedByProject.set(id, keys);
+      }
+      const imported: ProjectSession[] = [];
+      let skipped = 0;
+      const now = Date.now();
+      for (const ref of refs) {
+        const seed = IMPORT_SEEDS.find((s) => s.provider === ref.provider && s.id === ref.id);
+        const key = `${ref.provider}:${ref.id}`;
+        if (!seed || keys.has(key)) {
+          skipped += 1;
+          continue;
+        }
+        keys.add(key);
+        const started = now - seed.hoursAgo * 3_600_000;
+        const at = new Date(started).toISOString();
+        const updated = new Date(started + (seed.talk.length - 1) * 600_000 + 20_000).toISOString();
+        const sid = newId("ses");
+        const root = addRoot(rec, sid, at, seed.model, "completed");
+        addTalk(rec, root.id, seed.talk, started);
+        const main: Main = {
+          id: sid,
+          title: seed.title,
+          started_at: at,
+          last_activity_at: updated,
+          model: seed.model,
+          root: root.id,
+          seed: {
+            id: seed.id,
+            title: seed.title,
+            state: "idle",
+            hoursAgo: seed.hoursAgo,
+            exchanges: seed.talk.length,
+            model: seed.model,
+            talk: seed.talk,
+          },
+          queue: [],
+          paused: false,
+          approvals: [],
+        };
+        e.mains.push(main);
+        announceRoot(rec, root);
+        const session = await mainSession(id, main);
+        imported.push(session);
+        emit(rec, { type: "session.created", session, session_id: sid });
+      }
+      if (imported.length > 0) emit(rec, { type: "project.updated", project: clone(rec.project) });
+      return { imported, skipped };
     },
   };
 }

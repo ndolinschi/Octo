@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/approval"
 	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
@@ -26,7 +29,7 @@ const rememberGuidance = "- remember(text, kind, about?) keeps one short standal
 	"Use it after finishing a task, or when you learn something that will matter later: a constraint, a decision, where something lives, " +
 	"what failed and why. Never for what the instruction files already say. At most three per turn.\n"
 
-// rememberDef is the remember tool of one agent. It writes no file, so ask and plan modes allow it.
+// rememberDef is the remember tool of one agent. It checks the project's auto_memory setting and feature flag.
 func (rt *runtime) rememberDef(a projectstore.Agent) tools.Def {
 	return tools.Def{Name: ToolRemember, InputSchema: json.RawMessage(rememberSchema),
 		Description: "Keep one short standalone item (fact, decision, preference or todo) in the project's memory with today's date, for every later session. " +
@@ -36,12 +39,28 @@ func (rt *runtime) rememberDef(a projectstore.Agent) tools.Def {
 			if err := json.Unmarshal(raw, &in); err != nil {
 				return "invalid input: " + err.Error(), true, nil
 			}
+			text := strings.TrimSpace(in.Text)
+			if text == "" {
+				return "text is required", true, nil
+			}
+			if !slices.Contains(memory.RememberKinds, in.Kind) {
+				return fmt.Sprintf("kind must be one of %s", strings.Join(memory.RememberKinds, ", ")), true, nil
+			}
+			about := strings.TrimSpace(in.About)
+			if ok, reason := rt.approveMemory(ctx, a.ID, agentLabel(a), "Enable auto memory?", approval.Detail{
+				MemoryCommand: "remember",
+				MemoryKind:    in.Kind,
+				MemoryText:    rt.redact(text),
+				MemoryAbout:   rt.redact(about),
+			}); !ok {
+				return reason, true, nil
+			}
 			if rt.remembered.Add(1) > MaxRemembersPerTurn {
 				rt.remembered.Add(-1)
 				return fmt.Sprintf("at most %d items can be remembered in one turn; keep the rest in your answer or a memory file", MaxRemembersPerTurn), true, nil
 			}
 			f, taskID, err := rt.memory().Remember(ctx, memory.RememberInput{
-				Text: in.Text, Kind: in.Kind, About: in.About, By: a.ID, TaskID: rt.currentTask(), MessageID: rt.turnID,
+				Text: text, Kind: in.Kind, About: about, By: a.ID, TaskID: rt.currentTask(), MessageID: rt.turnID,
 			})
 			if err != nil {
 				rt.remembered.Add(-1)

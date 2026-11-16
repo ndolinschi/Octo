@@ -79,7 +79,7 @@ export function TreeColumn(props: {
           className="min-w-0 flex-1"
         />
       </PanelFilters>
-      <div id={`${props.id}-list`} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4">
+      <div id={`${props.id}-list`} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4 [overflow-anchor:none]">
         {active && fileIndex.status === "done" && fileIndex.partial && (
           <p className="flex h-row items-center px-2 text-xs text-fg-3">Showing matches in loaded folders</p>
         )}

@@ -1,6 +1,10 @@
 package gitx
 
 import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 )
 
@@ -69,6 +73,64 @@ func TestValidRefName(t *testing.T) {
 		if ValidRefName(s) != want {
 			t.Errorf("ValidRefName(%q) = %v", s, !want)
 		}
+	}
+}
+
+func TestWorktreeAddBranchAndCarryWorkingTreeChanges(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	ctx := context.Background()
+	repo := t.TempDir()
+	mustGit := func(args ...string) {
+		t.Helper()
+		if _, err := Run(ctx, repo, args...); err != nil {
+			t.Fatalf("git %v: %v", args, err)
+		}
+	}
+	mustGit("init", "-b", "main")
+	mustGit("config", "user.name", "Test")
+	mustGit("config", "user.email", "test@example.com")
+	if err := os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("v1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit("add", "tracked.txt")
+	mustGit("commit", "-m", "init")
+
+	branch, err := HeadBranch(ctx, repo)
+	if err != nil || branch != "main" {
+		t.Fatalf("HeadBranch = %q, %v", branch, err)
+	}
+	commit, err := HeadCommit(ctx, repo)
+	if err != nil || len(commit) < 7 {
+		t.Fatalf("HeadCommit = %q, %v", commit, err)
+	}
+
+	// Dirty tracked file + untracked file
+	if err := os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("v2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "sub.txt"), []byte("new file\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wt := filepath.Join(t.TempDir(), "wt")
+	if err := WorktreeAddBranch(ctx, repo, wt, "octo/worktree-test", commit); err != nil {
+		t.Fatalf("WorktreeAddBranch: %v", err)
+	}
+	if err := CarryWorkingTreeChanges(ctx, repo, wt); err != nil {
+		t.Fatalf("CarryWorkingTreeChanges: %v", err)
+	}
+	gotTracked, err := os.ReadFile(filepath.Join(wt, "tracked.txt"))
+	if err != nil || string(gotTracked) != "v2\n" {
+		t.Fatalf("wt tracked.txt = %q, %v", gotTracked, err)
+	}
+	gotUntracked, err := os.ReadFile(filepath.Join(wt, "sub.txt"))
+	if err != nil || string(gotUntracked) != "new file\n" {
+		t.Fatalf("wt sub.txt = %q, %v", gotUntracked, err)
+	}
+	if err := WorktreeRemove(ctx, repo, wt); err != nil {
+		t.Fatalf("WorktreeRemove: %v", err)
 	}
 }
 

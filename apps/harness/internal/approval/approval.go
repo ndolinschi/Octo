@@ -21,6 +21,8 @@ const (
 	KindACP     = "acp"
 	// KindNetwork is a web_fetch in a supervised project.
 	KindNetwork = "network"
+	// KindMemory is a memory write when project auto_memory is off or review.
+	KindMemory = "memory"
 )
 
 // Decisions.
@@ -68,6 +70,12 @@ type Detail struct {
 	Patch string `json:"patch,omitempty"`
 	// URL is what a web_fetch would fetch.
 	URL string `json:"url,omitempty"`
+	// Memory preview fields when Kind is KindMemory.
+	MemoryCommand string `json:"memory_command,omitempty"`
+	MemoryKind    string `json:"memory_kind,omitempty"`
+	MemoryText    string `json:"memory_text,omitempty"`
+	MemoryAbout   string `json:"memory_about,omitempty"`
+	MemoryPath    string `json:"memory_path,omitempty"`
 }
 
 // Approval is one pending request.

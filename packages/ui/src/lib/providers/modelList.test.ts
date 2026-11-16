@@ -301,6 +301,27 @@ test("the agent's row shows the chosen model, else the preferred one (the harnes
   assert.equal(detail(undefined, { "claude-code": { preferred_model: "claude-opus-5-5" } }, "claude-sonnet-5-5"), "Sonnet 5.5");
   assert.equal(detail("acp:claude-code/claude-opus-5-5", undefined, "claude-sonnet-5-5"), "Opus 5.5");
   assert.equal(detail(undefined, { "claude-code": { preferred_model: "mystery" } }), "mystery");
+
+  const ocList: ProviderList = {
+    providers: [
+      {
+        id: "opencode",
+        kind: "agent",
+        label: "OpenCode",
+        state: "ready",
+        reason: "",
+        install_hint: "",
+        login_hint: "",
+        models: [{ id: "opencode/big-pickle", label: "Big Pickle", source: "advertised" }],
+        default_model: "opencode/big-pickle",
+        flat_rate: true,
+      },
+    ],
+    connected: 1,
+    suggested: { orchestrator: "", fast: "", balanced: "", deep: "" },
+  };
+  const ocRow = pickerRows(pickerView(ocList, { current: "acp:opencode/opencode/big-pickle" })).find((r) => r.kind === "agent" && r.providerId === "opencode");
+  assert.equal(ocRow?.kind === "agent" ? ocRow.detail : undefined, "Big Pickle");
 });
 
 test("a model select lists the agent's models and keeps a stored name the list lacks", () => {

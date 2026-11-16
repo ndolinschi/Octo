@@ -7,7 +7,7 @@ import type { StepState, TurnEnd } from "./transcript";
  * edit's line diff, a tidy key–value view of anything else, and one plain line for a call a stop or a refusal cut short.
  */
 
-export type ToolKind = "shell" | "read" | "edit" | "search" | "fetch" | "other";
+export type ToolKind = "shell" | "read" | "edit" | "search" | "fetch" | "skill" | "other";
 
 type Rec = Record<string, unknown>;
 const rec = (v: unknown): Rec => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Rec) : {});
@@ -19,8 +19,43 @@ export function callArgs(name: string, input: unknown): Rec {
   return acpCall(name, input) ? rec(rec(input).raw_input) : rec(input);
 }
 
+/** Whether a tool call loads an agent skill (e.g. OpenCode `skill`). */
+export function isSkillCall(name: string, input: unknown): boolean {
+  if (name === "skill") return true;
+  const acp = acpCall(name, input);
+  return acp !== null && /^skill(?:\b|\s|:)/i.test(acp.title.trim());
+}
+
+/** The skill identifier or name requested by a skill tool call. */
+export function skillNameOf(name: string, input: unknown, output?: string | null): string {
+  const args = callArgs(name, input);
+  const argName = str(args.id) || str(args.name) || str(args.skill);
+  if (argName) return argName;
+  const acp = acpCall(name, input);
+  if (acp) {
+    const m = /^skill[:\s]+(.+)$/i.exec(acp.title.trim());
+    if (m?.[1]) return m[1].trim();
+  }
+  if (output) {
+    const tag = /<skill_content\b[^>]*\bname=["']([^"']+)["']/i.exec(output);
+    if (tag?.[1]) return tag[1].trim();
+  }
+  return "";
+}
+
+/** Strips OpenCode's `<skill_content name="...">...</skill_content>` wrapper so the Markdown body renders directly. */
+export function unwrapSkillContent(output: string): { name: string | null; markdown: string } {
+  const open = /^\s*<skill_content(?:\s+([^>]*))?>\s*\r?\n?/i.exec(output);
+  if (!open) return { name: null, markdown: output.trim() };
+  const attrs = open[1] ?? "";
+  const nameMatch = /\bname=["']([^"']+)["']/i.exec(attrs);
+  const rest = output.slice(open[0].length).replace(/\s*<\/skill_content>\s*$/i, "");
+  return { name: nameMatch?.[1] ?? null, markdown: rest.trim() };
+}
+
 /** Which body renders a call: built-in `bash` and ACP `execute` are commands, `read_file` / ACP `read` reads, edits and writes edits. */
 export function toolKind(name: string, input: unknown): ToolKind {
+  if (isSkillCall(name, input)) return "skill";
   const acp = acpCall(name, input) !== null;
   if (acp) {
     if (name === "execute") return "shell";
@@ -397,7 +432,7 @@ export const isCodeLike = (text: string) => !/\s/.test(text.trim()) || /[/\\]/.t
 
 const ACP_VERB: Record<string, string> = { read: "Read", edit: "Edited", delete: "Deleted", move: "Moved", fetch: "Fetched" };
 
-export function callRow(name: string, input: unknown, locate: Locate = () => null): CallRow {
+export function callRow(name: string, input: unknown, locate: Locate = () => null, output?: string | null): CallRow {
   const args = callArgs(name, input);
   const acp = acpCall(name, input);
   const where = (raw: string): { folder: string; path: string } => {
@@ -414,6 +449,9 @@ export function callRow(name: string, input: unknown, locate: Locate = () => nul
     ...more,
   });
   const kind = toolKind(name, input);
+  if (kind === "skill") {
+    return row("Loaded skill", skillNameOf(name, input, output), { folder: "" });
+  }
   if (kind === "shell") {
     const command = commandOf(name, input).split("\n")[0] ?? "";
     return row("Ran", command, { mono: true });
@@ -521,6 +559,7 @@ const GROUP: Record<string, [string, string, string]> = {
   list: ["listed", "folder", "folders"],
   search: ["ran", "search", "searches"],
   fetch: ["fetched", "page", "pages"],
+  skill: ["loaded", "skill", "skills"],
   delete: ["deleted", "file", "files"],
   move: ["moved", "file", "files"],
   save_note: ["saved", "note", "notes"],
@@ -580,6 +619,7 @@ const SHORT: Record<string, [string, string]> = {
   list: ["listing", "listings"],
   search: ["search", "searches"],
   fetch: ["page", "pages"],
+  skill: ["skill", "skills"],
   save_note: ["note", "notes"],
   delete_note: ["note", "notes"],
   other: ["tool", "tools"],

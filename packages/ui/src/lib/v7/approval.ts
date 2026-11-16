@@ -120,6 +120,8 @@ export function approvalCaption(a: Approval): string {
       return "Needs your permission";
     case "network":
       return "Fetch a web page";
+    case "memory":
+      return a.title || "Enable auto memory?";
   }
 }
 

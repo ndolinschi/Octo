@@ -26,7 +26,11 @@ func (o *Orchestrator) tracker(db *projectstore.DB) *changes.Tracker {
 		pid := db.ID()
 		t.OnChange = func(c projectstore.Change) {
 			o.hub.Publish(pid, events.ChangeRecorded, map[string]any{"turn_id": c.TurnID, "change": changes.ToFileChange(c)})
-			o.hub.Publish(pid, events.FileChanged, map[string]any{"folder": c.Folder, "path": c.Path, "source": events.SourceAgent})
+			fields := map[string]any{"folder": c.Folder, "path": c.Path, "source": events.SourceAgent}
+			if c.WorkspaceID != "" && c.WorkspaceID != projectstore.SharedWorkspace {
+				fields["workspace_id"] = c.WorkspaceID
+			}
+			o.hub.Publish(pid, events.FileChanged, fields)
 			if instructions.IsInstructionFile(c.Path) {
 				o.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid})
 			}
@@ -53,7 +57,10 @@ func (rt *runtime) changeFolders() []changes.Folder {
 func (rt *runtime) tracker() *changes.Tracker { return rt.o.tracker(rt.db) }
 
 func (rt *runtime) scope(agentID, toolUseID, source string) changes.Scope {
-	return changes.Scope{TurnID: rt.turnID, AgentID: agentID, ToolUseID: toolUseID, Source: source}
+	return changes.Scope{
+		TurnID: rt.turnID, AgentID: agentID, SessionID: rt.sessionID,
+		WorkspaceID: rt.workspaceID, ToolUseID: toolUseID, Source: source,
+	}
 }
 
 // trackSpan opens a snapshot window over the project folders (a bash call, or
@@ -177,7 +184,11 @@ func (rt *runtime) guardWrite(reg *tools.Registry, a projectstore.Agent, tool st
 			}
 			scope := rt.scope(a.ID, tools.ToolUseID(ctx), changes.SourceWriteFile)
 			if _, recorded := t.PostWrite(ctx, scope, changes.Folder{Label: f.Label, Path: f.Path}, rel, before); !recorded {
-				rt.publish(events.FileChanged, map[string]any{"folder": f.Label, "path": rel, "source": events.SourceAgent})
+				fields := map[string]any{"folder": f.Label, "path": rel, "source": events.SourceAgent}
+				if rt.workspaceID != "" && rt.workspaceID != projectstore.SharedWorkspace {
+					fields["workspace_id"] = rt.workspaceID
+				}
+				rt.publish(events.FileChanged, fields)
 			}
 			return out, isErr, err
 		}

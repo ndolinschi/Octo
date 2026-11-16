@@ -29,6 +29,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/datalock"
 	"github.com/ndolinschi/Octo/apps/harness/internal/diag"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/features"
 	"github.com/ndolinschi/Octo/apps/harness/internal/limits"
 	"github.com/ndolinschi/Octo/apps/harness/internal/lsp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
@@ -254,6 +255,12 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	provSvc := providers.New(providers.Options{
 		Discovery: modelDiscovery(&orchRef),
 		DataDir:   cfg.DataDir, Builtin: builtin, Router: octo, Agents: pluginReg.Agents, Recheck: pluginReg.Recheck, Fresh: pluginReg.Fresh,
+		Ollama: func() (string, string) {
+			if o := orchRef.Load(); o != nil {
+				return o.OllamaConfig()
+			}
+			return cfg.OllamaBaseURL, cfg.Models.SmallModel()
+		},
 		Defaults: func() config.Models {
 			if s := svcRef.Load(); s != nil {
 				return s.Defaults().Models
@@ -262,6 +269,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		},
 		Publish: func(n int) { hub.PublishAll(events.ProvidersUpdated, map[string]any{"connected": n}) },
 	})
+	featureStore := features.NewStore(os.LookupEnv)
 	pluginReg.OnProbeChange(provSvc.Refresh)
 	pluginReg.StartProbes(ctx)
 	notes := project.NewNotes(store, hub)
@@ -282,9 +290,12 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		MaxRunning:      cfg.MaxRunningSessions,
 		ApprovalTimeout: approvalTimeout,
 		MemoryDigest:    true,
+		Features:        featureStore,
 
-		BuiltinUnavailable:  builtinReason,
-		DefaultOrchestrator: cfg.Models.Orchestrator,
+		BuiltinUnavailable:   builtinReason,
+		OllamaBaseURL:        cfg.OllamaBaseURL,
+		SmallCompletionModel: cfg.Models.Small,
+		DefaultOrchestrator:  cfg.Models.Orchestrator,
 	})
 	orchRef.Store(orch)
 	orch.OnAdvertisedModels(func(agentID string) {
@@ -331,8 +342,10 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 				svc.SetDefaultTiers(o, f, b, d)
 				orch.SetDefaultOrchestrator(o)
 			},
+			Ollama:        orch.SetOllama,
 			ChildEnvAllow: childenv.SetAllow,
 			ACPTrace:      acptrace.SetEnabled,
+			Features:      featureStore.Set,
 			APIKey: func(key string) {
 				keys.Set(key)
 				_, why := builtin()
@@ -349,7 +362,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	files := project.NewFiles(store, hub)
 	bridgeOpts := []bridge.Option{
 		bridge.WithReviews(reviews), bridge.WithCommands(cmds),
-		bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo),
+		bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo), bridge.WithFeatures(featureStore),
 		bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
 		bridge.WithDiagnostics(func() any {
 			ok, why := builtin()
@@ -451,18 +464,17 @@ func portOf(a net.Addr) string {
 
 // v7Env reads the v7 settings from the environment (harness.env fills it):
 // HARNESS_DEFAULT_ACCESS, the access mode of projects created without one
-// ("full", the default until the UI shows approval cards, or "supervised"), and HARNESS_APPROVAL_TIMEOUT, how long
+// ("supervised" by default, "accept_edits", or "full"), and HARNESS_APPROVAL_TIMEOUT, how long
 // an approval request waits for an answer before it is denied (a Go duration,
 // default 30m; "0" or negative: wait for ever).
 func v7Env() (access string, timeout time.Duration, err error) {
 	access = os.Getenv("HARNESS_DEFAULT_ACCESS")
 	switch access {
 	case "":
-		// full until the UI shows approval cards; then this flips to supervised
-		access = projectstore.AccessFull
-	case projectstore.AccessSupervised, projectstore.AccessFull:
+		access = projectstore.AccessSupervised
+	case projectstore.AccessSupervised, projectstore.AccessAcceptEdits, projectstore.AccessFull:
 	default:
-		return "", 0, fmt.Errorf("HARNESS_DEFAULT_ACCESS must be %q or %q", projectstore.AccessSupervised, projectstore.AccessFull)
+		return "", 0, fmt.Errorf("HARNESS_DEFAULT_ACCESS must be %q, %q or %q", projectstore.AccessSupervised, projectstore.AccessAcceptEdits, projectstore.AccessFull)
 	}
 	if v := os.Getenv("HARNESS_APPROVAL_TIMEOUT"); v != "" {
 		d, perr := time.ParseDuration(v)

@@ -25,6 +25,10 @@ test("withFileBytes asks for base64 with the token and keeps the bridge's method
   const reader = fileBytesReader(b);
   assert.ok(reader);
   assert.deepEqual(await reader("p", "web", "a"), answer);
+  await b.readFileBytes("p", "web", "a", { workspaceId: "wrk_1" });
+  assert.equal(seen.url, "http://h:1/v1/projects/p/files/content?folder=web&path=a&encoding=base64&workspace=wrk_1");
+  await b.readFileBytes("p", "web", "a", { workspaceId: "shared" });
+  assert.equal(seen.url, "http://h:1/v1/projects/p/files/content?folder=web&path=a&encoding=base64");
 });
 
 test("errors keep the harness's code", async () => {

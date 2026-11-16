@@ -15,6 +15,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/features"
 	"github.com/ndolinschi/Octo/apps/harness/internal/inputs"
 	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
@@ -66,6 +67,10 @@ type Options struct {
 	// cannot run (no key, no router); it is the error every agent, sub-agent
 	// and side question that needs it ends with, and no request is sent.
 	BuiltinUnavailable string
+	// OllamaBaseURL is the Ollama server URL for the small completion tier (default config.DefaultOllamaBaseURL).
+	OllamaBaseURL string
+	// SmallCompletionModel is the initial Ollama small-tier model tag (default config.DefaultOllamaSmallModel).
+	SmallCompletionModel string
 	// DefaultOrchestrator is the server's default orchestrator model. While
 	// the built-in loop is unavailable, a project whose orchestrator equals it
 	// runs on the first available, logged-in ACP agent instead (see
@@ -105,6 +110,8 @@ type Options struct {
 	// (HARNESS_MAX_RUNNING_SESSIONS; zero: config.DefaultMaxRunningSessions). A project's own cap is its
 	// sessions.max_running setting (default 3).
 	MaxRunning int
+	// Features holds the process-wide feature flags; nil falls back to defaults.
+	Features *features.Store
 }
 
 // Orchestrator runs project turns: one at a time per main session (several sessions of a project at once,
@@ -137,6 +144,8 @@ type Orchestrator struct {
 
 	defaultOrch   atomic.Pointer[string] // the server default orchestrator (SetDefaultOrchestrator)
 	builtinReason atomic.Pointer[string] // overrides Options.BuiltinUnavailable (SetBuiltinUnavailable)
+	ollamaURL     atomic.Pointer[string] // overrides Options.OllamaBaseURL (SetOllama)
+	smallModel    atomic.Pointer[string] // overrides Options.SmallCompletionModel (SetOllama)
 
 	// qmu serializes queue decisions (see queue.go); sendNow marks a project
 	// whose running turn was cancelled by SendNow. Lock order: qmu before mu.
@@ -179,6 +188,14 @@ func New(store *projectstore.Store, hub *events.Hub, notes NoteBook, opts Option
 	}
 	def := opts.DefaultOrchestrator
 	o.defaultOrch.Store(&def)
+	if opts.OllamaBaseURL != "" {
+		u := opts.OllamaBaseURL
+		o.ollamaURL.Store(&u)
+	}
+	if opts.SmallCompletionModel != "" {
+		m := opts.SmallCompletionModel
+		o.smallModel.Store(&m)
+	}
 	o.wg.Add(1)
 	go func() {
 		defer o.wg.Done()

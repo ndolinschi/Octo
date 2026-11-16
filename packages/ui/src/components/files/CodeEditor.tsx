@@ -1,5 +1,5 @@
 import type * as Monaco from "monaco-editor";
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, memo, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FilePosition } from "../../lib/files";
 import type { OpenFile } from "../../state/code";
 import type { Theme } from "../../lib/theme";
@@ -60,7 +60,7 @@ const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
  * Thin Monaco wrapper: one editor instance per file view (it outlives every file the view shows; decision 85), swapping
  * the file's model in (kept in `buffers` so edits outlive this component); view state is saved on a swap and on unmount and restored.
  */
-export function CodeEditor(props: {
+export const CodeEditor = memo(function CodeEditor(props: {
   file: OpenFile | null;
   buffers: EditorBuffers;
   theme: Theme;
@@ -137,6 +137,8 @@ export function CodeEditor(props: {
       showFoldingControls: "mouseover",
       renderLineHighlight: "line",
       renderLineHighlightOnlyWhenFocus: true,
+      occurrencesHighlight: "off",
+      stopRenderingLineAfter: 10000,
       overviewRulerLanes: 0,
       overviewRulerBorder: false,
       hideCursorInOverviewRuler: true,
@@ -157,6 +159,7 @@ export function CodeEditor(props: {
         alwaysConsumeMouseWheel: false,
       },
       smoothScrolling: false,
+      fastScrollSensitivity: 5,
       cursorBlinking: reduced ? "solid" : "blink",
       cursorSmoothCaretAnimation: "off",
       fixedOverflowWidgets: true,
@@ -258,4 +261,4 @@ export function CodeEditor(props: {
       )}
     </div>
   );
-}
+});

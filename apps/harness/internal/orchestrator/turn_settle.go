@@ -10,6 +10,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
+	"github.com/ndolinschi/Octo/apps/harness/internal/features"
 	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
@@ -128,7 +129,9 @@ func (o *Orchestrator) settleTurn(rt *runtime, orchID string, status projectstor
 	w := rt.turnWork(status, reply)
 	viaModel := o.builtinOff() == ""
 	viaAgent := !viaModel && rt.isACPOrchestrator()
-	wantDigest := o.opts.MemoryDigest && (viaModel || (viaAgent && w.DidWork()))
+	wantDigest := o.opts.MemoryDigest && rt.featureEnabled(features.AutoMemory) &&
+		rt.memoryMode(context.Background()) == memory.AutoMemoryAllow &&
+		(viaModel || (viaAgent && w.DidWork()))
 	wantTitle := w.Completed && (viaModel || viaAgent) && rt.shouldAutoNameSession(w.SessionID)
 	if !w.Completed || !(wantDigest || wantTitle) || o.baseCtx.Err() != nil {
 		o.applySettle(rt, w, nil)

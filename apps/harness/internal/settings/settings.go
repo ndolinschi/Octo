@@ -22,6 +22,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
+	"github.com/ndolinschi/Octo/apps/harness/internal/features"
 )
 
 // Kinds, groups, sources and apply modes of the wire format.
@@ -48,16 +49,19 @@ const (
 
 // The setting ids (= variable names in harness.env).
 const (
-	IDAnthropicKey   = "ANTHROPIC_API_KEY"
-	IDRouterUpstream = "OCTO_ROUTER_UPSTREAM_KEY"
-	IDModelOrch      = "HARNESS_MODEL_ORCHESTRATOR"
-	IDModelFast      = "HARNESS_MODEL_FAST"
-	IDModelBalanced  = "HARNESS_MODEL_BALANCED"
-	IDModelDeep      = "HARNESS_MODEL_DEEP"
-	IDRouterEnabled  = "OCTO_ROUTER_ENABLED"
-	IDRouterBaseURL  = "OCTO_ROUTER_BASE_URL"
-	IDChildEnvAllow  = childenv.AllowEnvVar // HARNESS_CHILD_ENV_ALLOW
-	IDACPTrace       = "HARNESS_ACP_TRACE"
+	IDAnthropicKey      = "ANTHROPIC_API_KEY"
+	IDRouterUpstream    = "OCTO_ROUTER_UPSTREAM_KEY"
+	IDModelOrch         = "HARNESS_MODEL_ORCHESTRATOR"
+	IDModelFast         = "HARNESS_MODEL_FAST"
+	IDModelBalanced     = "HARNESS_MODEL_BALANCED"
+	IDModelDeep         = "HARNESS_MODEL_DEEP"
+	IDModelCompletion   = "HARNESS_MODEL_COMPLETION"
+	IDOllamaBaseURL     = "HARNESS_OLLAMA_BASE_URL"
+	IDRouterEnabled     = "OCTO_ROUTER_ENABLED"
+	IDRouterBaseURL     = "OCTO_ROUTER_BASE_URL"
+	IDChildEnvAllow     = childenv.AllowEnvVar // HARNESS_CHILD_ENV_ALLOW
+	IDACPTrace          = "HARNESS_ACP_TRACE"
+	IDFeatureAutoMemory = "HARNESS_FEATURE_AUTO_MEMORY"
 )
 
 const (
@@ -132,6 +136,10 @@ var defs = []def{
 		builtin: func() string { return config.BuiltinModels().Balanced }},
 	{id: IDModelDeep, kind: KindModel, label: "Deep tier model", group: GroupModels, applies: AppliesNow,
 		builtin: func() string { return config.BuiltinModels().Deep }},
+	{id: IDModelCompletion, kind: KindModel, label: "Inline completion model (Ollama small tier)", group: GroupModels, applies: AppliesNow,
+		hint: "Ollama model tag used when inline completion runs through the dedicated small tier.", builtin: func() string { return config.DefaultOllamaSmallModel }},
+	{id: IDOllamaBaseURL, kind: KindText, label: "Ollama server URL", group: GroupModels, applies: AppliesNow,
+		hint: "Base URL of the Ollama server for the small inline-completion tier (default http://127.0.0.1:11434)."},
 	{id: IDRouterEnabled, kind: KindBool, label: "Use the Octo router", group: GroupRouter, applies: AppliesRestart,
 		hint: "Read by the desktop app, which starts the router; the harness only stores it."},
 	{id: IDRouterBaseURL, kind: KindText, label: "External router URL", group: GroupRouter, applies: AppliesRestart,
@@ -140,6 +148,8 @@ var defs = []def{
 		hint: "Names or PREFIX_* patterns, on top of the built-in allow-list. Secrets of the harness itself are never passed."},
 	{id: IDACPTrace, kind: KindBool, label: "Record an ACP wire trace", group: GroupAdvanced, applies: AppliesNow,
 		hint: "One file per agent session under the data folder's traces directory, secrets removed, size-capped. Turn on to diagnose a failing agent, then send the file with the diagnostics report."},
+	{id: IDFeatureAutoMemory, kind: KindBool, label: "Auto-memory prompt & digest", group: GroupAdvanced, applies: AppliesNow,
+		hint: "Prompt before saving remembered items when project auto-memory is off and digest completed turns when allowed.", builtin: func() string { return "true" }},
 }
 
 // IDs returns every setting id, in display order.
@@ -164,10 +174,14 @@ func find(id string) (def, bool) {
 type Applier struct {
 	// Models swaps the default orchestrator and tier models.
 	Models func(orchestrator, fast, balanced, deep string)
+	// Ollama swaps the base URL and small-tier model used for inline completion.
+	Ollama func(baseURL, model string)
 	// ChildEnvAllow swaps the operator allow-list for child processes.
 	ChildEnvAllow func(spec string)
 	// ACPTrace switches the ACP wire trace for sessions that start afterwards.
 	ACPTrace func(on bool)
+	// Features switches a live feature flag in the running process.
+	Features func(id string, on bool)
 	// APIKey swaps the Messages API key of the running process ("" when the
 	// setting was removed). With it ANTHROPIC_API_KEY applies at once (the
 	// built-in loop becomes ready without a restart); without it the key needs
@@ -319,6 +333,10 @@ func fromRaw(d def, raw string, have bool) (any, bool) {
 	switch d.kind {
 	case KindBool:
 		if !have {
+			if d.builtin != nil {
+				b, err := strconv.ParseBool(d.builtin())
+				return b, err == nil
+			}
 			return false, true
 		}
 		b, err := strconv.ParseBool(raw)
@@ -400,7 +418,7 @@ func (m *Manager) validate(u Update) (plan, error) {
 			continue
 		}
 		p.set[id] = stored
-		anyModel = anyModel || id == IDModelOrch || id == IDModelFast || id == IDModelBalanced || id == IDModelDeep
+		anyModel = anyModel || id == IDModelOrch || id == IDModelFast || id == IDModelBalanced || id == IDModelDeep || id == IDModelCompletion
 		switch id {
 		case IDModelOrch:
 			models.Orchestrator = stored
@@ -410,6 +428,8 @@ func (m *Manager) validate(u Update) (plan, error) {
 			models.Balanced = stored
 		case IDModelDeep:
 			models.Deep = stored
+		case IDModelCompletion:
+			models.Small = stored
 		}
 	}
 	if m.opts.ValidateModels != nil && anyModel {
@@ -488,7 +508,7 @@ func storeForm(d def, val any) (string, error) {
 		if len(s) > maxTextLen {
 			return "", bad("at most %d characters", maxTextLen)
 		}
-		if d.id == IDRouterBaseURL && s != "" {
+		if (d.id == IDRouterBaseURL || d.id == IDOllamaBaseURL) && s != "" {
 			if err := validBaseURL(s); err != nil {
 				return "", bad("%s", err)
 			}
@@ -558,15 +578,19 @@ func (m *Manager) effective(id string, file map[string]string) string {
 
 // applyNow pushes the changed apply-now settings into the running process.
 func (m *Manager) applyNow(changed []string, file map[string]string) {
-	var models, allow, trace, key bool
+	var models, ollama, allow, trace, feat, key bool
 	for _, id := range changed {
 		switch id {
 		case IDAnthropicKey:
 			key = true
 		case IDACPTrace:
 			trace = true
+		case IDFeatureAutoMemory:
+			feat = true
 		case IDModelOrch, IDModelFast, IDModelBalanced, IDModelDeep:
 			models = true
+		case IDModelCompletion, IDOllamaBaseURL:
+			ollama = true
 		case IDChildEnvAllow:
 			allow = true
 		}
@@ -582,11 +606,26 @@ func (m *Manager) applyNow(changed []string, file map[string]string) {
 		m.opts.Apply.Models(pick(IDModelOrch, b.Orchestrator), pick(IDModelFast, b.Fast),
 			pick(IDModelBalanced, b.Balanced), pick(IDModelDeep, b.Deep))
 	}
+	if ollama && m.opts.Apply.Ollama != nil {
+		url := strings.TrimSpace(m.effective(IDOllamaBaseURL, file))
+		if url == "" {
+			url = config.DefaultOllamaBaseURL
+		}
+		m.opts.Apply.Ollama(url, strings.TrimSpace(m.effective(IDModelCompletion, file)))
+	}
 	if key && m.opts.Apply.APIKey != nil {
 		m.opts.Apply.APIKey(m.effective(IDAnthropicKey, file))
 	}
 	if trace && m.opts.Apply.ACPTrace != nil {
 		m.opts.Apply.ACPTrace(routerOn(m.effective(IDACPTrace, file)))
+	}
+	if feat && m.opts.Apply.Features != nil {
+		v := strings.TrimSpace(m.effective(IDFeatureAutoMemory, file))
+		on := true
+		if v != "" {
+			on = routerOn(v)
+		}
+		m.opts.Apply.Features(features.AutoMemory, on)
 	}
 	if allow && m.opts.Apply.ChildEnvAllow != nil {
 		m.opts.Apply.ChildEnvAllow(m.effective(IDChildEnvAllow, file))

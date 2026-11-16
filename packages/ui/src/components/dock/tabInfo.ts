@@ -117,17 +117,35 @@ export function tabInfo(
   }
   if (ref.kind === "session") {
     const s = ctx.state.sessions.list.find((x) => x.id === ref.sessionId);
-    // A main session's tab is a conversation like Chat (decision 96); an agent session's is its detail.
-    if (s?.kind === "main") return conversationInfo(ctx, s.id);
-    const title = s?.title.trim() || "Session";
-    const working = s?.state === "working" || s?.state === "waiting";
+    if (s?.kind === "agent") {
+      const title = s.title.trim() || "Session";
+      const working = s.state === "working" || s.state === "waiting";
+      return {
+        label: middleTruncate(title, 28),
+        name: title,
+        title: `Agent session: ${title}`,
+        icon: GLYPH.sessions,
+        status: working ? "running" : null,
+        glyph: working ? "working" : s.state === "failed" ? "failed" : null,
+        comments: 0,
+      };
+    }
+    const root = sessionRoot(ctx.state, ref.sessionId);
+    const status = root ? ctx.state.agents[root]?.status : undefined;
+    const running = status === "running" || s?.state === "working";
+    const failed = status === "failed" || s?.state === "failed";
+    const waiting = s?.state === "waiting" || s?.needs_you === true;
+    const queued = s?.state === "queued";
+    const own = root ? (ctx.state.agents[root]?.title?.trim() ?? "") : "";
+    const topic = currentTitle(ctx.state.sessions.list, ref.sessionId, own).trim() || "New session";
+    const projectLabel = ctx.projectName || "Session";
     return {
-      label: middleTruncate(title, 28),
-      name: title,
-      title: `${s?.kind === "agent" ? "Agent session" : "Session"}: ${title}`,
-      icon: GLYPH.sessions,
-      status: working ? "running" : null,
-      glyph: working ? "working" : s?.state === "failed" ? "failed" : null,
+      label: middleTruncate(topic, 28),
+      name: topic,
+      title: `${projectLabel}: ${topic}`,
+      icon: GLYPH.chat,
+      status: running ? "running" : null,
+      glyph: running ? "working" : failed || waiting ? "needs" : queued ? "queued" : null,
       comments: 0,
     };
   }

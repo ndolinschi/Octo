@@ -3,12 +3,15 @@ package project
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/sessionimport"
 	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
@@ -347,4 +350,230 @@ func (s *Service) MessageSession(ctx context.Context, pid, sid, text string, rep
 	}
 	out, v, err := s.turns.MessageAgentSession(ctx, pid, sid, text, report)
 	return out, v, sessionErr(err)
+}
+
+func (s *Service) projectHasRunningSession(ctx context.Context, pid string, db *projectstore.DB) bool {
+	if s.turns.Active(pid) || s.turns.Running(pid) {
+		return true
+	}
+	list, err := db.ListSessions(ctx, projectstore.SessionFilter{Archived: "all", Limit: -1})
+	if err != nil {
+		return false
+	}
+	st, hasST := s.turns.(SessionTurns)
+	for _, info := range list {
+		if info.State == projectstore.SessionWorking || info.State == projectstore.SessionWaiting {
+			return true
+		}
+		if info.Kind == projectstore.KindMain && hasST && st.ActiveSession(pid, info.ID) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) clearProjectSessionsLocked(ctx context.Context, pid string, db *projectstore.DB) (deleted int, defaultSID string, err error) {
+	deleted, removedIDs, def, err := db.DeleteAllSessions(ctx)
+	if err != nil {
+		return 0, "", storeErr(err)
+	}
+	if st, ok := s.turns.(SessionTurns); ok {
+		for _, id := range removedIDs {
+			st.ForgetSession(pid, id)
+		}
+	}
+	s.turns.CloseProject(pid)
+	for _, id := range removedIDs {
+		s.hub.Publish(pid, events.SessionUpdated, map[string]any{"session_id": id, "deleted": true})
+	}
+	s.hub.Publish(pid, events.SessionCreated, map[string]any{"session": s.turns.SessionView(ctx, db, def)})
+	s.hub.Publish(pid, events.SessionDefault, map[string]any{"session_id": def.ID})
+	s.hub.Publish(pid, events.SessionCurrent, map[string]any{"session_id": def.ID})
+	s.hub.Publish(pid, "memory.updated", map[string]any{"deleted": true})
+	s.announceProject(pid)
+	return deleted, def.ID, nil
+}
+
+// DeleteAllSessions is DELETE /v1/projects/{pid}/sessions: clears every session of pid and resets it to one fresh idle default session.
+func (s *Service) DeleteAllSessions(ctx context.Context, pid string) (deleted int, defaultSID string, err error) {
+	db, err := s.db(ctx, pid)
+	if err != nil {
+		return 0, "", err
+	}
+	if s.projectHasRunningSession(ctx, pid, db) {
+		return 0, "", of(KindConflict, usererr.SessionRefused("session_running", "", "a session in this project is still running"))
+	}
+	return s.clearProjectSessionsLocked(ctx, pid, db)
+}
+
+// DeleteEveryProjectSessions is DELETE /v1/sessions: clears every session in every project when none are running.
+func (s *Service) DeleteEveryProjectSessions(ctx context.Context) (deleted int, projects int, err error) {
+	ids, err := s.store.IDs(ctx)
+	if err != nil {
+		return 0, 0, storeErr(err)
+	}
+	dbs := make([]*projectstore.DB, 0, len(ids))
+	for _, pid := range ids {
+		db, err := s.store.Get(ctx, pid)
+		if err != nil {
+			continue
+		}
+		if s.projectHasRunningSession(ctx, pid, db) {
+			return 0, 0, of(KindConflict, usererr.SessionRefused("session_running", "", "a session is still running in project "+pid))
+		}
+		dbs = append(dbs, db)
+	}
+	for _, db := range dbs {
+		n, _, err := s.clearProjectSessionsLocked(ctx, db.ID(), db)
+		if err != nil {
+			return deleted, projects, err
+		}
+		deleted += n
+		projects++
+	}
+	return deleted, projects, nil
+}
+
+// ImportableSession is an external CLI session enriched with Octo project matching and duplicate status.
+type ImportableSession struct {
+	sessionimport.Candidate
+	AlreadyImported    bool   `json:"already_imported"`
+	MatchedProjectID   string `json:"matched_project_id,omitempty"`
+	MatchedProjectName string `json:"matched_project_name,omitempty"`
+}
+
+// ListImportableSessions is GET /v1/sessions/importable.
+func (s *Service) ListImportableSessions(ctx context.Context) ([]ImportableSession, error) {
+	candidates, err := sessionimport.NewScanner(sessionimport.DefaultHomeDir()).Scan(ctx)
+	if err != nil {
+		return nil, storeErr(err)
+	}
+	ids, err := s.store.IDs(ctx)
+	if err != nil {
+		return nil, storeErr(err)
+	}
+	type projFolder struct {
+		pid, name, path string
+	}
+	var folders []projFolder
+	imported := map[string]bool{}
+	for _, pid := range ids {
+		db, err := s.store.Get(ctx, pid)
+		if err != nil {
+			continue
+		}
+		info, err := db.Info(ctx)
+		if err != nil {
+			continue
+		}
+		if srcs, err := db.ImportedSources(ctx); err == nil {
+			for k := range srcs {
+				imported[k] = true
+			}
+		}
+		flist, err := db.Folders(ctx)
+		if err != nil {
+			continue
+		}
+		for _, f := range flist {
+			if p := strings.TrimSpace(f.Path); p != "" {
+				folders = append(folders, projFolder{pid: pid, name: info.Name, path: filepath.Clean(p)})
+			}
+		}
+	}
+
+	out := make([]ImportableSession, 0, len(candidates))
+	for _, c := range candidates {
+		item := ImportableSession{
+			Candidate:       c,
+			AlreadyImported: imported[c.Provider+":"+c.ID],
+		}
+		if cwd := strings.TrimSpace(c.Cwd); cwd != "" {
+			cleanCwd := filepath.Clean(cwd)
+			bestLen := -1
+			for _, f := range folders {
+				if cleanCwd == f.path || strings.HasPrefix(cleanCwd, f.path+string(os.PathSeparator)) {
+					if len(f.path) > bestLen {
+						bestLen = len(f.path)
+						item.MatchedProjectID = f.pid
+						item.MatchedProjectName = f.name
+					}
+				}
+			}
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+// ImportSessionRef selects one discovered external session to import.
+type ImportSessionRef struct {
+	Provider string `json:"provider"`
+	ID       string `json:"id"`
+}
+
+// ImportSessionsResult is the response of POST /v1/projects/{pid}/sessions/import.
+type ImportSessionsResult struct {
+	Imported []orchestrator.SessionView `json:"imported"`
+	Skipped  int                        `json:"skipped"`
+}
+
+// ImportSessions imports selected external CLI transcripts into pid.
+func (s *Service) ImportSessions(ctx context.Context, pid string, refs []ImportSessionRef) (ImportSessionsResult, error) {
+	db, err := s.db(ctx, pid)
+	if err != nil {
+		return ImportSessionsResult{}, err
+	}
+	if len(refs) == 0 {
+		return ImportSessionsResult{}, invalid("sessions is required")
+	}
+	scanner := sessionimport.NewScanner(sessionimport.DefaultHomeDir())
+	out := ImportSessionsResult{Imported: []orchestrator.SessionView{}}
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		prov := strings.TrimSpace(ref.Provider)
+		id := strings.TrimSpace(ref.ID)
+		if prov == "" || id == "" {
+			return out, invalid("each session requires provider and id")
+		}
+		key := prov + ":" + id
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		cand, ok := scanner.Load(ctx, prov, id)
+		if !ok {
+			return out, notFound("importable session " + key)
+		}
+		turns := make([]projectstore.ImportTurn, 0, len(cand.Turns))
+		for _, t := range cand.Turns {
+			turns = append(turns, projectstore.ImportTurn{
+				Role: t.Role, Text: t.Text, Timestamp: t.Timestamp, Model: t.Model,
+			})
+		}
+		info, created, err := db.ImportMainSession(ctx, projectstore.ImportSessionInput{
+			Provider:   cand.Provider,
+			ExternalID: cand.ID,
+			Title:      cand.Title,
+			Model:      cand.Model,
+			StartedAt:  cand.StartedAt,
+			EndedAt:    cand.UpdatedAt,
+			Turns:      turns,
+		})
+		if err != nil {
+			return out, storeErr(err)
+		}
+		if !created {
+			out.Skipped++
+			continue
+		}
+		v := s.turns.SessionView(ctx, db, info)
+		out.Imported = append(out.Imported, v)
+		s.hub.Publish(pid, events.SessionCreated, map[string]any{"session": v})
+		s.hub.Publish(pid, "memory.updated", map[string]any{"session_id": v.ID, "imported": true})
+	}
+	if len(out.Imported) > 0 {
+		s.announceProject(pid)
+	}
+	return out, nil
 }

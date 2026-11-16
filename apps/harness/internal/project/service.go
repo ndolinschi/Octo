@@ -157,7 +157,7 @@ func (s *Service) ValidateModels(m *config.Models) error {
 		agents = s.acpAgent.Agents()
 	}
 	for field, v := range map[string]string{
-		"orchestrator": m.Orchestrator, "fast": m.Fast, "balanced": m.Balanced, "deep": m.Deep, "side": m.Side,
+		"orchestrator": m.Orchestrator, "fast": m.Fast, "balanced": m.Balanced, "deep": m.Deep, "side": m.Side, "small": m.Small,
 	} {
 		if err := plugins.ValidateACPRef(v, agents); err != nil {
 			return invalid("models.%s: %s", field, err)
@@ -167,7 +167,7 @@ func (s *Service) ValidateModels(m *config.Models) error {
 		return invalid("models.completion: inline completion needs a fast Messages API model; an ACP agent answers in seconds, not milliseconds")
 	}
 	if len(m.Completion) > 200 || strings.ContainsAny(m.Completion, " \t\n") {
-		return invalid("models.completion must be a model id, fast, balanced, deep or off")
+		return invalid("models.completion must be a model id, small, ollama:<model>, fast, balanced, deep or off")
 	}
 	return validateAutoCandidates(m.AutoCandidates, agents)
 }

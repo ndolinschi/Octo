@@ -1,10 +1,12 @@
-import type { Agent, ProjectSession, ProjectSessionState } from "@octo/agent-client";
+import { BridgeError, type Agent, type ProjectSession, type ProjectSessionState } from "@octo/agent-client";
 import type { GlyphState } from "../stateGlyph";
+import { isStructured } from "../errors/plain";
+import { errorMessage, structuredError } from "../format";
 import { formatDay, formatWhen } from "../memory/dates";
 import { exchangeCount } from "../memory/sessions";
-import { startedMs } from "./current";
+import { isDefaultSession, isWorking, sessionWorkspaceLabel, startedMs } from "./current";
 
-export { currentTitle, transcriptSession } from "./current";
+export { canMoveToWorktree, currentTitle, isDefaultSession, isWorking, sessionWorkspaceLabel, transcriptSession } from "./current";
 
 /** The Sessions tab's filters (decision 5): everything, what works now, the conversations, the agents, the archive. */
 export type SessionFilter = "all" | "working" | "mine" | "agents" | "archived";
@@ -23,11 +25,6 @@ export type SessionNode = { session: ProjectSession; children: ProjectSession[] 
 const newest = (a: ProjectSession, b: ProjectSession): number => startedMs(b) - startedMs(a);
 const oldest = (a: ProjectSession, b: ProjectSession): number => startedMs(a) - startedMs(b);
 
-export const isWorking = (s: Pick<ProjectSession, "state">): boolean => s.state === "working" || s.state === "waiting" || s.state === "queued";
-
-/** The default main session (parallel sessions; `current` is its old name). */
-export const isDefaultSession = (s: Pick<ProjectSession, "kind" | "current" | "default">): boolean => s.kind === "main" && (s.default ?? s.current);
-
 /**
  * "Delete" is offered on a session that is not the current one and has nothing running (itself or, for a main session,
  * an agent session it started). The harness refuses the rest with `current_session` / `session_running`.
@@ -40,6 +37,33 @@ export function canDelete(list: readonly ProjectSession[], s: ProjectSession): b
 
 /** A turn of it runs (working, or waiting for the person inside a turn); one waiting for a slot does not run yet. */
 export const isRunning = (s: Pick<ProjectSession, "state">): boolean => s.state === "working" || s.state === "waiting";
+
+function slugifyBranchPart(raw: string): string {
+  let out = "";
+  let prevDash = true;
+  for (const ch of raw.trim().toLowerCase()) {
+    const code = ch.charCodeAt(0);
+    if (code <= 127 && ((code >= 97 && code <= 122) || (code >= 48 && code <= 57))) {
+      out += ch;
+      prevDash = false;
+      if (out.length >= 28) break;
+      continue;
+    }
+    if (!prevDash && out.length > 0) {
+      out += "-";
+      prevDash = true;
+    }
+  }
+  return out.replace(/^-+|-+$/g, "");
+}
+
+/** Default git branch name pre-filled in MoveToWorktreeDialog, matching the harness default. */
+export function defaultWorktreeBranch(s: Pick<ProjectSession, "id" | "title">): string {
+  const slug = slugifyBranchPart(s.title);
+  const short = s.id.replace(/^ses_/, "").slice(0, 6);
+  if (!slug || slug === "new-session") return short ? `octo/${short}` : "octo/worktree";
+  return short ? `octo/${slug}-${short}` : `octo/${slug}`;
+}
 
 /** The confirmation before a delete: what goes, and what stays (decision 95 c). Memory's entries are not deleted with a session. */
 export function deleteCopy(s: Pick<ProjectSession, "kind">): { title: string; description: string } {
@@ -169,6 +193,8 @@ export function sessionRow(s: ProjectSession, now: number, modelName: (value: st
     parts.push(state);
   }
   if (s.model !== "") parts.push(modelName(s.model));
+  const ws = s.kind === "main" ? sessionWorkspaceLabel(s) : null;
+  if (ws) parts.push(`Worktree: ${ws}`);
   return {
     id: s.id,
     glyph: (s.kind === "agent" && agentMeta?.glyph) || glyphOf(s.state),
@@ -185,6 +211,8 @@ export function detailLine(s: ProjectSession, now: number, modelName: (value: st
   const parts = [formatDay(s.started_at, now)];
   if (s.kind === "main") parts.push(exchangesOf(s));
   if (s.kind === "main" && s.children > 0) parts.push(`${s.children} ${s.children === 1 ? "agent" : "agents"}`);
+  const ws = s.kind === "main" ? sessionWorkspaceLabel(s) : null;
+  if (ws) parts.push(`Worktree: ${ws}`);
   if (s.model !== "") parts.push(modelName(s.model));
   if (s.archived) parts.push("archived");
   return parts.join(" · ");
@@ -238,10 +266,27 @@ const ERRORS: Record<string, string> = {
   not_agent_session: "Messages to Octo go through the project's default session.",
   builtin_loop_unavailable: "Octo has no API key, so this agent can't continue.",
   not_found: "This session no longer exists. It may have been deleted.",
+  workspace_in_use: "Stop this session before moving it to a worktree.",
+  workspace_already_worktree: "This session already works in a worktree.",
+  worktree_unavailable: "A git worktree can't be created for this project.",
 };
 export function sessionErrorText(code: string, message: string): string {
   const text = message.trim();
   return ERRORS[code] ?? (text === "" ? "That did not work. Try again." : /[.!?]$/.test(text) ? text : `${text}. Try again.`);
+}
+
+/**
+ * A refusal in plain words. A harness of decision 94b sends `message` (and `hint`) itself: those win. The fixed texts by code
+ * (`sessions.md`) are only the fallback for an older harness; anything else is the shared error text.
+ */
+export function failureText(e: unknown): string {
+  if (!(e instanceof BridgeError)) return `${errorMessage(e)} Try again.`;
+  const fields = structuredError(e);
+  if (isStructured(fields)) {
+    const sentence = /[.!?]$/.test(fields.message) ? fields.message : `${fields.message}.`;
+    return fields.hint ? `${sentence} ${fields.hint.replace(/`/g, "")}` : sentence;
+  }
+  return sessionErrorText(e.code, e.message);
 }
 
 /** What a message to an agent session did, as one quiet line. */

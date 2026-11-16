@@ -77,12 +77,15 @@ func (d *DB) AddChange(ctx context.Context, nc NewChange) (Change, error) {
 	if c.CreatedAt == "" {
 		c.CreatedAt = Now()
 	}
+	if c.WorkspaceID == "" {
+		c.WorkspaceID = SharedWorkspace
+	}
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO changes (turn_id, agent_id, folder, path, kind, before_hash, after_hash, added, removed, note, source, tool_use_id, created_at, session_id)
+		`INSERT INTO changes (turn_id, agent_id, folder, path, kind, before_hash, after_hash, added, removed, note, source, tool_use_id, created_at, session_id, workspace_id)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), (SELECT NULLIF(session_id, '') FROM agents WHERE id = ?),
-			(SELECT NULLIF(session_id, '') FROM messages WHERE id = ?), ''))`,
+			(SELECT NULLIF(session_id, '') FROM messages WHERE id = ?), ''), COALESCE(NULLIF(?, ''), 'shared'))`,
 		c.TurnID, c.AgentID, c.Folder, c.Path, c.Kind, c.BeforeHash, c.AfterHash, c.Added, c.Removed, c.Note, c.Source, c.ToolUseID, c.CreatedAt,
-		c.SessionID, c.AgentID, c.TurnID)
+		c.SessionID, c.AgentID, c.TurnID, c.WorkspaceID)
 	if err != nil {
 		return Change{}, err
 	}

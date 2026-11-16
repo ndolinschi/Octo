@@ -1,5 +1,5 @@
 import type { Provider, ProviderList, ProviderModel, ProviderModelSource, ProviderRoles } from "@octo/agent-client";
-import { agentModelLabel, modelLabel } from "../models";
+import { agentModelLabel, modelLabel, parseAcp } from "../models";
 import { jsonCodec, type Codec } from "../storage";
 import { isReady } from "./providers";
 import { canUseAnyway, connectAction, stateText } from "./providersMore";
@@ -173,9 +173,9 @@ export const needsModelRefresh = (agent: Pick<PickerAgent, "known" | "refreshedA
 
 /** The model an `acp:<agent>/<model>` setting names for `agentId`, if it is that agent's. */
 function chosenModel(current: string | undefined, agentId: string): string | null {
-  if (!current?.startsWith("acp:")) return null;
-  const [id, model] = current.slice(4).split("/", 2);
-  return id === agentId && model ? model : null;
+  if (!current) return null;
+  const ref = parseAcp(current);
+  return ref && ref.id === agentId ? ref.model : null;
 }
 
 /**
@@ -224,6 +224,7 @@ export function pickerView(list: ProviderList, opts: PickerOptions = {}): Picker
   const agents: PickerRow[] = [];
   const unavailable: PickerRow[] = [];
   for (const p of list.providers) {
+    if (p.kind === "ollama") continue;
     if (!isReady(p)) {
       if (matches(words, `${p.label} ${p.id}`))
         unavailable.push({
@@ -323,7 +324,7 @@ export function pickerKey(view: PickerView, active: number, key: string, backTo?
 export function choosable(list: ProviderList, hidden?: ReadonlySet<string>): { group: string; value: string; label: string }[] {
   const out: { group: string; value: string; label: string }[] = [];
   for (const p of list.providers) {
-    if (!isReady(p)) continue;
+    if (!isReady(p) || p.kind === "ollama") continue;
     if (p.kind === "agent") {
       const def = p.models.find((m) => m.id === p.default_model);
       out.push({ group: p.label, value: `acp:${p.id}`, label: def ? `${p.label} (default: ${modelLabel(def)})` : p.label });

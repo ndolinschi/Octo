@@ -28,6 +28,7 @@ const (
 	KindAPI    = "api"
 	KindRouter = "router"
 	KindAgent  = "agent"
+	KindOllama = "ollama"
 )
 
 // Provider states. StateError is reserved for a provider that is set up but
@@ -81,10 +82,11 @@ const (
 	SourceCommand = "command"
 )
 
-// IDs of the two non-agent providers.
+// IDs of the non-agent providers.
 const (
 	IDAPI    = "api"
 	IDRouter = "router"
+	IDOllama = "ollama"
 )
 
 // Model is one model a provider offers. SeenAt is when an agent last
@@ -192,6 +194,9 @@ type Options struct {
 	Builtin func() (ready bool, reason string)
 	// Router is the detected router (nil: none).
 	Router RouterState
+	// Ollama returns the local Ollama URL and small-tier completion model when
+	// Ollama is enabled (nil: omitted from the provider list).
+	Ollama func() (baseURL, model string)
 	// Agents lists the ACP agents of the loaded plugins, manifest models only.
 	Agents func() []plugins.Agent
 	// Recheck runs an agent's login probe now (plugins.Registry.Recheck); Fresh
@@ -286,6 +291,26 @@ func (s *Service) Snapshot() Response {
 			Models: catalogueFor(defaults), DefaultModel: apiDefault(defaults),
 		})
 	}
+	if s.opts.Ollama != nil {
+		baseURL, smallModel := s.opts.Ollama()
+		if strings.TrimSpace(baseURL) == "" {
+			baseURL = config.DefaultOllamaBaseURL
+		}
+		if strings.TrimSpace(smallModel) == "" {
+			smallModel = defaults.SmallModel()
+		}
+		resp.Providers = append(resp.Providers, Provider{
+			ID:                 IDOllama,
+			Kind:               KindOllama,
+			Label:              "Ollama",
+			State:              StateReady,
+			FlatRate:           true,
+			Models:             ollamaCatalogueFor(smallModel),
+			DefaultModel:       smallModel,
+			AcceptsCustomModel: true,
+			ModelsNote:         "Dedicated small tier (" + baseURL + ") for inline editor completions.",
+		})
+	}
 	for _, a := range orderAgents(agents) {
 		resp.Providers = append(resp.Providers, s.agentProvider(a))
 	}
@@ -296,6 +321,21 @@ func (s *Service) Snapshot() Response {
 	}
 	resp.Suggested = suggest(resp.Providers, defaults)
 	return resp
+}
+
+var ollamaCatalogue = []Model{
+	{ID: "qwen2.5-coder:1.5b", Label: "Qwen 2.5 Coder 1.5B", Source: SourceCatalogue},
+	{ID: "qwen2.5-coder:3b", Label: "Qwen 2.5 Coder 3B", Source: SourceCatalogue},
+	{ID: "starcoder2:3b", Label: "StarCoder2 3B", Source: SourceCatalogue},
+	{ID: "codellama:7b", Label: "CodeLlama 7B", Source: SourceCatalogue},
+}
+
+func ollamaCatalogueFor(selected string) []Model {
+	out := slices.Clone(ollamaCatalogue)
+	if selected != "" && !slices.ContainsFunc(out, func(m Model) bool { return m.ID == selected }) {
+		out = append(out, Model{ID: selected, Label: selected, Source: SourceCatalogue})
+	}
+	return out
 }
 
 func catalogueFor(d config.Models) []Model {
@@ -482,13 +522,20 @@ func suggest(list []Provider, d config.Models) Suggested {
 	return Suggested{Orchestrator: ref, Fast: ref, Balanced: ref, Deep: ref}
 }
 
-// Check says why model cannot run now, or nil when it can (or when it is not a
-// model id: a tier name or empty). `acp:<id>[/<model>]` is checked against the
-// agent's state, anything else against the built-in path (the router when one
-// is detected, else the API).
-func (s *Service) Check(model string) *Unavailable {
+func isTierOrSmall(model string) bool {
 	switch model {
-	case "", "off", "fast", "balanced", "deep":
+	case "", config.CompletionOff, "fast", "balanced", "deep", config.CompletionSmall:
+		return true
+	}
+	return strings.HasPrefix(model, config.OllamaPrefix)
+}
+
+// Check says why model cannot run now, or nil when it can (or when it is not a
+// model id: a tier name, empty, small, or ollama:<tag>). `acp:<id>[/<model>]` is
+// checked against the agent's state, anything else against the built-in path
+// (the router when one is detected, else the API).
+func (s *Service) Check(model string) *Unavailable {
+	if isTierOrSmall(model) {
 		return nil
 	}
 	return CheckIn(s.Snapshot(), model)
@@ -496,8 +543,7 @@ func (s *Service) Check(model string) *Unavailable {
 
 // CheckIn is Check against a snapshot already taken.
 func CheckIn(snap Response, model string) *Unavailable {
-	switch model {
-	case "", "off", "fast", "balanced", "deep":
+	if isTierOrSmall(model) {
 		return nil
 	}
 	byID := func(id string) *Provider {

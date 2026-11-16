@@ -225,3 +225,35 @@ func TestACPPendingApprovalIsDeniedWhenTheTurnIsCancelled(t *testing.T) {
 		t.Fatalf("resolved events = %+v", res)
 	}
 }
+
+func TestACPAcceptEditsApprovesEditsAndAsksForCommands(t *testing.T) {
+	r := newACPRig(t, mockllm.New(0), fakeAgent("fake", true))
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# demo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	name, access := "p", "accept_edits"
+	svc := r.svcWithAgents(t, fakeAgent("fake", true))
+	p, err := svc.Create(context.Background(), project.Input{
+		Name: &name, Folders: &[]project.FolderInput{{Path: dir}}, Access: &access,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Edits under accept_edits auto-approve without an approval card.
+	if got := r.runCollect(t, p.ID, "[acp] summarize", nil); got.status != "completed" {
+		t.Fatalf("edit turn = %s", got.status)
+	}
+	if _, err := os.Stat(filepath.Join(dir, fakeacp.NoteFile)); err != nil {
+		t.Fatalf("edit did not write: %v", err)
+	}
+	// Commands still ask.
+	ap := r.approver(t, p.ID, allowAll)
+	if got := r.runCollect(t, p.ID, "[acp] [perm] run the tests", nil); got.status != "completed" {
+		t.Fatalf("command turn = %s", got.status)
+	}
+	seen := ap.all()
+	if len(seen) != 1 || seen[0].Detail.Command != "npm test" {
+		t.Fatalf("expected 1 command approval, got %+v", seen)
+	}
+}

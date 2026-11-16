@@ -1,4 +1,5 @@
 import type { Provider, ProviderList } from "@octo/agent-client";
+import { parseAcp } from "../models";
 import { canRun, chipLabel } from "../providers";
 import { commandOf } from "./plain";
 
@@ -31,9 +32,9 @@ export function notReady(list: ProviderList, models: readonly string[], editing:
   const seen = new Set<string>();
   for (const value of models) {
     if (!value || canRun(list, value) || seen.has(value)) continue;
-    const id = value.startsWith("acp:") ? value.slice(4).split("/", 1)[0] : undefined;
+    const id = parseAcp(value)?.id;
     const agent = id ? list.providers.find((p) => p.kind === "agent" && p.id === id) : undefined;
-    const provider = agent ?? list.providers.find((p) => p.kind !== "agent");
+    const provider = agent ?? list.providers.find((p) => p.kind === "api" || p.kind === "router");
     const key = agent && agent.state !== "ready" ? agent.id : provider && !agent ? provider.id : value;
     if (seen.has(key)) continue;
     seen.add(value);

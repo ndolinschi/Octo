@@ -57,6 +57,8 @@ export type WorkspaceValue = {
   layout: Layout;
   /** One strip for everything (narrow window or groups that don't fit). */
   narrow: boolean;
+  /** Project has blocked memory (`auto_memory === "blocked"`): hide Memory tool from menus and prune open Memory tab. */
+  memoryBlocked: boolean;
   /** A group's minimum width in the row (decision 67; 94a: a file group that shows its tree column also needs the column). */
   floorOf(groupId: string): number;
   /** The conversation tab whose live indicator may animate (the one being watched), if visible. */
@@ -243,6 +245,7 @@ export function WorkspaceProvider({
   const cycling = useRef(false);
   const [closedTabs, setClosedTabs] = useState<Closed<TabId>[]>([]);
   const selfNav = useRef<string | null>(null);
+  const graceTabs = useRef(new Map<string, number>());
   const [maxGroup, setMaxGroup] = useState<string | null>(null);
   const maxRef = useRef<string | null>(null);
   const [runStatuses, setRunStatuses] = useState<WorkspaceValue["runStatuses"]>({});
@@ -409,6 +412,7 @@ export function WorkspaceProvider({
       projectId,
       layout,
       narrow,
+      memoryBlocked: project?.memory?.auto_memory === "blocked",
       floorOf: (groupId) => floors[layout.groups.findIndex((g) => g.id === groupId)] ?? 0,
       watched: isVisible(lastConversation) ? lastConversation : null,
       // Chat's agent is its session's root (decision 96), else the project's default orchestrator.
@@ -470,6 +474,7 @@ export function WorkspaceProvider({
       // The Files tab is a file view (editor + tree column) and Changes is a list beside a diff: both open at the width of a
       // file (the rest of the row after the conversation), not at a tool's 366px where the diff is cramped.
       openTool: (tool) => {
+        if (tool === "memory" && project?.memory?.auto_memory === "blocked") return;
         const tab = L.toolTab(tool);
         // Decision 35: the opened tool takes focus (the header button that opened it may re-mount in another strip).
         // The side question's input takes the caret (Ctrl/Cmd+; means "ask now"); Files, its tree's filter (a focus request).
@@ -504,13 +509,17 @@ export function WorkspaceProvider({
       openSession: (sessionId) => {
         const current = layoutRef.current;
         const tab = L.sessionTab(sessionId);
+        graceTabs.current.set(sessionId, Date.now() + 15_000);
         if (L.groupOf(current, tab)) return commit(L.activate(current, tab));
-        const from = L.groupOf(current, L.toolTab("sessions")) ?? L.chatGroupOf(current);
-        // Split only when the dock is one group (and has room): beside it. With two groups already, a third column leaves
-        // nothing readable, so the session is a tab next to the Sessions tab.
-        const room = !narrowRef.current && current.groups.length === 1 && dockWidth >= dockNeeds([...current.groups, { tabs: [] }]);
-        if (room) return commit(L.open(current, tab, { newAfter: from.id, size: from.size / 2 }));
-        commit(L.open(current, tab, { group: from.id }));
+        const known = state.sessions.list.find((x) => x.id === sessionId);
+        if (known?.kind === "agent") {
+          const from = L.groupOf(current, L.toolTab("sessions")) ?? L.chatGroupOf(current);
+          const room = !narrowRef.current && current.groups.length === 1 && dockWidth >= dockNeeds([...current.groups, { tabs: [] }]);
+          if (room) return commit(L.open(current, tab, { newAfter: from.id, size: from.size / 2 }));
+          return commit(L.open(current, tab, { group: from.id }));
+        }
+        // Main sessions open as tabs in Chat's group so multiple sessions can be open concurrently.
+        commit(L.open(current, tab, { group: L.chatGroupOf(current).id }));
       },
       openIn: (tab, groupId) => commit(L.open(layoutRef.current, tab, { group: groupId })),
       dropTab: (tab) => commit(L.close(layoutRef.current, [tab])),
@@ -643,6 +652,7 @@ export function WorkspaceProvider({
     chatRoot,
     chatSession,
     setChatSession,
+    state.sessions.list,
     layout,
     narrow,
     floors,
@@ -690,14 +700,17 @@ export function WorkspaceProvider({
         handled.current = routeKey;
         return commit(L.activate(current, tab), { route: false });
       }
-      // An agent session has its own tab; a main session (or one not in the list yet: the gone state says so) is Chat's.
       if (!sessionsKnown) return;
       handled.current = routeKey;
       const known = state.sessions.list.find((x) => x.id === routeSessionId);
       if (known?.kind === "agent") return value.openSession(routeSessionId);
-      setChatSession(routeSessionId);
-      commit(L.activate(current, L.CHAT), { route: false });
-      return;
+      const shownInChat = chatSessionRef.current ?? state.sessions.defaultId;
+      if (routeSessionId === shownInChat || (!known && state.sessions.list.length === 0)) {
+        setChatSession(routeSessionId);
+        commit(L.activate(current, L.CHAT), { route: false });
+        return;
+      }
+      return value.openSession(routeSessionId);
     }
     if (!routeAgentId) {
       handled.current = routeKey;
@@ -716,6 +729,8 @@ export function WorkspaceProvider({
     sessionsKnown,
     state.agents,
     state.sessions.list,
+    state.sessions.defaultId,
+    chatSessionRef,
     projectId,
     commit,
     openAgent,
@@ -743,16 +758,38 @@ export function WorkspaceProvider({
     if (!agentsLoaded || !project) return;
     const folders = new Set(project.folders.map((f) => f.label));
     const commands = new Set((project.commands ?? []).map((c) => c.name.toLowerCase()));
+    const knownSessions = synced > 0 ? new Set(state.sessions.list.map((s) => s.id)) : null;
+    const now = Date.now();
     const next = L.prune(layoutRef.current, (tab) => {
       const ref = L.parseTab(tab);
       if (ref?.kind === "agent") return Boolean(state.agents[ref.agentId]);
+      if (ref?.kind === "session" && knownSessions) {
+        if (knownSessions.has(ref.sessionId)) {
+          graceTabs.current.delete(ref.sessionId);
+          return true;
+        }
+        return (graceTabs.current.get(ref.sessionId) ?? 0) > now;
+      }
       if (ref?.kind === "file") return folders.has(keyFolder(ref.key));
       // A run tab of a command that was removed or renamed has nothing to show (its runs keep the old name).
       if (ref?.kind === "run") return commands.has(ref.name.toLowerCase());
+      if (ref?.kind === "tool" && ref.tool === "memory" && project.memory?.auto_memory === "blocked") return false;
       return true;
     });
     if (next !== layoutRef.current) commit(next, { route: false });
-  }, [agentsLoaded, project, state.agents, commit]);
+  }, [agentsLoaded, project, state.agents, state.sessions.list, synced, commit]);
+
+  useEffect(() => {
+    const onReset = (event: Event) => {
+      const cleared = (event as CustomEvent<{ cleared?: boolean } | null>).detail?.cleared === true;
+      if (!cleared) return;
+      graceTabs.current.clear();
+      setChatSession(null);
+      commit(L.activate(layoutRef.current, L.CHAT), { route: false });
+    };
+    window.addEventListener("octo:sessions-reset", onReset);
+    return () => window.removeEventListener("octo:sessions-reset", onReset);
+  }, [setChatSession, commit]);
 
   /* ---------- keyboard (decision 25) ---------- */
 

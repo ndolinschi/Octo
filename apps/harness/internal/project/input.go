@@ -35,7 +35,7 @@ type Input struct {
 	MaxDepth        *int `json:"max_depth"`
 	// BudgetUSD is the project's spend cap; JSON null removes it.
 	BudgetUSD OptionalFloat `json:"budget_usd"`
-	// Access is "supervised" or "full" (v7 approvals).
+	// Access is "supervised", "accept_edits" or "full" (v7 approvals).
 	Access *string `json:"access"`
 	// Memory is the project's memory setting (context mode, window size).
 	Memory *memory.Settings `json:"memory"`
@@ -82,8 +82,8 @@ func validBudget(o OptionalFloat) error {
 }
 
 func validAccess(a *string) error {
-	if a != nil && *a != projectstore.AccessSupervised && *a != projectstore.AccessFull {
-		return invalid("access must be %q or %q", projectstore.AccessSupervised, projectstore.AccessFull)
+	if a != nil && *a != projectstore.AccessSupervised && *a != projectstore.AccessAcceptEdits && *a != projectstore.AccessFull {
+		return invalid("access must be %q, %q or %q", projectstore.AccessSupervised, projectstore.AccessAcceptEdits, projectstore.AccessFull)
 	}
 	return nil
 }
@@ -112,7 +112,7 @@ func mergeModels(base config.Models, over *config.Models) (config.Models, error)
 	}
 	for dst, src := range map[*string]string{
 		&base.Orchestrator: over.Orchestrator, &base.Fast: over.Fast,
-		&base.Balanced: over.Balanced, &base.Deep: over.Deep, &base.TierPolicy: over.TierPolicy, &base.Side: over.Side,
+		&base.Balanced: over.Balanced, &base.Deep: over.Deep, &base.TierPolicy: over.TierPolicy, &base.Side: over.Side, &base.Small: over.Small,
 	} {
 		if src != "" {
 			*dst = src

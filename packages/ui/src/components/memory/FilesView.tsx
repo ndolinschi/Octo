@@ -39,6 +39,7 @@ export function FilesView(props: {
   const sorted = useMemo(() => (files ? sortFiles(files) : []), [files]);
   const now = useNow(false, CLOCK_MINUTE_MS);
   const current = files?.find((f) => f.path === props.selected) ?? null;
+  const shown = current ?? sorted[0] ?? null;
   // Item 9 (polish pass F3): one Tab stop for the files (↑/↓/Home/End between them).
   const rows = useRef<HTMLUListElement>(null);
   useListStops(rows);
@@ -60,7 +61,7 @@ export function FilesView(props: {
             <li key={f.path}>
               <ListRow
                 size="md"
-                selected={f.path === current?.path}
+                selected={f.path === shown?.path}
                 leading={<Glyph icon={fileIcon(f.path)} size={14} />}
                 title={f.path}
                 truncate="middle"
@@ -74,11 +75,11 @@ export function FilesView(props: {
         </ul>
       )}
       detail={
-        current ? (
+        shown ? (
           <FileDetail
-            key={current.path}
+            key={shown.path}
             projectId={props.projectId}
-            file={current}
+            file={shown}
             now={now}
             onGone={() => {
               props.onSelect(null);

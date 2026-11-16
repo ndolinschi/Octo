@@ -113,6 +113,11 @@ export const RARE_METHODS = [
   "rewindSession",
   "getSessionLatestPlan",
   "exportSession",
+  "deleteAllSessions",
+  "listImportableSessions",
+  "importSessions",
+  "listWorkspaces",
+  "moveSessionToWorktree",
 ] as const;
 
 export type RareMethod = (typeof RARE_METHODS)[number];

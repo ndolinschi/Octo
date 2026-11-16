@@ -14,18 +14,18 @@ func TestMemorySettingAndTurnReceiptOverHTTP(t *testing.T) {
 	folder := t.TempDir()
 	var p project.Project
 	e.into(t, "POST", "/v1/projects", map[string]any{"name": "m", "folders": []map[string]string{{"path": folder}}}, http.StatusCreated, &p)
-	if p.Memory.Context != "full" || p.Memory.RecentExchanges != 5 {
-		t.Fatalf("default memory setting = %+v: full stays the default", p.Memory)
+	if p.Memory.Context != "full" || p.Memory.RecentExchanges != 5 || p.Memory.AutoMemory != "off" {
+		t.Fatalf("default memory setting = %+v: full/off stays the default", p.Memory)
 	}
 	e.into(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"memory": map[string]any{"context": "window"}}, http.StatusOK, &p)
-	if p.Memory.Context != "window" || p.Memory.RecentExchanges != 5 {
+	if p.Memory.Context != "window" || p.Memory.RecentExchanges != 5 || p.Memory.AutoMemory != "off" {
 		t.Fatalf("after PATCH = %+v", p.Memory)
 	}
 	e.into(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"memory": map[string]any{"recent_exchanges": 3}}, http.StatusOK, &p)
 	if p.Memory.Context != "window" || p.Memory.RecentExchanges != 3 {
 		t.Fatalf("a partial PATCH must keep the other field: %+v", p.Memory)
 	}
-	for _, bad := range []map[string]any{{"context": "everything"}, {"recent_exchanges": 99}, {"recent_exchanges": -1}} {
+	for _, bad := range []map[string]any{{"context": "everything"}, {"recent_exchanges": 99}, {"recent_exchanges": -1}, {"auto_memory": "always"}} {
 		e.wantError(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"memory": bad}, http.StatusBadRequest, "invalid_request")
 	}
 	var created project.Project

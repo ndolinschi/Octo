@@ -13,8 +13,10 @@ import {
   inputPairs,
   rawInput,
   readTarget,
+  skillNameOf,
   stoppedLine,
   toolKind,
+  unwrapSkillContent,
   viewState,
   type ToolKind,
 } from "../../lib/toolView";
@@ -29,6 +31,7 @@ import { useTranscript } from "./transcriptContext";
 /** Tabular tool results load the table component with the first one (its own chunk). */
 const DataTable = lazy(() => import("../shared/DataTable").then((m) => ({ default: m.DataTable })));
 const Pairs = lazy(() => import("../shared/DataTable").then((m) => ({ default: m.Pairs })));
+const Markdown = lazy(() => import("../shared/Markdown").then((m) => ({ default: m.Markdown })));
 
 /** At most this many lines of an unknown tool's text result are drawn. */
 const RESULT_CAP = 200;
@@ -98,9 +101,30 @@ export function ToolDetail({
     if (target) return <ReadBody target={target} content={output} failed={failed} raw={raw} />;
   }
   if (kind === "edit" && views.length > 0) return <EditBody views={views} start={times.start} failed={failed} raw={raw} />;
+  if (kind === "skill") return <SkillBody use={use} output={output} failed={failed} raw={raw} />;
   // An ACP delete: the row names the file; the body says what happened (the path and the empty result stay under Raw).
   if (use.name === "delete" && acpCall(use.name, use.input) && !failed) return <BodyFrame kind="delete" raw={raw} lead={<span>The file was deleted.</span>} />;
   return <OtherBody use={use} kind={kind} output={output} failed={failed} raw={raw} />;
+}
+
+/** Loaded agent skill: shows the skill name and its unwrapped Markdown instructions cleanly. */
+function SkillBody({ use, output, failed, raw }: { use: ToolUse; output: string | null; failed: string | null; raw: RawCall }) {
+  const unwrapped = useMemo(() => (output !== null ? unwrapSkillContent(output) : null), [output]);
+  const skillName = skillNameOf(use.name, use.input, output) || unwrapped?.name || "";
+  const body = unwrapped?.markdown ?? "";
+  return (
+    <BodyFrame kind="skill" raw={raw} lead={skillName ? <span className="font-mono text-xs">{skillName}</span> : <span>Skill</span>}>
+      {failed ? (
+        <p className={cn(INSET, "text-err")}>{failed}</p>
+      ) : body ? (
+        <div className={cn("max-h-96 overflow-y-auto", INSET)}>
+          <Suspense fallback={<pre className="font-mono text-xs leading-5 whitespace-pre-wrap text-fg-2">{body}</pre>}>
+            <Markdown text={body} className="octo-prose octo-prose-compact" />
+          </Suspense>
+        </div>
+      ) : null}
+    </BodyFrame>
+  );
 }
 
 /** Search, fetch and unknown tools: one summary line, the input as key–value rows, the result (a table when tabular, decision 44). */

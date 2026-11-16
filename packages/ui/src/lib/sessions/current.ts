@@ -38,3 +38,19 @@ export function sessionTabMode(input: { parallel: boolean; kind: "main" | "agent
   if (input.parallel && (input.kind === "main" || input.kind === undefined)) return "conversation";
   return "detail";
 }
+
+export const isWorking = (s: Pick<ProjectSession, "state">): boolean => s.state === "working" || s.state === "waiting" || s.state === "queued";
+
+/** The default main session (parallel sessions; `current` is its old name). */
+export const isDefaultSession = (s: Pick<ProjectSession, "kind" | "current" | "default">): boolean => s.kind === "main" && (s.default ?? s.current);
+
+/** Whether a main session can be moved out of the shared main checkout into its own git worktree. */
+export function canMoveToWorktree(s: Pick<ProjectSession, "kind" | "state" | "workspace">): boolean {
+  return s.kind === "main" && (s.workspace?.kind ?? "shared") === "shared" && !isWorking(s);
+}
+
+/** The worktree branch or label when a session runs in its own git worktree; null when on the shared checkout. */
+export function sessionWorkspaceLabel(s: Pick<ProjectSession, "workspace">): string | null {
+  if (s.workspace?.kind !== "worktree") return null;
+  return s.workspace.branch?.trim() || s.workspace.title?.trim() || "Worktree";
+}

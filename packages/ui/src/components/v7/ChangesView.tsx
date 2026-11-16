@@ -62,7 +62,8 @@ export function ChangesView(props: ChangesViewProps) {
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [turnBusy, setTurnBusy] = useState<number | null>(null);
   const two = width === null || width >= TWO_COLUMNS_MIN;
-  const layout = diffLayout(wideWindow ? DIFF_SPLIT_MIN : 0, two && width !== null ? width - 280 : 0);
+  const listWidth = width !== null ? Math.min(360, Math.max(280, Math.round(width * 0.3))) : 280;
+  const layout = diffLayout(wideWindow ? DIFF_SPLIT_MIN : 0, two && width !== null ? width - listWidth : 0);
   const label = props.turnLabel ?? ((turn: TurnChanges) => earlierRequestLabel(turn, Date.now()));
 
   const index = c.selected ? c.all.findIndex((s) => s.turnId === c.selected?.turnId && s.file === c.selected.file) : -1;
@@ -164,7 +165,7 @@ export function ChangesView(props: ChangesViewProps) {
           <>
             <nav
               aria-label="Changed files"
-              className="@container/list flex w-70 shrink-0 flex-col gap-2 overflow-y-auto border-r border-line px-pane pt-1 pb-4"
+              className="@container/list flex w-[clamp(17.5rem,30%,22.5rem)] shrink-0 flex-col gap-2 overflow-y-auto border-r border-line px-pane pt-1 pb-4"
             >
               {list}
               <FloatRoom />

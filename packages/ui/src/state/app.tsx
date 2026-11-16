@@ -41,6 +41,7 @@ type AppValue = {
   config: BridgeConfig | null;
   retry(): void;
   refreshProjects(): Promise<void>;
+  refreshConfig(): Promise<void>;
   /** The active theme (`dark`, `cursor`, `claude`, `codex`, `opencode`, or `light`). */
   theme: Theme;
   /** What the user chose; "system" follows the OS. */
@@ -102,6 +103,14 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
         setHealth("offline");
         setAttempt((n) => n + 1);
       }
+    }
+  }, [bridge]);
+
+  const refreshConfig = useCallback(async () => {
+    try {
+      setConfig(await withDeadline(bridge.getConfig()));
+    } catch {
+      // Health polling handles connectivity failures.
     }
   }, [bridge]);
 
@@ -182,6 +191,7 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
         setAttempt((n) => n + 1);
       },
       refreshProjects,
+      refreshConfig,
       theme,
       themePref,
       canChooseTheme: !host.theme,
@@ -201,6 +211,7 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
       projects,
       config,
       refreshProjects,
+      refreshConfig,
       probe,
       theme,
       themePref,

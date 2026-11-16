@@ -313,3 +313,86 @@ func WorktreeRemove(ctx context.Context, repo, path string) error {
 	_, _ = Run(ctx, repo, "worktree", "prune")
 	return nil
 }
+
+// HeadBranch returns the short checked-out branch name, or "" when HEAD is detached.
+func HeadBranch(ctx context.Context, repo string) (string, error) {
+	out, err := Run(ctx, repo, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch == "HEAD" {
+		return "", nil
+	}
+	return branch, nil
+}
+
+// HeadCommit resolves HEAD to a full commit SHA.
+func HeadCommit(ctx context.Context, repo string) (string, error) {
+	out, err := Run(ctx, repo, "rev-parse", "--verify", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// WorktreeAddBranch creates a new branch at startPoint (defaulting to HEAD) checked out in path.
+func WorktreeAddBranch(ctx context.Context, repo, path, branch, startPoint string) error {
+	if !ValidRefName(branch) {
+		return fmt.Errorf("invalid branch name %q", branch)
+	}
+	if startPoint == "" {
+		startPoint = "HEAD"
+	} else if !ValidRefName(startPoint) {
+		return fmt.Errorf("invalid base revision %q", startPoint)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	_, err := Run(ctx, repo, "worktree", "add", "-b", branch, "--end-of-options", path, startPoint)
+	return err
+}
+
+// CarryWorkingTreeChanges copies tracked (staged + unstaged relative to HEAD) and untracked
+// non-ignored files from srcRepo into dstWorktree without mutating srcRepo.
+func CarryWorkingTreeChanges(ctx context.Context, srcRepo, dstWorktree string) error {
+	diff, err := Run(ctx, srcRepo, "diff", "--binary", "HEAD", "--")
+	if err != nil {
+		return err
+	}
+	if len(diff) > 0 {
+		if _, err := RunIn(ctx, dstWorktree, bytes.NewReader(diff), "apply", "--whitespace=nowarn", "-"); err != nil {
+			return err
+		}
+	}
+	untracked, err := Run(ctx, srcRepo, "ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return err
+	}
+	for _, raw := range strings.Split(string(untracked), "\x00") {
+		if raw == "" {
+			continue
+		}
+		rel := filepath.FromSlash(raw)
+		if filepath.IsAbs(rel) || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
+			continue
+		}
+		srcPath := filepath.Join(srcRepo, rel)
+		dstPath := filepath.Join(dstWorktree, rel)
+		info, err := os.Lstat(srcPath)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+			return err
+		}
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(dstPath, data, info.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	return nil
+}

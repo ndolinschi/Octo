@@ -86,6 +86,7 @@ pub fn default_strip_fields() -> Vec<String> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tiers {
+    pub small: String,
     pub low: String,
     pub mid: String,
     pub high: String,
@@ -118,6 +119,7 @@ pub struct Tiers {
 impl Tiers {
     pub fn new(low: String, mid: String, high: String) -> Self {
         Self {
+            small: "qwen2.5-coder:1.5b".to_string(),
             low,
             mid,
             high,
@@ -145,6 +147,11 @@ impl Tiers {
             prices: LivePrices::default(),
             route: super::delegate::RoutePolicy::default(),
         }
+    }
+
+    pub fn with_small(mut self, small: String) -> Self {
+        self.small = small;
+        self
     }
 
     pub fn blended_cost_micros(&self, band: &str, shape: RequestShape) -> Option<u128> {
@@ -281,6 +288,8 @@ impl Tiers {
             "mid"
         } else if ids_match(model, &self.high) {
             "high"
+        } else if !self.small.is_empty() && ids_match(model, &self.small) {
+            "small"
         } else {
             "custom"
         }
@@ -288,6 +297,7 @@ impl Tiers {
 
     pub fn slug(&self, band: &str) -> String {
         match band {
+            "small" => self.small.clone(),
             "low" => self.low.clone(),
             "mid" => self.mid.clone(),
             "high" => self.high.clone(),

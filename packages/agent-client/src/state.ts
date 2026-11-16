@@ -472,6 +472,7 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
     case "memory.updated":
       return { ...state, memoryRevision: state.memoryRevision + 1 };
     case "project.updated":
+    case "workspace.updated":
     case "file.changed":
     case "review.updated": // reviews are loaded through their own API
     case "review.list_updated":

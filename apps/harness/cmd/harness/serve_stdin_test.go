@@ -113,8 +113,12 @@ func (l *lockedBuf) String() string {
 func TestV7EnvDefaults(t *testing.T) {
 	t.Setenv("HARNESS_DEFAULT_ACCESS", "")
 	t.Setenv("HARNESS_APPROVAL_TIMEOUT", "")
-	if a, to, err := v7Env(); err != nil || a != "full" || to != 0 {
-		t.Fatalf("defaults: %q %v %v (new projects are full until the UI shows approval cards)", a, to, err)
+	if a, to, err := v7Env(); err != nil || a != "supervised" || to != 0 {
+		t.Fatalf("defaults: %q %v %v", a, to, err)
+	}
+	t.Setenv("HARNESS_DEFAULT_ACCESS", "accept_edits")
+	if a, _, err := v7Env(); err != nil || a != "accept_edits" {
+		t.Fatalf("accept_edits: %q %v", a, err)
 	}
 	t.Setenv("HARNESS_DEFAULT_ACCESS", "supervised")
 	t.Setenv("HARNESS_APPROVAL_TIMEOUT", "90s")

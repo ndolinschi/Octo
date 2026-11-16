@@ -45,11 +45,18 @@ import type {
   ProjectSessionDetail,
   AllSessionsParams,
   CreatedSession,
+  DeleteAllSessionsResult,
   GlobalSession,
+  ImportableSession,
+  ImportSessionRef,
+  ImportSessionsResult,
+  MoveToWorktreeInput,
+  MoveToWorktreeResult,
   NewSessionInput,
   SessionMessageResult,
   SessionsParams,
   Task,
+  Workspace,
   Diagnostics,
   Approval,
   ApprovalAnswer,
@@ -300,8 +307,8 @@ export interface Bridge {
   createNote(projectId: string, input: NoteInput): Promise<NoteDocument>;
   updateNote(projectId: string, noteId: string, patch: NotePatch): Promise<NoteDocument>;
   deleteNote(projectId: string, noteId: string): Promise<void>;
-  listFiles(projectId: string, folder: string, path: string): Promise<FileEntry[]>;
-  readFile(projectId: string, folder: string, path: string): Promise<FileContent>;
+  listFiles(projectId: string, folder: string, path: string, opts?: { workspaceId?: string }): Promise<FileEntry[]>;
+  readFile(projectId: string, folder: string, path: string, opts?: { workspaceId?: string }): Promise<FileContent>;
   writeFile(projectId: string, input: WriteFileInput): Promise<FileStat>;
   listPlugins(): Promise<Plugin[]>;
   getUsage(params?: UsageParams): Promise<UsageReport>;
@@ -477,6 +484,16 @@ export interface Bridge {
   patchSession?(projectId: string, sessionId: string, patch: { title?: string; archived?: boolean }): Promise<ProjectSession>;
   /** 409 `current_session` (the default), `session_running`. */
   deleteSession?(projectId: string, sessionId: string): Promise<void>;
+  /** `DELETE /v1/sessions`: deletes every session across all projects when none are running; `409 session_running` otherwise. */
+  deleteAllSessions?(): Promise<DeleteAllSessionsResult>;
+  /** `GET /v1/sessions/importable`: scans external AI CLIs (Claude Code, Codex, Gemini, OpenCode) for importable transcripts. */
+  listImportableSessions?(): Promise<ImportableSession[]>;
+  /** `POST /v1/projects/{pid}/sessions/import`: imports selected external transcripts into a project. */
+  importSessions?(projectId: string, sessions: ImportSessionRef[]): Promise<ImportSessionsResult>;
+  /** `GET /v1/projects/{pid}/workspaces`: active workspaces (`shared` first, then worktrees). */
+  listWorkspaces?(projectId: string): Promise<Workspace[]>;
+  /** `POST /v1/projects/{pid}/sessions/{sid}/worktree`: moves a main session into an isolated git worktree. */
+  moveSessionToWorktree?(projectId: string, sessionId: string, input?: MoveToWorktreeInput): Promise<MoveToWorktreeResult>;
   /** Stops a main session's running turn (pausing its queue) or one sub-agent; 409 `not_running`. */
   stopSession(projectId: string, sessionId: string): Promise<ProjectSession>;
   /**
@@ -622,6 +639,7 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "session.updated",
   "session.current",
   "session.default",
+  "workspace.updated",
   "fact.remembered",
   "fact.forgotten",
   "side.delta",
@@ -790,7 +808,8 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
 
   const p = (id: string) => `/v1/projects/${encodeURIComponent(id)}`;
   const sessionQuery = (o: { sessionId?: string } | undefined) => (o?.sessionId ? `?session=${encodeURIComponent(o.sessionId)}` : "");
-  const fileQuery = (folder: string, path: string) => `folder=${encodeURIComponent(folder)}&path=${encodeURIComponent(path)}`;
+  const fileQuery = (folder: string, path: string, opts?: { workspaceId?: string }) =>
+    `folder=${encodeURIComponent(folder)}&path=${encodeURIComponent(path)}${opts?.workspaceId && opts.workspaceId !== "shared" ? `&workspace=${encodeURIComponent(opts.workspaceId)}` : ""}`;
 
   let rare: Promise<Pick<Bridge, RareMethod>> | undefined;
   const loadRare = () => {
@@ -840,8 +859,8 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
         ...(Array.isArray(body.conversations) ? { conversations: body.conversations as ConversationMarker[] } : {}),
       };
     },
-    listFiles: (id, folder, path) => unwrap<FileEntry[]>(request("GET", `${p(id)}/files?${fileQuery(folder, path)}`), "entries"),
-    readFile: (id, folder, path) => request("GET", `${p(id)}/files/content?${fileQuery(folder, path)}`) as Promise<FileContent>,
+    listFiles: (id, folder, path, opts) => unwrap<FileEntry[]>(request("GET", `${p(id)}/files?${fileQuery(folder, path, opts)}`), "entries"),
+    readFile: (id, folder, path, opts) => request("GET", `${p(id)}/files/content?${fileQuery(folder, path, opts)}`) as Promise<FileContent>,
     getQueue: (id) => request("GET", `${p(id)}/queue`) as Promise<QueueState>,
     exportConversationUrl: (id) => `${base}${p(id)}/export?format=md`,
     listApprovals: (id, o) => unwrap<Approval[]>(request("GET", `${p(id)}/approvals${sessionQuery(o)}`), "approvals"),

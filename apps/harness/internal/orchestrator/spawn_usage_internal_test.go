@@ -59,6 +59,10 @@ func TestMCPInstructionsDescribeRequiredArguments(t *testing.T) {
 	if !strings.Contains(text, "; optional: tier (auto|fast|balanced|deep).") || strings.Contains(text, "tier (one of") {
 		t.Errorf("routed instructions:\n%s", text)
 	}
+	withInput := mcpInstructions([]tools.Def{{Name: ToolRequestInput, InputSchema: json.RawMessage(`{"type":"object","properties":{"title":{"type":"string"}},"required":["title"]}`)}})
+	if !strings.Contains(withInput, "Use request_input") {
+		t.Errorf("missing request_input guidance:\n%s", withInput)
+	}
 }
 
 func TestUnfence(t *testing.T) {

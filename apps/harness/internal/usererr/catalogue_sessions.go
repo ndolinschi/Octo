@@ -84,3 +84,11 @@ func SessionSlotsFull(running int) *Error {
 		Details: strconv.Itoa(running) + " running",
 	}
 }
+
+// WorkspaceAlreadyWorktree: the session is already running inside its own git worktree.
+func WorkspaceAlreadyWorktree(id string) *Error {
+	return &Error{
+		Code: "already_in_worktree", Message: "This session already works in its own worktree.",
+		Hint: "Continue working in this worktree, or start a new session.", Details: id,
+	}
+}

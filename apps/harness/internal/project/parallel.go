@@ -313,12 +313,34 @@ func (s *Service) CreateSessionWith(ctx context.Context, pid string, in CreateSe
 			return CreatedSession{}, err
 		}
 	}
+	var createdWS *projectstore.Workspace
+	workspaceID := ""
 	if w := in.Workspace; w != nil {
 		switch {
 		case w.ID != "" && w.ID != projectstore.SharedWorkspace:
-			return CreatedSession{}, of(KindNotFound, usererr.WorkspaceNotFound(w.ID))
+			ws, err := db.GetWorkspace(ctx, w.ID)
+			if errors.Is(err, projectstore.ErrNotFound) {
+				return CreatedSession{}, of(KindNotFound, usererr.WorkspaceNotFound(w.ID))
+			}
+			if err != nil {
+				return CreatedSession{}, storeErr(err)
+			}
+			workspaceID = ws.ID
 		case w.Kind == "worktree":
-			return CreatedSession{}, of(KindConflict, usererr.WorktreeUnavailable("worktree workspaces are not built yet (parallel sessions phase 3)"))
+			folders, err := db.Folders(ctx)
+			if err != nil {
+				return CreatedSession{}, storeErr(err)
+			}
+			branch := "octo/" + strings.TrimPrefix(projectstore.NewID("wt"), "wt_")
+			if sSlug := slugifyBranchPart(t); sSlug != "" {
+				branch = "octo/" + sSlug
+			}
+			ws, err := s.createWorktreeForProject(ctx, db, folders, branch, w.BaseRef, w.CarryChanges)
+			if err != nil {
+				return CreatedSession{}, err
+			}
+			workspaceID = ws.ID
+			createdWS = &ws
 		case w.Kind != "" && w.Kind != "shared":
 			return CreatedSession{}, invalid("workspace.kind must be shared or worktree")
 		}
@@ -332,10 +354,13 @@ func (s *Service) CreateSessionWith(ctx context.Context, pid string, in CreateSe
 		}
 	}
 	v, err := s.sessions().CreateSession(ctx, pid, orchestrator.NewSessionInput{
-		Title: t, Memory: in.Memory, Model: in.Model, Mode: in.Mode, MakeDefault: in.MakeDefault, FromSession: in.FromSession, Clear: in.Clear,
+		Title: t, Memory: in.Memory, Model: in.Model, Mode: in.Mode, WorkspaceID: workspaceID, MakeDefault: in.MakeDefault, FromSession: in.FromSession, Clear: in.Clear,
 	})
 	if err != nil {
 		return CreatedSession{}, sessionErr(err)
+	}
+	if createdWS != nil {
+		s.hub.Publish(pid, events.WorkspaceUpdated, map[string]any{"workspace": *createdWS})
 	}
 	out := CreatedSession{Session: v}
 	if strings.TrimSpace(in.Text) != "" {

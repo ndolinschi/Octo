@@ -1,6 +1,7 @@
 use crate::config::Config;
 
 use super::claude::Claude;
+use super::ollama::Ollama;
 use super::openai::OpenAI;
 use super::openrouter::OpenRouter;
 
@@ -9,6 +10,7 @@ pub struct Wired {
     pub openai: OpenAI,
     pub openrouter: OpenRouter,
     pub claude: Claude,
+    pub ollama: Ollama,
 }
 
 impl Wired {
@@ -28,6 +30,7 @@ impl Wired {
                 config.anthropic_api_version.clone(),
                 config.max_body_bytes,
             ),
+            ollama: Ollama::new(config.ollama_base_url.clone(), config.max_body_bytes),
         }
     }
 }

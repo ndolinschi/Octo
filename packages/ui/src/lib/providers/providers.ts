@@ -1,5 +1,5 @@
 import type { Provider, ProvidersResponse } from "@octo/agent-client";
-import { agentModelLabel, displayId, modelLabel, modelName, readableModelId, tidyAgentLabel } from "../models";
+import { agentModelLabel, displayId, modelLabel, modelName, parseAcp, readableModelId, tidyAgentLabel } from "../models";
 
 export const isReady = (p: Pick<Provider, "state">): boolean => p.state === "ready";
 
@@ -7,12 +7,12 @@ export const isReady = (p: Pick<Provider, "state">): boolean => p.state === "rea
 export function chipLabel(value: string, list: ProvidersResponse | null): string {
   if (!list) return modelName(value);
   const agents = list.providers.filter((p) => p.kind === "agent");
-  if (value.startsWith("acp:")) {
-    const [id, model] = value.slice(4).split("/", 2);
-    const agent = agents.find((p) => p.id === id);
-    if (agent && model) {
-      const known = agent.models.find((m) => m.id === model);
-      return `${agent.label} · ${known ? agentModelLabel(known) : tidyAgentLabel(readableModelId(model))}`;
+  const ref = parseAcp(value);
+  if (ref) {
+    const agent = agents.find((p) => p.id === ref.id);
+    if (agent && ref.model) {
+      const known = agent.models.find((m) => m.id === ref.model);
+      return `${agent.label} · ${known ? agentModelLabel(known) : tidyAgentLabel(readableModelId(ref.model))}`;
     }
     return modelName(value, agents);
   }
@@ -38,12 +38,16 @@ export function chipParts(label: string): { provider: string; model: string } | 
 /** Whether a model setting can run now (decision 53 a): its provider is ready and still lists it. */
 export function canRun(list: ProvidersResponse, value: string): boolean {
   if (!value) return false;
-  if (value.startsWith("acp:")) {
-    const [id, model] = value.slice(4).split("/", 2);
-    const agent = list.providers.find((p) => p.kind === "agent" && p.id === id);
+  if (value === "small" || value.startsWith("ollama:")) {
+    const ollama = list.providers.find((p) => p.kind === "ollama");
+    return ollama ? isReady(ollama) : true;
+  }
+  const ref = parseAcp(value);
+  if (ref) {
+    const agent = list.providers.find((p) => p.kind === "agent" && p.id === ref.id);
     if (!agent || !isReady(agent)) return false;
-    return !model || agent.models.length === 0 || agent.models.some((m) => m.id === model);
+    return !ref.model || agent.models.length === 0 || agent.models.some((m) => m.id === ref.model);
   }
   // An API key or the router runs any model id (and the tiers); the harness says so when one does not exist.
-  return list.providers.some((p) => p.kind !== "agent" && isReady(p));
+  return list.providers.some((p) => (p.kind === "api" || p.kind === "router") && isReady(p));
 }

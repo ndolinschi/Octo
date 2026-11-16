@@ -1,5 +1,5 @@
 import type { GlobalSession, ProjectSummary } from "@octo/agent-client";
-import { ChevronRight, Ellipsis, Plus } from "lucide-react";
+import { ChevronRight, Ellipsis, GitBranch, Plus } from "lucide-react";
 import { lazy, Suspense, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from "react";
 import { cn } from "../../lib/cn";
 import { usePhone } from "../../lib/phone";
@@ -9,7 +9,7 @@ import { useNow, useScrollFade } from "../../lib/hooks";
 import { projectRowLines, type OrchestratorState } from "../../lib/orchestrator";
 import { hrefFor } from "../../lib/route";
 import { useRovingRows } from "../../lib/rovingRows";
-import { isRunning } from "../../lib/sessions/model";
+import { canMoveToWorktree, deleteCopy, failureText, isRunning, sessionWorkspaceLabel } from "../../lib/sessions/model";
 import {
   isLive,
   isOpen,
@@ -32,6 +32,7 @@ import { useNav } from "../../state/nav";
 import { useOrchestrators } from "../../state/orchestrators";
 import { useSessionIndex } from "../../state/sessionIndex";
 import { requestSession } from "../../state/workspace/sessionsStart";
+import { Glyph } from "../primitives/Glyph";
 import { IconButton } from "../primitives/IconButton";
 import { ListRow } from "../primitives/ListRow";
 import type { MenuItem } from "../primitives/Menu";
@@ -40,10 +41,9 @@ import { SkeletonList } from "../primitives/Skeleton";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { TextField } from "../primitives/TextField";
 import { ConfirmDelete } from "./parts";
-import { failureText } from "./useSessionActions";
-import { deleteCopy } from "../../lib/sessions/model";
 
 const Menu = lazy(() => import("../primitives/Menu").then((m) => ({ default: m.Menu })));
+const MoveToWorktreeDialog = lazy(() => import("../shared/MoveToWorktreeDialog").then((m) => ({ default: m.MoveToWorktreeDialog })));
 const NewSessionPopover = lazy(() => import("./NewSessionPopover").then((m) => ({ default: m.NewSessionPopover })));
 
 const openCodec = jsonCodec(parseOpen);
@@ -84,6 +84,7 @@ export function SessionTree(props: SessionTreeProps) {
   const [menu, setMenu] = useState<MenuAt | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<GlobalSession | null>(null);
+  const [moving, setMoving] = useState<GlobalSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -122,6 +123,9 @@ export function SessionTree(props: SessionTreeProps) {
     const items: MenuItem[] = [{ id: "rename", label: "Rename", run: () => setRenaming(s.id) }];
     if (!isDefault) items.push({ id: "default", label: "Make default", run: () => void act(() => bridge.setDefaultSession(s.project_id, s.id)) });
     if (s.project_id === props.activeProjectId) items.push({ id: "tab", label: "Open in new tab", run: () => nav.workspace()?.openSession(s.id) });
+    if (bridge.moveSessionToWorktree && canMoveToWorktree(s)) {
+      items.push({ id: "worktree", label: "Move to worktree…", run: () => setMoving(s) });
+    }
     if (s.state === "working" || s.state === "waiting")
       items.push({ id: "stop", label: "Stop", run: () => void act(() => bridge.stopSession(s.project_id, s.id)) });
     if (bridge.patchSession && !isDefault) {
@@ -149,7 +153,8 @@ export function SessionTree(props: SessionTreeProps) {
   const createSession = (projectId: string) => {
     void act(async () => {
       const { session } = await bridge.createSession(projectId, {});
-      window.location.hash = hrefFor(projectId, null, session.id);
+      if (projectId === props.activeProjectId && nav.workspace()) nav.workspace()?.openSession(session.id);
+      else window.location.hash = hrefFor(projectId, null, session.id);
       props.onPick();
     });
   };
@@ -208,6 +213,7 @@ export function SessionTree(props: SessionTreeProps) {
   const sessionRow = (s: GlobalSession, inTree: boolean) => {
     const selected = s.id === currentSession;
     const meta = sessionMeta(s, now);
+    const wsLabel = sessionWorkspaceLabel(s);
     return (
       <li key={s.id} role="none" data-tree-row data-tree-level={inTree ? 2 : 1} className="group/r relative" onContextMenu={(e) => openMenu(s, e)}>
         {renaming === s.id ? (
@@ -236,13 +242,21 @@ export function SessionTree(props: SessionTreeProps) {
                 {sessionTitle(s)}
                 <span className="sr-only">
                   {inTree ? "" : `, ${s.project_name}`}
+                  {wsLabel ? `, worktree ${wsLabel}` : ""}
                   {(s.default ?? s.current) ? ", default" : ""}
                 </span>
               </>
             }
-            tip={inTree ? sessionTitle(s) : `${sessionTitle(s)} — ${[s.project_name, meta].filter(Boolean).join(" · ")}`}
+            tip={
+              inTree
+                ? wsLabel
+                  ? `${sessionTitle(s)} — Worktree: ${wsLabel}`
+                  : sessionTitle(s)
+                : `${sessionTitle(s)} — ${[s.project_name, wsLabel ? `Worktree: ${wsLabel}` : "", meta].filter(Boolean).join(" · ")}`
+            }
             meta={
-              <span aria-hidden data-tree-meta className="tabular-nums">
+              <span aria-hidden data-tree-meta className="inline-flex items-center gap-1 tabular-nums">
+                {wsLabel && <Glyph icon={GitBranch} size={14} className="text-fg-3" />}
                 {inTree ? meta : s.project_name}
               </span>
             }
@@ -396,6 +410,7 @@ export function SessionTree(props: SessionTreeProps) {
           }}
         />
       )}
+      <Suspense fallback={null}>{moving && <MoveToWorktreeDialog projectId={moving.project_id} session={moving} onClose={() => setMoving(null)} />}</Suspense>
     </div>
   );
 }

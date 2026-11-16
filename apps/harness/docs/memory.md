@@ -54,9 +54,16 @@ Events: `task.updated {task}` (or `{task_id, deleted: true}` when a harness-open
 
 Everything that is stored or indexed passes the project's secret redactor first: task fields, facts, digest output, memory files (the tool and the API), the summaries, the search query, and the text of messages when they are indexed (the index holds `[secret]` where a stored secret value was). A test puts a secret value into a user request, task_update, a digest, a memory file and the API, then scans the task records, the file list and index, every file, every search result for several queries, and the raw index tables. **Not covered:** the transcript itself keeps the user's own message as typed (existing behaviour; a key typed into the composer is the UI's to catch), and a secret the agent re-encodes.
 
-## Context assembly (M2)
+## Context assembly (M2) and auto-memory mode
 
-Project setting `memory: {context: "full" | "window", recent_exchanges: 1..20 (default 5)}` (create and `PATCH`, partial updates merge; project JSON always has it, `full` and 5 for projects that predate it). **`full` is the default and is today's behaviour** (the whole transcript after the latest compaction summary). Switching in either direction changes only what the next request is built from; no message, task, fact or file is touched.
+Project setting `memory: {auto_memory: "off" | "allow" | "review" | "blocked" (default "off"), context: "full" | "window", recent_exchanges: 1..20 (default 5)}` (create and `PATCH`, partial updates merge; project JSON always has it, `full` and 5 for legacy fields, and `off` for `auto_memory` when unset). **`full` is the default and is today's behaviour** (the whole transcript after the latest compaction summary). Switching context mode changes only what the next request is built from; no message, task, fact or file is touched.
+
+**Auto-memory (`memory.auto_memory`, feature flag `HARNESS_FEATURE_AUTO_MEMORY`, default `true`):**
+- `"off"` (default): automatic writes from the turn are off (`remember` tool / `memory` file mutations / `task_update` / post-turn digest). When a model attempts a memory write in `"off"` mode and `HARNESS_FEATURE_AUTO_MEMORY` is enabled, the harness raises a `memory` approval card (`"Enable auto memory?"`) with choices to switch the project to **Allow**, **Review**, **Block**, or open Settings.
+- `"review"`: each automatic memory write or `remember` / `task_update` / `memory` write raises a `memory` approval card so the user can **Save** (`allow`), **Allow all** (switches project to `allow`), **Block**, or **Skip** (`deny`).
+- `"allow"`: automatic memory writes, digest, and memory tools run normally without per-write approval.
+- `"blocked"`: memory is disabled for this project; automatic writes and digests are suppressed, `/memory` is blocked, and Memory UI entry points are hidden for the project.
+`GET /v1/config` exposes the evaluated runtime feature flags in `features: {"auto_memory": boolean}` (controlled by `HARNESS_FEATURE_AUTO_MEMORY`, configurable via Settings → Privacy → Feature flags).
 
 **Window mode** (built-in orchestrator; sub-agents and side questions are never affected). The orchestrator's request is assembled, each block capped in tokens (four characters a token), stable blocks first:
 

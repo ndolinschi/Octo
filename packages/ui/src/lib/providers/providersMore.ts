@@ -43,12 +43,15 @@ export function connectAction(p: Pick<Provider, "state" | "kind">): "Connect" | 
 
 /** The provider a new project would run on (the connect screen says which one, decision 53 b). */
 export function providerOf(list: ProvidersResponse, value: string): Provider | undefined {
+  if (value === "small" || value.startsWith("ollama:")) {
+    return list.providers.find((p) => p.kind === "ollama");
+  }
   if (value.startsWith("acp:")) {
     const id = value.slice(4).split("/")[0];
     return list.providers.find((p) => p.kind === "agent" && p.id === id);
   }
   return (
-    list.providers.find((p) => p.kind !== "agent" && isReady(p) && p.models.some((m) => m.id === value)) ??
-    list.providers.find((p) => p.kind !== "agent" && isReady(p))
+    list.providers.find((p) => (p.kind === "api" || p.kind === "router") && isReady(p) && p.models.some((m) => m.id === value)) ??
+    list.providers.find((p) => (p.kind === "api" || p.kind === "router") && isReady(p))
   );
 }

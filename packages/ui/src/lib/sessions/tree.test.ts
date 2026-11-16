@@ -1,7 +1,7 @@
 import type { ProjectSession } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isOpen, mainSessions, parseOpen, projectSummary, sessionGlyph, sessionMeta, treeKey, visibleSessions, type KeyRow } from "./tree";
+import { hasSessionMessages, isOpen, mainSessions, parseOpen, projectSummary, sessionGlyph, sessionMeta, treeKey, visibleSessions, type KeyRow } from "./tree";
 
 const NOW = Date.parse("2026-11-14T12:00:00Z");
 const s = (id: string, minutesAgo: number, over: Partial<ProjectSession> = {}): ProjectSession => ({
@@ -43,16 +43,27 @@ test("an open project shows its five newest sessions plus the live ones beyond t
   assert.deepEqual([visibleSessions(many, true).shown.length, visibleSessions(many, true).hidden], [50, 10]);
 });
 
-test("newest activity first; archived and agent sessions are not rows", () => {
-  const list = [s("a", 30), s("b", 5), s("c", 60, { archived: true })];
+test("newest activity first; archived, agent, and empty idle sessions are not rows", () => {
+  const list = [
+    s("a", 30),
+    s("b", 5),
+    s("c", 60, { archived: true }),
+    s("empty-idle", 1, { exchanges: 0, state: "idle" }),
+    s("empty-working", 2, { exchanges: 0, state: "working" }),
+    s("empty-queued", 3, { exchanges: 0, state: "idle", queued: 1 }),
+  ];
   assert.deepEqual(
     mainSessions(list).map((x) => x.id),
-    ["b", "a"],
+    ["empty-working", "empty-queued", "b", "a"],
   );
+  assert.equal(hasSessionMessages(s("x", 1, { exchanges: 0, state: "idle" })), false);
+  assert.equal(hasSessionMessages(s("x", 1, { exchanges: 0, state: "waiting" })), true);
+  assert.equal(hasSessionMessages(s("x", 1, { exchanges: 1, state: "idle" })), true);
 });
 
 test("the project's glyph sums up its sessions: needs you > failed > working > queued > idle", () => {
   assert.deepEqual(projectSummary([]), { glyph: null, running: 0 });
+  assert.deepEqual(projectSummary([s("empty", 1, { exchanges: 0, state: "idle" })]), { glyph: null, running: 0 });
   assert.equal(projectSummary([s("a", 1), s("b", 2, { state: "queued" })]).glyph, "queued");
   assert.equal(projectSummary([s("a", 1, { state: "queued" }), s("b", 2, { state: "working" })]).glyph, "working");
   assert.equal(projectSummary([s("a", 1, { state: "working" }), s("b", 2, { state: "failed" })]).glyph, "failed");

@@ -1,11 +1,12 @@
 import type { Agent, Message, ProjectSession } from "@octo/agent-client";
 import { MessageSquareShare } from "lucide-react";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { formatTokens } from "../../lib/format";
 import { DETAIL_COLUMN } from "../../lib/panelColumn";
 import { EMPTY_FIRST_LINE, EMPTY_SESSION_LINE } from "../../lib/sessions/carry";
 import { canDelete, detailLine, earlierSession, hasNoRequests, isDefaultSession, isWorking, parentOf } from "../../lib/sessions/model";
 import { roleText } from "../../lib/orchestrator";
+import { useApp } from "../../state/app";
 import { useModelNames } from "../../state/modelNames";
 import { useProject } from "../../state/project";
 import { useNav } from "../../state/nav";
@@ -21,6 +22,8 @@ import { SessionHeader } from "./SessionHeader";
 import { useCompact } from "./useCompact";
 import { useSessionActions } from "./useSessionActions";
 import { useSessionConversation } from "./useSessionConversation";
+
+const MoveToWorktreeDialog = lazy(() => import("../shared/MoveToWorktreeDialog").then((m) => ({ default: m.MoveToWorktreeDialog })));
 
 /** The reading width of a detail pane (R2: the one detail column of every tab). */
 const DETAIL_MAX = DETAIL_COLUMN;
@@ -43,9 +46,10 @@ export function SessionDetail(props: {
   onGone(): void;
 }) {
   const s = props.session;
+  const { bridge } = useApp();
   const actions = useSessionActions();
   const { name } = useModelNames();
-  const { projectId, project, state } = useProject();
+  const { projectId, project, state, applySession } = useProject();
   const ws = useOptionalWorkspace();
   const nav = useNav();
   const conversation = useSessionConversation(s);
@@ -53,6 +57,7 @@ export function SessionDetail(props: {
   const earlier = s.kind === "main" ? earlierSession(props.list, s, conversation.status === "ok" ? conversation.boundary : undefined) : null;
   const [renaming, setRenaming] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [movingWorktree, setMovingWorktree] = useState(false);
   const parent = parentOf(props.list, s);
   const agent: Agent | undefined = s.kind === "agent" && s.agent_id ? state.agents[s.agent_id] : undefined;
   const orchestratorName = project?.name ?? "Octo";
@@ -78,6 +83,7 @@ export function SessionDetail(props: {
           void actions.rename(s.id, title);
         }}
         onMakeDefault={() => void actions.makeDefault(s.id)}
+        onMoveToWorktree={bridge.moveSessionToWorktree ? () => setMovingWorktree(true) : undefined}
         onOpen={s.kind === "main" && ws ? () => ws.showSession(s.id) : undefined}
         onArchive={(next) => void actions.archive(s.id, next)}
         canDelete={canDelete(props.list, s)}
@@ -154,6 +160,16 @@ export function SessionDetail(props: {
         )}
       </footer>
       {confirm && <DeleteSessionDialog session={s} actions={actions} onClose={() => setConfirm(false)} onDeleted={props.onGone} />}
+      <Suspense fallback={null}>
+        {movingWorktree && (
+          <MoveToWorktreeDialog
+            projectId={projectId}
+            session={s}
+            onClose={() => setMovingWorktree(false)}
+            onMoved={(res) => applySession({ kind: "upsert", session: res.session })}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

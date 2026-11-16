@@ -36,13 +36,18 @@ import type {
   MemorySession,
   MemorySessionDetail,
   CreatedSession,
+  DeleteAllSessionsResult,
   GlobalSession,
+  ImportableSession,
+  ImportSessionsResult,
   ProjectSession,
   ProjectMode,
+  MoveToWorktreeResult,
   SendResult,
   ProjectSessionDetail,
   SessionMessageResult,
   Task,
+  Workspace,
   Diagnostics,
   ApprovalRule,
   CompactResult,
@@ -541,6 +546,11 @@ export function createRareMethods({
     deleteSession: async (id, sid) => {
       await request("DELETE", `${p(id)}/sessions/${encodeURIComponent(sid)}`);
     },
+    deleteAllSessions: () => request("DELETE", "/v1/sessions") as Promise<DeleteAllSessionsResult>,
+    listImportableSessions: () => unwrap<ImportableSession[]>(request("GET", "/v1/sessions/importable"), "sessions"),
+    importSessions: (id, sessions) => request("POST", `${p(id)}/sessions/import`, { sessions }) as Promise<ImportSessionsResult>,
+    listWorkspaces: (id) => unwrap<Workspace[]>(request("GET", `${p(id)}/workspaces`), "workspaces"),
+    moveSessionToWorktree: (id, sid, input) => request("POST", `${s(id, sid)}/worktree`, input ?? {}) as Promise<MoveToWorktreeResult>,
     stopSession: (id, sid) => unwrap<ProjectSession>(request("POST", `${p(id)}/sessions/${encodeURIComponent(sid)}/stop`), "session"),
     messageSession: async (id, sid, text, opts) => {
       const body: { text: string; report_to_parent?: boolean } = { text };

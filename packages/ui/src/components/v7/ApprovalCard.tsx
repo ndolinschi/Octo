@@ -1,8 +1,10 @@
 import { Check, Clock, MessageSquarePlus, X } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import type { Approval, ApprovalAnswer, ApprovalOption } from "@octo/agent-client";
+import type { Approval, ApprovalAnswer, ApprovalOption, AutoMemoryMode } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
+import { errorMessage } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
+import { settingsHref } from "../../lib/route";
 import {
   APPROVAL_TIMEOUT_MS,
   APPROVAL_URGENT_MS,
@@ -35,6 +37,10 @@ export type ApprovalCardProps = {
   timeoutMs?: number;
   /** Take focus when it appears unless the user is typing (the newest pending card). */
   focusOnArrival?: boolean;
+  /** Project's current auto-memory mode (`off` | `review` | `allow` | `blocked`) for `memory` approvals. */
+  memoryMode?: AutoMemoryMode | undefined;
+  /** Persist a new `memory.auto_memory` setting for the project before resolving a `memory` approval. */
+  onSetAutoMemory?(mode: AutoMemoryMode): Promise<void>;
   onResolve(id: string, answer: ApprovalAnswer): Promise<void>;
   /** The card's own answer, the timer running out, or a 404 (answered elsewhere): the owner keeps it as resolved. */
   onResolved(id: string, resolution: Resolution): void;
@@ -68,6 +74,7 @@ export function ApprovalCard(props: ApprovalCardProps) {
   const left = useApprovalLeft(approval.created_at, props.timeoutMs, props.resolution === null);
   if (props.resolution) return <ResolvedApproval approval={approval} resolution={props.resolution} />;
   if (left !== null && left <= 0) return <ResolvedApproval approval={approval} resolution={{ decision: "deny", by: "timeout" }} />;
+  if (approval.kind === "memory" && !props.compact) return <MemoryApprovalCard {...props} left={left} />;
   return props.compact ? <CompactApproval {...props} /> : <PendingApproval {...props} left={left} />;
 }
 
@@ -199,9 +206,145 @@ function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
   );
 }
 
+function MemoryApprovalCard(props: ApprovalCardProps & { left: number | null }) {
+  const { approval, left } = props;
+  const card = useRef<HTMLElement>(null);
+  const c = useApprovalCard({
+    approval,
+    card,
+    focusOnArrival: props.focusOnArrival ?? false,
+    onResolve: props.onResolve,
+    onResolved: (r) => props.onResolved(approval.id, r),
+  });
+  const [reviewing, setReviewing] = useState(props.memoryMode === "review");
+  const [modeBusy, setModeBusy] = useState<"allow" | "review" | "blocked" | null>(null);
+  const [modeError, setModeError] = useState<string | null>(null);
+  const disabled = c.busy !== null || modeBusy !== null;
+
+  const setAndResolve = async (mode: AutoMemoryMode, answer: ApprovalAnswer, resolution: Resolution) => {
+    setModeError(null);
+    setModeBusy(mode === "allow" ? "allow" : "blocked");
+    try {
+      await props.onSetAutoMemory?.(mode);
+      await props.onResolve(approval.id, answer);
+      props.onResolved(approval.id, resolution);
+    } catch (e) {
+      setModeError(errorMessage(e));
+    } finally {
+      setModeBusy(null);
+    }
+  };
+
+  const enterReview = async () => {
+    setModeError(null);
+    setModeBusy("review");
+    try {
+      await props.onSetAutoMemory?.("review");
+      setReviewing(true);
+    } catch (e) {
+      setModeError(errorMessage(e));
+    } finally {
+      setModeBusy(null);
+    }
+  };
+
+  return (
+    <RequestCard
+      ref={card}
+      tabIndex={0}
+      aria-label={`${approval.agent_label} asks: ${reviewing ? "Review memory item" : "Enable auto memory?"}. A to allow, D to deny.`}
+      aria-keyshortcuts="A D Enter"
+      onKeyDown={c.onKeyDown}
+      data-v7-approval={approval.id}
+      data-v7-memory-approval=""
+      title={reviewing ? "Review memory item" : "Enable auto memory?"}
+      asks={<Asks approval={approval} onOpenAgent={props.onOpenAgent} />}
+      meta={left !== null ? <Countdown left={left} /> : undefined}
+      primary={
+        reviewing ? (
+          <ActionButton variant="primary" busy={c.busy} action="allow" disabled={disabled} onClick={() => c.act("allow")} shortcut="A">
+            Save
+          </ActionButton>
+        ) : (
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={disabled}
+            loading={modeBusy === "allow"}
+            onClick={() => void setAndResolve("allow", { decision: "allow" }, { decision: "allow", by: "you" })}
+          >
+            Allow
+          </Button>
+        )
+      }
+      alternatives={
+        reviewing ? (
+          <>
+            <Button
+              variant="quiet"
+              size="sm"
+              disabled={disabled}
+              loading={modeBusy === "allow"}
+              onClick={() => void setAndResolve("allow", { decision: "allow" }, { decision: "allow", by: "you" })}
+            >
+              Allow all
+            </Button>
+            <Button
+              variant="quiet"
+              size="sm"
+              disabled={disabled}
+              loading={modeBusy === "blocked"}
+              onClick={() => void setAndResolve("blocked", { decision: "deny", note: "Memory is disabled for this project." }, { decision: "deny", by: "you" })}
+            >
+              Block
+            </Button>
+            <Button variant="quiet" size="sm" onClick={() => (window.location.hash = settingsHref("memory"))}>
+              Settings
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="secondary" size="sm" disabled={disabled} loading={modeBusy === "review"} onClick={() => void enterReview()}>
+              Review
+            </Button>
+            <Button variant="quiet" size="sm" onClick={() => (window.location.hash = settingsHref("memory"))}>
+              Settings
+            </Button>
+          </>
+        )
+      }
+      destructive={
+        reviewing ? (
+          <ActionButton variant="danger" busy={c.busy} action="deny" disabled={disabled} onClick={() => c.act("deny")} shortcut="D">
+            Skip
+          </ActionButton>
+        ) : (
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={disabled}
+            loading={modeBusy === "blocked"}
+            onClick={() => void setAndResolve("blocked", { decision: "deny", note: "Memory is disabled for this project." }, { decision: "deny", by: "you" })}
+          >
+            Block
+          </Button>
+        )
+      }
+      error={modeError ?? c.error}
+    >
+      <p className="text-sm text-fg-2">
+        {reviewing
+          ? "Approve or skip saving this memory item for this project."
+          : "Memory is off by default. Enable auto memory for this project, review each item, or block memory for this project."}
+      </p>
+      <ApprovalSubject approval={approval} />
+    </RequestCard>
+  );
+}
+
 /** The one mono line of a request: the command, the path or the host. */
 export function subjectLine(a: Approval): string {
-  return a.detail.command ?? a.detail.path ?? a.detail.url ?? a.title;
+  return a.detail.command ?? a.detail.path ?? a.detail.url ?? a.detail.memory_text ?? a.detail.memory_path ?? a.title;
 }
 
 /** A row inside a group: title, the command on one line, quiet actions; the full subject folds behind "Details". */

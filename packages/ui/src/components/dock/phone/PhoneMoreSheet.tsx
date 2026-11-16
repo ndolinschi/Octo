@@ -156,7 +156,7 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
           </Group>
         )}
         <Group title="Panels">
-          {PANELS.map((tool) => {
+          {PANELS.filter((tool) => !(project?.memory?.auto_memory === "blocked" && tool === "memory")).map((tool) => {
             const t = TOOL_TABS[tool];
             return (
               <ListRow

@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, ChevronRight, CodeXml, Ellipsis, PanelLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { Fragment, lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { fileKey as fileKeyOf, splitKey, type FileKey } from "../../lib/files";
 import { middleTruncate } from "../../lib/format";
@@ -28,7 +28,6 @@ import { Spinner } from "../primitives/Status";
 import { EditorSkeleton } from "./EditorSkeleton";
 import { CodeEditor } from "./CodeEditor";
 import { EditorStatus } from "./EditorStatus";
-import { CompletionStatus } from "./editor/completion/CompletionStatus";
 import { fileIcon, isMarkdown } from "../primitives/fileIcons";
 import { fileSizeLabel, imageType, isSvg } from "../../lib/imagePreview";
 import { TOOL_PURPOSE } from "../../lib/toolPurpose";
@@ -128,11 +127,11 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
 
   // Item 3 (polish pass F3): Esc with nothing selected and no editor widget open leaves the editor for the file's tab (the
   // tab strip; a phone has none, so the bar's first control).
-  const leaveEditor = () => {
+  const leaveEditor = useCallback(() => {
     const t = document.getElementById(`${domId(tab)}-tab`);
     const target = t && t.offsetParent !== null ? t : root.current?.querySelector<HTMLElement>("[data-file-bar] button:not([disabled])");
     target?.focus();
-  };
+  }, [tab]);
 
   // Ctrl/Cmd+S anywhere in the view (Monaco binds it too; saving is guarded against doubles).
   const onKeyDown = (e: KeyboardEvent) => {
@@ -145,8 +144,21 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   // Decision 85: the editor is one Monaco instance for every file this view shows (it swaps models), mounted with the first file;
   // whatever stands in for it (the empty view, the loading skeleton, a message, the Markdown preview) is a cover over the same
   // box. `shown` is the last file that was ready: the model the editor keeps until the next one is.
-  const [shown, setShown] = useState<OpenFile | null>(null);
-  if (file?.status === "ready" && file !== shown) setShown(file);
+  const [lastShown, setLastShown] = useState<OpenFile | null>(null);
+  useEffect(() => {
+    if (file?.status === "ready") setLastShown(file);
+  }, [file]);
+  const shown = file?.status === "ready" ? file : lastShown;
+  const shownKey = shown?.key ?? null;
+  const saveFile = code.save;
+  const startIntelFn = code.startIntel;
+  const onSaveEditor = useCallback(() => {
+    if (shownKey) void saveFile(shownKey);
+  }, [saveFile, shownKey]);
+  const onMonacoEditor = useCallback(
+    (mod: Parameters<Parameters<typeof CodeEditor>[0]["onMonaco"]>[0]) => startIntelFn((o) => new mod.LspManager({ ...o, monaco: mod.monaco })),
+    [startIntelFn],
+  );
   const ready = file?.status === "ready" && !opening;
   let cover: ReactNode = null;
   if (!fileKey) {
@@ -183,8 +195,8 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
             buffers={code.buffers}
             theme={theme}
             bottomPadding={Math.max(8, bottomRoom)}
-            onSave={() => void (shown && code.save(shown.key))}
-            onMonaco={(mod) => code.startIntel((o) => new mod.LspManager({ ...o, monaco: mod.monaco }))}
+            onSave={onSaveEditor}
+            onMonaco={onMonacoEditor}
             onEscape={leaveEditor}
             readOnly={readFirst}
             wrap={phone && svg}
@@ -254,7 +266,6 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
           />
         )}
         <span data-file-actions className="flex shrink-0 items-center gap-1 empty:hidden">
-          {fileKey && <CompletionStatus fileKey={fileKey} compact={compact} />}
           {(markdown || svg) && file?.status === "ready" && <ModeToggle label={svg ? "Image view" : "Markdown view"} mode={mode} onChange={setMode} />}
           {phone && fileKey && ready && cover === null && (
             <Button
@@ -384,7 +395,11 @@ function Crumbs({ folder, path }: { folder: string; path: string }) {
   useLayoutEffect(() => {
     const el = nav.current;
     if (!el) return;
-    const measure = () => setRoom({ width: el.clientWidth, font: getComputedStyle(el).font || "13px sans-serif" });
+    const measure = () => {
+      const width = el.clientWidth;
+      const font = getComputedStyle(el).font || "13px sans-serif";
+      setRoom((prev) => (prev && prev.width === width && prev.font === font ? prev : { width, font }));
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);

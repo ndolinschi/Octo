@@ -2,6 +2,7 @@
 package files
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -86,13 +87,28 @@ func List(root, rel string) ([]Entry, error) {
 		if d.Name() == ".git" {
 			continue
 		}
-		fi, err := os.Stat(filepath.Join(abs, d.Name()))
-		if err != nil {
+		typ := d.Type()
+		if typ&os.ModeSymlink != 0 {
+			fi, err := os.Stat(filepath.Join(abs, d.Name()))
+			if err != nil {
+				continue
+			}
+			e := Entry{Name: d.Name(), Path: path.Join(clean, d.Name()), Type: "file", Size: fi.Size()}
+			if fi.IsDir() {
+				e.Type, e.Size = "dir", 0
+			}
+			out = append(out, e)
 			continue
 		}
-		e := Entry{Name: d.Name(), Path: path.Join(clean, d.Name()), Type: "file", Size: fi.Size()}
-		if fi.IsDir() {
-			e.Type, e.Size = "dir", 0
+		e := Entry{Name: d.Name(), Path: path.Join(clean, d.Name()), Type: "file"}
+		if typ.IsDir() {
+			e.Type = "dir"
+		} else {
+			fi, err := d.Info()
+			if err != nil {
+				continue
+			}
+			e.Size = fi.Size()
 		}
 		out = append(out, e)
 	}
@@ -114,7 +130,7 @@ func Read(root, rel string) (string, Info, error) {
 	if err != nil {
 		return "", Info{}, err
 	}
-	if !utf8.Valid(data) || slices.Contains(data, 0) {
+	if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
 		return "", Info{}, ErrBinary
 	}
 	return string(data), info, nil
@@ -142,13 +158,19 @@ func ReadBytes(root, rel string) ([]byte, Info, error) {
 	if !fi.Mode().IsRegular() {
 		return nil, Info{}, ErrNotFile
 	}
-	if fi.Size() > MaxReadBytes {
+	size := fi.Size()
+	if size > MaxReadBytes {
 		return nil, Info{}, ErrTooLarge
 	}
-	data, err := io.ReadAll(io.LimitReader(f, MaxReadBytes+1))
-	if err != nil {
+	capHint := int64(512)
+	if size > 0 {
+		capHint = min(size+1, MaxReadBytes+1)
+	}
+	buf := bytes.NewBuffer(make([]byte, 0, capHint))
+	if _, err := io.Copy(buf, io.LimitReader(f, MaxReadBytes+1)); err != nil {
 		return nil, Info{}, err
 	}
+	data := buf.Bytes()
 	if len(data) > MaxReadBytes {
 		return nil, Info{}, ErrTooLarge
 	}

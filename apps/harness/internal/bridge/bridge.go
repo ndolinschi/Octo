@@ -28,6 +28,7 @@ type Server struct {
 	lsp      LSPSessions
 	limits   LimitSource
 	router   RouterInfo
+	features FeatureSource
 	mcp      http.Handler
 	reviews  *review.Service
 	commands *commands.Service
@@ -56,6 +57,14 @@ type RouterInfo interface {
 	Enabled() bool
 	Capabilities() []string
 }
+
+// FeatureSource is the process-wide feature flags GET /v1/config reports.
+type FeatureSource interface {
+	Snapshot() map[string]bool
+}
+
+// WithFeatures reports live feature flags in GET /v1/config.
+func WithFeatures(f FeatureSource) Option { return func(s *Server) { s.features = f } }
 
 // WithRouter reports the detected Octo router in GET /v1/config.
 func WithRouter(r RouterInfo) Option { return func(s *Server) { s.router = r } }
@@ -186,8 +195,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /v1/projects/{pid}/turns/{tid}/context", s.turnContext)
 	mux.HandleFunc("GET /v1/projects/{pid}/memory", s.listMemory)
 	mux.HandleFunc("GET /v1/projects/{pid}/memory/search", s.searchMemory)
+	mux.HandleFunc("GET /v1/projects/{pid}/workspaces", s.listWorkspaces)
 	mux.HandleFunc("GET /v1/projects/{pid}/sessions", s.listSessions)
 	mux.HandleFunc("POST /v1/projects/{pid}/sessions", s.createSession)
+	mux.HandleFunc("DELETE /v1/projects/{pid}/sessions", s.deleteProjectSessions)
+	mux.HandleFunc("POST /v1/projects/{pid}/sessions/import", s.importSessions)
 	mux.HandleFunc("GET /v1/projects/{pid}/sessions/{sid}", s.getSession)
 	mux.HandleFunc("PATCH /v1/projects/{pid}/sessions/{sid}", s.patchSession)
 	mux.HandleFunc("DELETE /v1/projects/{pid}/sessions/{sid}", s.deleteSession)
@@ -195,6 +207,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/resume", s.resumeSession)
 	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/default", s.resumeSession)
 	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/stop", s.stopSession)
+	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/worktree", s.moveSessionToWorktree)
 	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/messages", s.messageSession)
 	// Parallel sessions (phase 1): the project routes of the same name, for one main session ({sid}); without
 	// {sid} they act on the default session.
@@ -211,6 +224,8 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /v1/projects/{pid}/sessions/{sid}/plans/latest", s.latestPlan)
 	mux.HandleFunc("GET /v1/projects/{pid}/sessions/{sid}/export", s.exportConversation)
 	mux.HandleFunc("GET /v1/sessions", s.listAllSessions)
+	mux.HandleFunc("DELETE /v1/sessions", s.deleteAllSessions)
+	mux.HandleFunc("GET /v1/sessions/importable", s.listImportableSessions)
 	mux.HandleFunc("GET /v1/projects/{pid}/memory/sessions", s.listMemorySessions)
 	mux.HandleFunc("GET /v1/projects/{pid}/memory/sessions/{sid}", s.getMemorySession)
 	mux.HandleFunc("DELETE /v1/projects/{pid}/memory/exchanges/{eid}", s.forgetExchange)

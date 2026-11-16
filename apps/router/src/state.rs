@@ -62,7 +62,8 @@ impl AppState {
                     config.autoroute_low_model.clone(),
                     config.autoroute_mid_model.clone(),
                     config.autoroute_high_model.clone(),
-                );
+                )
+                .with_small(config.autoroute_small_model.clone());
                 tiers.hard_threshold = config.autoroute_hard_threshold;
                 tiers.easy_threshold = config.autoroute_easy_threshold;
                 tiers.stall_window = config.autoroute_stall_window;

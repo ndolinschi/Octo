@@ -112,6 +112,7 @@ export function primaryAction(p: Pick<Provider, "state" | "kind">): PrimaryActio
 
 /** One line: what using this provider costs. */
 export function billingLine(p: Pick<Provider, "kind" | "flat_rate">): string {
+  if (p.kind === "ollama") return "Runs locally through Ollama: no token charge.";
   if (p.flat_rate) return "Included in your subscription: no charge per token.";
   return p.kind === "router" ? "Per token, billed through your Octo router key." : "Per token, billed to your API key.";
 }
@@ -130,6 +131,7 @@ export function reasonLine(p: Pick<Provider, "state" | "kind" | "reason" | "prob
     case "not_logged_in":
       return "Installed, but not logged in. Log in once in a terminal, then press Check again.";
     case "not_connected":
+      if (p.kind === "ollama") return "Set the Ollama URL and completion model in Settings → Editor.";
       return p.kind === "api" ? "Add an API key to bill per token through your own account." : "Turn the Octo router on and add its provider key.";
     case "error": {
       const r = plainReason(p).trim();

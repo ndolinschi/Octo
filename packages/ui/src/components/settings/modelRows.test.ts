@@ -33,4 +33,6 @@ test("runnableSwap: the same model on a connected agent, else its default; null 
   assert.equal(runnableSwap(l, ""), null);
   assert.equal(runnableSwap(list([p("api", "api", "ready")]), "claude-sonnet-5-5"), null);
   assert.equal(runnableSwap(list([p("api", "api", "not_connected"), p("grok", "agent", "not_installed")]), "x"), null);
+  const oc = list([p("opencode", "agent", "not_installed", ["opencode/big-pickle"]), p("claude-code", "agent", "ready", ["opencode/big-pickle"])]);
+  assert.equal(runnableSwap(oc, "acp:opencode/opencode/big-pickle"), "acp:claude-code/opencode/big-pickle");
 });

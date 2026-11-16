@@ -1,4 +1,4 @@
-import type { Folder, TierPolicy } from "@octo/agent-client";
+import type { AccessMode, Folder, MoveToWorktreeResult, ProjectSession, TierPolicy } from "@octo/agent-client";
 import { ArrowUp, Clock, Plus, Square } from "lucide-react";
 import { GLYPH } from "../primitives/glyphs";
 import { flushSync } from "react-dom";
@@ -30,6 +30,7 @@ import { modeNote } from "../../lib/modes";
 import { FolderMenu, foldersLabel, ModelChip } from "./ComposerChips";
 import type { ComposerMode } from "./composerMode";
 import type { QueuedMessage } from "./ComposerPills";
+import type { ComposerSession } from "./SessionMenu";
 import { useAttachments } from "./useAttachments";
 import { useImages } from "./useImages";
 import { useHost } from "../../state/host";
@@ -52,9 +53,12 @@ import { deviceMay, ON_YOUR_COMPUTER } from "../../lib/remoteDevice";
 
 const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
 const ModelRefusedActions = lazy(() => import("../shared/ModelRefusedActions").then((m) => ({ default: m.ModelRefusedActions })));
+const MoveToWorktreeDialog = lazy(() => import("../shared/MoveToWorktreeDialog").then((m) => ({ default: m.MoveToWorktreeDialog })));
+const SessionMenu = lazy(() => import("./SessionMenu").then((m) => ({ default: m.SessionMenu })));
 /** Parts of the composer that only matter once used load on demand (the initial bundle budget). */
 const ComposerMenu = lazy(() => import("./ComposerMenu").then((m) => ({ default: m.ComposerMenu })));
 const ModeChip = lazy(() => import("./ModeChip").then((m) => ({ default: m.ModeChip })));
+const AccessChip = lazy(() => import("./AccessChip").then((m) => ({ default: m.AccessChip })));
 /** The pills band (queued messages, attachments, images, comments) only exists while there is something in it. */
 const ComposerPills = lazy(() => import("./ComposerPills").then((m) => ({ default: m.ComposerPills })));
 const RoutingLine = lazy(() => import("./RoutingLine").then((m) => ({ default: m.RoutingLine })));
@@ -89,6 +93,14 @@ export type ComposerProps = {
   tier: { value: TierPolicy; choose(policy: TierPolicy): Promise<void> } | null;
   /** Null when the harness has no modes. */
   mode?: ComposerMode | null;
+  /** v7 permissions mode (Ask / Accept edits / Allow all); null when not connected to a project. */
+  access?: { value: AccessMode; choose(next: AccessMode): Promise<void> } | null;
+  /** The session this composer sends to, shown in the "+" menu (with "Move to worktree…" when supported). */
+  session?:
+    | (ComposerSession & {
+        worktree?: { projectId: string; session: ProjectSession; onMoved?(result: MoveToWorktreeResult): void } | undefined;
+      })
+    | undefined;
   /** The orchestrator's context window, for the meter. */
   context: { used: number | null | undefined; size: number | null | undefined };
   /** The newest request, recalled by ↑ in an empty field. */
@@ -142,7 +154,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [chipOpen, setChipOpen] = useState(0);
   // The "+" menu's "Folders" and "Session" entries open their own menu on the "+" (they were chips of the control row).
-  const [sub, setSub] = useState<"folders" | null>(null);
+  const [sub, setSub] = useState<"folders" | "session" | null>(null);
+  const [movingWorktree, setMovingWorktree] = useState<{
+    projectId: string;
+    session: ProjectSession;
+    onMoved?(result: MoveToWorktreeResult): void;
+  } | null>(null);
   const box = useRef<HTMLFormElement>(null);
   const plus = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<ComposerMenuHandle>(null);
@@ -425,7 +442,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   };
   const agentName = useAgentName(model?.value);
   const folders = props.folders;
-  const sendTo = useMemo(() => [{ id: "folders", label: `Folders: ${foldersLabel(folders)}`, icon: GLYPH.files, run: () => setSub("folders") }], [folders]);
+  const sessionProp = props.session;
+  const sendTo = useMemo(() => {
+    const entries = [{ id: "folders", label: `Folders: ${foldersLabel(folders)}`, icon: GLYPH.files, run: () => setSub("folders") }];
+    if (sessionProp) {
+      const label = sessionProp.branch ? `${sessionProp.title} · ${sessionProp.branch}` : sessionProp.title;
+      entries.push({ id: "session", label: `Session: ${label}`, icon: GLYPH.sessions, run: () => setSub("session") });
+    }
+    return entries;
+  }, [folders, sessionProp]);
   const action = props.running ? (hasContent ? "queue" : "stop") : "send";
   // The mode, model and folder chips: on the control row, and (direction 7, phone) in the "+" menu, which shows them there only.
   const chips = (
@@ -437,6 +462,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             isDefault={props.mode.isDefault}
             onChoose={props.mode.choose}
             onMakeDefault={() => void props.mode?.makeDefault().catch(() => undefined)}
+            bare={false}
+            disabled={disabled}
+            onOpenChange={onChip}
+          />
+        </Suspense>
+      )}
+      {props.access && (
+        <Suspense fallback={<span aria-hidden className="h-7 w-20 shrink-0 @max-[460px]/composer:w-7" />}>
+          <AccessChip
+            value={props.access.value}
+            onChoose={(next) => void props.access?.choose(next).catch(() => undefined)}
             bare={false}
             disabled={disabled}
             onOpenChange={onChip}
@@ -735,6 +771,31 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         )}
       </Presence>
       {sub === "folders" && <FolderMenu anchor={plus} folders={props.folders} onAdd={props.onAddFolder} onClose={closeSub} onOpenChange={onChip} />}
+      <Suspense fallback={null}>
+        {sub === "session" && props.session && (
+          <SessionMenu
+            anchor={plus}
+            session={{
+              ...props.session,
+              onMoveToWorktree: props.session.worktree
+                ? () => {
+                    const wt = props.session?.worktree;
+                    if (wt) setMovingWorktree(wt);
+                  }
+                : undefined,
+            }}
+            onClose={closeSub}
+          />
+        )}
+        {movingWorktree && (
+          <MoveToWorktreeDialog
+            projectId={movingWorktree.projectId}
+            session={movingWorktree.session}
+            onClose={() => setMovingWorktree(null)}
+            {...(movingWorktree.onMoved ? { onMoved: movingWorktree.onMoved } : {})}
+          />
+        )}
+      </Suspense>
     </div>
   );
 });

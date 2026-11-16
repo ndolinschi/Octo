@@ -45,3 +45,10 @@ test("searchSettings: the phone leaves out the desktop-only rows (A8: keyboard s
   assert.ok(!searchSettings("shortcuts", { phone: true }).some((r) => r.id === "shortcuts"));
   assert.ok(searchSettings("theme", { phone: true }).some((r) => r.id === "theme"));
 });
+
+test("searchSettings: finds auto-memory and auto-memory feature flag", () => {
+  const autoMem = searchSettings("auto memory");
+  assert.ok(autoMem.some((r) => r.id === "auto-memory" && r.section === "memory"));
+  assert.ok(autoMem.some((r) => r.id === "feature-auto-memory" && r.section === "privacy"));
+  assert.ok(searchSettings("feature flag").some((r) => r.id === "feature-auto-memory"));
+});

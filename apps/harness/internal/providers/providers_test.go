@@ -388,3 +388,21 @@ func TestTooOldAgentIsNotReadyWithTheUpdateLine(t *testing.T) {
 		t.Fatalf("Check = %+v", u)
 	}
 }
+
+func TestOllamaProviderAndCheck(t *testing.T) {
+	r := newRig(t)
+	for _, m := range []string{"small", "ollama:qwen2.5-coder:3b"} {
+		if u := r.svc.Check(m); u != nil {
+			t.Fatalf("Check(%q) = %+v, want nil even without API key", m, u)
+		}
+	}
+	svc := providers.New(providers.Options{
+		Builtin: func() (bool, string) { return false, config.NoBuiltinLoopMessage },
+		Ollama:  func() (string, string) { return "http://127.0.0.1:11434", "qwen2.5-coder:3b" },
+	})
+	snap := svc.Snapshot()
+	ol := byID(t, snap, providers.IDOllama)
+	if ol.Kind != providers.KindOllama || ol.State != providers.StateReady || ol.DefaultModel != "qwen2.5-coder:3b" || !ol.FlatRate {
+		t.Fatalf("ollama provider = %+v", ol)
+	}
+}

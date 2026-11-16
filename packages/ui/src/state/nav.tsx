@@ -18,6 +18,7 @@ export type WorkspaceCommand = { id: string; label: string; detail?: string; sea
 export type PaletteWorkspace = {
   layout: Layout;
   narrow: boolean;
+  memoryBlocked?: boolean;
   openTool(tool: ToolTab): void;
   openPicker(): void;
   canMoveToOtherSide(tab: TabId): boolean;

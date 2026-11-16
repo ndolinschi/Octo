@@ -143,6 +143,9 @@ func mcpInstructions(defs []tools.Def) string {
 		}
 		b.WriteString(line + "\n")
 	}
+	if slices.ContainsFunc(defs, func(d tools.Def) bool { return d.Name == ToolRequestInput }) {
+		b.WriteString("Use request_input (not any built-in question or AskUserQuestion tool) whenever you need user input, choices, confirmation, or secrets.\n")
+	}
 	return strings.TrimRight(b.String(), "\n")
 }
 

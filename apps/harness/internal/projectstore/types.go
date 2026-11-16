@@ -84,15 +84,18 @@ func orEmptyJSON(s string) string {
 
 // Access modes of a project (v7 approvals).
 const (
-	AccessSupervised = "supervised"
-	AccessFull       = "full"
+	AccessSupervised  = "supervised"
+	AccessAcceptEdits = "accept_edits"
+	AccessFull        = "full"
 )
 
 func orFull(a string) string {
-	if a == AccessSupervised {
+	switch a {
+	case AccessSupervised, AccessAcceptEdits:
 		return a
+	default:
+		return AccessFull
 	}
-	return AccessFull
 }
 
 type Folder struct {

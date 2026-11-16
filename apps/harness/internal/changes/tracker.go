@@ -18,9 +18,11 @@ type Folder struct{ Label, Path string }
 // Scope says who a recorded change belongs to.
 type Scope struct {
 	// TurnID is the id of the orchestrator's user message that started the turn.
-	TurnID    int64
-	AgentID   string
-	ToolUseID string
+	TurnID      int64
+	AgentID     string
+	SessionID   string
+	WorkspaceID string
+	ToolUseID   string
 	// Source is "write_file", "acp_fs", "bash" or "acp_turn".
 	Source string
 }
@@ -259,8 +261,8 @@ func (t *Tracker) record(ctx context.Context, scope Scope, folder, rel string, b
 		return projectstore.Change{}, false
 	}
 	nc := projectstore.NewChange{Change: projectstore.Change{
-		TurnID: scope.TurnID, AgentID: scope.AgentID, Folder: folder, Path: rel, Kind: kind,
-		Source: scope.Source, ToolUseID: scope.ToolUseID,
+		TurnID: scope.TurnID, AgentID: scope.AgentID, SessionID: scope.SessionID, WorkspaceID: scope.WorkspaceID,
+		Folder: folder, Path: rel, Kind: kind, Source: scope.Source, ToolUseID: scope.ToolUseID,
 	}}
 	if before.Exists && before.Hash != "" {
 		nc.BeforeHash, nc.BeforeBlob = &before.Hash, before.Blob

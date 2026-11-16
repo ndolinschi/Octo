@@ -23,7 +23,7 @@ export const useHarnessSettings = useRequired;
 
 /** The harness's settings (`harness.env`, `GET/PUT /v1/settings`), loaded once for the whole settings page. */
 export function HarnessSettingsProvider({ children }: { children: ReactNode }) {
-  const { bridge, health } = useApp();
+  const { bridge, health, refreshConfig } = useApp();
   // Remote access: the settings are local only (the tunnel refuses `/v1/settings`), so a paired device does not ask.
   const local = useHost().remoteDevice === undefined;
   const [load, setLoad] = useState<HarnessLoad>(() => (bridge.getSettings && local ? { status: "loading" } : { status: "unavailable" }));
@@ -48,8 +48,9 @@ export function HarnessSettingsProvider({ children }: { children: ReactNode }) {
       setLoad({ status: "ready", view });
       // Keys, the router switch and default models change what can run: the pickers re-read the providers.
       void refreshProviders(bridge);
+      void refreshConfig();
     },
-    [bridge],
+    [bridge, refreshConfig],
   );
   const reload = useCallback(() => {
     setLoad({ status: "loading" });

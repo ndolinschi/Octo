@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/mockllm"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
+	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -217,6 +219,9 @@ func TestRememberKeepsFactsWithTheirSourceCapsThemAndUndoes(t *testing.T) {
 	r := newRigWith(t, newCapture(false), orchestrator.Options{})
 	pid := r.project(t, 1)
 	ctx := context.Background()
+	if _, err := r.svc.Update(ctx, pid, project.Input{Memory: &memory.Settings{AutoMemory: memory.AutoMemoryAllow}}); err != nil {
+		t.Fatal(err)
+	}
 	ch, cancelSub := r.hub.Subscribe(pid)
 	defer cancelSub()
 	text := "quick keep these [remember: fact | toolchain | Go 1.26 builds it] [remember: decision | | use sqlite per project] " +

@@ -1,9 +1,10 @@
-import type { ProjectMode, TierPolicy } from "@octo/agent-client";
+import type { AccessMode, ProjectMode, TierPolicy } from "@octo/agent-client";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { withComments } from "../../lib/comments";
 import { effectiveMode, modeToSend, nextMode } from "../../lib/modes";
 import { promptText } from "../../lib/transcript";
 import { modelsPatchForSessionChoice, servedModel } from "../../lib/models";
+import { canMoveToWorktree, isDefaultSession, sessionWorkspaceLabel } from "../../lib/sessions/current";
 import { useApp } from "../../state/app";
 import { useOptionalComments } from "../../state/comments";
 import { useProject } from "../../state/project";
@@ -79,14 +80,18 @@ function useQueue(memory: TabMemory | undefined, tab: TabId) {
 export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "comments"> & { commentCount: number } {
   const { health, config, bridge } = useApp();
   const device = useHost().remoteDevice;
-  const { project, state, running, send, cancel, live, update, loadFailures } = useProject();
+  const { projectId, project, state, running, send, cancel, live, update, loadFailures, applySession } = useProject();
+  const ws = useOptionalWorkspace();
   const comments = useOptionalComments();
-  const memory = useOptionalWorkspace()?.memory;
+  const memory = ws?.memory;
   // Decision 96: a session's draft and local queue are its own, wherever its composer is (its tab, Chat, the floating one).
   const scope = useSessionScope();
   const key = scope?.memoryKey ?? tab;
+  const activeSessionId = scope?.sessionId ?? ws?.chatSessionId ?? state.sessions.defaultId ?? null;
+  const activeSession = scope?.session ?? (activeSessionId ? state.sessions.list.find((s) => s.id === activeSessionId) : undefined);
   const [pending, setPending] = useState<string | null>(null);
   const [pendingTier, setPendingTier] = useState<TierPolicy | null>(null);
+  const [pendingAccess, setPendingAccess] = useState<AccessMode | null>(null);
   // Parity B3: the mode chosen for the next message only; it resets once that message is sent.
   const [override, setOverride] = useState<ProjectMode | null>(null);
   const modeValue = effectiveMode(override, project?.mode);
@@ -152,6 +157,35 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   const loop = config?.builtin_loop;
   const acp = (current ?? "").startsWith("acp:");
   const noKey = loop?.available === false && !acp;
+  const currentDefaultId = state.sessions.currentId ?? "";
+  const sessionProp = useMemo<ComposerProps["session"]>(() => {
+    if (!activeSession || !ws) return undefined;
+    const title = activeSession.title.trim() || "New session";
+    const isDef = isDefaultSession(activeSession);
+    return {
+      title,
+      isDefault: isDef,
+      branch: sessionWorkspaceLabel(activeSession),
+      onMakeDefault: isDef
+        ? undefined
+        : () => {
+            void bridge.setDefaultSession(projectId, activeSession.id).then((updated) => {
+              applySession({ kind: "upsert", session: updated });
+              applySession({ kind: "current", id: updated.id, previous: currentDefaultId });
+            });
+          },
+      onShowAll: () => ws.openTool("sessions"),
+      ...(bridge.moveSessionToWorktree && canMoveToWorktree(activeSession)
+        ? {
+            worktree: {
+              projectId,
+              session: activeSession,
+              onMoved: (res) => applySession({ kind: "upsert", session: res.session }),
+            },
+          }
+        : {}),
+    };
+  }, [activeSession, ws, bridge, projectId, applySession, currentDefaultId]);
   return {
     running,
     // P2-3: the conversation stays on screen while the service is away; the composer says why it is off.
@@ -221,6 +255,21 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
           }
         : null,
     mode: modeApi,
+    access: project
+      ? {
+          value: pendingAccess ?? project.access ?? "supervised",
+          choose: async (next) => {
+            if (next === (project.access ?? "supervised")) return;
+            setPendingAccess(next);
+            try {
+              await update({ access: next });
+            } finally {
+              setPendingAccess(null);
+            }
+          },
+        }
+      : null,
+    session: sessionProp,
     onSend,
     acceptsImages: project?.accepts_images,
     onCancel: cancel,

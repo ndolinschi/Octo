@@ -84,7 +84,7 @@ function listed(doc: NoteDocument): Note {
 }
 
 export function ProjectProvider({ projectId, children }: { projectId: string; children: ReactNode }) {
-  const { bridge, refreshProjects, projects, probe } = useApp();
+  const { bridge, refreshProjects, refreshConfig, projects, probe } = useApp();
   const [state, dispatch] = useReducer(projectReducer, undefined, emptyProjectState);
   const [project, setProject] = useState<Project | null>(null);
   const [live, setLive] = useState<LiveStatus>("connecting");
@@ -239,6 +239,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
           dispatch({ type: "compactions", agentId, markers: [{ ...marker, label: "history compacted" }] });
         }
         if (event.type === "session.current") showSession(event.session_id);
+        if (event.type === "settings.changed") void refreshConfig();
         if (event.type === "turn.finished" || event.type === "project.updated" || event.type === "project.attention") void refreshProjects();
         for (const observe of observers.current) observe(event);
       },
@@ -246,7 +247,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
     void syncAll();
     return unsubscribe;
     // `epoch`: a new subscription (and a full re-read) when the polled summary and the stream disagree.
-  }, [bridge, projectId, syncAll, refreshProjects, showSession, probe, epoch, stateRef]);
+  }, [bridge, projectId, syncAll, refreshProjects, refreshConfig, showSession, probe, epoch, stateRef]);
 
   // The sidebar and Home read the open project's orchestrator state from its live agents (decision 23).
   const activity = useActivity();
@@ -264,9 +265,17 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
   // The sidebar's tree lists the open project's sessions live from this stream (decision 96).
   const sessionList = state.sessions.list;
   useEffect(() => {
-    if (sessionList.length > 0) activity.setLiveSessions(projectId, sessionList);
-  }, [activity, projectId, sessionList]);
+    if (synced > 0 || sessionList.length > 0) activity.setLiveSessions(projectId, sessionList);
+  }, [activity, projectId, sessionList, synced]);
   useEffect(() => () => activity.setLiveSessions(projectId, null), [activity, projectId]);
+  useEffect(() => {
+    const onReset = () => {
+      loaded.current.clear();
+      void syncAll();
+    };
+    window.addEventListener("octo:sessions-reset", onReset);
+    return () => window.removeEventListener("octo:sessions-reset", onReset);
+  }, [syncAll]);
 
   const orchestrator = project ? state.agents[project.orchestrator_agent_id] : undefined;
   const running = orchestrator?.status === "running" || (project?.status === "running" && !orchestrator);

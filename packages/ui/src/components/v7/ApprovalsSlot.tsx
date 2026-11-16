@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AnsweredInput, Approval, ApprovalAnswer, Bridge, InputAnswer, InputRequest } from "@octo/agent-client";
+import type { AnsweredInput, Approval, ApprovalAnswer, AutoMemoryMode, Bridge, InputAnswer, InputRequest } from "@octo/agent-client";
 import { useLatest } from "../../lib/hooks";
 import { agentDisplayName } from "../../lib/orchestratorMore";
 import { approvalDeadline, approvalItems, resolutionCause, type ApprovalItem, type Resolution } from "../../lib/v7/approval";
@@ -22,7 +22,7 @@ function segments(items: readonly ApprovalItem[]): Segment[] {
     run = [];
   };
   for (const item of items) {
-    if (item.resolution === null) run.push(item);
+    if (item.resolution === null && item.approval.kind !== "memory") run.push(item);
     else {
       flush();
       out.push({ kind: "one", item });
@@ -124,7 +124,7 @@ export function ApprovalsSlot(props: ApprovalsSlotProps) {
 
 function Live({ onOpenAgent }: ApprovalsSlotProps) {
   const { bridge } = useApp();
-  const { projectId, project, synced } = useProject();
+  const { projectId, project, synced, update } = useProject();
   const name = (label: string) => agentDisplayName(label, project?.name);
   const approvals = useApprovals({ projectId, bridge, synced });
   const forms = useForms({ projectId, bridge, synced });
@@ -132,6 +132,13 @@ function Live({ onOpenAgent }: ApprovalsSlotProps) {
     (id: string, answer: ApprovalAnswer) => bridge.resolveApproval?.(projectId, id, answer) ?? Promise.resolve(),
     [bridge, projectId],
   );
+  const setAutoMemory = useCallback(
+    async (mode: AutoMemoryMode) => {
+      await update({ memory: { auto_memory: mode } });
+    },
+    [update],
+  );
+  const memoryMode = project?.memory?.auto_memory ?? "off";
   const submit = useCallback((id: string, answer: InputAnswer) => bridge.submitInput?.(projectId, id, answer) ?? Promise.resolve(), [bridge, projectId]);
   const replace = bridge.putSecret ? (name: string, value: string) => bridge.putSecret?.(projectId, name, value) ?? Promise.resolve() : undefined;
   if (!approvals.items.length && !forms.forms.length) return null;
@@ -144,6 +151,8 @@ function Live({ onOpenAgent }: ApprovalsSlotProps) {
             key={seg.items[0]?.id}
             approvals={seg.items.map((a) => ({ ...a, agent_label: name(a.agent_label) }))}
             source={project?.name ?? "this project"}
+            memoryMode={memoryMode}
+            onSetAutoMemory={setAutoMemory}
             onResolve={resolve}
             onResolved={approvals.markResolved}
             {...(onOpenAgent ? { onOpenAgent } : {})}
@@ -154,6 +163,8 @@ function Live({ onOpenAgent }: ApprovalsSlotProps) {
             approval={{ ...seg.item.approval, agent_label: name(seg.item.approval.agent_label) }}
             resolution={seg.item.resolution}
             focusOnArrival={seg.item.approval.id === newest}
+            memoryMode={memoryMode}
+            onSetAutoMemory={setAutoMemory}
             onResolve={resolve}
             onResolved={approvals.markResolved}
             {...(onOpenAgent ? { onOpenAgent } : {})}

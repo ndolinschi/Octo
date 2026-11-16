@@ -329,7 +329,11 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
             down_count: plan.down_count,
         });
     }
-    let tier_after = ctx.auto.tiers().band(&served.model).to_string();
+    let tier_after = if plan.sticky_band == "small" {
+        "small".to_string()
+    } else {
+        ctx.auto.tiers().band(&served.model).to_string()
+    };
     let tier_before = served_tier_before(
         &ctx.auto.tiers,
         &plan.limits,

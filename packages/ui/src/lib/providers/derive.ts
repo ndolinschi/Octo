@@ -89,7 +89,7 @@ export function deriveProviders(input: { config: BridgeConfig | null; plugins: r
 
 /** Decision 53 c: an API provider keeps the default tiers; with only agents, the first ready agent runs everything. */
 function suggestedFrom(providers: readonly Provider[], config: BridgeConfig | null): ProvidersResponse["suggested"] {
-  const viaApi = providers.some((p) => p.kind !== "agent" && isReady(p));
+  const viaApi = providers.some((p) => (p.kind === "api" || p.kind === "router") && isReady(p));
   const agent = providers.find((p) => p.kind === "agent" && isReady(p));
   if (!viaApi && agent) {
     const v = `acp:${agent.id}`;

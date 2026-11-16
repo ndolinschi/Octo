@@ -385,15 +385,15 @@ func (s *acpSession) idle() bool {
 }
 
 func (s *acpSession) RequestPermission(ctx context.Context, req acp.PermissionRequest) string {
+	req.ToolCall = s.completed(req.ToolCall)
+	asks := s.rt.asksACP(ctx, req.ToolCall)
 	s.mu.Lock()
 	s.active = true
 	s.touch()
-	asks := s.rt.supervised(ctx)
 	if asks {
 		s.waiting = true
 	}
 	s.mu.Unlock()
-	req.ToolCall = s.completed(req.ToolCall)
 	if asks {
 		s.rt.activity(s.agentID, activity.WaitingApproval, "Waiting for your approval", "")
 		defer func() {

@@ -124,18 +124,28 @@ export function ActivityRow(props: {
     </span>
   );
   const showMeta = (props.duration !== undefined && props.duration !== null) || (props.aside !== undefined && props.aside !== null);
+  const clickable = expandable || Boolean(props.onClick) || Boolean(props.href);
   return (
     <div data-activity-row={props.data ?? ""} data-row-overlay={overlay || undefined} className={cn("min-w-0", props.className)}>
       <ListRow
         tone="quiet"
+        hover="text"
         leading={leading}
         title={
           <span className="flex min-w-0 items-center gap-1">
             <span className="flex min-w-0 items-baseline gap-1.5">
               <span className={props.detail === undefined || props.detail === null || props.stacked ? "min-w-0 truncate" : "shrink-0"}>{props.verb}</span>
-              {!props.stacked && props.detail !== undefined && props.detail !== null && <span className="min-w-0 truncate text-fg-3">{props.detail}</span>}
+              {!props.stacked && props.detail !== undefined && props.detail !== null && (
+                <span className={cn("min-w-0 truncate text-fg-3", clickable && "transition-colors group-hover:text-fg-2")}>{props.detail}</span>
+              )}
             </span>
-            {expandable && <Glyph icon={ChevronRight} size={14} className={cn("shrink-0 text-fg-3 transition-[rotate] duration-150", open && "rotate-90")} />}
+            {expandable && (
+              <Glyph
+                icon={ChevronRight}
+                size={14}
+                className={cn("shrink-0 text-fg-3 transition-[rotate,color] duration-150 group-hover:text-fg-2", open && "rotate-90")}
+              />
+            )}
           </span>
         }
         {...(showMeta ? { meta } : {})}

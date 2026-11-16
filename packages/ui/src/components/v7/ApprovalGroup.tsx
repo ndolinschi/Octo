@@ -11,6 +11,8 @@ export function ApprovalGroup(props: {
   approvals: Approval[];
   source: string;
   timeoutMs?: number | undefined;
+  memoryMode?: ApprovalCardProps["memoryMode"];
+  onSetAutoMemory?: ApprovalCardProps["onSetAutoMemory"];
   onResolve: ApprovalCardProps["onResolve"];
   onResolved: ApprovalCardProps["onResolved"];
   onOpenAgent?: ApprovalCardProps["onOpenAgent"];
@@ -75,6 +77,8 @@ export function ApprovalGroup(props: {
             approval={a}
             resolution={null}
             {...(props.timeoutMs !== undefined ? { timeoutMs: props.timeoutMs } : {})}
+            {...(props.memoryMode !== undefined ? { memoryMode: props.memoryMode } : {})}
+            {...(props.onSetAutoMemory ? { onSetAutoMemory: props.onSetAutoMemory } : {})}
             onResolve={props.onResolve}
             onResolved={props.onResolved}
             onAlwaysOpen={onAlwaysOpen}

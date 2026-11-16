@@ -1,5 +1,6 @@
 import type { ProviderList } from "@octo/agent-client";
 import { SETTING_IDS } from "@octo/agent-client";
+import { parseAcp } from "../../lib/models";
 import { canRun, chipLabel, choosable, isReady } from "../../lib/providers";
 import type { SelectOption } from "../primitives/Select";
 
@@ -52,7 +53,7 @@ export const TIERS_NOTE = "Each task handed to an agent gets a tier by difficult
 export function runnableSwap(list: ProviderList, value: string): string | null {
   if (!value || canRun(list, value)) return null;
   const wanted = chipLabel(value, list).toLowerCase();
-  const bare = value.startsWith("acp:") ? (value.slice(4).split("/", 2)[1] ?? "") : value;
+  const bare = parseAcp(value)?.model ?? (value.startsWith("acp:") ? "" : value);
   const agents = list.providers.filter((p) => p.kind === "agent" && isReady(p));
   for (const a of agents) {
     const same = a.models.find((m) => m.id === bare || (m.label.length > 2 && wanted.includes(m.label.toLowerCase())));

@@ -11,6 +11,14 @@ const (
 	ContextWindow = "window"
 )
 
+// AutoMemory modes for project memory writes and post-turn digests.
+const (
+	AutoMemoryOff     = "off"
+	AutoMemoryAllow   = "allow"
+	AutoMemoryReview  = "review"
+	AutoMemoryBlocked = "blocked"
+)
+
 // DefaultRecentExchanges is how many recent user messages (with their replies)
 // the window mode sends verbatim.
 const DefaultRecentExchanges = 5
@@ -24,6 +32,9 @@ type Settings struct {
 	// or "window" (assembled from blocks with caps).
 	Context         string `json:"context"`
 	RecentExchanges int    `json:"recent_exchanges"`
+	// AutoMemory governs automatic digesting and agent memory writes:
+	// "off" (default: ask "Enable auto memory?"), "allow", "review" (ask per item), or "blocked".
+	AutoMemory string `json:"auto_memory"`
 }
 
 // ParseSettings reads the stored JSON; absent fields take the defaults.
@@ -38,6 +49,11 @@ func ParseSettings(raw string) Settings {
 	if s.RecentExchanges < 1 || s.RecentExchanges > MaxRecentExchanges {
 		s.RecentExchanges = DefaultRecentExchanges
 	}
+	switch s.AutoMemory {
+	case AutoMemoryAllow, AutoMemoryReview, AutoMemoryBlocked:
+	default:
+		s.AutoMemory = AutoMemoryOff
+	}
 	return s
 }
 
@@ -49,6 +65,9 @@ func (s Settings) Validate() error {
 	if s.RecentExchanges != 0 && (s.RecentExchanges < 1 || s.RecentExchanges > MaxRecentExchanges) {
 		return fmt.Errorf("memory.recent_exchanges must be between 1 and %d", MaxRecentExchanges)
 	}
+	if s.AutoMemory != "" && s.AutoMemory != AutoMemoryOff && s.AutoMemory != AutoMemoryAllow && s.AutoMemory != AutoMemoryReview && s.AutoMemory != AutoMemoryBlocked {
+		return fmt.Errorf("memory.auto_memory must be %q, %q, %q or %q", AutoMemoryOff, AutoMemoryAllow, AutoMemoryReview, AutoMemoryBlocked)
+	}
 	return nil
 }
 
@@ -59,6 +78,9 @@ func (s Settings) Merge(over Settings) Settings {
 	}
 	if over.RecentExchanges != 0 {
 		s.RecentExchanges = over.RecentExchanges
+	}
+	if over.AutoMemory != "" {
+		s.AutoMemory = over.AutoMemory
 	}
 	return s
 }

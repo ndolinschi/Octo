@@ -159,3 +159,33 @@ test("item 10: an agent model's chip label splits so the provider gives way firs
   assert.equal(chipParts(" · Opus"), null);
   assert.equal(chipParts("Claude Code · "), null);
 });
+
+test("multi-slash ACP model ids preserve provider/model boundary (e.g. opencode/big-pickle)", () => {
+  const ocList: ProviderList = {
+    providers: [
+      {
+        id: "opencode",
+        kind: "agent",
+        label: "OpenCode",
+        state: "ready",
+        reason: "",
+        install_hint: "",
+        login_hint: "",
+        models: [
+          { id: "opencode/big-pickle", label: "Big Pickle", source: "advertised" },
+          { id: "anthropic/claude-sonnet-4", label: "Claude Sonnet 4", source: "advertised" },
+        ],
+        default_model: "opencode/big-pickle",
+        flat_rate: true,
+      },
+    ],
+    connected: 1,
+    suggested: { orchestrator: "acp:opencode/opencode/big-pickle", fast: "", balanced: "", deep: "" },
+  };
+  assert.equal(chipLabel("acp:opencode/opencode/big-pickle", ocList), "OpenCode · Big Pickle");
+  assert.equal(chipLabel("acp:opencode/opencode/big-pickle", null), "OpenCode · Big Pickle");
+  assert.notEqual(chipLabel("acp:opencode/opencode/big-pickle", ocList), "OpenCode · Opencode");
+  assert.equal(canRun(ocList, "acp:opencode/opencode/big-pickle"), true);
+  assert.equal(canRun(ocList, "acp:opencode/anthropic/claude-sonnet-4"), true);
+  assert.equal(canRun(ocList, "acp:opencode/opencode/unknown"), false);
+});

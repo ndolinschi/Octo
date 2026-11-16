@@ -41,13 +41,14 @@ export function useSlashCommands(): SlashCommands | null {
  */
 export function useSlashRunner(ctx: { mode: ComposerMode | null | undefined; openModel(query: string): void }) {
   const { bridge } = useApp();
-  const { projectId } = useProject();
+  const { projectId, project } = useProject();
   const ws = useOptionalWorkspace();
   const scope = useSessionScope();
   const notes = useInlineNotes();
   const push = notes?.push;
   const rewindLast = notes?.rewindLast;
   const { mode, openModel } = ctx;
+  const memoryBlocked = project?.memory?.auto_memory === "blocked";
   return useCallback(
     async (name: string, args: string): Promise<boolean> => {
       // The runner (compact, export, remember ...) loads with the first command, not with the composer.
@@ -64,11 +65,12 @@ export function useSlashRunner(ctx: { mode: ComposerMode | null | undefined; ope
           openSettings: () => ws?.openSettings(),
           // Decision 96: `/clear` makes a new session; this conversation follows it.
           onCleared: scope ? (next) => scope.follow(next) : undefined,
+          memoryBlocked,
         },
         name,
         args,
       );
     },
-    [bridge, projectId, ws, scope, push, rewindLast, mode, openModel],
+    [bridge, projectId, ws, scope, push, rewindLast, mode, openModel, memoryBlocked],
   );
 }

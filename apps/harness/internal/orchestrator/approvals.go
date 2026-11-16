@@ -14,6 +14,8 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/approval"
 	"github.com/ndolinschi/Octo/apps/harness/internal/diff"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/features"
+	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/permission"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
@@ -141,13 +143,96 @@ func rootFailed(a projectstore.Agent) bool {
 	return a.Status == projectstore.StatusFailed || (a.Error != nil && *a.Error != "" && !strings.HasPrefix(*a.Error, "warning:"))
 }
 
-// supervised reads the project's access mode now (a change applies to the
+// accessMode reads the project's access mode now (a change applies to the
 // next request, also within a running turn).
-func (rt *runtime) supervised(ctx context.Context) bool {
+func (rt *runtime) accessMode(ctx context.Context) string {
 	c, cancel := dbCtx(ctx)
 	defer cancel()
 	info, err := rt.db.Info(c)
-	return err == nil && info.Access == projectstore.AccessSupervised
+	if err != nil {
+		return projectstore.AccessFull
+	}
+	return info.Access
+}
+
+// memoryMode reads the project's live auto_memory setting ("off", "allow", "review", or "blocked").
+func (rt *runtime) memoryMode(ctx context.Context) string {
+	c, cancel := dbCtx(ctx)
+	defer cancel()
+	info, err := rt.db.Info(c)
+	if err != nil {
+		return memory.AutoMemoryOff
+	}
+	return memory.ParseSettings(info.MemoryJSON).AutoMemory
+}
+
+func (rt *runtime) featureEnabled(id string) bool {
+	return rt.o.opts.Features.Enabled(id)
+}
+
+// approveMemory checks the auto_memory feature flag and the project's auto_memory setting before saving memory.
+// When "allow", it returns allowed immediately. When "blocked" or disabled by feature flag, it refuses without prompting.
+// When "off" or "review", it raises a KindMemory approval card (even in access="full" projects).
+func (rt *runtime) approveMemory(ctx context.Context, agentID, label, title string, detail approval.Detail) (bool, string) {
+	switch rt.memoryMode(ctx) {
+	case memory.AutoMemoryBlocked:
+		return false, "Memory is disabled for this project."
+	case memory.AutoMemoryAllow:
+		return true, ""
+	}
+	if !rt.featureEnabled(features.AutoMemory) {
+		return false, "Auto-memory is disabled by feature flag."
+	}
+	ap := approval.Approval{
+		AgentID: agentID, AgentLabel: label, TurnID: rt.turnID, SessionID: rt.sessionID,
+		Kind: approval.KindMemory, Title: title, Detail: detail,
+	}
+	rt.activity(agentID, activity.WaitingApproval, "Enable auto memory?", "")
+	res := rt.o.approvals.Request(ctx, rt.pid(), ap)
+	rt.activity(agentID, activity.Thinking, "Thinking", "")
+	if res.Decision == approval.Allow || res.Decision == approval.AllowAlways || res.Decision == approval.AllowForTurn {
+		return true, ""
+	}
+	if rt.memoryMode(ctx) == memory.AutoMemoryBlocked {
+		return false, "Memory was blocked for this project."
+	}
+	if strings.TrimSpace(res.Note) != "" {
+		return false, strings.TrimSpace(res.Note)
+	}
+	return false, "Not saved: memory approval was declined."
+}
+
+func (rt *runtime) asksKind(ctx context.Context, kind string) bool {
+	switch rt.accessMode(ctx) {
+	case projectstore.AccessSupervised:
+		return true
+	case projectstore.AccessAcceptEdits:
+		return kind != approval.KindWrite
+	default:
+		return false
+	}
+}
+
+func isEditACP(call acp.ToolCall) bool {
+	switch call.Kind {
+	case "edit", "delete", "move":
+		return true
+	}
+	return false
+}
+
+func (rt *runtime) asksACP(ctx context.Context, call acp.ToolCall) bool {
+	if call.Kind == "read" || call.Kind == "search" {
+		return false
+	}
+	switch rt.accessMode(ctx) {
+	case projectstore.AccessSupervised:
+		return true
+	case projectstore.AccessAcceptEdits:
+		return !isEditACP(call)
+	default:
+		return false
+	}
 }
 
 // agentLabel names an agent for an approval card.
@@ -156,7 +241,7 @@ func agentLabel(a projectstore.Agent) string { return a.Role }
 // ask raises an approval for agent and waits. It returns ok, or false with
 // the reason the user gave. grantKey is what "allow for this turn" remembers.
 func (rt *runtime) ask(ctx context.Context, agentID, label string, ap approval.Approval, grantKey string) (bool, string) {
-	if !rt.supervised(ctx) {
+	if !rt.asksKind(ctx, ap.Kind) {
 		return true, ""
 	}
 	m := rt.o.approvals
@@ -276,11 +361,8 @@ func (p approvalPolicy) Decide(ctx context.Context, req permission.Request) perm
 		}
 		return p.pick(req, approval.Deny, "", p.rt.modeRefusal("this action"))
 	}
-	if !p.rt.supervised(ctx) {
-		return permission.AutoApprove{}.Decide(ctx, req)
-	}
 	call := req.ACP.ToolCall
-	if call.Kind == "read" || call.Kind == "search" {
+	if !p.rt.asksACP(ctx, call) {
 		return permission.AutoApprove{}.Decide(ctx, req)
 	}
 	key := approval.KindACP + ":" + call.Kind

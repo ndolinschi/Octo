@@ -52,9 +52,12 @@ type Models struct {
 	TierPolicy string `json:"tier_policy"`
 	// Side optionally overrides the model of side questions; empty means Fast.
 	Side string `json:"side,omitempty"`
-	// Completion is the model of the editor's inline completion: a Messages API
-	// model id or a tier name (fast, balanced, deep). Empty means the feature is
-	// off. In a PATCH, "off" clears it. It cannot be an ACP agent.
+	// Small optionally overrides the Ollama model tag used by completion="small".
+	Small string `json:"small,omitempty"`
+	// Completion is the model of the editor's inline completion: "small" (the
+	// dedicated Ollama small tier), "ollama:<model>", a Messages API model id, or a
+	// tier name (fast, balanced, deep). Empty means the feature is off. In a
+	// PATCH, "off" clears it. It cannot be an ACP agent.
 	Completion string `json:"completion,omitempty"`
 	// AutoCandidates optionally restricts and orders what spawn_agent tier
 	// "auto" may choose from: fast, balanced, deep or acp:<id>[/<model>].
@@ -82,17 +85,48 @@ func (m Models) SideModel() string {
 	return m.Fast
 }
 
-// CompletionOff is the PATCH value that clears Models.Completion.
-const CompletionOff = "off"
+const (
+	// CompletionOff is the PATCH value that clears Models.Completion.
+	CompletionOff = "off"
+	// CompletionSmall routes inline completion through Ollama's dedicated small tier.
+	CompletionSmall = "small"
+	// OllamaPrefix selects a specific Ollama model tag for inline completion.
+	OllamaPrefix = "ollama:"
+	// DefaultOllamaBaseURL is the default local Ollama server URL for the small completion tier.
+	DefaultOllamaBaseURL = "http://127.0.0.1:11434"
+	// DefaultOllamaSmallModel is the default Ollama model tag used by the small completion tier.
+	DefaultOllamaSmallModel = "qwen2.5-coder:1.5b"
+)
+
+// SmallModel returns the configured Ollama small-tier model or the built-in default.
+func (m Models) SmallModel() string {
+	if m.Small != "" {
+		return m.Small
+	}
+	return DefaultOllamaSmallModel
+}
+
+// IsOllamaCompletion reports whether Completion targets Ollama's small tier directly.
+func (m Models) IsOllamaCompletion() bool {
+	return m.Completion == CompletionSmall || strings.HasPrefix(m.Completion, OllamaPrefix)
+}
 
 // CompletionModel is the model inline completion runs on: Completion with a
-// tier name resolved; "" when the feature is off.
+// tier name or ollama: reference resolved; "" when the feature is off.
 func (m Models) CompletionModel() string {
-	switch m.Completion {
-	case "":
+	switch {
+	case m.Completion == "", m.Completion == CompletionOff:
 		return ""
-	case "fast", "balanced", "deep":
+	case m.Completion == "fast", m.Completion == "balanced", m.Completion == "deep":
 		return m.ForTier(m.Completion)
+	case m.Completion == CompletionSmall:
+		return m.SmallModel()
+	case strings.HasPrefix(m.Completion, OllamaPrefix):
+		tag := strings.TrimSpace(strings.TrimPrefix(m.Completion, OllamaPrefix))
+		if tag == "" {
+			return m.SmallModel()
+		}
+		return tag
 	}
 	return m.Completion
 }
@@ -128,6 +162,7 @@ func defaultModels() Models {
 		Fast:         envOr("HARNESS_MODEL_FAST", b.Fast),
 		Balanced:     envOr("HARNESS_MODEL_BALANCED", b.Balanced),
 		Deep:         envOr("HARNESS_MODEL_DEEP", b.Deep),
+		Small:        strings.TrimSpace(os.Getenv("HARNESS_MODEL_COMPLETION")),
 		TierPolicy:   TierPolicyAuto,
 	}
 }
@@ -199,18 +234,23 @@ type Config struct {
 	// ContextWindows are per-model context sizes in tokens
 	// (HARNESS_CONTEXT_WINDOWS="model=tokens,..."), on top of the built-in table.
 	ContextWindows ContextWindows
+	// OllamaBaseURL is the local or remote Ollama server URL used by the
+	// dedicated small inline-completion tier (HARNESS_OLLAMA_BASE_URL; default
+	// DefaultOllamaBaseURL).
+	OllamaBaseURL string
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		APIKey:   os.Getenv("ANTHROPIC_API_KEY"),
-		BaseURL:  os.Getenv("ANTHROPIC_BASE_URL"),
-		OctoKey:  os.Getenv("HARNESS_OCTO_KEY"),
-		DataDir:  defaultDataDir,
-		MaxTurns: defaultMaxTurns,
-		Stream:   true,
-		Models:   defaultModels(),
-		ACPIdle:  DefaultACPIdle,
+		APIKey:        os.Getenv("ANTHROPIC_API_KEY"),
+		BaseURL:       os.Getenv("ANTHROPIC_BASE_URL"),
+		OctoKey:       os.Getenv("HARNESS_OCTO_KEY"),
+		OllamaBaseURL: envOr("HARNESS_OLLAMA_BASE_URL", DefaultOllamaBaseURL),
+		DataDir:       defaultDataDir,
+		MaxTurns:      defaultMaxTurns,
+		Stream:        true,
+		Models:        defaultModels(),
+		ACPIdle:       DefaultACPIdle,
 
 		MaxRunningSessions: DefaultMaxRunningSessions,
 

@@ -122,7 +122,8 @@ function Shell() {
   };
   // Decision 53 b: nothing connected → the connect screen instead of Home and the project form.
   const providers = useProviders(bridge, health === "online");
-  const noProvider = providers.status === "ready" && providers.list.connected === 0;
+  const noProvider =
+    providers.status === "ready" && (providers.list.connected === 0 || !providers.list.providers.some((p) => p.kind !== "ollama" && p.state === "ready"));
   useStoredMotion();
   // NEW-7: the palette's phase and number (`lib/typeahead`): each open is a new palette, so one reopened while the last one
   // still plays its exit mounts fresh (its field takes focus and the keys held for it).

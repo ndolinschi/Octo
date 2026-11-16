@@ -3,7 +3,9 @@ package projectstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -85,15 +87,19 @@ const infoSelect = `SELECT s.id, s.kind, s.parent_session_id, s.agent_id, s.turn
 	(SELECT COUNT(*) FROM sessions c WHERE c.parent_session_id = s.id AND c.kind = 'agent'
 		AND EXISTS (SELECT 1 FROM agents a WHERE a.id = c.agent_id AND a.rewound_at IS NULL)),
 	COALESCE((SELECT x.status FROM exchanges x WHERE x.session_id = s.id AND x.removed = 0 ORDER BY x.started_at DESC, x.rowid DESC LIMIT 1), ''),
-	s.root_agent_id, s.workspace_id, s.memory_mode, s.mode, s.queue_paused, (SELECT COUNT(*) FROM queue q WHERE q.session_id = s.id)
-	FROM sessions s`
+	s.root_agent_id, s.workspace_id,
+	COALESCE(w.kind, CASE WHEN s.workspace_id IN ('', 'shared') THEN 'shared' ELSE 'worktree' END),
+	COALESCE(NULLIF(w.title, ''), CASE WHEN s.workspace_id IN ('', 'shared') THEN 'Main checkout' ELSE s.workspace_id END),
+	COALESCE((SELECT wf.branch FROM workspace_folders wf WHERE wf.workspace_id = s.workspace_id AND wf.branch != '' ORDER BY wf.rowid LIMIT 1), ''),
+	s.memory_mode, s.mode, s.queue_paused, (SELECT COUNT(*) FROM queue q WHERE q.session_id = s.id)
+	FROM sessions s LEFT JOIN workspaces w ON w.id = s.workspace_id`
 
 func scanInfo(sc interface{ Scan(...any) error }) (SessionInfo, error) {
 	var i SessionInfo
-	var last, workspace string
+	var last, workspace, wsKind, wsTitle, wsBranch string
 	if err := sc.Scan(&i.ID, &i.Kind, &i.ParentSessionID, &i.AgentID, &i.TurnID, &i.Title, &i.State, &i.Model, &i.StartedAt, &i.LastActivityAt,
 		&i.Current, &i.Archived, &i.Summary, &i.Exchanges, &i.Children, &last,
-		&i.RootAgentID, &workspace, &i.Memory, &i.Mode, &i.QueuePaused, &i.Queued); err != nil {
+		&i.RootAgentID, &workspace, &wsKind, &wsTitle, &wsBranch, &i.Memory, &i.Mode, &i.QueuePaused, &i.Queued); err != nil {
 		return i, err
 	}
 	if i.Title == "" {
@@ -112,7 +118,13 @@ func scanInfo(sc interface{ Scan(...any) error }) (SessionInfo, error) {
 		if workspace == "" {
 			workspace = SharedWorkspace
 		}
-		i.Workspace = &SessionWorkspace{ID: workspace, Kind: "shared", Title: "Main checkout"}
+		if wsKind == "" {
+			wsKind = "shared"
+		}
+		if wsTitle == "" {
+			wsTitle = "Main checkout"
+		}
+		i.Workspace = &SessionWorkspace{ID: workspace, Kind: wsKind, Title: wsTitle, Branch: wsBranch}
 		if i.Memory == "" {
 			i.Memory = MemoryOn
 		}
@@ -829,4 +841,302 @@ func (d *DB) TakeSessionReports(ctx context.Context, mainSession string) ([]Sess
 		}
 	}
 	return out, nil
+}
+
+// DeleteAllSessions removes every session (main and agent), its exchanges, messages, compactions, queues, plans,
+// ACP bindings, coordination state, and message/exchange search documents, then resets the project to a single
+// fresh idle default session (keeping notes, memory files, tasks, changes, approval rules, secrets, and usage).
+func (d *DB) DeleteAllSessions(ctx context.Context) (deleted int, removedIDs []string, def SessionInfo, err error) {
+	role, title, model := OrchestratorRole, "", ""
+	var tier sql.NullString
+	if err := d.sql.QueryRowContext(ctx, `SELECT role, title, model, tier FROM agents WHERE id = (
+		SELECT root_agent_id FROM sessions WHERE kind = 'main' AND current = 1 LIMIT 1
+	)`).Scan(&role, &title, &model, &tier); err != nil {
+		_ = d.sql.QueryRowContext(ctx, `SELECT role, title, model, tier FROM agents WHERE parent_id IS NULL ORDER BY rowid LIMIT 1`).Scan(&role, &title, &model, &tier)
+	}
+	if role == "" {
+		role = OrchestratorRole
+	}
+	var tierPtr *Tier
+	if tier.Valid {
+		v := Tier(tier.String)
+		tierPtr = &v
+	}
+
+	tx, err := d.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, nil, def, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE kind = 'main' AND (
+		current = 0 OR title != '' OR reason != ''
+		OR EXISTS (SELECT 1 FROM exchanges x WHERE x.session_id = sessions.id)
+		OR EXISTS (SELECT 1 FROM messages m WHERE m.session_id = sessions.id)
+	)`).Scan(&deleted); err != nil {
+		return 0, nil, def, err
+	}
+
+	srows, err := tx.QueryContext(ctx, `SELECT id FROM sessions`)
+	if err != nil {
+		return 0, nil, def, err
+	}
+	for srows.Next() {
+		var id string
+		if err := srows.Scan(&id); err != nil {
+			_ = srows.Close()
+			return 0, nil, def, err
+		}
+		removedIDs = append(removedIDs, id)
+	}
+	if err := srows.Close(); err != nil {
+		return 0, nil, def, err
+	}
+
+	drows, err := tx.QueryContext(ctx, `SELECT id FROM search_docs WHERE kind IN (?, ?)`, DocMessage, DocExchange)
+	if err != nil {
+		return 0, nil, def, err
+	}
+	var docIDs []int64
+	for drows.Next() {
+		var id int64
+		if err := drows.Scan(&id); err != nil {
+			_ = drows.Close()
+			return 0, nil, def, err
+		}
+		docIDs = append(docIDs, id)
+	}
+	if err := drows.Close(); err != nil {
+		return 0, nil, def, err
+	}
+	for _, id := range docIDs {
+		for _, t := range []string{"search_u", "search_t", "search_s"} {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM `+t+` WHERE rowid = ?`, id); err != nil {
+				return 0, nil, def, err
+			}
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM search_docs WHERE kind IN (?, ?)`, DocMessage, DocExchange); err != nil {
+		return 0, nil, def, err
+	}
+
+	for _, table := range []string{
+		"exchanges", "messages", "compactions", "partials", "turn_alive",
+		"context_receipts", "session_reports", "session_declarations",
+		"file_claims", "session_messages", "queue", "acp_sessions",
+		"plans", "agents", "sessions",
+	} {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table); err != nil {
+			return 0, nil, def, fmt.Errorf("clear %s: %w", table, err)
+		}
+	}
+
+	defaultSID, rootID, now := NewID("ses"), NewID("agt"), Now()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO agents (id, parent_id, depth, role, title, task, model, tier, status, created_at, session_id)
+		VALUES (?, NULL, 0, ?, ?, '', ?, ?, 'idle', ?, ?)`, rootID, role, title, model, tierValue(tierPtr), now, defaultSID); err != nil {
+		return 0, nil, def, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions (id, title, started_at, ended_at, closed, reason, kind, current, title_edited,
+		workspace_id, memory_mode, mode, root_agent_id, model) VALUES (?, '', ?, ?, 0, '', 'main', 1, 0, ?, 'on', '', ?, '')`,
+		defaultSID, now, now, SharedWorkspace, rootID); err != nil {
+		return 0, nil, def, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, nil, def, err
+	}
+	if err := d.Touch(ctx); err != nil {
+		return 0, nil, def, err
+	}
+	def, err = d.SessionInfoOf(ctx, defaultSID)
+	return deleted, removedIDs, def, err
+}
+
+// ImportTurn is a user or assistant text turn to write into an imported session.
+type ImportTurn struct {
+	Role      string
+	Text      string
+	Timestamp string
+	Model     string
+}
+
+// ImportSessionInput describes an external session to record in this project.
+type ImportSessionInput struct {
+	Provider   string
+	ExternalID string
+	Title      string
+	Model      string
+	StartedAt  string
+	EndedAt    string
+	Turns      []ImportTurn
+}
+
+// ImportedSources returns keys "<provider>:<external_id>" already imported into this project.
+func (d *DB) ImportedSources(ctx context.Context) (map[string]bool, error) {
+	rows, err := d.sql.QueryContext(ctx, `SELECT reason FROM sessions WHERE kind = 'main' AND reason LIKE 'import:%'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var reason string
+		if err := rows.Scan(&reason); err != nil {
+			return nil, err
+		}
+		if key, ok := strings.CutPrefix(reason, "import:"); ok && key != "" {
+			out[key] = true
+		}
+	}
+	return out, rows.Err()
+}
+
+// ImportMainSession inserts an external session (messages + exchanges + search documents) without changing the
+// project's default session. Returns imported=false when that external session is already present.
+func (d *DB) ImportMainSession(ctx context.Context, in ImportSessionInput) (info SessionInfo, imported bool, err error) {
+	reason := "import:" + strings.TrimSpace(in.Provider) + ":" + strings.TrimSpace(in.ExternalID)
+	var existing string
+	err = d.sql.QueryRowContext(ctx, `SELECT id FROM sessions WHERE kind = 'main' AND reason = ? LIMIT 1`, reason).Scan(&existing)
+	if err == nil && existing != "" {
+		info, err = d.SessionInfoOf(ctx, existing)
+		return info, false, err
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return info, false, err
+	}
+
+	def, err := d.RootAgent(ctx, "")
+	if err != nil {
+		return info, false, err
+	}
+	now := Now()
+	startedAt := strings.TrimSpace(in.StartedAt)
+	if startedAt == "" {
+		startedAt = now
+	}
+	endedAt := strings.TrimSpace(in.EndedAt)
+	if endedAt == "" {
+		endedAt = startedAt
+	}
+	title := strings.TrimSpace(in.Title)
+	if title == "" {
+		title = "Imported session"
+	}
+	model := strings.TrimSpace(in.Model)
+	agentModel := model
+	if agentModel == "" {
+		agentModel = def.Model
+	}
+
+	sid, root := NewID("ses"), NewID("agt")
+	tx, err := d.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return info, false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := ensureCurrentMain(ctx, tx); err != nil {
+		return info, false, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO agents (id, parent_id, depth, role, title, task, model, tier, status, created_at, started_at, finished_at, session_id)
+		VALUES (?, NULL, 0, ?, ?, '', ?, ?, 'completed', ?, ?, ?, ?)`,
+		root, def.Role, def.Title, agentModel, tierValue(def.Tier), startedAt, startedAt, endedAt, sid); err != nil {
+		return info, false, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions (id, title, started_at, ended_at, closed, reason, kind, current, title_edited,
+		workspace_id, memory_mode, mode, root_agent_id, model) VALUES (?, ?, ?, ?, 1, ?, 'main', 0, 1, ?, 'on', '', ?, ?)`,
+		sid, title, startedAt, endedAt, reason, SharedWorkspace, root, model); err != nil {
+		return info, false, err
+	}
+
+	type pendingExchange struct {
+		turnID    int64
+		request   string
+		startedAt string
+		model     string
+	}
+	var pending *pendingExchange
+	flushExchange := func(msgID int64, answer string) error {
+		if pending == nil {
+			return nil
+		}
+		ex := Exchange{
+			ID:        NewID("exc"),
+			SessionID: sid,
+			TurnID:    pending.turnID,
+			MessageID: msgID,
+			Request:   pending.request,
+			Answer:    answer,
+			Status:    ExchangeCompleted,
+			StartedAt: pending.startedAt,
+			Model:     pending.model,
+			Files:     []string{},
+			Agents:    []string{},
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO exchanges (`+exchangeCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)`,
+			ex.ID, ex.SessionID, ex.TurnID, ex.MessageID, ex.Request, ex.Answer, false, ex.Status, ex.StartedAt, 0,
+			ex.Model, "[]", "[]", 0, 0, nil, "", false, ""); err != nil {
+			return err
+		}
+		doc := exchangeDoc(ex, d.scrub)
+		if err := putDoc(ctx, tx, doc); err != nil {
+			return err
+		}
+		pending = nil
+		return nil
+	}
+
+	for _, t := range in.Turns {
+		txt := strings.TrimSpace(t.Text)
+		if txt == "" {
+			continue
+		}
+		role := t.Role
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		ts := strings.TrimSpace(t.Timestamp)
+		if ts == "" {
+			ts = startedAt
+		}
+		raw, err := json.Marshal([]map[string]string{{"type": "text", "text": txt}})
+		if err != nil {
+			return info, false, err
+		}
+		res, err := tx.ExecContext(ctx,
+			`INSERT INTO messages (agent_id, role, content_json, created_at, command, session_id) VALUES (?, ?, ?, ?, '', ?)`,
+			root, role, string(raw), ts, sid)
+		if err != nil {
+			return info, false, err
+		}
+		msgID, err := res.LastInsertId()
+		if err != nil {
+			return info, false, err
+		}
+		turnModel := strings.TrimSpace(t.Model)
+		if turnModel == "" {
+			turnModel = agentModel
+		}
+		if role == "user" {
+			if err := flushExchange(0, ""); err != nil {
+				return info, false, err
+			}
+			pending = &pendingExchange{turnID: msgID, request: txt, startedAt: ts, model: turnModel}
+		} else if pending != nil {
+			if err := flushExchange(msgID, txt); err != nil {
+				return info, false, err
+			}
+		}
+	}
+	if err := flushExchange(0, ""); err != nil {
+		return info, false, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return info, false, err
+	}
+	if err := d.Touch(ctx); err != nil {
+		return info, false, err
+	}
+	info, err = d.SessionInfoOf(ctx, sid)
+	return info, true, err
 }

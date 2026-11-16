@@ -1,7 +1,7 @@
 import { Plus } from "lucide-react";
 import { Glyph } from "../../primitives/Glyph";
 import type * as Monaco from "monaco-editor";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useComments } from "../../../state/comments";
 import { linesLabel } from "../../../lib/comments";
@@ -47,7 +47,7 @@ function selectedLines(editor: Monaco.editor.IStandaloneCodeEditor): { start: nu
  * (or the selected lines). Commented lines carry a rail and a faint tint; pending comments show as
  * cards under their last line and follow edits (tracked decorations).
  */
-export function EditorComments(props: {
+export const EditorComments = memo(function EditorComments(props: {
   editor: Monaco.editor.IStandaloneCodeEditor;
   monaco: MonacoApi;
   buffers: EditorBuffers;
@@ -58,7 +58,9 @@ export function EditorComments(props: {
   const store = useComments();
   const comments = store.forFile(folder, path);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [hover, setHover] = useState<{ line: number; top: number; left: number } | null>(null);
+  const [hoverLine, setHoverLine] = useState<number | null>(null);
+  const hoverLineRef = useLatest(hoverLine);
+  const plusRef = useRef<HTMLButtonElement>(null);
   const zones = useRef(new Map<string, Zone>());
   const ranges = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null);
   const rangeIds = useRef<string[]>([]);
@@ -87,49 +89,73 @@ export function EditorComments(props: {
 
   /* ---------- hover: the line highlight and the "+" ---------- */
 
-  useEffect(() => {
-    const T = monaco.editor.MouseTargetType;
-    const LINE_TARGETS = new Set([T.CONTENT_TEXT, T.CONTENT_EMPTY, T.GUTTER_LINE_NUMBERS, T.GUTTER_LINE_DECORATIONS, T.GUTTER_GLYPH_MARGIN]);
-    const place = (line: number) => {
+  const syncPlus = useCallback(
+    (line: number | null) => {
+      const btn = plusRef.current;
+      if (!btn || !line) return;
       const pos = editor.getScrolledVisiblePosition({ lineNumber: line, column: 1 });
-      if (!pos) return null;
+      if (!pos) {
+        btn.style.visibility = "hidden";
+        return;
+      }
       const info = editor.getLayoutInfo();
       const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
       // First visual row of the line (wrapped lines keep the button on their first row).
-      return { line, top: pos.top + (lineHeight - PLUS) / 2, left: info.glyphMarginLeft + Math.max(0, (info.glyphMarginWidth - PLUS) / 2) };
-    };
+      const top = pos.top + (lineHeight - PLUS) / 2;
+      const left = info.glyphMarginLeft + Math.max(0, (info.glyphMarginWidth - PLUS) / 2);
+      btn.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+      btn.style.visibility = "visible";
+    },
+    [editor, monaco],
+  );
+
+  useEffect(() => {
+    const T = monaco.editor.MouseTargetType;
+    const LINE_TARGETS = new Set([T.CONTENT_TEXT, T.CONTENT_EMPTY, T.GUTTER_LINE_NUMBERS, T.GUTTER_LINE_DECORATIONS, T.GUTTER_GLYPH_MARGIN]);
     const subs = [
       editor.onMouseMove((e) => {
         // Over Monaco's own popups (hover, suggest) the line stays the target.
         if (e.target.type === T.CONTENT_WIDGET) return;
         const line = e.target.position?.lineNumber;
-        if (!line || !LINE_TARGETS.has(e.target.type)) return setHover(null);
-        const next = place(line);
-        setHover((h) => (h && next && h.line === next.line && h.top === next.top && h.left === next.left ? h : next));
+        if (!line || !LINE_TARGETS.has(e.target.type)) {
+          if (hoverLineRef.current !== null) setHoverLine(null);
+          return;
+        }
+        if (line !== hoverLineRef.current) setHoverLine(line);
       }),
       editor.onMouseLeave((e) => {
         // Travelling from the line onto the button keeps it.
         const to = e.event.browserEvent.relatedTarget as Element | null;
-        if (!to?.closest?.("[data-comment-plus]")) setHover(null);
+        if (!to?.closest?.("[data-comment-plus]") && hoverLineRef.current !== null) setHoverLine(null);
       }),
       editor.onDidScrollChange((e) => {
-        if (e.scrollTopChanged || e.scrollLeftChanged) setHover((h) => (h ? place(h.line) : h));
+        if ((e.scrollTopChanged || e.scrollLeftChanged) && hoverLineRef.current) syncPlus(hoverLineRef.current);
       }),
-      editor.onDidLayoutChange(() => setHover((h) => (h ? place(h.line) : h))),
+      editor.onDidLayoutChange(() => {
+        if (hoverLineRef.current) syncPlus(hoverLineRef.current);
+      }),
     ];
     return () => subs.forEach((s) => s.dispose());
-  }, [editor, monaco]);
+  }, [editor, monaco, hoverLineRef, syncPlus]);
 
-  const hoverLine = hover?.line ?? 0;
+  const hoverDeco = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null);
   useEffect(() => {
-    if (!hoverLine) return;
+    const col = (hoverDeco.current ??= editor.createDecorationsCollection());
     const model = editor.getModel();
-    if (!model || hoverLine > model.getLineCount()) return;
-    const deco = editor.createDecorationsCollection([
-      { range: new monaco.Range(hoverLine, 1, hoverLine, 1), options: { isWholeLine: true, className: "octo-hover-line" } },
-    ]);
-    return () => deco.clear();
+    if (!hoverLine || !model || hoverLine > model.getLineCount()) {
+      col.clear();
+      return;
+    }
+    col.set([{ range: new monaco.Range(hoverLine, 1, hoverLine, 1), options: { isWholeLine: true, className: "octo-hover-line" } }]);
   }, [editor, monaco, hoverLine]);
+
+  useEffect(
+    () => () => {
+      hoverDeco.current?.clear();
+      hoverDeco.current = null;
+    },
+    [],
+  );
 
   /* ---------- commented ranges: rail + tint, tracking edits ---------- */
 
@@ -339,24 +365,32 @@ export function EditorComments(props: {
 
   /* ---------- the "+" ---------- */
 
-  const covered = hover && draft && !draft.editing && hover.line >= draft.start && hover.line <= draft.end;
-  if (!hover || covered) return null;
+  const covered = hoverLine !== null && draft && !draft.editing && hoverLine >= draft.start && hoverLine <= draft.end;
+  const activeHoverLine = hoverLine !== null && !covered ? hoverLine : null;
+
+  useLayoutEffect(() => {
+    if (activeHoverLine) syncPlus(activeHoverLine);
+  }, [activeHoverLine, syncPlus]);
+
+  if (!activeHoverLine) return null;
   // With several lines selected and the pointer on one of them, the comment is on the selection (and the label says so).
   const sel = selectedLines(editor);
-  const range = sel && sel.end > sel.start && hover.line >= sel.start && hover.line <= sel.end ? sel : { start: hover.line, end: hover.line };
+  const range =
+    sel && sel.end > sel.start && activeHoverLine >= sel.start && activeHoverLine <= sel.end ? sel : { start: activeHoverLine, end: activeHoverLine };
   const onPlus = () => open(range.start, range.end);
   return (
-    // eslint-disable-next-line octo/no-native-controls -- an 18px gutter mark placed over Monaco's line by measured left/top; the smallest IconButton is 24px
+    // eslint-disable-next-line octo/no-native-controls -- an 18px gutter mark placed over Monaco's line by measured transform; the smallest IconButton is 24px
     <button
+      ref={plusRef}
       type="button"
       data-comment-plus
       aria-label={`Add comment on ${linesLabel(range.start, range.end)}`}
       title={`Add comment on ${linesLabel(range.start, range.end)}`}
       data-tip-side="left"
       data-shortcut={`${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘⌥" : "Ctrl+Alt+"}C`}
-      style={{ left: hover.left, top: hover.top, width: PLUS, height: PLUS }}
+      style={{ left: 0, top: 0, width: PLUS, height: PLUS, visibility: "hidden" }}
       onMouseLeave={(e) => {
-        if (!(e.relatedTarget as Element | null)?.closest?.(".monaco-editor")) setHover(null);
+        if (!(e.relatedTarget as Element | null)?.closest?.(".monaco-editor")) setHoverLine(null);
       }}
       onClick={onPlus}
       className="octo-ring-panel absolute z-[5] grid press place-items-center rounded-xs bg-overlay text-fg shadow-panel before:absolute before:-inset-[3px] before:content-[''] hover:bg-active"
@@ -364,4 +398,4 @@ export function EditorComments(props: {
       <Glyph icon={Plus} size={14} />
     </button>
   );
-}
+});

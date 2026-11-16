@@ -1,25 +1,11 @@
-import { BridgeError, type NewSessionInput, type ProjectSession, type SessionMessageResult } from "@octo/agent-client";
+import type { MoveToWorktreeInput, NewSessionInput, ProjectSession, SessionMessageResult } from "@octo/agent-client";
 import { useCallback, useMemo, useState } from "react";
 import { useLatest } from "../../lib/hooks";
-import { isStructured } from "../../lib/errors/plain";
-import { errorMessage, structuredError } from "../../lib/format";
-import { sessionErrorText } from "../../lib/sessions/model";
+import { failureText } from "../../lib/sessions/model";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 
-/**
- * A refusal in plain words. A harness of decision 94b sends `message` (and `hint`) itself: those win. The fixed texts by code
- * (`sessions.md`) are only the fallback for an older harness; anything else is the shared error text.
- */
-export function failureText(e: unknown): string {
-  if (!(e instanceof BridgeError)) return `${errorMessage(e)} Try again.`;
-  const fields = structuredError(e);
-  if (isStructured(fields)) {
-    const sentence = /[.!?]$/.test(fields.message) ? fields.message : `${fields.message}.`;
-    return fields.hint ? `${sentence} ${fields.hint.replace(/`/g, "")}` : sentence;
-  }
-  return sessionErrorText(e.code, e.message);
-}
+export { failureText };
 
 /**
  * What a person can do to a session, each as one call that records its failure in `error` (shown as a `Notice` by the view
@@ -89,6 +75,12 @@ export function useSessionActions() {
           return true;
         }),
       stop: (sid: string) => changed("stop", () => bridge.stopSession(projectId, sid)),
+      moveToWorktree: (sid: string, input?: MoveToWorktreeInput) =>
+        run("worktree", async () => {
+          const result = await need(bridge.moveSessionToWorktree).call(bridge, projectId, sid, input);
+          applySession({ kind: "upsert", session: result.session });
+          return result;
+        }),
       message: (sid: string, text: string, reportToParent: boolean): Promise<SessionMessageResult | undefined> =>
         run("message", async () => {
           const sent = await need(bridge.messageSession).call(bridge, projectId, sid, text, { reportToParent });

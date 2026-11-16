@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/features"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
@@ -28,12 +29,19 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	if s.defaultOrch != nil {
 		defOrch = s.defaultOrch()
 	}
+	var featSnap map[string]bool
+	if s.features != nil {
+		featSnap = s.features.Snapshot()
+	} else {
+		featSnap = features.NewStore(nil).Snapshot()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"builtin_loop": builtin, "default_orchestrator": defOrch,
 		"default_models": d.Models, "default_max_depth": d.MaxDepth,
 		"router": s.router != nil && s.router.Enabled(), "router_capabilities": caps,
 		"route_api":         slices.Contains(caps, router.CapRouteAPI),
 		"acp_orchestrators": s.acpOrchestrators(),
+		"features":          featSnap,
 		// Whether POST /v1/fs/pick-folder can open the system's folder chooser here.
 		"pick_folder": pickFolderAvailable(),
 	})

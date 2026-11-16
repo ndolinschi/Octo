@@ -1,4 +1,4 @@
-import type { Limit, Project, ProjectInput } from "@octo/agent-client";
+import { SETTING_IDS, type AutoMemoryMode, type Limit, type Project, type ProjectInput } from "@octo/agent-client";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { errorMessage } from "../../lib/format";
@@ -14,6 +14,7 @@ import { Select } from "../primitives/Select";
 import { SkeletonList } from "../primitives/Skeleton";
 import { TextField } from "../primitives/TextField";
 import { settingsHref } from "../../lib/route";
+import { useHarnessSettings } from "./harnessSettings";
 import { limitTitle, resetsIn, spendText } from "./usageText";
 import { CONTROL_W, LoadErrorRow, SaveStatus, SELECT_W, SettingsGroup, SettingsRow } from "./parts";
 import { ScopeRow, useProjectScope } from "./scope";
@@ -60,6 +61,7 @@ function PerProject(props: {
 }
 
 function ProjectSelect<T extends string>(props: {
+  rowId?: string;
   project: Project;
   value: T;
   options: readonly { id: T; label: string }[];
@@ -72,6 +74,7 @@ function ProjectSelect<T extends string>(props: {
   const id = useId();
   return (
     <SettingsRow
+      {...(props.rowId ? { rowId: props.rowId } : {})}
       title={props.title}
       htmlFor={id}
       description={props.description}
@@ -97,16 +100,20 @@ function ProjectSelect<T extends string>(props: {
 
 const COMPLETION = [
   { id: "off", label: "Off" },
-  { id: "fast", label: "Fast tier" },
-  { id: "balanced", label: "Balanced tier" },
-  { id: "deep", label: "Deep tier" },
+  { id: "small", label: "Small tier (Ollama)" },
 ] as const;
+
+const isOllamaCompletion = (v: string) => v === "small" || v.startsWith("ollama:");
 
 export function EditorSection({ projectId }: { projectId: string | null }) {
   const { details, update, retry } = useProjectDetails();
   const { bridge } = useApp();
   const providers = useProviders(bridge);
+  const harness = useHarnessSettings();
   const list = providers.status === "ready" ? providers.list : null;
+  const ollama = list?.providers.find((p) => p.kind === "ollama");
+  const modelSetting = harness.get(SETTING_IDS.modelCompletion);
+  const configuredSmall = (typeof modelSetting?.value === "string" && modelSetting.value.trim()) || ollama?.default_model || "qwen2.5-coder:1.5b";
   return (
     <>
       <PerProject
@@ -116,10 +123,12 @@ export function EditorSection({ projectId }: { projectId: string | null }) {
         retry={retry}
         openProject={projectId}
         scopeText="Inline completion is set per project."
-        footer="Suggests code as you type in the editor. Uses an Anthropic API key or the Octo router; coding agents can't be used."
+        footer="Suggests code as you type in the editor. Uses Ollama's dedicated small tier; coding agents and higher chat tiers are not used."
         row={(p) => {
           const value = p.models.completion ?? "off";
           const known = COMPLETION.some((o) => o.id === value);
+          const ollamaMode = isOllamaCompletion(value);
+          const smallModel = value.startsWith("ollama:") ? value.slice("ollama:".length).trim() || configuredSmall : configuredSmall;
           // A3: a value that cannot run is said the same way as everywhere else (the warn tone and a reason).
           const stuck = value !== "off" && list !== null && !canRun(list, value);
           return (
@@ -132,6 +141,12 @@ export function EditorSection({ projectId }: { projectId: string | null }) {
               description={
                 value === "off" ? (
                   "No suggestions."
+                ) : ollamaMode ? (
+                  stuck ? (
+                    <Notice tone="warn">Cannot run: check the Ollama server URL and model below.</Notice>
+                  ) : (
+                    `Runs through Ollama's dedicated small tier (${smallModel}).`
+                  )
                 ) : stuck ? (
                   <Notice
                     tone="warn"
@@ -153,6 +168,33 @@ export function EditorSection({ projectId }: { projectId: string | null }) {
           );
         }}
       />
+      <SettingsGroup label="Ollama small tier" footer="Local Ollama model and endpoint used when inline completion is set to Small tier (Ollama).">
+        {harness.load.status === "unavailable" && <SettingsRow title="Not available here" description="This window can't read or change Octo's settings." />}
+        {harness.load.status === "loading" && <SkeletonList count={2} size="lg" twoLine />}
+        {harness.load.status === "error" && (
+          <LoadErrorRow what="settings" message={harness.load.message} hint="Octo's local service answers only on this computer." onRetry={harness.reload} />
+        )}
+        {harness.load.status === "ready" && (
+          <>
+            <HarnessTextRow
+              settingId={SETTING_IDS.modelCompletion}
+              rowId="completion-model"
+              title="Ollama small-tier model"
+              description="Ollama model tag used for inline completions."
+              placeholder="qwen2.5-coder:1.5b"
+              widthClass={CONTROL_W.md}
+            />
+            <HarnessTextRow
+              settingId={SETTING_IDS.ollamaBaseUrl}
+              rowId="ollama-url"
+              title="Ollama server URL"
+              description="Leave empty to use http://127.0.0.1:11434."
+              placeholder="http://127.0.0.1:11434"
+              widthClass={CONTROL_W.lg}
+            />
+          </>
+        )}
+      </SettingsGroup>
       {/* B9: plugins have their own section; Editor keeps a way there (the palette's "Open integrations" lands here). */}
       <SettingsGroup label="Language help">
         <SettingsRow
@@ -169,35 +211,129 @@ export function EditorSection({ projectId }: { projectId: string | null }) {
   );
 }
 
+function HarnessTextRow({
+  settingId,
+  rowId,
+  title,
+  description,
+  placeholder,
+  widthClass,
+}: {
+  settingId: string;
+  rowId: string;
+  title: string;
+  description: string;
+  placeholder: string;
+  widthClass: string;
+}) {
+  const harness = useHarnessSettings();
+  const [saved, run] = useSave();
+  const id = useId();
+  const s = harness.get(settingId);
+  const stored = typeof s?.value === "string" ? s.value : "";
+  const [draft, setDraft] = useState<string | null>(null);
+  if (!s) return null;
+  const value = draft ?? stored;
+  const commit = () => {
+    if (draft === null || draft.trim() === stored) return setDraft(null);
+    void run(() => harness.save({ set: { [s.id]: draft.trim() } })).then((ok) => ok && setDraft(null));
+  };
+  return (
+    <SettingsRow
+      rowId={rowId}
+      title={title}
+      htmlFor={id}
+      description={s.editable ? description : (s.note ?? `Set by the ${s.source}.`)}
+      status={<SaveStatus state={saved} />}
+      control={
+        <TextField
+          size="sm"
+          id={id}
+          value={value}
+          disabled={!s.editable}
+          placeholder={placeholder}
+          spellCheck={false}
+          autoComplete="off"
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape" && draft !== null) {
+              e.preventDefault();
+              setDraft(null);
+            }
+          }}
+          className={`${widthClass} font-mono`}
+        />
+      }
+    />
+  );
+}
+
 const CONTEXT = [
   { id: "full", label: "Full history" },
   { id: "window", label: "Recent window" },
 ] as const;
 
+const AUTO_MEMORY: readonly { id: AutoMemoryMode; label: string }[] = [
+  { id: "off", label: "Off (ask first)" },
+  { id: "review", label: "Review each item" },
+  { id: "allow", label: "Allow automatically" },
+  { id: "blocked", label: "Blocked for this project" },
+];
+
+function autoMemoryDescription(mode: AutoMemoryMode): string {
+  switch (mode) {
+    case "allow":
+      return "Saves remembered facts and updates end-of-turn digests without asking.";
+    case "review":
+      return "Asks you to save or skip each item before it enters memory.";
+    case "blocked":
+      return "Memory is disabled for this project and hidden from the sidebar '+' and workspace menus.";
+    default:
+      return "Memory is off by default; asks to enable with Allow, Review, or Block when the model wants to remember something.";
+  }
+}
+
 export function MemorySection({ projectId }: { projectId: string | null }) {
   const { details, update, retry } = useProjectDetails();
   return (
     <PerProject
-      label="Context"
-      rowId="context"
+      label="Memory"
+      rowId="memory"
       details={details}
       retry={retry}
       openProject={projectId}
       scopeText="Set per project."
       footer="Full history sends the whole conversation; Recent window builds the context from memory, tasks and the last exchanges."
       row={(p) => {
-        const m = p.memory ?? { context: "full", recent_exchanges: 5 };
+        const m = { context: "full" as const, recent_exchanges: 5, auto_memory: "off" as const, ...p.memory };
+        const autoMode: AutoMemoryMode = m.auto_memory ?? "off";
         return (
-          <ProjectSelect
-            key={p.id}
-            project={p}
-            value={m.context}
-            options={CONTEXT}
-            title="Context mode"
-            description={m.context === "window" ? `The last ${m.recent_exchanges} exchanges, plus memory.` : "Every message, summarised when it gets long."}
-            patch={(v) => ({ memory: { context: v } })}
-            update={update}
-          />
+          <>
+            <ProjectSelect
+              key={`${p.id}:auto`}
+              rowId="auto-memory"
+              project={p}
+              value={autoMode}
+              options={AUTO_MEMORY}
+              title="Auto-memory"
+              description={autoMemoryDescription(autoMode)}
+              patch={(v) => ({ memory: { auto_memory: v } })}
+              update={update}
+            />
+            <ProjectSelect
+              key={`${p.id}:context`}
+              rowId="context"
+              project={p}
+              value={m.context}
+              options={CONTEXT}
+              title="Context mode"
+              description={m.context === "window" ? `The last ${m.recent_exchanges} exchanges, plus memory.` : "Every message, summarised when it gets long."}
+              patch={(v) => ({ memory: { context: v } })}
+              update={update}
+            />
+          </>
         );
       }}
     />

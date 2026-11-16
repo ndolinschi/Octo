@@ -98,7 +98,7 @@ export function ListDetail(props: {
           // P7: nothing chosen yet. A list that pre-opens its first item beside it (wide) marks that row; one column shows no detail, so no row reads as chosen (styles.css).
           data-unpicked={props.selected === null || undefined}
           className={cn(
-            "min-h-0 flex-col @min-[640px]/ld:flex @min-[640px]/ld:w-70 @min-[640px]/ld:shrink-0 @min-[640px]/ld:border-r @min-[640px]/ld:border-line",
+            "min-h-0 flex-col @min-[640px]/ld:flex @min-[640px]/ld:w-[clamp(17.5rem,30%,22.5rem)] @min-[640px]/ld:shrink-0 @min-[640px]/ld:border-r @min-[640px]/ld:border-line",
             open ? "hidden" : "flex flex-1 @min-[640px]/ld:flex-none",
           )}
         >

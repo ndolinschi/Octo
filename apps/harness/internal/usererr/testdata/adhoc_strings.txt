@@ -73,8 +73,9 @@ project/files.go|invalid|path is not a regular file
 project/files.go|notFound|folder
 project/files.go|notFound|path
 project/files.go|notFound|project
+project/files.go|notFound|workspace
 project/history.go|invalid|q is required
-project/input.go|invalid|access must be %q or %q
+project/input.go|invalid|access must be %q, %q or %q
 project/input.go|invalid|budget_usd must be greater than 0, or null to remove the budget
 project/input.go|invalid|duplicate folder label %q
 project/input.go|invalid|folder path %q is not an existing directory
@@ -119,20 +120,23 @@ project/service.go|invalid|models.%s: %s
 project/service.go|invalid|models.auto_candidates: %q must be fast, balanced, deep or acp:<agent-id>[/<model>]
 project/service.go|invalid|models.auto_candidates: %s
 project/service.go|invalid|models.auto_candidates: duplicate %q
-project/service.go|invalid|models.completion must be a model id, fast, balanced, deep or off
+project/service.go|invalid|models.completion must be a model id, small, ollama:<model>, fast, balanced, deep or off
 project/service.go|invalid|models.completion: inline completion needs a fast Messages API model; an ACP agent answers in seconds, not milliseconds
 project/service.go|invalid|name is required
 project/service.go|invalid|name must not be empty
 project/service.go|notFound|project
 project/sessions.go|invalid|archived must be true, false or all
+project/sessions.go|invalid|each session requires provider and id
 project/sessions.go|invalid|kind must be main or agent
 project/sessions.go|invalid|limit must be an integer from 1 to 200
 project/sessions.go|invalid|send title and/or archived
+project/sessions.go|invalid|sessions is required
 project/sessions.go|invalid|state must be working, waiting, queued, idle, failed or stopped
 project/sessions.go|invalid|text is too long
 project/sessions.go|invalid|text must not be empty
 project/sessions.go|invalid|title is at most 200 characters
 project/sessions.go|invalid|title must not be empty
+project/sessions.go|notFound|importable session 
 project/sessions.go|notFound|session
 project/settings.go|invalid|%s
 project/side.go|invalid|text is required
@@ -141,6 +145,7 @@ project/slash.go|Error.Message|/
 project/usage.go|invalid|%s must be RFC 3339 or YYYY-MM-DD
 project/usage.go|invalid|from must not be after to
 project/usage.go|invalid|group must be day, model, project or agent
+project/workspaces.go|invalid|invalid branch name %q
 review/branches.go|invalid|invalid_ref
 review/branches.go|invalid|invalid_request
 review/branches.go|invalid|unknown_ref

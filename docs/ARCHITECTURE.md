@@ -213,11 +213,12 @@ and the tier hint when a router is present.
 
 ### 6. Approvals, queue and forms (v7)
 
-1. **Access** is a project field: `supervised` or `full`. New projects get `HARNESS_DEFAULT_ACCESS` (**`full`**
+1. **Access** is a project field: `supervised`, `accept_edits`, or `full`. New projects get `HARNESS_DEFAULT_ACCESS` (**`full`**
    unless set otherwise; the UI shows approval cards; existing projects keep their value).
 2. In a `supervised` project `write_file`, `bash` (any depth), ACP `session/request_permission` (not read/search) and
-   ACP `fs/write_text_file` create an `Approval` card (`GET/POST /v1/projects/{pid}/approvals`); only the agent that
-   asked blocks. Decisions `allow`, `allow_for_turn`, `deny`. Cancelling the turn denies what is pending; an
+   ACP `fs/write_text_file` create an `Approval` card (`GET/POST /v1/projects/{pid}/approvals`); under `accept_edits`,
+   file edits/writes/deletes/moves are auto-approved while shell commands and other ACP actions still ask. Only the agent
+   that asked blocks. Decisions `allow`, `allow_for_turn`, `deny`. Cancelling the turn denies what is pending; an
    unanswered request is denied after `HARNESS_APPROVAL_TIMEOUT` (30 min). Events `approval.requested`,
    `approval.resolved`, `project.attention`.
 3. **Changes**: every file change in the project folders is recorded per turn (`write_file`, ACP `fs/*`, plus
@@ -232,17 +233,21 @@ and the tier hint when a router is present.
 
 ### 7. Memory
 
-1. Every message stays verbatim in `project.sqlite`. At the start of a turn the harness opens a **task record**
-   (`tasks`: title, goal, constraints, acceptance, quotes, decisions, outcome, files, dated **facts**).
+1. Every message stays verbatim in `project.sqlite`. Task records (`tasks`: title, goal, constraints, acceptance, quotes,
+   decisions, outcome, files, dated **facts**) and memory files are written only when `memory.auto_memory` allows it.
+   `memory.auto_memory` defaults to `"off"` (`"off" | "allow" | "review" | "blocked"`); when a model tries to remember in
+   `"off"` or `"review"` mode (with `HARNESS_FEATURE_AUTO_MEMORY` enabled, reported via `GET /v1/config` `features`), it
+   raises a `memory` approval card (`Allow`, `Review`, `Block`, or `Settings`). `"blocked"` hides Memory UI entry points
+   for that project.
 2. The orchestrator (built-in, and an ACP orchestrator over MCP) has `task_update`, `memory` (view, create,
    str_replace, insert, delete, rename on markdown files kept in `project.sqlite`), `memory_search` and
    `recall_message`.
-3. After a completed turn a side model (fast tier unless `models.side`) digests the turn into the record and facts (no
-   tools, usage role `digest`, failures only logged). Quotes must be exact substrings of the user's message.
-4. Search (`memory_search`, `GET /v1/projects/{pid}/memory/search`): two FTS5 indexes (`unicode61`, and `trigram` for
-   inflected Russian and partial identifiers); all words first, then "most of the significant words"; superseded facts
-   after current ones; an explicit "nothing in memory matches".
-5. **M2 (built, opt-in)**: project setting `memory: {context: "full"|"window", recent_exchanges}`;
+3. When `auto_memory` is enabled, a side model (fast tier unless `models.side`) digests a completed turn into the record
+   and facts (no tools, usage role `digest`, failures only logged). Quotes must be exact substrings of the user's message.
+4. Search (`memory_search`, `GET /v1/projects/{pid}/memory/search`): three FTS5 indexes (`unicode61`, `trigram`, and
+   Russian Snowball stems); all words first, then "most of the significant words"; superseded facts after current ones;
+   an explicit "nothing in memory matches".
+5. **M2 (built, opt-in)**: project setting `memory: {auto_memory, context: "full"|"window", recent_exchanges}`;
    `window` builds the orchestrator request from capped blocks (memory index, open tasks, the last N exchanges, facts,
    the current turn) and stores a context receipt (`GET /v1/projects/{pid}/turns/{tid}/context`). `full` is the default
    and today's behaviour. **M3** (UI view) is built; embeddings and cross-project memory are not.
@@ -328,7 +333,8 @@ flags beat both. Test-only variables (`OCTO_FAKEACP_*`) are left out.
 | `OCTO_PRICES_REFRESH` | router | unset | `off` or `catalogue`; beats `[prices] refresh` in `prices.toml`. Unset: the router refreshes prices from the OpenRouter catalogue only when its upstream URLs point at openrouter.ai (every 6 h, cache in `prices-catalogue.json` beside the history database). See `apps/router/docs/prices.md` |
 | `HARNESS_ACP_IDLE` | harness | `30m` | Idle ACP orchestrator session shutdown |
 | `HARNESS_ROUTE_TIMEOUT` | harness | `2500ms` | The route call of `tier: auto` |
-| `HARNESS_DEFAULT_ACCESS` | harness | `full` | `supervised` or `full`; the UI shows approval cards, the default is still `full` |
+| `HARNESS_DEFAULT_ACCESS` | harness | `full` | `supervised`, `accept_edits`, or `full`; the UI shows approval cards, the default is still `full` |
+| `HARNESS_FEATURE_AUTO_MEMORY` | harness (setting, applies at once) | `true` | Feature flag exposing automatic memory writes and the interactive `"Enable auto memory?"` prompt via `GET /v1/config` `features.auto_memory` |
 | `HARNESS_APPROVAL_TIMEOUT` | harness | `30m` | `0` or negative: wait for ever |
 | `HARNESS_API_TOKEN` | harness (env only, not a setting) | generated per start into `{data-dir}/api-token` | Bearer token required on `/v1/**` (16+ printable ASCII characters); never passed to children. The Tauri shell, `scripts/dev.sh` and the e2e scripts set it |
 | `HARNESS_NO_API_TOKEN` (flag `--no-api-token`) | harness | off | `1` turns the token check off (tests and scripts only; logs a warning) |

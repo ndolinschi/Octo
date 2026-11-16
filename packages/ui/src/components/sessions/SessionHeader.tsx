@@ -1,6 +1,7 @@
 import type { ProjectSession } from "@octo/agent-client";
 import { Square } from "lucide-react";
 import { useRef, useState, type KeyboardEvent } from "react";
+import { canMoveToWorktree } from "../../lib/sessions/model";
 import { Button } from "../primitives/Button";
 import { IconMenu } from "../primitives/IconMenu";
 import type { MenuItem } from "../primitives/Menu";
@@ -21,6 +22,7 @@ export function SessionHeader(props: {
   onRename(title: string): void;
   onCancelRename(): void;
   onMakeDefault(): void;
+  onMoveToWorktree?: (() => void) | undefined;
   /** Shows a main session's conversation (decision 96: its tab, or the conversation tab). */
   onOpen?: (() => void) | undefined;
   onArchive(next: boolean): void;
@@ -37,6 +39,7 @@ export function SessionHeader(props: {
   if (props.onOpen) items.push({ id: "open", label: "Open", run: props.onOpen });
   if (main && !isDefault) items.push({ id: "default", label: "Make default", run: props.onMakeDefault });
   if (main) items.push({ id: "rename", label: "Rename", run: props.onStartRename });
+  if (props.onMoveToWorktree && canMoveToWorktree(s)) items.push({ id: "worktree", label: "Move to worktree…", run: props.onMoveToWorktree });
   if (props.onOpenInTab) items.push({ id: "tab", label: "Open in new tab", run: props.onOpenInTab });
   // Archiving the current session is offered and refused with the reason (`current_session`); deleting it is not offered.
   items.push({ id: "archive", label: s.archived ? "Unarchive" : "Archive", run: () => props.onArchive(!s.archived) });

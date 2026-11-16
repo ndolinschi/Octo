@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -316,5 +317,92 @@ func TestCompletionUpstreamFailureIsReported(t *testing.T) {
 	var failed *orchestrator.CompletionFailedError
 	if !errors.As(err, &failed) {
 		t.Fatalf("err = %v, want CompletionFailedError", err)
+	}
+}
+
+func TestCompletionSmallTierOllamaDirect(t *testing.T) {
+	var seenModel, seenPrompt, seenSuffix string
+	ollamaSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/generate" {
+			http.NotFound(w, r)
+			return
+		}
+		var body struct {
+			Model  string `json:"model"`
+			Prompt string `json:"prompt"`
+			Suffix string `json:"suffix"`
+			Stream bool   `json:"stream"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		seenModel, seenPrompt, seenSuffix = body.Model, body.Prompt, body.Suffix
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"response":          "return 42",
+			"prompt_eval_count": 12,
+			"eval_count":        4,
+		})
+	}))
+	t.Cleanup(ollamaSrv.Close)
+
+	llm := newCompletionLLM()
+	r := newRigWith(t, llm, orchestrator.Options{
+		BuiltinUnavailable:   config.NoBuiltinLoopMessage,
+		OllamaBaseURL:        ollamaSrv.URL,
+		SmallCompletionModel: "qwen2.5-coder:1.5b",
+	})
+	pid := r.project(t, 1)
+	r.update(t, pid, project.Input{Models: &config.Models{Completion: config.CompletionSmall}})
+
+	res, skipped, err := r.orch.Complete(context.Background(), pid, completion.Request{
+		Path: "main.go", Language: "go", Prefix: "func answer() int {\n\t", Suffix: "\n}\n",
+		Snippets: []completion.Snippet{{Path: "types.go", Text: "type X int"}},
+	})
+	if err != nil || skipped != "" {
+		t.Fatalf("err=%v skipped=%q", err, skipped)
+	}
+	if res.Text != "return 42" || res.Model != "qwen2.5-coder:1.5b" {
+		t.Fatalf("res = %+v", res)
+	}
+	if seenModel != "qwen2.5-coder:1.5b" || !strings.Contains(seenPrompt, "type X int") || seenSuffix != "\n}\n" {
+		t.Fatalf("ollama request = (%q, %q, %q)", seenModel, seenPrompt, seenSuffix)
+	}
+	if len(llm.requests()) != 0 {
+		t.Fatal("small tier hit Anthropic Messages loop instead of Ollama")
+	}
+
+	// Live SetOllama updates the model immediately.
+	r.orch.SetOllama(ollamaSrv.URL, "starcoder2:3b")
+	res, _, err = r.orch.Complete(context.Background(), pid, completion.Request{Path: "main.go", Prefix: "x := "})
+	if err != nil || res.Model != "starcoder2:3b" || seenModel != "starcoder2:3b" {
+		t.Fatalf("after SetOllama res=%+v seenModel=%q err=%v", res, seenModel, err)
+	}
+
+	// Explicit ollama:<tag> overrides settings.
+	r.update(t, pid, project.Input{Models: &config.Models{Completion: "ollama:codellama:7b"}})
+	res, _, err = r.orch.Complete(context.Background(), pid, completion.Request{Path: "main.go", Prefix: "y := "})
+	if err != nil || res.Model != "codellama:7b" || seenModel != "codellama:7b" {
+		t.Fatalf("explicit ollama tag res=%+v seenModel=%q err=%v", res, seenModel, err)
+	}
+}
+
+func TestCompletionSmallTierThroughRouter(t *testing.T) {
+	llm := newCompletionLLM()
+	r, fr := newFakeRig(t, llm, fakerouter.Options{Rates: pricey}, orchestrator.Options{})
+	pid := r.project(t, 1)
+	r.update(t, pid, project.Input{Models: &config.Models{Completion: config.CompletionSmall}})
+
+	res, _, err := r.orch.Complete(context.Background(), pid, completion.Request{Path: "a.go", Prefix: "x"})
+	if err != nil || res.Model != config.DefaultOllamaSmallModel {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	var seenSmall bool
+	for _, q := range fr.Requests() {
+		if q.Header.Get("x-octo-tier-hint") == config.CompletionSmall && q.Header.Get("x-octo-task") == "completion" {
+			seenSmall = true
+		}
+	}
+	if !seenSmall {
+		t.Fatalf("expected x-octo-tier-hint: small on router request, got %v", fr.Requests())
 	}
 }

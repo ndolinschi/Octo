@@ -6,7 +6,7 @@ import { formatDuration } from "../../lib/format";
 import { useRowKeys } from "../../lib/hooksMore";
 import { agentActivity, roleText } from "../../lib/orchestrator";
 import { useRovingRows } from "../../lib/rovingRows";
-import { canDelete, sessionRow, type AgentRowMeta, type SessionNode } from "../../lib/sessions/model";
+import { canDelete, canMoveToWorktree, sessionRow, type AgentRowMeta, type SessionNode } from "../../lib/sessions/model";
 import { useModelNames } from "../../state/modelNames";
 import { useProject } from "../../state/project";
 import { IconMenu } from "../primitives/IconMenu";
@@ -36,6 +36,7 @@ export function SessionRows(props: {
     /** "Open": a main session's conversation (decision 96). */
     onResume(session: ProjectSession): void;
     onMakeDefault?(session: ProjectSession): void;
+    onMoveToWorktree?(session: ProjectSession): void;
     onArchive(session: ProjectSession, archived: boolean): void;
     onDelete(session: ProjectSession): void;
   };
@@ -82,6 +83,10 @@ export function SessionRows(props: {
       if (s.kind === "main" && !isDefault && menu.onMakeDefault) {
         const make = menu.onMakeDefault;
         items.push({ id: "default", label: "Make default", run: () => make(s) });
+      }
+      if (menu.onMoveToWorktree && canMoveToWorktree(s)) {
+        const move = menu.onMoveToWorktree;
+        items.push({ id: "worktree", label: "Move to worktree…", run: () => move(s) });
       }
       if (!isDefault) items.push({ id: "archive", label: s.archived ? "Unarchive" : "Archive", run: () => menu.onArchive(s, !s.archived) });
       if (canDelete(menu.list, s)) items.push({ id: "delete", label: "Delete", run: () => menu.onDelete(s) });

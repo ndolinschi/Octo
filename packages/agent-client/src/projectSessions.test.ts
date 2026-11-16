@@ -163,3 +163,41 @@ test("sessions: the reducer keeps the list and the current main session from eve
   assert.equal(s.sessions.list.filter((x) => x.id === "old").length, 1);
   assert.equal(s.sessions.list.find((x) => x.id === "old")?.title, "renamed");
 });
+
+test("workspaces: listWorkspaces, moveSessionToWorktree, and file workspace queries", async () => {
+  const ws = {
+    id: "wrk_1",
+    kind: "worktree" as const,
+    title: "Worktree · octo/fix",
+    state: "ready",
+    branch: "octo/fix",
+    created_at: "2026-11-16T00:00:00Z",
+    folders: [{ workspace_id: "wrk_1", folder_id: "fld_1", folder_label: "web", path: "/tmp/wt", branch: "octo/fix", shared: false }],
+  };
+  let r = bridgeWith(200, JSON.stringify({ workspaces: [ws] }));
+  assert.deepEqual(await r.bridge.listWorkspaces?.("p"), [ws]);
+  assert.equal(r.calls[0]?.url, "http://h:1/v1/projects/p/workspaces");
+
+  const movedSession = session({ id: "ses_1", workspace: { id: "wrk_1", kind: "worktree", title: ws.title, branch: "octo/fix" } });
+  r = bridgeWith(200, JSON.stringify({ session: movedSession, workspace: ws }));
+  assert.deepEqual(await r.bridge.moveSessionToWorktree?.("p", "ses_1", { branch: "octo/fix", carry_changes: true }), {
+    session: movedSession,
+    workspace: ws,
+  });
+  assert.deepEqual(
+    [r.calls[0]?.method, r.calls[0]?.url, r.calls[0]?.body],
+    ["POST", "http://h:1/v1/projects/p/sessions/ses_1/worktree", { branch: "octo/fix", carry_changes: true }],
+  );
+
+  r = bridgeWith(200, JSON.stringify({ entries: [] }));
+  await r.bridge.listFiles("p", "web", "", { workspaceId: "wrk_1" });
+  assert.equal(r.calls[0]?.url, "http://h:1/v1/projects/p/files?folder=web&path=&workspace=wrk_1");
+
+  r = bridgeWith(200, JSON.stringify({ folder: "web", path: "a.ts", size: 1, mtime: "t", content: "x" }));
+  await r.bridge.readFile("p", "web", "a.ts", { workspaceId: "wrk_1" });
+  assert.equal(r.calls[0]?.url, "http://h:1/v1/projects/p/files/content?folder=web&path=a.ts&workspace=wrk_1");
+
+  r = bridgeWith(200, JSON.stringify({ folder: "web", path: "a.ts", size: 1, mtime: "t" }));
+  await r.bridge.writeFile("p", { folder: "web", path: "a.ts", content: "x", workspace_id: "wrk_1" });
+  assert.deepEqual(r.calls[0]?.body, { folder: "web", path: "a.ts", content: "x", workspace_id: "wrk_1" });
+});

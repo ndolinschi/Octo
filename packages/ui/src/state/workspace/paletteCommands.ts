@@ -31,7 +31,7 @@ export function workspaceActions(ws: PaletteWorkspace): WorkspaceCommand[] {
     tool("details", "Show project details"),
     tool("changes", "Show changes"),
     tool("review", "Review a pull request"),
-    tool("memory", "Show memory"),
+    ...(ws.memoryBlocked ? [] : [tool("memory", "Show memory")]),
     tool("usage", "Show usage"),
     { ...tool("side", "Ask a side question"), shortcut: `${MOD_LABEL};` },
     { id: "new-tab", label: "Open a tab…", detail: "tools, sessions, files, agents", shortcut: `${MOD_LABEL}T`, run: () => ws.openPicker() },

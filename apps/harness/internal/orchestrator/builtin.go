@@ -4,9 +4,51 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 )
+
+// SetOllama swaps the Ollama server URL and small-tier model tag used for
+// inline completions; future completion calls see the new values at once.
+func (o *Orchestrator) SetOllama(baseURL, model string) {
+	url := strings.TrimSpace(baseURL)
+	if url == "" {
+		url = config.DefaultOllamaBaseURL
+	}
+	mod := strings.TrimSpace(model)
+	o.ollamaURL.Store(&url)
+	o.smallModel.Store(&mod)
+}
+
+// OllamaConfig returns the live Ollama base URL and small-tier model tag.
+func (o *Orchestrator) OllamaConfig() (baseURL, model string) {
+	return o.ollamaBaseURL(), o.smallCompletionModel()
+}
+
+func (o *Orchestrator) ollamaBaseURL() string {
+	if p := o.ollamaURL.Load(); p != nil && strings.TrimSpace(*p) != "" {
+		return strings.TrimSpace(*p)
+	}
+	if strings.TrimSpace(o.opts.OllamaBaseURL) != "" {
+		return strings.TrimSpace(o.opts.OllamaBaseURL)
+	}
+	return config.DefaultOllamaBaseURL
+}
+
+func (o *Orchestrator) smallCompletionModel() string {
+	if p := o.smallModel.Load(); p != nil {
+		if m := strings.TrimSpace(*p); m != "" {
+			return m
+		}
+		return config.DefaultOllamaSmallModel
+	}
+	if m := strings.TrimSpace(o.opts.SmallCompletionModel); m != "" {
+		return m
+	}
+	return config.DefaultOllamaSmallModel
+}
 
 // noBuiltinLoopError is the error a request that needs the built-in agent loop
 // ends with while Options.BuiltinUnavailable is set; its text is the option's.

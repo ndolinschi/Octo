@@ -73,16 +73,20 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
     }
   };
 
+  const memoryBlocked = project?.memory?.auto_memory === "blocked";
+
   const sections = (query: string): PickerSection[] => {
-    const tools: PickerRow[] = (Object.entries(TOOL_TABS) as [ToolTab, (typeof TOOL_TABS)[ToolTab]][]).map(([tool, t]) => ({
-      id: `tool:${tool}`,
-      label: t.label,
-      lead: <Glyph icon={t.icon} size={14} />,
-      ...(open.has(toolTab(tool)) ? { detail: "open" } : {}),
-      ...(tool === "side" ? { hint: `${MOD_LABEL};` } : {}),
-      title: t.title,
-      run: () => (tool === "files" ? files.show() : ws.openTool(tool)),
-    }));
+    const tools: PickerRow[] = (Object.entries(TOOL_TABS) as [ToolTab, (typeof TOOL_TABS)[ToolTab]][])
+      .filter(([tool]) => !(memoryBlocked && tool === "memory"))
+      .map(([tool, t]) => ({
+        id: `tool:${tool}`,
+        label: t.label,
+        lead: <Glyph icon={t.icon} size={14} />,
+        ...(open.has(toolTab(tool)) ? { detail: "open" } : {}),
+        ...(tool === "side" ? { hint: `${MOD_LABEL};` } : {}),
+        title: t.title,
+        run: () => (tool === "files" ? files.show() : ws.openTool(tool)),
+      }));
     tools.push({ id: "open-file", label: "Open file…", lead: <Glyph icon={FileSearch} size={14} />, title: "Filter the project's files", run: files.show });
     const q = query.trim().toLowerCase();
     const fileRows: PickerRow[] = q

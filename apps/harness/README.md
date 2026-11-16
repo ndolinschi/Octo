@@ -211,7 +211,7 @@ export ANTHROPIC_API_KEY="your-key"
 | (env only) | `HARNESS_API_TOKEN` | `serve` only: the bridge API token (16+ printable ASCII characters). Unset: `serve` generates one at every start and writes it to `{data-dir}/api-token` (0600); a token from the environment is never written to disk. See "Bridge API token" below |
 | `--no-api-token` | `HARNESS_NO_API_TOKEN=1` | `serve` only: do not require the token on `/v1` (tests and scripts that have not been updated). Logs a warning |
 | `--exit-on-stdin-close` | `HARNESS_EXIT_ON_STDIN_CLOSE=1` | `serve` only: shut down gracefully (the SIGTERM path, child processes included) when standard input reaches EOF, so a harness started by an app does not outlive it. Off by default |
-| (env only) | `HARNESS_DEFAULT_ACCESS` | `serve` only: access of projects created without one, `full` (default until the UI shows approval cards) or `supervised`; see [docs/v7.md](./docs/v7.md) |
+| (env only) | `HARNESS_DEFAULT_ACCESS` | `serve` only: access of projects created without one, `supervised` (default), `accept_edits`, or `full`; see [docs/v7.md](./docs/v7.md) |
 | (env only) | `HARNESS_APPROVAL_TIMEOUT` | `serve` only: an approval request nobody answers is denied after this (Go duration, default `30m`; `0` waits for ever) |
 | (env only) | `HARNESS_ACP_TRACE` | `1` writes a redacted, size-capped wire trace of every ACP session to `{data-dir}/traces/`; also the setting of the same name (`PUT /v1/settings`, applies to sessions started afterwards); see [docs/acp-orchestrator.md](./docs/acp-orchestrator.md#diagnostics-and-the-wire-trace) |
 

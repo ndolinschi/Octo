@@ -1,5 +1,5 @@
 import type { ProjectSession } from "@octo/agent-client";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { useHistoryLayer } from "../../lib/historyLayer";
 import { usePhone } from "../../lib/phone";
@@ -21,6 +21,8 @@ import { SessionDetail } from "./SessionDetail";
 import { SessionRows } from "./SessionRows";
 import { useSessionActions } from "./useSessionActions";
 
+const MoveToWorktreeDialog = lazy(() => import("../shared/MoveToWorktreeDialog").then((m) => ({ default: m.MoveToWorktreeDialog })));
+
 /**
  * The Sessions tab (project sessions, decision 5; Memory's sibling): main sessions newest first, each opening to the agent
  * sessions it started, filters All · Working · Mine · Agents · Archived, "New session" first in the list header, and the
@@ -29,7 +31,7 @@ import { useSessionActions } from "./useSessionActions";
  */
 export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInTab?: ((id: string) => void) | undefined }) {
   const { bridge } = useApp();
-  const { state, projectId } = useProject();
+  const { state, project, projectId, applySession } = useProject();
   const list = state.sessions.list;
   const actions = useSessionActions();
   const ws = useOptionalWorkspace();
@@ -46,6 +48,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
   // "Agents of <session>": the agent chips and delegation rows ask for the agent sessions of one main session.
   const [agentsOf, setAgentsOf] = useState<string | null>(asked?.filter === "agents" ? (asked.agentsOf ?? null) : null);
   const [deleting, setDeleting] = useState<ProjectSession | null>(null);
+  const [moving, setMoving] = useState<ProjectSession | null>(null);
   const [open, setOpen] = useState<string | null>(startAt?.kind === "agent" ? (startAt.parent_session_id ?? null) : (startAt?.id ?? null));
   // A request made while the tab is already mounted: select that session (an agent's main session opens with it).
   useEffect(
@@ -64,6 +67,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
 
   const nodes = useMemo(() => visibleNodes(list, filter, filter === "agents" ? agentsOf : null), [list, filter, agentsOf]);
   const picked = selected !== null ? (list.find((s) => s.id === selected) ?? null) : null;
+  const shown = picked ?? nodes.find((n) => n.session.current)?.session ?? nodes[0]?.session ?? null;
   // Direction 7: on the phone a chosen session is a screen of its own over the list, so Back returns to the list.
   useHistoryLayer(usePhone() && picked !== null, () => setSelected(null));
 
@@ -90,10 +94,11 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
         actions={
           <NewSessionButton
             loading={actions.busy === "create"}
+            memoryBlocked={project?.memory?.auto_memory === "blocked"}
             onCreate={() =>
               void actions.create().then((created) => {
-                // Decision 96: "New session" makes and opens a session; the default stays where it is.
-                if (created) ws?.showSession(created.id);
+                // Decision 96: "New session" makes and opens a session in its own tab; the default stays where it is.
+                if (created) ws?.openSession(created.id);
                 if (!created) return;
                 setSelected(created.id);
                 setFilter("all");
@@ -143,7 +148,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
               ) : (
                 <SessionRows
                   nodes={nodes}
-                  selected={picked?.id ?? null}
+                  selected={shown?.id ?? null}
                   open={open}
                   openAll={filter === "working"}
                   now={now}
@@ -152,6 +157,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
                     list,
                     onResume: (s) => (ws ? ws.showSession(s.id) : undefined),
                     onMakeDefault: (s) => void actions.makeDefault(s.id),
+                    ...(bridge.moveSessionToWorktree ? { onMoveToWorktree: (s: ProjectSession) => setMoving(s) } : {}),
                     onArchive: (s, archived) => void actions.archive(s.id, archived),
                     onDelete: (s) => {
                       actions.clear();
@@ -168,10 +174,10 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
               )
             }
             detail={
-              picked ? (
+              shown ? (
                 <SessionDetail
-                  key={picked.id}
-                  session={picked}
+                  key={shown.id}
+                  session={shown}
                   list={list}
                   now={now}
                   renderTranscript={props.renderTranscript}
@@ -201,6 +207,16 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
           onDeleted={() => setSelected((cur) => (cur === deleting.id ? null : cur))}
         />
       )}
+      <Suspense fallback={null}>
+        {moving && (
+          <MoveToWorktreeDialog
+            projectId={projectId}
+            session={moving}
+            onClose={() => setMoving(null)}
+            onMoved={(res) => applySession({ kind: "upsert", session: res.session })}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

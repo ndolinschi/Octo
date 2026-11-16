@@ -1,4 +1,5 @@
-import type { Models, Project, ProjectInput, TierPolicy } from "@octo/agent-client";
+import type { AccessMode, Models, Project, ProjectInput, TierPolicy } from "@octo/agent-client";
+import { ACCESS_DETAIL, ACCESS_LABEL, ACCESS_MODES } from "../../lib/access";
 import { modelsPatchForSessionChoice } from "../../lib/models";
 import { budgetState, parseBudget, TIER_POLICIES } from "../../lib/modelsMore";
 import { ModelPicker } from "../shared/ModelPicker";
@@ -71,6 +72,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   const [maxDepth, setMaxDepth] = useState(props.project?.max_depth ?? config?.default_max_depth ?? 3);
   const [budget, setBudget] = useState(props.project?.budget_usd ? String(props.project.budget_usd) : "");
   const [policy, setPolicy] = useState<TierPolicy>(props.project?.models.tier_policy ?? "auto");
+  const [access, setAccess] = useState<AccessMode>(props.project?.access ?? (editing ? "full" : "supervised"));
   const router = config?.router === true;
   const list = providers.status === "ready" ? providers.list : null;
   const unrunnable = list
@@ -180,6 +182,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
         ),
         models: changedModels,
         max_depth: maxDepth,
+        access,
         ...budgetPatch,
       });
     } catch (err) {
@@ -467,6 +470,25 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
             </div>
           )}
         </div>
+        <Field
+          label="Permissions"
+          hint={
+            <span className="grid gap-0.5">
+              {ACCESS_MODES.map((m) => (
+                <span key={m}>
+                  <span className={m === access ? "text-fg-2" : undefined}>{ACCESS_LABEL[m]}:</span> {ACCESS_DETAIL[m]}.
+                </span>
+              ))}
+            </span>
+          }
+        >
+          <Segmented<AccessMode>
+            label="Permissions"
+            value={access}
+            onChange={setAccess}
+            options={ACCESS_MODES.map((m) => ({ id: m, label: ACCESS_LABEL[m], title: ACCESS_DETAIL[m] }))}
+          />
+        </Field>
         {props.project && <ApprovalRules projectId={props.project.id} />}
         {/* Decision 2026-11-15: a model that cannot run is said calmly with the way forward; Create stays on. */}
         {issues.map((issue) => (

@@ -203,3 +203,39 @@ func TestSupervisedBashAndFullAccess(t *testing.T) {
 		t.Fatalf("approvals under full access: %+v", left.Approvals)
 	}
 }
+
+func TestAcceptEditsAutoApprovesWritesAndAsksForBash(t *testing.T) {
+	e := newEnv(t, nil)
+	pid, folder := e.v7Project(t, "accept_edits")
+	// Writes auto-approve under accept_edits.
+	e.runTurn(t, pid, "Go [write:{role}.md]")
+	var left approvalsResp
+	e.into(t, "GET", "/v1/projects/"+pid+"/approvals", nil, http.StatusOK, &left)
+	if len(left.Approvals) != 0 {
+		t.Fatalf("unexpected approvals for writes under accept_edits: %+v", left.Approvals)
+	}
+	// Commands still ask.
+	e.into(t, "POST", "/v1/projects/"+pid+"/messages", map[string]string{"text": "Go [bash:echo ok > cmd.txt]"}, http.StatusAccepted, nil)
+	pending := e.waitApprovals(t, pid, 1)
+	if pending[0].Kind != "command" {
+		t.Fatalf("expected command approval, got %+v", pending[0])
+	}
+	for _, p := range pending {
+		e.answer(t, pid, p.ID, map[string]string{"decision": "allow"})
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		var p struct{ Status string }
+		e.into(t, "GET", "/v1/projects/"+pid, nil, http.StatusOK, &p)
+		if p.Status == "idle" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("turn did not finish")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if _, err := os.Stat(filepath.Join(folder, "cmd.txt")); err != nil {
+		t.Fatalf("approved bash did not run: %v", err)
+	}
+}

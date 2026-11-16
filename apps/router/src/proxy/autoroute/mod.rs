@@ -470,6 +470,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
         .as_ref()
         .map(|tool| format!("server_tool:{tool}"))
         .or_else(|| meta.legacy_reason());
+    let is_small = meta.tier_after == "small";
     let observe = Some(CallObserve {
         history: plan.state.history.clone(),
         kind: if plan.chat {
@@ -477,7 +478,11 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
         } else {
             CallKind::Messages
         },
-        provider: CallProvider::OpenRouter,
+        provider: if is_small {
+            CallProvider::Ollama
+        } else {
+            CallProvider::OpenRouter
+        },
         rerouting: meta.rerouting(),
         rerouting_reason,
         session_id,
@@ -516,6 +521,17 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
             .llm
             .openrouter
             .forward_chat_buffered(
+                &plan.state.client,
+                plan.parts,
+                Bytes::from(plan.forward.body),
+                observe,
+            )
+            .await
+    } else if is_small {
+        plan.state
+            .llm
+            .ollama
+            .forward_messages(
                 &plan.state.client,
                 plan.parts,
                 Bytes::from(plan.forward.body),

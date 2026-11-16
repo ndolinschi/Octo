@@ -6,6 +6,7 @@ pub enum CallProvider {
     OpenAi,
     OpenRouter,
     Claude,
+    Ollama,
 }
 
 impl CallProvider {
@@ -14,6 +15,7 @@ impl CallProvider {
             Self::OpenAi => "openai",
             Self::OpenRouter => "openrouter",
             Self::Claude => "claude",
+            Self::Ollama => "ollama",
         }
     }
 }

@@ -57,8 +57,9 @@ export class EditorBuffers {
     if (existing) return existing.model;
     // Language is inferred from the file name (extension) in the URI. A model made earlier for a
     // definition peek is adopted, with the content just read from disk.
-    const model = monaco.editor.getModel(uri) ?? monaco.editor.createModel(content, undefined, uri);
-    if (model.getValue() !== content) model.setValue(content);
+    const existingModel = monaco.editor.getModel(uri);
+    const model = existingModel ?? monaco.editor.createModel(content, undefined, uri);
+    if (existingModel && existingModel.getValue() !== content) existingModel.setValue(content);
     const buffer: Buffer = { model, savedVersion: model.getAlternativeVersionId(), modified: false, view: null, sub: { dispose() {} } };
     buffer.sub = model.onDidChangeContent(() => {
       this.check(key, buffer);

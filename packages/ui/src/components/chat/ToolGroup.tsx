@@ -104,7 +104,11 @@ export function ToolGroup({ uses, end = null, interrupted = false }: { uses: Too
   // A refusal (the agent's "rejected", the harness's deny) reads as stopped, never failed (retest3 G1).
   const items: Item[] = uses.map((use) => {
     const result = ctx.results.get(use.id);
-    return { use, state: viewState(stepState(result, ctx.agentRunning, end, interrupted), result), row: callRow(use.name, use.input, locate) };
+    return {
+      use,
+      state: viewState(stepState(result, ctx.agentRunning, end, interrupted), result),
+      row: callRow(use.name, use.input, locate, typeof result?.content === "string" ? result.content : undefined),
+    };
   });
   const runs = mergeRuns(items, (it) =>
     it.state === "done" && it.row.path && toolKind(it.use.name, it.use.input) === "edit" ? `${it.row.folder}\u0001${it.row.path}` : "",

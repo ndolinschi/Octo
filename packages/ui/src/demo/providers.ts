@@ -98,6 +98,22 @@ const settingDefs: Omit<Setting, "source" | "editable">[] = [
   { id: "HARNESS_MODEL_BALANCED", kind: "model", label: "Balanced tier model", group: "models", applies: "now" },
   { id: "HARNESS_MODEL_DEEP", kind: "model", label: "Deep tier model", group: "models", applies: "now" },
   {
+    id: "HARNESS_MODEL_COMPLETION",
+    kind: "model",
+    label: "Inline completion model (Ollama small tier)",
+    group: "models",
+    applies: "now",
+    hint: "Ollama model tag used when inline completion runs through the dedicated small tier.",
+  },
+  {
+    id: "HARNESS_OLLAMA_BASE_URL",
+    kind: "text",
+    label: "Ollama server URL",
+    group: "models",
+    applies: "now",
+    hint: "Base URL of the Ollama server for the small inline-completion tier (default http://127.0.0.1:11434).",
+  },
+  {
     id: "OCTO_ROUTER_ENABLED",
     kind: "bool",
     label: "Use the Octo router",
@@ -129,13 +145,26 @@ const settingDefs: Omit<Setting, "source" | "editable">[] = [
     applies: "now",
     hint: "One file per agent session under the data folder's traces directory, secrets removed, size-capped.",
   },
+  {
+    id: "HARNESS_FEATURE_AUTO_MEMORY",
+    kind: "bool",
+    label: "Auto-memory prompt & digest",
+    group: "advanced",
+    applies: "now",
+    hint: "When on, agents ask before saving memories (or save in Allow/Review mode) and update end-of-turn digests when allowed. Turn off to disable all automatic memory writes.",
+  },
 ];
+
+const BOOL_DEFAULTS: Record<string, boolean> = {
+  HARNESS_FEATURE_AUTO_MEMORY: true,
+};
 
 const BUILTIN: Record<string, string> = {
   HARNESS_MODEL_ORCHESTRATOR: "claude-sonnet-5-5",
   HARNESS_MODEL_FAST: "claude-haiku-5-5",
   HARNESS_MODEL_BALANCED: "claude-sonnet-5-5",
   HARNESS_MODEL_DEEP: "claude-opus-5-5",
+  HARNESS_MODEL_COMPLETION: "qwen2.5-coder:1.5b",
 };
 
 function noneFromUrl(): boolean {
@@ -161,6 +190,8 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
 > & {
   /** The stored models that cannot run now, as a project lists them (`models_unavailable`); a create or patch is never refused for them. */
   unusable(models: Partial<Models>): ModelIssue[];
+  /** Live process-wide feature flags derived from settings. */
+  features(): Record<string, boolean>;
 } {
   const none = options.none ?? noneFromUrl();
   // The file: id → value. Secrets are kept only to know they are set; they are never returned.
@@ -187,7 +218,7 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
       if (d.kind === "secret") return { ...base, set: v !== undefined, ...(typeof v === "string" && v.length > 8 ? { hint: `…${v.slice(-4)}` } : {}) };
       if (v !== undefined) return { ...base, value: v, set: true };
       if (builtin) return { ...base, value: builtin };
-      if (d.kind === "bool") return { ...base, value: false };
+      if (d.kind === "bool") return { ...base, value: BOOL_DEFAULTS[d.id] ?? false };
       return base;
     }),
   });
@@ -271,6 +302,33 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
     // R2: `?router=on` — an Octo router is detected (and switched on in the settings), so Settings → Providers lists it and
     // its detail can be seen; with `?providers=owner` too.
     if (routerOn()) list.unshift(ROUTER_PROVIDER);
+    const rawOllamaModel = file.get("HARNESS_MODEL_COMPLETION");
+    const ollamaModel = typeof rawOllamaModel === "string" && rawOllamaModel !== "" ? rawOllamaModel : "qwen2.5-coder:1.5b";
+    const rawOllamaUrl = file.get("HARNESS_OLLAMA_BASE_URL");
+    const ollamaUrl = typeof rawOllamaUrl === "string" && rawOllamaUrl !== "" ? rawOllamaUrl : "http://127.0.0.1:11434";
+    const ollamaModels: ProviderModel[] = [
+      { id: "qwen2.5-coder:1.5b", label: "Qwen 2.5 Coder 1.5B", source: "catalogue" },
+      { id: "qwen2.5-coder:3b", label: "Qwen 2.5 Coder 3B", source: "catalogue" },
+      { id: "starcoder2:3b", label: "StarCoder2 3B", source: "catalogue" },
+      { id: "codellama:7b", label: "CodeLlama 7B", source: "catalogue" },
+      ...(ollamaModel !== "" && !["qwen2.5-coder:1.5b", "qwen2.5-coder:3b", "starcoder2:3b", "codellama:7b"].includes(ollamaModel)
+        ? [{ id: ollamaModel, label: ollamaModel, source: "catalogue" as const }]
+        : []),
+    ];
+    list.splice(routerOn() ? 2 : 1, 0, {
+      id: "ollama",
+      kind: "ollama",
+      label: "Ollama",
+      state: "ready",
+      reason: "",
+      install_hint: "",
+      login_hint: "",
+      models: ollamaModels,
+      default_model: ollamaModel,
+      flat_rate: true,
+      accepts_custom_model: true,
+      models_note: `Dedicated small tier (${ollamaUrl}) for inline editor completions.`,
+    });
     const withCustom = (p: Provider): Provider => {
       const found =
         !refreshed.has(p.id) || refreshFindsNothing() ? [] : p.id === "codex" ? CODEX_FOUND : p.id === "claude-code" && claudeEmpty ? CLAUDE_ALIASES : [];
@@ -340,6 +398,11 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
       }
       return out;
     },
+    features: () => ({
+      auto_memory: file.has("HARNESS_FEATURE_AUTO_MEMORY")
+        ? file.get("HARNESS_FEATURE_AUTO_MEMORY") === true
+        : BOOL_DEFAULTS.HARNESS_FEATURE_AUTO_MEMORY === true,
+    }),
     setProviderPrefs: async (id, change) => {
       await delay();
       if (!providers().providers.some((x) => x.id === id && x.kind === "agent")) throw new BridgeError(404, "not_found", `no agent ${id}`);

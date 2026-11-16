@@ -12,6 +12,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
+	"github.com/ndolinschi/Octo/apps/harness/internal/approval"
 	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
@@ -68,7 +69,7 @@ const searchSchema = `{"type":"object","properties":{"query":{"type":"string"},`
 const recallSchema = `{"type":"object","properties":{"id":{"type":"integer"},"exchange_id":{"type":"string"},"session_id":{"type":"string"}}}`
 
 // memoryDefs are the memory tools of the orchestrator.
-func (rt *runtime) memoryDefs() []tools.Def {
+func (rt *runtime) memoryDefs(a projectstore.Agent) []tools.Def {
 	text := func(f func(ctx context.Context, in json.RawMessage) (string, error)) tools.Handler {
 		return func(ctx context.Context, in json.RawMessage) (string, bool, error) {
 			out, err := f(ctx, in)
@@ -103,6 +104,36 @@ func (rt *runtime) memoryDefs() []tools.Def {
 				var in memory.ToolInput
 				if err := json.Unmarshal(raw, &in); err != nil {
 					return "", fmt.Errorf("%w: %v", memory.ErrInvalid, err)
+				}
+				if rt.memoryMode(ctx) == memory.AutoMemoryBlocked {
+					return "", fmt.Errorf("%w: memory is disabled for this project", memory.ErrInvalid)
+				}
+				switch in.Command {
+				case "create", "str_replace", "insert", "delete", "rename":
+					path := strings.TrimSpace(in.Path)
+					if in.Command == "rename" {
+						path = strings.TrimSpace(in.OldPath) + " -> " + strings.TrimSpace(in.NewPath)
+					}
+					preview := strings.TrimSpace(in.Summary)
+					if preview == "" {
+						preview = strings.TrimSpace(in.FileText)
+					}
+					if preview == "" {
+						preview = strings.TrimSpace(in.NewStr)
+					}
+					if preview == "" {
+						preview = strings.TrimSpace(in.InsertText)
+					}
+					if len(preview) > 240 {
+						preview = preview[:240] + "…"
+					}
+					if ok, reason := rt.approveMemory(ctx, a.ID, agentLabel(a), "Enable auto memory?", approval.Detail{
+						MemoryCommand: in.Command,
+						MemoryPath:    rt.redact(path),
+						MemoryText:    rt.redact(preview),
+					}); !ok {
+						return "", fmt.Errorf("%w: %s", memory.ErrInvalid, reason)
+					}
 				}
 				return rt.memory().Command(ctx, in)
 			})},

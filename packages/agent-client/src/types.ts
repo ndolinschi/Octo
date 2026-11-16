@@ -45,8 +45,10 @@ export type Models = {
   tier_policy?: TierPolicy;
   /** Model for side questions; absent means the fast tier. Cannot be cleared once set. */
   side?: string;
+  /** Ollama model tag used when completion is `"small"`. */
+  small?: string;
   /**
-   * Model of the editor's inline completion: a Messages API model id or a tier (`fast`, `balanced`, `deep`); absent
+   * Model of the editor's inline completion: `"small"` (dedicated Ollama small tier), `"ollama:<tag>"`, a Messages API model id, or a tier (`fast`, `balanced`, `deep`); absent
    * means the feature is off. Send `"off"` in an update to clear it. Never an ACP agent (400).
    */
   completion?: string;
@@ -77,7 +79,7 @@ export type ProjectInput = {
   max_depth?: number;
   /** Spend cap in USD (> 0); null removes it (PATCH only). */
   budget_usd?: number | null;
-  /** v7: `supervised` asks before writes, commands and ACP permission requests; `full` never asks. */
+  /** v7: `supervised` asks before writes, commands and ACP permission requests; `accept_edits` skips prompts for edits/writes; `full` never asks. */
   access?: AccessMode;
   /** M2: how the orchestrator's context is built; fields left out keep their value (PATCH merges). */
   memory?: Partial<MemorySettings>;
@@ -87,11 +89,13 @@ export type ProjectInput = {
   review?: ReviewConfigInput;
 };
 
+/** Whether the project remembers automatically: `off` asks before saving; `allow` saves; `review` asks on each item; `blocked` disables memory. */
+export type AutoMemoryMode = "off" | "allow" | "review" | "blocked";
 /** Project memory setting (M2). `full` sends the whole transcript (the default); `window` assembles the context from blocks with caps. */
-export type MemorySettings = { context: "full" | "window"; recent_exchanges: number };
+export type MemorySettings = { context: "full" | "window"; recent_exchanges: number; auto_memory?: AutoMemoryMode };
 
 /** Access mode of a project (v7 approvals). */
-export type AccessMode = "supervised" | "full";
+export type AccessMode = "supervised" | "accept_edits" | "full";
 
 /** What a project asks of the user (harness 0.2+): `failed` after a failed turn (the error is on the orchestrator's agent). */
 export type ProjectAttentionKind = "none" | "needs_you" | "failed";
@@ -141,7 +145,7 @@ export type Project = ProjectSummary & {
   budget_usd?: number | null;
   /** Last known spend in USD (router report or usage rows); null: unknown. */
   spent_usd?: number | null;
-  /** v7: the project's access mode (`full` for projects that predate approvals). */
+  /** v7: the project's access mode (`supervised` for new projects, `full` for projects that predate approvals). */
   access?: AccessMode;
   /** Parity B3: the project's default mode (absent on a harness that predates modes). */
   mode?: ProjectMode;
@@ -581,6 +585,7 @@ export type WriteFileInput = {
   path: string;
   content: string;
   expected_mtime?: string;
+  workspace_id?: string;
 };
 
 export type FileChangedEvent = {
@@ -589,6 +594,13 @@ export type FileChangedEvent = {
   folder: string;
   path: string;
   source: "user" | "agent";
+  workspace_id?: string;
+};
+
+export type WorkspaceUpdatedEvent = {
+  type: "workspace.updated";
+  seq: number;
+  workspace: Workspace;
 };
 
 /**
@@ -690,6 +702,7 @@ type AnyBridgeEvent =
   | SessionUpdatedEvent
   | SessionCurrentEvent
   | SessionDefaultEvent
+  | WorkspaceUpdatedEvent
   | FactRememberedEvent
   | FactForgottenEvent
   | SideDeltaEvent
@@ -721,8 +734,8 @@ type AnyBridgeEvent =
 
 export type BridgeEventType = BridgeEvent["type"];
 
-/** `api`: the built-in Messages loop; `router`: a detected Octo router; `agent`: an ACP agent of a plugin. */
-export type ProviderKind = "api" | "router" | "agent";
+/** `api`: the built-in Messages loop; `router`: a detected Octo router; `agent`: an ACP agent of a plugin; `ollama`: local Ollama small completion tier. */
+export type ProviderKind = "api" | "router" | "agent" | "ollama";
 /** `error` is reserved for a provider that is set up but failing; the harness does not report it yet. */
 /** `not_supported`: the agent's CLI cannot work with Octo (manifest `unsupported`); `reason` says why, there is nothing to connect. */
 export type ProviderState = "ready" | "not_connected" | "not_logged_in" | "not_installed" | "not_supported" | "error";
@@ -828,6 +841,8 @@ export type BridgeConfig = {
    * agent while the built-in loop is unavailable, else the default orchestrator model.
    */
   default_orchestrator?: string;
+  /** Live process-wide feature flags (`auto_memory`, ...). */
+  features?: Record<string, boolean>;
 };
 
 export type BuiltinLoopStatus = {
@@ -1021,10 +1036,13 @@ export const SETTING_IDS = {
   modelFast: "HARNESS_MODEL_FAST",
   modelBalanced: "HARNESS_MODEL_BALANCED",
   modelDeep: "HARNESS_MODEL_DEEP",
+  modelCompletion: "HARNESS_MODEL_COMPLETION",
+  ollamaBaseUrl: "HARNESS_OLLAMA_BASE_URL",
   routerEnabled: "OCTO_ROUTER_ENABLED",
   routerBaseUrl: "OCTO_ROUTER_BASE_URL",
   childEnvAllow: "HARNESS_CHILD_ENV_ALLOW",
   acpTrace: "HARNESS_ACP_TRACE",
+  featureAutoMemory: "HARNESS_FEATURE_AUTO_MEMORY",
 } as const;
 
 // --- v7: changes per turn and diffs ---------------------------------------------------------------------------
@@ -1142,8 +1160,8 @@ export type SendResult = { message: Message; queued?: undefined } | { queued: Qu
 
 // --- v7: approvals --------------------------------------------------------------------------------------------
 
-/** The wire also carries "network" (a web_fetch in a supervised project); it is not in this union yet so the UI exhaustive switches keep compiling until it handles the card. */
-export type ApprovalKind = "write" | "command" | "acp" | "network";
+/** The wire carries "write", "command", "acp", "network" (web_fetch), and "memory" (auto-memory prompt/review). */
+export type ApprovalKind = "write" | "command" | "acp" | "network" | "memory";
 export type ApprovalDecision = "allow" | "allow_for_turn" | "allow_always" | "deny";
 /** A rule an `allow_always` answer saves: `match` is a command prefix (the whole command when `exact`), a path glob or a host glob. */
 export type ApprovalRuleSpec = { tool: string; match: string; exact: boolean };
@@ -1172,6 +1190,12 @@ export type Approval = {
     patch?: string;
     /** What a web_fetch would fetch (kind `network`). */
     url?: string;
+    /** What a memory write would save or modify (kind `memory`). */
+    memory_command?: string;
+    memory_kind?: string;
+    memory_text?: string;
+    memory_about?: string;
+    memory_path?: string;
   };
   created_at: string;
   /** The tool behind the request: bash, write_file, edit, web_fetch or `acp:<kind>`. */
@@ -1508,13 +1532,38 @@ export type ProjectSession = {
   /** Why not, for a disabled composer. `code`: `not_current`, `steer_unsupported`, `not_running`, `not_continuable`, `builtin_loop_unavailable`. */
   message_blocked?: { code: string; message: string };
 };
+export type WorkspaceFolder = {
+  workspace_id: string;
+  folder_id: string;
+  folder_label?: string;
+  path: string;
+  repo_root?: string;
+  branch?: string;
+  base_branch?: string;
+  base_commit?: string;
+  shared: boolean;
+};
+export type Workspace = {
+  id: string;
+  kind: "shared" | "worktree";
+  title: string;
+  state: string;
+  branch?: string;
+  base_branch?: string;
+  carry_changes?: boolean;
+  created_at: string;
+  removed_at?: string;
+  folders: WorkspaceFolder[];
+};
+export type MoveToWorktreeInput = { branch?: string; base_ref?: string; carry_changes?: boolean };
+export type MoveToWorktreeResult = { session: ProjectSession; workspace: Workspace };
 /** `GET /v1/sessions` (parallel sessions): a main session of any project, with its project. */
 export type GlobalSession = ProjectSession & { project_id: string; project_name: string };
 export type AllSessionsParams = { kind?: ProjectSessionKind; state?: ProjectSessionState; archived?: boolean | "all"; limit?: number; before?: string };
-/** `POST /sessions` (parallel sessions, section 8). Phase 1 of the harness takes the shared workspace only. */
+/** `POST /sessions` (parallel sessions, section 8). */
 export type NewSessionInput = {
   title?: string;
-  workspace?: { kind: "shared" } | { kind: "worktree"; base_ref?: string; carry_changes?: boolean } | { id: string };
+  workspace?: { kind: "shared" } | { kind: "worktree"; branch?: string; base_ref?: string; carry_changes?: boolean } | { id: string };
   memory?: "project" | "on" | "read" | "off";
   model?: string;
   mode?: ProjectMode;
@@ -1540,6 +1589,25 @@ export type ProjectSessionDetail = {
 /** `steered`: a running built-in agent takes the text at its next tool boundary; `continued`: a finished agent runs again with it. */
 export type SessionMessageResult = { outcome: "steered" | "continued"; session: ProjectSession };
 export type MemorySessionsParams = { limit?: number; before?: string };
+export type DeleteAllSessionsResult = { deleted_sessions: number; projects: number };
+export type ImportableSession = {
+  provider: string;
+  provider_label: string;
+  id: string;
+  title: string;
+  cwd: string;
+  model: string;
+  started_at: string;
+  updated_at: string;
+  message_count: number;
+  exchange_count: number;
+  preview: string;
+  already_imported: boolean;
+  matched_project_id?: string;
+  matched_project_name?: string;
+};
+export type ImportSessionRef = { provider: string; id: string };
+export type ImportSessionsResult = { imported: ProjectSession[]; skipped: number };
 
 // --- M2: context receipts -------------------------------------------------------------------------------------
 

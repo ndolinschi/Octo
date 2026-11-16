@@ -6,7 +6,7 @@ export type FileBytes = FileStat & { content: string; encoding: "base64" };
 
 /** The optional bridge method that returns a file's bytes; the UI uses it to preview images. */
 export type FileBytesReader = {
-  readFileBytes(projectId: string, folder: string, path: string): Promise<FileBytes>;
+  readFileBytes(projectId: string, folder: string, path: string, opts?: { workspaceId?: string }): Promise<FileBytes>;
 };
 
 /** The bridge's byte reader, when it has one (the HTTP bridge after {@link withFileBytes}, the demo bridge). */
@@ -14,16 +14,17 @@ export function fileBytesReader(bridge: object): FileBytesReader["readFileBytes"
   if (!("readFileBytes" in bridge)) return undefined;
   const fn: unknown = bridge.readFileBytes;
   if (typeof fn !== "function") return undefined;
-  return (projectId, folder, path) => Promise.resolve(fn.call(bridge, projectId, folder, path)).then(parseFileBytes);
+  return (projectId, folder, path, opts) => Promise.resolve(fn.call(bridge, projectId, folder, path, opts)).then(parseFileBytes);
 }
 
 /** Adds `readFileBytes` to an HTTP bridge, reaching the harness with the same base URL and token. */
 export function withFileBytes<B extends Bridge>(bridge: B, options: Pick<HttpBridgeOptions, "baseUrl" | "token" | "fetch">): B & FileBytesReader {
   const base = options.baseUrl.replace(/\/+$/, "");
   const token = (options.token ?? "").trim();
-  const readFileBytes: FileBytesReader["readFileBytes"] = async (projectId, folder, path) => {
+  const readFileBytes: FileBytesReader["readFileBytes"] = async (projectId, folder, path, opts) => {
     const doFetch = options.fetch ?? globalFetch();
-    const url = `${base}/v1/projects/${encodeURIComponent(projectId)}/files/content?folder=${encodeURIComponent(folder)}&path=${encodeURIComponent(path)}&encoding=base64`;
+    const ws = opts?.workspaceId && opts.workspaceId !== "shared" ? `&workspace=${encodeURIComponent(opts.workspaceId)}` : "";
+    const url = `${base}/v1/projects/${encodeURIComponent(projectId)}/files/content?folder=${encodeURIComponent(folder)}&path=${encodeURIComponent(path)}&encoding=base64${ws}`;
     let status: number;
     let ok: boolean;
     let text: string;

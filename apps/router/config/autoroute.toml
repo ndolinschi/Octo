@@ -1,4 +1,6 @@
 [autoroute]
+# Dedicated Ollama model used for inline completion (x-octo-tier-hint: small).
+small = "qwen2.5-coder:1.5b"
 # Model slugs used by /autoroute when JEV picks a complexity band.
 # OpenRouter ladder (DeepSWE v1.1 $/score): v4.1-flash → minimax-m3.1 → v4.1-flash-1017.
 low = "deepseek/deepseek-v4.1-flash"

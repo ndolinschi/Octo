@@ -25,7 +25,7 @@ enum TierHintFault {
 }
 
 const ACCEPTED_TIERS: &str =
-    "accepted values are low, mid, high (or fast, balanced, deep), case-insensitive";
+    "accepted values are small, low, mid, high (or fast, balanced, deep), case-insensitive";
 
 impl InvalidTierHint {
     pub fn message(&self) -> String {
@@ -58,6 +58,7 @@ fn parse_tier_hints(headers: &mut HeaderMap) -> Result<Option<&'static str>, Inv
             continue;
         }
         let band = match raw.to_ascii_lowercase().as_str() {
+            "small" => "small",
             "low" | "fast" => "low",
             "mid" | "balanced" => "mid",
             "high" | "deep" => "high",

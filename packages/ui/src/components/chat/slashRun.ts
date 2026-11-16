@@ -18,6 +18,8 @@ export type SlashDeps = {
   rewindLast: (() => void) | undefined;
   /** Parallel sessions: `/clear` made session `next` (the bridge is addressed to the session it cleared). */
   onCleared?: ((next: string) => void) | undefined;
+  /** True when the project's auto-memory mode is blocked. */
+  memoryBlocked?: boolean | undefined;
 };
 
 /** Runs an Octo slash command: false when the name is not one it knows (the text is then sent as typed). */
@@ -64,7 +66,8 @@ export async function runSlash(d: SlashDeps, name: string, args: string): Promis
         push?.({ kind: "context" });
         return true;
       case "memory":
-        d.openTool("memory");
+        if (d.memoryBlocked) push?.({ kind: "info", text: "Memory is disabled for this project. Enable it in Settings -> Memory." });
+        else d.openTool("memory");
         return true;
       case "settings":
         d.openSettings();

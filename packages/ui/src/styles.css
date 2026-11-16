@@ -1983,12 +1983,12 @@
   flex-shrink: 1;
 }
 @container composer (width < 460px) {
-  [data-composer-row] [data-chip="mode"] {
+  [data-composer-row] :is([data-chip="mode"], [data-chip="access"]) {
     width: var(--spacing-ctl-sm);
     justify-content: center;
     padding-inline: 0;
   }
-  [data-composer-row] [data-chip="mode"] [data-chip-label] {
+  [data-composer-row] :is([data-chip="mode"], [data-chip="access"]) [data-chip-label] {
     display: none;
   }
 }

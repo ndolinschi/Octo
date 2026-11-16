@@ -49,8 +49,9 @@ type runtime struct {
 	notes      []projectstore.Note
 	// turnID is the id of the user message that started the turn (0 outside a turn).
 	turnID int64
-	// sessionID is the main session the turn runs in; reportNote the note of sub-agent results handed over at its start.
-	sessionID, reportNote string
+	// sessionID is the main session the turn runs in; workspaceID is its active workspace ("shared" or worktree id);
+	// reportNote is the note of sub-agent results handed over at its start.
+	sessionID, workspaceID, reportNote string
 	// taskID is the task record of the turn's request ("" when none was opened).
 	taskID string
 	taskMu sync.Mutex
@@ -86,6 +87,9 @@ func (o *Orchestrator) newRuntime(ctx context.Context, db *projectstore.DB) (*ru
 		return nil, err
 	}
 	models := config.DefaultModels()
+	if p := o.smallModel.Load(); p != nil {
+		models.Small = *p
+	}
 	if err := json.Unmarshal([]byte(info.ModelsJSON), &models); err != nil {
 		return nil, fmt.Errorf("project models: %w", err)
 	}
@@ -107,7 +111,7 @@ func (o *Orchestrator) newRuntime(ctx context.Context, db *projectstore.DB) (*ru
 }
 
 // newSessionRuntime is newRuntime for a turn of one main session: the session's model and mode (when it chose
-// them) replace the project's.
+// them) replace the project's, and worktree sessions run inside their worktree folders.
 func (o *Orchestrator) newSessionRuntime(ctx context.Context, db *projectstore.DB, sid string) (*runtime, error) {
 	rt, err := o.newRuntime(ctx, db)
 	if err != nil {
@@ -120,6 +124,16 @@ func (o *Orchestrator) newSessionRuntime(ctx context.Context, db *projectstore.D
 		}
 		if projectstore.ValidMode(mode) {
 			rt.mode = mode
+		}
+	}
+	if info, err := db.SessionInfoOf(ctx, sid); err == nil && info.Workspace != nil && info.Workspace.Kind == "worktree" {
+		if byLabel, err := db.WorkspaceFoldersMap(ctx, info.Workspace.ID); err == nil {
+			rt.workspaceID = info.Workspace.ID
+			for i, f := range rt.folders {
+				if p, ok := byLabel[f.Label]; ok && p != "" {
+					rt.folders[i].Path = p
+				}
+			}
 		}
 	}
 	return rt, nil
@@ -233,7 +247,7 @@ func (rt *runtime) baseRegistry(a projectstore.Agent) (*tools.Registry, error) {
 		return nil, err
 	}
 	if isOrch {
-		for _, d := range append(rt.noteDefs(), rt.memoryDefs()...) {
+		for _, d := range append(rt.noteDefs(), rt.memoryDefs(a)...) {
 			if err := reg.Register(d); err != nil {
 				return nil, err
 			}

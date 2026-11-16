@@ -286,6 +286,7 @@ type NewSessionInput struct {
 	Memory      string // "project", "on", "read", "off" ("": project)
 	Model       string
 	Mode        string
+	WorkspaceID string
 	MakeDefault bool
 	FromSession string
 	Clear       bool
@@ -328,6 +329,11 @@ func (o *Orchestrator) CreateSession(ctx context.Context, pid string, in NewSess
 				return SessionView{}, err
 			}
 		}
+		if in.WorkspaceID != "" {
+			if err := db.SetSessionWorkspace(ctx, sid, in.WorkspaceID); err != nil {
+				return SessionView{}, err
+			}
+		}
 		if in.MakeDefault {
 			if _, err := o.SetDefaultSession(ctx, pid, sid); err != nil {
 				return SessionView{}, err
@@ -340,7 +346,7 @@ func (o *Orchestrator) CreateSession(ctx context.Context, pid string, in NewSess
 			memory = projectstore.MemoryOn // every project's memory.new_sessions is "on" until memory modes are built
 		}
 		info, prev, err := db.CreateMainSession(ctx, projectstore.NewMainSession{
-			Title: strings.TrimSpace(in.Title), Model: in.Model, Mode: in.Mode, Memory: memory, MakeDefault: in.MakeDefault,
+			Title: strings.TrimSpace(in.Title), Model: in.Model, Mode: in.Mode, Memory: memory, WorkspaceID: in.WorkspaceID, MakeDefault: in.MakeDefault,
 		})
 		if err != nil {
 			return SessionView{}, err
@@ -545,7 +551,13 @@ func (o *Orchestrator) continueAgent(ctx context.Context, db *projectstore.DB, a
 	if o.baseCtx.Err() != nil {
 		return ErrShuttingDown
 	}
-	rt, err := o.newRuntime(ctx, db)
+	var rt *runtime
+	var err error
+	if info.ParentSessionID != "" {
+		rt, err = o.newSessionRuntime(ctx, db, info.ParentSessionID)
+	} else {
+		rt, err = o.newRuntime(ctx, db)
+	}
 	if err != nil {
 		return err
 	}

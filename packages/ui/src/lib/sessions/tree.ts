@@ -27,9 +27,13 @@ export const byActivity = (a: ProjectSession, b: ProjectSession): number =>
 export const isLive = (s: Pick<ProjectSession, "state" | "needs_you">): boolean =>
   s.state === "working" || s.state === "waiting" || s.state === "queued" || s.needs_you === true;
 
-/** The main sessions a tree lists (not archived), newest activity first. */
+/** A session stays hidden from the sidebar until a message is sent or queued in it (or it is running/ended). */
+export const hasSessionMessages = (s: Pick<ProjectSession, "exchanges" | "state" | "needs_you" | "queued">): boolean =>
+  s.exchanges > 0 || isLive(s) || s.state === "failed" || s.state === "stopped" || (s.queued ?? 0) > 0;
+
+/** The main sessions a tree lists (not archived and non-empty), newest activity first. */
 export function mainSessions<T extends ProjectSession>(list: readonly T[]): T[] {
-  return list.filter((s) => s.kind === "main" && !s.archived).sort(byActivity);
+  return list.filter((s) => s.kind === "main" && !s.archived && hasSessionMessages(s)).sort(byActivity);
 }
 
 /**
@@ -68,7 +72,7 @@ const RANK: Record<GlyphState, number> = { needs: 5, failed: 4, working: 3, queu
  * (one waiting for the person says so with its glyph instead).
  */
 export function projectSummary(list: readonly ProjectSession[]): { glyph: GlyphState | null; running: number } {
-  const mains = list.filter((s) => s.kind === "main" && !s.archived);
+  const mains = list.filter((s) => s.kind === "main" && !s.archived && hasSessionMessages(s));
   let glyph: GlyphState | null = null;
   for (const s of mains) {
     const g = sessionGlyph(s);

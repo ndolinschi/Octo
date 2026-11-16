@@ -698,6 +698,7 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
     }
 
     if let (TierPolicy::Fixed, Some(band)) = (hints.policy, hints.tier) {
+        let is_small = band == "small";
         let mut sticky = StickyOutcome {
             model: req.auto.tiers.slug(band),
             sticky_band: band.to_string(),
@@ -708,13 +709,20 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
             down_count: 0,
             reason: Some("hint".to_string()),
         };
-        cap_for_budget_with(
-            &mut sticky,
-            &req.auto.tiers,
-            limits.budget_micros,
-            spent,
-            budget_shape,
-        );
+        if !is_small {
+            cap_for_budget_with(
+                &mut sticky,
+                &req.auto.tiers,
+                limits.budget_micros,
+                spent,
+                budget_shape,
+            );
+        }
+        let mut route_limits = limits.clone();
+        if is_small {
+            route_limits.fixed = true;
+            route_limits.no_swap = true;
+        }
         let row = choice.as_ref();
         return route::run(RouteCtx {
             auto: req.auto,
@@ -729,8 +737,8 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
                 reason: compact_event.map(str::to_string).or(sticky.reason),
                 tier_before,
                 reserve,
-                allow_compact,
-                persist,
+                allow_compact: if is_small { false } else { allow_compact },
+                persist: if is_small { false } else { persist },
                 sticky_band: sticky.sticky_band,
                 escalate_remaining: 0,
                 escalate_band: None,
@@ -739,7 +747,7 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
                 down_count: 0,
                 trimmed_from_tokens: None,
                 spent_micros: spent,
-                limits: limits.clone(),
+                limits: route_limits,
             },
         });
     }
