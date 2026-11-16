@@ -16,7 +16,8 @@ export function preloadSlashRunner(): void {
 /** The commands of the open project (`getSlashCommands`), refetched on `slash_commands.updated`; null until known or without the endpoint. */
 export function useSlashCommands(): SlashCommands | null {
   const { bridge } = useApp();
-  const { projectId, onEvent } = useProject();
+  const { projectId, project, onEvent } = useProject();
+  const orchestrator = project?.models.orchestrator ?? "";
   const [commands, setCommands] = useState<SlashCommands | null>(null);
   const [round, setRound] = useState(0);
   useEffect(() => {
@@ -29,7 +30,7 @@ export function useSlashCommands(): SlashCommands | null {
     return () => {
       alive = false;
     };
-  }, [bridge, projectId, round]);
+  }, [bridge, projectId, orchestrator, round]);
   useEffect(() => onEvent((e) => e.type === "slash_commands.updated" && setRound((n) => n + 1)), [onEvent]);
   return bridge.getSlashCommands ? commands : null;
 }

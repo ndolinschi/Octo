@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"os"
 	"slices"
 	"strings"
 
@@ -153,6 +154,19 @@ func (o *Orchestrator) SlashCommands(ctx context.Context, pid string) (SlashRepo
 		agent.Pending = !known
 		if known {
 			agent.Commands = cmds
+		}
+		home, _ := os.UserHomeDir()
+		if skills := discoverAgentSkills(id, rt.folders, home); len(skills) > 0 {
+			seen := make(map[string]bool, len(agent.Commands))
+			for _, c := range agent.Commands {
+				seen[strings.ToLower(c.Name)] = true
+			}
+			for _, s := range skills {
+				if !seen[strings.ToLower(s.Name)] {
+					seen[strings.ToLower(s.Name)] = true
+					agent.Commands = append(agent.Commands, s)
+				}
+			}
 		}
 	}
 	rep.Agent = agent
