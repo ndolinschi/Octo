@@ -112,6 +112,7 @@ func (e *env) dbUsage(pid string) ([]projectstore.UsageEntry, error) {
 func TestOrchestratorUsesTheMemoryToolsAndTheAPISeesTheResult(t *testing.T) {
 	e := newEnv(t, nil)
 	pid, _ := e.v7Project(t, "full")
+	e.into(t, "PATCH", "/v1/projects/"+pid, map[string]any{"memory": map[string]any{"auto_memory": "allow"}}, http.StatusOK, nil)
 	stream := e.subscribe(t, pid)
 	say := func(text string) projectstore.Message {
 		var posted struct{ Message projectstore.Message }
@@ -298,7 +299,7 @@ func TestAutoMemoryOffPromptsAndBlockedRefuses(t *testing.T) {
 	if ap.Detail.MemoryCommand != "remember" || ap.Detail.MemoryKind != "fact" || !strings.Contains(ap.Detail.MemoryText, "Tab size") {
 		t.Fatalf("memory approval detail = %+v", ap)
 	}
-	e.into(t, "POST", "/v1/projects/"+pid+"/approvals/"+ap.ID, map[string]string{"decision": approval.Allow}, http.StatusOK, nil)
+	e.into(t, "POST", "/v1/projects/"+pid+"/approvals/"+ap.ID, map[string]string{"decision": approval.Allow}, http.StatusNoContent, nil)
 	collectUntilTurnFinished(t, stream)
 
 	if res := e.search(t, pid, "Tab size"); len(res.Hits) == 0 {

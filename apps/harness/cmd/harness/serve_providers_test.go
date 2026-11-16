@@ -37,7 +37,7 @@ func TestServeProvidersFollowTheAPIKeyLive(t *testing.T) {
 		return status, string(raw)
 	}
 
-	if r := get(); r.Connected != 0 || len(r.Providers) != 1 || r.Providers[0].ID != "api" || r.Providers[0].State != "not_connected" {
+	if r := get(); r.Connected != 0 || len(r.Providers) != 2 || r.Providers[0].ID != "api" || r.Providers[0].State != "not_connected" || r.Providers[1].ID != "ollama" {
 		t.Fatalf("before: %+v", r)
 	}
 	// A project never waits for a provider: it is created and lists its models as unusable.

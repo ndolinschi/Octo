@@ -146,10 +146,8 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 			return fmt.Sprintf("tier %q is mapped to %q: %s", in.Tier, model, msg), true, nil
 		}
 		ext, model = &target, target.recorded()
-	} else if rt.isACPOrchestrator() {
-		// Single-provider rule in Session mode: if a stored project still has a
-		// non-ACP tier model while its Session runs on an ACP agent, run the
-		// tier on that same ACP agent using its role model.
+	} else if model == "" && rt.isACPOrchestrator() {
+		// Single-provider fallback when a tier slot is unset while the session runs on an ACP agent.
 		if id, _, ok := plugins.ParseACPRef(rt.models.Orchestrator); ok {
 			m := rt.roleModel(id, in.Tier)
 			target, msg := rt.pickACPAgent(id, m)

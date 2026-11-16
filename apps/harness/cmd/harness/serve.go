@@ -290,6 +290,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		MaxRunning:      cfg.MaxRunningSessions,
 		ApprovalTimeout: approvalTimeout,
 		MemoryDigest:    true,
+		SessionTitle:    true,
 		Features:        featureStore,
 
 		BuiltinUnavailable:   builtinReason,

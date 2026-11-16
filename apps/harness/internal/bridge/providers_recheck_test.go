@@ -47,7 +47,7 @@ func TestRecheckAndUseAnywayOverHTTP(t *testing.T) {
 		Unusable []struct{ Field, Model string } `json:"models_unavailable"`
 	}
 	e.into(t, "POST", "/v1/projects", body("acp:grok"), http.StatusCreated, &p)
-	if p.Models.Orchestrator != "acp:grok" || len(p.Unusable) != 1 || p.Unusable[0].Field != "orchestrator" {
+	if p.Models.Orchestrator != "acp:grok" || len(p.Unusable) != 4 || p.Unusable[0].Field != "orchestrator" {
 		t.Fatalf("stored = %+v", p)
 	}
 	// A model switch on an existing project is the same; force_unverified from an older client is ignored.

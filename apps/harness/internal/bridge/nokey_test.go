@@ -65,7 +65,12 @@ func TestConfigWithKeyReportsBuiltinLoopAvailable(t *testing.T) {
 func TestNoKeyACPTurnCompletesAndBuiltinWorkFailsCleanly(t *testing.T) {
 	e, calls := noKeyEnv(t)
 
-	p := e.acpProject(t)
+	p := e.project(t, map[string]string{
+		"orchestrator": "acp:scripted",
+		"fast":         "claude-haiku-5-5",
+		"balanced":     "claude-sonnet-5-5",
+		"deep":         "claude-opus-5-5",
+	})
 	tr := e.ask(t, p, "[mcp-spawn-builtin] look around")
 	if tr.status != "completed" {
 		t.Fatalf("status = %s (%v)", tr.status, tr.errMsg)

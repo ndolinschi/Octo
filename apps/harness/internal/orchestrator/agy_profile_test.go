@@ -69,7 +69,7 @@ func TestAgyModesFollowTheProjectsAccess(t *testing.T) {
 		modes  map[string]string // Octo mode -> agy mode reported
 	}{
 		{"supervised", map[string]string{"agent": "mode=default", "plan": "mode=plan"}},
-		{"accept_edits", map[string]string{"agent": "mode=default", "plan": "mode=plan"}},
+		{"accept_edits", map[string]string{"agent": "mode=accept-edits", "plan": "mode=plan"}},
 		{"full", map[string]string{"agent": "mode=auto", "plan": "mode=plan"}},
 	} {
 		t.Run(c.access, func(t *testing.T) {

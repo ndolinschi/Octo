@@ -132,7 +132,7 @@ func (o *Orchestrator) settleTurn(rt *runtime, orchID string, status projectstor
 	wantDigest := o.opts.MemoryDigest && rt.featureEnabled(features.AutoMemory) &&
 		rt.memoryMode(context.Background()) == memory.AutoMemoryAllow &&
 		(viaModel || (viaAgent && w.DidWork()))
-	wantTitle := w.Completed && (viaModel || viaAgent) && rt.shouldAutoNameSession(w.SessionID)
+	wantTitle := o.opts.SessionTitle && w.Completed && (viaModel || viaAgent) && rt.shouldAutoNameSession(w.SessionID)
 	if !w.Completed || !(wantDigest || wantTitle) || o.baseCtx.Err() != nil {
 		o.applySettle(rt, w, nil)
 		return

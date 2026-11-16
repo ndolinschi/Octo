@@ -47,7 +47,7 @@ func TestUnsupportedAndExperimentalAgents(t *testing.T) {
 		Unusable []struct{ Provider, Reason string } `json:"models_unavailable"`
 	}
 	e.createProject(t, map[string]string{"orchestrator": "acp:nope"}, http.StatusCreated, &p)
-	if len(p.Unusable) != 1 || p.Unusable[0].Provider != "nope" || p.Unusable[0].Reason != "Nope does not work with Octo yet." {
+	if len(p.Unusable) != 4 || p.Unusable[0].Provider != "nope" || p.Unusable[0].Reason != "Nope does not work with Octo yet." {
 		t.Fatalf("create = %+v", p)
 	}
 	if status, _ := e.do(t, "POST", "/v1/providers/nope/recheck", nil); status != http.StatusOK {

@@ -315,7 +315,7 @@ func (s *Service) Snapshot() Response {
 		resp.Providers = append(resp.Providers, s.agentProvider(a))
 	}
 	for _, p := range resp.Providers {
-		if p.State == StateReady {
+		if p.State == StateReady && p.Kind != KindOllama {
 			resp.Connected++
 		}
 	}

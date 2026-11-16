@@ -322,9 +322,9 @@ func TestCreateProjectUsesTheSuggestedModels(t *testing.T) {
 		if p.Models.Orchestrator != b.Orchestrator || p.Models.Fast != b.Fast || p.Models.Deep != b.Deep {
 			t.Fatalf("models = %+v", p.Models)
 		}
-		// A request that names one model changes only that one.
-		e.createProject(t, map[string]string{"orchestrator": "acp:claude-code"}, http.StatusCreated, &p)
-		if p.Models.Orchestrator != "acp:claude-code" || p.Models.Fast != b.Fast {
+		// A request that names one non-orchestrator tier model changes only that one.
+		e.createProject(t, map[string]string{"deep": "acp:claude-code"}, http.StatusCreated, &p)
+		if p.Models.Deep != "acp:claude-code" || p.Models.Orchestrator != b.Orchestrator || p.Models.Fast != b.Fast {
 			t.Fatalf("models = %+v", p.Models)
 		}
 	})
@@ -344,7 +344,7 @@ func TestUnreadyModelsAreStoredOnCreateAndPatch(t *testing.T) {
 	}
 	var p proj
 	e.createProject(t, map[string]string{"orchestrator": "acp:copilot"}, http.StatusCreated, &p)
-	if p.Models.Orchestrator != "acp:copilot" || len(p.Unavail) != 1 || p.Unavail[0].Provider != "copilot" || p.Unavail[0].Reason != "Copilot is not logged in." {
+	if p.Models.Orchestrator != "acp:copilot" || len(p.Unavail) != 4 || p.Unavail[0].Field != "orchestrator" || p.Unavail[0].Provider != "copilot" || p.Unavail[0].Reason != "Copilot is not logged in." {
 		t.Fatalf("create = %+v", p)
 	}
 	// A built-in model with no key: the API is the provider.

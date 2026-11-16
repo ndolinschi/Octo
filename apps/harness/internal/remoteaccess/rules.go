@@ -69,6 +69,11 @@ var rules = []rule{
 	{"PATCH", "/v1/projects/*/reviews/**", ClassDeny},
 	{"DELETE", "/v1/projects/*/reviews/**", ClassDeny},
 	{"DELETE", "/v1/projects/*/review-workspace", ClassDeny},
+	{"DELETE", "/v1/projects/*/sessions", ClassDeny},
+	{"POST", "/v1/projects/*/sessions/import", ClassDeny},
+	{"POST", "/v1/projects/*/sessions/*/worktree", ClassDeny},
+	{"DELETE", "/v1/sessions", ClassDeny},
+	{"GET", "/v1/sessions/importable", ClassDeny},
 
 	// Send: messages and what shapes them.
 	{"POST", "/v1/projects/*/messages", ClassSend},

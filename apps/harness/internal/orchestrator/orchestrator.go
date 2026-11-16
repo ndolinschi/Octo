@@ -101,6 +101,11 @@ type Options struct {
 	// record with one side-model call (M1). `harness serve` turns it on; it is
 	// off here so that embedders and tests that count model requests see none.
 	MemoryDigest bool
+	// SessionTitle asks the side model (or live ACP agent) to generate a concise
+	// title after a session's first completed exchange. `harness serve` turns it
+	// on; it is off here so tests that count requests or inspect the initial
+	// session title see none.
+	SessionTitle bool
 	// ACPQuietAfter is how long an ACP agent may send nothing at all during a
 	// prompt before agent.activity says "quiet" (zero: 10 s).
 	ACPQuietAfter time.Duration
