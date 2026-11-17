@@ -151,7 +151,11 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		return "end_turn"
 	}
 	if rest, ok := strings.CutPrefix(strings.TrimSpace(request), "/"); ok && rest != "" {
-		a.say("command<<" + strings.TrimSpace(request) + ">>") // a slash command is run, not discussed
+		cmd := strings.TrimSpace(request)
+		if cmd == "/compact" && a.opts.compactMode != "" {
+			return a.runCompaction()
+		}
+		a.say("command<<" + cmd + ">>") // a slash command is run, not discussed
 		return "end_turn"
 	}
 	if i := strings.Index(request, MarkerSetCommands); i >= 0 {
@@ -180,7 +184,10 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		time.Sleep(1500 * time.Millisecond) // working without a word (a long first model call), then killed
 		a.exit(137)
 		return "end_turn"
-	case has(MarkerLive) || has(MarkerSlowTool) || has(MarkerQuiet) || has(MarkerSecretThought) || has(MarkerAuthRequired) || has(MarkerLateInput) || has(MarkerSayHang):
+	case has(MarkerLive) || has(MarkerSlowTool) || has(MarkerQuiet) || has(MarkerSecretThought) ||
+		has(MarkerAuthRequired) || has(MarkerLateInput) || has(MarkerSayHang) ||
+		has(MarkerAgentError) || has(MarkerAgentAuthError) || has(MarkerAgentAbortError) ||
+		has(MarkerThoughtOnly) || has(MarkerSilentStderr):
 		stop, _ := a.liveScript(ctx, cwd, request)
 		return stop
 	}
@@ -278,6 +285,57 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		currency = "EUR"
 	}
 	return a.defaultScript(ctx, cwd, extra, currency)
+}
+
+func (a *agent) runCompaction() string {
+	switch a.opts.compactMode {
+	case "opencode":
+		a.update(map[string]any{
+			"sessionUpdate": "session_info_update",
+			"_meta":         map[string]any{"opencode/compaction": map[string]any{"status": "started", "reason": "manual"}},
+		})
+		a.update(map[string]any{
+			"sessionUpdate": "session_info_update",
+			"_meta":         map[string]any{"opencode/compaction": map[string]any{"status": "completed", "reason": "manual"}},
+		})
+		return "end_turn"
+	case "acp":
+		a.mu.Lock()
+		cap := a.clientCompaction
+		a.mu.Unlock()
+		if !cap {
+			a.say("missing client compaction cap")
+			return "end_turn"
+		}
+		a.update(map[string]any{
+			"sessionUpdate": "compaction_update",
+			"compactionId":  "cmp-1",
+			"status":        "in_progress",
+		})
+		a.update(map[string]any{
+			"sessionUpdate": "compaction_summary_chunk",
+			"compactionId":  "cmp-1",
+			"content":       textBlock("Compressed summary."),
+		})
+		a.update(map[string]any{
+			"sessionUpdate": "compaction_update",
+			"compactionId":  "cmp-1",
+			"status":        "completed",
+		})
+		return "end_turn"
+	case "fail":
+		a.update(map[string]any{
+			"sessionUpdate": "session_info_update",
+			"_meta":         map[string]any{"opencode/compaction": map[string]any{"status": "started"}},
+		})
+		a.update(map[string]any{
+			"sessionUpdate": "session_info_update",
+			"_meta":         map[string]any{"opencode/compaction": map[string]any{"status": "failed", "error": "Compaction ran out of context"}},
+		})
+		return "end_turn"
+	}
+	a.say("command<</compact>>")
+	return "end_turn"
 }
 
 func (a *agent) defaultScript(ctx context.Context, cwd, extra, currency string) string {

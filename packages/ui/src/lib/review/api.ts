@@ -3,6 +3,7 @@ import type {
   FolderEntry,
   OpenReviewInput,
   ListPullRequestsParams,
+  ListReviewBranchesParams,
   PullRequestList,
   Review,
   ReviewBranchList,
@@ -51,7 +52,7 @@ export type ReviewApi = {
   clearWorkspace: (() => Promise<void>) | null;
   recentFolders(): Promise<FolderEntry[]>;
   /** The folder's local branches against a base (decision 84); null on a harness that cannot list them. */
-  branches: ((params: { folder?: string; base?: string }) => Promise<ReviewBranchList>) | null;
+  branches: ((params: ListReviewBranchesParams) => Promise<ReviewBranchList>) | null;
 };
 
 /** Binds the bridge to a project; null when the bridge lacks any review method (an older harness). */

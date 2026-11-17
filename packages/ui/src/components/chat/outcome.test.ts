@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { runRetry, sentence, splitHint } from "./outcome";
+import { isCompactRetry, runRetry, sentence, splitHint } from "./outcome";
 
 test("a hint sent apart is said once, even when the error already ends with it", () => {
   assert.deepEqual(splitHint("budget reached", "Raise the budget."), { error: "budget reached", hint: "Raise the budget." });
@@ -26,4 +26,14 @@ test("Retry is busy only while sending: off again after success and after a fail
     assert.deepEqual(log, [true, false]);
     assert.equal(errors.length, fails ? 1 : 0);
   }
+});
+
+test("isCompactRetry identifies /compact prompts and compact commands cleanly", () => {
+  assert.equal(isCompactRetry("/compact"), true);
+  assert.equal(isCompactRetry(" /COMPACT  now "), true);
+  assert.equal(isCompactRetry("anything", "compact"), true);
+  assert.equal(isCompactRetry("/compactify"), false);
+  assert.equal(isCompactRetry("hello world"), false);
+  assert.equal(isCompactRetry(null, undefined), false);
+  assert.equal(isCompactRetry(null, "compact"), true);
 });

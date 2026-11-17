@@ -76,6 +76,11 @@ const (
 	// EnvPromptImage=1 advertises agentCapabilities.promptCapabilities.image;
 	// the [blocks] marker reports the content blocks of the prompt.
 	EnvPromptImage = "OCTO_FAKEACP_PROMPT_IMAGE"
+	// EnvCompact switches how `/compact` responds: "opencode" (session_info_update
+	// _meta["opencode/compaction"] without text), "acp" (compaction_update +
+	// compaction_summary_chunk when the client advertised session.compaction),
+	// or "fail" (opencode compaction failed).
+	EnvCompact = "OCTO_FAKEACP_COMPACT"
 )
 
 // Auth method ids offered under EnvAuth.
@@ -105,6 +110,7 @@ type options struct {
 	modesOn     bool
 	commands    []map[string]any
 	promptImage bool
+	compactMode string
 
 	// The agy profile (EnvProfile=agy) and what it sets.
 	profile         string
@@ -122,6 +128,7 @@ func optionsFromEnv(args []string) options {
 		loadSession: os.Getenv(EnvLoadSession) == "1", loadFail: os.Getenv(EnvLoadFail) == "1", mcpHTTP: os.Getenv(EnvMCPHTTP) == "1",
 		mcpReject: os.Getenv(EnvMCPReject) == "1", promptUsage: os.Getenv(EnvPromptUsage), unique: os.Getenv(EnvUniqueSessions) == "1",
 		modesOn: os.Getenv(EnvModes) == "1", commands: parseCommandList(os.Getenv(EnvCommands)), promptImage: os.Getenv(EnvPromptImage) == "1",
+		compactMode: os.Getenv(EnvCompact),
 	}
 	for _, m := range strings.Split(os.Getenv(EnvModels), ",") {
 		if m = strings.TrimSpace(m); m != "" {

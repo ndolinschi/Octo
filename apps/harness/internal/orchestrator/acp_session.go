@@ -51,10 +51,14 @@ type acpSession struct {
 	// preOK counts edits the user allowed through session/request_permission,
 	// by absolute path; preAny those that named no path.
 	// said and acted count what the agent produced: non-blank text, tool calls.
-	said  bool
-	acted bool
+	said           bool
+	acted          bool
+	compacted      bool
+	compactSummary strings.Builder
+	compactErr     string
+	agentErr       *acp.AgentError
 	// active is set once the agent has done anything in this session handler
-	// (text, a tool call, usage, a permission request).
+	// (text, a tool call, usage, a permission request, compaction, or agent_error).
 	active bool
 	// flat marks a flat-rate (subscription) agent.
 	flat   bool
@@ -234,6 +238,49 @@ func (s *acpSession) toolLabelLocked(call acp.ToolCall) string {
 	return activity.ForACP(call.Kind, call.Title, loc, cwd)
 }
 
+// Compaction implements acp.CompactionHandler.
+func (s *acpSession) Compaction(_ context.Context, ev acp.CompactionEvent) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done {
+		return
+	}
+	s.active = true
+	if ev.Summary != "" {
+		s.compactSummary.WriteString(ev.Summary)
+	}
+	switch ev.Status {
+	case acp.CompactionInProgress:
+		s.compactErr = ""
+		s.rt.activity(s.agentID, activity.Thinking, "Compacting", "")
+	case acp.CompactionCompleted:
+		s.compacted = true
+		s.compactErr = ""
+	case acp.CompactionFailed:
+		if ev.Error != "" {
+			s.compactErr = ev.Error
+		} else if s.compactErr == "" {
+			s.compactErr = "compaction failed"
+		}
+	}
+}
+
+// AgentError implements acp.ErrorHandler. MessageAbortedError is skipped because
+// cancellation takes precedence over an abort notice.
+func (s *acpSession) AgentError(_ context.Context, err acp.AgentError) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done {
+		return
+	}
+	s.active = true
+	if strings.EqualFold(err.Name, "MessageAbortedError") {
+		return
+	}
+	cp := err
+	s.agentErr = &cp
+}
+
 func (s *acpSession) AgentText(_ context.Context, text string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -246,6 +293,7 @@ func (s *acpSession) AgentText(_ context.Context, text string) {
 	s.flushThoughtLocked()
 	if strings.TrimSpace(text) != "" {
 		s.said = true
+		s.agentErr = nil
 	}
 	s.pending.WriteString(text)
 	if safe := s.stream.Write(text); safe != "" {
@@ -257,6 +305,7 @@ func (s *acpSession) ToolCall(ctx context.Context, call acp.ToolCall) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.active, s.acted = true, true
+	s.agentErr = nil
 	if s.done {
 		return
 	}
@@ -375,6 +424,41 @@ func (s *acpSession) nothing() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return !s.said && !s.acted
+}
+
+// thoughtOnly reports whether the agent streamed reasoning without producing text or tool calls.
+func (s *acpSession) thoughtOnly() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.said && !s.acted && s.thoughtRunes > 0
+}
+
+func (s *acpSession) compactedDone() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.compacted
+}
+
+func (s *acpSession) compactionSummary() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return strings.TrimSpace(s.compactSummary.String())
+}
+
+func (s *acpSession) compactionError() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.compactErr
+}
+
+func (s *acpSession) midTurnError() *acp.AgentError {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.agentErr == nil {
+		return nil
+	}
+	cp := *s.agentErr
+	return &cp
 }
 
 // idle reports whether the agent has done nothing yet in this handler.

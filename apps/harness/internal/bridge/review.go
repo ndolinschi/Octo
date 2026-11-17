@@ -89,7 +89,18 @@ func (s *Server) listPRs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) reviewBranches(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	out, err := s.reviews.Branches(r.Context(), r.PathValue("pid"), q.Get("folder"), q.Get("base"))
+	var page, perPage int
+	for name, dst := range map[string]*int{"page": &page, "per_page": &perPage} {
+		if v := q.Get(name); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 1 {
+				writeError(w, http.StatusBadRequest, "invalid_request", name+" must be a positive integer")
+				return
+			}
+			*dst = n
+		}
+	}
+	out, err := s.reviews.BranchesPage(r.Context(), r.PathValue("pid"), q.Get("folder"), q.Get("base"), page, perPage)
 	if err != nil {
 		writeReviewErr(w, err)
 		return

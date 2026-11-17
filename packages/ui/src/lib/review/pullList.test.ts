@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { PullRequestRow } from "@octo/agent-client";
-import { pullRowLine } from "./pullList";
+import type { PullRequestList, PullRequestRow } from "@octo/agent-client";
+import { mergePages, pullRowLine } from "./pullList";
 
 function row(extra: Partial<PullRequestRow> = {}): PullRequestRow {
   return {
@@ -38,4 +38,35 @@ test("pullRowLine: the state word leads when it matters, most important first", 
 test("pullRowLine: you for your own, the repository when rows mix repositories, pending drafts", () => {
   const r = row({ mine: true, repo: "atlas-labs/atlas-api", review: { id: "r1", pending_comments: 2, new_commits: false } as PullRequestRow["review"] });
   assert.deepEqual(pullRowLine(r, { showRepo: true }).parts, ["atlas-labs/atlas-api#482", "you", "14 files", "2 pending"]);
+});
+
+test("mergePages deduplicates rows and preserves latest paging metadata", () => {
+  const p1: PullRequestList = {
+    host: "github",
+    available: true,
+    page: 1,
+    per_page: 2,
+    total: 3,
+    next_page: 2,
+    prs: [row({ number: 1 }), row({ number: 2 })],
+  };
+  const p2: PullRequestList = {
+    host: "github",
+    available: true,
+    page: 2,
+    per_page: 2,
+    total: 3,
+    next_page: null,
+    truncated: true,
+    prs: [row({ number: 2 }), row({ number: 3 })],
+  };
+  const merged = mergePages([p1, p2]);
+  assert.ok(merged);
+  assert.deepEqual(
+    merged.prs.map((p) => p.number),
+    [1, 2, 3],
+  );
+  assert.equal(merged.next_page, null);
+  assert.equal(merged.page, 2);
+  assert.equal(merged.truncated, true);
 });

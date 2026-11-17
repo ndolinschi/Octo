@@ -1002,9 +1002,30 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
       }
       if (!running(rec, m)) await start(id, m, q.text);
     },
-    getSessionContext: async (id) => {
-      if (bridge.getContextOverview) return bridge.getContextOverview(id);
-      return bridge.getContext(id);
+    getSessionContext: async (id, sid) => {
+      const m = mainOf(id, sid);
+      const breakdown = await bridge.getContext(id, m?.root);
+      const model = m?.model || breakdown.model;
+      const scoped = { ...breakdown, model };
+      if (isDefaultId(id, sid) && bridge.getContextOverview) {
+        const overview = await bridge.getContextOverview(id);
+        return { ...scoped, ...overview };
+      }
+      const labels: Record<string, string> = {
+        system: "Instructions",
+        tools: "Tool definitions",
+        notes: "Notes and memory",
+        messages: "Messages",
+        tool_results: "Tool results",
+        summary: "Compacted summary",
+      };
+      return {
+        ...scoped,
+        window: scoped.window_tokens,
+        used: scoped.used_tokens,
+        source: model.startsWith("acp:") ? ("agent" as const) : ("harness" as const),
+        categories: model.startsWith("acp:") ? [] : scoped.parts.map((p) => ({ id: p.key, label: labels[p.key] ?? p.key, tokens: p.tokens })),
+      };
     },
     compactSession: async (id) => {
       if (!bridge.compactNow) throw new BridgeError(404, "not_found", "compaction is not available");

@@ -36,6 +36,16 @@ const (
 	// the value is split across two thought chunks and put in a plan entry, as
 	// an agent that echoes what it was told would.
 	MarkerSecretThought = "[secret-thought:"
+	// MarkerAgentError emits an agent_error APIError update and returns end_turn.
+	MarkerAgentError = "[agent-error]"
+	// MarkerAgentAuthError emits an agent_error ProviderAuthError update and returns end_turn.
+	MarkerAgentAuthError = "[agent-auth-error]"
+	// MarkerAgentAbortError emits MessageAbortedError and waits for cancel.
+	MarkerAgentAbortError = "[agent-abort-error]"
+	// MarkerThoughtOnly emits reasoning tokens only without text or tool calls, then returns end_turn.
+	MarkerThoughtOnly = "[thought-only]"
+	// MarkerSilentStderr writes an error to stderr without any text or tool call, then returns end_turn.
+	MarkerSilentStderr = "[silent-stderr]"
 )
 
 // stopAuthRequired is the pseudo stop reason that makes the prompt fail with an RPC error.
@@ -99,6 +109,40 @@ func (a *agent) liveScript(ctx context.Context, cwd, request string) (stop strin
 		return "cancelled", true
 	case has(MarkerAuthRequired):
 		return stopAuthRequired, true
+	case has(MarkerAgentError):
+		a.update(map[string]any{
+			"sessionUpdate": "agent_error",
+			"error": map[string]any{
+				"name": "APIError",
+				"data": map[string]any{"message": "Upstream provider rate limit reached", "statusCode": 429},
+			},
+		})
+		return "end_turn", true
+	case has(MarkerAgentAuthError):
+		a.update(map[string]any{
+			"sessionUpdate": "agent_error",
+			"error": map[string]any{
+				"name": "ProviderAuthError",
+				"data": map[string]any{"message": "Invalid API key", "statusCode": 401},
+			},
+		})
+		return "end_turn", true
+	case has(MarkerAgentAbortError):
+		a.update(map[string]any{
+			"sessionUpdate": "agent_error",
+			"error": map[string]any{
+				"name": "MessageAbortedError",
+				"data": map[string]any{"message": "Aborted"},
+			},
+		})
+		<-ctx.Done()
+		return "cancelled", true
+	case has(MarkerThoughtOnly):
+		a.think("Considering possible approaches...")
+		return "end_turn", true
+	case has(MarkerSilentStderr):
+		fmt.Fprintln(a.log, "AI_APICallError: Unauthorized model provider")
+		return "end_turn", true
 	case has(MarkerSecretThought):
 		i := strings.Index(request, MarkerSecretThought) + len(MarkerSecretThought)
 		secret, _, _ := strings.Cut(request[i:], "]")

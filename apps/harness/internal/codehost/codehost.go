@@ -40,6 +40,12 @@ type Host interface {
 	PostReply(ctx context.Context, dir string, repo Repo, number int, rootCommentID, body string) (Posted, error)
 }
 
+// ChunkedLister is optionally implemented by a Host that supports bounding how
+// many open pull requests are fetched in one list call.
+type ChunkedLister interface {
+	ListPRsLimit(ctx context.Context, dir string, repo Repo, limit int) ([]PR, error)
+}
+
 // Repo names a repository on a host.
 type Repo struct {
 	Owner string `json:"owner"`

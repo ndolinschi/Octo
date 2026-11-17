@@ -256,3 +256,37 @@ func TestListPRsWithoutAHostRemoteLeavesGHHostAlone(t *testing.T) {
 		t.Fatalf("GH_HOST was replaced:\n%s", f.gh.LastEnv())
 	}
 }
+
+func TestListPRsFetchesInChunks(t *testing.T) {
+	f := newFixture(t, manyPRs("1111111111111111111111111111111111111111")...)
+	ctx := context.Background()
+
+	p1, err := f.svc.ListPRs(ctx, f.pid, review.ListOptions{Page: 1, PerPage: 2})
+	if err != nil || !p1.Available || len(p1.PRs) != 2 || p1.NextPage == nil || *p1.NextPage != 2 {
+		t.Fatalf("p1 = %+v %v", p1, err)
+	}
+	sawLimit3 := false
+	for _, c := range f.gh.Calls() {
+		if strings.HasPrefix(c, "pr list") && strings.Contains(c, "--limit 3") {
+			sawLimit3 = true
+		}
+	}
+	if !sawLimit3 {
+		t.Fatalf("expected --limit 3 on chunk 1, calls: %v", f.gh.Calls())
+	}
+
+	// Expanding to page 2 asks for a larger chunk (--limit 5).
+	p2, err := f.svc.ListPRs(ctx, f.pid, review.ListOptions{Page: 2, PerPage: 2})
+	if err != nil || len(p2.PRs) != 2 {
+		t.Fatalf("p2 = %+v %v", p2, err)
+	}
+	sawLimit5 := false
+	for _, c := range f.gh.Calls() {
+		if strings.HasPrefix(c, "pr list") && strings.Contains(c, "--limit 5") {
+			sawLimit5 = true
+		}
+	}
+	if !sawLimit5 {
+		t.Fatalf("expected --limit 5 on chunk 2, calls: %v", f.gh.Calls())
+	}
+}

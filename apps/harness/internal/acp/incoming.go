@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 )
 
 func (c *Client) current() *run {
@@ -86,6 +87,38 @@ func (c *Client) applyUpdate(r *run, kind string, raw json.RawMessage) {
 		if err := json.Unmarshal(raw, &u); err == nil {
 			r.h.Usage(r.ctx, u)
 		}
+	case "compaction_update":
+		if h, ok := r.h.(CompactionHandler); ok {
+			if ev, ok := parseCompactionUpdate(raw); ok {
+				h.Compaction(r.ctx, ev)
+			}
+		}
+	case "compaction_summary_chunk":
+		if h, ok := r.h.(CompactionHandler); ok {
+			var cc struct {
+				CompactionID string       `json:"compactionId"`
+				Content      contentBlock `json:"content"`
+			}
+			if err := json.Unmarshal(raw, &cc); err == nil && cc.Content.Type == "text" && cc.Content.Text != "" {
+				h.Compaction(r.ctx, CompactionEvent{
+					ID:      cc.CompactionID,
+					Status:  CompactionInProgress,
+					Summary: cc.Content.Text,
+				})
+			}
+		}
+	case "session_info_update":
+		if h, ok := r.h.(CompactionHandler); ok {
+			if ev, ok := parseSessionInfoCompaction(raw); ok {
+				h.Compaction(r.ctx, ev)
+			}
+		}
+	case "agent_error":
+		if h, ok := r.h.(ErrorHandler); ok {
+			if ae, ok := parseAgentError(raw); ok {
+				h.AgentError(r.ctx, ae)
+			}
+		}
 	default:
 		slog.Debug("acp: ignoring session update", "agent", c.name, "variant", kind)
 	}
@@ -146,4 +179,162 @@ func (c *Client) request(_ context.Context, method string, params json.RawMessag
 
 func invalidParams(err error) *RPCError {
 	return &RPCError{Code: codeInvalidParams, Message: "invalid params: " + err.Error()}
+}
+
+func normalizeCompactionStatus(s string) CompactionStatus {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "started", "in_progress", "running":
+		return CompactionInProgress
+	case "completed", "done":
+		return CompactionCompleted
+	case "failed", "error":
+		return CompactionFailed
+	case "cancelled", "canceled":
+		return CompactionCancelled
+	default:
+		return CompactionStatus(strings.TrimSpace(s))
+	}
+}
+
+func flattenTextBlocks(blocks []contentBlock) string {
+	var b strings.Builder
+	for _, blk := range blocks {
+		if blk.Type == "text" && blk.Text != "" {
+			b.WriteString(blk.Text)
+		}
+	}
+	return b.String()
+}
+
+func parseCompactionUpdate(raw json.RawMessage) (CompactionEvent, bool) {
+	var cu struct {
+		CompactionID string          `json:"compactionId"`
+		Status       string          `json:"status"`
+		Summary      []contentBlock  `json:"summary"`
+		Content      []contentBlock  `json:"content"`
+		Error        json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(raw, &cu); err != nil {
+		return CompactionEvent{}, false
+	}
+	st := normalizeCompactionStatus(cu.Status)
+	if st == "" && len(cu.Summary) == 0 && len(cu.Content) == 0 {
+		return CompactionEvent{}, false
+	}
+	summary := flattenTextBlocks(cu.Summary)
+	if summary == "" {
+		summary = flattenTextBlocks(cu.Content)
+	}
+	var errText string
+	if ae, ok := parseAgentErrorPayload(cu.Error); ok {
+		errText = ae.Message
+	}
+	return CompactionEvent{ID: cu.CompactionID, Status: st, Summary: summary, Error: errText}, true
+}
+
+func parseSessionInfoCompaction(raw json.RawMessage) (CompactionEvent, bool) {
+	var si struct {
+		Meta map[string]json.RawMessage `json:"_meta"`
+	}
+	if err := json.Unmarshal(raw, &si); err != nil || len(si.Meta) == 0 {
+		return CompactionEvent{}, false
+	}
+	ocRaw, ok := si.Meta["opencode/compaction"]
+	if !ok {
+		return CompactionEvent{}, false
+	}
+	var oc struct {
+		Status string          `json:"status"`
+		Error  json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(ocRaw, &oc); err != nil || strings.TrimSpace(oc.Status) == "" {
+		return CompactionEvent{}, false
+	}
+	var errText string
+	if ae, ok := parseAgentErrorPayload(oc.Error); ok {
+		errText = ae.Message
+	}
+	return CompactionEvent{
+		Status: normalizeCompactionStatus(oc.Status),
+		Error:  errText,
+	}, true
+}
+
+func parseAgentError(raw json.RawMessage) (AgentError, bool) {
+	var envelope struct {
+		Error      json.RawMessage `json:"error"`
+		Name       string          `json:"name"`
+		Code       string          `json:"code"`
+		Message    string          `json:"message"`
+		StatusCode int             `json:"statusCode"`
+		Data       *struct {
+			Message    string `json:"message"`
+			StatusCode int    `json:"statusCode"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return AgentError{}, false
+	}
+	if len(envelope.Error) > 0 {
+		if ae, ok := parseAgentErrorPayload(envelope.Error); ok {
+			return ae, true
+		}
+	}
+	ae := AgentError{
+		Name:       strings.TrimSpace(envelope.Name),
+		Code:       strings.TrimSpace(envelope.Code),
+		Message:    strings.TrimSpace(envelope.Message),
+		StatusCode: envelope.StatusCode,
+	}
+	if envelope.Data != nil {
+		if ae.Message == "" {
+			ae.Message = strings.TrimSpace(envelope.Data.Message)
+		}
+		if ae.StatusCode == 0 {
+			ae.StatusCode = envelope.Data.StatusCode
+		}
+	}
+	return ae, ae.Message != "" || ae.Name != "" || ae.Code != ""
+}
+
+func parseAgentErrorPayload(raw json.RawMessage) (AgentError, bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return AgentError{}, false
+	}
+	var str string
+	if json.Unmarshal(raw, &str) == nil && strings.TrimSpace(str) != "" {
+		return AgentError{Message: strings.TrimSpace(str)}, true
+	}
+	var obj struct {
+		Name       string `json:"name"`
+		Code       string `json:"code"`
+		Message    string `json:"message"`
+		StatusCode int    `json:"statusCode"`
+		Data       *struct {
+			Message    string `json:"message"`
+			StatusCode int    `json:"statusCode"`
+			ProviderID string `json:"providerID"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(raw, &obj) != nil {
+		return AgentError{}, false
+	}
+	ae := AgentError{
+		Name:       strings.TrimSpace(obj.Name),
+		Code:       strings.TrimSpace(obj.Code),
+		Message:    strings.TrimSpace(obj.Message),
+		StatusCode: obj.StatusCode,
+	}
+	if obj.Data != nil {
+		if ae.Message == "" {
+			ae.Message = strings.TrimSpace(obj.Data.Message)
+		}
+		if ae.StatusCode == 0 {
+			ae.StatusCode = obj.Data.StatusCode
+		}
+	}
+	if ae.Message == "" && ae.Name != "" {
+		ae.Message = ae.Name
+	}
+	return ae, ae.Message != "" || ae.Name != "" || ae.Code != ""
 }

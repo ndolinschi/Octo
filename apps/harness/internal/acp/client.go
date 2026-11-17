@@ -97,9 +97,12 @@ func (c *Client) initialize(ctx context.Context) error {
 	defer cancel()
 	var res initializeResult
 	err := c.conn.call(ctx, methodInitialize, initializeParams{
-		ProtocolVersion:    ProtocolVersion,
-		ClientCapabilities: clientCapabilities{FS: fsCapabilities{ReadTextFile: true, WriteTextFile: true}},
-		ClientInfo:         implementation{Name: ClientName, Version: ClientVersion},
+		ProtocolVersion: ProtocolVersion,
+		ClientCapabilities: clientCapabilities{
+			FS:      fsCapabilities{ReadTextFile: true, WriteTextFile: true},
+			Session: &sessionCapabilities{Compaction: &struct{}{}},
+		},
+		ClientInfo: implementation{Name: ClientName, Version: ClientVersion},
 	}, &res)
 	if err != nil {
 		return fmt.Errorf("acp initialize: %w", err)

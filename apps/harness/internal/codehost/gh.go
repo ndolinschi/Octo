@@ -395,21 +395,46 @@ type infoEntry struct {
 }
 
 func (g *GH) ListPRs(ctx context.Context, dir string, repo Repo) ([]PR, error) {
+	return g.ListPRsLimit(ctx, dir, repo, MaxListed)
+}
+
+func (g *GH) ListPRsLimit(ctx context.Context, dir string, repo Repo, limit int) ([]PR, error) {
+	if limit <= 0 || limit > MaxListed {
+		limit = MaxListed
+	}
 	ctx = WithRepo(ctx, repo)
 	rarg := RepoArg(repo)
-	out, err := g.ok(ctx, dir, nil, "pr", "list", "--repo", rarg, "--state", "open", "--limit", fmt.Sprint(MaxListed), "--json", listFields+",comments,latestReviews")
-	if err != nil {
-		return nil, err
-	}
-	var list []ghPR
-	if err := json.Unmarshal(out, &list); err != nil {
-		return nil, &Error{Op: "gh pr list", Message: "unexpected output"}
-	}
-	// The ones that ask for this user's review (a second, narrow query: the
-	// reviewRequests field names teams as well and would need the user's login).
-	mine := map[int]bool{}
-	if out, err := g.ok(ctx, dir, nil, "pr", "list", "--repo", rarg, "--state", "open", "--limit", fmt.Sprint(MaxListed),
-		"--search", "review-requested:@me", "--json", "number"); err == nil {
+	host := g.hostFor(ctx, dir)
+	lim := fmt.Sprint(limit)
+
+	var (
+		list    []ghPR
+		listErr error
+		mine    = map[int]bool{}
+		reqErr  error
+		me      string
+	)
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		out, err := g.ok(ctx, dir, nil, "pr", "list", "--repo", rarg, "--state", "open", "--limit", lim, "--json", listFields+",comments,latestReviews")
+		if err != nil {
+			listErr = err
+			return
+		}
+		if err := json.Unmarshal(out, &list); err != nil {
+			listErr = &Error{Op: "gh pr list", Message: "unexpected output"}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		out, err := g.ok(ctx, dir, nil, "pr", "list", "--repo", rarg, "--state", "open", "--limit", lim,
+			"--search", "review-requested:@me", "--json", "number")
+		if err != nil {
+			reqErr = err
+			return
+		}
 		var nums []struct {
 			Number int `json:"number"`
 		}
@@ -418,10 +443,22 @@ func (g *GH) ListPRs(ctx context.Context, dir string, repo Repo) ([]PR, error) {
 				mine[n.Number] = true
 			}
 		}
-	} else if u, ok := IsUnavailable(err); ok {
-		return nil, u
+	}()
+	go func() {
+		defer wg.Done()
+		me = g.viewer(ctx, dir, host)
+	}()
+	wg.Wait()
+
+	if listErr != nil {
+		return nil, listErr
 	}
-	me := g.viewer(ctx, dir, g.hostFor(ctx, dir))
+	if reqErr != nil {
+		if u, ok := IsUnavailable(reqErr); ok {
+			return nil, u
+		}
+	}
+
 	res := make([]PR, 0, len(list))
 	for _, p := range list {
 		pr := p.pr()

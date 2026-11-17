@@ -134,6 +134,69 @@ func TestWorktreeAddBranchAndCarryWorkingTreeChanges(t *testing.T) {
 	}
 }
 
+func TestLocalBranchesChunk(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	ctx := context.Background()
+	repo := t.TempDir()
+	mustGit := func(args ...string) {
+		t.Helper()
+		if _, err := Run(ctx, repo, args...); err != nil {
+			t.Fatalf("git %v: %v", args, err)
+		}
+	}
+	commit := func(name, date string) {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		mustGit("add", name)
+		cmd := exec.CommandContext(ctx, "git", "-C", repo, "commit", "-q", "-m", "add "+name)
+		cmd.Env = append(os.Environ(), "GIT_COMMITTER_DATE="+date, "GIT_AUTHOR_DATE="+date)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git commit %s: %v\n%s", name, err, out)
+		}
+	}
+	mustGit("init", "-b", "main")
+	mustGit("config", "user.name", "Test")
+	mustGit("config", "user.email", "test@example.com")
+	commit("base.txt", "2026-11-01T10:00:00Z")
+
+	mustGit("checkout", "-q", "-b", "older", "main")
+	commit("older.txt", "2026-11-02T10:00:00Z")
+	mustGit("checkout", "-q", "-b", "newer", "main")
+	commit("newer1.txt", "2026-11-03T10:00:00Z")
+	commit("newer2.txt", "2026-11-04T10:00:00Z")
+	mustGit("checkout", "-q", "-b", "cur", "main")
+	commit("cur.txt", "2026-11-01T12:00:00Z")
+
+	all, trunc, err := LocalBranches(ctx, repo, "main")
+	if err != nil || trunc || len(all) != 4 {
+		t.Fatalf("LocalBranches = %d trunc=%v err=%v", len(all), trunc, err)
+	}
+	if all[0].Name != "cur" || !all[0].Current || all[1].Name != "newer" || all[2].Name != "older" || all[3].Name != "main" {
+		t.Fatalf("order = %+v", all)
+	}
+
+	c1, total, trunc1, err := LocalBranchesChunk(ctx, repo, "main", 0, 2)
+	if err != nil || trunc1 || total != 4 || len(c1) != 2 {
+		t.Fatalf("chunk1 = %d total=%d trunc=%v err=%v", len(c1), total, trunc1, err)
+	}
+	if c1[0].Name != "cur" || c1[0].Ahead != 1 || c1[1].Name != "newer" || c1[1].Ahead != 2 {
+		t.Fatalf("chunk1 values = %+v", c1)
+	}
+
+	c2, total2, _, err := LocalBranchesChunk(ctx, repo, "main", 2, 2)
+	if err != nil || total2 != 4 || len(c2) != 2 || c2[0].Name != "older" || c2[0].Ahead != 1 || c2[1].Name != "main" || c2[1].Ahead != 0 {
+		t.Fatalf("chunk2 = %+v total=%d err=%v", c2, total2, err)
+	}
+
+	empty, total3, _, err := LocalBranchesChunk(ctx, repo, "main", 10, 2)
+	if err != nil || total3 != 4 || len(empty) != 0 {
+		t.Fatalf("beyond = %+v total=%d err=%v", empty, total3, err)
+	}
+}
+
 func sha(c byte) string {
 	b := make([]byte, 40)
 	for i := range b {

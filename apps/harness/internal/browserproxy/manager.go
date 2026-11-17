@@ -301,7 +301,18 @@ func newGuardedTransport(portBlocked func(int) bool) http.RoundTripper {
 			if len(ips) == 0 {
 				return nil, fmt.Errorf("no address for %s", host)
 			}
-			return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), portStr))
+			var lastErr error
+			for _, ipa := range ips {
+				conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ipa.IP.String(), portStr))
+				if dialErr == nil {
+					return conn, nil
+				}
+				lastErr = dialErr
+				if ctx.Err() != nil {
+					break
+				}
+			}
+			return nil, lastErr
 		},
 	}
 }

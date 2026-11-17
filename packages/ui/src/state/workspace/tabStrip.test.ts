@@ -25,6 +25,7 @@ import {
   tabWant,
   TAB_CLOSE_ROOM,
   TAB_FLOOR,
+  recentPickerTabs,
 } from "./tabStrip";
 
 test("overflow (decision 83): tabs shrink to TAB_MIN each before the strip scrolls", () => {
@@ -184,4 +185,28 @@ test("shownToLayoutIndex: a drag index over the shown tabs → the group's index
   // Narrow (one strip for every group): a shown tab from another group is skipped.
   assert.equal(shownToLayoutIndex(["x", "a", "y", "c"], ["a", "b", "c"], 2), 2, "before c, past the other group's y");
   assert.equal(shownToLayoutIndex(["a", "x"], ["a", "b"], 1), 1, "after a when nothing of the group follows");
+});
+
+test("recentPickerTabs puts newest closed first, then MRU open tabs without duplicates or active tab", () => {
+  const closed = [
+    { tab: "closed-old", group: "g1", index: 0 },
+    { tab: "reopened-now", group: "g1", index: 1 },
+    { tab: "closed-dup", group: "g1", index: 2 },
+    { tab: "closed-dup", group: "g1", index: 3 },
+  ];
+  const open = new Set(["active-tab", "reopened-now", "open-1", "open-2"]);
+  const recent = recentPickerTabs({
+    closed,
+    mru: ["active-tab", "open-1", "reopened-now", "closed-dup", "open-2"],
+    open,
+    active: "active-tab",
+    max: 4,
+    exclude: (t) => t === "open-2",
+  });
+  assert.deepEqual(recent, [
+    { tab: "closed-dup", status: "closed" },
+    { tab: "closed-old", status: "closed" },
+    { tab: "open-1", status: "open" },
+    { tab: "reopened-now", status: "open" },
+  ]);
 });

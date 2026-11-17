@@ -34,6 +34,8 @@ export function ErrorNotice(props: {
   title?: string;
   /** "Check again" (login state re-read) for `recheck_provider`. */
   onCheck?: (() => unknown) | undefined;
+  /** Suppresses the "Checked just now" line (for example when checking ran a retry that failed). */
+  hideChecked?: boolean | undefined;
   /** "Retry" for a `retry` step (send the same request again). */
   onRetry?: (() => void) | undefined;
   retrying?: boolean;
@@ -52,6 +54,7 @@ export function ErrorNotice(props: {
   const [checked, setChecked] = useState(false);
   const checkAgain = () => {
     if (!props.onCheck) return;
+    setChecked(false);
     setChecking(true);
     void Promise.resolve()
       .then(props.onCheck)
@@ -108,9 +111,9 @@ export function ErrorNotice(props: {
       <Notice tone={props.tone ?? "error"} form="block" {...(props.title ? { title: props.title } : {})} {...(command ? { command } : {})} actions={actions}>
         {p.sentence}
         {p.hint && <span className="block text-fg-3">{p.hint.replace(/`/g, "")}</span>}
-        {checked && !checking && (
+        {checked && !checking && !props.hideChecked && (
           <span role="status" className="block text-xs text-fg-3">
-            {/log(?:ged)? ?in/i.test(p.sentence) ? "Checked just now — still not logged in" : "Checked just now — nothing has changed"}
+            {/log(?:ged)? ?in/i.test(`${p.sentence} ${p.hint ?? ""}`) ? "Checked just now — still not logged in" : "Checked just now — nothing has changed"}
           </span>
         )}
         {open && details && <p className="mt-2 font-mono text-xs break-words whitespace-pre-wrap text-fg-3">{details}</p>}

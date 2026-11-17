@@ -8,6 +8,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // errAgentCancelled marks an ACP agent that ended its turn with stopReason
@@ -52,8 +53,20 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 	}
 	switch stop {
 	case acp.StopEndTurn:
+		if ae := h.midTurnError(); ae != nil {
+			return "", agentErrorFailure(ag, *ae, client.Stderr())
+		}
+		if ce := h.compactionError(); ce != "" {
+			return "", usererr.AgentFailed(ag.Label, joinDetails(ce, client.Stderr()))
+		}
+		if h.compactedDone() {
+			if text := h.finalText(); text != "" {
+				return text, nil
+			}
+			return h.compactionSummary(), nil
+		}
 		if h.nothing() {
-			return "", nothingError(ag)
+			return "", nothingError(ag, client.Stderr(), h.thoughtOnly())
 		}
 		return h.finalText(), nil
 	case acp.StopCancelled:
