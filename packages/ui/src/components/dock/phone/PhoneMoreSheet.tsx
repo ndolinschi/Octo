@@ -32,7 +32,7 @@ import { RemoteIndicator } from "../../status/RemoteIndicator";
 import { tabInfo, TOOL_TABS } from "../tabInfo";
 
 /** The panels the phone reaches from "⋯", in this order (direction 7). */
-const PANELS: readonly ToolTab[] = ["files", "browser", "changes", "sessions", "memory", "notes", "usage", "agents", "details", "side", "review"];
+const PANELS: readonly ToolTab[] = ["files", "browser", "processes", "changes", "sessions", "memory", "notes", "usage", "agents", "details", "side", "review"];
 
 /**
  * The phone header's "⋯" (direction 7): everything the desktop's top row and status bar carry, as one bottom sheet of 44px

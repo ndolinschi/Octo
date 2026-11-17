@@ -261,7 +261,10 @@ func (s *Service) Start(ctx context.Context, pid, name, reviewID string) (projec
 	if err != nil {
 		return projectstore.CommandRun{}, err
 	}
+	return s.spawn(ctx, db, pid, cmdDef, dir, reviewID)
+}
 
+func (s *Service) spawn(ctx context.Context, db *projectstore.DB, pid string, cmdDef projcfg.Command, dir, reviewID string) (projectstore.CommandRun, error) {
 	s.mu.Lock()
 	running := 0
 	for _, r := range s.active {
@@ -288,9 +291,13 @@ func (s *Service) Start(ctx context.Context, pid, name, reviewID string) (projec
 		s.mu.Unlock()
 		return projectstore.CommandRun{}, conflict("start_failed", "could not start the command: %v", err)
 	}
+	osPID := 0
+	if cmd.Process != nil {
+		osPID = cmd.Process.Pid
+	}
 	id := projectstore.NewID("run")
 	r := &run{svc: s, pid: pid, id: id, cmd: cmd, done: make(chan struct{})}
-	r.row = projectstore.CommandRun{ID: id, Name: cmdDef.Name, Command: cmdDef.Command, Cwd: dir,
+	r.row = projectstore.CommandRun{ID: id, Name: cmdDef.Name, Command: cmdDef.Command, PID: osPID, Cwd: dir,
 		ReviewID: reviewID, Status: projectstore.RunRunning, StartedAt: projectstore.Stamp(s.now())}
 	s.active[r.row.ID] = r
 	s.mu.Unlock()
@@ -443,6 +450,7 @@ func (r *run) finish(db *projectstore.DB, waitErr error) {
 	r.mu.Lock()
 	end := r.svc.now()
 	row := r.row
+	row.PID = 0
 	row.FinishedAt = projectstore.Stamp(end)
 	if started, err := time.Parse("2006-01-02T15:04:05.000Z07:00", row.StartedAt); err == nil {
 		row.DurationMS = end.Sub(started).Milliseconds()
@@ -460,7 +468,7 @@ func (r *run) finish(db *projectstore.DB, waitErr error) {
 		row.Status = projectstore.RunError
 	}
 	row.OutputBytes, row.Truncated = r.total, r.truncated
-	row.Tail = strings.ToValidUTF8(string(r.tail), "�")
+	row.Tail = strings.ToValidUTF8(string(r.tail), "\ufffd")
 	r.row = row
 	r.mu.Unlock()
 
@@ -491,7 +499,7 @@ func (r *run) snapshot(withTail bool) projectstore.CommandRun {
 		}
 	}
 	if withTail {
-		row.Tail = strings.ToValidUTF8(string(r.tail), "�")
+		row.Tail = strings.ToValidUTF8(string(r.tail), "\ufffd")
 	} else {
 		row.Tail = ""
 	}
@@ -568,26 +576,7 @@ func (s *Service) Get(ctx context.Context, pid, rid string) (projectstore.Comman
 // Stop ends a run: SIGTERM to its process group, SIGKILL after the grace
 // period. It answers with the run once it has ended; a run that already ended is returned as it is.
 func (s *Service) Stop(ctx context.Context, pid, rid string) (projectstore.CommandRun, error) {
-	r := s.activeRun(pid, rid)
-	if r == nil {
-		return s.Get(ctx, pid, rid)
-	}
-	r.mu.Lock()
-	r.stopRequested = true
-	r.mu.Unlock()
-	signalGroup(r.cmd, false)
-	select {
-	case <-r.done:
-	case <-time.After(s.grace):
-		signalGroup(r.cmd, true)
-		select {
-		case <-r.done:
-		case <-time.After(5 * time.Second):
-		case <-ctx.Done():
-		}
-	case <-ctx.Done():
-	}
-	return s.Get(ctx, pid, rid)
+	return s.StopWith(ctx, pid, rid, false)
 }
 
 // Shutdown ends every running command (the harness is stopping).

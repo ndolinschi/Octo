@@ -84,7 +84,12 @@ export type HttpOnlyMethod =
   | "previewReviewSubmit"
   | "submitReview"
   | "openBrowserProxy"
-  | "closeBrowserProxy";
+  | "closeBrowserProxy"
+  | "startCommandRun"
+  | "restartCommandRun"
+  | "listWorkerProcesses"
+  | "stopWorkerProcess"
+  | "restartWorkerProcess";
 export type BridgeMethod = Exclude<keyof Bridge, "subscribe" | "openLanguageServer" | HttpOnlyMethod>;
 /** `fields`: a refused form answer's messages by property id (dynamic forms, decision 4); absent otherwise. */
 export type WireError = { status: number; code: string; message: string; fields?: Record<string, string> };

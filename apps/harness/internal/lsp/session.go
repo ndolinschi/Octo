@@ -227,3 +227,12 @@ func (s *Session) Close(reason string) {
 
 // PID is the server's process id (for diagnostics and tests).
 func (s *Session) PID() int { return s.proc.cmd.Process.Pid }
+
+// Spec is how the server process was started.
+func (s *Session) Spec() Spec { return s.proc.spec }
+
+// StartedAt is when the server process was started (UTC).
+func (s *Session) StartedAt() time.Time { return s.proc.startedAt }
+
+// StderrTail returns the trailing stderr output captured from the server.
+func (s *Session) StderrTail() string { return s.proc.stderr.tailText() }

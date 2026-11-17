@@ -484,7 +484,7 @@ export function WorkspaceProvider({
         if (tool === "side") focusSoon(() => document.getElementById("octo-side-input"), { timeout: 3000 });
         else if (tool === "files") focusTree();
         else focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
-        const roomy = tool === "files" || tool === "changes" || tool === "browser";
+        const roomy = tool === "files" || tool === "changes" || tool === "browser" || tool === "processes";
         openSide(tab, roomy ? fileFraction() : toolFraction());
         if (roomy) {
           const g = L.groupOf(layoutRef.current, tab);

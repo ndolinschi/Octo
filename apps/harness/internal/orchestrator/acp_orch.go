@@ -226,6 +226,9 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 	token := s.h.tokens.Issue(mcp.Binding{ProjectID: rt.pid(), SessionID: rt.sessionID, AgentID: orch.ID})
 	client.TraceHide(token)
 	s.mu.Lock()
+	args := ag.ArgsFor(t.model)
+	s.cmdLine = strings.TrimSpace(ag.Command + " " + strings.Join(args, " "))
+	s.startedAt = time.Now().UTC()
 	s.client, s.token, s.pluginID, s.model, s.cwd, s.sessID = client, token, ag.ID, t.recorded(), cwd, ""
 	s.mu.Unlock()
 	servers, warn := rt.o.mcpServers(ag.Label, mcpCaps(ag, client.Capabilities()), rt.pid(), token)

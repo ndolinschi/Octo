@@ -48,12 +48,14 @@ type orchSession struct {
 
 	mu sync.Mutex
 	// What the live process was started for.
-	pluginID string
-	model    string // acpTarget.recorded()
-	cwd      string
-	client   *acp.Client
-	sessID   string
-	token    string
+	pluginID  string
+	model     string // acpTarget.recorded()
+	cmdLine   string
+	startedAt time.Time
+	cwd       string
+	client    *acp.Client
+	sessID    string
+	token     string
 	// noMCP is set when the agent got no harness tools; the text is the
 	// warning shown on every turn of the session.
 	noMCP *usererr.Error

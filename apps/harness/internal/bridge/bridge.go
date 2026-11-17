@@ -33,6 +33,7 @@ type Server struct {
 	reviews  *review.Service
 	commands *commands.Service
 	browser  BrowserProxy
+	workers  WorkerProcesses
 
 	settings         SettingsStore
 	settingsLoopback bool
@@ -242,6 +243,7 @@ func (s *Server) routes() *http.ServeMux {
 	s.reviewRoutes(mux)
 	s.commandRoutes(mux)
 	s.browserRoutes(mux)
+	s.processRoutes(mux)
 	for _, m := range s.mounts {
 		mux.Handle(m.pattern, m.h)
 	}

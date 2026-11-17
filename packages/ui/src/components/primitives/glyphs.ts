@@ -1,4 +1,5 @@
 import {
+  Activity,
   Bot,
   Brain,
   FileDiff,
@@ -34,6 +35,8 @@ export const GLYPH = {
   files: Folder,
   /** In-tab web browser and Design Mode visual annotations (Browser tool). */
   browser: Globe,
+  /** Working processes, dev servers and background workers (Processes tool). */
+  processes: Activity,
   /** Facts about the project: folders, models, tokens, activity, files written (Details tool). */
   details: ChartNoAxesColumn,
   /** Tokens, cost and limits (Usage tool, Home's Tokens card). */

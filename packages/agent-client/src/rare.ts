@@ -12,7 +12,7 @@ import type {
   Transcript,
   UsageParams,
 } from "./types";
-import type { CommandRun, CommandSuggestion, StartedCommandRun } from "./commands";
+import type { CommandRun, CommandSuggestion, StartedCommandRun, WorkerProcess } from "./commands";
 import type {
   ReviewBranchList,
   PullRequestList,
@@ -461,6 +461,7 @@ export function createRareMethods({
         `${p(id)}/commands/${encodeURIComponent(name)}/run`,
         options?.reviewId ? { review_id: options.reviewId } : {},
       ) as Promise<StartedCommandRun>,
+    startCommandRun: (id, input) => request("POST", `${p(id)}/runs`, input) as Promise<StartedCommandRun>,
     listCommandRuns: (id, options) => {
       const q: string[] = [];
       if (options?.reviewId) q.push(`review_id=${encodeURIComponent(options.reviewId)}`);
@@ -468,7 +469,17 @@ export function createRareMethods({
       return unwrap<CommandRun[]>(request("GET", `${p(id)}/runs${q.length ? `?${q.join("&")}` : ""}`), "runs");
     },
     getCommandRun: (id, rid) => request("GET", `${p(id)}/runs/${encodeURIComponent(rid)}`) as Promise<CommandRun>,
-    stopCommandRun: (id, rid) => request("POST", `${p(id)}/runs/${encodeURIComponent(rid)}/stop`) as Promise<CommandRun>,
+    stopCommandRun: (id, rid, options) =>
+      request("POST", `${p(id)}/runs/${encodeURIComponent(rid)}/stop${options?.force ? "?force=1" : ""}`) as Promise<CommandRun>,
+    restartCommandRun: (id, rid) => request("POST", `${p(id)}/runs/${encodeURIComponent(rid)}/restart`) as Promise<StartedCommandRun>,
+    listWorkerProcesses: (id) => unwrap<WorkerProcess[]>(request("GET", `${p(id)}/processes`), "processes"),
+    stopWorkerProcess: async (id, procId) => {
+      await request("POST", `${p(id)}/processes/${encodeURIComponent(procId)}/stop`);
+    },
+    restartWorkerProcess: async (id, procId) => {
+      const body = await request("POST", `${p(id)}/processes/${encodeURIComponent(procId)}/restart`);
+      return isRecord(body) && isRecord(body.process) ? (body.process as unknown as WorkerProcess) : null;
+    },
     openBrowserProxy: (id, url) => request("POST", `${p(id)}/browser/proxy`, { url }) as Promise<BrowserProxySession>,
     closeBrowserProxy: async (id) => {
       await request("DELETE", `${p(id)}/browser/proxy`);

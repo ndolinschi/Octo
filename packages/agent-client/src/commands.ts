@@ -46,6 +46,8 @@ export type CommandRun = {
   id: string;
   name: string;
   command: string;
+  /** OS process id while `status === "running"`; absent once finished. */
+  pid?: number;
   /** Absolute directory it ran in. */
   cwd: string;
   /** Set when it ran in a review's worktree. */
@@ -63,8 +65,32 @@ export type CommandRun = {
   tail?: string;
 };
 
-/** `POST …/commands/{name}/run` → 201. */
+/** `POST …/commands/{name}/run`, `POST …/runs` or `POST …/runs/{rid}/restart` → 201. */
 export type StartedCommandRun = { run_id: string; run: CommandRun };
+
+/** Input to `POST /v1/projects/{pid}/runs` (ad-hoc user command run). */
+export type AdhocCommandInput = {
+  name?: string;
+  command: string;
+  cwd?: string;
+};
+
+export type WorkerProcessKind = "lsp" | "agent";
+export type WorkerProcessStatus = "running" | "busy" | "idle";
+
+/** A live harness-managed subprocess of a project (language server or ACP agent worker). */
+export type WorkerProcess = {
+  id: string;
+  kind: WorkerProcessKind;
+  name: string;
+  command: string;
+  cwd?: string;
+  pid: number;
+  status: WorkerProcessStatus;
+  started_at: string;
+  detail?: string;
+  output?: string;
+};
 
 /** A run tied to a review (`Review.meta.runs`, newest first). */
 export type ReviewRunRef = {

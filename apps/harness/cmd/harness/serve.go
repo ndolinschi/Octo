@@ -365,7 +365,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	defer cancelRequests()
 	files := project.NewFiles(store, hub)
 	bridgeOpts := []bridge.Option{
-		bridge.WithReviews(reviews), bridge.WithCommands(cmds), bridge.WithBrowserProxy(browserMgr),
+		bridge.WithReviews(reviews), bridge.WithCommands(cmds), bridge.WithBrowserProxy(browserMgr), bridge.WithWorkerProcesses(orch),
 		bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo), bridge.WithFeatures(featureStore),
 		bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
 		bridge.WithDiagnostics(func() any {

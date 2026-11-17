@@ -85,6 +85,31 @@ test("a dirty working copy error carries the changed files", async () => {
   });
 });
 
+test("process management methods hit the documented routes", async () => {
+  const { bridge, calls } = bridgeWith(
+    '{"processes":[],"run_id":"run_2","run":{"id":"run_2"},"process":{"id":"lsp:ls_2","kind":"lsp","name":"ts","command":"ts","pid":12,"status":"idle","started_at":"t"}}',
+  );
+  await bridge.startCommandRun?.("p", { name: "Dev", command: "pnpm dev", cwd: "web" });
+  await bridge.stopCommandRun?.("p", "run 1", { force: true });
+  await bridge.restartCommandRun?.("p", "run 1");
+  await bridge.listWorkerProcesses?.("p");
+  await bridge.stopWorkerProcess?.("p", "lsp:ls_1");
+  const restarted = await bridge.restartWorkerProcess?.("p", "lsp:ls_1");
+  assert.equal(restarted?.id, "lsp:ls_2");
+  assert.deepEqual(
+    calls.map((c) => `${c.method} ${c.url.replace("http://h:1", "")}`),
+    [
+      "POST /v1/projects/p/runs",
+      "POST /v1/projects/p/runs/run%201/stop?force=1",
+      "POST /v1/projects/p/runs/run%201/restart",
+      "GET /v1/projects/p/processes",
+      "POST /v1/projects/p/processes/lsp%3Als_1/stop",
+      "POST /v1/projects/p/processes/lsp%3Als_1/restart",
+    ],
+  );
+  assert.equal(calls[0]?.body, '{"name":"Dev","command":"pnpm dev","cwd":"web"}');
+});
+
 test("review methods hit the documented routes", async () => {
   const { bridge, calls } = bridgeWith('{"prs":[],"suggestions":[],"runs":[],"reviews":[],"files":[],"comments":[],"findings":[]}');
   await bridge.listPullRequests?.("p 1", { folder: "my repo" });

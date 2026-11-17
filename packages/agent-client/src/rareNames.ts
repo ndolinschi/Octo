@@ -120,6 +120,11 @@ export const RARE_METHODS = [
   "moveSessionToWorktree",
   "openBrowserProxy",
   "closeBrowserProxy",
+  "startCommandRun",
+  "restartCommandRun",
+  "listWorkerProcesses",
+  "stopWorkerProcess",
+  "restartWorkerProcess",
 ] as const;
 
 export type RareMethod = (typeof RARE_METHODS)[number];

@@ -18,6 +18,7 @@ const (
 	stderrLineCap   = 2000
 	stderrTotalCap  = 1 << 20
 	stderrPartialSz = 8 << 10
+	stderrTailCap   = 16 << 10
 )
 
 // Spec says how to start a language server. Env entries are added to the
@@ -31,11 +32,14 @@ type Spec struct {
 }
 
 type process struct {
-	cmd    *exec.Cmd
-	stdin  *os.File
-	stdout *os.File
-	exited chan struct{}
-	code   int // valid after exited is closed; -1 when killed by a signal
+	spec      Spec
+	startedAt time.Time
+	cmd       *exec.Cmd
+	stdin     *os.File
+	stdout    *os.File
+	stderr    *stderrLog
+	exited    chan struct{}
+	code      int // valid after exited is closed; -1 when killed by a signal
 }
 
 func startProcess(spec Spec) (*process, error) {
@@ -44,7 +48,8 @@ func startProcess(spec Spec) (*process, error) {
 	cmd.Env = childenv.Build(os.Environ(), spec.Env)
 	cmd.WaitDelay = waitDelay
 	setProcessGroup(cmd)
-	cmd.Stderr = &stderrLog{name: spec.Name}
+	errLog := &stderrLog{name: spec.Name}
+	cmd.Stderr = errLog
 	inR, inW, err := os.Pipe()
 	if err != nil {
 		return nil, err
@@ -60,7 +65,7 @@ func startProcess(spec Spec) (*process, error) {
 		return nil, fmt.Errorf("start %s: %w", spec.Command, err)
 	}
 	closeAll(inR, outW)
-	p := &process{cmd: cmd, stdin: inW, stdout: outR, exited: make(chan struct{})}
+	p := &process{spec: spec, startedAt: time.Now().UTC(), cmd: cmd, stdin: inW, stdout: outR, stderr: errLog, exited: make(chan struct{})}
 	go func() {
 		err := cmd.Wait()
 		p.code = cmd.ProcessState.ExitCode()
@@ -90,6 +95,7 @@ type stderrLog struct {
 	name    string
 	mu      sync.Mutex
 	buf     bytes.Buffer
+	tail    []byte
 	written int
 }
 
@@ -120,4 +126,18 @@ func (s *stderrLog) line(l string) {
 		l = l[:stderrLineCap] + "...(truncated)"
 	}
 	slog.Debug("lsp server stderr", "server", s.name, "line", l)
+	s.tail = append(s.tail, l...)
+	s.tail = append(s.tail, '\n')
+	if len(s.tail) > stderrTailCap {
+		s.tail = append([]byte(nil), s.tail[len(s.tail)-stderrTailCap:]...)
+	}
+}
+
+func (s *stderrLog) tailText() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.buf.Len() > 0 {
+		s.line(string(s.buf.Next(s.buf.Len())))
+	}
+	return strings.TrimRight(strings.ToValidUTF8(string(s.tail), ""), "\n")
 }

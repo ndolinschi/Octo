@@ -80,6 +80,8 @@ const loadReviewCommands = () => import("../commands/kit").then((m) => m.reviewC
 const RunTab = lazy(() => import("../commands/RunTab"));
 /** Browser + Design Mode (singleton `tool:browser` and multi-instance `browser:<id>`): its own chunk. */
 const BrowserTab = lazy(() => import("../browser/BrowserTab"));
+/** Working processes, dev servers and background workers (`tool:processes`): its own chunk. */
+const ProcessesTab = lazy(() => import("../processes/ProcessesTab"));
 /** The side question (decision 40). */
 const SidePanel = lazy(() => import("../side/SidePanel").then((m) => ({ default: m.SidePanel })));
 /** The Usage tab too (v6.2). */
@@ -121,6 +123,14 @@ export function TabView({ tab }: { tab: TabId }) {
           <Suspense fallback={null}>
             <BrowserTab tab={tab} browserId="default" />
           </Suspense>
+        );
+      if (ref.tool === "processes")
+        return (
+          <ToolView tab={tab}>
+            <Suspense fallback={null}>
+              <ProcessesTab />
+            </Suspense>
+          </ToolView>
         );
       if (ref.tool === "files")
         return (
