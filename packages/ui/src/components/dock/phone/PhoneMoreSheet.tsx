@@ -162,19 +162,21 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
           </Group>
         )}
         <Group title="Panels">
-          {PANELS.filter((tool) => !(project?.memory?.auto_memory === "blocked" && tool === "memory")).map((tool) => {
-            const t = TOOL_TABS[tool];
-            return (
-              <ListRow
-                key={tool}
-                size="lg"
-                selected={props.active === toolTab(tool)}
-                leading={<Glyph icon={t.icon} size={16} />}
-                title={t.label}
-                onClick={then(() => ws.openTool(tool))}
-              />
-            );
-          })}
+          <div className="grid grid-cols-2 gap-1">
+            {PANELS.filter((tool) => !(project?.memory?.auto_memory === "blocked" && tool === "memory")).map((tool) => {
+              const t = TOOL_TABS[tool];
+              return (
+                <ListRow
+                  key={tool}
+                  size="lg"
+                  selected={props.active === toolTab(tool)}
+                  leading={<Glyph icon={t.icon} size={16} />}
+                  title={t.label}
+                  onClick={then(() => ws.openTool(tool))}
+                />
+              );
+            })}
+          </div>
         </Group>
         <StatusSlotsContext.Provider value={slots}>
           <Group title="Status">

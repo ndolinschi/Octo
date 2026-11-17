@@ -126,7 +126,9 @@ function GroupView(props: { group: Group; name: string; first: boolean; last: bo
   const fileShell = useFileShellTab(group, visited);
   const focused = group.id === ws.layout.focused;
   const narrow = ws.narrow;
+  const activeNarrowGroup = focusedGroup(ws.layout).id === group.id;
   const hidden = (narrow && !focused) || stepAside;
+  const showStrip = !narrow || activeNarrowGroup;
   const strip = narrow ? { tabs: allTabs(ws.layout), active: focusedGroup(ws.layout).active } : { tabs: group.tabs, active: group.active };
   const { theme, backdrop: appBackdrop } = useApp();
   const [backdrops, setBackdrops] = useState<ReadonlySet<string>>(() => new Set());
@@ -157,16 +159,18 @@ function GroupView(props: { group: Group; name: string; first: boolean; last: bo
       className={cn("flex min-h-0 min-w-0 flex-col overflow-clip contain-inline-size", narrow && "flex-1")}
     >
       <GroupProvider group={group}>
-        <TabStrip
-          label={narrow || name === "Panels" ? "Tabs" : `${name} panel tabs`}
-          groupId={group.id}
-          tabs={strip.tabs}
-          active={strip.active}
-          focused={focused}
-          last={last}
-          maximised={maximised}
-          startInset={first && (drawer || !sidebarOpen) ? controlsWidth(insetStart) : 0}
-        />
+        {showStrip && (
+          <TabStrip
+            label={narrow || name === "Panels" ? "Tabs" : `${name} panel tabs`}
+            groupId={group.id}
+            tabs={strip.tabs}
+            active={strip.active}
+            focused={focused}
+            last={narrow || last}
+            maximised={maximised}
+            startInset={first && (drawer || !sidebarOpen) ? controlsWidth(insetStart) : 0}
+          />
+        )}
         <div className={cn(panelClass, "relative flex-1")}>
           {backdrops.has(strip.active) && (
             <>

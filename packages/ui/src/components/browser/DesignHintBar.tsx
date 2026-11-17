@@ -1,4 +1,5 @@
 import { Circle, MoveUpRight, MousePointerClick, Pencil, Scan, Square, Undo2, type LucideIcon } from "lucide-react";
+import { useId } from "react";
 import { MOD } from "../../state/workspace/WorkspaceProvider";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
@@ -28,10 +29,16 @@ export function DesignHintBar(props: {
   onBatchEditsChange(next: boolean): void;
   onDone(): void;
 }) {
-  const batchSwitchId = "octo-design-batch-switch";
+  const batchSwitchId = useId();
   const hint =
     props.tool === "select"
-      ? `Click element · Shift+click multi · ↑/↓ parent/child · Double-click text · Alt+click to chat`
+      ? "Click · Shift+click multi · ↑/↓ parent · Dbl-click text"
+      : props.tool === "area"
+        ? "Drag area · Shift square · Alt from centre"
+        : `Drag to draw · Shift constrain · ${MOD}Z undo`;
+  const fullHint =
+    props.tool === "select"
+      ? "Click element · Shift+click multi · ↑/↓ parent/child · Double-click text · Alt+click to chat"
       : props.tool === "area"
         ? "Drag over an area · Shift locks square · Alt expands from centre"
         : `Drag to draw markup · Shift constrains · Alt from centre · ${MOD}Z undo`;
@@ -41,7 +48,7 @@ export function DesignHintBar(props: {
       data-design-hint-bar
       role="toolbar"
       aria-label="Design mode tools"
-      className="flex min-h-9 shrink-0 flex-wrap items-center gap-2 border-b border-line bg-raised px-2 py-1"
+      className="@container/dh flex min-h-9 shrink-0 flex-wrap items-center gap-2 border-b border-line bg-raised px-2 py-1"
     >
       <div className="flex shrink-0 items-center gap-0.5">
         {TOOLS.map((t) => (
@@ -58,9 +65,11 @@ export function DesignHintBar(props: {
         <IconButton icon={Undo2} label={`Undo stroke (${MOD}Z)`} size="xs" disabled={!props.canUndo} onClick={props.onUndo} />
       </div>
 
-      <span className="min-w-0 flex-1 truncate px-1 text-xs text-fg-3">{hint}</span>
+      <span title={fullHint} className="hidden min-w-0 flex-1 truncate px-1 text-xs text-fg-3 @[520px]/dh:block">
+        {hint}
+      </span>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-2">
         <label htmlFor={batchSwitchId} className="cursor-pointer text-xs text-fg-2 select-none">
           Batch edits
         </label>

@@ -167,7 +167,16 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
     cover = <Message file={file} folder={folder} path={path} showLoading={opening} />;
   } else if (markdown && mode === "preview") {
     cover = (
-      <Suspense fallback={null}>
+      <Suspense
+        fallback={
+          <div className="relative h-full">
+            <EditorSkeleton />
+            <p role="status" className="sr-only">
+              Opening {file.name}…
+            </p>
+          </div>
+        }
+      >
         <MarkdownPreview file={file} bottomRoom={bottomRoom} onOpen={openHere} />
       </Suspense>
     );

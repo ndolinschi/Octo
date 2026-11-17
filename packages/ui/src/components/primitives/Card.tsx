@@ -64,9 +64,8 @@ export function ListFrame(props: { as?: "div" | "ul"; className?: string; childr
   return (
     <Tag
       className={cn(
-        // The edge is an overlay (`after`): it takes no room at the sides, so a row's own 12px padding is its text's distance from the frame's
-        // edge; the top and bottom keep a 1px (transparent) border under it, so the frame is as tall as it was.
-        "relative flex flex-col divide-y divide-line overflow-hidden rounded-xl border-y border-transparent bg-panel shadow-panel after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-panel-edge",
+        // The edge is an overlay (`after`) and row hairlines are inset shadows, so borders never shrink padding at the sides or fixed row heights (ListRow).
+        "relative flex flex-col overflow-hidden rounded-xl border-y border-transparent bg-panel shadow-panel after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-panel-edge [&>*:not(:last-child)]:shadow-[inset_0_-1px_0_var(--octo-line)]",
         props.className,
       )}
     >

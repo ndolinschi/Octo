@@ -117,7 +117,7 @@ export function MemoryView(props: {
             <SearchField
               ref={field}
               label="Search memory"
-              placeholder="Search requests, knowledge, files and notes"
+              placeholder={phone ? "Search memory…" : "Search requests, knowledge, files and notes"}
               size="sm"
               value={query}
               onChange={setQuery}

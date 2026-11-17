@@ -45,13 +45,14 @@ function CostText({ r }: { r: UsageRow }) {
 function detail(r: UsageRow) {
   return (
     <>
-      {[
-        `${formatTokens(r.input)} in`,
-        `${formatTokens(r.cached)} cached`,
-        `${formatTokens(r.output)} out`,
-        `${r.requests.toLocaleString()} ${r.requests === 1 ? "req" : "reqs"}`,
-      ].join(" · ")}{" "}
-      · <CostText r={r} />
+      {`${formatTokens(r.input)} in`}
+      <span className="@max-[440px]/utable:hidden">{` · ${formatTokens(r.cached)} cached`}</span>
+      {` · ${formatTokens(r.output)} out`}
+      <span className="@max-[440px]/utable:hidden">{` · ${r.requests.toLocaleString()} ${r.requests === 1 ? "req" : "reqs"}`}</span>
+      {" · "}
+      <span className="whitespace-nowrap">
+        <CostText r={r} />
+      </span>
     </>
   );
 }

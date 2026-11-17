@@ -53,7 +53,7 @@ export function CssInspector(props: {
             <div key={prop} className="flex items-center gap-2">
               <span
                 title={prop}
-                className={modified ? "w-28 shrink-0 truncate font-mono text-xs font-medium text-fg" : "w-28 shrink-0 truncate font-mono text-xs text-fg-2"}
+                className={modified ? "w-32 shrink-0 truncate font-mono text-xs font-medium text-fg" : "w-32 shrink-0 truncate font-mono text-xs text-fg-2"}
               >
                 {prop}
               </span>

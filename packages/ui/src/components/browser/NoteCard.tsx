@@ -100,7 +100,7 @@ export function NoteCard(props: {
       aria-label="Design note"
       data-design-note-card
       style={{ left: pos.left, top: pos.top }}
-      className="absolute z-20 flex w-[min(340px,calc(100%-16px))] flex-col gap-2 rounded-xl border border-line bg-overlay p-3 text-sm shadow-pop"
+      className="absolute z-20 flex max-h-[calc(100%-16px)] w-[min(360px,calc(100%-16px))] flex-col gap-2 overflow-y-auto overscroll-contain rounded-xl border border-line bg-overlay p-3 text-sm shadow-pop"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
