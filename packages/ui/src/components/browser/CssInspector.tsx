@@ -1,5 +1,5 @@
 import { RotateCcw } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { CssEdit, PickedElement } from "../../lib/browser/designNotes";
 import { IconButton } from "../primitives/IconButton";
 import { SearchField } from "../primitives/SearchField";
@@ -34,6 +34,7 @@ export function CssInspector(props: {
   onChangeProp(property: string, before: string, after: string | null): void;
 }) {
   const [filter, setFilter] = useState("");
+  const baseId = useId();
   const baseStyles = props.element.editableStyles ?? {};
   const keys = Object.keys(baseStyles).length ? Object.keys(baseStyles) : DEFAULT_PROPS;
   const q = filter.trim().toLowerCase();
@@ -49,17 +50,19 @@ export function CssInspector(props: {
           const before = editMap.get(prop)?.before ?? baseStyles[prop] ?? "";
           const current = editMap.get(prop)?.after ?? before;
           const modified = editMap.has(prop);
+          const inputId = `${baseId}-${prop}`;
           return (
             <div key={prop} className="flex items-center gap-2">
-              <span
+              <label
+                htmlFor={inputId}
                 title={prop}
                 className={modified ? "w-32 shrink-0 truncate font-mono text-xs font-medium text-fg" : "w-32 shrink-0 truncate font-mono text-xs text-fg-2"}
               >
                 {prop}
-              </span>
+              </label>
               <TextField
+                id={inputId}
                 size="xs"
-                aria-label={`CSS ${prop}`}
                 value={current}
                 onChange={(e) => props.onChangeProp(prop, before, e.target.value)}
                 className="min-w-0 flex-1 font-mono text-xs"

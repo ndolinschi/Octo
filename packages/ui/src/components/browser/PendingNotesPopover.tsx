@@ -53,21 +53,26 @@ export function PendingNotesPopover(props: {
                 (note.textEdit ? `"${note.textEdit.before}" → "${note.textEdit.after}"` : "") ||
                 (note.cssEdits?.length ? `${note.cssEdits.length} CSS ${note.cssEdits.length === 1 ? "change" : "changes"}` : "Visual note");
               return (
-                <li key={note.id} className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-hover">
-                  <Button
-                    variant="quiet"
-                    size="xs"
+                <li key={note.id} className="group/row relative flex items-center rounded-sm hover:bg-hover">
+                  <button
+                    type="button"
                     onClick={() => {
                       setOpen(false);
                       props.onSelect(note);
                     }}
-                    className="min-w-0 flex-1 justify-start text-left"
+                    className="flex h-row min-w-0 flex-1 items-center gap-2 rounded-sm px-2 text-left press-row focus-inset"
                   >
                     <span className="shrink-0 font-mono text-xs text-fg-3 tabular-nums">{`#${note.pinNumber ?? idx + 1}`}</span>
                     <span className="shrink-0 font-mono text-xs text-fg-2">{target}</span>
                     <span className="min-w-0 flex-1 truncate text-xs text-fg">{detail}</span>
-                  </Button>
-                  <IconButton icon={X} label={`Remove pin ${idx + 1}`} size="xs" onClick={() => props.onRemove(note.id)} />
+                  </button>
+                  <IconButton
+                    icon={X}
+                    label={`Remove pin ${idx + 1}`}
+                    size="xs"
+                    onClick={() => props.onRemove(note.id)}
+                    className="mr-1 opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100 focus-visible:opacity-100 touch:opacity-100"
+                  />
                 </li>
               );
             })}

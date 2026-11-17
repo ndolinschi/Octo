@@ -179,7 +179,7 @@ export function ImportSessionsDialog(props: { onClose(): void; onImported(count:
             {filtered.length === 0 ? (
               <p className="py-6 text-center text-sm text-fg-3">No sessions match &ldquo;{query}&rdquo;.</p>
             ) : (
-              <ul aria-label="Importable sessions" className="divide-y divide-line rounded-lg border border-line bg-panel">
+              <ul aria-label="Importable sessions" className="divide-y divide-line rounded-md border border-line bg-panel">
                 {filtered.map((s) => {
                   const key = keyOf(s);
                   const checked = selected.has(key);

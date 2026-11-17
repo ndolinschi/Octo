@@ -86,20 +86,32 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
   const pointerHeld = useRef(false);
   useEffect(() => {
     const inside = (e: Event) => e.target instanceof Node && !!ref.current?.contains(e.target);
+    const stopGlide = () => {
+      if (!gliding.current) return;
+      gliding.current = false;
+      const el = ref.current;
+      if (el) el.scrollTo({ top: el.scrollTop, behavior: "auto" });
+    };
     const mark = (e: Event) => {
-      if (inside(e)) lastInput.current = performance.now();
+      if (!inside(e)) return;
+      lastInput.current = performance.now();
+      if (e.type !== "touchend" && e.type !== "beforematch") stopGlide();
     };
     const onKey = (e: KeyboardEvent) => {
       const t = e.target;
       // Keys typed into a text field move its caret, not the conversation (Alt+↑/↓ jumps release by themselves).
       const typing = t instanceof HTMLElement && (t.isContentEditable || t instanceof HTMLTextAreaElement || t instanceof HTMLInputElement);
-      if (!typing && isScrollKey(e.key)) lastInput.current = performance.now();
+      if (!typing && isScrollKey(e.key)) {
+        lastInput.current = performance.now();
+        stopGlide();
+      }
     };
     const onDown = (e: PointerEvent) => {
       // The scrollbar is the scroller itself; the middle button starts autoscroll anywhere in it.
       if (!inside(e) || (e.target !== ref.current && e.button !== 1)) return;
       pointerHeld.current = true;
       lastInput.current = performance.now();
+      stopGlide();
     };
     const onUp = () => {
       if (pointerHeld.current) lastInput.current = performance.now();
@@ -205,7 +217,7 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
   }, [initialStick]);
 
   useLayoutEffect(() => {
-    if (atBottomRef.current) scrollToBottom(gliding.current);
+    if (atBottomRef.current && !gliding.current) scrollToBottom(false);
   }, deps);
 
   // Reflow (a group resized, a prompt expanded, the composer shrank) keeps a reader at the bottom there;
@@ -227,7 +239,9 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
       hidden.current = false;
       if (atBottomRef.current) {
         if (gliding.current && !wasHidden) {
-          el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+          if (Math.abs(el.scrollHeight - lastHeight.current) > 1) {
+            el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+          }
         } else {
           gliding.current = false;
           el.scrollTop = el.scrollHeight;

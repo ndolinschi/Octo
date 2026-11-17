@@ -265,7 +265,7 @@ function Picker(props: {
               />
               <SearchField
                 label="Search pull requests, or paste an address or a number"
-                placeholder="Search or paste a pull request link"
+                placeholder="Search pull requests…"
                 value={query}
                 onChange={setQuery}
                 size="sm"

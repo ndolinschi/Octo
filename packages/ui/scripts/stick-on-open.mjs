@@ -107,12 +107,12 @@ const watch = (page) => page.on("pageerror", (e) => !isAbortedImport(e.message) 
   await composer.click();
   await composer.fill("stick-on-open: summarise the last answer");
   await page.keyboard.press("Enter");
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(900);
   const sent = await page.evaluate(GAP);
   check(sent !== null && sent <= 2, `stream: ${sent}px from the end after sending (want ≤ 2)`);
   await page.mouse.move(box[0], box[1]);
   await page.mouse.wheel(0, -900);
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(2100);
   const reading = await page.evaluate(GAP);
   check(reading !== null && reading > 400, `stream: ${reading}px from the end 2.5 s after wheeling up during the reply (want > 400)`);
   await ctx.close();

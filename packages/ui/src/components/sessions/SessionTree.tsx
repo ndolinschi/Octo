@@ -240,11 +240,12 @@ export function SessionTree(props: SessionTreeProps) {
             title={
               <>
                 {sessionTitle(s)}
-                <span className="sr-only">
-                  {inTree ? "" : `, ${s.project_name}`}
-                  {wsLabel ? `, worktree ${wsLabel}` : ""}
-                  {(s.default ?? s.current) ? ", default" : ""}
-                </span>
+                {(wsLabel || (s.default ?? s.current)) && (
+                  <span className="sr-only">
+                    {wsLabel ? `, worktree ${wsLabel}` : ""}
+                    {(s.default ?? s.current) ? ", default" : ""}
+                  </span>
+                )}
               </>
             }
             tip={
@@ -255,9 +256,9 @@ export function SessionTree(props: SessionTreeProps) {
                 : `${sessionTitle(s)} — ${[s.project_name, wsLabel ? `Worktree: ${wsLabel}` : "", meta].filter(Boolean).join(" · ")}`
             }
             meta={
-              <span aria-hidden data-tree-meta className="inline-flex items-center gap-1 tabular-nums">
-                {wsLabel && <Glyph icon={GitBranch} size={14} className="text-fg-3" />}
-                {inTree ? meta : s.project_name}
+              <span aria-hidden data-tree-meta className="flex min-w-0 items-center gap-1 tabular-nums">
+                {wsLabel && <Glyph icon={GitBranch} size={14} className="shrink-0 text-fg-3" />}
+                <span className="min-w-0 truncate">{inTree ? meta : s.project_name}</span>
               </span>
             }
           />

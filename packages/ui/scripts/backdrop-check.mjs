@@ -23,6 +23,7 @@ const SIZES = opt("--sizes", "1440x900,900x600,390x700")
 
 const menuButton = async (page) => {
   const b = page.getByRole("button", { name: /^(Show|Open) sidebar$|^Menu$/ }).first();
+  await b.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
   if (await b.isVisible().catch(() => false)) await b.click();
   await page.waitForTimeout(300);
 };
@@ -40,6 +41,7 @@ const SCREENS = [
   {
     name: "empty-conversation",
     q: "demo=1",
+    tree: true,
     go: async (page) => {
       const item = page.locator("a", { hasText: "Design system tokens" }).first();
       if (!(await item.isVisible().catch(() => false))) await menuButton(page);
@@ -77,6 +79,15 @@ for (const sc of SCREENS) {
   for (const theme of THEMES) {
     for (const [width, height] of SIZES) {
       const ctx = await newContext(browser, { viewport: { width, height }, colorScheme: theme });
+      if (sc.tree) {
+        await ctx.addInitScript(() => {
+          try {
+            localStorage.setItem("octo.sidebarView", "tree");
+          } catch {
+            /* storage unavailable */
+          }
+        });
+      }
       const page = await ctx.newPage();
       const label = `${sc.name} ${theme} ${width}x${height}`;
       try {

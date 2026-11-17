@@ -75,15 +75,25 @@ export function Popover(props: {
 
   // Decision 95 b: focus lands where the arrow keys work. The field a popover marks `data-autofocus` wins, then any text
   // field (a `SearchField` does not carry the mark: the first *button* used to win, so keys did nothing until a click), then
-  // a button, then the panel itself.
+  // a button, then the panel itself. Wait until `pos !== null` so `visibility: hidden` is cleared before `.focus()`.
+  const focusMoved = useRef(false);
   useEffect(() => {
+    if (!open) {
+      focusMoved.current = false;
+      return;
+    }
+    if (pos === null || focusMoved.current) return;
+    focusMoved.current = true;
     const el = ref.current;
-    const opener = anchor.current;
     const first =
       el?.querySelector<HTMLElement>("[data-autofocus]") ??
       el?.querySelector<HTMLElement>("input:not(:disabled), textarea:not(:disabled), [role='combobox']") ??
       el?.querySelector<HTMLElement>("button:not(:disabled), [tabindex='0']");
     (first ?? el)?.focus({ preventScroll: true });
+  }, [open, pos]);
+
+  useEffect(() => {
+    const opener = anchor.current;
     return () => {
       // Unmounted with focus lost to the page (no exit animation): the opener takes it back.
       const a = document.activeElement;
