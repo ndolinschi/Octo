@@ -146,6 +146,9 @@ func (c *Client) TraceHide(v string) { c.proc.trace.Hide(v) }
 // PID is the agent process id.
 func (c *Client) PID() int { return c.proc.pid() }
 
+// Stderr returns the redacted trailing stderr lines captured from the agent process.
+func (c *Client) Stderr() string { return c.proc.stderr.tail() }
+
 // Close ends the agent: stdin EOF, a short grace, then kill of the process
 // group. It returns once the process is reaped.
 func (c *Client) Close() {

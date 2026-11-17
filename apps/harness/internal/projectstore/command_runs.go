@@ -21,7 +21,8 @@ type CommandRun struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Command string `json:"command"`
-	// Cwd is the absolute directory it ran in.
+	// PID is the OS process id while Status is "running"; omitted once finished.
+	PID      int    `json:"pid,omitempty"`
 	Cwd      string `json:"cwd"`
 	ReviewID string `json:"review_id,omitempty"`
 	Status   string `json:"status"`

@@ -1,6 +1,6 @@
 import { RARE_METHODS, type RareMethod } from "./rareNames";
 import type { RemoteAccessApi } from "./remoteAccess";
-import type { CommandRun, CommandSuggestion, StartedCommandRun } from "./commands";
+import type { AdhocCommandInput, CommandRun, CommandSuggestion, StartedCommandRun, WorkerProcess } from "./commands";
 import type {
   ListPullRequestsParams,
   ListReviewBranchesParams,
@@ -573,12 +573,22 @@ export interface Bridge {
   listCommandSuggestions?(projectId: string): Promise<CommandSuggestion[]>;
   /** Runs the named command (case-insensitive) in the project's folder, or in the review's worktree with `reviewId`; output follows as `command.*` events. 409 `too_many_runs` above 4 at once. */
   runCommand?(projectId: string, name: string, options?: { reviewId?: string }): Promise<StartedCommandRun>;
+  /** Starts an ad-hoc shell command in the project's folder (or subfolder `cwd`); output follows as `command.*` events. */
+  startCommandRun?(projectId: string, input: AdhocCommandInput): Promise<StartedCommandRun>;
   /** Newest first, without output; `reviewId` narrows to one review's runs. */
   listCommandRuns?(projectId: string, options?: { reviewId?: string; limit?: number }): Promise<CommandRun[]>;
   /** Status and the tail of the output. */
   getCommandRun?(projectId: string, runId: string): Promise<CommandRun>;
-  /** Ends the run's process group (SIGTERM, then SIGKILL); answers with the run once it ended. */
-  stopCommandRun?(projectId: string, runId: string): Promise<CommandRun>;
+  /** Ends the run's process group (SIGTERM then SIGKILL, or immediate SIGKILL with `force`); answers with the run once it ended. */
+  stopCommandRun?(projectId: string, runId: string, options?: { force?: boolean }): Promise<CommandRun>;
+  /** Stops `runId` if running, then starts a fresh run with the same command, working directory and review. */
+  restartCommandRun?(projectId: string, runId: string): Promise<StartedCommandRun>;
+  /** Lists active harness-managed worker subprocesses of the project (language servers and ACP agents). */
+  listWorkerProcesses?(projectId: string): Promise<WorkerProcess[]>;
+  /** Ends one worker subprocess (`lsp:…` or `acp:…`). */
+  stopWorkerProcess?(projectId: string, processId: string): Promise<void>;
+  /** Restarts one worker subprocess (`lsp:…` returns the fresh process; `acp:…` recycles on next turn and returns null). */
+  restartWorkerProcess?(projectId: string, processId: string): Promise<WorkerProcess | null>;
   /** Opens or updates the project's isolated loopback proxy for the Browser tab and Design Mode inspector. */
   openBrowserProxy?(projectId: string, url: string): Promise<BrowserProxySession>;
   /** Closes the project's loopback Browser tab proxy listener. */

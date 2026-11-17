@@ -1,12 +1,12 @@
-# Project commands (harness)
+# Project commands and working processes (harness)
 
-UI decision 68 (`docs/superpowers/specs/2026-11-10-project-harness-ui.md`). A project has named shell commands ("Dev server", "Tests"); the user runs one, the output streams as events, Stop ends it. Client types: `@octo/agent-client` (`commands.ts`; every `Bridge` member is optional, HTTP bridge only).
+UI decision 68 (`docs/superpowers/specs/2026-11-10-project-harness-ui.md`) and the **Processes** workspace tab (`tool:processes`). A project has named shell commands ("Dev server", "Tests"), ad-hoc user processes, and harness-managed worker subprocesses (language servers and ACP agent CLIs); the user inspects output, stops (`SIGTERM`), force-kills (`SIGKILL`), or restarts them. Client types: `@octo/agent-client` (`commands.ts`; every `Bridge` member is optional, HTTP bridge and demo).
 
-Code: `internal/projcfg` (the `Command` shape and its validation), `internal/project/settings.go` (the project field), `internal/commands` (runner, suggestions), `internal/bridge/commands.go` (routes), `internal/projectstore/command_runs.go` (run history).
+Code: `internal/projcfg` (the `Command` shape and its validation), `internal/project/settings.go` (the project field), `internal/commands` (`commands.go`, `manage.go`, `suggestions.go`), `internal/bridge/commands.go` and `internal/bridge/processes.go` (routes), `internal/lsp` (`ListProject`, `Restart`, 16 KiB `StderrTail`), `internal/orchestrator/processes.go` (`WorkerProcesses`, `StopWorkerProcess`), `internal/projectstore/command_runs.go` (run history).
 
 ## Safety (tested)
 
-1. **Only the user starts a run.** The only way is `POST …/commands/{name}/run`. No agent-side package imports `internal/commands` (`go list -deps` over every agent-side package), the tool list an ACP orchestrator sees over MCP has no command tool, and the MCP endpoint has no `commands`/`runs` routes. A test sets a command, runs an agent turn and asserts no run exists and the command's side effect did not happen.
+1. **Only the user starts a run.** The only ways are `POST …/commands/{name}/run`, `POST …/runs` (ad-hoc), and `POST …/runs/{rid}/restart`. No agent-side package imports `internal/commands` (`go list -deps` over every agent-side package), the tool list an ACP orchestrator sees over MCP has no command tool, and the MCP endpoint has no `commands`/`runs`/`processes` routes. Remote access denies `POST /v1/projects/*/runs` and all `/v1/projects/*/processes` routes (`ClassDeny`).
 2. **No approval.** A run is the user's own action: in a `supervised` project it does not create an approval card (tested). The bridge's API token still protects the route like every other `/v1` route.
 3. **Environment.** `bash -c <command>` with the shell tool's rules: the allow-listed environment of `internal/childenv` (no provider keys, no `*TOKEN*`/`*SECRET*`/`*PASSWORD*` variables; tested), no stdin. Not sandboxed, like the shell tool.
 
@@ -24,18 +24,26 @@ All under `/v1/projects/{pid}`. Errors: `{ "error": { "code", "message" } }`.
 | --- | --- | --- |
 | GET | `/commands/suggestions` | `{ suggestions: [{ name, command, cwd, source: "package.json"\|"Makefile"\|"justfile", configured }] }` |
 | POST | `/commands/{name}/run` | `{ review_id? }` (body may be empty) → 201 `{ run_id, run: Run }` |
+| POST | `/runs` | `{ command, name?, cwd? }` → 201 `{ run_id, run: Run }` (ad-hoc process in project folder) |
 | GET | `/runs?review_id=&limit=` | `{ runs: Run[] }` newest first, no tails (default 100) |
 | GET | `/runs/{rid}` | `Run` with `tail` |
-| POST | `/runs/{rid}/stop` | `Run` once it has ended (200; a finished run is returned as it is) |
+| POST | `/runs/{rid}/stop?force=` | `{ force?: boolean }` → `Run` once it has ended (`force=1`/`true` sends immediate `SIGKILL`) |
+| POST | `/runs/{rid}/restart` | Stops `rid` if still running, then spawns a fresh run with the same `name`, `command`, `cwd`, `review_id` → 201 `{ run_id, run: Run }` |
+| GET | `/processes` | `{ processes: WorkerProcess[] }` — active language servers (`lsp:<id>`) and ACP agent subprocesses (`acp:<session_id>`) |
+| POST | `/processes/{procid}/stop` | Stops/kills a worker subprocess → 204 No Content |
+| POST | `/processes/{procid}/restart` | Restarts a worker subprocess → `{ process: WorkerProcess \| null }` |
 
-`{name}` matches case-insensitively and must be URL-encoded. Errors: 404 `command_not_found`, `review_not_found`, `not_found` (project or run); 400 `invalid_cwd`; 409 `too_many_runs` (4 at once per project), `review_closed`, `worktree_missing`, `no_folder`, `start_failed`.
+`{name}` matches case-insensitively and must be URL-encoded. Errors: 404 `command_not_found`, `review_not_found`, `not_found` (project, run, or worker process); 400 `invalid_cwd`, `invalid_request`; 409 `too_many_runs` (4 at once per project), `review_closed`, `worktree_missing`, `no_folder`, `start_failed`.
 
 ```text
-Run  { id, name, command, cwd (absolute), review_id?, status: "running"|"finished"|"stopped"|"error", exit_code: number|null,
-       started_at, finished_at?, duration_ms, output_bytes, truncated, tail? }
+Run            { id, name, command, cwd (absolute), review_id?, pid? (OS PID while running),
+                 status: "running"|"finished"|"stopped"|"error", exit_code: number|null,
+                 started_at, finished_at?, duration_ms, output_bytes, truncated, tail? }
+WorkerProcess  { id, kind: "lsp"|"agent", name, command, cwd?, pid, status: "running"|"busy"|"idle",
+                 started_at, detail?, output? }
 ```
 
-`exit_code` is null while running and -1 when a signal ended the process. `finished`: the process ended by itself (any exit code); `stopped`: the user's Stop; `error`: it could not run, or the harness stopped while it ran (settled at start by `Recover`, or when read). The last 50 finished runs are kept per project.
+`exit_code` is null while running and -1 when a signal ended the process. `pid` is populated only while `status == "running"` and cleared once finished. `finished`: the process ended by itself (any exit code); `stopped`: the user's Stop or Kill; `error`: it could not run, or the harness stopped while it ran (settled at start by `Recover`, or when read). The last 50 finished runs are kept per project.
 
 ## Events
 
@@ -47,7 +55,7 @@ Run  { id, name, command, cwd (absolute), review_id?, status: "running"|"finishe
 
 Output is sent in chunks of at most 16 KiB cut at character boundaries (invalid bytes become U+FFFD), at most every 50 ms per run, so a chatty command cannot flood the event stream. A run's output is capped at **5 MB** (stdout and stderr together): at the cap the text `\n[output truncated: the 5 MB limit was reached; the rest was dropped]\n` is sent as the last stdout chunk, `truncated` is true, and the rest is read and dropped (the process is not blocked). The kept `tail` is the last 64 KiB in arrival order. Stderr and stdout are separate pipes, so their relative order across the two streams is approximate.
 
-**Stop** sends SIGTERM to the process group (`Setpgid`; children die with it), waits 3 s, then SIGKILL. On Windows there are no process groups: the process itself is killed. A run is also killed when the harness shuts down.
+**Stop** sends SIGTERM to the process group (`Setpgid`; children die with it), waits 3 s, then SIGKILL. **Kill** (`?force=1` or `{"force":true}`) sends SIGKILL to the process group immediately without waiting. On Windows there are no process groups: the process itself is killed. A run is also killed when the harness shuts down.
 
 ## Suggestions
 

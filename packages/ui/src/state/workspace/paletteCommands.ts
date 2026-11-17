@@ -29,6 +29,7 @@ export function workspaceActions(ws: PaletteWorkspace): WorkspaceCommand[] {
     tool("notes", "Show notes"),
     tool("files", "Show files"),
     tool("browser", "Show browser"),
+    tool("processes", "Show processes"),
     tool("details", "Show project details"),
     tool("changes", "Show changes"),
     tool("review", "Review a pull request"),

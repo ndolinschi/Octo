@@ -8,6 +8,7 @@ import { useRunsSelector, useRunsStore } from "../../state/projectRuns";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Minimize2, Play, Plus, Settings } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
+import { GLYPH } from "../primitives/glyphs";
 import { MOD_LABEL } from "../../lib/keys";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
@@ -108,6 +109,16 @@ export default function ProjectCommands({
       run: () => void run(c.name),
     })),
     ...(commands.length > 0 ? [{ id: "sep", separator: true } as const] : []),
+    ...(ws
+      ? [
+          {
+            id: "processes",
+            label: "Manage processes",
+            icon: GLYPH.processes,
+            run: () => ws.openTool("processes"),
+          } satisfies MenuItem,
+        ]
+      : []),
     {
       id: "settings",
       label: commands.length > 0 ? "Edit commands in Settings" : "Add commands in Settings",

@@ -38,6 +38,7 @@ const TOOLS: Record<ToolTab, { label: string; icon: LucideIcon; title: string }>
   notes: tool("Notes", GLYPH.notes, TOOL_PURPOSE.notes),
   files: tool("Files", GLYPH.files, TOOL_PURPOSE.files),
   browser: tool("Browser", GLYPH.browser, TOOL_PURPOSE.browser),
+  processes: tool("Processes", GLYPH.processes, TOOL_PURPOSE.processes),
   details: tool("Details", GLYPH.details, TOOL_PURPOSE.details),
   usage: tool("Usage", GLYPH.usage, TOOL_PURPOSE.usage),
   changes: tool("Changes", GLYPH.changes, TOOL_PURPOSE.changes),

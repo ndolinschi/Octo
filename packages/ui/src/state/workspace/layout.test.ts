@@ -44,6 +44,7 @@ import {
 
 const FILES = toolTab("files");
 const BROWSER = toolTab("browser");
+const PROCESSES = toolTab("processes");
 const NOTES = toolTab("notes");
 const AGENTS = toolTab("agents");
 const DETAILS = toolTab("details");
@@ -83,7 +84,7 @@ function prng(seed: number) {
 }
 
 test("tab ids: constructors and parseTabId round trip; foreign strings are rejected", () => {
-  const all = [CHAT, FILES, BROWSER, NOTES, AGENTS, DETAILS, agentTab("a1"), browserTab("b1"), f("src/a.ts"), f("")];
+  const all = [CHAT, FILES, BROWSER, PROCESSES, NOTES, AGENTS, DETAILS, agentTab("a1"), browserTab("b1"), f("src/a.ts"), f("")];
   for (const id of all) assert.equal(parseTabId(id), id, id);
   assert.equal(parseTabId(agentTab("x")), "agent:x");
   assert.equal(parseTabId(browserTab("b1")), "browser:b1");

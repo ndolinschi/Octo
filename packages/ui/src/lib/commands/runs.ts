@@ -47,8 +47,10 @@ export function runsReducer(state: RunsState, action: RunsAction): RunsState {
       if (e.type === "command.finished") {
         const view = state.byId[e.run_id];
         if (!view) return state;
+        const { pid: _pid, ...rest } = view.run;
+        void _pid;
         const run: CommandRun = {
-          ...view.run,
+          ...rest,
           status: e.status,
           exit_code: e.exit_code,
           duration_ms: e.duration_ms,

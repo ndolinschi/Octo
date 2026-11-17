@@ -83,13 +83,11 @@ function End() {
   const ws = useOptionalWorkspace();
   const budget = project ? budgetState(project.spent_usd, project.budget_usd) : null;
   const running = useRunsSelector((s) => runningRuns(s).length);
-  // The newest running command, so the item opens its tab; the count tells how many there are.
-  const newest = useRunsSelector((s) => runningRuns(s)[0]?.name ?? null);
   const text = runningText(running);
   return (
     <>
       {text && (
-        <StatusButton data-running-commands title="Project commands are running. Show the latest." onClick={() => (newest ? ws?.openRun(newest) : undefined)}>
+        <StatusButton data-running-commands title="Project processes are running. Open Processes." onClick={() => ws?.openTool("processes")}>
           <StateGlyph state="working" />
           {text}
         </StatusButton>

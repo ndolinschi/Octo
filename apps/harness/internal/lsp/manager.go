@@ -125,6 +125,49 @@ func (m *Manager) release(project string) {
 	m.mu.Unlock()
 }
 
+// SessionInfo describes one live language-server session in a project.
+type SessionInfo struct {
+	ID         string
+	Project    string
+	Spec       Spec
+	PID        int
+	StartedAt  time.Time
+	Subscribed bool
+	StderrTail string
+}
+
+// ListProject snapshots all live language-server sessions of project.
+func (m *Manager) ListProject(project string) []SessionInfo {
+	m.mu.Lock()
+	var mine []*Session
+	for _, s := range m.sessions {
+		if s.Project == project && !s.Finished() {
+			mine = append(mine, s)
+		}
+	}
+	m.mu.Unlock()
+	out := make([]SessionInfo, 0, len(mine))
+	for _, s := range mine {
+		s.mu.Lock()
+		sub := s.subscribed
+		closed := s.closed
+		s.mu.Unlock()
+		if closed || s.Finished() {
+			continue
+		}
+		out = append(out, SessionInfo{
+			ID:         s.ID,
+			Project:    s.Project,
+			Spec:       s.Spec(),
+			PID:        s.PID(),
+			StartedAt:  s.StartedAt(),
+			Subscribed: sub,
+			StderrTail: s.StderrTail(),
+		})
+	}
+	return out
+}
+
 // Get returns the session if it belongs to the project.
 func (m *Manager) Get(project, id string) (*Session, error) {
 	m.mu.Lock()
@@ -144,6 +187,17 @@ func (m *Manager) Close(project, id string) error {
 	}
 	s.Close("closed by client")
 	return nil
+}
+
+// Restart ends session id and starts a fresh session with the same Spec.
+func (m *Manager) Restart(ctx context.Context, project, id string) (*Session, error) {
+	s, err := m.Get(project, id)
+	if err != nil {
+		return nil, err
+	}
+	spec := s.Spec()
+	s.Close("restarted by user")
+	return m.Start(ctx, project, spec)
 }
 
 // Shutdown kills every session and refuses new ones.
