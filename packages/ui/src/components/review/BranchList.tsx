@@ -4,9 +4,8 @@ import type { OpenReviewInput, ReviewBranch, ReviewBranchList } from "@octo/agen
 import { cn } from "../../lib/cn";
 import { errorMessage, timeAgo } from "../../lib/format";
 import { useRowKeys } from "../../lib/hooksMore";
-import { PANEL_COLUMN } from "../../lib/panelColumn";
 import { useRovingRows } from "../../lib/rovingRows";
-import { aheadBehindCompact, aheadBehindText, splitName, branchOrder, hasChanges, openInput } from "../../lib/review/branches";
+import { aheadBehindCompact, aheadBehindText, splitName, branchOrder, hasChanges, mergeBranchChunks, openInput } from "../../lib/review/branches";
 import type { ReviewApi } from "../../lib/review/api";
 import { Glyph } from "../primitives/Glyph";
 import { Button } from "../primitives/Button";
@@ -14,6 +13,8 @@ import { SkeletonList } from "../primitives/Skeleton";
 import { Spinner } from "../primitives/Status";
 import { TextMenu } from "./parts";
 import { PanelBody, PanelEmpty, PanelFilters } from "../primitives/Panel";
+
+const BRANCH_CHUNK = 25;
 
 type Load = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; data: ReviewBranchList };
 
@@ -27,23 +28,31 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
   const [base, setBase] = useState<string | undefined>(undefined);
   const [retry, setRetry] = useState(0);
   const [load, setLoad] = useState<Load>({ status: "loading" });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [now] = useState(() => Date.now());
   const list = useRef<HTMLDivElement>(null);
+  const gen = useRef(0);
   useRowKeys(list);
   useRovingRows(list);
 
   useEffect(() => {
+    const curGen = ++gen.current;
     let alive = true;
     setLoad({ status: "loading" });
-    const fail = (e: unknown) => alive && setLoad({ status: "error", message: errorMessage(e) });
+    setLoadingMore(false);
+    setLoadMoreError(null);
+    const fail = (e: unknown) => alive && gen.current === curGen && setLoad({ status: "error", message: errorMessage(e) });
     if (api.branches) {
-      api.branches({ ...(folder ? { folder } : {}), ...(base ? { base } : {}) }).then((data) => alive && setLoad({ status: "ready", data }), fail);
+      api
+        .branches({ ...(folder ? { folder } : {}), ...(base ? { base } : {}), page: 1, per_page: BRANCH_CHUNK })
+        .then((data) => alive && gen.current === curGen && setLoad({ status: "ready", data }), fail);
     } else {
       // No branch listing here: the current branch against main, as the review call has always taken it.
       api.recentFolders().then((folders) => {
         const name = folders[0]?.git?.branch ?? "HEAD";
         const at = new Date().toISOString();
-        if (!alive) return;
+        if (!alive || gen.current !== curGen) return;
         setLoad({
           status: "ready",
           data: {
@@ -62,12 +71,31 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
 
   const data = load.status === "ready" ? load.data : null;
   const rows = useMemo(() => (data ? branchOrder(data.branches) : []), [data]);
+
+  const loadMore = () => {
+    if (!api.branches || !data?.next_page || loadingMore) return;
+    const curGen = gen.current;
+    const nextPage = data.next_page;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    api.branches({ ...(folder ? { folder } : {}), ...(base ? { base } : {}), page: nextPage, per_page: BRANCH_CHUNK }).then(
+      (next) => {
+        if (gen.current !== curGen) return;
+        setLoadingMore(false);
+        setLoad((prev) => (prev.status === "ready" ? { status: "ready", data: mergeBranchChunks(prev.data, next) } : prev));
+      },
+      (e: unknown) => {
+        if (gen.current !== curGen) return;
+        setLoadingMore(false);
+        setLoadMoreError(errorMessage(e));
+      },
+    );
+  };
+
   if (load.status === "loading")
     return (
       <PanelBody>
-        <div className={PANEL_COLUMN}>
-          <SkeletonList count={5} size="md" twoLine shimmer widths={[60, 48, 54, 44, 50]} />
-        </div>
+        <SkeletonList count={5} size="md" twoLine shimmer widths={[60, 48, 54, 44, 50]} />
       </PanelBody>
     );
   const shownBase = data?.base ?? base ?? "main";
@@ -78,7 +106,7 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
   // the rows sit in the frame's list inset.
   return (
     <section aria-label="Local branches" className="flex h-full min-h-0 flex-col">
-      <PanelFilters className={PANEL_COLUMN}>
+      <PanelFilters>
         <span className="shrink-0 px-2 text-xs text-fg-3">{rows.length === 1 && !api.branches ? "Current branch" : "Branches"}</span>
         {api.branches && (
           <span className="ml-auto flex max-w-[65%] min-w-0 items-center">
@@ -108,7 +136,7 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
           <PanelEmpty title="No local branches">This folder has no branch to review. Create one, or switch to Pull requests.</PanelEmpty>
         ) : (
           <PanelBody>
-            <div ref={list} className={cn("flex flex-col gap-1.5", PANEL_COLUMN)}>
+            <div ref={list} className="flex flex-col gap-1.5">
               {rows.map((b) => (
                 <BranchRow
                   key={b.name}
@@ -119,10 +147,21 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
                 />
               ))}
             </div>
-            {data?.truncated && (
-              <p className={cn("px-2 pt-2 text-xs text-fg-3", PANEL_COLUMN)}>
-                More branches exist than are listed. Check one out or delete old ones to see the rest.
-              </p>
+            {data?.next_page != null && (
+              <div className="flex items-center gap-2 px-2 pt-3">
+                <Button size="sm" variant="secondary" loading={loadingMore} onClick={loadMore}>
+                  Load more branches
+                </Button>
+                {data.total != null && (
+                  <span className="text-xs text-fg-3">
+                    Showing {rows.length} of {data.total}
+                  </span>
+                )}
+                {loadMoreError && <span className="text-xs text-err">{loadMoreError}</span>}
+              </div>
+            )}
+            {data?.truncated && data?.next_page == null && (
+              <p className="px-2 pt-2 text-xs text-fg-3">More branches exist than are listed. Check one out or delete old ones to see the rest.</p>
             )}
           </PanelBody>
         ))}

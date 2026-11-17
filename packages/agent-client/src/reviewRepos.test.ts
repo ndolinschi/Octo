@@ -23,12 +23,14 @@ test("listPullRequests sends repo; listReviewBranches hits its route", async () 
   await bridge.listPullRequests?.("p", { folder: "f", repo: "all" });
   await bridge.listReviewBranches?.("p");
   await bridge.listReviewBranches?.("p", { folder: "my repo", base: "release/1" });
+  await bridge.listReviewBranches?.("p", { folder: "my repo", page: 2, per_page: 25 });
   await bridge.openReview?.("p", { pr: 3, repo: "a/b" });
   assert.deepEqual(urls, [
     "GET /v1/projects/p/prs?repo=eCommerce-Bedrock%2Fshop",
     "GET /v1/projects/p/prs?folder=f&repo=all",
     "GET /v1/projects/p/review/branches",
     "GET /v1/projects/p/review/branches?folder=my%20repo&base=release%2F1",
+    "GET /v1/projects/p/review/branches?folder=my%20repo&page=2&per_page=25",
     "POST /v1/projects/p/reviews",
   ]);
 });

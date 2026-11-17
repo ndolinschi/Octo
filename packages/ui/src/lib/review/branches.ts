@@ -1,4 +1,19 @@
-import type { ReviewBranch } from "@octo/agent-client";
+import type { ReviewBranch, ReviewBranchList } from "@octo/agent-client";
+
+/** Joins chunked branch responses (keeping the latest paging fields and deduplicating by branch name). */
+export function mergeBranchChunks(prev: ReviewBranchList, next: ReviewBranchList): ReviewBranchList {
+  const seen = new Set(prev.branches.map((b) => b.name));
+  const merged = [...prev.branches];
+  for (const b of next.branches) {
+    if (seen.has(b.name)) continue;
+    seen.add(b.name);
+    merged.push(b);
+  }
+  return {
+    ...next,
+    branches: merged,
+  };
+}
 
 /** Decision 84: the current branch first, then the most recently committed; stable for equal dates. */
 export function branchOrder(list: readonly ReviewBranch[]): ReviewBranch[] {

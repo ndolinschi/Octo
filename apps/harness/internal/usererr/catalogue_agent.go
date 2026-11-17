@@ -17,6 +17,7 @@ const (
 	CodeAgentNoToolServer  = "agent_tool_server_refused"
 	CodeAgentModelRejected = "agent_model_rejected"
 	CodeAgentSilent        = "agent_silent"
+	CodeAgentNoAnswer      = "agent_no_answer"
 	CodeAgentStopped       = "agent_stopped"
 	CodeAgentCrashed       = "agent_crashed"
 	CodeAgentFailed        = "agent_failed"
@@ -119,6 +120,15 @@ func AgentSilent(label, command, instructions string) *Error {
 		Code: CodeAgentSilent, Message: label + " answered with nothing.",
 		Hint:    "It may not be logged in. Check it, then try again.",
 		Command: command, Action: ActionRecheckProvider, Details: clip(instructions),
+	}
+}
+
+// AgentNoAnswer: the agent streamed reasoning but ended without writing an
+// answer or running a tool, so login is not the problem.
+func AgentNoAnswer(label, details string) *Error {
+	return &Error{
+		Code: CodeAgentNoAnswer, Message: label + " stopped before writing an answer.",
+		Hint: "Try sending your request again.", Action: ActionRetry, Details: clip(details),
 	}
 }
 

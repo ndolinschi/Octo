@@ -149,7 +149,10 @@ Every way an ACP agent can fail ends the turn (orchestrator) or the sub-agent (a
 | MCP servers refused | warning: the session works without harness tools, "update the agent, or choose another one as orchestrator" |
 | crash or exit mid-turn | the exit and the agent's stderr tail (secrets scrubbed) |
 | `stopReason` refusal, max_tokens, max_turn_requests, unknown | "the agent declined the request; rephrase it or use another agent" (and so on) plus the login hint |
-| ends the turn with no text and no tool call | "the agent returned nothing (no text and no tool calls); if it is not logged in: <hint>"; this is a failed turn, never a success |
+| mid-turn `agent_error` | auth/`401`/`ProviderAuthError` maps to `AgentNotLoggedIn` (`details` carries the error + login hint + trailing stderr); `MessageAbortedError` is ignored so cancel stays `cancelled`; other errors map to `AgentFailed` (unless followed by text or tool calls) |
+| ends the turn after reasoning only | `AgentNoAnswer` (`agent_no_answer`, `"<Agent> stopped before writing an answer."`, `action: "retry"`), with reasoning notice + trailing stderr in `details` |
+| ends the turn with no text and no tool call | `AgentSilent` (`"<Agent> answered with nothing."`, `action: "recheck_provider"`), with login hint + redacted trailing stderr in `details`; never a success |
+| `/compact` on an ACP agent | advertises `clientCapabilities.session.compaction`; handles `compaction_update`, `compaction_summary_chunk`, and `_meta["opencode/compaction"]`, records a manual compaction marker (`agent.compacted` `manual: true`, falling back to recent-message recap when summary is empty), surfaces compaction failures as `AgentFailed`, and routes failed `/compact` retries via `POST /compact` even before commands re-advertise after restart |
 
 ## Diagnostics and the wire trace
 

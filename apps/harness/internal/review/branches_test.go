@@ -115,3 +115,19 @@ func TestBranchesAreCappedAt200(t *testing.T) {
 		t.Fatalf("branches = %d truncated=%v %v", len(out.Branches), out.Truncated, err)
 	}
 }
+
+func TestBranchesPageChunks(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	p1, err := f.svc.BranchesPage(ctx, f.pid, "", "", 1, 1)
+	if err != nil || len(p1.Branches) != 1 || p1.Total != 2 || p1.Page != 1 || p1.PerPage != 1 || p1.NextPage == nil || *p1.NextPage != 2 {
+		t.Fatalf("p1 = %+v %v", p1, err)
+	}
+	p2, err := f.svc.BranchesPage(ctx, f.pid, "", "", 2, 1)
+	if err != nil || len(p2.Branches) != 1 || p2.Total != 2 || p2.NextPage != nil {
+		t.Fatalf("p2 = %+v %v", p2, err)
+	}
+	if p1.Branches[0].Name == p2.Branches[0].Name {
+		t.Fatalf("duplicate branch across pages: %s", p1.Branches[0].Name)
+	}
+}

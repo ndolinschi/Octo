@@ -33,3 +33,8 @@ export async function runRetry(
     ui.setBusy(false);
   }
 }
+
+/** Whether retrying this prompt must invoke Octo's `/compact` endpoint instead of posting a user message. */
+export function isCompactRetry(text: string | null, command?: string | null): boolean {
+  return command === "compact" || /^\/compact(?:\s|$)/i.test((text ?? "").trim());
+}

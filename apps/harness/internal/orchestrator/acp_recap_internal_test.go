@@ -115,6 +115,21 @@ func TestRecapPrefersTheLatestCompactionSummary(t *testing.T) {
 	}
 }
 
+func TestRecapFallsBackWhenCompactionSummaryIsEmpty(t *testing.T) {
+	rt, id := recapRuntime(t)
+	m := addText(t, rt, id, "user", "earlier request before compaction")
+	if _, err := rt.db.AddManualCompaction(context.Background(), id, "", 0); err != nil {
+		t.Fatal(err)
+	}
+	got, err := rt.recap(context.Background(), id, []projectstore.Message{m})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "user: earlier request before compaction") {
+		t.Fatalf("recap = %q, want fallback to recent messages", got)
+	}
+}
+
 func TestClipKeepsRunesWhole(t *testing.T) {
 	s := strings.Repeat("é", 100)
 	for n := 1; n < 40; n++ {

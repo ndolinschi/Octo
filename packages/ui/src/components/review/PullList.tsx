@@ -2,7 +2,6 @@ import { GitBranch, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { refusalRepoChoices, repoMenu, type OpenReviewInput, type PullRequestFilter, type PullRequestRow, type ReviewSummary } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
-import { PANEL_COLUMN } from "../../lib/panelColumn";
 import { errorMessage, timeAgo } from "../../lib/format";
 import { useRowKeys } from "../../lib/hooksMore";
 import { useQuietOpen } from "../../lib/quietFocus";
@@ -82,7 +81,7 @@ function Picker(props: {
   returnTo?: string | null | undefined;
 }) {
   const { api, folder } = props;
-  const { state, updating, reload } = usePullList(api, folder, props.repo);
+  const { state, updating, reload, loadMore, loadingMore, loadMoreError } = usePullList(api, folder, props.repo);
   const [filter, setFilter] = useState<PullRequestFilter>("all");
   const [query, setQuery] = useState("");
   const [view, setViewState] = useState<View>("pulls");
@@ -201,7 +200,6 @@ function Picker(props: {
       <Panel
         name="review"
         title="Pull requests"
-        column="measure"
         lead={lead || undefined}
         actions={
           <>
@@ -223,7 +221,7 @@ function Picker(props: {
             options={VIEWS}
             value={view}
             onChange={setView}
-            contentClassName={PANEL_COLUMN}
+            className="border-t border-line"
             // The folder scopes both views: it sits at the view row's end, so the header keeps the repository whole in a
             // narrow group (R1 asks for it in the header line; there it cut the repository to "/atlas-api" at 360px).
             trailing={
@@ -245,10 +243,7 @@ function Picker(props: {
             // line of its own above the chips, with balanced vertical breathing room and full-width FilterTabs so fade-x works cleanly.
             <div
               data-panel-filters
-              className={cn(
-                "flex min-h-9 shrink-0 items-center gap-x-2 gap-y-2 px-pane @max-[560px]:flex-wrap @max-[560px]:py-1.5 touch:min-h-ctl-lg",
-                PANEL_COLUMN,
-              )}
+              className="flex min-h-9 shrink-0 items-center gap-x-2 gap-y-2 px-pane @max-[560px]:flex-wrap @max-[560px]:py-1.5 touch:min-h-ctl-lg"
             >
               <FilterTabs<PullRequestFilter>
                 label="Show"
@@ -276,7 +271,7 @@ function Picker(props: {
             </div>
           )}
           {(error || refusal?.view === view) && (
-            <div className={cn("flex shrink-0 flex-col gap-2 px-pane pt-1 pb-2", PANEL_COLUMN)}>
+            <div className="flex shrink-0 flex-col gap-2 px-pane pt-1 pb-2">
               {error && <ViewNotice tone="error">{error}</ViewNotice>}
               {refusal?.view === view && (
                 <ViewNotice
@@ -299,9 +294,7 @@ function Picker(props: {
             <BranchList api={api} folder={folder} opening={opening} onOpen={(id, input) => void run(id, input)} />
           ) : state.loading ? (
             <PanelBody>
-              <div className={PANEL_COLUMN}>
-                <SkeletonList count={7} size="md" twoLine shimmer widths={[70, 52, 64, 44, 58, 66, 48]} />
-              </div>
+              <SkeletonList count={7} size="md" twoLine shimmer widths={[70, 52, 64, 44, 58, 66, 48]} />
             </PanelBody>
           ) : ready && !available && resume.length === 0 ? (
             <PanelEmpty
@@ -323,14 +316,12 @@ function Picker(props: {
             </PanelEmpty>
           ) : state.error && !ready && resume.length === 0 ? (
             <PanelBody>
-              <div className={PANEL_COLUMN}>
-                <ErrorNotice
-                  title="The pull requests did not load"
-                  fields={{ ...listFailure(state.error), details: state.error, action: "retry" }}
-                  onRetry={reload}
-                  retrying={updating}
-                />
-              </div>
+              <ErrorNotice
+                title="The pull requests did not load"
+                fields={{ ...listFailure(state.error), details: state.error, action: "retry" }}
+                onRetry={reload}
+                retrying={updating}
+              />
             </PanelBody>
           ) : available && rows.length === 0 && !typed && resume.length === 0 ? (
             <PanelEmpty title="No open pull requests">
@@ -338,7 +329,7 @@ function Picker(props: {
             </PanelEmpty>
           ) : (
             <PanelBody>
-              <div className={PANEL_COLUMN}>
+              <div>
                 {/* The list is not available, but reviews in progress are: say why above them (a tone, no outline). */}
                 {state.error && !ready && (
                   <div className="pb-3">
@@ -408,7 +399,15 @@ function Picker(props: {
                     ))}
                 </div>
                 {available && shown.length === 0 && !typed && resume.length === 0 && <PanelEmpty>{emptyText}</PanelEmpty>}
-                {ready?.truncated && (
+                {available && ready?.next_page != null && (
+                  <div className="flex items-center gap-2 px-2 pt-3">
+                    <Button size="sm" variant="secondary" loading={loadingMore} onClick={loadMore}>
+                      Load more pull requests
+                    </Button>
+                    {loadMoreError && <span className="text-xs text-err">{loadMoreError}</span>}
+                  </div>
+                )}
+                {ready?.truncated && ready?.next_page == null && (
                   <p className="px-2 pt-2 text-xs text-fg-3">This repository has more open pull requests than are listed. Search by number to find the rest.</p>
                 )}
               </div>

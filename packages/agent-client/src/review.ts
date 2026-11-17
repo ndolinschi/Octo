@@ -487,6 +487,10 @@ export type ReviewBranchList = {
   /** The current branch first, then newest last commit first; at most 200. */
   branches: ReviewBranch[];
   truncated?: boolean;
+  page?: number;
+  per_page?: number;
+  total?: number;
+  next_page?: number | null;
 };
 
 export type ListReviewBranchesParams = {
@@ -494,6 +498,10 @@ export type ListReviewBranchesParams = {
   folder?: string;
   /** The branch the counts are against; default: `default_base`. Unknown: 400 `unknown_ref`. */
   base?: string;
+  /** Chunk page number, starting from 1. */
+  page?: number;
+  /** Branches per chunk. */
+  per_page?: number;
 };
 
 /** One entry of the repository picker. `key` is what to pass as `repo` (`owner/name`, or `all`). */

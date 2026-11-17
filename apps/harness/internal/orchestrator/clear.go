@@ -368,9 +368,23 @@ func (o *Orchestrator) CompactViaAgentSession(ctx context.Context, pid, sid stri
 	if err != nil {
 		return msg, false, err
 	}
-	if !rt.isACPOrchestrator() || !o.agentCommandNamed(rt, "compact") {
+	if !rt.isACPOrchestrator() || (!o.agentCommandNamed(rt, "compact") && !retryingFailedCompact(ctx, db, sid)) {
 		return msg, false, nil
 	}
 	msg, err = o.StartWith(ctx, pid, "/compact", StartOpts{SessionID: sid, Command: "compact"})
 	return msg, err == nil, err
+}
+
+func retryingFailedCompact(ctx context.Context, db *projectstore.DB, sid string) bool {
+	orch, err := db.RootAgent(ctx, sid)
+	if err != nil {
+		return false
+	}
+	failed := orch.Status == projectstore.StatusFailed ||
+		(orch.Error != nil && *orch.Error != "" && !strings.HasPrefix(*orch.Error, "warning:"))
+	if !failed {
+		return false
+	}
+	last, err := db.LastMessage(ctx, orch.ID)
+	return err == nil && last.Role == "user" && last.SessionID == sid && last.Command == "compact"
 }

@@ -56,3 +56,16 @@ type PromptUsageHandler interface {
 type PromptStartHandler interface {
 	PromptStarted(ctx context.Context)
 }
+
+// CompactionHandler is implemented by handlers that want session compaction
+// notifications (compaction_update, compaction_summary_chunk, or vendor
+// compaction metadata on session_info_update).
+type CompactionHandler interface {
+	Compaction(ctx context.Context, ev CompactionEvent)
+}
+
+// ErrorHandler is implemented by handlers that want agent_error updates
+// reported mid-turn before a prompt finishes.
+type ErrorHandler interface {
+	AgentError(ctx context.Context, err AgentError)
+}

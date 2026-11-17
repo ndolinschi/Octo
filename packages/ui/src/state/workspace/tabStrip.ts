@@ -166,6 +166,44 @@ export function takeClosed<T>(stack: readonly Closed<T>[], isOpen: (tab: T) => b
   return { entry: null, rest };
 }
 
+export type RecentTabEntry<T> = { tab: T; status: "closed" | "open" };
+
+/**
+ * Deduplicated recent tabs for the "+" tab picker: newest-closed tabs not currently open first,
+ * then most-recently-used open tabs (excluding `active` and filtered entries).
+ */
+export function recentPickerTabs<T>(i: {
+  closed: readonly Closed<T>[];
+  mru: readonly T[];
+  open: ReadonlySet<T>;
+  active: T | null;
+  max?: number;
+  exclude?: (tab: T) => boolean;
+}): RecentTabEntry<T>[] {
+  const max = i.max ?? 6;
+  const seen = new Set<T>();
+  const out: RecentTabEntry<T>[] = [];
+  const skip = (t: T) => seen.has(t) || (i.exclude?.(t) ?? false);
+
+  for (let k = i.closed.length - 1; k >= 0 && out.length < max; k -= 1) {
+    const entry = i.closed[k];
+    if (!entry) continue;
+    const t = entry.tab;
+    if (skip(t) || i.open.has(t)) continue;
+    seen.add(t);
+    out.push({ tab: t, status: "closed" });
+  }
+
+  for (const t of i.mru) {
+    if (out.length >= max) break;
+    if (skip(t) || t === i.active || !i.open.has(t)) continue;
+    seen.add(t);
+    out.push({ tab: t, status: "open" });
+  }
+
+  return out;
+}
+
 /* ---------- Ctrl/Cmd+1…9 ---------- */
 
 /** 1…8 by position, 9 = the last tab; null when there is no such tab. */

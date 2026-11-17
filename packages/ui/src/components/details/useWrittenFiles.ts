@@ -1,8 +1,9 @@
-import type { Agent } from "@octo/agent-client";
 import { useEffect, useMemo, useState } from "react";
 import { commandRuns, writtenFiles, type WrittenFile } from "../../lib/toolsMore";
 import { useActivity, useActivityVersion } from "../../state/activity";
 import { useProject } from "../../state/project";
+import { useSessionScope } from "../../state/session";
+import { agentsInSession, filterMessagesForSession } from "./sessionDetails";
 
 export type FileGroup = { label: string; files: (WrittenFile & { count: number })[] };
 
@@ -34,38 +35,55 @@ export function groupWrites(writes: WrittenFile[], now: number): FileGroup[] {
 }
 
 /**
- * Files written by this project's agents (contract v6 decision 17), read lazily from their stored
- * transcripts — one `listMessages` per agent, at most 4 in flight, cached per agent `finished_at` — and
- * read again when an agent changes a file. Null until the first pass is complete.
+ * Files written by this session's (or project's, on older harnesses) agents (contract v6 decision 17), read lazily
+ * from their stored transcripts — one `listMessages` per agent, at most 4 in flight, cached per agent
+ * `finished_at` — and read again when an agent changes a file. Null until the first pass is complete.
  */
 export type Writes = { files: WrittenFile[]; /** When a command ran (its changes are not tracked as files). */ commands: string[] };
 
-export function useWrittenFiles(): Writes | null {
+export function useWrittenFiles(extraFolders: readonly { label: string; path: string }[] = []): Writes | null {
   const { project, state, projectId, onEvent } = useProject();
+  const scope = useSessionScope();
+  const sid = scope?.sessionId ?? null;
+  const rootId = project?.orchestrator_agent_id ?? "";
   const activity = useActivity();
   const version = useActivityVersion(activity);
-  const [writes, setWrites] = useState<Writes | null>(null);
-  const agents = useMemo(() => state.agentOrder.map((id) => state.agents[id]).filter((a): a is Agent => a !== undefined), [state.agentOrder, state.agents]);
-  // Only what decides a re-read: the agents and when they finished.
-  const stamp = agents.map((a) => `${a.id}:${a.finished_at ?? a.status}`).join(",");
-  const folders = project?.folders;
+  const scopeKey = `${projectId}:${sid ?? ""}`;
+  const [loaded, setLoaded] = useState<{ key: string; writes: Writes } | null>(null);
+  const agents = useMemo(() => agentsInSession(state.agents, state.agentOrder, sid, rootId), [state.agentOrder, state.agents, sid, rootId]);
+  // Only what decides a re-read: the scoped agents and when they finished.
+  const stamp = `${scopeKey}|${agents.map((a) => `${a.id}:${a.finished_at ?? a.status}`).join(",")}`;
+  const projectFolders = project?.folders;
+  const foldersKey = extraFolders.map((f) => `${f.label}:${f.path}`).join("|");
+  const searchFolders = useMemo(
+    () => (projectFolders ? [...extraFolders, ...projectFolders] : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectFolders, foldersKey],
+  );
 
   useEffect(() => onEvent((e) => e.type === "file.changed" && e.source === "agent" && activity.invalidate(projectId)), [onEvent, activity, projectId]);
 
   useEffect(() => {
-    if (!folders) return;
+    if (!searchFolders) return;
     let cancelled = false;
     // An agent whose transcript cannot be read is left out of the list (it shows again on the next refresh).
     void Promise.all(agents.map((a) => activity.transcript(projectId, a).catch(() => []))).then((lists) => {
       if (cancelled) return;
-      setWrites({ files: lists.flatMap((messages) => writtenFiles(messages, folders)), commands: lists.flatMap((messages) => commandRuns(messages)) });
+      const scoped = lists.map((messages) => filterMessagesForSession(messages, sid));
+      setLoaded({
+        key: scopeKey,
+        writes: {
+          files: scoped.flatMap((messages) => writtenFiles(messages, searchFolders)),
+          commands: scoped.flatMap((messages) => commandRuns(messages)),
+        },
+      });
     });
     return () => {
       cancelled = true;
     };
-    // `stamp` stands for `agents`.
+    // `stamp` stands for `agents`, `scopeKey`, and `sid`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stamp, version, folders, activity, projectId]);
+  }, [stamp, version, searchFolders, activity, projectId]);
 
-  return writes;
+  return loaded?.key === scopeKey ? loaded.writes : null;
 }

@@ -2,6 +2,8 @@ package browserproxy_test
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"io"
@@ -250,5 +252,117 @@ func TestSSRFAndBlockedPortRejection(t *testing.T) {
 	mgr.AddBlockedPort(port)
 	if _, err := mgr.Open(context.Background(), "proj-1", "http://127.0.0.1:"+strconv.Itoa(port)); err == nil {
 		t.Errorf("expected dynamically blocked port %d to fail", port)
+	}
+}
+
+func TestCrossSiteIframeWithoutCookiesGzipCSPAndOriginRewrite(t *testing.T) {
+	var upstreamURL string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/app":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Set("Content-Security-Policy", "upgrade-insecure-requests; block-all-mixed-content; script-src 'strict-dynamic' https://cdn.example; frame-ancestors *")
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+			_, _ = io.WriteString(gz, `<!doctype html><html><head></head><body><script src="`+upstreamURL+`/main.js"></script></body></html>`)
+			_ = gz.Close()
+			_, _ = w.Write(buf.Bytes())
+		case "/main.js":
+			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+			_, _ = io.WriteString(w, `fetch("`+upstreamURL+`/api/data")`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+	upstreamURL = upstream.URL
+
+	mgr := browserproxy.NewManager(browserproxy.Options{})
+	defer func() { _ = mgr.Shutdown(context.Background()) }()
+
+	sess, err := mgr.Open(context.Background(), "proj-iframe", upstream.URL+"/app")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	// Simulate a cross-site iframe (http://localhost:1420 -> http://127.0.0.1:PORT) that drops SameSite=Lax cookies:
+	// no cookie jar, follow bootstrap redirect manually.
+	noCookieClient := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	bootResp, err := noCookieClient.Get(sess.FrameURL)
+	if err != nil {
+		t.Fatalf("bootstrap GET: %v", err)
+	}
+	bootResp.Body.Close()
+	if bootResp.StatusCode != http.StatusFound {
+		t.Fatalf("expected 302 from bootstrap, got %d", bootResp.StatusCode)
+	}
+	dest := bootResp.Header.Get("Location")
+
+	// Cross-site redirect to dest (carrying parent Origin/Referer/Sec-Fetch-Site: cross-site) succeeds without cookie.
+	req, _ := http.NewRequest(http.MethodGet, sess.ProxyOrigin+dest, nil)
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	req.Header.Set("Referer", "http://localhost:1420/")
+	htmlResp, err := noCookieClient.Do(req)
+	if err != nil {
+		t.Fatalf("cross-site dest GET: %v", err)
+	}
+	htmlBytes, _ := io.ReadAll(htmlResp.Body)
+	htmlResp.Body.Close()
+	if htmlResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 on bootstrapped cross-site iframe dest without cookie, got %d", htmlResp.StatusCode)
+	}
+	csp := htmlResp.Header.Get("Content-Security-Policy")
+	if strings.Contains(csp, "upgrade-insecure-requests") || strings.Contains(csp, "block-all-mixed-content") || strings.Contains(csp, "'strict-dynamic'") {
+		t.Errorf("CSP retained blocking directives: %q", csp)
+	}
+	htmlStr := string(htmlBytes)
+	if !strings.Contains(htmlStr, sess.ProxyOrigin+"/main.js") {
+		t.Errorf("HTML did not rewrite targetOrigin to proxyOrigin: %s", htmlStr)
+	}
+	if !strings.Contains(htmlStr, `data-octo-target-origin="`+upstreamURL+`"`) {
+		t.Errorf("inspector data-octo-target-origin was overwritten: %s", htmlStr)
+	}
+	if !strings.Contains(htmlStr, `/__octo_browser/inspector.js`) {
+		t.Errorf("gzipped HTML missing injected inspector tag: %s", htmlStr)
+	}
+
+	// Same-origin subresource fetch from within the proxied iframe succeeds without cookie.
+	jsReq, _ := http.NewRequest(http.MethodGet, sess.ProxyOrigin+"/main.js", nil)
+	jsReq.Header.Set("Sec-Fetch-Site", "same-origin")
+	jsReq.Header.Set("Referer", sess.ProxyOrigin+"/app")
+	jsResp, err := noCookieClient.Do(jsReq)
+	if err != nil {
+		t.Fatalf("main.js GET: %v", err)
+	}
+	jsBytes, _ := io.ReadAll(jsResp.Body)
+	jsResp.Body.Close()
+	if jsResp.StatusCode != http.StatusOK || !strings.Contains(string(jsBytes), sess.ProxyOrigin+"/api/data") {
+		t.Errorf("unexpected main.js response: status=%d body=%s", jsResp.StatusCode, string(jsBytes))
+	}
+
+	// Foreign Origin and unsolicited cross-site requests remain forbidden.
+	csrfReq, _ := http.NewRequest(http.MethodPost, sess.ProxyOrigin+"/api/data", strings.NewReader("{}"))
+	csrfReq.Header.Set("Origin", "https://evil.example")
+	csrfResp, err := noCookieClient.Do(csrfReq)
+	if err != nil {
+		t.Fatalf("csrf POST: %v", err)
+	}
+	csrfResp.Body.Close()
+	if csrfResp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 for foreign Origin, got %d", csrfResp.StatusCode)
+	}
+
+	unsolicitedReq, _ := http.NewRequest(http.MethodGet, sess.ProxyOrigin+"/other", nil)
+	unsolicitedReq.Header.Set("Sec-Fetch-Site", "cross-site")
+	unsolicitedResp, err := noCookieClient.Do(unsolicitedReq)
+	if err != nil {
+		t.Fatalf("unsolicited GET: %v", err)
+	}
+	unsolicitedResp.Body.Close()
+	if unsolicitedResp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 for unsolicited cross-site GET, got %d", unsolicitedResp.StatusCode)
 	}
 }

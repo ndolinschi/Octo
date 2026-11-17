@@ -285,8 +285,8 @@ func NewFakeGH(t testing.TB, r *Repo, prs ...PR) *Fake {
 	d := t.TempDir()
 	script := `#!/bin/bash
 d="${0%/*}"
-echo "$*" >> "$d/calls.log"
-export -p > "$d/env.txt"
+printf '%s\n' "$*" >> "$d/calls.log"
+export -p > "$d/env.$$.txt" && mv "$d/env.$$.txt" "$d/env.txt"
 out() { printf '%s\n' "$(<"$1")"; }
 repo=""; prev=""
 for a in "$@"; do
