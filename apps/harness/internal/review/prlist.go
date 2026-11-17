@@ -219,11 +219,15 @@ func (s *Service) ListPRs(ctx context.Context, pid string, o ListOptions) (PRLis
 		out.Hostname = selected[0].ref.Hostname
 	}
 
+	neededLimit := codehost.MaxListed
+	if filter == FilterAll && strings.TrimSpace(o.Q) == "" {
+		neededLimit = min(o.Page*o.PerPage+1, codehost.MaxListed)
+	}
 	var got []listEntry
 	var firstErr error
 	var oldest time.Time
 	for _, e := range selected {
-		cur, stale, err := s.cachedList(ctx, db, pid, label, dir, e.repo, o.Refresh)
+		cur, stale, err := s.cachedList(ctx, db, pid, label, dir, e.repo, o.Refresh, neededLimit)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -278,23 +282,25 @@ func (s *Service) ListPRs(ctx context.Context, pid string, o ListOptions) (PRLis
 }
 
 // cachedList is the list of one repository through the cache.
-func (s *Service) cachedList(ctx context.Context, db *projectstore.DB, pid, label, dir string, repo codehost.Repo, refresh bool) (listEntry, bool, error) {
+func (s *Service) cachedList(ctx context.Context, db *projectstore.DB, pid, label, dir string, repo codehost.Repo, refresh bool, neededLimit int) (listEntry, bool, error) {
+	if neededLimit <= 0 || neededLimit > codehost.MaxListed {
+		neededLimit = codehost.MaxListed
+	}
 	key := listKey(pid, label, repo)
 	s.mu.Lock()
 	ent := s.lists[key]
-	s.mu.Unlock()
-	if ent != nil && !refresh {
-		s.mu.Lock()
+	if ent != nil && !refresh && (ent.complete || ent.limit >= neededLimit) {
 		cur := *ent
 		age := s.now().Sub(ent.fetchedAt)
 		if age >= ListTTL && !ent.refreshing {
 			ent.refreshing = true
-			go s.refreshList(pid, label, dir, repo)
+			go s.refreshList(pid, label, dir, repo, max(ent.limit, neededLimit))
 		}
 		s.mu.Unlock()
 		return cur, age >= ListTTL, nil
 	}
-	got, err := s.fetchList(ctx, db, pid, dir, repo)
+	s.mu.Unlock()
+	got, err := s.fetchList(ctx, db, pid, dir, repo, neededLimit)
 	if err != nil {
 		return listEntry{}, false, err
 	}

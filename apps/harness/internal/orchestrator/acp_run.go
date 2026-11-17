@@ -8,6 +8,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // errAgentCancelled marks an ACP agent that ended its turn with stopReason

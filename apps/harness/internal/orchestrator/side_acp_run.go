@@ -62,7 +62,7 @@ func (rt *runtime) answerSideACP(ctx context.Context, run *side, t acpTarget, qu
 	case stop != acp.StopEndTurn:
 		return "", stopError(t.agent, stop)
 	case text == "":
-		return "", nothingError(t.agent)
+		return "", nothingError(t.agent, client.Stderr(), false)
 	}
 	return text, nil
 }
