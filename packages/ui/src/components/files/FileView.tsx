@@ -709,7 +709,7 @@ function Notice({ file }: { file: OpenFile }) {
   return (
     <div
       role={n.kind === "save_error" || n.kind === "conflict" ? "alert" : "status"}
-      className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line px-3 py-1.5 text-sm text-fg-2"
+      className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line px-4 py-1.5 text-sm text-fg-2"
     >
       <span className="min-w-0 flex-1 basis-48">{text}</span>
       <span className="flex shrink-0 items-center gap-1.5">{actions}</span>

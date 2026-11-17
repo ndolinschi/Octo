@@ -67,7 +67,7 @@ export function DetailsPanel() {
   return (
     // Rows reaching the fold fade out instead of being cut (the list's scrollbar is hidden, like the sidebar's).
     <div ref={quiet} data-details className="h-full min-h-0">
-      <Panel name="details" title="Details" lead={<PanelPurpose tool="details" />}>
+      <Panel name="details" title="Details" lead={<PanelPurpose tool="details" />} column="measure">
         <PanelBody fade>
           <div ref={rows} className={cn("flex flex-col gap-4", PANEL_COLUMN)}>
             <Folders />

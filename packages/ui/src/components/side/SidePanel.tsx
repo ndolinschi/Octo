@@ -132,6 +132,7 @@ export function SidePanel() {
         name="side"
         title="Side question"
         lead={<PanelPurpose tool="side" />}
+        column="measure"
         {...(list.length > 0 || pending
           ? {
               actions: (
@@ -156,7 +157,7 @@ export function SidePanel() {
       >
         <div className="flex h-full min-h-0 flex-col">
           {empty && (
-            <div className="min-h-0 flex-1">
+            <div className={cn("min-h-0 flex-1", PANEL_COLUMN)}>
               <PanelEmpty
                 title="Ask about this project"
                 actions={STARTERS.map((q) => (
@@ -170,7 +171,7 @@ export function SidePanel() {
             </div>
           )}
           <ScrollArea ref={scroller} data-side-list className={showList ? "min-h-0 flex-1 px-pane pt-1" : "hidden"}>
-            <div className="mx-auto flex w-full max-w-measure flex-col gap-4 px-3 pb-4">
+            <div className="flex w-full max-w-measure flex-col gap-4 px-2 pb-4">
               {load === "loading" && list.length === 0 && <SkeletonList count={2} size="md" />}
               {load === "error" && list.length === 0 && (
                 <Notice
@@ -235,9 +236,9 @@ export function SidePanel() {
             </div>
             <FloatRoom />
           </ScrollArea>
-          <div className={cn("mx-auto shrink-0 px-pane pb-pane", PANEL_COLUMN)}>
+          <div className={cn("shrink-0 px-pane pb-pane", PANEL_COLUMN)}>
             <form
-              className="octo-composer flex w-full max-w-measure flex-col gap-1 bg-raised p-2"
+              className="octo-composer flex w-full flex-col bg-raised"
               onSubmit={(e) => {
                 e.preventDefault();
                 void ask(text);
@@ -246,19 +247,21 @@ export function SidePanel() {
               <label htmlFor={SIDE_INPUT_ID} className="sr-only">
                 Side question
               </label>
-              <TextField
-                id={SIDE_INPUT_ID}
-                ref={input}
-                variant="bare"
-                size="md"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder={working ? "Answering…" : "Ask about this project…"}
-                autoComplete="off"
-                aria-describedby={sendError && sendError.code !== "no_provider" ? `${SIDE_INPUT_ID}-error` : undefined}
-                className="octo-composer-input px-1"
-              />
-              <div className="flex items-center gap-1">
+              <div className="pt-3 pb-2">
+                <TextField
+                  id={SIDE_INPUT_ID}
+                  ref={input}
+                  variant="bare"
+                  size="md"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder={working ? "Answering…" : "Ask about this project…"}
+                  autoComplete="off"
+                  aria-describedby={sendError && sendError.code !== "no_provider" ? `${SIDE_INPUT_ID}-error` : undefined}
+                  className="octo-composer-input px-3"
+                />
+              </div>
+              <div className="flex items-center gap-1 px-1.5 pb-2">
                 {sideModel !== null && (
                   <ModelPicker
                     label="Side question model"
@@ -283,7 +286,7 @@ export function SidePanel() {
               </div>
             </form>
             {(sendError && sendError.code !== "no_provider") || modelError ? (
-              <div id={`${SIDE_INPUT_ID}-error`} className="mx-auto mt-1 w-full max-w-measure px-3">
+              <div id={`${SIDE_INPUT_ID}-error`} className="mt-1 px-2">
                 <Notice tone="error">{modelError ?? `Couldn't ask: ${sendError?.message}. Your question is still in the box.`}</Notice>
               </div>
             ) : null}
@@ -327,7 +330,7 @@ function SideQuestion({ text }: { text: string }) {
     return () => ro.disconnect();
   }, [text]);
   return (
-    <div data-prompt className="relative -mx-3">
+    <div data-prompt className="relative">
       <div data-bubble data-one-line={oneLine || undefined} className="border border-transparent text-sm">
         <p ref={box} className="wrap-anywhere whitespace-pre-wrap">
           {text}

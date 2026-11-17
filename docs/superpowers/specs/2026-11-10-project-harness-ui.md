@@ -3945,3 +3945,50 @@ with zero console/page errors and zero spacing/frame-colour violations.
 **Not verified.** Full `apps/harness` `go build ./...` / `go test ./...` (blocked in the cloud VM by sandbox proxy HTTP 403 for uncached `modernc.org/sqlite@v1.62.0`),
 and live `harness serve` proxying real external sites or Vite HMR WebSockets inside native Tauri/WebKit.
 
+## As built — tab design-system alignment, padding balance & whole-frame measure (2026-11-16)
+
+- **Shared primitives (`Panel.tsx`, `ViewTabs.tsx`, `ListDetail.tsx`).**
+  - Added `column?: "measure"` to `Panel` so single-column tabs (`Usage`, `Agents`, `Details`, `Review` picker, `Side`) cap
+    `[data-panel-header]`, optional `notice`, and `[data-panel-footer]` to `PANEL_COLUMN` (`736px`), keeping header/footer text
+    edges flush with the `720px` body measure without full-width edge-to-edge drift on wide panels.
+  - Added `contentClassName?: string` to `ViewTabs` so `Usage` and `PullList` cap their `[role="tablist"]` + trailing controls
+    to `PANEL_COLUMN` while keeping the outer `h-row-nav border-b border-line` hairline full-bleed.
+  - Aligned `ListDetail`'s default `detailClassName` bottom padding to `pb-4` (`16px`), matching non-`ListDetail` panels (`pb-4`),
+    and removed duplicate `pb-4` in `NoteDetail.tsx` and `NoteEditor.tsx`.
+- **Dock tabs & fallbacks brought onto Decision 95f / spacing-scale rules.**
+  - **Chat (`ConversationView.tsx`)**: replaced the raw missing-agent `grid place-items-center` + `<a>` fallback with `<EmptyState>`
+    and `<Button>`.
+  - **Sessions (`SessionsTab.tsx`, `SessionDetail.tsx`, `SessionPane.tsx`, `SessionComposer.tsx`)**: added `lead={<PanelPurpose tool="sessions" />}`
+    to both fallback and live `Panel`s; balanced `SessionDetail` sticky footer (`mt-4 -mb-4 px-2 pt-2 pb-3`), `SessionPane` `pb-4`,
+    and matched `SessionComposer`'s `.octo-composer` padding (`pt-3 pb-2`, `px-3`, `px-1.5 pb-2`) with `Composer.tsx`.
+  - **Memory (`MemoryView.tsx`, `KnowledgeView.tsx`, `SearchResults.tsx`)**: added `lead={<PanelPurpose tool="memory" />}` to fallback
+    `Panel`; removed `border-b border-line pt-2 pb-2` from `PanelFilters` (restoring the `36px` filter row and single hairline);
+    used `<PanelEmpty>` in `KnowledgeView`; cleaned `SearchResults` to `pt-1 pb-4` and `gap-3` / `gap-1.5` group spacing.
+  - **Usage / Agents / Details (`UsagePanel.tsx`, `AgentsPanel.tsx`, `DetailsPanel.tsx`)**: applied `column="measure"`, `ViewTabs`
+    `contentClassName={PANEL_COLUMN}`, and container-scoped wrapping (`@container` + `@max-[480px]:py-1`) on `UsagePanel`'s filters.
+  - **Changes & Diff (`ChangesTab.tsx`, `ChangesView.tsx`, `DiffPanel.tsx`)**: added `lead={<PanelPurpose tool="changes" />}` to fallback
+    `Panel`; updated `"Showing one request"` focus bar to `pr-pane pl-4`; replaced custom `Centered` wrappers with `<EmptyState>` (`42:58`)
+    and updated `Banner` padding (`px-4 py-1.5`).
+  - **Review (`ReviewTab.tsx`, `PullList.tsx`, `BranchList.tsx`, `ReviewView.tsx`)**: framed unsupported fallback in `<Panel>` + `<PanelEmpty>`;
+    applied `column="measure"` + `contentClassName={PANEL_COLUMN}` on `PullList`, converted unavailable card to `<ViewNotice form="block">`,
+    and replaced raw `<h2>` with `<SectionHeader inset>`; removed `py-1` and `font-medium` caption override on `BranchList`; replaced
+    off-scale `pl-11` (`44px`) in `ReviewSkeleton` with `pl-10` (`40px`) + `SkeletonList` (`px-pane pt-1`), and used `<EmptyState>` when
+    no files changed.
+  - **Files (`TreeColumn.tsx`, `FileView.tsx`, `ImagePreview.tsx`)**: removed `pt-1` on `TreeColumn` `<PanelFilters>`; aligned `FileNotice`
+    bar (`px-4`) and `ImagePreview` footer (`pr-pane pl-4`).
+  - **Run (`RunPanel.tsx`)**: balanced standalone `"Run: name"` tabs with `h-ctl-lg pr-pane pl-4` header, `text-heading` title, `px-4` error/note
+    bars, `<EmptyState title="Not run yet" />`, and `px-4 pt-2 pb-4` output body.
+  - **Side (`SidePanel.tsx`)**: applied `column="measure"`, left-aligned `PANEL_COLUMN` across empty state, `ScrollArea` (`max-w-measure px-2 pb-4`),
+    composer (`PANEL_COLUMN px-pane pb-pane`), and error notice (`px-2`), matched `.octo-composer` padding (`pt-3 pb-2`, `px-3`, `px-1.5 pb-2`),
+    and removed negative horizontal bubble bleed (`-mx-3`).
+
+**Verified.** `pnpm format:check`, `pnpm lint` (0 errors across `agent-client`, `ui`, `desktop`), `pnpm --filter @octo/ui test` (all UI unit tests
+including `Panel.test.ts`), `pnpm --filter @octo/agent-client test`, `pnpm test:scripts`, `pnpm --filter @octo/desktop build`,
+`node scripts/check-bundle-size.mjs` (within budget), and headless `/usr/bin/chromium` CDP audits on `?demo=1` across
+`Chat`, `Sessions`, `Memory` (`Sessions`/`Knowledge`/`Files`/search), `Notes`, `Usage`, `Agents`, `Details`, `Changes`, `Files` (tree + image),
+`Review` (`Pull requests`/`Local branches`/open PR), `Side` (wide `1247px` panel verifying `736px` `PANEL_COLUMN` cap and aligned `header`/`composer`
+edges), and phone viewports (`390x844`): 0 spacing violations across all runs, `headerH=40`, `hInset=16`, `rInset=8`, `dy=0`, and 0 console/page errors.
+**Not verified.** `spacing-audit.mjs` CLI directly (the `playwright` npm package is not installed in the build VM); standalone `"Run: name"`
+tab runtime layout with live command output; WebKit/Tauri desktop binary.
+
+

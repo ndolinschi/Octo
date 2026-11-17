@@ -28,7 +28,7 @@ export function NoteDetail(props: {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   return (
-    <article className={cn("flex flex-col gap-4 pb-4", DETAIL_COLUMN)} aria-label={note.title}>
+    <article className={cn("flex flex-col gap-4", DETAIL_COLUMN)} aria-label={note.title}>
       <DetailHeader
         title={note.title}
         meta={[

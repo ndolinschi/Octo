@@ -8,6 +8,7 @@ import { useNow } from "../../lib/hooks";
 import type { GlyphState } from "../../lib/stateGlyph";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Button } from "../primitives/Button";
+import { EmptyState } from "../primitives/EmptyState";
 import { Glyph } from "../primitives/Glyph";
 import { IconButton } from "../primitives/IconButton";
 import { StateGlyph } from "../primitives/StateGlyph";
@@ -29,6 +30,7 @@ export function RunPanel({ tab }: { /** The "Run: name" tab (decision 68): fills
   const r = useRuns();
   const ws = useOptionalWorkspace();
   if (!r.panelOpen && tab === undefined) return null;
+  const standalone = tab !== undefined;
   const cur = r.current;
   const localUrl = cur ? extractLocalUrls(cur.output)[0] : undefined;
   const action =
@@ -44,15 +46,15 @@ export function RunPanel({ tab }: { /** The "Run: name" tab (decision 68): fills
     ));
   return (
     <section
-      aria-label={tab === undefined ? "Command runs" : `Runs of ${tab}`}
-      className={cn("flex min-h-0 flex-col bg-panel", tab === undefined ? "h-1/3 min-h-48 shrink-0 border-t border-line" : "flex-1")}
+      aria-label={standalone ? `Runs of ${tab}` : "Command runs"}
+      className={cn("flex min-h-0 flex-col bg-panel", standalone ? "flex-1" : "h-1/3 min-h-48 shrink-0 border-t border-line")}
     >
-      <header className="flex min-h-9 shrink-0 items-center gap-2 border-b border-line px-3">
-        {tab !== undefined ? (
+      <header className={cn("flex shrink-0 items-center gap-2 border-b border-line", standalone ? "h-ctl-lg pr-pane pl-4" : "min-h-9 px-3")}>
+        {standalone ? (
           cur ? (
             <RunLine v={cur} />
           ) : (
-            <span className="min-w-0 flex-1 truncate text-sm text-fg">{tab}</span>
+            <span className="min-w-0 flex-1 truncate text-heading text-fg">{tab}</span>
           )
         ) : (
           <div role="tablist" aria-label="Runs of this review" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
@@ -79,24 +81,26 @@ export function RunPanel({ tab }: { /** The "Run: name" tab (decision 68): fills
           </Button>
         )}
         {action}
-        {tab === undefined && <IconButton icon={X} label="Close the run panel" onClick={r.closePanel} />}
+        {!standalone && <IconButton icon={X} label="Close the run panel" onClick={r.closePanel} />}
       </header>
       {r.error && (
-        <p role="alert" className="shrink-0 border-b border-line px-3 py-1.5 text-xs text-err">
+        <p role="alert" className={cn("shrink-0 border-b border-line py-1.5 text-xs text-err", standalone ? "px-4" : "px-3")}>
           {r.error}
         </p>
       )}
       {cur ? (
-        <RunBody v={cur} withLine={tab === undefined} />
-      ) : tab === undefined ? (
+        <RunBody v={cur} withLine={!standalone} standalone={standalone} />
+      ) : !standalone ? (
         <p className="px-3 py-3 text-sm text-fg-3">Use Run in the header to start a command in this review's copy of the code.</p>
       ) : (
-        <p className="flex items-center gap-3 px-3 py-3 text-sm text-fg-3">
-          Not run yet.
-          <Button size="sm" variant="secondary" onClick={() => void r.start(tab)}>
-            Run {tab}
-          </Button>
-        </p>
+        <EmptyState
+          title="Not run yet"
+          actions={
+            <Button size="sm" variant="secondary" onClick={() => void r.start(tab)}>
+              Run {tab}
+            </Button>
+          }
+        />
       )}
     </section>
   );
@@ -111,7 +115,7 @@ function RunLine({ v }: { v: RunView }) {
   const tone = runTone(run);
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
-      <span className="shrink-0 text-sm text-fg">{run.name}</span>
+      <span className="shrink-0 text-heading text-fg">{run.name}</span>
       <span title={runStatusText(run)} className="flex shrink-0">
         {tone === "ok" ? (
           <span className="flex text-ok">
@@ -130,7 +134,7 @@ function RunLine({ v }: { v: RunView }) {
   );
 }
 
-function RunBody({ v, withLine }: { v: RunView; withLine: boolean }) {
+function RunBody({ v, withLine, standalone }: { v: RunView; withLine: boolean; standalone: boolean }) {
   const run = v.run;
   const text = stripAnsi(v.output);
   const box = useRef<HTMLPreElement>(null);
@@ -146,7 +150,7 @@ function RunBody({ v, withLine }: { v: RunView; withLine: boolean }) {
   return (
     <>
       {(withLine || notes.length > 0) && (
-        <p className="flex shrink-0 flex-wrap items-center gap-x-3 px-3 py-1.5 text-xs text-fg-3">
+        <p className={cn("flex shrink-0 flex-wrap items-center gap-x-3 py-1.5 text-xs text-fg-3", standalone ? "px-4" : "px-3")}>
           {withLine && (
             <>
               <span className={cn("font-medium", TONE[runTone(run)])}>{runStatusText(run)}</span>
@@ -168,7 +172,10 @@ function RunBody({ v, withLine }: { v: RunView; withLine: boolean }) {
           const el = e.currentTarget;
           following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX;
         }}
-        className="min-h-0 flex-1 overflow-y-auto px-3 pb-2 font-mono text-xs leading-5 break-words whitespace-pre-wrap text-fg focus-inset"
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto font-mono text-xs leading-5 break-words whitespace-pre-wrap text-fg focus-inset",
+          standalone ? "px-4 pt-2 pb-4" : "px-3 pb-2",
+        )}
       >
         {text || (isRunning(run) ? "Waiting for output…" : "No output.")}
       </pre>

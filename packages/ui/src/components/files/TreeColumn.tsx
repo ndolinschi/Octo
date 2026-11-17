@@ -67,7 +67,7 @@ export function TreeColumn(props: {
       className={cn("flex flex-col bg-panel", page ? cn("absolute inset-0", !shown && "invisible") : "relative shrink-0 border-r border-line")}
     >
       {!page && <ResizeHandle groupId={props.groupId} width={width} max={props.maxWidth} />}
-      <PanelFilters className="pt-1">
+      <PanelFilters>
         <SearchField
           ref={input}
           label="Filter files"

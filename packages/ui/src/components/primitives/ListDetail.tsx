@@ -126,7 +126,7 @@ export function ListDetail(props: {
           {props.loading ? (
             <div className={cn("px-4 pt-4", !open && "hidden @min-[640px]/ld:block")}>{props.detailSkeleton ?? <SkeletonText lines={5} />}</div>
           ) : hasDetail ? (
-            <ScrollArea className={cn("min-h-0 flex-1", props.detailClassName ?? "px-pane pb-6")}>
+            <ScrollArea className={cn("min-h-0 flex-1", props.detailClassName ?? "px-pane pb-4")}>
               <DetailBackContext value={{ back: goBack, label: props.listLabel }}>{props.detail}</DetailBackContext>
               <FloatRoom />
             </ScrollArea>

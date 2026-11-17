@@ -8,7 +8,8 @@ import { useProject } from "../../state/project";
 import { toolTab } from "../../state/workspace/layout";
 import { isString, slot } from "../../state/workspace/tabMemory";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { Notice } from "./parts";
+import { Panel, PanelEmpty } from "../primitives/Panel";
+import { PanelPurpose } from "../shared/PanelPurpose";
 import { PullList } from "./PullList";
 import type { ReviewMonaco } from "./ReviewDiff";
 import { ReviewView } from "./ReviewView";
@@ -28,7 +29,13 @@ export function ReviewTab(props: Loaders) {
   const { bridge } = useApp();
   const { projectId } = useProject();
   const api = useMemo(() => reviewApi(bridge, projectId), [bridge, projectId]);
-  if (!api) return <Notice title="This version of Octo's local service cannot review pull requests">Update Octo to review pull requests.</Notice>;
+  if (!api) {
+    return (
+      <Panel name="review" title="Pull requests" lead={<PanelPurpose tool="review" />}>
+        <PanelEmpty title="This version of Octo's local service cannot review pull requests">Update Octo to review pull requests.</PanelEmpty>
+      </Panel>
+    );
+  }
   return <Live api={api} {...props} />;
 }
 

@@ -65,7 +65,7 @@ export function MemoryView(props: {
 
   if (!bridge.listTasks && !bridge.listMemory && !bridge.listMemorySessions) {
     return (
-      <Panel name="memory" title="Memory">
+      <Panel name="memory" title="Memory" lead={<PanelPurpose tool="memory" />}>
         <PaneEmpty title="This version of Octo's local service has no memory">Update it to see sessions, what is remembered and memory files here.</PaneEmpty>
       </Panel>
     );
@@ -113,7 +113,7 @@ export function MemoryView(props: {
         }
       >
         <div className="flex h-full min-h-0 flex-col">
-          <PanelFilters className="border-b border-line pt-2 pb-2">
+          <PanelFilters>
             <SearchField
               ref={field}
               label="Search memory"

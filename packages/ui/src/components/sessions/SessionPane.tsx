@@ -24,7 +24,7 @@ export function SessionPane(props: { sessionId: string; renderTranscript: Transc
     );
   }
   return (
-    <ScrollArea className="h-full px-pane pb-6">
+    <ScrollArea className="h-full px-pane pb-4">
       <SessionDetail key={session.id} session={session} list={list} now={now} renderTranscript={props.renderTranscript} onGone={() => props.onClose?.()} />
     </ScrollArea>
   );

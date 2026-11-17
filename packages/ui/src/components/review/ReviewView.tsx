@@ -13,9 +13,10 @@ import { reviewDiffLayout } from "../../lib/review/diffLayout";
 import { repliesByThread, stepThread, threadRows, threadsOfFile, unresolvedTotal, type ThreadRow } from "../../lib/review/threads";
 import { Button } from "../primitives/Button";
 import { Checkbox } from "../primitives/Checkbox";
+import { EmptyState } from "../primitives/EmptyState";
 import { Glyph } from "../primitives/Glyph";
-import { SkeletonRows } from "../primitives/InfoList";
 import { Presence } from "../primitives/Presence";
+import { SkeletonList } from "../primitives/Skeleton";
 import { CheckoutBanner, CheckoutMenu, checkoutItems, DirtyDialog } from "./Checkout";
 import { Composer, type ComposerValue } from "./Composer";
 import { DiffPane } from "./DiffPane";
@@ -494,11 +495,9 @@ function Ready(props: {
           </div>
         ) : (
           <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex min-h-0 flex-1 items-center justify-center">
-              <Notice title={filterSince ? "Nothing changed since your review" : "No changed files"}>
-                {filterSince ? "Turn off “Only what changed since your review” to read the whole pull request." : "This review has no file changes."}
-              </Notice>
-            </div>
+            <EmptyState title={filterSince ? "Nothing changed since your review" : "No changed files"}>
+              {filterSince ? "Turn off “Only what changed since your review” to read the whole pull request." : "This review has no file changes."}
+            </EmptyState>
             {composerEl}
           </div>
         )}
@@ -652,13 +651,13 @@ function Banners(props: {
 function ReviewSkeleton() {
   return (
     <div className="flex h-full min-h-0 flex-col" aria-busy aria-label="Loading the review">
-      <div className="flex h-16 shrink-0 flex-col justify-center gap-3 border-b border-line pr-4 pl-11">
+      <div className="flex h-16 shrink-0 flex-col justify-center gap-3 border-b border-line pr-4 pl-10">
         <div className="h-3 w-2/5 rounded-sm bg-hover" />
         <div className="h-2 w-3/5 rounded-sm bg-hover" />
       </div>
       <div className="flex min-h-0 flex-1">
-        <div className="shrink-0 border-r border-line max-md:hidden" style={{ width: FILES_WIDTH }}>
-          <SkeletonRows count={9} widths={[70, 52, 64, 44, 58, 66, 40, 60, 48]} />
+        <div className="shrink-0 border-r border-line px-pane pt-1 max-md:hidden" style={{ width: FILES_WIDTH }}>
+          <SkeletonList count={9} size="md" widths={[70, 52, 64, 44, 58, 66, 40, 60, 48]} />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-4">
           {[88, 72, 80, 46, 92, 60, 76, 34, 84, 68].map((w, i) => (

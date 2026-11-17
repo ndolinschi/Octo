@@ -26,30 +26,30 @@ export function SearchResults(props: { state: SearchState; query: string; canOpe
   const { state, query } = props;
   if (state.status === "idle")
     return (
-      <div className="h-full px-pane pt-2">
+      <div className="h-full px-pane">
         <PanelEmpty>Type two letters or more to search requests, knowledge, files and notes.</PanelEmpty>
       </div>
     );
   if (state.status === "loading")
     return (
-      <div className="px-pane pt-2">
+      <div className="px-pane pt-1">
         <SkeletonList count={5} size="md" twoLine shimmer />
       </div>
     );
   if (state.status === "error") return <MemoryError message={state.message} />;
   if (state.count === 0) {
     return (
-      <div className="h-full px-pane pt-2">
+      <div className="h-full px-pane">
         <PanelEmpty>{emptyText(query, state.message)}. Try one word.</PanelEmpty>
       </div>
     );
   }
   return (
-    <ScrollArea className="h-full min-h-0 px-pane pt-2 pb-6">
+    <ScrollArea className="h-full min-h-0 px-pane pt-1 pb-4">
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- ↑/↓/Home/End between the result rows */}
-      <div role="region" aria-label="Results" onKeyDown={moveInList}>
+      <div role="region" aria-label="Results" onKeyDown={moveInList} className="flex flex-col gap-3">
         {state.groups.map((g) => (
-          <section key={g.id} aria-label={g.label} className="pt-1">
+          <section key={g.id} aria-label={g.label} className="flex flex-col gap-1.5">
             <SectionHeader inset className="pr-8" aside={<span className="tabular-nums">{g.hits.length}</span>}>
               {g.label}
             </SectionHeader>

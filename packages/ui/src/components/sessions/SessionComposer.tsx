@@ -60,7 +60,7 @@ export function SessionComposer({ session, actions }: { session: ProjectSession;
     <div className="flex flex-col gap-2">
       {actions.error && <Notice tone="error">{actions.error}</Notice>}
       <form
-        className={cn("octo-composer flex flex-col gap-1 bg-raised p-2", disabled && "opacity-80")}
+        className={cn("octo-composer flex flex-col bg-raised", disabled && "opacity-80")}
         onSubmit={(e) => {
           e.preventDefault();
           void send();
@@ -69,23 +69,25 @@ export function SessionComposer({ session, actions }: { session: ProjectSession;
         <label htmlFor={id} className="sr-only">
           Message to this agent
         </label>
-        <TextArea
-          ref={area}
-          id={id}
-          variant="bare"
-          rows={1}
-          value={text}
-          disabled={disabled}
-          placeholder={reason ?? "Message this agent"}
-          title={reason ?? undefined}
-          onChange={(e) => {
-            setText(e.target.value);
-            setOutcome(null);
-          }}
-          onKeyDown={onKeyDown}
-          className="octo-composer-input px-1"
-        />
-        <div className="flex items-center gap-1">
+        <div className="pt-3 pb-2">
+          <TextArea
+            ref={area}
+            id={id}
+            variant="bare"
+            rows={1}
+            value={text}
+            disabled={disabled}
+            placeholder={reason ?? "Message this agent"}
+            title={reason ?? undefined}
+            onChange={(e) => {
+              setText(e.target.value);
+              setOutcome(null);
+            }}
+            onKeyDown={onKeyDown}
+            className="octo-composer-input px-3"
+          />
+        </div>
+        <div className="flex items-center gap-1 px-1.5 pb-2">
           <span className="ml-auto" />
           <IconButton icon={ArrowUp} label="Send" shortcut="↵" variant="primary" round type="submit" disabled={disabled || empty || actions.busy !== null} />
         </div>

@@ -47,16 +47,17 @@ export function UsagePanel() {
   const quiet = useRef<HTMLDivElement>(null);
   useQuietOpen(quiet);
   return (
-    <div ref={quiet} data-usage className="h-full min-h-0">
+    <div ref={quiet} data-usage className="@container h-full min-h-0">
       <Panel
         name="usage"
         title="Usage"
         lead={<PanelPurpose tool="usage" />}
-        views={<ViewTabs label="Usage" options={items} value={view.segment} onChange={(segment) => setView({ segment })} />}
+        column="measure"
+        views={<ViewTabs label="Usage" options={items} value={view.segment} onChange={(segment) => setView({ segment })} contentClassName={PANEL_COLUMN} />}
       >
         <div className="flex h-full min-h-0 flex-col">
           {view.segment !== "limits" && (
-            <PanelFilters className={cn("flex-wrap gap-y-1.5 py-1", PANEL_COLUMN)}>
+            <PanelFilters className={cn("flex-wrap gap-y-1.5 @max-[480px]:py-1", PANEL_COLUMN)}>
               <div className="max-w-36 min-w-28 flex-1">
                 <Select
                   size="sm"

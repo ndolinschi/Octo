@@ -2,6 +2,8 @@ import { useScrollAnchor } from "../../lib/scrollAnchor";
 import type { Agent } from "@octo/agent-client";
 import { ArrowDown } from "lucide-react";
 import { IconButton } from "../primitives/IconButton";
+import { Button } from "../primitives/Button";
+import { EmptyState } from "../primitives/EmptyState";
 import { InlineNotesProvider } from "./notesContext";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
@@ -235,13 +237,24 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const roleName = nameIn(project.name);
   if (!agent) {
     return (
-      <div className="grid h-full place-items-center text-center">
-        <div>
-          <p className="text-sm text-fg-2">This agent isn't part of {project.name}.</p>
-          <a href={hrefFor(projectId)} className="mt-2 inline-block text-sm text-fg underline underline-offset-2">
-            Back to session
-          </a>
-        </div>
+      <div className="flex h-full min-h-0 flex-col">
+        <EmptyState
+          title="Agent not found"
+          actions={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                if (ws) ws.focusChat();
+                else window.location.hash = hrefFor(projectId);
+              }}
+            >
+              Back to session
+            </Button>
+          }
+        >
+          This agent isn&apos;t part of {project.name}.
+        </EmptyState>
       </div>
     );
   }

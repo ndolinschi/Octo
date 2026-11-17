@@ -1,6 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import { createContext, useContext, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
+import { PANEL_COLUMN } from "../../lib/panelColumn";
 import { EmptyState } from "./EmptyState";
 import { IconButton } from "./IconButton";
 import { FloatRoom } from "./floatRoom";
@@ -42,12 +43,15 @@ export function Panel(props: {
   filters?: ReactNode;
   views?: ReactNode;
   footer?: ReactNode;
+  /** Cap header, notice, and footer to the single-column measure (`PANEL_COLUMN`) so right edges align across the tab. */
+  column?: "measure";
   children: ReactNode;
   className?: string;
 }) {
+  const measure = props.column === "measure" ? PANEL_COLUMN : undefined;
   return (
     <section data-panel={props.name} aria-label={props.title} className={cn("flex h-full min-h-0 flex-col", props.className)}>
-      <header data-panel-header className="flex h-ctl-lg shrink-0 items-center gap-2 px-pane">
+      <header data-panel-header className={cn("flex h-ctl-lg shrink-0 items-center gap-2 px-pane", measure)}>
         <h2 data-panel-title className={cn("flex min-w-0 items-baseline gap-2 px-2 text-heading text-fg", props.lead === undefined ? "flex-1" : "shrink-0")}>
           <span className="truncate">{props.title}</span>
           {props.meta !== undefined && <span className="shrink-0 text-xs font-normal text-fg-3 tabular-nums">{props.meta}</span>}
@@ -63,7 +67,7 @@ export function Panel(props: {
           </div>
         )}
       </header>
-      {props.notice !== undefined && <div className="shrink-0 px-pane pb-2">{props.notice}</div>}
+      {props.notice !== undefined && <div className={cn("shrink-0 px-pane pb-2", measure)}>{props.notice}</div>}
       {props.filters !== undefined && props.filters}
       {props.views}
       <div data-panel-body className="relative min-h-0 flex-1">
@@ -71,7 +75,7 @@ export function Panel(props: {
       </div>
       {props.footer !== undefined && (
         // R2: a hairline over the footer, so the list's last row ends on an edge instead of under a loose caption.
-        <p data-panel-footer className="line-clamp-2 shrink-0 border-t border-line px-4 py-1.5 text-xs text-fg-3">
+        <p data-panel-footer className={cn("line-clamp-2 shrink-0 border-t border-line px-4 py-1.5 text-xs text-fg-3", measure)}>
           {props.footer}
         </p>
       )}

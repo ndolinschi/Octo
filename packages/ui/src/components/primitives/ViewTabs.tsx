@@ -28,6 +28,7 @@ export function ViewTabs<T extends string>(props: {
   value: T;
   onChange(value: T): void;
   trailing?: ReactNode;
+  contentClassName?: string;
   className?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -46,39 +47,41 @@ export function ViewTabs<T extends string>(props: {
     box.current?.querySelectorAll<HTMLElement>('[role="tab"]')[to ?? 0]?.focus();
   };
   return (
-    <div className={cn("box-content flex h-row-nav shrink-0 items-stretch border-b border-line px-pane touch:h-ctl-lg", props.className)}>
-      <div ref={box} role="tablist" tabIndex={-1} aria-label={props.label} onKeyDown={onKeyDown} className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
-        {props.options.map((o) => {
-          const on = o.id === props.value;
-          return (
-            <button
-              key={o.id}
-              type="button"
-              role="tab"
-              aria-selected={on}
-              tabIndex={on ? 0 : -1}
-              title={o.title}
-              {...(o.menu && on ? { "aria-haspopup": "menu" as const, "aria-expanded": menu !== null } : {})}
-              onClick={(e) => {
-                if (o.menu && on) {
-                  const r = e.currentTarget.getBoundingClientRect();
-                  setMenu(menu ? null : { x: r.left, y: r.bottom + 4, items: o.menu, label: o.label });
-                } else props.onChange(o.id);
-              }}
-              className={cn(
-                "relative shrink-0 px-2 text-sm whitespace-nowrap press-row focus-inset",
-                on ? "font-medium text-fg" : "text-fg-3 hover:text-fg-2",
-                // The underline rests on the row's hairline.
-                on && "after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-fg",
-              )}
-            >
-              {o.label}
-              {o.menu && <Glyph icon={ChevronDown} size={14} className="ml-1 inline align-text-bottom text-fg-3" />}
-            </button>
-          );
-        })}
+    <div className={cn("box-content h-row-nav shrink-0 border-b border-line touch:h-ctl-lg", props.className)}>
+      <div className={cn("flex h-full min-w-0 items-stretch px-pane", props.contentClassName)}>
+        <div ref={box} role="tablist" tabIndex={-1} aria-label={props.label} onKeyDown={onKeyDown} className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
+          {props.options.map((o) => {
+            const on = o.id === props.value;
+            return (
+              <button
+                key={o.id}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                tabIndex={on ? 0 : -1}
+                title={o.title}
+                {...(o.menu && on ? { "aria-haspopup": "menu" as const, "aria-expanded": menu !== null } : {})}
+                onClick={(e) => {
+                  if (o.menu && on) {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setMenu(menu ? null : { x: r.left, y: r.bottom + 4, items: o.menu, label: o.label });
+                  } else props.onChange(o.id);
+                }}
+                className={cn(
+                  "relative shrink-0 px-2 text-sm whitespace-nowrap press-row focus-inset",
+                  on ? "font-medium text-fg" : "text-fg-3 hover:text-fg-2",
+                  // The underline rests on the row's hairline.
+                  on && "after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-fg",
+                )}
+              >
+                {o.label}
+                {o.menu && <Glyph icon={ChevronDown} size={14} className="ml-1 inline align-text-bottom text-fg-3" />}
+              </button>
+            );
+          })}
+        </div>
+        {props.trailing && <div className="flex shrink-0 items-center pl-2">{props.trailing}</div>}
       </div>
-      {props.trailing && <div className="flex shrink-0 items-center pl-2">{props.trailing}</div>}
       <Presence show={menu !== null} exitMs={0}>
         {menu && <Menu label={menu.label} x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       </Presence>

@@ -14,6 +14,7 @@ import { FilterTabs, type Filter } from "../primitives/FilterTabs";
 import { ListDetail } from "../primitives/ListDetail";
 import { Notice } from "../primitives/Notice";
 import { Panel, PanelEmpty, PanelFilters } from "../primitives/Panel";
+import { PanelPurpose } from "../shared/PanelPurpose";
 import type { TranscriptSlot } from "./parts";
 import { DeleteSessionDialog } from "./DeleteSessionDialog";
 import { NewSessionButton } from "./NewSessionButton";
@@ -73,7 +74,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
 
   if (!bridge.listSessions) {
     return (
-      <Panel name="sessions" title="Sessions">
+      <Panel name="sessions" title="Sessions" lead={<PanelPurpose tool="sessions" />}>
         <PanelEmpty title="This version of Octo's local service has no sessions">Update it to see the project's sessions here.</PanelEmpty>
       </Panel>
     );
@@ -90,6 +91,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
       <Panel
         name="sessions"
         title="Sessions"
+        lead={<PanelPurpose tool="sessions" />}
         notice={actions.error ? <Notice tone="error">{actions.error}</Notice> : undefined}
         actions={
           <NewSessionButton

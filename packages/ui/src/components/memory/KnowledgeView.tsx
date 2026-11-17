@@ -7,7 +7,7 @@ import type { Load } from "../../lib/memory/load";
 import { filterCounts, rememberedItems, TASK_FILTERS } from "../../lib/memory/tasks";
 import { useApp } from "../../state/app";
 import { FilterTabs } from "../primitives/FilterTabs";
-import { PanelFilters } from "../primitives/Panel";
+import { PanelEmpty, PanelFilters } from "../primitives/Panel";
 import { ScrollArea } from "../primitives/ScrollArea";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { SkeletonList } from "../primitives/Skeleton";
@@ -73,14 +73,14 @@ export function KnowledgeView(props: {
     );
   }
   return (
-    <ScrollArea className="h-full min-h-0 px-pane pt-1 pb-6">
+    <ScrollArea className="h-full min-h-0 px-pane pt-1 pb-4">
       {/* R2: a list under the panel's full-width search runs the full width (one right edge with the search and the header). */}
       <div ref={rows}>
         <section aria-label="Remembered">
           <RememberedHeader count={items.length} onAdd={canAdd && !adding ? () => setAdding(true) : undefined} />
           {adding && <AddFact onDone={() => setAdding(false)} onKept={props.reload} />}
           {items.length === 0 && !adding ? (
-            <p className="px-2 py-3 text-sm text-fg-3">Nothing yet. Add what every request should know.</p>
+            <PanelEmpty>Nothing yet. Add what every request should know.</PanelEmpty>
           ) : (
             <RememberedList items={items} now={now} focus={props.focus.fact} onOpenMessage={props.onOpenMessage} onForgotten={props.reload} />
           )}

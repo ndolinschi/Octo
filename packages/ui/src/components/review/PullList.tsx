@@ -18,6 +18,7 @@ import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
 import { Notice as ViewNotice } from "../primitives/Notice";
 import { SearchField } from "../primitives/SearchField";
+import { SectionHeader } from "../primitives/SectionHeader";
 import { SkeletonList } from "../primitives/Skeleton";
 import { MiddleText } from "../primitives/MiddleText";
 import { Panel, PanelBody, PanelEmpty } from "../primitives/Panel";
@@ -200,6 +201,7 @@ function Picker(props: {
       <Panel
         name="review"
         title="Pull requests"
+        column="measure"
         lead={lead || undefined}
         actions={
           <>
@@ -221,6 +223,7 @@ function Picker(props: {
             options={VIEWS}
             value={view}
             onChange={setView}
+            contentClassName={PANEL_COLUMN}
             // The folder scopes both views: it sits at the view row's end, so the header keeps the repository whole in a
             // narrow group (R1 asks for it in the header line; there it cut the repository to "/atlas-api" at 360px).
             trailing={
@@ -273,7 +276,7 @@ function Picker(props: {
             </div>
           )}
           {(error || refusal?.view === view) && (
-            <div className="flex shrink-0 flex-col gap-2 px-pane pt-1 pb-2">
+            <div className={cn("flex shrink-0 flex-col gap-2 px-pane pt-1 pb-2", PANEL_COLUMN)}>
               {error && <ViewNotice tone="error">{error}</ViewNotice>}
               {refusal?.view === view && (
                 <ViewNotice
@@ -348,22 +351,25 @@ function Picker(props: {
                   </div>
                 )}
                 {ready && !available && (
-                  <section aria-label="Pull requests are not available" className="octo-in-card mb-3 flex flex-col gap-2 rounded-md bg-raised p-4">
-                    <h2 className="text-heading text-fg">{unavailableTitle(ready.reason)}</h2>
-                    <p className="text-sm text-fg-2">{ready.message ?? "Pull requests cannot be listed for this project."}</p>
-                    {ready.command && (
-                      <>
-                        <p className="text-xs text-fg-3">Run this in a terminal, then come back and reload:</p>
-                        <CommandLine command={ghInstallCommand(ready.command, navigator.platform).command} />
-                        <OtherSystems command={ready.command} />
-                      </>
-                    )}
-                    <div>
+                  <ViewNotice
+                    form="block"
+                    className="mb-3"
+                    title={unavailableTitle(ready.reason)}
+                    actions={
                       <Button size="sm" variant="secondary" onClick={reload}>
                         Reload
                       </Button>
-                    </div>
-                  </section>
+                    }
+                  >
+                    <p>{ready.message ?? "Pull requests cannot be listed for this project."}</p>
+                    {ready.command && (
+                      <div className="mt-2 flex flex-col gap-1.5">
+                        <p className="text-xs text-fg-3">Run this in a terminal, then come back and reload:</p>
+                        <CommandLine command={ghInstallCommand(ready.command, navigator.platform).command} />
+                        <OtherSystems command={ready.command} />
+                      </div>
+                    )}
+                  </ViewNotice>
                 )}
                 {/* B2: with reviews in progress listed, "nothing open" says so above them (it is about the pull requests). */}
                 {available && shown.length === 0 && !typed && resume.length > 0 && <p className="px-2 pb-2 text-sm text-fg-3">{emptyText}</p>}
@@ -383,7 +389,7 @@ function Picker(props: {
                   )}
                   {resume.length > 0 && (
                     <section aria-label="Reviews in progress" className="flex flex-col gap-1.5 pb-2">
-                      <h2 className="flex h-ctl-md items-center px-2 text-xs font-medium text-fg-3">Reviews in progress</h2>
+                      <SectionHeader inset>Reviews in progress</SectionHeader>
                       {resume.map((r) => (
                         <OpenRow key={r.id} r={r} now={now} onOpen={() => props.onOpen(r.id)} />
                       ))}

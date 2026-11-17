@@ -4,6 +4,7 @@ import { cn } from "../../lib/cn";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { kindLabel, kindLetter, splitPath, type DiffLayout } from "../../lib/v7/changes";
 import { Button, IconButton } from "../primitives/Button";
+import { EmptyState } from "../primitives/EmptyState";
 import { IconButton as GoToButton } from "../primitives/IconButton";
 import { FloatRoom } from "../primitives/floatRoom";
 import { IconMenu } from "../primitives/IconMenu";
@@ -157,24 +158,28 @@ export function DiffPanel(props: {
             {...(props.onAddComment ? { onAddComment: props.onAddComment } : {})}
           />
         ) : props.diff.status === "ready" ? (
-          <Centered>
-            <p className="text-fg-2">{props.diff.unavailable}</p>
-            <p className="text-xs text-fg-3">Only line counts are shown, but revert still works because the earlier content was kept.</p>
-          </Centered>
+          <EmptyState title={props.diff.unavailable}>Only line counts are shown, but revert still works because the earlier content was kept.</EmptyState>
         ) : props.diff.status === "error" ? (
-          <Centered>
-            <p role="alert" className="text-err">
-              The diff did not load: {props.diff.message}.
-            </p>
-            <Button size="sm" variant="secondary" onClick={props.onRetry}>
-              Retry
-            </Button>
-          </Centered>
+          <EmptyState
+            title="The diff did not load"
+            tone="err"
+            actions={
+              <Button size="sm" variant="secondary" onClick={props.onRetry}>
+                Retry
+              </Button>
+            }
+          >
+            {props.diff.message}.
+          </EmptyState>
         ) : (
           loading && (
-            <Centered>
-              <Spinner />
-            </Centered>
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div aria-hidden className="flex-[42]" />
+              <div className="flex justify-center">
+                <Spinner />
+              </div>
+              <div aria-hidden className="flex-[58]" />
+            </div>
           )
         )}
         <FloatRoom />
@@ -187,14 +192,10 @@ function Banner({ tone, action, children }: { tone: "ok" | "err"; action?: React
   return (
     <div
       role={tone === "err" ? "alert" : "status"}
-      className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-3 py-1 text-sm"
+      className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-1.5 text-sm"
     >
       <span className={cn("min-w-0 flex-1", tone === "ok" ? "text-ok" : "text-err")}>{children}</span>
       {action}
     </div>
   );
-}
-
-function Centered({ children }: { children: ReactNode }) {
-  return <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-sm">{children}</div>;
 }

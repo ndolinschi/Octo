@@ -78,8 +78,8 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
   // the rows sit in the frame's list inset.
   return (
     <section aria-label="Local branches" className="flex h-full min-h-0 flex-col">
-      <PanelFilters className={cn("py-1", PANEL_COLUMN)}>
-        <span className="shrink-0 px-2 text-xs font-medium text-fg-3">{rows.length === 1 && !api.branches ? "Current branch" : "Branches"}</span>
+      <PanelFilters className={PANEL_COLUMN}>
+        <span className="shrink-0 px-2 text-xs text-fg-3">{rows.length === 1 && !api.branches ? "Current branch" : "Branches"}</span>
         {api.branches && (
           <span className="ml-auto flex max-w-[65%] min-w-0 items-center">
             <TextMenu

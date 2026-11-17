@@ -4,6 +4,7 @@ import { earlierRequestLabel } from "../../lib/v7/changes";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { Panel, PanelEmpty } from "../primitives/Panel";
+import { PanelPurpose } from "../shared/PanelPurpose";
 import { ChangesView, type ChangesViewProps } from "./ChangesView";
 import type { ChangesApi } from "./useChanges";
 import { useV7Events } from "./useV7Events";
@@ -20,7 +21,7 @@ export function ChangesTab(props: ChangesTabProps) {
   const { bridge } = useApp();
   if (!bridge.listChanges || !bridge.getChange || !bridge.revertChange) {
     return (
-      <Panel name="changes" title="Changes">
+      <Panel name="changes" title="Changes" lead={<PanelPurpose tool="changes" />}>
         <PanelEmpty title="Changes aren't available">
           This version of Octo&apos;s local service does not record changes. Update it to review what agents changed.
         </PanelEmpty>

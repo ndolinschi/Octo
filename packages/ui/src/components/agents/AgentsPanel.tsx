@@ -117,6 +117,7 @@ export function AgentsPanel() {
         title="Agents"
         lead={<PanelPurpose tool="agents" />}
         meta={groups.running.length > 0 ? `${groups.running.length} running` : undefined}
+        column="measure"
       >
         {empty ? (
           <PanelEmpty

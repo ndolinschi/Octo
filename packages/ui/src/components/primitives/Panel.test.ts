@@ -3,6 +3,8 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { DetailHeader, FormActions, Panel, PanelEmpty, PanelFilters } from "./Panel";
+import { ViewTabs } from "./ViewTabs";
+import { PANEL_COLUMN } from "../../lib/panelColumn";
 
 const html = (node: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(node);
 
@@ -26,6 +28,33 @@ test("a panel draws header, filters, views, body and footer in that order", () =
   assert.ok(at("data-panel-body") < at("data-panel-footer"));
   assert.match(out, /data-panel="t"/);
   assert.match(out, /Things/);
+});
+
+test("column='measure' caps panel header, notice, and footer to PANEL_COLUMN while ViewTabs hairline stays full-width", () => {
+  const out = html(
+    createElement(Panel, {
+      name: "m",
+      title: "Measured",
+      column: "measure",
+      notice: createElement("p", null, "Warn"),
+      footer: "Foot",
+      views: createElement(ViewTabs, {
+        label: "Views",
+        options: [{ id: "a", label: "Alpha" }],
+        value: "a",
+        onChange: () => undefined,
+        contentClassName: PANEL_COLUMN,
+      }),
+      children: "BODY",
+    }),
+  );
+  assert.ok(out.includes(`max-w-[calc(var(--spacing-measure)+16px)]`));
+  const headerTag = /<header data-panel-header[^>]*>/.exec(out)?.[0] ?? "";
+  assert.ok(headerTag.includes(PANEL_COLUMN));
+  const footerTag = /<p data-panel-footer[^>]*>/.exec(out)?.[0] ?? "";
+  assert.ok(footerTag.includes(PANEL_COLUMN));
+  const tabsOuter = /<div class="box-content[^"]*border-b border-line[^"]*"/.exec(out)?.[0] ?? "";
+  assert.ok(!tabsOuter.includes(PANEL_COLUMN));
 });
 
 test("without actions, filters and footer the panel has only a header and a body", () => {
