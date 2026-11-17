@@ -13,6 +13,7 @@ export type SlashDeps = {
   mode: ComposerMode | null | undefined;
   openModel(query: string): void;
   openTool(tool: "review" | "memory"): void;
+  toolDisabled?: ((tool: "review" | "memory") => boolean) | undefined;
   openSettings(): void;
   push: ((note: NoteInput) => void) | undefined;
   rewindLast: (() => void) | undefined;
@@ -60,12 +61,14 @@ export async function runSlash(d: SlashDeps, name: string, args: string): Promis
         return true;
       }
       case "review":
+        if (d.toolDisabled?.("review")) return false;
         d.openTool("review");
         return true;
       case "context":
         push?.({ kind: "context" });
         return true;
       case "memory":
+        if (d.toolDisabled?.("memory")) return false;
         if (d.memoryBlocked) push?.({ kind: "info", text: "Memory is disabled for this project. Enable it in Settings -> Memory." });
         else d.openTool("memory");
         return true;

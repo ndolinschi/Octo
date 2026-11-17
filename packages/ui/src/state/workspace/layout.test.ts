@@ -36,6 +36,7 @@ import {
   besideChat,
   sideGroup,
   split,
+  terminalTab,
   type Group,
   type Layout,
   toolTab,
@@ -44,6 +45,7 @@ import {
 
 const FILES = toolTab("files");
 const BROWSER = toolTab("browser");
+const TERMINAL = toolTab("terminal");
 const PROCESSES = toolTab("processes");
 const NOTES = toolTab("notes");
 const AGENTS = toolTab("agents");
@@ -84,11 +86,27 @@ function prng(seed: number) {
 }
 
 test("tab ids: constructors and parseTabId round trip; foreign strings are rejected", () => {
-  const all = [CHAT, FILES, BROWSER, PROCESSES, NOTES, AGENTS, DETAILS, agentTab("a1"), browserTab("b1"), f("src/a.ts"), f("")];
+  const all = [CHAT, FILES, BROWSER, TERMINAL, PROCESSES, NOTES, AGENTS, DETAILS, agentTab("a1"), browserTab("b1"), terminalTab("t1"), f("src/a.ts"), f("")];
   for (const id of all) assert.equal(parseTabId(id), id, id);
   assert.equal(parseTabId(agentTab("x")), "agent:x");
   assert.equal(parseTabId(browserTab("b1")), "browser:b1");
-  for (const foreign of ["", "chat ", "Chat", "tools", "agent:", "browser:", "agent", "file:", "file:nosep", "file:a/b", "x", "files:", "details2"]) {
+  assert.equal(parseTabId(terminalTab("t1")), "terminal:t1");
+  for (const foreign of [
+    "",
+    "chat ",
+    "Chat",
+    "tools",
+    "agent:",
+    "browser:",
+    "terminal:",
+    "agent",
+    "file:",
+    "file:nosep",
+    "file:a/b",
+    "x",
+    "files:",
+    "details2",
+  ]) {
     assert.equal(parseTabId(foreign), null, JSON.stringify(foreign));
   }
   assert.equal(parseTabId(null), null);
@@ -100,15 +118,20 @@ test("tab ids: parse, build and the Chat rule", () => {
   assert.deepEqual(parseTab(CHAT), { kind: "chat" });
   assert.deepEqual(parseTab("files"), { kind: "tool", tool: "files" });
   assert.deepEqual(parseTab("browser"), { kind: "tool", tool: "browser" });
+  assert.deepEqual(parseTab("terminal"), { kind: "tool", tool: "terminal" });
   assert.deepEqual(parseTab(browserTab("b1")), { kind: "browser", browserId: "b1" });
+  assert.deepEqual(parseTab(terminalTab("t1")), { kind: "terminal", terminalId: "t1" });
   assert.deepEqual(parseTab(agentTab("a1")), { kind: "agent", agentId: "a1" });
   assert.deepEqual(parseTab(f("src/a.ts")), { kind: "file", key: fileKey("proj", "src/a.ts") });
-  for (const bad of ["", "agent:", "browser:", "file:no-nul", "tools", "Chat", "agent"]) assert.equal(parseTab(bad), null, bad);
+  for (const bad of ["", "agent:", "browser:", "terminal:", "file:no-nul", "tools", "Chat", "agent"]) assert.equal(parseTab(bad), null, bad);
   assert.equal(closable(CHAT), false);
   assert.equal(closable(FILES), true);
   assert.equal(closable(BROWSER), true);
+  assert.equal(closable(TERMINAL), true);
   assert.equal(closable(browserTab("b1")), true);
+  assert.equal(closable(terminalTab("t1")), true);
   assert.equal(shownTool(layoutOf([group("a", [CHAT], 0.5), group("b", [browserTab("b1")], 0.5)], "b")), "browser");
+  assert.equal(shownTool(layoutOf([group("a", [CHAT], 0.5), group("b", [terminalTab("t1")], 0.5)], "b")), "terminal");
 });
 
 test("a fresh layout is one Chat group", () => {

@@ -2,7 +2,9 @@ import { sessionRoot } from "@octo/agent-client";
 import { lazy, Suspense, useCallback, useState } from "react";
 import { resolveSessionRoute } from "../../lib/route";
 import { sessionTabMode } from "../../lib/sessions/current";
+import { isTabEnabled } from "../../lib/tabFlags";
 import { SessionScope } from "../../state/session";
+import { useTabFlags } from "../../state/tabFlags";
 import { FileViewSkeleton } from "../files/EditorSkeleton";
 import { useProject } from "../../state/project";
 import { FloatRoomContext } from "../primitives/floatRoom";
@@ -80,6 +82,8 @@ const loadReviewCommands = () => import("../commands/kit").then((m) => m.reviewC
 const RunTab = lazy(() => import("../commands/RunTab"));
 /** Browser + Design Mode (singleton `tool:browser` and multi-instance `browser:<id>`): its own chunk. */
 const BrowserTab = lazy(() => import("../browser/BrowserTab"));
+/** Interactive PTY shell (singleton `tool:terminal` and multi-instance `terminal:<id>`): its own chunk. */
+const TerminalTab = lazy(() => import("../terminal/TerminalTab"));
 /** Working processes, dev servers and background workers (`tool:processes`): its own chunk. */
 const ProcessesTab = lazy(() => import("../processes/ProcessesTab"));
 /** The side question (decision 40). */
@@ -90,6 +94,7 @@ const UsagePanel = lazy(() => import("../usage/UsagePanel").then((m) => ({ defau
 /** The view behind a tab. The Files tab is the file view with no file open yet. */
 export function TabView({ tab }: { tab: TabId }) {
   const { project } = useProject();
+  const tabFlags = useTabFlags();
   const ref = parseTab(tab);
   if (!ref || !project) return null;
   switch (ref.kind) {
@@ -112,16 +117,31 @@ export function TabView({ tab }: { tab: TabId }) {
         </Suspense>
       );
     case "browser":
+      if (!tabFlags.browser) return null;
       return (
         <Suspense fallback={null}>
           <BrowserTab tab={tab} browserId={ref.browserId} />
         </Suspense>
       );
+    case "terminal":
+      if (!tabFlags.terminal) return null;
+      return (
+        <Suspense fallback={null}>
+          <TerminalTab tab={tab} terminalId={ref.terminalId} />
+        </Suspense>
+      );
     case "tool":
+      if (!isTabEnabled(tabFlags, ref.tool, { memoryBlocked: project.memory?.auto_memory === "blocked" })) return null;
       if (ref.tool === "browser")
         return (
           <Suspense fallback={null}>
             <BrowserTab tab={tab} browserId="default" />
+          </Suspense>
+        );
+      if (ref.tool === "terminal")
+        return (
+          <Suspense fallback={null}>
+            <TerminalTab tab={tab} terminalId="default" />
           </Suspense>
         );
       if (ref.tool === "processes")

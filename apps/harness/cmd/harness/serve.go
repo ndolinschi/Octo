@@ -42,6 +42,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/review"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/settings"
+	"github.com/ndolinschi/Octo/apps/harness/internal/terminal"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/local"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/remote"
@@ -326,6 +327,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	}
 
 	lspMgr := lsp.NewManager(lsp.Options{})
+	termMgr := terminal.NewManager(terminal.Options{})
 	// PR review (RV1): the `gh` adapter; worktrees of finished reviews are swept at start and every 6 hours.
 	reviews := review.New(store, hub, review.Options{Host: codehost.NewGH()})
 	go reviews.Run(ctx, 6*time.Hour)
@@ -366,7 +368,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	files := project.NewFiles(store, hub)
 	bridgeOpts := []bridge.Option{
 		bridge.WithReviews(reviews), bridge.WithCommands(cmds), bridge.WithBrowserProxy(browserMgr), bridge.WithWorkerProcesses(orch),
-		bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo), bridge.WithFeatures(featureStore),
+		bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithTerminals(termMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo), bridge.WithFeatures(featureStore),
 		bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
 		bridge.WithDiagnostics(func() any {
 			ok, why := builtin()
@@ -412,6 +414,9 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	}
 	if err := lspMgr.Shutdown(shutdownCtx); err != nil {
 		slog.Error("language server shutdown", "err", err)
+	}
+	if err := termMgr.Shutdown(shutdownCtx); err != nil {
+		slog.Error("terminal shutdown", "err", err)
 	}
 	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err

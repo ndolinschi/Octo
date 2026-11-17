@@ -30,10 +30,19 @@ export const NEW_COMMAND: OctoSlashCommand = {
   endpoint: "ui:new",
 };
 
-/** The Octo commands of the menu and of `octoCommandFor`: the harness's (or the fallback) and `/new`. */
-export function octoCommands(cmds: SlashCommands | null): OctoSlashCommand[] {
+/** Slash command names suppressed when their corresponding UI tool tabs (`memory`, `review`) are disabled. */
+export function disabledSlashCommands(flags: { memory: boolean; review: boolean }): ReadonlySet<string> {
+  const out = new Set<string>();
+  if (!flags.memory) out.add("memory");
+  if (!flags.review) out.add("review");
+  return out;
+}
+
+/** The Octo commands of the menu and of `octoCommandFor`: the harness's (or the fallback) and `/new`, minus UI-disabled ones. */
+export function octoCommands(cmds: SlashCommands | null, disabled?: ReadonlySet<string>): OctoSlashCommand[] {
   const list = cmds?.octo ?? OCTO_FALLBACK;
-  return list.some((c) => c.name === NEW_COMMAND.name) ? list : [...list, NEW_COMMAND];
+  const all = list.some((c) => c.name === NEW_COMMAND.name) ? list : [...list, NEW_COMMAND];
+  return disabled && disabled.size > 0 ? all.filter((c) => !disabled.has(c.name)) : all;
 }
 
 /**
@@ -78,9 +87,9 @@ export function parseSlash(text: string): { name: string; args: string } | null 
 }
 
 /** An Octo command named by `text` that the UI runs itself instead of sending (null for an agent's command or plain text). */
-export function octoCommandFor(text: string, cmds: SlashCommands | null): { command: OctoSlashCommand; args: string } | null {
+export function octoCommandFor(text: string, cmds: SlashCommands | null, disabled?: ReadonlySet<string>): { command: OctoSlashCommand; args: string } | null {
   const parsed = parseSlash(text);
   if (!parsed) return null;
-  const command = octoCommands(cmds).find((c) => c.name === parsed.name);
+  const command = octoCommands(cmds, disabled).find((c) => c.name === parsed.name);
   return command?.available ? { command, args: parsed.args } : null;
 }

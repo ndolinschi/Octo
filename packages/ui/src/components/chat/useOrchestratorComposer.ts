@@ -192,7 +192,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
               applySession({ kind: "current", id: updated.id, previous: currentDefaultId });
             });
           },
-      onShowAll: () => ws.openTool("sessions"),
+      ...(ws.toolEnabled("sessions") ? { onShowAll: () => ws.openTool("sessions") } : {}),
       ...(bridge.moveSessionToWorktree && canMoveToWorktree(activeSession)
         ? {
             worktree: {

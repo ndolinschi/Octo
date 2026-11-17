@@ -1,7 +1,8 @@
 import { emptyProjectState, withSessions, type ProjectState } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { browserTab, sessionTab } from "../../state/workspace/layout";
+import { browserTab, sessionTab, terminalTab, toolTab } from "../../state/workspace/layout";
+import { GLYPH } from "../primitives/glyphs";
 import { tabInfo } from "./tabInfo";
 
 function stateWithSession(over: Partial<ProjectState["sessions"]["list"][number]> = {}): ProjectState {
@@ -67,4 +68,34 @@ test("tabInfo leaves browser page titles untruncated so Tab CSS handles one clea
   assert.equal(info.label, "Atlas Console — Local Preview");
   assert.equal(info.detail, "localhost:5173");
   assert.equal(info.name, "Atlas Console — Local Preview — http://localhost:5173/");
+});
+
+test("tabInfo formats singleton and multi-instance terminal tabs with shell and folder metadata", () => {
+  const singleton = tabInfo(toolTab("terminal"), {
+    state: emptyProjectState(),
+    projectName: "Atlas API",
+    orchestratorId: "agt_1",
+    file: () => undefined,
+    comments: () => 0,
+    runStatus: () => null,
+    terminal: () => ({ shell: "zsh", folder: "atlas-api", title: "" }),
+  });
+  assert.equal(singleton.label, "zsh");
+  assert.equal(singleton.detail, "atlas-api");
+  assert.equal(singleton.icon, GLYPH.terminal);
+  assert.equal(singleton.glyph, null);
+
+  const extra = tabInfo(terminalTab("t2"), {
+    state: emptyProjectState(),
+    projectName: "Atlas API",
+    orchestratorId: "agt_1",
+    file: () => undefined,
+    comments: () => 0,
+    runStatus: () => null,
+    terminal: () => ({ shell: "", folder: "atlas-web", title: "" }),
+  });
+  assert.equal(extra.label, "Terminal");
+  assert.equal(extra.detail, "atlas-web");
+  assert.equal(extra.icon, GLYPH.terminal);
+  assert.equal(extra.glyph, null);
 });

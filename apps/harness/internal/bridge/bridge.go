@@ -20,20 +20,21 @@ const (
 
 // Server is the HTTP + SSE face of the project service.
 type Server struct {
-	svc      *project.Service
-	notes    *project.Notes
-	files    *project.Files
-	plugins  PluginSource
-	langs    LanguageServers
-	lsp      LSPSessions
-	limits   LimitSource
-	router   RouterInfo
-	features FeatureSource
-	mcp      http.Handler
-	reviews  *review.Service
-	commands *commands.Service
-	browser  BrowserProxy
-	workers  WorkerProcesses
+	svc       *project.Service
+	notes     *project.Notes
+	files     *project.Files
+	plugins   PluginSource
+	langs     LanguageServers
+	lsp       LSPSessions
+	limits    LimitSource
+	router    RouterInfo
+	features  FeatureSource
+	mcp       http.Handler
+	reviews   *review.Service
+	commands  *commands.Service
+	browser   BrowserProxy
+	workers   WorkerProcesses
+	terminals TerminalSessions
 
 	settings         SettingsStore
 	settingsLoopback bool
@@ -244,6 +245,7 @@ func (s *Server) routes() *http.ServeMux {
 	s.commandRoutes(mux)
 	s.browserRoutes(mux)
 	s.processRoutes(mux)
+	s.terminalRoutes(mux)
 	for _, m := range s.mounts {
 		mux.Handle(m.pattern, m.h)
 	}

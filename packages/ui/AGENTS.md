@@ -34,7 +34,7 @@ node packages/ui/scripts/ui-tour.mjs --url http://localhost:1420 --out /tmp/tour
 
 Every UI script takes `--browser chromium|webkit` (`scripts/browser.mjs`; WebKit is Playwright's Linux build, not Safari).
 
-Demo knobs: `?demo=one|many|empty`, `?lsp=fail-once|slow|exit`, `?plugins=none`, `?claude=empty|loggedout`, `?refresh=fail|none`, `?providers=none|owner` (the owner's live set of twelve), `?router=on`, `?remote=on|missing`. Without `?demo` the app uses the
+Demo and tab-flag knobs: `?demo=one|many|empty`, `?lsp=fail-once|slow|exit`, `?plugins=none`, `?claude=empty|loggedout`, `?refresh=fail|none`, `?providers=none|owner` (the owner's live set of twelve), `?router=on`, `?remote=on|missing`, `?tabs=all|none|<comma-list>` (e.g. `?tabs=sessions,memory` or `?tabs=all,-notes`). By default (`DEFAULT_TAB_FLAGS` in `src/lib/tabFlags.ts`), the `sessions` (dock tool tab + top-bar `[data-sessions-button]` picker), `agents`, `notes`, `details`, `usage`, and `memory` tool tabs are `false`, while `files`, `browser`, `terminal`, `processes`, `changes`, `review`, and `side` — plus left-sidebar `SessionTree`, `/new`, and `session:<id>` / `agent:<id>` tabs — are `true`; the Go harness and `@octo/agent-client` are unaffected. Without `?demo` the app uses the
 harness at `VITE_HARNESS_BRIDGE_URL` (default `http://127.0.0.1:8790`).
 
 ## Rules that are easy to break

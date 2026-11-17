@@ -50,6 +50,8 @@ var rules = []rule{
 	{"POST", "/v1/projects/*/runs/**", ClassDeny},
 	{"*", "/v1/projects/*/processes", ClassDeny},
 	{"*", "/v1/projects/*/processes/**", ClassDeny},
+	{"*", "/v1/projects/*/terminals", ClassDeny},
+	{"*", "/v1/projects/*/terminals/**", ClassDeny},
 	{"POST", "/v1/projects/*/complete", ClassDeny},
 	{"PUT", "/v1/projects/*/files/content", ClassDeny},
 	{"POST", "/v1/projects/*/changes/*/revert", ClassDeny},

@@ -12,6 +12,7 @@ import { useApp } from "../../../state/app";
 import { useCode } from "../../../state/code";
 import { useOptionalComments } from "../../../state/comments";
 import { getBrowserTabPins, getBrowserTabState, useBrowserTabsRevision } from "../../../state/browserTabs";
+import { getTerminalTabState, useTerminalTabsRevision } from "../../../state/terminalTabs";
 import { useProject } from "../../../state/project";
 import { useRunsSelector, useRunsStore } from "../../../state/projectRuns";
 import { StatusSlotsContext } from "../../../state/statusSlots";
@@ -32,7 +33,21 @@ import { RemoteIndicator } from "../../status/RemoteIndicator";
 import { tabInfo, TOOL_TABS } from "../tabInfo";
 
 /** The panels the phone reaches from "⋯", in this order (direction 7). */
-const PANELS: readonly ToolTab[] = ["files", "browser", "processes", "changes", "sessions", "memory", "notes", "usage", "agents", "details", "side", "review"];
+const PANELS: readonly ToolTab[] = [
+  "files",
+  "browser",
+  "terminal",
+  "processes",
+  "changes",
+  "sessions",
+  "memory",
+  "notes",
+  "usage",
+  "agents",
+  "details",
+  "side",
+  "review",
+];
 
 /**
  * The phone header's "⋯" (direction 7): everything the desktop's top row and status bar carry, as one bottom sheet of 44px
@@ -46,6 +61,7 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
   const counts = useOptionalComments()?.counts;
   const { state, project, projectId, applySession } = useProject();
   useBrowserTabsRevision(projectId);
+  useTerminalTabsRevision(projectId);
   const { bridge, projects } = useApp();
   const activity = useActivity();
   // Remote access: on a paired device the commands and project settings are the computer's; sends need the permission.
@@ -74,6 +90,7 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
       const b = getBrowserTabState(projectId, id);
       return { url: b.url, title: b.title, pins: getBrowserTabPins(projectId, id) };
     },
+    terminal: (id: string) => getTerminalTabState(projectId, id),
   };
   // The action runs once the sheet has given focus back to its opener (which would otherwise take the focus, and the dock's
   // shown group, back to the conversation).
@@ -161,23 +178,30 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
             />
           </Group>
         )}
-        <Group title="Panels">
-          <div className="grid grid-cols-2 gap-1">
-            {PANELS.filter((tool) => !(project?.memory?.auto_memory === "blocked" && tool === "memory")).map((tool) => {
-              const t = TOOL_TABS[tool];
-              return (
-                <ListRow
-                  key={tool}
-                  size="lg"
-                  selected={props.active === toolTab(tool)}
-                  leading={<Glyph icon={t.icon} size={16} />}
-                  title={t.label}
-                  onClick={then(() => ws.openTool(tool))}
-                />
-              );
-            })}
-          </div>
-        </Group>
+        {(() => {
+          const enabledPanels = PANELS.filter((tool) => ws.toolEnabled(tool));
+          return (
+            enabledPanels.length > 0 && (
+              <Group title="Panels">
+                <div className="grid grid-cols-2 gap-1">
+                  {enabledPanels.map((tool) => {
+                    const t = TOOL_TABS[tool];
+                    return (
+                      <ListRow
+                        key={tool}
+                        size="lg"
+                        selected={props.active === toolTab(tool)}
+                        leading={<Glyph icon={t.icon} size={16} />}
+                        title={t.label}
+                        onClick={then(() => ws.openTool(tool))}
+                      />
+                    );
+                  })}
+                </div>
+              </Group>
+            )
+          );
+        })()}
         <StatusSlotsContext.Provider value={slots}>
           <Group title="Status">
             <div data-phone-status className="flex flex-col">

@@ -16,6 +16,7 @@ import { NavProvider, useNav } from "../state/nav";
 import { ProjectProvider } from "../state/project";
 import { RequestsProvider } from "../state/requests";
 import { ShellContext } from "../state/shell";
+import { useTabFlags } from "../state/tabFlags";
 import { Presence } from "../components/primitives/Presence";
 import type { PaletteAction } from "../components/shell/CommandPalette";
 import { Panel } from "../components/shell/Panel";
@@ -88,6 +89,7 @@ function Shell() {
   const { health, projects, bridge, refreshProjects, demo } = useApp();
   const host = useHost();
   const nav = useNav();
+  const tabFlags = useTabFlags();
   // Leaving a project with unsaved editor changes asks first.
   const { route, pending, proceed, stay } = useGuardedRoute(
     (next, current) => current.projectId !== null && next.projectId !== current.projectId && nav.unsavedCount() > 0,
@@ -339,6 +341,7 @@ function Shell() {
     unseen,
     onNewProject: newProject,
     onSearch: openPalette,
+    showReview: tabFlags.review,
     onReview: () => {
       setDrawerOpen(false);
       nav.workspace()?.openTool("review");
@@ -398,7 +401,7 @@ function Shell() {
             >
               {workspace && route.projectId ? (
                 <ProjectProvider key={route.projectId} projectId={route.projectId}>
-                  {demo && window.location.hash.endsWith("/memory") ? (
+                  {demo && tabFlags.memory && window.location.hash.endsWith("/memory") ? (
                     <Suspense fallback={null}>
                       <MemoryRoute />
                     </Suspense>

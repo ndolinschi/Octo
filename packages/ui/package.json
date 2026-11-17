@@ -21,6 +21,8 @@
   },
   "dependencies": {
     "@octo/agent-client": "workspace:*",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.71.0",
     "monaco-editor": "0.57.0",
@@ -34,7 +36,7 @@
   "devDependencies": {
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
-    "typescript": "~6.0.3",
-    "tsx": "^4.20.5"
+    "tsx": "^4.20.5",
+    "typescript": "~6.0.3"
   }
 }

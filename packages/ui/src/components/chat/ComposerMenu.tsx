@@ -187,12 +187,12 @@ export const ComposerMenu = forwardRef<
       out.push({ id: "comments", group: "Comments", label, hint: "Open", icon: MessageSquare, match: label, pick: { run: props.onOpenComments } });
     }
     if (ws) {
-      const actions: [string, string, LucideIcon, () => void][] = [
+      const actions: (readonly [string, string, LucideIcon, () => void])[] = [
         ["settings", "Project settings", GLYPH.settings, ws.openSettings],
-        ["agents", "Show agents", GLYPH.agents, () => ws.openTool("agents")],
-        ["notes", "Show notes", GLYPH.notes, () => ws.openTool("notes")],
-        ["files", "Show files", GLYPH.files, () => ws.openTool("files")],
-        ["details", "Show project details", GLYPH.details, () => ws.openTool("details")],
+        ...(ws.toolEnabled("agents") ? ([["agents", "Show agents", GLYPH.agents, () => ws.openTool("agents")]] as const) : []),
+        ...(ws.toolEnabled("notes") ? ([["notes", "Show notes", GLYPH.notes, () => ws.openTool("notes")]] as const) : []),
+        ...(ws.toolEnabled("files") ? ([["files", "Show files", GLYPH.files, () => ws.openTool("files")]] as const) : []),
+        ...(ws.toolEnabled("details") ? ([["details", "Show project details", GLYPH.details, () => ws.openTool("details")]] as const) : []),
       ];
       for (const [id, label, icon, run] of actions) out.push({ id: `action:${id}`, group: "Project", label, hint: "Run", icon, match: label, pick: { run } });
     }

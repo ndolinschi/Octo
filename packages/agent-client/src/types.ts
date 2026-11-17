@@ -1685,3 +1685,30 @@ export type BrowserProxySession = {
   target_url: string;
   nonce: string;
 };
+
+/** Options for `POST /v1/projects/{pid}/terminals`. */
+export type TerminalOpenOptions = {
+  folder?: string;
+  cols?: number;
+  rows?: number;
+};
+
+/** Exit payload of an interactive PTY session (`event: exit`). */
+export type TerminalExit = {
+  code: number;
+  reason?: string;
+};
+
+/** Live interactive PTY session (`POST /v1/projects/{pid}/terminals` + SSE `/events`). */
+export type TerminalSession = {
+  sessionId: string;
+  folder: string;
+  cwd: string;
+  shell: string;
+  pid: number;
+  write(data: string): Promise<void>;
+  resize(cols: number, rows: number): Promise<void>;
+  onOutput(cb: (data: Uint8Array) => void): () => void;
+  onExit(cb: (info: TerminalExit) => void): () => void;
+  close(): Promise<void>;
+};

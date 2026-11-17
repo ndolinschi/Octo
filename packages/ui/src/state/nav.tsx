@@ -19,6 +19,7 @@ export type PaletteWorkspace = {
   layout: Layout;
   narrow: boolean;
   memoryBlocked?: boolean;
+  toolEnabled?(tool: ToolTab): boolean;
   openTool(tool: ToolTab): void;
   openPicker(): void;
   canMoveToOtherSide(tab: TabId): boolean;

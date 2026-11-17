@@ -38,6 +38,7 @@ const TOOLS: Record<ToolTab, { label: string; icon: LucideIcon; title: string }>
   notes: tool("Notes", GLYPH.notes, TOOL_PURPOSE.notes),
   files: tool("Files", GLYPH.files, TOOL_PURPOSE.files),
   browser: tool("Browser", GLYPH.browser, TOOL_PURPOSE.browser),
+  terminal: tool("Terminal", GLYPH.terminal, TOOL_PURPOSE.terminal),
   processes: tool("Processes", GLYPH.processes, TOOL_PURPOSE.processes),
   details: tool("Details", GLYPH.details, TOOL_PURPOSE.details),
   usage: tool("Usage", GLYPH.usage, TOOL_PURPOSE.usage),
@@ -73,6 +74,25 @@ function browserTabInfo(b?: { url: string; title: string; pins: number }): TabIn
     status: null,
     glyph: null,
     comments: b?.pins ?? 0,
+  };
+}
+
+function terminalTabInfo(t?: { shell: string; folder: string; title: string }): TabInfo {
+  const shell = t?.shell.trim() || "Terminal";
+  const folder = t?.folder.trim() ?? "";
+  const custom = t?.title.trim() ?? "";
+  const label = custom || shell;
+  const detail = !custom && folder ? folder : undefined;
+  const full = detail ? `${label} · ${detail}` : label;
+  return {
+    label,
+    ...(detail ? { detail } : {}),
+    name: full,
+    title: `Terminal: ${full}`,
+    icon: GLYPH.terminal,
+    status: null,
+    glyph: null,
+    comments: 0,
   };
 }
 
@@ -121,6 +141,8 @@ export function tabInfo(
     runStatus(name: string): "running" | "failed" | null;
     /** Browser tab metadata (URL, document title, pending Design Mode pin count). */
     browser?(browserId: string): { url: string; title: string; pins: number } | undefined;
+    /** Terminal tab metadata (shell name, folder label, optional title). */
+    terminal?(terminalId: string): { shell: string; folder: string; title: string } | undefined;
   },
 ): TabInfo {
   const ref = parseTab(tab);
@@ -131,9 +153,14 @@ export function tabInfo(
       const b = ctx.browser?.("default");
       if (b && (b.url || b.title || b.pins > 0)) return browserTabInfo(b);
     }
+    if (ref.tool === "terminal") {
+      const t = ctx.terminal?.("default");
+      if (t && (t.shell || t.folder || t.title)) return terminalTabInfo(t);
+    }
     return { ...TOOLS[ref.tool], status: null, glyph: null, comments: 0 };
   }
   if (ref.kind === "browser") return browserTabInfo(ctx.browser?.(ref.browserId));
+  if (ref.kind === "terminal") return terminalTabInfo(ctx.terminal?.(ref.terminalId));
   if (ref.kind === "agent") {
     const agent = ctx.state.agents[ref.agentId];
     // Decision 63: a sub-agent's tab is its task title (else the first words of its task), the role in the tooltip.

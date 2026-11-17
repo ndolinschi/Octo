@@ -29,17 +29,22 @@ All under `/v1/projects/{pid}`. Errors: `{ "error": { "code", "message" } }`.
 | GET | `/runs/{rid}` | `Run` with `tail` |
 | POST | `/runs/{rid}/stop?force=` | `{ force?: boolean }` → `Run` once it has ended (`force=1`/`true` sends immediate `SIGKILL`) |
 | POST | `/runs/{rid}/restart` | Stops `rid` if still running, then spawns a fresh run with the same `name`, `command`, `cwd`, `review_id` → 201 `{ run_id, run: Run }` |
-| GET | `/processes` | `{ processes: WorkerProcess[] }` — active language servers (`lsp:<id>`) and ACP agent subprocesses (`acp:<session_id>`) |
+| GET | `/processes` | `{ processes: WorkerProcess[] }` — active interactive PTY terminals (`term:<id>`), language servers (`lsp:<id>`), and ACP agent subprocesses (`acp:<session_id>`) |
 | POST | `/processes/{procid}/stop` | Stops/kills a worker subprocess → 204 No Content |
 | POST | `/processes/{procid}/restart` | Restarts a worker subprocess → `{ process: WorkerProcess \| null }` |
+| POST | `/terminals` | `{ folder?, cols?, rows? }` → 201 `{ session_id, folder, cwd, shell, pid }` (spawns an interactive PTY shell in the chosen project folder; denied on Remote access) |
+| GET | `/terminals/{tid}/events` | SSE stream (`?token=` supported for `EventSource`) emitting `output` (`{ data: "<base64>" }`) and `exit` (`{ code, reason? }`) |
+| POST | `/terminals/{tid}/input` | `{ data }` (up to 64 KiB) → 202 Accepted |
+| POST | `/terminals/{tid}/resize` | `{ cols, rows }` → 204 No Content |
+| DELETE | `/terminals/{tid}` | Closes the PTY session and terminates its process group → 204 No Content |
 
-`{name}` matches case-insensitively and must be URL-encoded. Errors: 404 `command_not_found`, `review_not_found`, `not_found` (project, run, or worker process); 400 `invalid_cwd`, `invalid_request`; 409 `too_many_runs` (4 at once per project), `review_closed`, `worktree_missing`, `no_folder`, `start_failed`.
+`{name}` matches case-insensitively and must be URL-encoded. Errors: 404 `command_not_found`, `review_not_found`, `not_found` (project, run, terminal, or worker process), `terminal_closed`; 400 `invalid_cwd`, `unknown_folder`, `no_folder`, `invalid_request`; 409 `too_many_runs` (4 at once per project), `terminal_already_subscribed`, `review_closed`, `worktree_missing`, `no_folder`, `start_failed`; 429 `too_many_terminals` (8 per project).
 
 ```text
 Run            { id, name, command, cwd (absolute), review_id?, pid? (OS PID while running),
                  status: "running"|"finished"|"stopped"|"error", exit_code: number|null,
                  started_at, finished_at?, duration_ms, output_bytes, truncated, tail? }
-WorkerProcess  { id, kind: "lsp"|"agent", name, command, cwd?, pid, status: "running"|"busy"|"idle",
+WorkerProcess  { id, kind: "lsp"|"agent"|"terminal", name, command, cwd?, pid, status: "running"|"busy"|"idle",
                  started_at, detail?, output? }
 ```
 

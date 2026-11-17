@@ -73,28 +73,40 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
     }
   };
 
-  const memoryBlocked = project?.memory?.auto_memory === "blocked";
-
   const sections = (query: string): PickerSection[] => {
     const tools: PickerRow[] = (Object.entries(TOOL_TABS) as [ToolTab, (typeof TOOL_TABS)[ToolTab]][])
-      .filter(([tool]) => !(memoryBlocked && tool === "memory"))
+      .filter(([tool]) => ws.toolEnabled(tool))
       .map(([tool, t]) => ({
         id: `tool:${tool}`,
         label: t.label,
         lead: <Glyph icon={t.icon} size={14} />,
         ...(open.has(toolTab(tool)) ? { detail: "open" } : {}),
-        ...(tool === "side" ? { hint: `${MOD_LABEL};` } : {}),
+        ...(tool === "side" ? { hint: `${MOD_LABEL};` } : tool === "terminal" ? { hint: `${MOD_LABEL}\`` } : {}),
         title: t.title,
         run: () => (tool === "files" ? files.show() : ws.openTool(tool)),
       }));
-    tools.push({ id: "open-file", label: "Open file…", lead: <Glyph icon={FileSearch} size={14} />, title: "Filter the project's files", run: files.show });
-    tools.push({
-      id: "new-browser",
-      label: "New browser tab",
-      lead: <Glyph icon={GLYPH.browser} size={14} />,
-      title: "Open another browser tab",
-      run: () => ws.openBrowser({ newTab: true }),
-    });
+    if (ws.toolEnabled("files")) {
+      tools.push({ id: "open-file", label: "Open file…", lead: <Glyph icon={FileSearch} size={14} />, title: "Filter the project's files", run: files.show });
+    }
+    if (ws.toolEnabled("browser")) {
+      tools.push({
+        id: "new-browser",
+        label: "New browser tab",
+        lead: <Glyph icon={GLYPH.browser} size={14} />,
+        title: "Open another browser tab",
+        run: () => ws.openBrowser({ newTab: true }),
+      });
+    }
+    if (ws.toolEnabled("terminal")) {
+      tools.push({
+        id: "new-terminal",
+        label: "New terminal tab",
+        lead: <Glyph icon={GLYPH.terminal} size={14} />,
+        hint: `${MOD_LABEL}Shift+\``,
+        title: "Open another interactive terminal tab",
+        run: () => ws.openTerminal({ newTab: true }),
+      });
+    }
     const q = query.trim().toLowerCase();
     const fileRows: PickerRow[] = q
       ? code.loadedFiles

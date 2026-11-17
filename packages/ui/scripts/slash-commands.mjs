@@ -29,9 +29,9 @@ const failures = [];
 const fail = (what) => failures.push(what);
 page.on("pageerror", (e) => isAbortedImport(e.message) || fail(`page error: ${String(e.stack ?? e).slice(0, 400)}`));
 
-const fresh = async () => {
+const fresh = async (extraQuery = "") => {
   await page.goto("about:blank");
-  await page.goto(`${BASE}/?demo=1${PROJECT_HASH}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}/?demo=1${extraQuery}${PROJECT_HASH}`, { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     try {
       for (const k of Object.keys(localStorage)) if (k.startsWith("octo.layout.") || k.startsWith("octo.fileTree.")) localStorage.removeItem(k);
@@ -122,7 +122,7 @@ const COMMANDS = [
   { name: "model", args: "sonnet", check: async (t) => until(`${t}: no model picker`, async () => /Agents|Models|Search models/.test(await dialog())) },
   { name: "rewind", check: async (t) => until(`${t}: no "Restore to this point?" dialog`, async () => /Restore to this point/.test(await dialog())) },
   { name: "context", check: async (t) => until(`${t}: no context report`, async () => /used|Context/.test(await dialog())) },
-  { name: "memory", check: async (t) => until(`${t}: no Memory tab`, async () => /Memory/.test(await activeTab())) },
+  { name: "memory", query: "&tabs=memory", check: async (t) => until(`${t}: no Memory tab`, async () => /Memory/.test(await activeTab())) },
   { name: "settings", check: async (t) => until(`${t}: no settings`, async () => /Project settings/.test(await dialog())) },
   {
     name: "remember",
@@ -139,7 +139,7 @@ for (const c of COMMANDS) {
     if (c.args && how !== "full") continue;
     if (c.name === "mode" && c.args === "" && how !== "full") continue;
     const tag = `/${c.name}${c.args ? ` ${c.args}` : ""} (${how})`;
-    await fresh();
+    await fresh(c.query ?? "");
     await invoke(how, c.name, c.args ?? "");
     await c.check(tag);
     if (c.name !== "clear" && c.name !== "new") {
@@ -161,6 +161,14 @@ for (const how of WAYS) {
   await invoke(how, "export");
   if (!(await dl)) fail(`/export (${how}): no download`);
 }
+
+// /memory is hidden when the Memory tab feature flag is off by default (`DEFAULT_TAB_FLAGS.memory === false`).
+await fresh();
+await composer().click();
+await composer().fill("/");
+await waitMenu();
+if ((await page.locator("[data-slash-menu] [role=option]", { hasText: /^\/memory(?![a-z])/ }).count()) !== 0)
+  fail("/memory: should be omitted when the Memory tab flag is off by default");
 
 // /review is the harness's (a GitHub repository) and unavailable in the demo: its row stays, dim, with the reason.
 await fresh();

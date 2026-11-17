@@ -5,11 +5,14 @@ import { MOD_LABEL } from "../../lib/keys";
 import { budgetState } from "../../lib/modelsMore";
 import { mayChangeProject, ON_YOUR_COMPUTER } from "../../lib/remoteDevice";
 import { sessionChoices } from "../../lib/sessions/picker";
+import { isTabEnabled } from "../../lib/tabFlags";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
+import { useTabFlags } from "../../state/tabFlags";
+import type { ToolTab } from "../../state/workspace/layout";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { Menu } from "../primitives/Menu";
+import { Menu, type MenuItem } from "../primitives/Menu";
 import { sessionMenuItems, useCreateProjectSession, useSyncProjectSessions } from "./sessionSwitcher";
 
 /** A failed action in the shape `ErrorNotice` takes: the harness's `message`, `hint`, `action`, `details`. */
@@ -26,15 +29,23 @@ export default function ProjectActionsMenu(props: {
   const { project, state } = useProject();
   const { openProjectInEditor, remoteDevice } = useHost();
   const { bridge } = useApp();
+  const tabFlags = useTabFlags();
   const ws = useOptionalWorkspace();
   const createSession = useCreateProjectSession();
   useSyncProjectSessions(Boolean(project));
   if (!project) return null;
+  const canShow = (tool: ToolTab) => (ws ? ws.toolEnabled(tool) : isTabEnabled(tabFlags, tool, { memoryBlocked: project.memory?.auto_memory === "blocked" }));
   const tokens = totalTokens(state);
   const total = tokens.input + tokens.output;
   const budget = budgetState(project.spent_usd, project.budget_usd);
   const sessions = sessionChoices(state.sessions.list);
   const activeId = ws?.chatSessionId ?? state.sessions.defaultId;
+  const toolItems: MenuItem[] = [
+    ...(canShow("agents") ? [{ id: "agents", label: "Show agents", disabled: !ws, run: () => ws?.openTool("agents") }] : []),
+    ...(canShow("details") ? [{ id: "details", label: "Show project details", disabled: !ws, run: () => ws?.openTool("details") }] : []),
+    ...(canShow("usage") ? [{ id: "usage", label: "Show usage", disabled: !ws, run: () => ws?.openTool("usage") }] : []),
+    ...(canShow("side") ? [{ id: "side", label: "Ask a side question", shortcut: `${MOD_LABEL};`, disabled: !ws, run: () => ws?.openTool("side") }] : []),
+  ];
   return (
     <Menu
       label="Project actions"
@@ -52,13 +63,9 @@ export default function ProjectActionsMenu(props: {
             void createSession(target).catch((e: unknown) =>
               props.onFailure({ ...(structuredError(e) ?? { message: errorMessage(e) }), title: "Could not start session" }),
             ),
-          onShowAll: () => ws?.openTool("sessions"),
+          ...(canShow("sessions") ? { onShowAll: () => ws?.openTool("sessions") } : {}),
         }),
-        { id: "sep-tools", separator: true },
-        { id: "agents", label: "Show agents", disabled: !ws, run: () => ws?.openTool("agents") },
-        { id: "details", label: "Show project details", disabled: !ws, run: () => ws?.openTool("details") },
-        { id: "usage", label: "Show usage", disabled: !ws, run: () => ws?.openTool("usage") },
-        { id: "side", label: "Ask a side question", shortcut: `${MOD_LABEL};`, disabled: !ws, run: () => ws?.openTool("side") },
+        ...(toolItems.length > 0 ? [{ id: "sep-tools", separator: true as const }, ...toolItems] : []),
         { id: "sep", separator: true },
         ...(openProjectInEditor
           ? [{ id: "editor", label: "Open in editor", disabled: project.folders.length === 0, run: () => openProjectInEditor(project.id) }]

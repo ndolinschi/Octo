@@ -36,6 +36,7 @@ import { demoProviders } from "./providers";
 import { createDemoNote, docOf, listed, patchDemoNote, seedNotes } from "./notes";
 import { orbitLive } from "./orbit";
 import { withDemoCommands } from "./commands";
+import { withDemoTerminals } from "./terminal";
 import { withDemoSessions } from "./sessions";
 import { sideModeFromUrl, withDemoSide } from "./side";
 import { withDemoReview } from "./review";
@@ -920,7 +921,13 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     },
   };
   const wrapped = withDemoSide(
-    withDemoSlash(withDemoCommands(withDemoReview(withDemoSessions(withDemoParity(withDemoV7(bridge, records), records), records), records), records), records),
+    withDemoSlash(
+      withDemoTerminals(
+        withDemoCommands(withDemoReview(withDemoSessions(withDemoParity(withDemoV7(bridge, records), records), records), records), records),
+        records,
+      ),
+      records,
+    ),
     records,
     sideModeFromUrl(),
   );

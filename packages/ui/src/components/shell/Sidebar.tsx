@@ -42,6 +42,7 @@ export function Sidebar(props: {
   onSearch(): void;
   /** Opens the Review tab of the open project. */
   onReview(): void;
+  showReview?: boolean;
   onSettings(): void;
   /** A project row was picked (closes the drawer). */
   onPick(): void;
@@ -63,22 +64,23 @@ export function Sidebar(props: {
         <div className="flex shrink-0 flex-col">
           <NavRow icon={House} label="Home" onClick={() => navigate(null)} current={props.home} disabled={!projects?.length} />
           <NavRow icon={Search} label="Search" onClick={props.onSearch} {...(phone ? {} : { shortcut: { hint: `${MOD}K`, keys: "Control+K Meta+K" } })} />
-          {props.activeProjectId === null ? (
-            // Unavailable on Home: a focusable wrapper carries the reason (a disabled button gets no focus or tooltip).
-            <span
-              role="button"
-              aria-disabled="true"
-              tabIndex={0}
-              aria-label="Review, unavailable: open a project first"
-              title="Open a project first"
-              className="rounded-sm focus-inset"
-            >
-              {/* 11c: the look of the row, not a second control inside the wrapper (no nested disabled button). */}
-              <ListRow size="md" leading={<Glyph icon={GitPullRequest} size={16} className="text-fg-2" />} title="Review" disabled />
-            </span>
-          ) : (
-            <NavRow icon={GitPullRequest} label="Review" onClick={props.onReview} />
-          )}
+          {props.showReview !== false &&
+            (props.activeProjectId === null ? (
+              // Unavailable on Home: a focusable wrapper carries the reason (a disabled button gets no focus or tooltip).
+              <span
+                role="button"
+                aria-disabled="true"
+                tabIndex={0}
+                aria-label="Review, unavailable: open a project first"
+                title="Open a project first"
+                className="rounded-sm focus-inset"
+              >
+                {/* 11c: the look of the row, not a second control inside the wrapper (no nested disabled button). */}
+                <ListRow size="md" leading={<Glyph icon={GitPullRequest} size={16} className="text-fg-2" />} title="Review" disabled />
+              </span>
+            ) : (
+              <NavRow icon={GitPullRequest} label="Review" onClick={props.onReview} />
+            ))}
           {!device && <NavRow icon={Plus} label="New project" onClick={props.onNewProject} disabled={!canCreate} />}
         </div>
 

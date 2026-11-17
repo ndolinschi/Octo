@@ -4,11 +4,14 @@ import { useMediaQuery, useLatest } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
 import { loadPref, numberCodec, PREFS, readPref, usePersistentState, writePref, type Codec } from "../../lib/storage";
 import { changedFileCount } from "../../lib/statusBar";
+import { isTabEnabled, type TabFeatureFlags } from "../../lib/tabFlags";
 import { useApp } from "../app";
 import { useNav, type WorkspaceApi } from "../nav";
 import { useProject } from "../project";
+import { useTabFlags } from "../tabFlags";
 import { sessionRoot } from "@octo/agent-client";
 import { updateBrowserTabState } from "../browserTabs";
+import { closeTerminalTab, updateTerminalTabState } from "../terminalTabs";
 import { hasQueuedSession } from "./sessionsStart";
 import * as L from "./layout";
 import type { Layout, TabId, ToolTab } from "./layout";
@@ -60,6 +63,8 @@ export type WorkspaceValue = {
   narrow: boolean;
   /** Project has blocked memory (`auto_memory === "blocked"`): hide Memory tool from menus and prune open Memory tab. */
   memoryBlocked: boolean;
+  /** Whether tool tab `tool` is enabled under current UI tab feature flags and project state (`memoryBlocked`). */
+  toolEnabled(tool: ToolTab): boolean;
   /** A group's minimum width in the row (decision 67; 94a: a file group that shows its tree column also needs the column). */
   floorOf(groupId: string): number;
   /** The conversation tab whose live indicator may animate (the one being watched), if visible. */
@@ -106,6 +111,8 @@ export type WorkspaceValue = {
   openFileTab(key: FileKey, where?: { group: string; replace?: TabId }): void;
   /** Opens (or focuses) a Browser tab beside the conversation, optionally navigating to `url` or opening a fresh instance. */
   openBrowser(options?: { url?: string; newTab?: boolean; group?: string; browserId?: string }): TabId;
+  /** Opens (or focuses) a Terminal tab beside the conversation, optionally targeting `folder` or opening a fresh instance. */
+  openTerminal(options?: { folder?: string; newTab?: boolean; group?: string; terminalId?: string }): TabId;
   /** Opens (or focuses) the "Run: name" tab of a project command beside the conversation (decision 68). */
   openRun(name: string): void;
   /** One session in a tab of its own, beside the tab it was opened from (two sessions side by side). */
@@ -151,6 +158,13 @@ export type WorkspaceValue = {
 
 /** The remembered conversation width beside a side group (px). */
 const CHAT_SPLIT_CODEC = numberCodec(CHAT_MIN_WIDTH, 4000, CHAT_SPLIT_DEFAULT);
+
+function tabAllowed(ref: L.TabRef | null, tabFlags: TabFeatureFlags, memoryBlocked: boolean): boolean {
+  if (ref?.kind === "browser") return tabFlags.browser;
+  if (ref?.kind === "terminal") return tabFlags.terminal;
+  if (ref?.kind === "tool") return isTabEnabled(tabFlags, ref.tool, { memoryBlocked });
+  return true;
+}
 
 export const {
   Provider: WorkspaceContextProvider,
@@ -214,6 +228,7 @@ export function WorkspaceProvider({
   children: ReactNode;
 }) {
   const nav = useNav();
+  const tabFlags = useTabFlags();
   const { projectId, project, state, clearSide, synced } = useProject();
   // Decision 96: `#/p/<pid>/s/<sid>` shows that session; `#/p/<pid>` the one shown last here, else the default.
   const [picked, setChatSessionState] = useState<{ id: string | null; stored: boolean }>(() =>
@@ -336,6 +351,8 @@ export function WorkspaceProvider({
       for (const t of tabs) {
         const ref = L.parseTab(t);
         if (ref?.kind === "file") code.current?.close(ref.key);
+        else if (ref?.kind === "terminal") closeTerminalTab(projectId, ref.terminalId);
+        else if (t === L.toolTab("terminal")) closeTerminalTab(projectId, "default");
       }
       setClosedTabs((stack) => pushClosed(stack, entries));
       // Decision 40: closing the side question clears it unless it was pinned ("Keep").
@@ -344,7 +361,7 @@ export function WorkspaceProvider({
       // Decision 35: focus never falls to the page — the tab that becomes active takes it (also after a pointer close).
       commit(next, { focusTab: L.focusedGroup(next).active });
     },
-    [commit, memory, clearSide],
+    [commit, memory, clearSide, projectId],
   );
 
   const requestClose = useCallback(
@@ -384,7 +401,7 @@ export function WorkspaceProvider({
   const { bridge } = useApp();
   const [firstChanges, setFirstChanges] = useState<number | null>(null);
   useEffect(() => {
-    if (!firstOpen || !bridge.listChanges) return;
+    if (!firstOpen || !tabFlags.changes || !bridge.listChanges) return;
     let live = true;
     bridge.listChanges(projectId).then(
       (turns) => live && setFirstChanges(changedFileCount(turns)),
@@ -394,18 +411,55 @@ export function WorkspaceProvider({
     return () => {
       live = false;
     };
-  }, [firstOpen, bridge, projectId]);
+  }, [firstOpen, tabFlags.changes, bridge, projectId]);
   const firstDone = useRef(false);
   useEffect(() => {
     if (firstDone.current || firstChanges === null || dockWidth <= 0) return;
     firstDone.current = true;
+    if (!tabFlags.changes) return;
     const next = docked
       ? L.firstLayout({ saved: false, window: window.innerWidth, inner: dockWidth - GROUP_GAP, changedFiles: firstChanges, layout: layoutRef.current })
       : null;
     if (next) commit(next, { route: false });
-  }, [firstChanges, dockWidth, docked, commit, layoutRef]);
+  }, [firstChanges, dockWidth, docked, tabFlags.changes, commit, layoutRef]);
 
   const value = useMemo<WorkspaceValue>(() => {
+    const memoryBlocked = project?.memory?.auto_memory === "blocked";
+    const toolEnabled = (tool: ToolTab) => isTabEnabled(tabFlags, tool, { memoryBlocked });
+    const ensureRoomy = (tab: TabId) => {
+      const g = L.groupOf(layoutRef.current, tab);
+      if (g && !g.tabs.includes(L.CHAT) && g.size < FILE_GROUP_MIN_FRACTION)
+        commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
+    };
+    const openMulti = (
+      tool: "browser" | "terminal",
+      prefix: "b" | "t",
+      id: string | undefined,
+      newTab: boolean | undefined,
+      group: string | undefined,
+      makeTab: (id: string) => TabId,
+      getId: (r: L.TabRef | null) => string | undefined,
+      onMeta?: (id: string) => void,
+    ): TabId => {
+      if (!tabFlags[tool]) return L.CHAT;
+      const cur = layoutRef.current;
+      const found =
+        !id && !newTab
+          ? L.allTabs(cur).find((t) => {
+              const r = L.parseTab(t);
+              return getId(r) !== undefined || (r?.kind === "tool" && r.tool === tool);
+            })
+          : undefined;
+      const resolved =
+        id ?? (newTab ? `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}` : (found && getId(L.parseTab(found))) || "default");
+      const tab = id || newTab ? makeTab(resolved) : (found ?? L.toolTab(tool));
+      onMeta?.(resolved);
+      if (group) commit(L.open(cur, tab, { group }));
+      else openSide(tab, fileFraction());
+      ensureRoomy(tab);
+      focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
+      return tab;
+    };
     const isVisible = (tab: TabId) => {
       const g = L.groupOf(layout, tab);
       return !!g && g.active === tab && (maximised !== null ? g.id === maximised : !narrow || g.id === layout.focused);
@@ -415,7 +469,8 @@ export function WorkspaceProvider({
       projectId,
       layout,
       narrow,
-      memoryBlocked: project?.memory?.auto_memory === "blocked",
+      memoryBlocked,
+      toolEnabled,
       floorOf: (groupId) => floors[layout.groups.findIndex((g) => g.id === groupId)] ?? 0,
       watched: isVisible(lastConversation) ? lastConversation : null,
       // Chat's agent is its session's root (decision 96), else the project's default orchestrator.
@@ -477,20 +532,16 @@ export function WorkspaceProvider({
       // The Files tab is a file view (editor + tree column) and Changes is a list beside a diff: both open at the width of a
       // file (the rest of the row after the conversation), not at a tool's 366px where the diff is cramped.
       openTool: (tool) => {
-        if (tool === "memory" && project?.memory?.auto_memory === "blocked") return;
+        if (!toolEnabled(tool)) return;
         const tab = L.toolTab(tool);
         // Decision 35: the opened tool takes focus (the header button that opened it may re-mount in another strip).
         // The side question's input takes the caret (Ctrl/Cmd+; means "ask now"); Files, its tree's filter (a focus request).
         if (tool === "side") focusSoon(() => document.getElementById("octo-side-input"), { timeout: 3000 });
         else if (tool === "files") focusTree();
         else focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
-        const roomy = tool === "files" || tool === "changes" || tool === "browser" || tool === "processes";
+        const roomy = tool === "files" || tool === "changes" || tool === "browser" || tool === "terminal" || tool === "processes";
         openSide(tab, roomy ? fileFraction() : toolFraction());
-        if (roomy) {
-          const g = L.groupOf(layoutRef.current, tab);
-          if (g && !g.tabs.includes(L.CHAT) && g.size < FILE_GROUP_MIN_FRACTION)
-            commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
-        }
+        if (roomy) ensureRoomy(tab);
       },
       // A file needs room: a side group sized for a tool widens to half the row.
       openFileTab: (key, where) => {
@@ -504,37 +555,33 @@ export function WorkspaceProvider({
           return commit(L.open(current, L.fileTab(key), { group: where.group }));
         }
         openSide(L.fileTab(key), fileFraction());
-        const g = L.groupOf(layoutRef.current, L.fileTab(key));
-        if (g && !g.tabs.includes(L.CHAT) && g.size < FILE_GROUP_MIN_FRACTION)
-          commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
+        ensureRoomy(L.fileTab(key));
       },
       openBrowser: (o) => {
-        const cur = layoutRef.current;
-        const found =
-          !o?.browserId && !o?.newTab
-            ? L.allTabs(cur).find((t) => {
-                const r = L.parseTab(t);
-                return r?.kind === "browser" || (r?.kind === "tool" && r.tool === "browser");
-              })
-            : undefined;
-        const bid =
-          o?.browserId ??
-          (o?.newTab
-            ? `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
-            : found
-              ? L.parseTab(found)?.kind === "browser"
-                ? (L.parseTab(found) as { browserId: string }).browserId
-                : "default"
-              : "default");
-        const tab = o?.browserId || o?.newTab ? L.browserTab(bid) : (found ?? L.toolTab("browser"));
-        if (o?.url !== undefined) updateBrowserTabState(projectId, bid, { url: o.url });
-        if (o?.group) commit(L.open(cur, tab, { group: o.group }));
-        else openSide(tab, fileFraction());
-        const g = L.groupOf(layoutRef.current, tab);
-        if (g && !g.tabs.includes(L.CHAT) && g.size < FILE_GROUP_MIN_FRACTION)
-          commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
-        focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
-        return tab;
+        const url = o?.url;
+        return openMulti(
+          "browser",
+          "b",
+          o?.browserId,
+          o?.newTab,
+          o?.group,
+          L.browserTab,
+          (r) => (r?.kind === "browser" ? r.browserId : undefined),
+          url !== undefined ? (bid) => updateBrowserTabState(projectId, bid, { url }) : undefined,
+        );
+      },
+      openTerminal: (o) => {
+        const folder = o?.folder;
+        return openMulti(
+          "terminal",
+          "t",
+          o?.terminalId,
+          o?.newTab,
+          o?.group,
+          L.terminalTab,
+          (r) => (r?.kind === "terminal" ? r.terminalId : undefined),
+          folder !== undefined ? (tid) => updateTerminalTabState(projectId, tid, { folder }) : undefined,
+        );
       },
       openRun: (name) => openSide(L.runTab(name), fileFraction()),
       openSession: (sessionId) => {
@@ -659,9 +706,9 @@ export function WorkspaceProvider({
         const g = L.groupOf(layoutRef.current, tab);
         if (g) requestClose(g.tabs.slice(g.tabs.indexOf(tab) + 1));
       },
-      canReopen: closedTabs.length > 0,
+      canReopen: closedTabs.some((c) => tabAllowed(L.parseTab(c.tab), tabFlags, memoryBlocked)),
       reopenClosed: () => {
-        const { entry, rest } = takeClosed(closedTabs, (t) => Boolean(L.groupOf(layoutRef.current, t)));
+        const { entry, rest } = takeClosed(closedTabs, (t) => !!L.groupOf(layoutRef.current, t) || !tabAllowed(L.parseTab(t), tabFlags, memoryBlocked));
         setClosedTabs(rest);
         if (!entry) return;
         const ref = L.parseTab(entry.tab);
@@ -680,6 +727,7 @@ export function WorkspaceProvider({
     fileFraction,
     projectId,
     project,
+    tabFlags,
     chatRoot,
     chatSession,
     setChatSession,
@@ -776,20 +824,27 @@ export function WorkspaceProvider({
     if (toolAsked.current) return;
     toolAsked.current = true;
     // The sidebar's session rows (and Memory) ask for the Sessions tab before this workspace mounted.
-    if (hasQueuedSession(projectId)) value.openTool("sessions");
+    if (hasQueuedSession(projectId) && tabFlags.sessions) value.openTool("sessions");
     const asked = nav.takePendingTool(projectId);
-    if (!asked) return;
+    if (!asked || !isTabEnabled(tabFlags, asked.tool)) return;
     memory.set(L.toolTab(asked.tool), USAGE_VIEW, { ...DEFAULT_USAGE_VIEW, scope: asked.scope });
     value.openTool(asked.tool);
-  }, [nav, projectId, memory, value]);
+  }, [nav, projectId, tabFlags, memory, value]);
 
-  /* ---------- stale tabs ---------- */
+  /* ---------- disabled & stale tabs ---------- */
+
+  useEffect(() => {
+    const memoryBlocked = project?.memory?.auto_memory === "blocked";
+    const next = L.prune(layoutRef.current, (tab) => tabAllowed(L.parseTab(tab), tabFlags, memoryBlocked));
+    if (next !== layoutRef.current) commit(next, { route: false });
+  }, [tabFlags, project?.memory?.auto_memory, commit]);
 
   useEffect(() => {
     if (!agentsLoaded || !project) return;
     const folders = new Set(project.folders.map((f) => f.label));
     const commands = new Set((project.commands ?? []).map((c) => c.name.toLowerCase()));
     const knownSessions = synced > 0 ? new Set(state.sessions.list.map((s) => s.id)) : null;
+    const memoryBlocked = project.memory?.auto_memory === "blocked";
     const now = Date.now();
     const next = L.prune(layoutRef.current, (tab) => {
       const ref = L.parseTab(tab);
@@ -804,11 +859,10 @@ export function WorkspaceProvider({
       if (ref?.kind === "file") return folders.has(keyFolder(ref.key));
       // A run tab of a command that was removed or renamed has nothing to show (its runs keep the old name).
       if (ref?.kind === "run") return commands.has(ref.name.toLowerCase());
-      if (ref?.kind === "tool" && ref.tool === "memory" && project.memory?.auto_memory === "blocked") return false;
-      return true;
+      return tabAllowed(ref, tabFlags, memoryBlocked);
     });
     if (next !== layoutRef.current) commit(next, { route: false });
-  }, [agentsLoaded, project, state.agents, state.sessions.list, synced, commit]);
+  }, [agentsLoaded, project, tabFlags, state.agents, state.sessions.list, synced, commit]);
 
   useEffect(() => {
     const onReset = (event: Event) => {

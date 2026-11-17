@@ -14,7 +14,7 @@ Product docs for the Go agent harness (`apps/harness/`). Operational notes and b
 | [acp-orchestrator.md](./acp-orchestrator.md) | Running a project's orchestrator as an ACP agent: config, sessions, harness tools over MCP, limits; Claude Code, Copilot and Grok setup; failure messages; `harness doctor`, `GET /v1/diagnostics`, the ACP wire trace |
 | [remote-access.md](./remote-access.md) | Remote access for a paired phone: the `cloudflared` quick tunnel, the second listener and its allow-list, pairing and device tokens, long-poll events, `/v1/remote` routes, settings |
 | [browser.md](./browser.md) | Browser tab and Design Mode (`browserproxy`): loopback reverse proxy, CSP/frame stripping, `inspector.js` injection and nonce guard, Remote access block, `octo-design` wire block |
-| [commands.md](./commands.md) | Project commands, ad-hoc processes, force-kill (`SIGKILL`), restart, and worker subprocess management (`/commands`, `/runs`, `/processes`) |
+| [commands.md](./commands.md) | Project commands, ad-hoc processes, interactive PTY terminals (`/terminals`), force-kill (`SIGKILL`), restart, and worker subprocess management (`/commands`, `/runs`, `/processes`) |
 
 ## Security
 

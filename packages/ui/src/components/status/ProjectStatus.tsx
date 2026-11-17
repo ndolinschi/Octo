@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { budgetState } from "../../lib/modelsMore";
 import { modelName } from "../../lib/models";
+import { settingsHref } from "../../lib/route";
 import { topModelLines } from "../../lib/usage/modelLines";
 import { changedFileCount, changedText } from "../../lib/statusBar";
 import { runningRuns, runningText } from "../../lib/projectRuns";
@@ -61,14 +62,14 @@ function Start() {
   const more = project.folders.length - 1;
   return (
     <>
-      {first && (
+      {first && (!ws || ws.toolEnabled("files")) && (
         <StatusButton className="max-w-48 min-w-0 shrink" title={`${first.path}\nOpen the project's files`} onClick={() => ws?.openTool("files")}>
           <Glyph icon={GLYPH.files} size={14} />
           <span className="truncate">{first.label}</span>
           {more > 0 && <span className="shrink-0 tabular-nums">+{more}</span>}
         </StatusButton>
       )}
-      {changed > 0 && (
+      {changed > 0 && (!ws || ws.toolEnabled("changes")) && (
         <StatusButton title="What the agents changed. Open Changes." onClick={() => ws?.openTool("changes")}>
           <Glyph icon={GLYPH.changes} size={14} />
           {changedText(changed)}
@@ -86,7 +87,7 @@ function End() {
   const text = runningText(running);
   return (
     <>
-      {text && (
+      {text && (!ws || ws.toolEnabled("processes")) && (
         <StatusButton data-running-commands title="Project processes are running. Open Processes." onClick={() => ws?.openTool("processes")}>
           <StateGlyph state="working" />
           {text}
@@ -114,7 +115,9 @@ function Budget({ budget, spent }: { budget: NonNullable<ReturnType<typeof budge
       },
     );
   }, [bridge, projectId, spent]);
-  const base = `${budget.reached ? "Project budget reached. Raise it in project settings to continue. " : ""}Spent ${budget.text} of the project's budget. Open Usage.`;
+  const usageEnabled = Boolean(ws?.toolEnabled("usage"));
+  const actionText = usageEnabled ? "Open Usage." : "Open Usage settings.";
+  const base = `${budget.reached ? "Project budget reached. Raise it in project settings to continue. " : ""}Spent ${budget.text} of the project's budget. ${actionText}`;
   return (
     <StatusButton
       data-budget
@@ -124,7 +127,10 @@ function Budget({ budget, spent }: { budget: NonNullable<ReturnType<typeof budge
       title={lines.length ? `${base}\nMost tokens:\n${lines.join("\n")}` : base}
       onMouseEnter={read}
       onFocus={read}
-      onClick={() => ws?.openTool("usage")}
+      onClick={() => {
+        if (usageEnabled) ws?.openTool("usage");
+        else window.location.hash = settingsHref("usage");
+      }}
     >
       <span className="sr-only">Budget: </span>
       {budget.reached ? "Budget reached" : budget.text}

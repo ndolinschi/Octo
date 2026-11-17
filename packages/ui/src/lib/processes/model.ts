@@ -50,6 +50,7 @@ export function processStartedAt(item: ProcessItem): string | undefined {
 
 export function processKindLabel(item: ProcessItem): string {
   if (item.kind === "command") return "Command";
+  if (item.worker.kind === "terminal") return "Terminal";
   return item.worker.kind === "lsp" ? "Language server" : "Agent worker";
 }
 

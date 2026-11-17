@@ -23,19 +23,23 @@ export function workspaceActions(ws: PaletteWorkspace): WorkspaceCommand[] {
     search: `${TOOL_HINT[t]} ${TOOL_PURPOSE[t]}`,
     run: () => ws.openTool(t),
   });
+  const enabled = (t: ToolTab) => (ws.toolEnabled ? ws.toolEnabled(t) : !(t === "memory" && ws.memoryBlocked));
+  const maybeTool = (t: PurposeTool & ToolTab, text: string, shortcut?: string): WorkspaceCommand[] =>
+    enabled(t) ? [{ ...tool(t, text), ...(shortcut ? { shortcut } : {}) }] : [];
   const out: WorkspaceCommand[] = [
-    tool("sessions", "Show sessions"),
-    tool("agents", "Show agents"),
-    tool("notes", "Show notes"),
-    tool("files", "Show files"),
-    tool("browser", "Show browser"),
-    tool("processes", "Show processes"),
-    tool("details", "Show project details"),
-    tool("changes", "Show changes"),
-    tool("review", "Review a pull request"),
-    ...(ws.memoryBlocked ? [] : [tool("memory", "Show memory")]),
-    tool("usage", "Show usage"),
-    { ...tool("side", "Ask a side question"), shortcut: `${MOD_LABEL};` },
+    ...maybeTool("sessions", "Show sessions"),
+    ...maybeTool("agents", "Show agents"),
+    ...maybeTool("notes", "Show notes"),
+    ...maybeTool("files", "Show files"),
+    ...maybeTool("browser", "Show browser"),
+    ...maybeTool("terminal", "Open terminal", `${MOD_LABEL}\``),
+    ...maybeTool("processes", "Show processes"),
+    ...maybeTool("details", "Show project details"),
+    ...maybeTool("changes", "Show changes"),
+    ...maybeTool("review", "Review a pull request"),
+    ...maybeTool("memory", "Show memory"),
+    ...maybeTool("usage", "Show usage"),
+    ...maybeTool("side", "Ask a side question", `${MOD_LABEL};`),
     { id: "new-tab", label: "Open a tab…", detail: "tools, sessions, files, agents", shortcut: `${MOD_LABEL}T`, run: () => ws.openPicker() },
   ];
   if (ws.canMoveToOtherSide(active))

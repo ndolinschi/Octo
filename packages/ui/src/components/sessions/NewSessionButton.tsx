@@ -41,7 +41,7 @@ export function NewSessionButton(props: { loading: boolean; memoryBlocked?: bool
               {NOT_CARRIED}
             </p>
             <div className="flex items-center gap-2">
-              {ws && !props.memoryBlocked && (
+              {ws?.toolEnabled("memory") && !props.memoryBlocked && (
                 <Button
                   variant="link"
                   size="xs"

@@ -12,11 +12,10 @@ const WindowReport = lazy(() => import("../shared/WindowReport").then((m) => ({ 
  * file (the Memory tool) or a request in the chat. The context ring's "Open context details" and `/context` both mount it.
  */
 export function ContextReport({ onClose }: { onClose(): void }) {
-  const { projectId, project } = useProject();
+  const { projectId } = useProject();
   const ws = useOptionalWorkspace();
   const code = useOptionalCode();
   const nav = useOptionalNav();
-  const memoryBlocked = project?.memory?.auto_memory === "blocked";
   return (
     <Suspense fallback={null}>
       <WindowReport
@@ -26,10 +25,10 @@ export function ContextReport({ onClose }: { onClose(): void }) {
           if (code && folder) code.openFile(folder, path);
           onClose();
         }}
-        {...(!memoryBlocked
+        {...(ws?.toolEnabled("memory")
           ? {
               onOpenMemoryFile: () => {
-                ws?.openTool("memory");
+                ws.openTool("memory");
                 onClose();
               },
             }

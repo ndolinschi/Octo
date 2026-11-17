@@ -51,6 +51,15 @@ pnpm dev:all                # harness (no API key needed) + UI at http://localho
 pnpm install:app            # build the harness and router sidecars and the Tauri app, then install it
 ```
 
+### UI tab feature flags (`@octo/ui`)
+
+`@octo/ui` gates dock tool tabs behind UI-only feature flags (`DEFAULT_TAB_FLAGS` in `packages/ui/src/lib/tabFlags.ts`):
+
+- **Disabled by default (`false`):** `sessions` (the `Sessions` dock tool tab and top-bar `Sessions` button/picker), `agents`, `notes`, `details`, `usage`, `memory`.
+- **Enabled by default (`true`):** `files`, `browser`, `terminal`, `processes`, `changes`, `review`, `side`.
+
+Left-sidebar project sessions (`SessionTree`), `/new`, session switching, `session:<id>` conversation tabs, sub-agent transcript tabs (`agent:<id>`), `/remember`, and Settings (`Usage and budget`, `Memory`) remain active. These flags are purely client-side in `@octo/ui` and do **not** alter `apps/harness` endpoints, background memory extraction, usage recording, or `@octo/agent-client`. Override in dev/tests via `?tabs=all`, `?tabs=none`, or `?tabs=sessions,usage` (or `OctoApp`'s `tabs` prop).
+
 ## Development
 
 Rust workspace root is this directory (`Cargo.toml` members = `apps/router`). Prefer:

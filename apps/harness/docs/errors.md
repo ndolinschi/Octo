@@ -144,3 +144,14 @@ is now per session (20 waiting messages of one session).
 | Code (status) | Constructor | Message | When |
 | --- | --- | --- | --- |
 | `invalid_request` (400) | `FormAnswerRefused(n, technical)` | "One answer in the form needs attention." / "Some answers in the form need attention." (hint "Fix the marked fields, then submit again.", `details` "id: message; …") | `POST /v1/projects/{pid}/inputs/{id}` with an answer the form refuses; the body also carries `error.fields {id: message}` ([v7.md](./v7.md) §4). Never a value. |
+
+## Added 2026-11-17 (interactive terminals)
+
+`catalogue_generic.go`, tested in `TestCatalogueWording`:
+
+| Code (status) | Constructor | Message | When |
+| --- | --- | --- | --- |
+| `too_many_terminals` (429) | `Generic("too_many_terminals", …)` | "There are too many terminals open for this project." (hint "Close one, then try again.") | `POST /v1/projects/{pid}/terminals` when the per-project PTY session cap (8) is reached |
+| `terminal_closed` (410) | `Generic("terminal_closed", …)` | "That terminal session has ended." (hint "Start a new terminal, or restart it.", action `retry`) | `POST …/input` or `POST …/resize` after the shell process or session has closed |
+| `terminal_already_subscribed` (409) | `Generic("terminal_already_subscribed", …)` | "That terminal is already open elsewhere." (hint "Close the other tab, then try again.") | Second concurrent `GET …/terminals/{sid}/events` SSE subscriber on the same session |
+

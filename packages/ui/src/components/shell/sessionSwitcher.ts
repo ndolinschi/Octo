@@ -68,7 +68,7 @@ export function sessionMenuItems(opts: {
   disabled?: boolean;
   onSelect(sessionId: string): void;
   onCreate(target: "show" | "tab"): void;
-  onShowAll(): void;
+  onShowAll?: () => void;
 }): MenuItem[] {
   const shown = opts.sessions.slice(0, MENU_SESSIONS_SHOWN);
   const items: MenuItem[] = [
@@ -89,11 +89,13 @@ export function sessionMenuItems(opts: {
       });
     }
   }
-  items.push({
-    id: "sessions",
-    label: opts.sessions.length > MENU_SESSIONS_SHOWN ? `All sessions (${opts.sessions.length})…` : "Show sessions",
-    ...(opts.disabled ? { disabled: true } : {}),
-    run: opts.onShowAll,
-  });
+  if (opts.onShowAll) {
+    items.push({
+      id: "sessions",
+      label: opts.sessions.length > MENU_SESSIONS_SHOWN ? `All sessions (${opts.sessions.length})…` : "Show sessions",
+      ...(opts.disabled ? { disabled: true } : {}),
+      run: opts.onShowAll,
+    });
+  }
   return items;
 }

@@ -16,8 +16,8 @@ import (
 func WithAPIToken(token string) Option { return func(s *Server) { s.apiToken = token } }
 
 // sseRoute matches the routes a browser opens with EventSource: the project
-// event stream and a language-server session's stream.
-var sseRoute = regexp.MustCompile(`^/v1/projects/[^/]+(/events|/lsp/sessions/[^/]+/events)$`)
+// event stream, a language-server session's stream, and a terminal session's stream.
+var sseRoute = regexp.MustCompile(`^/v1/projects/[^/]+(/events|/lsp/sessions/[^/]+/events|/terminals/[^/]+/events)$`)
 
 const unauthorizedMessage = "missing or invalid API token: send Authorization: Bearer <token> " +
 	"(the token is HARNESS_API_TOKEN, or the file api-token in the harness data directory)"

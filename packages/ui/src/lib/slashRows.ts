@@ -3,8 +3,8 @@ import { matchScore } from "./match";
 import { octoCommands, type SlashGroup, type SlashRow } from "./slash";
 
 /** The menu's two groups (Octo commands, then the agent's under its name), filtered and ranked by `query`; unavailable rows stay, dimmed. */
-export function slashGroups(cmds: SlashCommands | null, query: string): { groups: SlashGroup[]; rows: SlashRow[] } {
-  const octo: SlashRow[] = octoCommands(cmds).map((c) => ({
+export function slashGroups(cmds: SlashCommands | null, query: string, disabled?: ReadonlySet<string>): { groups: SlashGroup[]; rows: SlashRow[] } {
+  const octo: SlashRow[] = octoCommands(cmds, disabled).map((c) => ({
     id: `octo:${c.name}`,
     group: "octo",
     name: c.name,

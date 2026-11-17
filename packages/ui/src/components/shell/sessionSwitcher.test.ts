@@ -52,3 +52,16 @@ test("sessionMenuItems builds creation actions, checked radio rows for recent se
   allRow.run();
   assert.equal(showedAll, true);
 });
+
+test("sessionMenuItems omits Show sessions row when onShowAll is omitted", () => {
+  const items = sessionMenuItems({
+    sessions: [s("1", { default: true, current: true }), s("2")],
+    activeId: "1",
+    onSelect: () => undefined,
+    onCreate: () => undefined,
+  });
+  assert.deepEqual(
+    items.map((i) => i.id),
+    ["new-session", "new-session-tab", "cap-sessions", "session:1", "session:2"],
+  );
+});

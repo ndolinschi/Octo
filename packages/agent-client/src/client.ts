@@ -119,6 +119,8 @@ import type {
   WriteFileInput,
   ErrorAction,
   BrowserProxySession,
+  TerminalOpenOptions,
+  TerminalSession,
 } from "./types";
 
 /** A `Blob` without the DOM lib (this package type-checks without browser globals): what `new Blob(...)` returns where one exists. */
@@ -605,6 +607,8 @@ export interface Bridge {
   /** Posts the pending comments and the verdict as one review. Only an explicit user action may call it. */
   submitReview?(projectId: string, reviewId: string, input: ReviewSubmitInput): Promise<ReviewSubmitResult>;
   openLanguageServer(projectId: string, serverId: string): Promise<LanguageServerSession>;
+  /** Opens a live interactive PTY shell in a project folder (HTTP bridge only). */
+  openTerminal?(projectId: string, options?: TerminalOpenOptions): Promise<TerminalSession>;
   subscribe(projectId: string, handlers: SubscribeHandlers): () => void;
 }
 
@@ -899,15 +903,18 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     recheckProvider: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/recheck`), id),
     setProviderCustomModels: async (id, models) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/custom-models`, { models }), id),
     setProviderPrefs: async (id, prefs) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/prefs`, prefs), id),
-    // Only the editor opens language servers: the session code is its own chunk (it keeps the entry small).
+    // Only the editor and terminal tab open SSE sessions: each session module is its own lazy chunk.
     openLanguageServer: async (id, serverId) =>
       (await import("./lspSession")).openLspSession(
-        {
-          request,
-          openStream: (path) => new (options.EventSource ?? globalEventSource())(streamUrl(path)),
-        },
+        { request, openStream: (path) => new (options.EventSource ?? globalEventSource())(streamUrl(path)) },
         p(id),
         serverId,
+      ),
+    openTerminal: async (id, opts) =>
+      (await import("./terminalSession")).openTerminalSession(
+        { request, openStream: (path) => new (options.EventSource ?? globalEventSource())(streamUrl(path)) },
+        p(id),
+        opts,
       ),
     /**
      * The project's events. EventSource retries a dropped connection itself; the watchdog (`watchStream`, in the lazy

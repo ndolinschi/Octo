@@ -22,8 +22,11 @@ export default function TabMenu(props: { tab: TabId; x: number; y: number; tabs:
         sessions,
         activeId,
         onSelect: (id) => ws.showSession(id),
-        onCreate: (target) => void createSession(target).catch(() => ws.openTool("sessions")),
-        onShowAll: () => ws.openTool("sessions"),
+        onCreate: (target) =>
+          void createSession(target).catch(() => {
+            if (ws.toolEnabled("sessions")) ws.openTool("sessions");
+          }),
+        ...(ws.toolEnabled("sessions") ? { onShowAll: () => ws.openTool("sessions") } : {}),
       }),
       { id: "sep-session", separator: true },
     );

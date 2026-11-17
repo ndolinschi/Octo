@@ -12,8 +12,8 @@ in `.claude/rules/typescript.md`). This file describes structure: what lives whe
 ## Layers
 
 ```text
-app/                    OctoApp (props: bridge, bridgeUrl, shell, demo, host), AppShell, ProjectWorkspace
-components/<feature>/   chat · files · agents · notes · details · usage · memory · v7 · settings · providers · home · project · shell · side   (screens and their parts)
+app/                    OctoApp (props: bridge, bridgeUrl, shell, demo, host, tabs), AppShell, ProjectWorkspace
+components/<feature>/   chat · files · browser · terminal · processes · review · sessions · agents · notes · details · usage · memory · v7 · settings · providers · home · project · shell · side   (screens and their parts)
 components/dock/        tab groups, strip, divider, drag layer, TabView = the composition point (hands one feature to another
                         as a prop: the file view's floating composer)
 components/primitives/  the component library (decision 90; see "Primitives" below) — import `lib` only
@@ -169,7 +169,7 @@ The initial bundle must stay lean (budget and measured sizes are in the spec's "
 
 ## Public API
 
-`src/index.ts`: `OctoApp`, `OctoAppProps`, `HostCapabilities`; `@octo/ui/demo`: `createDemoBridge` and its option types;
+`src/index.ts`: `OctoApp`, `OctoAppProps` (including optional `tabs?: TabFeatureOverrides`), `HostCapabilities`, `DEFAULT_TAB_FLAGS`, `TabFeatureFlags`, `TabFeatureOverrides` (from `state/tabFlags.tsx` / `lib/tabFlags.ts`; `?tabs=` query overrides also apply at mount without touching the `Bridge` or harness); `@octo/ui/demo`: `createDemoBridge` and its option types;
 `@octo/ui/styles.css`. Hosts must `@import "tailwindcss"` before the stylesheet.
 
 ## Verification

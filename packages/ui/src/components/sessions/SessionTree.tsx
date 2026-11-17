@@ -31,6 +31,7 @@ import { useApp } from "../../state/app";
 import { useNav } from "../../state/nav";
 import { useOrchestrators } from "../../state/orchestrators";
 import { useSessionIndex } from "../../state/sessionIndex";
+import { useTabFlags } from "../../state/tabFlags";
 import { requestSession } from "../../state/workspace/sessionsStart";
 import { Glyph } from "../primitives/Glyph";
 import { IconButton } from "../primitives/IconButton";
@@ -168,6 +169,7 @@ export function SessionTree(props: SessionTreeProps) {
     { id: "toggle", label: m.open ? "Hide sessions" : "Show sessions", run: () => toggle(m.project.id, !m.open) },
   ];
 
+  const tabFlags = useTabFlags();
   // The rows in screen order, for the keyboard (each row's main element has `id` = its key).
   const keyRows: (KeyRow & { session?: GlobalSession })[] = [];
   const projectRows = (ordered ?? []).map((p) => {
@@ -180,12 +182,13 @@ export function SessionTree(props: SessionTreeProps) {
       sessions.some((s) => !s.archived && isLive(s)),
     );
     const { shown, hidden } = visibleSessions(sessions, showAll.has(p.id));
+    const showMore = hidden > 0 && (!showAll.has(p.id) || shown.length < TREE_ALL || tabFlags.sessions);
     keyRows.push({ id: rowId("p", p.id), level: 1, open, title: p.name });
     if (open) {
       for (const s of shown) keyRows.push({ id: rowId("s", s.id), level: 2, title: sessionTitle(s), session: s });
-      if (hidden > 0) keyRows.push({ id: rowId("m", p.id), level: 2, title: "Show all" });
+      if (showMore) keyRows.push({ id: rowId("m", p.id), level: 2, title: "Show all" });
     }
-    return { p, sessions, active, open, shown, hidden };
+    return { p, sessions, active, open, shown, hidden, showMore };
   });
   if (props.mode === "sessions") {
     keyRows.length = 0;
@@ -317,7 +320,7 @@ export function SessionTree(props: SessionTreeProps) {
         {loading && <SkeletonList count={3} size="md" />}
         {props.mode === "sessions"
           ? flat.map((s) => sessionRow(s, false))
-          : projectRows.map(({ p, sessions, active, open, shown, hidden }) => (
+          : projectRows.map(({ p, sessions, active, open, shown, hidden, showMore }) => (
               <li key={p.id} role="none" className="flex flex-col">
                 <ProjectRow
                   project={p}
@@ -336,10 +339,10 @@ export function SessionTree(props: SessionTreeProps) {
                   onNew={() => createSession(p.id)}
                   onMenu={(e) => openProjectMenu(p, open, e)}
                 />
-                {open && (shown.length > 0 || hidden > 0) && (
+                {open && (shown.length > 0 || showMore) && (
                   <ul role="group" className="flex flex-col">
                     {shown.map((s) => sessionRow(s, true))}
-                    {hidden > 0 && (
+                    {showMore && (
                       <li role="none" data-tree-row data-tree-level={2}>
                         <ListRow
                           role="treeitem"

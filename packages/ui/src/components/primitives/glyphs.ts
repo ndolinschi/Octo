@@ -13,6 +13,7 @@ import {
   MessagesSquare,
   Notebook,
   Settings,
+  SquareTerminal,
   Terminal,
   Workflow,
   type LucideIcon,
@@ -35,6 +36,8 @@ export const GLYPH = {
   files: Folder,
   /** In-tab web browser and Design Mode visual annotations (Browser tool). */
   browser: Globe,
+  /** Interactive PTY shell in a project folder (Terminal tool). */
+  terminal: SquareTerminal,
   /** Working processes, dev servers and background workers (Processes tool). */
   processes: Activity,
   /** Facts about the project: folders, models, tokens, activity, files written (Details tool). */

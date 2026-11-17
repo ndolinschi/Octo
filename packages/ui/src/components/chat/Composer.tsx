@@ -27,7 +27,7 @@ import { Presence } from "../primitives/Presence";
 import { withAttachments } from "./attachments";
 import type { ComposerMenuHandle, MenuPick } from "./ComposerMenu";
 import { modeNote } from "../../lib/modes";
-import { FolderMenu, foldersLabel, ModelChip } from "./ComposerChips";
+import { foldersLabel, ModelChip } from "./ComposerChips";
 import type { ComposerMode } from "./composerMode";
 import type { QueuedMessage } from "./ComposerPills";
 import type { ComposerSession } from "./SessionMenu";
@@ -38,12 +38,13 @@ import type { FileInputHandle } from "../primitives/FileInput";
 import { useAgentName } from "./agentName";
 import { errorCode as errorCodeOf, structuredError } from "../../lib/format";
 import type { SlashMenuHandle } from "./SlashMenu";
-import { argsOptional, octoCommandFor, slashQuery, type SlashRow } from "../../lib/slash";
+import { argsOptional, disabledSlashCommands, OCTO_COMMAND_NAMES, octoCommandFor, slashQuery, type SlashRow } from "../../lib/slash";
 import { preloadSlashRunner, useSlashCommands, useSlashRunner } from "./useSlash";
 import { pendingLine } from "../../lib/slashPending";
 import { useComposerText, type ComposerDraft } from "./useComposerText";
 import { SENDING_NOTICE_MS } from "../../lib/constants";
 import { clearStopping, markStopping, STILL_STOPPING_MS, useStopping } from "../../lib/stopping";
+import { useTabFlags } from "../../state/tabFlags";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { mayNearLimit, plainShaping, triggerAt } from "../../lib/composerInput";
 import type * as SizeModule from "../../lib/messageSize";
@@ -54,6 +55,7 @@ import { deviceMay, ON_YOUR_COMPUTER } from "../../lib/remoteDevice";
 const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
 const ModelRefusedActions = lazy(() => import("../shared/ModelRefusedActions").then((m) => ({ default: m.ModelRefusedActions })));
 const MoveToWorktreeDialog = lazy(() => import("../shared/MoveToWorktreeDialog").then((m) => ({ default: m.MoveToWorktreeDialog })));
+const FolderMenu = lazy(() => import("./FolderMenu").then((m) => ({ default: m.FolderMenu })));
 const SessionMenu = lazy(() => import("./SessionMenu").then((m) => ({ default: m.SessionMenu })));
 /** Parts of the composer that only matter once used load on demand (the initial bundle budget). */
 const ComposerMenu = lazy(() => import("./ComposerMenu").then((m) => ({ default: m.ComposerMenu })));
@@ -168,8 +170,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [slashActive, setSlashActive] = useState<string | null>(null);
   const [highlightActive, setHighlightActive] = useState(false);
   const [modelRequest, setModelRequest] = useState<{ n: number; query: string } | undefined>(undefined);
+  const tabFlags = useTabFlags();
+  const disabledSlash = useMemo(() => disabledSlashCommands(tabFlags), [tabFlags]);
   const slashCommands = useSlashCommands();
-  const commandNames = useMemo(() => slashCommands?.octo.map((c) => c.name), [slashCommands]);
+  const commandNames = useMemo(
+    () => (slashCommands ? slashCommands.octo.map((c) => c.name) : OCTO_COMMAND_NAMES.filter((n) => !disabledSlash.has(n))),
+    [slashCommands, disabledSlash],
+  );
   const openModel = useCallback((query: string) => setModelRequest((r) => ({ n: (r?.n ?? 0) + 1, query })), []);
   const runSlash = useSlashRunner({ mode: props.mode, openModel });
   const [command, setCommand] = useState<string | null>(null);
@@ -287,7 +294,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const submit = async () => {
     if (!canSend) return;
     // An Octo command typed out in full runs here; an agent's is sent as typed (B11).
-    const octo = octoCommandFor(text, slashCommands);
+    const octo = octoCommandFor(text, slashCommands, disabledSlash);
     if (octo?.command.name === "new") return runNew(octo.args, text);
     setStarted(null);
     if (octo && attach.files.length === 0) {
@@ -445,7 +452,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const sessionProp = props.session;
   const sendTo = useMemo(() => {
     const entries = [{ id: "folders", label: `Folders: ${foldersLabel(folders)}`, icon: GLYPH.files, run: () => setSub("folders") }];
-    if (sessionProp) {
+    if (sessionProp && Boolean(sessionProp.onMakeDefault ?? sessionProp.worktree ?? sessionProp.onShowAll)) {
       const label = sessionProp.branch ? `${sessionProp.title} · ${sessionProp.branch}` : sessionProp.title;
       entries.push({ id: "session", label: `Session: ${label}`, icon: GLYPH.sessions, run: () => setSub("session") });
     }
@@ -770,8 +777,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </Suspense>
         )}
       </Presence>
-      {sub === "folders" && <FolderMenu anchor={plus} folders={props.folders} onAdd={props.onAddFolder} onClose={closeSub} onOpenChange={onChip} />}
       <Suspense fallback={null}>
+        {sub === "folders" && <FolderMenu anchor={plus} folders={props.folders} onAdd={props.onAddFolder} onClose={closeSub} onOpenChange={onChip} />}
         {sub === "session" && props.session && (
           <SessionMenu
             anchor={plus}

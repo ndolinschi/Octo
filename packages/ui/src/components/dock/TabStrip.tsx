@@ -3,6 +3,7 @@ import { cn } from "../../lib/cn";
 import { flushSync } from "react-dom";
 import { useOptionalComments } from "../../state/comments";
 import { getBrowserTabPins, getBrowserTabState, useBrowserTabsRevision } from "../../state/browserTabs";
+import { getTerminalTabState, useTerminalTabsRevision } from "../../state/terminalTabs";
 import { useLatest, useScrollFade } from "../../lib/hooks";
 import { useCode } from "../../state/code";
 import { useProject } from "../../state/project";
@@ -78,6 +79,7 @@ export function TabStrip(props: {
   const code = useCode();
   const { state, project, projectId } = useProject();
   useBrowserTabsRevision(projectId);
+  useTerminalTabsRevision(projectId);
   const list = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const plus = useRef<HTMLButtonElement>(null);
@@ -131,6 +133,7 @@ export function TabStrip(props: {
       const b = getBrowserTabState(projectId, id);
       return { url: b.url, title: b.title, pins: getBrowserTabPins(projectId, id) };
     },
+    terminal: (id: string) => getTerminalTabState(projectId, id),
   };
 
   // Tab count and the active tab do not change during a drag, so sizes hold still under the pointer. The tabs get the

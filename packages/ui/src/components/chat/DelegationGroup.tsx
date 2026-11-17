@@ -143,6 +143,7 @@ function DelegationRow({ use, agent, status, interrupted }: { use: ToolUse; agen
   const tip =
     (note && raw ? `${note}\n\n${raw}` : null) ??
     (agent?.task ? `${agent.task}\n\nAlt-click opens it in the other pane.` : served?.asked ? `${served.name} (asked for ${served.asked})` : undefined);
+  const canOpenSession = Boolean(session && (onOpenSession !== undefined || ws?.toolEnabled("sessions")));
   return (
     <ActivityRow
       // A waiting agent is not working: no spinner (ActivityRow has no needs-you glyph yet; "pending" is its still circle).
@@ -162,7 +163,7 @@ function DelegationRow({ use, agent, status, interrupted }: { use: ToolUse; agen
       note={note}
       {...(tip ? { tip } : {})}
       trailingShown={status === "failed"}
-      {...(session || (status === "failed" && ws)
+      {...(canOpenSession || (status === "failed" && ws)
         ? {
             trailing: (
               <>
@@ -179,7 +180,7 @@ function DelegationRow({ use, agent, status, interrupted }: { use: ToolUse; agen
                     Retry
                   </Button>
                 )}
-                {session && <IconButton icon={GLYPH.sessions} label="Open session" size="xs" onClick={openSession} />}
+                {canOpenSession && <IconButton icon={GLYPH.sessions} label="Open session" size="xs" onClick={openSession} />}
               </>
             ),
           }

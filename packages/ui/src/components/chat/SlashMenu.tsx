@@ -1,9 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { SlashCommands } from "@octo/agent-client";
-import type { SlashRow } from "../../lib/slash";
+import { disabledSlashCommands, type SlashRow } from "../../lib/slash";
 import { slashGroups } from "../../lib/slashRows";
 import type { PickerSection } from "../../lib/picker";
+import { useTabFlags } from "../../state/tabFlags";
 import { PopupList, popupOptionId, POPUP_PANEL } from "../primitives/PopupList";
 import { popupMove } from "../primitives/popupNav";
 import { useCloseOnScroll } from "../primitives/popupScroll";
@@ -43,7 +44,8 @@ export const SlashMenu = forwardRef<
     onClose(): void;
   }
 >(function SlashMenu(props, handle) {
-  const { groups, rows } = slashGroups(props.commands, props.query);
+  const tabFlags = useTabFlags();
+  const { groups, rows } = slashGroups(props.commands, props.query, disabledSlashCommands(tabFlags));
   const [selected, setSelected] = useState<string | null>(null);
   const [pos, setPos] = useState<{ left: number; bottom?: number; top?: number; width: number; maxHeight: number } | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);

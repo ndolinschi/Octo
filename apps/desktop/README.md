@@ -108,4 +108,4 @@ Check on your machine (`OCTO_DEBUG_CHROME=1`):
 
 Open `http://localhost:1420/?demo=1` to run against an in-memory bridge (`createDemoBridge()` from `@octo/ui/demo`, loaded only for `?demo=`)
 seeded with three projects: a finished investigation, a live run that streams scripted events, and an empty
-project. Messages you send in demo mode run a short scripted turn. `?demo=empty` starts with no projects.
+project. Messages you send in demo mode run a short scripted turn. `?demo=empty` starts with no projects. Add `&tabs=all` (or `&tabs=sessions,usage`, etc.) to enable UI tool tabs that are disabled by default in `@octo/ui` (`sessions`, `agents`, `notes`, `details`, `usage`, `memory`).

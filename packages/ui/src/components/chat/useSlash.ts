@@ -1,8 +1,10 @@
 import type { SlashCommands } from "@octo/agent-client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { disabledSlashCommands } from "../../lib/slash";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { useSessionScope } from "../../state/session";
+import { useTabFlags } from "../../state/tabFlags";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { ComposerMode } from "./composerMode";
 import { useInlineNotes } from "./notesContext";
@@ -17,6 +19,8 @@ export function preloadSlashRunner(): void {
 export function useSlashCommands(): SlashCommands | null {
   const { bridge } = useApp();
   const { projectId, project, onEvent } = useProject();
+  const tabFlags = useTabFlags();
+  const disabled = useMemo(() => disabledSlashCommands(tabFlags), [tabFlags]);
   const orchestrator = project?.models.orchestrator ?? "";
   const [commands, setCommands] = useState<SlashCommands | null>(null);
   const [round, setRound] = useState(0);
@@ -32,7 +36,10 @@ export function useSlashCommands(): SlashCommands | null {
     };
   }, [bridge, projectId, orchestrator, round]);
   useEffect(() => onEvent((e) => e.type === "slash_commands.updated" && setRound((n) => n + 1)), [onEvent]);
-  return bridge.getSlashCommands ? commands : null;
+  return useMemo(() => {
+    if (!bridge.getSlashCommands || !commands) return null;
+    return disabled.size > 0 ? { ...commands, octo: commands.octo.filter((c) => !disabled.has(c.name)) } : commands;
+  }, [bridge.getSlashCommands, commands, disabled]);
 }
 
 /**
@@ -42,6 +49,7 @@ export function useSlashCommands(): SlashCommands | null {
 export function useSlashRunner(ctx: { mode: ComposerMode | null | undefined; openModel(query: string): void }) {
   const { bridge } = useApp();
   const { projectId, project } = useProject();
+  const tabFlags = useTabFlags();
   const ws = useOptionalWorkspace();
   const scope = useSessionScope();
   const notes = useInlineNotes();
@@ -62,6 +70,7 @@ export function useSlashRunner(ctx: { mode: ComposerMode | null | undefined; ope
           push,
           rewindLast,
           openTool: (t) => ws?.openTool(t),
+          toolDisabled: (t) => !tabFlags[t],
           openSettings: () => ws?.openSettings(),
           // Decision 96: `/clear` makes a new session; this conversation follows it.
           onCleared: scope ? (next) => scope.follow(next) : undefined,
@@ -71,6 +80,6 @@ export function useSlashRunner(ctx: { mode: ComposerMode | null | undefined; ope
         args,
       );
     },
-    [bridge, projectId, ws, scope, push, rewindLast, mode, openModel, memoryBlocked],
+    [bridge, projectId, tabFlags, ws, scope, push, rewindLast, mode, openModel, memoryBlocked],
   );
 }

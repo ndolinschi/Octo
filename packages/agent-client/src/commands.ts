@@ -75,10 +75,10 @@ export type AdhocCommandInput = {
   cwd?: string;
 };
 
-export type WorkerProcessKind = "lsp" | "agent";
+export type WorkerProcessKind = "lsp" | "agent" | "terminal";
 export type WorkerProcessStatus = "running" | "busy" | "idle";
 
-/** A live harness-managed subprocess of a project (language server or ACP agent worker). */
+/** A live harness-managed subprocess of a project (language server, ACP agent worker, or PTY terminal). */
 export type WorkerProcess = {
   id: string;
   kind: WorkerProcessKind;

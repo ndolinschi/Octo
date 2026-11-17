@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SlashCommands } from "@octo/agent-client";
-import { argsOptional, NEW_COMMAND, OCTO_COMMAND_NAMES, OCTO_FALLBACK, octoCommandFor, parseSlash, slashQuery } from "./slash";
+import { argsOptional, disabledSlashCommands, NEW_COMMAND, OCTO_COMMAND_NAMES, OCTO_FALLBACK, octoCommandFor, parseSlash, slashQuery } from "./slash";
 import { slashGroups } from "./slashRows";
 
 const CMDS: SlashCommands = {
@@ -84,4 +84,31 @@ test("Enter runs a command whose argument is optional; a required one is complet
   assert.equal(argsOptional(row("remember", "<text>")), false);
   assert.equal(argsOptional(row("compact")), false);
   assert.equal(argsOptional(row("review", "[pr]", "agent")), false);
+});
+
+test("disabledSlashCommands omits /memory and /review when their UI tab flags are false while preserving /remember", () => {
+  const defaultDisabled = disabledSlashCommands({ memory: false, review: true });
+  assert.equal(defaultDisabled.has("memory"), true);
+  assert.equal(defaultDisabled.has("review"), false);
+  assert.equal(
+    slashGroups(null, "", defaultDisabled).rows.some((r) => r.name === "memory"),
+    false,
+  );
+  assert.equal(octoCommandFor("/memory", null, defaultDisabled), null);
+
+  const bothDisabled = disabledSlashCommands({ memory: false, review: false });
+  const cmds: SlashCommands = {
+    octo: [
+      { name: "memory", description: "Memory", available: true, endpoint: "ui:memory" },
+      { name: "remember", description: "Remember", args: "<text>", available: true, endpoint: "POST remember" },
+      { name: "review", description: "Review", available: true, endpoint: "ui:review" },
+    ],
+    agent: null,
+  };
+  assert.deepEqual(
+    slashGroups(cmds, "", bothDisabled).rows.map((r) => r.name),
+    ["remember", "new"],
+  );
+  assert.equal(octoCommandFor("/remember use pnpm", cmds, bothDisabled)?.command.name, "remember");
+  assert.equal(octoCommandFor("/review", cmds, bothDisabled), null);
 });

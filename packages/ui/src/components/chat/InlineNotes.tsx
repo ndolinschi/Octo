@@ -3,6 +3,7 @@ import { errorMessage } from "../../lib/format";
 import { OCTO_FALLBACK } from "../../lib/slash";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
+import { useTabFlags } from "../../state/tabFlags";
 import { Button } from "../primitives/Button";
 import { Card } from "../primitives/Card";
 import { Notice } from "../primitives/Notice";
@@ -100,6 +101,8 @@ function Remembered({ note }: { note: Extract<InlineNote, { kind: "remembered" }
 }
 
 function Help({ onClose }: { onClose(): void }) {
+  const tabFlags = useTabFlags();
+  const always = OCTO_FALLBACK.filter((c) => c.name !== "memory" || tabFlags.memory);
   return (
     <section data-help aria-label="Commands" className="text-sm">
       <Card
@@ -117,7 +120,7 @@ function Help({ onClose }: { onClose(): void }) {
           Type <code className="font-mono text-xs text-fg">/</code> to see commands. Octo&apos;s commands run here; the agent&apos;s own are sent as typed.{" "}
           <code className="font-mono text-xs text-fg">/new</code> with text starts a new session and sends the text there.
         </p>
-        <p className="mt-2 text-xs text-fg-3">Always available: {OCTO_FALLBACK.map((c) => `/${c.name}`).join(", ")}.</p>
+        <p className="mt-2 text-xs text-fg-3">Always available: {always.map((c) => `/${c.name}`).join(", ")}.</p>
       </Card>
     </section>
   );

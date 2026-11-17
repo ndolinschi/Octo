@@ -1,8 +1,10 @@
-import { lazy, Suspense, useLayoutEffect } from "react";
+import { lazy, Suspense, useLayoutEffect, useMemo } from "react";
 import type { Bridge, ShellKind } from "@octo/agent-client";
 import { HostProvider, type HostCapabilities } from "../state/host";
 import { AppProvider } from "../state/app";
 import { ChromeProvider, NO_CHROME, type WindowChrome } from "../state/chrome";
+import { TabFlagsProvider, type TabFeatureOverrides } from "../state/tabFlags";
+import { resolveTabFlags } from "../lib/tabFlags";
 import { AppShell } from "./AppShell";
 import { useInputModality } from "../lib/modality";
 import { useMediaQuery } from "../lib/hooks";
@@ -24,13 +26,16 @@ export type OctoAppProps = {
   host?: HostCapabilities;
   /** The window frame the shell draws (decision 54); omitted: a browser, no overlay and no insets. */
   chrome?: WindowChrome;
+  /** UI-only tool-tab feature flag overrides (merged over `DEFAULT_TAB_FLAGS`, before `?tabs=`). */
+  tabs?: TabFeatureOverrides;
 };
 
-export function OctoApp({ bridge, bridgeUrl, shell, demo = false, host, chrome = NO_CHROME }: OctoAppProps) {
+export function OctoApp({ bridge, bridgeUrl, shell, demo = false, host, chrome = NO_CHROME, tabs }: OctoAppProps) {
   useInputModality();
   // Direction 7: the one phone switch; `data-phone` drives the `phone:` CSS variant.
   const query = useMediaQuery(PHONE_QUERY);
   const phone = host?.layout ? host.layout === "phone" : query;
+  const tabFlags = useMemo(() => resolveTabFlags(tabs, window.location.search), [tabs]);
   useLayoutEffect(() => {
     document.documentElement.toggleAttribute("data-phone", phone);
   }, [phone]);
@@ -38,22 +43,24 @@ export function OctoApp({ bridge, bridgeUrl, shell, demo = false, host, chrome =
     <PhoneContext.Provider value={phone}>
       <HostProvider value={host ?? {}}>
         <ChromeProvider value={chrome}>
-          <AppProvider bridge={bridge} bridgeUrl={bridgeUrl} shell={shell} demo={demo}>
-            {demo && window.location.hash === "#/__v7" ? (
+          <TabFlagsProvider value={tabFlags}>
+            <AppProvider bridge={bridge} bridgeUrl={bridgeUrl} shell={shell} demo={demo}>
+              {demo && window.location.hash === "#/__v7" ? (
+                <Suspense fallback={null}>
+                  <V7Gallery loadMonaco={loadDiffMonaco} />
+                </Suspense>
+              ) : demo && new URLSearchParams(window.location.search).has("gallery") ? (
+                <Suspense fallback={null}>
+                  <Gallery />
+                </Suspense>
+              ) : (
+                <AppShell />
+              )}
               <Suspense fallback={null}>
-                <V7Gallery loadMonaco={loadDiffMonaco} />
+                <Tooltips />
               </Suspense>
-            ) : demo && new URLSearchParams(window.location.search).has("gallery") ? (
-              <Suspense fallback={null}>
-                <Gallery />
-              </Suspense>
-            ) : (
-              <AppShell />
-            )}
-            <Suspense fallback={null}>
-              <Tooltips />
-            </Suspense>
-          </AppProvider>
+            </AppProvider>
+          </TabFlagsProvider>
         </ChromeProvider>
       </HostProvider>
     </PhoneContext.Provider>

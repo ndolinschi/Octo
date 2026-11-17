@@ -110,6 +110,8 @@ switched on in `harness.env`; free loopback ports, login-shell `PATH`, `/health`
 
 The UI talks only to the harness bridge (`harness serve`, default `http://127.0.0.1:8790`; override with `VITE_HARNESS_BRIDGE_URL`). Open the app with `?demo=1` to run against the in-memory demo bridge with no backend.
 
+**UI tab feature flags (`packages/ui/src/lib/tabFlags.ts`):** `@octo/ui` disables six dock tool tabs by default (`DEFAULT_TAB_FLAGS`: `sessions`, `agents`, `notes`, `details`, `usage`, `memory` are `false`) while keeping the remaining tool tabs enabled by default (`files`, `browser`, `terminal`, `processes`, `changes`, `review`, `side` are `true`, including multi-instance `terminal:<id>` tabs via `` Ctrl+` `` / `` Ctrl+Shift+` ``). `sessions: false` hides only the `Sessions` dock tool tab and top-bar `Sessions` button/picker (`[data-sessions-button]`); left-sidebar project sessions (`SessionTree`), `/new`, and `session:<id>` conversation tabs stay enabled. Flags are strictly UI-only (they never disable `apps/harness` routes, memory, usage tracking, or `@octo/agent-client`) and can be overridden via `<OctoApp tabs={...} />` or `?tabs=all` / `?tabs=sessions,usage` / `?tabs=all,-notes`.
+
 Do not share SQLite/config between harness, router, and desktop.
 
 ## Docs, specs and working rules

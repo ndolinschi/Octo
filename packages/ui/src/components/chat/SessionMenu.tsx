@@ -10,7 +10,7 @@ export type ComposerSession = {
   branch?: string | null | undefined;
   onMakeDefault?: (() => void) | undefined;
   onMoveToWorktree?: (() => void) | undefined;
-  onShowAll(): void;
+  onShowAll?: (() => void) | undefined;
 };
 
 /**
@@ -26,6 +26,7 @@ export function SessionMenu(props: { anchor: RefObject<HTMLElement | null>; sess
   const r = props.anchor.current?.getBoundingClientRect();
   const make = session.onMakeDefault;
   const move = session.onMoveToWorktree;
+  const showAll = session.onShowAll;
   return (
     <Presence show={open} exitMs={0}>
       {open && (
@@ -39,7 +40,7 @@ export function SessionMenu(props: { anchor: RefObject<HTMLElement | null>; sess
             items={[
               ...(make && !session.isDefault ? [{ id: "default", label: "Make default", run: make }] : []),
               ...(move ? [{ id: "worktree", label: "Move to worktree…", run: move }] : []),
-              { id: "all", label: "All sessions…", run: session.onShowAll },
+              ...(showAll ? [{ id: "all", label: "All sessions…", run: showAll }] : []),
             ]}
           />
         </Suspense>

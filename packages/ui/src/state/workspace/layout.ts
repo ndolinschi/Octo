@@ -12,13 +12,15 @@ export type TabId = string & { readonly __brand: "TabId" };
 export type Group = { id: string; tabs: TabId[]; active: TabId; size: number };
 export type Layout = { groups: Group[]; focused: string };
 
-export type ToolTab = "sessions" | "agents" | "notes" | "files" | "browser" | "processes" | "details" | "usage" | "changes" | "memory" | "review" | "side";
+export type ToolTab =
+  "sessions" | "agents" | "notes" | "files" | "browser" | "terminal" | "processes" | "details" | "usage" | "changes" | "memory" | "review" | "side";
 export type TabRef =
   | { kind: "chat" }
   | { kind: "tool"; tool: ToolTab }
   | { kind: "agent"; agentId: string }
   | { kind: "file"; key: FileKey }
   | { kind: "browser"; browserId: string }
+  | { kind: "terminal"; terminalId: string }
   | { kind: "run"; name: string }
   | { kind: "session"; sessionId: string };
 
@@ -27,12 +29,27 @@ const brand = (id: string) => id as TabId;
 
 export const CHAT = brand("chat");
 export const MAX_GROUPS = 4;
-const TOOLS: readonly ToolTab[] = ["sessions", "agents", "notes", "files", "browser", "processes", "details", "usage", "changes", "memory", "review", "side"];
+const TOOLS: readonly ToolTab[] = [
+  "sessions",
+  "agents",
+  "notes",
+  "files",
+  "browser",
+  "terminal",
+  "processes",
+  "details",
+  "usage",
+  "changes",
+  "memory",
+  "review",
+  "side",
+];
 
 export const toolTab = (tool: ToolTab): TabId => brand(tool);
 export const agentTab = (agentId: string): TabId => brand(`agent:${agentId}`);
 export const fileTab = (key: FileKey): TabId => brand(`file:${key}`);
 export const browserTab = (browserId: string): TabId => brand(`browser:${browserId}`);
+export const terminalTab = (terminalId: string): TabId => brand(`terminal:${terminalId}`);
 /** The "Run: name" tab of a project command (decision 68). */
 export const runTab = (name: string): TabId => brand(`run:${name}`);
 /** One session of the project in a tab of its own ("Open in tab" of the Sessions tool). */
@@ -46,6 +63,7 @@ export function parseTab(id: string): TabRef | null {
   if (id.startsWith("agent:") && id.length > 6) return { kind: "agent", agentId: id.slice(6) };
   if (id.startsWith("session:") && id.length > 8) return { kind: "session", sessionId: id.slice(8) };
   if (id.startsWith("browser:") && id.length > 8) return { kind: "browser", browserId: id.slice(8) };
+  if (id.startsWith("terminal:") && id.length > 9) return { kind: "terminal", terminalId: id.slice(9) };
   if (id.startsWith("run:") && id.length > 4) return { kind: "run", name: id.slice(4) };
   const key = id.startsWith("file:") ? parseFileKey(id.slice(5)) : null;
   return key ? { kind: "file", key } : null;
@@ -303,7 +321,15 @@ export function besideChat(layout: Layout): Target {
 export function shownTool(layout: Layout): ToolTab | null {
   const kind = (tab: TabId): ToolTab | null => {
     const ref = parseTab(tab);
-    return ref?.kind === "tool" ? ref.tool : ref?.kind === "file" ? "files" : ref?.kind === "browser" ? "browser" : null;
+    return ref?.kind === "tool"
+      ? ref.tool
+      : ref?.kind === "file"
+        ? "files"
+        : ref?.kind === "browser"
+          ? "browser"
+          : ref?.kind === "terminal"
+            ? "terminal"
+            : null;
   };
   const focused = kind(focusedGroup(layout).active);
   if (focused) return focused;
