@@ -29,6 +29,7 @@ func samples() map[string]*Error {
 		"AgentRefusedToolServer": AgentRefusedToolServer("Claude Code", "method not supported"),
 		"AgentModelRejected":     AgentModelRejected("GitHub Copilot", "gpt-9", []string{"gpt-5", "gpt-4"}, long),
 		"AgentSilent":            AgentSilent("Claude Code", "claude auth login", long),
+		"AgentNoAnswer":          AgentNoAnswer("Claude Code", long),
 		"AgentStopped.declined":  AgentStopped("Claude Code", StopDeclined, "refusal"),
 		"AgentStopped.room":      AgentStopped("Claude Code", StopOutOfRoom, "max_tokens"),
 		"AgentStopped.requests":  AgentStopped("Claude Code", StopTooManyRequests, "max_turn_requests"),

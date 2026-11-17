@@ -63,6 +63,8 @@ export function useBrowserSession(browserId: string, stageRef: RefObject<HTMLEle
   const frame = tabState.url && loadedFrame?.forUrl === tabState.url ? loadedFrame : EMPTY_FRAME;
 
   const [reloadTick, setReloadTick] = useState(0);
+  const internalUrlRef = useRef<string | null>(null);
+  const loadedKeyRef = useRef<string>("");
   const [designMode, setDesignMode] = useState(false);
   const [tool, setTool] = useState<DesignTool>("select");
   const [strokes, setStrokes] = useState<MarkupStroke[]>([]);
@@ -81,7 +83,16 @@ export function useBrowserSession(browserId: string, stageRef: RefObject<HTMLEle
 
   useEffect(() => {
     const target = tabState.url;
-    if (!target) return;
+    if (!target) {
+      loadedKeyRef.current = "";
+      return;
+    }
+    const key = `${projectId}:${browserId}:${reloadTick}`;
+    if (internalUrlRef.current === target && loadedKeyRef.current === key) {
+      return;
+    }
+    internalUrlRef.current = null;
+    loadedKeyRef.current = key;
     let alive = true;
     if (bridge.openBrowserProxy) {
       bridge
@@ -187,7 +198,11 @@ export function useBrowserSession(browserId: string, stageRef: RefObject<HTMLEle
     (ev: InspectorEvent) => {
       if (ev.type === "ready" || ev.type === "nav") {
         const patch: { url?: string; title?: string } = {};
-        if (ev.url.startsWith("http")) patch.url = ev.url;
+        if (ev.url.startsWith("http")) {
+          patch.url = ev.url;
+          internalUrlRef.current = ev.url;
+          setLoadedFrame((prev) => (prev ? { ...prev, forUrl: ev.url } : prev));
+        }
         if (ev.title) patch.title = ev.title;
         if (patch.url || patch.title) updateBrowserTabState(projectId, browserId, patch);
         return;
@@ -310,12 +325,17 @@ export function useBrowserSession(browserId: string, stageRef: RefObject<HTMLEle
     (raw: string): boolean => {
       const normalized = normalizeBrowserUrl(raw);
       if (!normalized) return false;
+      internalUrlRef.current = null;
       setDraft(null);
       setStrokes([]);
-      updateBrowserTabState(projectId, browserId, { url: normalized, title: "" });
+      if (normalized === tabState.url) {
+        setReloadTick((n) => n + 1);
+      } else {
+        updateBrowserTabState(projectId, browserId, { url: normalized, title: "" });
+      }
       return true;
     },
-    [projectId, browserId],
+    [projectId, browserId, tabState.url],
   );
 
   const commitDraft = async (mode: "submit" | "stage") => {

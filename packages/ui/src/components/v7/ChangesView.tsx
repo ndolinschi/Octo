@@ -148,7 +148,7 @@ export function ChangesView(props: ChangesViewProps) {
   );
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col bg-panel" data-v7-changes>
+    <div className="flex h-full min-h-0 min-w-0 flex-col border-t border-line bg-panel" data-v7-changes>
       {props.focusTurn != null && props.onShowAll && (
         <div className="flex h-ctl-lg shrink-0 items-center gap-2 border-b border-line pr-pane pl-4 text-sm text-fg-2">
           <span className="min-w-0 flex-1 truncate">Showing one request</span>

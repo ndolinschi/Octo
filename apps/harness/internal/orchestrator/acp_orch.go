@@ -16,6 +16,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
 	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
+	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/mcp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
@@ -155,8 +156,33 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 	}
 	switch stop {
 	case acp.StopEndTurn:
+		if ae := handler.midTurnError(); ae != nil {
+			return agent.Result{}, agentErrorFailure(target.agent, *ae, client.Stderr())
+		}
+		if ce := handler.compactionError(); ce != "" {
+			return agent.Result{}, usererr.AgentFailed(target.agent.Label, joinDetails(ce, client.Stderr()))
+		}
+		if handler.compactedDone() {
+			summary := strings.TrimSpace(rt.redact(handler.compactionSummary()))
+			c, dbCancel := dbCtx(ctx)
+			comp, cerr := rt.db.AddManualCompaction(c, orch.ID, summary, 0)
+			dbCancel()
+			if cerr != nil {
+				rt.logErr("record acp compaction", cerr)
+			} else {
+				rt.publish(events.AgentCompacted, map[string]any{
+					"agent_id": orch.ID, "upto_message_id": comp.UptoMessageID,
+					"summary_tokens": comp.SummaryTokens(), "at": comp.CreatedAt,
+					"manual": true, "message_count": 0, "session_id": rt.sessionID,
+				})
+			}
+			if text := handler.finalText(); text != "" {
+				return agent.Result{Text: text}, nil
+			}
+			return agent.Result{Text: summary}, nil
+		}
 		if handler.nothing() {
-			return agent.Result{}, nothingError(target.agent)
+			return agent.Result{}, nothingError(target.agent, client.Stderr(), handler.thoughtOnly())
 		}
 		return agent.Result{Text: handler.finalText()}, nil
 	case acp.StopCancelled:
@@ -539,7 +565,7 @@ func (rt *runtime) recap(ctx context.Context, agentID string, before []projectst
 	if len(before) == 0 && !(ok && comp.Cleared) {
 		return "", nil
 	}
-	if ok {
+	if ok && strings.TrimSpace(comp.Summary) != "" {
 		return clip(comp.Summary, RecapCap), nil
 	}
 	var lines []string

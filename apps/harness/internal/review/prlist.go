@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/codehost"
@@ -119,6 +120,8 @@ type listEntry struct {
 	prs        []codehost.PR
 	fetchedAt  time.Time
 	refreshing bool
+	limit      int
+	complete   bool
 }
 
 func listKey(pid, label string, repo codehost.Repo) string {
@@ -216,11 +219,15 @@ func (s *Service) ListPRs(ctx context.Context, pid string, o ListOptions) (PRLis
 		out.Hostname = selected[0].ref.Hostname
 	}
 
+	neededLimit := codehost.MaxListed
+	if filter == FilterAll && strings.TrimSpace(o.Q) == "" {
+		neededLimit = min(o.Page*o.PerPage+1, codehost.MaxListed)
+	}
 	var got []listEntry
 	var firstErr error
 	var oldest time.Time
 	for _, e := range selected {
-		cur, stale, err := s.cachedList(ctx, db, pid, label, dir, e.repo, o.Refresh)
+		cur, stale, err := s.cachedList(ctx, db, pid, label, dir, e.repo, o.Refresh, neededLimit)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -275,23 +282,25 @@ func (s *Service) ListPRs(ctx context.Context, pid string, o ListOptions) (PRLis
 }
 
 // cachedList is the list of one repository through the cache.
-func (s *Service) cachedList(ctx context.Context, db *projectstore.DB, pid, label, dir string, repo codehost.Repo, refresh bool) (listEntry, bool, error) {
+func (s *Service) cachedList(ctx context.Context, db *projectstore.DB, pid, label, dir string, repo codehost.Repo, refresh bool, neededLimit int) (listEntry, bool, error) {
+	if neededLimit <= 0 || neededLimit > codehost.MaxListed {
+		neededLimit = codehost.MaxListed
+	}
 	key := listKey(pid, label, repo)
 	s.mu.Lock()
 	ent := s.lists[key]
-	s.mu.Unlock()
-	if ent != nil && !refresh {
-		s.mu.Lock()
+	if ent != nil && !refresh && (ent.complete || ent.limit >= neededLimit) {
 		cur := *ent
 		age := s.now().Sub(ent.fetchedAt)
 		if age >= ListTTL && !ent.refreshing {
 			ent.refreshing = true
-			go s.refreshList(pid, label, dir, repo)
+			go s.refreshList(pid, label, dir, repo, max(ent.limit, neededLimit))
 		}
 		s.mu.Unlock()
 		return cur, age >= ListTTL, nil
 	}
-	got, err := s.fetchList(ctx, db, pid, dir, repo)
+	s.mu.Unlock()
+	got, err := s.fetchList(ctx, db, pid, dir, repo, neededLimit)
 	if err != nil {
 		return listEntry{}, false, err
 	}
@@ -368,35 +377,77 @@ func (s *Service) rows(ctx context.Context, db *projectstore.DB, es []listEntry)
 	return rows, nil
 }
 
-// fetchList asks the code host for the open pull requests of repo, and closes
-// the reviews of that repository whose pull request is no longer open.
-func (s *Service) fetchList(ctx context.Context, db *projectstore.DB, pid, dir string, repo codehost.Repo) (listEntry, error) {
-	prs, err := s.host.ListPRs(ctx, dir, repo)
+// fetchList asks the code host for up to limit open pull requests of repo, and
+// closes the reviews of that repository whose pull request is no longer open
+// when the full open list was read.
+func (s *Service) fetchList(ctx context.Context, db *projectstore.DB, pid, dir string, repo codehost.Repo, limit int) (listEntry, error) {
+	var (
+		prs      []codehost.PR
+		err      error
+		complete bool
+	)
+	if cl, ok := s.host.(codehost.ChunkedLister); ok && limit > 0 && limit < codehost.MaxListed {
+		prs, err = cl.ListPRsLimit(ctx, dir, repo, limit)
+		complete = len(prs) < limit
+	} else {
+		limit = codehost.MaxListed
+		prs, err = s.host.ListPRs(ctx, dir, repo)
+		complete = true
+	}
 	if err != nil {
 		return listEntry{}, err
 	}
-	ent := listEntry{repo: repo, prs: prs, fetchedAt: s.now()}
+	ent := listEntry{repo: repo, prs: prs, fetchedAt: s.now(), limit: limit, complete: complete}
 
-	open, err := db.Reviews(ctx, projectstore.ReviewOpen)
-	if err == nil {
-		listed := map[int]bool{}
-		for _, p := range prs {
-			listed[p.Number] = true
-		}
-		// Reviews of pull requests that left the open list: closed or merged.
-		checked := 0
-		for _, r := range open {
-			if r.Kind != "github" || !strings.EqualFold(r.Repo, repo.String()) || listed[r.Number] || checked >= 10 {
-				continue
+	if complete {
+		open, err := db.Reviews(ctx, projectstore.ReviewOpen)
+		if err == nil {
+			listed := map[int]bool{}
+			for _, p := range prs {
+				listed[p.Number] = true
 			}
-			checked++
-			d, err := s.host.View(ctx, dir, repo, r.Number)
-			if err != nil || d.State == "open" || d.State == "" {
-				continue
+			// Reviews of pull requests that left the open list: closed or merged.
+			var toCheck []projectstore.Review
+			for _, r := range open {
+				if r.Kind != "github" || !strings.EqualFold(r.Repo, repo.String()) || listed[r.Number] {
+					continue
+				}
+				toCheck = append(toCheck, r)
+				if len(toCheck) >= 10 {
+					break
+				}
 			}
-			closed := projectstore.ReviewClosed
-			if cur, err := db.UpdateReview(ctx, r.ID, projectstore.ReviewPatch{State: &closed}); err == nil {
-				s.publish(ctx, db, pid, cur, "closed")
+			if len(toCheck) > 0 {
+				closedIDs := make([]bool, len(toCheck))
+				workers := min(4, len(toCheck))
+				jobs := make(chan int, len(toCheck))
+				for i := range toCheck {
+					jobs <- i
+				}
+				close(jobs)
+				var wg sync.WaitGroup
+				wg.Add(workers)
+				for range workers {
+					go func() {
+						defer wg.Done()
+						for i := range jobs {
+							d, err := s.host.View(ctx, dir, repo, toCheck[i].Number)
+							if err == nil && d.State != "open" && d.State != "" {
+								closedIDs[i] = true
+							}
+						}
+					}()
+				}
+				wg.Wait()
+				closed := projectstore.ReviewClosed
+				for i, r := range toCheck {
+					if !closedIDs[i] {
+						continue
+					}
+					if cur, err := db.UpdateReview(ctx, r.ID, projectstore.ReviewPatch{State: &closed}); err == nil {
+						s.publish(ctx, db, pid, cur, "closed")
+					}
+				}
 			}
 		}
 	}
@@ -406,7 +457,7 @@ func (s *Service) fetchList(ctx context.Context, db *projectstore.DB, pid, dir s
 
 // refreshList is the background refresh of a stale list. It never touches the
 // caller's context: the request that started it has long returned.
-func (s *Service) refreshList(pid, label, dir string, repo codehost.Repo) {
+func (s *Service) refreshList(pid, label, dir string, repo codehost.Repo, limit int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	key := listKey(pid, label, repo)
@@ -427,7 +478,7 @@ func (s *Service) refreshList(pid, label, dir string, repo codehost.Repo) {
 		done(nil)
 		return
 	}
-	got, err := s.fetchList(ctx, db, pid, dir, repo)
+	got, err := s.fetchList(ctx, db, pid, dir, repo, limit)
 	if err != nil {
 		done(nil)
 		return

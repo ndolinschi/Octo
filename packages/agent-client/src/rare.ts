@@ -429,6 +429,8 @@ export function createRareMethods({
       const q: string[] = [];
       if (params?.folder) q.push(`folder=${encodeURIComponent(params.folder)}`);
       if (params?.base) q.push(`base=${encodeURIComponent(params.base)}`);
+      if (params?.page) q.push(`page=${params.page}`);
+      if (params?.per_page) q.push(`per_page=${params.per_page}`);
       return request("GET", `${p(id)}/review/branches${q.length ? `?${q.join("&")}` : ""}`) as Promise<ReviewBranchList>;
     },
     listReviews: (id, state) => unwrap<ReviewSummary[]>(request("GET", `${p(id)}/reviews${state ? `?state=${state}` : ""}`), "reviews"),

@@ -47,29 +47,67 @@ func (i *instance) modifyResponse(resp *http.Response) error {
 	if resp.Request != nil && resp.Request.Method == http.MethodHead {
 		return nil
 	}
+	if h.Get("Content-Encoding") != "" {
+		return nil
+	}
 	mt, _, err := mime.ParseMediaType(h.Get("Content-Type"))
-	if err != nil || mt != "text/html" {
+	if err != nil || !isRewritableMediaType(mt) {
 		return nil
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxInspectableHTML+1))
-	closeErr := resp.Body.Close()
 	if err != nil {
+		_ = resp.Body.Close()
 		return err
 	}
-	if closeErr != nil {
-		return closeErr
-	}
 	if len(body) > maxInspectableHTML {
-		resp.Body = io.NopCloser(bytes.NewReader(body))
-		h.Del("Content-Length")
+		origBody := resp.Body
+		resp.Body = struct {
+			io.Reader
+			io.Closer
+		}{
+			Reader: io.MultiReader(bytes.NewReader(body), origBody),
+			Closer: origBody,
+		}
 		return nil
 	}
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		return closeErr
+	}
 
-	injected := injectInspectorTag(body, i.nonce, i.targetOrigin)
-	resp.Body = io.NopCloser(bytes.NewReader(injected))
-	h.Set("Content-Length", strconv.Itoa(len(injected)))
+	rewritten := i.rewriteBodyOrigins(body)
+	if mt == "text/html" {
+		rewritten = injectInspectorTag(rewritten, i.nonce, i.targetOrigin)
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(rewritten))
+	h.Set("Content-Length", strconv.Itoa(len(rewritten)))
 	return nil
+}
+
+func isRewritableMediaType(mt string) bool {
+	switch mt {
+	case "text/html", "text/css", "application/javascript", "text/javascript", "application/x-javascript", "application/json":
+		return true
+	default:
+		return false
+	}
+}
+
+func (i *instance) rewriteBodyOrigins(body []byte) []byte {
+	out := body
+	target := []byte(i.targetOrigin)
+	if len(target) > 0 && bytes.Contains(out, target) {
+		out = bytes.ReplaceAll(out, target, []byte(i.proxyOrigin))
+	}
+	wsScheme := "ws://"
+	if i.target.Scheme == "https" {
+		wsScheme = "wss://"
+	}
+	wsTarget := []byte(wsScheme + i.target.Host)
+	if bytes.Contains(out, wsTarget) {
+		out = bytes.ReplaceAll(out, wsTarget, []byte("ws://"+i.proxyHost))
+	}
+	return out
 }
 
 func injectInspectorTag(doc []byte, nonce, targetOrigin string) []byte {
@@ -116,7 +154,7 @@ func rewriteCSP(h http.Header, headerName string) {
 			fields := strings.Fields(d)
 			name := strings.ToLower(fields[0])
 			switch name {
-			case "frame-ancestors":
+			case "frame-ancestors", "upgrade-insecure-requests", "block-all-mixed-content":
 				continue
 			case "default-src":
 				defaultTokens = fields[1:]
@@ -124,7 +162,8 @@ func rewriteCSP(h http.Header, headerName string) {
 				if name == "script-src" {
 					hasScriptSrc = true
 				}
-				d = ensureTokens(d, fields[1:], "'self'")
+				cleaned := filterOutToken(fields[1:], "'strict-dynamic'")
+				d = ensureTokens(fields[0]+" "+strings.Join(cleaned, " "), cleaned, "'self'")
 			case "style-src", "style-src-elem", "style-src-attr":
 				if name == "style-src" {
 					hasStyleSrc = true
@@ -137,7 +176,7 @@ func rewriteCSP(h http.Header, headerName string) {
 			kept = append(kept, d)
 		}
 		if len(defaultTokens) > 0 {
-			base := filterOutNone(defaultTokens)
+			base := filterOutToken(defaultTokens, "'none'")
 			if !hasScriptSrc {
 				kept = append(kept, ensureTokens("script-src "+strings.Join(base, " "), base, "'self'"))
 			}
@@ -154,10 +193,10 @@ func rewriteCSP(h http.Header, headerName string) {
 	}
 }
 
-func filterOutNone(tokens []string) []string {
+func filterOutToken(tokens []string, drop string) []string {
 	out := make([]string, 0, len(tokens))
 	for _, t := range tokens {
-		if !strings.EqualFold(t, "'none'") {
+		if !strings.EqualFold(t, drop) {
 			out = append(out, t)
 		}
 	}

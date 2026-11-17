@@ -86,11 +86,12 @@ type agent struct {
 	commands []map[string]any
 	blocks   string // the content blocks of the last prompt (type, or image:mime:len)
 
-	sess    string // current session id ("" until session/new or session/load)
-	nSess   int
-	loaded  bool
-	mcpSrvs []mcpEntry
-	mcpc    *mcpClient
+	sess             string // current session id ("" until session/new or session/load)
+	nSess            int
+	loaded           bool
+	clientCompaction bool
+	mcpSrvs          []mcpEntry
+	mcpc             *mcpClient
 	// mcpInstr is the "instructions" of the harness MCP server's initialize result.
 	mcpInstr string
 }
@@ -136,6 +137,18 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 	a.logRequest(m)
 	switch m.Method {
 	case "initialize":
+		var ip struct {
+			ClientCapabilities struct {
+				Session *struct {
+					Compaction json.RawMessage `json:"compaction"`
+				} `json:"session"`
+			} `json:"clientCapabilities"`
+		}
+		if json.Unmarshal(m.Params, &ip) == nil && ip.ClientCapabilities.Session != nil && len(ip.ClientCapabilities.Session.Compaction) > 0 {
+			a.mu.Lock()
+			a.clientCompaction = true
+			a.mu.Unlock()
+		}
 		version := 1
 		if v, err := strconv.Atoi(os.Getenv(EnvProtocolVersion)); err == nil {
 			version = v

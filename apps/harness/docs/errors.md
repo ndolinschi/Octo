@@ -63,7 +63,7 @@ the bridge writes them (`writeProblem`, `writeError`, `errorBody`). `writeError(
 | `AgentTimedOut` | "<Agent> did not answer in time." (`retry`) |
 | `AgentRefusedToolServer` | "<Agent> could not use Octo's tools this time; the request ran without delegation and notes." (`update_agent`) |
 | `AgentModelRejected` | "<Agent> does not offer the model <model>." (`open_settings`) |
-| `AgentSilent`, `AgentStopped`, `AgentCrashed`, `AgentFailed`, `AgentUnavailable` | see `catalogue_agent.go` |
+| `AgentSilent`, `AgentNoAnswer`, `AgentStopped`, `AgentCrashed`, `AgentFailed`, `AgentUnavailable` | see `catalogue_agent.go` |
 | `NoProvider`, `ProviderNotConnected`, `ProviderNotSupported`, `ProviderNotWorking` | provider states (`connect_provider` / `recheck_provider`) |
 | `BudgetReached` | "This project's budget is used up ($X of $Y)." (`open_settings`) |
 | `BudgetCut` | "This project's budget ran out during this request ($X of $Y); the answer was stopped mid-request." Hint: what it had written is kept. Code `budget_reached` (`open_settings`) |
@@ -144,6 +144,12 @@ is now per session (20 waiting messages of one session).
 | Code (status) | Constructor | Message | When |
 | --- | --- | --- | --- |
 | `invalid_request` (400) | `FormAnswerRefused(n, technical)` | "One answer in the form needs attention." / "Some answers in the form need attention." (hint "Fix the marked fields, then submit again.", `details` "id: message; …") | `POST /v1/projects/{pid}/inputs/{id}` with an answer the form refuses; the body also carries `error.fields {id: message}` ([v7.md](./v7.md) §4). Never a value. |
+
+## Added 2026-11-17 (OpenCode compaction, mid-turn errors, and `/compact` retry)
+
+- `agent_no_answer` (`AgentNoAnswer(label, details)`): `"<Label> stopped before writing an answer."` (hint `"Try sending your request again."`, `action: "retry"`). Returned when an external agent streamed reasoning without producing answer text or tool calls, instead of misreporting it as `agent_silent`.
+- Mid-turn `agent_error` updates (`ProviderAuthError`/HTTP 401 -> `AgentNotLoggedIn`; other errors -> `AgentFailed`) and silent-turn `stderr` capture (`AgentSilent` now keeps redacted trailing `stderr` in `details` alongside the login hint).
+- Retrying a failed `/compact` turn routes through `POST /compact` (`bridge.compactNow`) instead of `POST /messages` (avoiding `octo_command`), and `ErrorNotice` hides the `"Checked just now"` line when `[Check again]` triggers a retry that fails.
 
 ## Added 2026-11-17 (interactive terminals)
 

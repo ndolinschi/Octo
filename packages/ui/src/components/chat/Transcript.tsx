@@ -307,6 +307,7 @@ export const Transcript = memo(function Transcript(props: {
                     error={ended.error ?? turnFailureText(turn, ctx.results)}
                     fromStep={!ended.error}
                     retryText={turn.prompt ? promptText(turn.prompt) : null}
+                    retryCommand={turn.prompt?.command}
                     fields={errorFieldsOf(ended)}
                     agent={agentName}
                   />
@@ -354,6 +355,7 @@ export const Transcript = memo(function Transcript(props: {
               error={failure.error}
               fromStep={failure.fromStep}
               retryText={lastPrompt ? promptText(lastPrompt) : null}
+              retryCommand={lastPrompt?.command}
               fields={{
                 ...failure,
                 ...(failure.hint || !login.hint ? {} : { hint: login.hint }),

@@ -585,7 +585,24 @@ export function withDemoReview(base: Bridge, records: Map<string, ProjectRecord>
           commit: { sha: "7be4a10", subject: "Merge pull request #481 from atlas-labs/lint", date: at(60 * 5) },
         },
       ];
-      return { folder: params?.folder ?? "atlas-api", base, default_base: def, branches: rows.filter((r) => r.name !== base || r.current) };
+      const filtered = rows.filter((r) => r.name !== base || r.current);
+      if (params?.page || params?.per_page) {
+        const page = Math.max(1, params.page ?? 1);
+        const perPage = Math.max(1, params.per_page ?? 25);
+        const start = (page - 1) * perPage;
+        const slice = filtered.slice(start, start + perPage);
+        return {
+          folder: params?.folder ?? "atlas-api",
+          base,
+          default_base: def,
+          branches: slice,
+          page,
+          per_page: perPage,
+          total: filtered.length,
+          next_page: start + slice.length < filtered.length ? page + 1 : null,
+        };
+      }
+      return { folder: params?.folder ?? "atlas-api", base, default_base: def, branches: filtered };
     },
     getReview: async (pid, id) => (await delay(), reviewOut(find(pid, id))),
     patchReview: async (pid, id, patch) => {

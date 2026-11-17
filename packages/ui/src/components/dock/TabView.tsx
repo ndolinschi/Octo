@@ -91,6 +91,16 @@ const SidePanel = lazy(() => import("../side/SidePanel").then((m) => ({ default:
 /** The Usage tab too (v6.2). */
 const UsagePanel = lazy(() => import("../usage/UsagePanel").then((m) => ({ default: m.UsagePanel })));
 
+function ScopedDetailsPanel() {
+  const ws = useOptionalWorkspace();
+  const { state } = useProject();
+  return (
+    <SessionScope sessionId={ws?.focusedSessionId ?? state.sessions.defaultId}>
+      <DetailsPanel />
+    </SessionScope>
+  );
+}
+
 /** The view behind a tab. The Files tab is the file view with no file open yet. */
 export function TabView({ tab }: { tab: TabId }) {
   const { project } = useProject();
@@ -193,7 +203,7 @@ export function TabView({ tab }: { tab: TabId }) {
       return (
         <ToolView tab={tab}>
           <Suspense fallback={null}>
-            {ref.tool === "agents" ? <AgentsPanel /> : ref.tool === "notes" ? <NotesPanel /> : ref.tool === "usage" ? <UsagePanel /> : <DetailsPanel />}
+            {ref.tool === "agents" ? <AgentsPanel /> : ref.tool === "notes" ? <NotesPanel /> : ref.tool === "usage" ? <UsagePanel /> : <ScopedDetailsPanel />}
           </Suspense>
         </ToolView>
       );

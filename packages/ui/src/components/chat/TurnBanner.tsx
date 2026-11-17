@@ -5,10 +5,11 @@ import { loginSteps, withLoginSteps, type LoginSteps } from "../../lib/errors/lo
 import { isStructured, plainError } from "../../lib/errors/plain";
 import { isRestartInterruption } from "../../lib/transcript";
 import { useActivity } from "../../state/activity";
+import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { Notice } from "../primitives/Notice";
 import { ErrorNotice } from "../shared/ErrorNotice";
-import { runRetry, splitHint } from "./outcome";
+import { isCompactRetry, runRetry, splitHint } from "./outcome";
 
 /** The login command of the agent `id` from the plugin list, while it is not logged in (an agent row keeps no `command`). */
 function useLoginSteps(id: string | undefined, wanted: boolean): LoginSteps | null {
@@ -39,6 +40,8 @@ export function TurnBanner(props: {
   /** NEW-1: `error` is the text of the turn's own failed step, not the turn's error: mapped like an older harness's bare text. */
   fromStep?: boolean;
   retryText: string | null;
+  /** Slash command name on the failed prompt (for example `"compact"`). */
+  retryCommand?: string | null | undefined;
   /** hint, command, action and details of the failure, as the harness sent them. */
   fields?: ErrorFields | undefined;
   agent?: string | undefined;
@@ -46,7 +49,8 @@ export function TurnBanner(props: {
   /** Re-reads the agent's login; true when it is ready now (the failed request is then sent again). */
   onCheck?: (() => Promise<boolean>) | undefined;
 }) {
-  const { send, running } = useProject();
+  const { bridge } = useApp();
+  const { projectId, send, running } = useProject();
   const [busy, setBusy] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   const failed = props.status === "failed";
@@ -56,8 +60,15 @@ export function TurnBanner(props: {
   const restarted = failed && isRestartInterruption(props.error) && !props.fields?.action;
   const fields = withLoginSteps(restarted ? { ...props.fields, action: "retry" as const } : props.fields, steps);
   const retryText = props.retryText;
+  const compact = isCompactRetry(retryText, props.retryCommand);
+  const canRetry = (retryText !== null || compact) && !running;
 
   const retry = async () => {
+    if (compact && bridge.compactNow) {
+      setRetryError(null);
+      await runRetry(() => bridge.compactNow!(projectId), retryText ?? "/compact", { setBusy, onError: (e) => setRetryError(errorMessage(e)) });
+      return;
+    }
     if (!retryText) return;
     setRetryError(null);
     await runRetry(send, retryText, { setBusy, onError: (e) => setRetryError(errorMessage(e)) });
@@ -75,7 +86,7 @@ export function TurnBanner(props: {
   const check = props.onCheck
     ? async () => {
         const ready = await props.onCheck?.();
-        if (ready === true && retryText !== null && !running) void retry();
+        if (ready === true && canRetry) await retry();
       }
     : undefined;
   return (
@@ -87,7 +98,8 @@ export function TurnBanner(props: {
         agent={props.agent}
         providerId={props.providerId}
         onCheck={check}
-        onRetry={retryText !== null && !running ? () => void retry() : undefined}
+        hideChecked={retryError !== null}
+        onRetry={canRetry ? () => void retry() : undefined}
         retrying={busy}
         actions={retryError ? <Notice tone="error">Retry failed: {plainError(retryError, { agent: props.agent }).sentence}</Notice> : undefined}
       />

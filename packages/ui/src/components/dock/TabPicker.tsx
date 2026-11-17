@@ -13,7 +13,10 @@ import { agentGlyph } from "../../lib/stateGlyph";
 import { useCode } from "../../state/code";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
-import { allTabs, sessionTab, toolTab, type ToolTab } from "../../state/workspace/layout";
+import { useOptionalComments } from "../../state/comments";
+import { getBrowserTabPins, getBrowserTabState, useBrowserTabsRevision } from "../../state/browserTabs";
+import { getTerminalTabState, useTerminalTabsRevision } from "../../state/terminalTabs";
+import { allTabs, CHAT, parseTab, sessionTab, toolTab, type ToolTab } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { fileIcon } from "../primitives/fileIcons";
 import { Glyph } from "../primitives/Glyph";
@@ -23,23 +26,27 @@ import { Picker } from "../primitives/Picker";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { useShowFiles } from "../files/useShowFiles";
 import { useCreateProjectSession, useSyncProjectSessions } from "../shell/sessionSwitcher";
-import { TOOL_TABS } from "./tabInfo";
+import { tabInfo, TOOL_TABS } from "./tabInfo";
 
 const AGENTS_SHOWN = 6;
 const FILES_SHOWN = 6;
 const SESSIONS_SHOWN = 6;
+const RECENT_SHOWN = 6;
 
 /**
- * The "+" at the end of a strip (and `Ctrl/Cmd+T`, decision 25): one searchable list — the tools (Agents, Notes, Files,
- * Details, Usage, Side question), "Open file…" and, once something is typed, matching project files; project sessions and
- * "New session"; running and recent agents; the project's settings and "Open in editor". This replaces the tool buttons
- * the strip used to carry (decision 24: the strip carries tabs only).
+ * The "+" at the end of a strip (and `Ctrl/Cmd+T`, decision 25): one searchable list — recent tabs (closed and MRU),
+ * the tools (Agents, Notes, Files, Details, Usage, Side question), "Open file…" and, once something is typed, matching
+ * project files; project sessions and "New session"; running and recent agents; the project's settings and
+ * "Open in editor". This replaces the tool buttons the strip used to carry (decision 24: the strip carries tabs only).
  */
 export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement | null>; onClose(): void }) {
   const ws = useWorkspace();
   const code = useCode();
   const files = useShowFiles();
-  const { state, project } = useProject();
+  const { state, project, projectId } = useProject();
+  useBrowserTabsRevision(projectId);
+  useTerminalTabsRevision(projectId);
+  const commentCounts = useOptionalComments()?.counts;
   const { openProjectInEditor } = useHost();
   const createSession = useCreateProjectSession();
   const [creating, setCreating] = useState(false);
@@ -72,6 +79,52 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
       setCreating(false);
     }
   };
+
+  const commands = useMemo(() => new Set((project?.commands ?? []).map((c) => c.name.toLowerCase())), [project?.commands]);
+  const knownSessions = useMemo(() => (state.sessions.list.length > 0 ? new Set(state.sessions.list.map((s) => s.id)) : null), [state.sessions.list]);
+  const infoCtx = {
+    state,
+    projectName: project?.name,
+    orchestratorId: project?.orchestrator_agent_id,
+    chatSessionId: ws.chatSessionId,
+    file: code.file,
+    comments: (key: Parameters<typeof code.file>[0]) => commentCounts?.get(key) ?? 0,
+    runStatus: (name: string) => ws.runStatuses[name.toLowerCase()] ?? null,
+    browser: (id: string) => {
+      const b = getBrowserTabState(projectId, id);
+      return { url: b.url, title: b.title, pins: getBrowserTabPins(projectId, id) };
+    },
+    terminal: (id: string) => getTerminalTabState(projectId, id),
+  };
+
+  const recentRows: PickerRow[] = ws
+    .recentTabs()
+    .filter(({ tab }) => {
+      if (tab === CHAT) return false;
+      const ref = parseTab(tab);
+      if (!ref) return false;
+      if (ref.kind === "tool" && !ws.toolEnabled(ref.tool)) return false;
+      if (ref.kind === "browser" && !ws.toolEnabled("browser")) return false;
+      if (ref.kind === "terminal" && !ws.toolEnabled("terminal")) return false;
+      if (ref.kind === "agent" && !state.agents[ref.agentId]) return false;
+      if (ref.kind === "session" && knownSessions && !knownSessions.has(ref.sessionId)) return false;
+      if (ref.kind === "run" && !commands.has(ref.name.toLowerCase())) return false;
+      return true;
+    })
+    .slice(0, RECENT_SHOWN)
+    .map(({ tab, status }) => {
+      const info = tabInfo(tab, infoCtx);
+      const statusLabel = status === "closed" ? "closed" : "open";
+      const detail = info.detail ? `${info.detail} · ${statusLabel}` : statusLabel;
+      return {
+        id: `recent:${tab}`,
+        label: info.label,
+        detail,
+        lead: info.glyph ? <StateGlyph state={info.glyph} size={12} box={16} /> : <Glyph icon={info.icon} size={14} />,
+        title: info.title,
+        run: () => ws.reopenTab(tab),
+      };
+    });
 
   const sections = (query: string): PickerSection[] => {
     const tools: PickerRow[] = (Object.entries(TOOL_TABS) as [ToolTab, (typeof TOOL_TABS)[ToolTab]][])
@@ -161,6 +214,7 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
     // Files are matched by the query already; the other sections are filtered by it.
     const rest = filterSections(
       [
+        ...(recentRows.length > 0 ? [{ title: "Recent", rows: recentRows }] : []),
         { title: "Open", rows: tools },
         { title: "Sessions", rows: sessionRows },
         { title: "Agents", rows: agentRows },
@@ -168,7 +222,10 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
       ],
       query,
     );
-    return fileRows.length ? [...rest.slice(0, 1), { title: "Files", rows: fileRows }, ...rest.slice(1)] : rest;
+    if (!fileRows.length) return rest;
+    const openIdx = rest.findIndex((s) => s.title === "Open");
+    const insertAt = openIdx >= 0 ? openIdx + 1 : 1;
+    return [...rest.slice(0, insertAt), { title: "Files", rows: fileRows }, ...rest.slice(insertAt)];
   };
 
   return (

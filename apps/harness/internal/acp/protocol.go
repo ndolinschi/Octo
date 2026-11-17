@@ -76,13 +76,18 @@ type RPCError struct {
 func (e *RPCError) Error() string { return fmt.Sprintf("acp rpc error %d: %s", e.Code, e.Message) }
 
 type clientCapabilities struct {
-	FS       fsCapabilities `json:"fs"`
-	Terminal bool           `json:"terminal"`
+	FS       fsCapabilities       `json:"fs"`
+	Terminal bool                 `json:"terminal"`
+	Session  *sessionCapabilities `json:"session,omitempty"`
 }
 
 type fsCapabilities struct {
 	ReadTextFile  bool `json:"readTextFile"`
 	WriteTextFile bool `json:"writeTextFile"`
+}
+
+type sessionCapabilities struct {
+	Compaction *struct{} `json:"compaction,omitempty"`
 }
 
 type implementation struct {
@@ -333,4 +338,31 @@ type WriteTextFileParams struct {
 	SessionID string `json:"sessionId"`
 	Path      string `json:"path"`
 	Content   string `json:"content"`
+}
+
+// CompactionStatus is a session compaction's lifecycle state (ACP compaction_update
+// or OpenCode's session_info_update _meta["opencode/compaction"]).
+type CompactionStatus string
+
+const (
+	CompactionInProgress CompactionStatus = "in_progress"
+	CompactionCompleted  CompactionStatus = "completed"
+	CompactionFailed     CompactionStatus = "failed"
+	CompactionCancelled  CompactionStatus = "cancelled"
+)
+
+// CompactionEvent describes a session compaction update or summary chunk.
+type CompactionEvent struct {
+	ID      string
+	Status  CompactionStatus
+	Summary string
+	Error   string
+}
+
+// AgentError describes a mid-turn error reported via session/update "agent_error".
+type AgentError struct {
+	Name       string
+	Code       string
+	Message    string
+	StatusCode int
 }

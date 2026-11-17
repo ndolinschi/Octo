@@ -21,10 +21,63 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
-// nothingError ends a turn in which the agent said and did nothing: no text,
-// no tool call. A silent agent is usually one that is not logged in.
-func nothingError(ag plugins.Agent) error {
-	return usererr.AgentSilent(ag.Label, ag.LoginCmd(), ag.Hint)
+// nothingError ends a turn in which the agent produced no text and no tool call.
+// If it streamed reasoning before stopping, login is not the problem; otherwise
+// a silent agent is usually one that is not logged in (keep any trailing stderr
+// alongside the login hint in details).
+func nothingError(ag plugins.Agent, stderr string, thoughtOnly bool) error {
+	if thoughtOnly {
+		return usererr.AgentNoAnswer(ag.Label, joinDetails("The agent streamed reasoning without writing an answer or calling a tool.", stderr))
+	}
+	return usererr.AgentSilent(ag.Label, ag.LoginCmd(), joinDetails(ag.Hint, stderr))
+}
+
+// agentErrorFailure turns a mid-turn session/update "agent_error" into a
+// catalogue error instead of misreporting it as a silent login failure.
+func agentErrorFailure(ag plugins.Agent, ae acp.AgentError, stderr string) error {
+	var parts []string
+	if ae.Name != "" {
+		parts = append(parts, ae.Name)
+	}
+	if ae.Code != "" && !strings.EqualFold(ae.Code, ae.Name) {
+		parts = append(parts, ae.Code)
+	}
+	if ae.Message != "" && !strings.EqualFold(ae.Message, ae.Name) {
+		parts = append(parts, ae.Message)
+	}
+	detail := strings.Join(parts, ": ")
+	if isAgentErrorAuth(ae) {
+		return usererr.AgentNotLoggedIn(ag.Label, ag.LoginCmd(), joinDetails(detail, ag.Hint, stderr))
+	}
+	return usererr.AgentFailed(ag.Label, joinDetails(detail, stderr))
+}
+
+func isAgentErrorAuth(ae acp.AgentError) bool {
+	if ae.StatusCode == http.StatusUnauthorized {
+		return true
+	}
+	n := strings.ToLower(ae.Name + " " + ae.Code + " " + ae.Message)
+	for _, s := range []string{
+		"providerautherror", "authenticationerror", "autherror", "unauthorizederror",
+		"authentication required", "auth required", "not authenticated",
+		"not logged in", "login required", "unauthenticated",
+		"invalid api key", "incorrect api key", "missing api key", "api key is required",
+	} {
+		if strings.Contains(n, s) {
+			return true
+		}
+	}
+	return false
+}
+
+func joinDetails(parts ...string) string {
+	var out []string
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, "\n\n")
 }
 
 // stopError explains a prompt that ended for another reason than end_turn.

@@ -29,7 +29,18 @@ import {
 } from "../../lib/constants";
 import { createRequiredContext } from "../../lib/context";
 import { SIDE_PINNED, TabMemory, USAGE_VIEW } from "./tabMemory";
-import { jumpIndex, mruOrder, mruTouch, pushClosed, shownToLayoutIndex, takeClosed, toMoveIndex, type Closed } from "./tabStrip";
+import {
+  jumpIndex,
+  mruOrder,
+  mruTouch,
+  pushClosed,
+  recentPickerTabs,
+  shownToLayoutIndex,
+  takeClosed,
+  toMoveIndex,
+  type Closed,
+  type RecentTabEntry,
+} from "./tabStrip";
 import { useTabKeys } from "./useTabKeys";
 import { dockFits, dockNeeds, groupFloors } from "./floors";
 import { TREE_MIN, useFileView } from "../fileView";
@@ -153,6 +164,10 @@ export type WorkspaceValue = {
   canReopen: boolean;
   /** Ctrl/Cmd+Shift+T: the last closed tab returns to its group and slot (a stack of 20 per project). */
   reopenClosed(): void;
+  /** Recent tabs (newest closed first, then MRU open) for the "+" TabPicker. */
+  recentTabs(): RecentTabEntry<TabId>[];
+  /** Activates an open tab or restores a closed tab to its previous group and slot. */
+  reopenTab(tab: TabId): void;
   attachCode(link: CodeLink | null): void;
 };
 
@@ -718,6 +733,34 @@ export function WorkspaceProvider({
           L.groupOf(current, L.CHAT)?.id === entry.group || current.groups.some((g) => g.id === entry.group) ? entry.group : L.chatGroupOf(current).id;
         const opened = L.open(current, entry.tab, { group });
         commit(L.move(opened, entry.tab, group, entry.index), { focusTab: entry.tab });
+      },
+      recentTabs: () => {
+        const current = layoutRef.current;
+        return recentPickerTabs({
+          closed: closedTabs,
+          mru: mru.current,
+          open: new Set(L.allTabs(current)),
+          active: L.focusedGroup(current).active,
+        });
+      },
+      reopenTab: (tab) => {
+        if (!tabAllowed(L.parseTab(tab), tabFlags, memoryBlocked)) return;
+        const current = layoutRef.current;
+        if (L.groupOf(current, tab)) {
+          commit(L.activate(current, tab));
+          return;
+        }
+        const idx = [...closedTabs].reverse().findIndex((c) => c.tab === tab);
+        const entry = idx >= 0 ? closedTabs[closedTabs.length - 1 - idx] : undefined;
+        if (entry) setClosedTabs((stack) => stack.filter((c) => c.tab !== tab));
+        const ref = L.parseTab(tab);
+        if (ref?.kind === "file") code.current?.restore(ref.key);
+        const group =
+          entry && (L.groupOf(current, L.CHAT)?.id === entry.group || current.groups.some((g) => g.id === entry.group))
+            ? entry.group
+            : L.focusedGroup(current).id;
+        const opened = L.open(current, tab, { group });
+        commit(entry ? L.move(opened, tab, group, entry.index) : opened, { focusTab: tab });
       },
       attachCode: (link) => {
         code.current = link;

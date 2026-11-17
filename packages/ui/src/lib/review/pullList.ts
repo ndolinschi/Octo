@@ -49,7 +49,7 @@ export function newSinceMyReview(r: PullRequestRow): boolean {
   return r.new_since_my_review === true || r.review?.new_commits === true;
 }
 
-/** Joins the pages of one list request (the first page's fields, every page's rows, no row twice). */
+/** Joins the pages of one list request (the latest page's paging fields, every page's rows, no row twice). */
 export function mergePages(pages: readonly PullRequestList[]): PullRequestList | null {
   const first = pages[0];
   if (!first) return null;
@@ -63,7 +63,16 @@ export function mergePages(pages: readonly PullRequestList[]): PullRequestList |
       return true;
     });
   const last = pages[pages.length - 1];
-  return { ...first, prs, next_page: last?.next_page ?? null, ...(last?.stale ? { stale: true } : {}) };
+  return {
+    ...first,
+    ...(last?.page !== undefined ? { page: last.page } : {}),
+    ...(last?.per_page !== undefined ? { per_page: last.per_page } : {}),
+    ...(last?.total !== undefined ? { total: last.total } : {}),
+    ...(last?.truncated !== undefined ? { truncated: last.truncated } : {}),
+    prs,
+    next_page: last?.next_page ?? null,
+    ...(last?.stale ? { stale: true } : {}),
+  };
 }
 
 export type ListCache = { read(key: string): PullRequestList | undefined; write(key: string, list: PullRequestList): void; clear(): void };

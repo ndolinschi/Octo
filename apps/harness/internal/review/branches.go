@@ -19,7 +19,14 @@ type BranchList struct {
 	Branches    []gitx.Branch `json:"branches"`
 	// Truncated: the folder has more than gitx.MaxBranches local branches.
 	Truncated bool `json:"truncated,omitempty"`
+	Page      int  `json:"page,omitempty"`
+	PerPage   int  `json:"per_page,omitempty"`
+	Total     int  `json:"total,omitempty"`
+	NextPage  *int `json:"next_page,omitempty"`
 }
+
+// DefaultBranchPerPage is the default chunk size when paged branches are requested.
+const DefaultBranchPerPage = 25
 
 // Branches lists the local branches of a folder, the current one first, then by last
 // commit date, with ahead/behind counts against base. It only reads the local
@@ -27,6 +34,15 @@ type BranchList struct {
 // default remote (the one the current branch tracks, else origin, else the first);
 // when the remote-tracking ref of base exists the counts are against it.
 func (s *Service) Branches(ctx context.Context, pid, folder, base string) (BranchList, error) {
+	return s.BranchesPage(ctx, pid, folder, base, 0, 0)
+}
+
+// BranchesPage lists a chunk of local branches of a folder when page or perPage
+// is positive, or up to gitx.MaxBranches when both are zero.
+func (s *Service) BranchesPage(ctx context.Context, pid, folder, base string, page, perPage int) (BranchList, error) {
+	if page < 0 || perPage < 0 {
+		return BranchList{}, invalid("invalid_request", "page and per_page must be positive")
+	}
 	db, err := s.db(ctx, pid)
 	if err != nil {
 		return BranchList{}, err
@@ -75,10 +91,30 @@ func (s *Service) Branches(ctx context.Context, pid, folder, base string) (Branc
 	if _, err := gitx.Resolve(ctx, dir, compare); err != nil {
 		return out, invalid("unknown_ref", "%v", err)
 	}
-	list, truncated, err := gitx.LocalBranches(ctx, dir, compare)
+	paged := page > 0 || perPage > 0
+	offset, limit := 0, gitx.MaxBranches
+	if paged {
+		if page == 0 {
+			page = 1
+		}
+		if perPage == 0 {
+			perPage = DefaultBranchPerPage
+		}
+		perPage = min(perPage, gitx.MaxBranches)
+		offset = (page - 1) * perPage
+		limit = perPage
+	}
+	list, total, truncated, err := gitx.LocalBranchesChunk(ctx, dir, compare, offset, limit)
 	if err != nil {
 		return out, gitErr(err)
 	}
-	out.Branches, out.Truncated = list, truncated
+	out.Branches, out.Truncated, out.Total = list, truncated, total
+	if paged {
+		out.Page, out.PerPage = page, perPage
+		if offset+len(list) < total {
+			n := page + 1
+			out.NextPage = &n
+		}
+	}
 	return out, nil
 }
