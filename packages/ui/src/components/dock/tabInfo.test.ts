@@ -1,7 +1,7 @@
 import { emptyProjectState, withSessions, type ProjectState } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sessionTab } from "../../state/workspace/layout";
+import { browserTab, sessionTab } from "../../state/workspace/layout";
 import { tabInfo } from "./tabInfo";
 
 function stateWithSession(over: Partial<ProjectState["sessions"]["list"][number]> = {}): ProjectState {
@@ -52,4 +52,19 @@ test("tabInfo falls back to New session for an untitled or just-created main ses
   });
   assert.equal(info.label, "New session");
   assert.equal(info.title, "Atlas: New session");
+});
+
+test("tabInfo leaves browser page titles untruncated so Tab CSS handles one clean ellipsis", () => {
+  const info = tabInfo(browserTab("default"), {
+    state: emptyProjectState(),
+    projectName: "Atlas API",
+    orchestratorId: "agt_1",
+    file: () => undefined,
+    comments: () => 0,
+    runStatus: () => null,
+    browser: () => ({ url: "http://localhost:5173/", title: "Atlas Console — Local Preview", pins: 0 }),
+  });
+  assert.equal(info.label, "Atlas Console — Local Preview");
+  assert.equal(info.detail, "localhost:5173");
+  assert.equal(info.name, "Atlas Console — Local Preview — http://localhost:5173/");
 });

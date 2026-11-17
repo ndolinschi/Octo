@@ -454,8 +454,8 @@ export function WorkspaceProvider({
       picker,
       openPicker: (group) => {
         const current = layoutRef.current;
-        // Narrow: one strip shows every tab, so the picker opens there whatever group is focused.
-        const target = narrowRef.current ? (current.groups[0]?.id ?? current.focused) : (group ?? current.focused);
+        // Narrow: only the active group renders the merged strip, so anchor the picker there.
+        const target = narrowRef.current ? L.focusedGroup(current).id : (group ?? current.focused);
         setPicker((p) => ({ group: target, n: (p?.n ?? 0) + 1 }));
       },
       closePicker: () => setPicker(null),

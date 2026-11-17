@@ -19,13 +19,14 @@ const VIEWPORT_WIDTH: Record<BrowserViewport, number | null> = {
 };
 
 export default function BrowserTab(props: { tab: TabId; browserId: string }) {
-  const stageRef = useRef<HTMLElement>(null);
+  const tabRef = useRef<HTMLElement>(null);
+  const stageBoxRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const s = useBrowserSession(props.browserId, stageRef, iframeRef);
+  const s = useBrowserSession(props.browserId, tabRef, iframeRef);
   const vpWidth = VIEWPORT_WIDTH[s.tabState.viewport];
 
   return (
-    <section ref={stageRef} aria-label="Browser" data-browser-tab className="flex min-h-0 flex-1 flex-col bg-panel">
+    <section ref={tabRef} aria-label="Browser" data-browser-tab className="flex min-h-0 flex-1 flex-col bg-panel">
       <BrowserToolbar
         url={s.tabState.url}
         viewport={s.tabState.viewport}
@@ -125,6 +126,7 @@ export default function BrowserTab(props: { tab: TabId; browserId: string }) {
       ) : (
         <div className={cn("relative flex min-h-0 flex-1 justify-center overflow-auto", vpWidth !== null && "bg-surface p-3")}>
           <div
+            ref={stageBoxRef}
             data-browser-stage
             style={vpWidth !== null ? { width: vpWidth, maxWidth: "100%" } : undefined}
             className={cn(
@@ -164,7 +166,7 @@ export default function BrowserTab(props: { tab: TabId; browserId: string }) {
                 draft={s.draft}
                 batchEdits={s.tabState.batchEdits}
                 busy={s.sending || s.committing}
-                containerRef={stageRef}
+                containerRef={stageBoxRef}
                 onTextChange={(text) => s.setDraft((prev) => (prev ? { ...prev, text } : null))}
                 onCssChange={(selector, property, before, after) => {
                   s.applyCss(selector, property, after);

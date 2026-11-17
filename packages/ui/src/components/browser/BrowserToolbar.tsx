@@ -1,5 +1,6 @@
 import { ArrowLeft, ArrowRight, Monitor, MousePointerClick, Plus, RotateCw, Send, Smartphone, Tablet } from "lucide-react";
-import { useRef, useState, type SyntheticEvent } from "react";
+import { useId, useRef, useState, type SyntheticEvent } from "react";
+import { cn } from "../../lib/cn";
 import type { DesignNote } from "../../lib/browser/designNotes";
 import type { BrowserViewport } from "../../state/browserTabs";
 import { MOD } from "../../state/workspace/WorkspaceProvider";
@@ -35,6 +36,7 @@ export function BrowserToolbar(props: {
   onClearPins(): void;
   onSendBatch(): void;
 }) {
+  const urlId = useId();
   const [draftUrl, setDraftUrl] = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
   const [vpMenu, setVpMenu] = useState<{ x: number; y: number } | null>(null);
@@ -61,29 +63,41 @@ export function BrowserToolbar(props: {
   }));
 
   return (
-    <header className="flex h-bar shrink-0 items-center gap-1.5 border-b border-line px-2">
+    <header className="@container/bt flex h-bar shrink-0 items-center gap-1.5 border-b border-line px-2">
       <div className="flex shrink-0 items-center gap-0.5">
         <IconButton icon={ArrowLeft} label="Back" size="sm" disabled={!props.url} onClick={() => props.onNavigate("back")} />
-        <IconButton icon={ArrowRight} label="Forward" size="sm" disabled={!props.url} onClick={() => props.onNavigate("forward")} />
+        <IconButton
+          icon={ArrowRight}
+          label="Forward"
+          size="sm"
+          disabled={!props.url}
+          className="@max-[500px]/bt:hidden"
+          onClick={() => props.onNavigate("forward")}
+        />
         <IconButton icon={RotateCw} label="Reload" size="sm" disabled={!props.url} onClick={props.onReload} />
       </div>
 
       <form onSubmit={onSubmit} className="flex min-w-0 flex-1 items-center">
-        <TextField
-          size="sm"
-          aria-label="Page URL"
-          {...(invalid ? { "aria-invalid": true } : {})}
-          value={shownUrl}
-          onChange={(e) => {
-            setDraftUrl(e.target.value);
-            if (invalid) setInvalid(false);
-          }}
-          onBlur={() => {
-            if (draftUrl !== null && draftUrl.trim() === props.url) setDraftUrl(null);
-          }}
-          placeholder="http://localhost:5173 or https://…"
-          className="font-mono text-xs"
-        />
+        <label htmlFor={urlId} className="touch-hit flex w-full items-center">
+          <span className="sr-only">Page URL</span>
+          <TextField
+            id={urlId}
+            size="sm"
+            touchSize="sm"
+            aria-label="Page URL"
+            {...(invalid ? { "aria-invalid": true } : {})}
+            value={shownUrl}
+            onChange={(e) => {
+              setDraftUrl(e.target.value);
+              if (invalid) setInvalid(false);
+            }}
+            onBlur={() => {
+              if (draftUrl !== null && draftUrl.trim() === props.url) setDraftUrl(null);
+            }}
+            placeholder="http://localhost:5173 or https://…"
+            className="font-mono text-xs touch:text-sm"
+          />
+        </label>
       </form>
 
       <div className="flex shrink-0 items-center gap-1">
@@ -93,12 +107,13 @@ export function BrowserToolbar(props: {
           label={`Viewport: ${VIEWPORT_LABEL[props.viewport]}`}
           size="sm"
           pressed={props.viewport !== "full"}
+          className={cn(props.viewport === "full" && "@max-[500px]/bt:hidden")}
           onClick={() => {
             const r = vpBtnRef.current?.getBoundingClientRect();
             if (r) setVpMenu(vpMenu ? null : { x: r.right, y: r.bottom + 4 });
           }}
         />
-        {props.canOpenNewTab && <IconButton icon={Plus} label="New browser tab" size="sm" onClick={props.onOpenNewTab} />}
+        {props.canOpenNewTab && <IconButton icon={Plus} label="New browser tab" size="sm" className="@max-[500px]/bt:hidden" onClick={props.onOpenNewTab} />}
         <Button
           variant={props.designMode ? "secondary" : "quiet"}
           size="sm"
@@ -107,9 +122,10 @@ export function BrowserToolbar(props: {
           title={`Toggle design mode (${MOD}⇧D)`}
           disabled={!props.url}
           data-design-toggle
+          className="@max-[500px]/bt:gap-0 @max-[500px]/bt:px-2"
           onClick={props.onToggleDesign}
         >
-          Design
+          <span className="@max-[500px]/bt:sr-only">Design</span>
         </Button>
         <PendingNotesPopover notes={props.pendingNotes} onSelect={props.onSelectPin} onRemove={props.onRemovePin} onClearAll={props.onClearPins} />
         {props.pendingNotes.length > 0 && (

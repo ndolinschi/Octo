@@ -61,8 +61,8 @@ function browserTabInfo(b?: { url: string; title: string; pins: number }): TabIn
   } catch {
     host = url.trim();
   }
-  const label = clean ? middleTruncate(clean, 22) : host ? middleTruncate(host, 22) : "Browser";
-  const detail = clean && host ? middleTruncate(host, 20) : undefined;
+  const label = clean || host || "Browser";
+  const detail = clean && host ? host : undefined;
   const full = clean ? (url ? `${clean} — ${url}` : clean) : host ? url : TOOL_PURPOSE.browser;
   return {
     label,

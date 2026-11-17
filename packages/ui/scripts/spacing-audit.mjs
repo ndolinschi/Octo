@@ -216,6 +216,8 @@ const PHONE_PANELS = {
   details: "Details",
   side: "Side question",
   review: "Review",
+  browser: "Browser",
+  processes: "Processes",
 };
 
 async function openTool(page, label) {

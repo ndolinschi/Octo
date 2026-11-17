@@ -53,8 +53,10 @@ export const CONTROL: Record<ControlSize, ControlSpec> = {
  * iOS does not zoom), the placeholder in plain `fg-3` (was `fg-3/60` italic, 3.3:1), and ONE focus indicator for every field primitive:
  * the border becomes `fg` and the global shadow ring is switched off. Validation error: `aria-invalid` colours the border.
  */
-export const FIELD =
-  "rounded-md border border-field-edge bg-panel text-sm text-fg placeholder:text-fg-3 transition-[border-color] duration-100 focus:border-fg focus:outline-none focus-visible:shadow-none aria-invalid:border-err disabled:opacity-50 touch:text-input-touch";
+export const FIELD_BASE =
+  "rounded-md border border-field-edge bg-panel text-sm text-fg placeholder:text-fg-3 transition-[border-color] duration-100 focus:border-fg focus:outline-none focus-visible:shadow-none aria-invalid:border-err disabled:opacity-50";
+
+export const FIELD = `${FIELD_BASE} touch:text-input-touch`;
 
 /** The same focus rule for a frame that holds an input (`SearchField`): the frame reacts to `focus-within`. */
 export const FIELD_FRAME =

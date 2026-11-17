@@ -47,7 +47,10 @@ export async function sleep(ctx: Ctx, ms: number): Promise<void> {
   const target = ctx.t + ms;
   if (target > Date.now()) {
     while (Date.now() < target) {
-      await new Promise((r) => setTimeout(r, Math.min(250, target - Date.now())));
+      await new Promise<void>((r) => {
+        const timer: ReturnType<typeof setTimeout> & { unref?: () => void } = setTimeout(r, Math.min(250, target - Date.now()));
+        timer.unref?.();
+      });
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- sentinel, see above
       if (ctx.signal.cancelled) throw CANCELLED;
     }

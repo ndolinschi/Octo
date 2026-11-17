@@ -1,5 +1,5 @@
 import type { AdhocCommandInput, WorkerProcess } from "@octo/agent-client";
-import { Check, OctagonX, Plus, RefreshCw, RotateCw } from "lucide-react";
+import { Check, Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { durationText } from "../../lib/commands/format";
 import { runsReducer } from "../../lib/commands/runs";
@@ -35,8 +35,10 @@ import { Button } from "../primitives/Button";
 import { FilterTabs, type Filter } from "../primitives/FilterTabs";
 import { Glyph } from "../primitives/Glyph";
 import { IconButton } from "../primitives/IconButton";
+import { IconMenu } from "../primitives/IconMenu";
 import { ListDetail } from "../primitives/ListDetail";
 import { ListRow } from "../primitives/ListRow";
+import type { MenuItem } from "../primitives/Menu";
 import { Notice } from "../primitives/Notice";
 import { Panel, PanelEmpty, PanelFilters } from "../primitives/Panel";
 import { Presence } from "../primitives/Presence";
@@ -230,9 +232,16 @@ export default function ProcessesTab() {
             selected={picked?.key ?? null}
             onSelect={setSelected}
             listHeader={
-              <PanelFilters className="flex-wrap">
+              <PanelFilters className="flex-wrap gap-y-2 py-1">
                 <FilterTabs<ProcessFilter> label="Filter processes" bare options={filterOptions} value={filter} onChange={(v) => setFilter(v)} />
-                <SearchField label="Filter by name, command or PID" size="sm" value={query} onChange={setQuery} className="min-w-28 flex-1" />
+                <SearchField
+                  label="Filter by name, command or PID"
+                  placeholder="Filter processes…"
+                  size="sm"
+                  value={query}
+                  onChange={setQuery}
+                  className="min-w-44 flex-1"
+                />
               </PanelFilters>
             }
             detail={
@@ -260,6 +269,7 @@ export default function ProcessesTab() {
                         canManage={canManage}
                         busy={busy === item.key}
                         onSelect={() => select(item.key)}
+                        onStop={() => void stopItem(item, false)}
                         onKill={() => void stopItem(item, true)}
                         onRestart={() => void restartItem(item)}
                       />
@@ -285,7 +295,16 @@ export default function ProcessesTab() {
   );
 }
 
-function ProcessRow(props: { item: ProcessItem; selected: boolean; canManage: boolean; busy: boolean; onSelect(): void; onKill(): void; onRestart(): void }) {
+function ProcessRow(props: {
+  item: ProcessItem;
+  selected: boolean;
+  canManage: boolean;
+  busy: boolean;
+  onSelect(): void;
+  onStop(): void;
+  onKill(): void;
+  onRestart(): void;
+}) {
   const { item, canManage, busy } = props;
   const active = isProcessActive(item);
   const restartable = canRestartProcess(item);
@@ -293,6 +312,11 @@ function ProcessRow(props: { item: ProcessItem; selected: boolean; canManage: bo
   const pid = processPid(item);
   const name = processName(item);
   const cmd = processCommand(item);
+
+  const menuItems: MenuItem[] = [];
+  if (canManage && restartable) menuItems.push({ id: "restart", label: "Restart", run: props.onRestart });
+  if (canManage && active && item.kind === "command") menuItems.push({ id: "stop", label: "Stop", run: props.onStop });
+  if (canManage && active) menuItems.push({ id: "kill", label: "Kill", run: props.onKill });
 
   return (
     <ListRow
@@ -327,34 +351,11 @@ function ProcessRow(props: { item: ProcessItem; selected: boolean; canManage: bo
       }
       onClick={props.onSelect}
       trailing={
-        canManage ? (
-          <>
-            {restartable && (
-              <IconButton
-                icon={RotateCw}
-                size="sm"
-                label={`Restart ${name}`}
-                disabled={busy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  props.onRestart();
-                }}
-              />
-            )}
-            {active && (
-              <IconButton
-                icon={OctagonX}
-                size="sm"
-                label={`Kill ${name}`}
-                disabled={busy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  props.onKill();
-                }}
-              />
-            )}
-          </>
-        ) : undefined
+        menuItems.length > 0 && !busy ? (
+          <IconMenu label={`Actions for ${name}`} size="xs" items={menuItems} />
+        ) : (
+          <span aria-hidden className="size-6 shrink-0" />
+        )
       }
     />
   );
