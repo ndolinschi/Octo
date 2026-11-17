@@ -4,6 +4,7 @@ import { cn } from "../../lib/cn";
 import { durationText, stripAnsi } from "../../lib/commands/format";
 import { extractLocalUrls } from "../../lib/commands/urls";
 import { useCopy, useNow } from "../../lib/hooks";
+import { DETAIL_COLUMN } from "../../lib/panelColumn";
 import {
   canRestartProcess,
   isProcessActive,
@@ -69,7 +70,7 @@ export function ProcessDetail(props: { item: ProcessItem; busy: string | null; c
   const notes = item.kind === "command" ? [item.run.truncated && "Output cut at 5 MB", item.clipped && "Earlier output not shown"].filter(Boolean) : [];
 
   return (
-    <article data-process-detail={item.key} aria-label={name} className="flex flex-col gap-3 pb-4">
+    <article data-process-detail={item.key} aria-label={name} className={cn("flex flex-col gap-3", DETAIL_COLUMN)}>
       <DetailHeader
         title={name}
         meta={

@@ -3991,4 +3991,16 @@ edges), and phone viewports (`390x844`): 0 spacing violations across all runs, `
 **Not verified.** `spacing-audit.mjs` CLI directly (the `playwright` npm package is not installed in the build VM); standalone `"Run: name"`
 tab runtime layout with live command output; WebKit/Tauri desktop binary.
 
+## As built — Processes tab (2026-11-17)
 
+- **Harness (`apps/harness/`).**
+  - Added `PID int` (`json:"pid,omitempty"`) to `projectstore.CommandRun`.
+  - Extended `commands.Service` with `StartAdhoc` (ad-hoc command execution inside validated project folders), `StopWith(ctx, projectID, runID, force)` (`SIGTERM` with 5s escalation when `force=false`, immediate `SIGKILL` to `-pid` process group when `force=true`), and `Restart(ctx, projectID, runID)` (stops active run if needed and spawns a fresh PID with the stored command/cwd).
+  - Extended `lsp.Manager` (`ListProject`, `Restart`, 16 KiB `stderrTailCap` ring buffer) and `orchestrator.Orchestrator` (`WorkerProcesses`, `StopWorkerProcess`, `acp.Client.Stderr`) to surface active language-server and ACP worker subprocesses.
+  - Added bridge endpoints (`POST /v1/projects/{id}/runs`, `POST .../runs/{rid}/stop?force=`, `POST .../runs/{rid}/restart`, `GET /v1/projects/{id}/processes`, `POST .../processes/{procid}/stop`, `POST .../processes/{procid}/restart`) with `ClassDeny` remote-access rules for non-owner devices (`apps/harness/docs/commands.md`).
+- **Client & UI (`packages/agent-client/`, `packages/ui/`).**
+  - Added `WorkerProcess`, `AdhocCommandInput`, `startCommandRun`, `stopCommandRun` (`{ force?: boolean }`), `restartCommandRun`, `listWorkerProcesses`, `stopWorkerProcess`, and `restartWorkerProcess` behind `rare.ts` lazy forwarders.
+  - Added `tool:processes` (`ProcessesTab.tsx`, `ProcessDetail.tsx`, `StartProcessDialog.tsx`, `lib/processes/model.ts`) using `Panel` (`lead={<PanelPurpose tool="processes" />}`), `ListDetail`, `FilterTabs` (`All` / `Running` / `Stopped` / `Failed`), `SearchField`, `DETAIL_COLUMN` (`max-w-measure`), `DetailHeader`, `CommandLine`, detected local URL `Open in Browser` integration, and `Dialog`, plus entry points in `TabPicker`, `CommandPalette`, `PhoneMoreSheet`, `ProjectCommands`, and `ProjectStatus`.
+
+**Verified.** `gofmt`, `go test ./internal/lsp/... ./internal/acp/... ./internal/usererr/...`, GitHub Actions `harness` (`go vet ./...`, `go test -race ./...`, `go build`), `CI`, and `desktop` workflows, `pnpm format:check`, `pnpm lint` (0 errors, 0 cycles), `pnpm --filter @octo/agent-client test` (182 tests), `pnpm --filter @octo/ui test`, `pnpm --filter @octo/desktop build`, `node scripts/check-bundle-size.mjs` (`160.31 kB` gzip vs `161.00 kB` budget), and headless Chromium Playwright visual + frame/border/idle-animation checks across desktop dark/light (`1440×900`) and phone (`390×844`) viewports.
+**Not verified.** Native Tauri/WebKit desktop sidecar runtime with real third-party ACP agent CLIs.
