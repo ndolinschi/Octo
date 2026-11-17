@@ -7,7 +7,7 @@ import { getTerminalTabState, useTerminalTabsRevision } from "../../state/termin
 import { useLatest, useScrollFade } from "../../lib/hooks";
 import { useCode } from "../../state/code";
 import { useProject } from "../../state/project";
-import { closable, toolTab, type TabId } from "../../state/workspace/layout";
+import { toolTab, type TabId } from "../../state/workspace/layout";
 import { SIDE_PAD, useChrome } from "../../state/chrome";
 import { ProjectActions, ProjectTeamLine } from "../shell/ProjectBar";
 import { endPlan, fitStrip, slotShift, TAB_MIN, tabFloor } from "../../state/workspace/tabStrip";
@@ -150,10 +150,11 @@ export function TabStrip(props: {
   // C2 (V3): only whole tabs. A tab keeps its close place unless the strip is short (decision 90); the active and the pinned
   // Orchestrator tab always show; the rest show by recency while they fit at their floor, and "All tabs" (+N) lists the others.
   const allRoom = ALL_TABS_ROOM + (props.tabs.length > 10 ? ALL_TABS_DIGIT : 0);
-  const keepsClose = (t: TabId) => !fit.overlay || t === props.active || infos.get(t)?.status === "modified";
+  const closableTab = (t: TabId) => ws.canClose(t);
+  const keepsClose = (t: TabId) => closableTab(t) && (!fit.overlay || t === props.active || infos.get(t)?.status === "modified");
   const { shown, hidden } = fitStrip({
     room: room - reserved,
-    tabs: props.tabs.map((t) => ({ id: t, natural: fit.naturals.get(t), close: keepsClose(t), keep: t === props.active || !closable(t) })),
+    tabs: props.tabs.map((t) => ({ id: t, natural: fit.naturals.get(t), close: keepsClose(t), keep: t === props.active || !closableTab(t) })),
     recent: ws.recentOf(props.tabs),
     allRoom,
   });
@@ -289,6 +290,7 @@ export function TabStrip(props: {
                 shift={shiftOf(tab, i)}
                 overlayClose={fit.overlay}
                 minWidth={natural === undefined ? TAB_MIN : tabFloor(natural, keepsClose(tab))}
+                canClose={closableTab(tab)}
                 dragging={!drag ? null : drag.tab === tab ? (drag.attached ? "self-attached" : "self-detached") : "other"}
                 onPress={(e) => {
                   if (e.button !== 0) return;

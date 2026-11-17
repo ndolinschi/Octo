@@ -154,6 +154,21 @@ func (m *Manager) Close(project, id string) error {
 	return nil
 }
 
+// CloseProject terminates all active terminal sessions belonging to project.
+func (m *Manager) CloseProject(project string) {
+	m.mu.Lock()
+	var mine []*Session
+	for _, s := range m.sessions {
+		if s.Project == project {
+			mine = append(mine, s)
+		}
+	}
+	m.mu.Unlock()
+	for _, s := range mine {
+		s.Close("project deleted")
+	}
+}
+
 // Restart closes session id and starts a fresh shell with the same Spec.
 func (m *Manager) Restart(ctx context.Context, project, id string) (*Session, error) {
 	s, err := m.Get(project, id)

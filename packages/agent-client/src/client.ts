@@ -283,7 +283,7 @@ export interface Bridge {
   createProject(input: ProjectInput): Promise<Project>;
   getProject(projectId: string): Promise<Project>;
   updateProject(projectId: string, patch: Partial<ProjectInput>): Promise<Project>;
-  deleteProject(projectId: string): Promise<void>;
+  deleteProject(projectId: string, opts?: { force?: boolean }): Promise<void>;
   listAgents(projectId: string): Promise<Agent[]>;
   getAgent(projectId: string, agentId: string): Promise<Agent>;
   listMessages(projectId: string, agentId: string): Promise<Message[]>;

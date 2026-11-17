@@ -134,7 +134,7 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     createProject: (input) => call("createProject", [input]),
     getProject: (id) => call("getProject", [id]),
     updateProject: (id, patch) => call("updateProject", [id, patch]),
-    deleteProject: (id) => call("deleteProject", [id]),
+    deleteProject: (id, opts) => call("deleteProject", opts === undefined ? [id] : [id, opts]),
     listAgents: (id) => call("listAgents", [id]),
     getAgent: (id, agentId) => call("getAgent", [id, agentId]),
     listMessages: (id, agentId) => call("listMessages", [id, agentId]),

@@ -314,10 +314,13 @@ export function CommandPalette(props: {
       .map((p) => ({
         id: `n:${p.id}`,
         label: `New session in ${p.name}`,
-        search: "new session start conversation",
+        search: `new session start conversation ${p.name}`,
         run: go(() => {
-          void bridge.createSession(p.id).then(
-            ({ session }) => navigate(p.id, null, session.id),
+          void bridge.createSession(p.id, {}).then(
+            ({ session }) => {
+              if (p.id === pid && workspace) workspace.api.openSession(session.id);
+              else navigate(p.id, null, session.id);
+            },
             // Not made (offline, refused): the sidebar's "+" says why; here nothing changes.
             () => undefined,
           );

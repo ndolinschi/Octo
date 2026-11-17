@@ -7,7 +7,7 @@ import { cn } from "../../lib/cn";
 import { allTabs, focusedGroup, parseTab, type Group, type TabId } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { panelClass } from "../shell/Panel";
-import { DragLayer } from "./DragLayer";
+import { useDrag } from "./drag";
 import { GroupProvider } from "../../state/workspace/group";
 import { domId } from "../../state/workspace/ids";
 import { TabStrip } from "./TabStrip";
@@ -23,6 +23,9 @@ const Divider = lazy(() => import("./Divider"));
 /** Sidebar steps aside and Esc restores, only while a group is maximised (decision 78). */
 const MaximiseEffects = lazy(() => import("./MaximiseEffects"));
 
+/** Drag indicator overlay loads when a tab drag starts (warmed after first paint). */
+const DragLayer = lazy(() => import("./DragLayer").then((m) => ({ default: m.DragLayer })));
+
 const SIDES: readonly [string, string, string] = ["Left", "Middle", "Right"];
 
 function groupName(index: number, count: number): string {
@@ -34,6 +37,7 @@ function groupName(index: number, count: number): string {
 /** The area right of the sidebar: tab groups in one row with resize dividers between them. */
 export function Dock() {
   const ws = useWorkspace();
+  const dragging = useDrag() !== null;
   const ref = useRef<HTMLDivElement>(null);
   const { setDockWidth } = ws;
 
@@ -76,7 +80,11 @@ export function Dock() {
           <MaximiseEffects />
         </Suspense>
       )}
-      <DragLayer />
+      {dragging && (
+        <Suspense fallback={null}>
+          <DragLayer />
+        </Suspense>
+      )}
     </div>
   );
 }

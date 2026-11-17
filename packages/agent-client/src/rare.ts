@@ -355,8 +355,8 @@ export function createRareMethods({
   return {
     createProject: (input) => request("POST", "/v1/projects", input) as Promise<Project>,
     updateProject: (id, patch) => request("PATCH", p(id), patch) as Promise<Project>,
-    deleteProject: async (id) => {
-      await request("DELETE", p(id));
+    deleteProject: async (id, opts) => {
+      await request("DELETE", `${p(id)}${opts?.force ? "?force=1" : ""}`);
     },
     sendMessage: async (id, text) => {
       const body = await send(id, { text });

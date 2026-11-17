@@ -11,7 +11,7 @@ export function groupFloor(tabs: readonly TabId[], treeColumn = 0): number {
   for (const tab of tabs) {
     const ref = parseTab(tab);
     if (!ref) continue;
-    if (ref.kind === "chat") return CHAT_MIN_WIDTH;
+    if (ref.kind === "chat" || ref.kind === "session") return CHAT_MIN_WIDTH;
     if (ref.kind === "file" || (ref.kind === "tool" && ref.tool === "files")) floor = Math.max(floor, EDITOR_MIN_GROUP + treeColumn);
     if (ref.kind === "browser" || ref.kind === "terminal" || (ref.kind === "tool" && (ref.tool === "browser" || ref.tool === "terminal")))
       floor = Math.max(floor, EDITOR_MIN_GROUP);

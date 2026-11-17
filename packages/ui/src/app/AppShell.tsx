@@ -1,5 +1,5 @@
 import { warmBridgeClient } from "@octo/agent-client";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { cn } from "../lib/cn";
 import { loadPref, PREFS, sidebarViewCodec } from "../lib/storage";
 import { useEscape, useMediaQuery } from "../lib/hooks";
@@ -26,7 +26,7 @@ import { Sidebar } from "../components/shell/Sidebar";
 import { TitleBar } from "../components/shell/TitleBar";
 import { StatusBar } from "../components/status/StatusBar";
 import { StatusSlotsContext } from "../state/statusSlots";
-import { ProjectGone, ProjectWorkspace } from "./ProjectWorkspace";
+import { ProjectWorkspace } from "./ProjectWorkspace";
 import { warmDrag } from "../components/dock/drag";
 import { transcriptPart } from "../components/chat/transcriptPart";
 import { ActivityProvider } from "../state/activity";
@@ -45,6 +45,7 @@ const ShortcutsSheet = lazy(() => import("../components/shell/ShortcutsSheet"));
 const MemoryRoute = lazy(() => import("./MemoryRoute").then((m) => ({ default: m.MemoryRoute })));
 /** States the app is rarely in: their own chunks (bundle budget). */
 const NoProjectsHero = lazy(() => import("../components/project/NoProjectsHero").then((m) => ({ default: m.NoProjectsHero })));
+const ProjectGone = lazy(() => import("./ProjectWorkspaceStates").then((m) => ({ default: m.ProjectGone })));
 // The same chunk as OfflineState: a chunk of its own would cost the entry more than the banner itself.
 const OfflineBanner = lazy(() => import("../components/shell/OfflineState").then((m) => ({ default: m.OfflineBanner })));
 const OfflineState = lazy(() => import("../components/shell/OfflineState").then((m) => ({ default: m.OfflineState })));
@@ -70,6 +71,7 @@ const SidebarDrawer = lazy(() => import("../components/shell/SidebarDrawer").the
 const loadTree = () => import("../components/sessions/SessionTree");
 const treeChunk = loadTree().catch(() => undefined);
 const SessionTree = lazy(() => treeChunk.then((m) => m ?? loadTree()).then((m) => ({ default: m.SessionTree })));
+const NewSessionPopover = lazy(() => import("../components/shared/NewSessionPopover").then((m) => ({ default: m.NewSessionPopover })));
 /** Direction 7: the phone layout's frame (the top bar off a project, keyboard and touch helpers); its own chunk, only in that mode. */
 const PhoneChrome = lazy(() => import("./phone/PhoneChrome"));
 
@@ -100,6 +102,7 @@ function Shell() {
   const [inlineOpen, setInlineOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [newSessionAnchor, setNewSessionAnchor] = useState<RefObject<HTMLElement | null> | null>(null);
   // Decision 59: Settings is a page at `#/settings/<section>`; "Back" returns to the hash it was opened from.
   const settings = useSettingsSection();
   // Decision 96: what the sidebar lists (Settings → General); read again whenever the settings page opens or closes (the
@@ -299,7 +302,12 @@ function Shell() {
         <OfflineState />
       </Suspense>
     );
-  else if (routeState === "missing") main = <ProjectGone />;
+  else if (routeState === "missing")
+    main = (
+      <Suspense fallback={null}>
+        <ProjectGone />
+      </Suspense>
+    );
   else if (noProvider && route.projectId === null)
     main = (
       <Suspense fallback={null}>
@@ -340,6 +348,7 @@ function Shell() {
     home: route.projectId === null && (projects?.length ?? 0) > 0,
     unseen,
     onNewProject: newProject,
+    onNewSession: (anchor: RefObject<HTMLElement | null>) => setNewSessionAnchor(anchor),
     onSearch: openPalette,
     showReview: tabFlags.review,
     onReview: () => {
@@ -449,6 +458,20 @@ function Shell() {
                 }}
               />
             </Suspense>
+          </Presence>
+          <Presence show={newSessionAnchor !== null}>
+            {newSessionAnchor && (
+              <Suspense fallback={null}>
+                <NewSessionPopover
+                  anchor={newSessionAnchor}
+                  align="start"
+                  defaultProjectId={route.projectId}
+                  activeProjectId={route.projectId}
+                  onCreated={() => setDrawerOpen(false)}
+                  onClose={() => setNewSessionAnchor(null)}
+                />
+              </Suspense>
+            )}
           </Presence>
           <Presence show={connectTarget !== null}>
             <Suspense fallback={null}>

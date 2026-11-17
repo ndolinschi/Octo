@@ -3,13 +3,14 @@ import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { liveOrchestratorState } from "../../lib/orchestrator";
 import { useProject } from "../../state/project";
+import { useTabFlags } from "../../state/tabFlags";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { Presence } from "../primitives/Presence";
 import type { Failure } from "./ProjectActionsMenu";
-import { ProjectTeam } from "./ProjectTeam";
 
 const ProjectActionsMenu = lazy(() => import("./ProjectActionsMenu"));
+const ProjectTeam = lazy(() => import("./ProjectTeam").then((m) => ({ default: m.ProjectTeam })));
 const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
 
 /**
@@ -19,9 +20,19 @@ const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ de
  */
 export function ProjectTeamLine({ compact = false }: { compact?: boolean }) {
   const { project, state, running } = useProject();
-  const orchestrator = useMemo(() => liveOrchestratorState(state, running ? "running" : "idle"), [state, running]);
-  if (!project) return null;
-  return <ProjectTeam orchestrator={orchestrator} compact={compact} />;
+  const tabFlags = useTabFlags();
+  const hasTeam = state.agentOrder.some((id) => {
+    const a = state.agents[id];
+    return a !== undefined && a.parent_id !== null;
+  });
+  const show = tabFlags.sessions || hasTeam || running;
+  const orchestrator = useMemo(() => (show ? liveOrchestratorState(state, running ? "running" : "idle") : null), [show, state, running]);
+  if (!project || !orchestrator) return null;
+  return (
+    <Suspense fallback={null}>
+      <ProjectTeam orchestrator={orchestrator} compact={compact} />
+    </Suspense>
+  );
 }
 
 export function ProjectActions() {

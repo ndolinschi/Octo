@@ -7,9 +7,11 @@ import { errorMessage, structuredError } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
 import { MOD_LABEL } from "../../lib/keys";
 import { filterSections, type PickerRow, type PickerSection } from "../../lib/picker";
+import { navigate } from "../../lib/route";
 import { sessionChoiceMeta, sessionChoices } from "../../lib/sessions/picker";
 import { sessionGlyph, sessionTitle } from "../../lib/sessions/tree";
 import { agentGlyph } from "../../lib/stateGlyph";
+import { useApp } from "../../state/app";
 import { useCode } from "../../state/code";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
@@ -40,6 +42,7 @@ const RECENT_SHOWN = 6;
  * "Open in editor". This replaces the tool buttons the strip used to carry (decision 24: the strip carries tabs only).
  */
 export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement | null>; onClose(): void }) {
+  const { projects, bridge } = useApp();
   const ws = useWorkspace();
   const code = useCode();
   const files = useShowFiles();
@@ -74,6 +77,20 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
       const created = await createSession("tab");
       if (created) onClose();
       else setCreating(false);
+    } catch (e) {
+      setError(structuredError(e)?.message ?? errorMessage(e));
+      setCreating(false);
+    }
+  };
+
+  const handleNewSessionInProject = async (targetProjectId: string) => {
+    if (creating) return;
+    setError(null);
+    setCreating(true);
+    try {
+      const { session } = await bridge.createSession(targetProjectId, {});
+      onClose();
+      navigate(targetProjectId, null, session.id);
     } catch (e) {
       setError(structuredError(e)?.message ?? errorMessage(e));
       setCreating(false);
@@ -178,6 +195,7 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
     const activeId = ws.chatSessionId ?? state.sessions.defaultId;
     const allMains = sessionChoices(state.sessions.list);
     const shownMains = q ? allMains : allMains.slice(0, SESSIONS_SHOWN);
+    const otherProjects = (projects ?? []).filter((p) => p.id !== projectId);
     const sessionRows: PickerRow[] = [
       ...shownMains.map<PickerRow>((s) => ({
         id: `session:${s.id}`,
@@ -188,7 +206,7 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
       })),
       {
         id: "new-session",
-        label: "New session",
+        label: project ? `New session in ${project.name}` : "New session",
         detail: "Open in new tab",
         lead: <Glyph icon={Plus} size={14} />,
         keepOpen: true,
@@ -196,6 +214,16 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
         disabled: creating,
         run: () => void handleNewSession(),
       },
+      ...otherProjects.map<PickerRow>((p) => ({
+        id: `new-session:${p.id}`,
+        label: `New session in ${p.name}`,
+        detail: "Switch project",
+        lead: <Glyph icon={Plus} size={14} />,
+        keepOpen: true,
+        busy: creating,
+        disabled: creating,
+        run: () => void handleNewSessionInProject(p.id),
+      })),
     ];
     const agentRows: PickerRow[] = agents.map((a) => ({
       id: `agent:${a.id}`,

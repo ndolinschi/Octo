@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -310,4 +312,62 @@ func TestTerminalStreamAPITokenQuery(t *testing.T) {
 	if tokResp.StatusCode != http.StatusOK {
 		t.Fatalf("with ?token= status = %d, want 200", tokResp.StatusCode)
 	}
+}
+
+func TestDeleteProjectForceAndBrokenStore(t *testing.T) {
+	gate := make(chan struct{})
+	defer close(gate)
+	mgr := terminal.NewManager(terminal.Options{})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = mgr.Shutdown(ctx)
+	})
+	e := newEnvWith(t, gate, nil, bridge.WithTerminals(mgr))
+	folder := t.TempDir()
+
+	var p1 project.Project
+	e.into(t, "POST", "/v1/projects", map[string]any{
+		"name": "ActiveDelete", "folders": []map[string]string{{"path": folder}},
+	}, http.StatusCreated, &p1)
+
+	var term createdTerminal
+	e.into(t, "POST", "/v1/projects/"+p1.ID+"/terminals", map[string]any{}, http.StatusCreated, &term)
+	if len(mgr.ListProject(p1.ID)) != 1 {
+		t.Fatalf("expected 1 open terminal before delete")
+	}
+
+	// Simulate read-only worktree files inside project data directory (e.g. 0555 Go module cache).
+	roDir := filepath.Join(e.dir, "projects", p1.ID, "worktrees", "ro")
+	if err := os.MkdirAll(roDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(roDir, "locked.txt"), []byte("ro"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(roDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+
+	e.into(t, "POST", "/v1/projects/"+p1.ID+"/messages", map[string]string{"text": "hold turn"}, http.StatusAccepted, nil)
+	e.wantError(t, "DELETE", "/v1/projects/"+p1.ID, nil, http.StatusConflict, "turn_in_progress")
+
+	e.into(t, "DELETE", "/v1/projects/"+p1.ID+"?force=1", nil, http.StatusNoContent, nil)
+	e.wantError(t, "GET", "/v1/projects/"+p1.ID, nil, http.StatusNotFound, "not_found")
+	if got := mgr.ListProject(p1.ID); len(got) != 0 {
+		t.Fatalf("expected 0 terminals after project delete, got %d", len(got))
+	}
+
+	// Corrupted project.sqlite must still be deletable via registry lookup.
+	var p2 project.Project
+	e.into(t, "POST", "/v1/projects", map[string]any{
+		"name": "BrokenDB", "folders": []map[string]string{{"path": folder}},
+	}, http.StatusCreated, &p2)
+	e.closeProject(p2.ID)
+	dbPath := filepath.Join(e.dir, "projects", p2.ID, "project.sqlite")
+	if err := os.WriteFile(dbPath, []byte("not a sqlite database"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.into(t, "DELETE", "/v1/projects/"+p2.ID, nil, http.StatusNoContent, nil)
+	e.wantError(t, "GET", "/v1/projects/"+p2.ID, nil, http.StatusNotFound, "not_found")
 }

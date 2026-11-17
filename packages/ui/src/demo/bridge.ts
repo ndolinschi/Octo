@@ -569,9 +569,11 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       emit(rec, { type: "project.updated", project: withIssues(p) });
       return withIssues(p);
     },
-    deleteProject: async (id) => {
+    deleteProject: async (id, opts) => {
       await delay();
-      if (get(id).turn) throw new BridgeError(409, "turn_in_progress", "stop the running turn before deleting");
+      const rec = get(id);
+      if (rec.turn && !opts?.force) throw new BridgeError(409, "turn_in_progress", "stop the running turn before deleting");
+      if (rec.turn) rec.turn.cancelled = true;
       records.delete(id);
     },
     listAgents: async (id) => (await delay(), clone(get(id).agents)),

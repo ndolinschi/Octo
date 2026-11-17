@@ -513,19 +513,69 @@ func (s *Service) apply(ctx context.Context, db *projectstore.DB, patch projects
 }
 
 func (s *Service) Delete(ctx context.Context, pid string) error {
-	if _, err := s.db(ctx, pid); err != nil {
-		return err
+	return s.deleteProject(ctx, pid, false)
+}
+
+// DeleteForce stops any running or waiting sessions and turns in pid before deleting the project.
+func (s *Service) DeleteForce(ctx context.Context, pid string) error {
+	return s.deleteProject(ctx, pid, true)
+}
+
+func (s *Service) deleteProject(ctx context.Context, pid string, force bool) error {
+	ok, err := s.store.Has(ctx, pid)
+	if err != nil {
+		return storeErr(err)
 	}
-	if s.turns.Running(pid) {
-		return turnInProgress()
+	if !ok {
+		return notFound("project")
+	}
+	if !force {
+		if s.turns.Running(pid) {
+			return turnInProgress()
+		}
+	} else {
+		s.stopProjectActivity(ctx, pid)
 	}
 	s.turns.CancelSide(pid)
+	s.turns.CloseSide(pid)
 	s.turns.CloseProject(pid)
 	if err := s.store.Delete(ctx, pid); err != nil {
-		return err
+		if errors.Is(err, projectstore.ErrNotFound) {
+			return notFound("project")
+		}
+		return storeErr(err)
 	}
 	s.hub.Forget(pid)
 	return nil
+}
+
+func (s *Service) stopProjectActivity(ctx context.Context, pid string) {
+	s.turns.Cancel(pid)
+	for _, a := range s.turns.Approvals(pid) {
+		_ = s.turns.ResolveApproval(pid, a.ID, approval.Resolution{Decision: approval.Deny})
+	}
+	db, dbErr := s.store.Get(ctx, pid)
+	var list []projectstore.SessionInfo
+	if dbErr == nil {
+		list, _ = db.ListSessions(ctx, projectstore.SessionFilter{Archived: "all", Limit: -1})
+		for _, info := range list {
+			_, _ = s.turns.StopSession(ctx, pid, info.ID)
+		}
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for (s.turns.Active(pid) || s.turns.Running(pid)) && time.Now().Before(deadline) {
+		if ctx.Err() != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if st, ok := s.turns.(SessionTurns); ok {
+		for _, info := range list {
+			if info.Kind == projectstore.KindMain {
+				st.ForgetSession(pid, info.ID)
+			}
+		}
+	}
 }
 
 func deref(s *string) string {

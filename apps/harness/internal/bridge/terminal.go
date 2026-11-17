@@ -14,6 +14,7 @@ type TerminalSessions interface {
 	Start(ctx context.Context, project string, spec terminal.Spec) (*terminal.Session, error)
 	Get(project, id string) (*terminal.Session, error)
 	Close(project, id string) error
+	CloseProject(project string)
 }
 
 // WithTerminals enables the interactive PTY terminal endpoints.

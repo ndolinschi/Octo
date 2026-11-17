@@ -1,17 +1,22 @@
 import { Plus } from "lucide-react";
 import { useRef, useState } from "react";
 import { CARRIED, NOT_CARRIED } from "../../lib/sessions/carry";
+import { useApp } from "../../state/app";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Button } from "../primitives/Button";
+import { FieldRow } from "../primitives/FieldRow";
 import { Popover } from "../primitives/Popover";
 import { Presence } from "../primitives/Presence";
+import { Select } from "../primitives/Select";
 
 /**
- * "New session" with a short confirmation in plain words: what the new session starts from and what it leaves behind, and
- * a link to Memory ("What it remembers"). The session is made only by the button inside it.
+ * "New session" with a short confirmation in plain words: target project (when multiple projects exist), what the new session
+ * starts from and what it leaves behind, and a link to Memory ("What it remembers").
  */
-export function NewSessionButton(props: { loading: boolean; memoryBlocked?: boolean; onCreate(): void }) {
+export function NewSessionButton(props: { loading: boolean; projectId?: string; memoryBlocked?: boolean; onCreate(targetProjectId?: string): void }) {
+  const { projects } = useApp();
   const [open, setOpen] = useState(false);
+  const [targetProject, setTargetProject] = useState(props.projectId ?? projects?.[0]?.id ?? "");
   const anchor = useRef<HTMLButtonElement>(null);
   const ws = useOptionalWorkspace();
   return (
@@ -25,13 +30,37 @@ export function NewSessionButton(props: { loading: boolean; memoryBlocked?: bool
         loading={props.loading}
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setTargetProject(props.projectId ?? projects?.[0]?.id ?? "");
+          setOpen((v) => !v);
+        }}
       >
         New session
       </Button>
       <Presence show={open} exitMs={0}>
         {open && (
           <Popover anchor={anchor} label="New session" onClose={() => setOpen(false)} className="flex w-72 max-w-[calc(100vw-1rem)] flex-col gap-3 p-3 text-sm">
+            {(projects?.length ?? 0) > 1 && (
+              <FieldRow
+                fields={[
+                  {
+                    id: "sessions-new-project",
+                    label: "Project",
+                    control: (
+                      <Select
+                        id="sessions-new-project"
+                        label="Project"
+                        size="sm"
+                        className="w-full"
+                        value={targetProject}
+                        onChange={setTargetProject}
+                        options={(projects ?? []).map((p) => ({ value: p.id, label: p.name }))}
+                      />
+                    ),
+                  },
+                ]}
+              />
+            )}
             <p className="text-fg-2">
               <span className="text-fg">Carried over: </span>
               {CARRIED}
@@ -61,7 +90,7 @@ export function NewSessionButton(props: { loading: boolean; memoryBlocked?: bool
                 size="sm"
                 onClick={() => {
                   setOpen(false);
-                  props.onCreate();
+                  props.onCreate(targetProject || undefined);
                 }}
               >
                 Start

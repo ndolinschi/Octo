@@ -26,6 +26,7 @@ export type PaletteWorkspace = {
   moveToOtherSide(tab: TabId): void;
   canSplitRight(tab: TabId): boolean;
   splitRight(tab: TabId): void;
+  canClose?(tab: TabId): boolean;
   requestClose(tabs: TabId[]): void;
   closeOthers(tab: TabId): void;
   equalize(): void;
@@ -40,6 +41,10 @@ export type WorkspaceApi = {
   openTool(tool: ToolTab): void;
   /** Decision 96: a main session in a tab of its own (the sidebar's "Open in new tab"). */
   openSession(sessionId: string): void;
+  /** Switches the active conversation to `sessionId`. */
+  showSession?(sessionId: string): void;
+  /** Closes `tab` immediately without confirmation (e.g. when its session was deleted). */
+  dropTab?(tab: TabId): void;
   /** The workspace as it is now, for the palette's tab actions and tab rows (`workspace/paletteCommands`). */
   current(): PaletteWorkspace;
 };

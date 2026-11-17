@@ -31,6 +31,8 @@ export function Tab(props: {
   overlayClose: boolean;
   /** C2: the narrowest it is drawn (its whole title and close place, or `TAB_FLOOR` for a long title); TAB_MIN by default. */
   minWidth?: number;
+  /** Whether this tab can be closed right now (defaults to `closable(tab)`). */
+  canClose?: boolean;
   dragging: "self-attached" | "self-detached" | "other" | null;
   onPress(e: PointerEvent): void;
   onClose(): void;
@@ -40,7 +42,7 @@ export function Tab(props: {
   onKeyDown(e: KeyboardEvent): void;
 }) {
   const { tab, info, selected } = props;
-  const canClose = closable(tab);
+  const canClose = props.canClose ?? closable(tab);
   const name = info.name ?? info.label;
   const hasTrailing = canClose || info.status === "modified";
   const slot = !props.overlayClose || selected || info.status === "modified";

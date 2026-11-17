@@ -560,9 +560,9 @@
 [data-tree-level="2"] [data-row] {
   padding-left: 24px;
 }
-/* The title gives way to the actions instead of running under them: a project row has two (56px with the inset), a session one. */
+/* The title gives way to the actions instead of running under them: a project row has three (80px with the inset), a session one. */
 [data-tree-project]:is(:hover, :focus-within) [data-row] {
-  padding-right: 56px;
+  padding-right: 80px;
 }
 [data-tree-row]:not([data-tree-project]):is(:hover, :focus-within) [data-row] {
   padding-right: 32px;
@@ -575,7 +575,7 @@
     visibility: hidden;
   }
   [data-tree-project] [data-row] {
-    padding-right: 56px;
+    padding-right: 80px;
   }
   [data-tree-row]:not([data-tree-project]) [data-row] {
     padding-right: 32px;

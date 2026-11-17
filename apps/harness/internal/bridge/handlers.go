@@ -3,6 +3,7 @@ package bridge
 import (
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/features"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
@@ -93,9 +94,20 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
 	pid := r.PathValue("pid")
-	if err := s.svc.Delete(r.Context(), pid); err != nil {
+	q := r.URL.Query().Get("force")
+	force := q == "1" || strings.EqualFold(q, "true")
+	var err error
+	if force {
+		err = s.svc.DeleteForce(r.Context(), pid)
+	} else {
+		err = s.svc.Delete(r.Context(), pid)
+	}
+	if err != nil {
 		writeErr(w, err)
 		return
+	}
+	if s.terminals != nil {
+		s.terminals.CloseProject(pid)
 	}
 	if s.browser != nil {
 		if err := s.browser.CloseProject(r.Context(), pid); err != nil {

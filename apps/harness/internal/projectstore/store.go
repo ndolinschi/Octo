@@ -198,6 +198,19 @@ func (s *Store) Rename(ctx context.Context, id, name string) error {
 	return err
 }
 
+// Has reports whether id is registered in the project index without opening project.sqlite.
+func (s *Store) Has(ctx context.Context, id string) (bool, error) {
+	var found string
+	err := s.reg.QueryRowContext(ctx, `SELECT id FROM projects WHERE id = ?`, id).Scan(&found)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // Delete removes the registry row and the project directory.
 func (s *Store) Delete(ctx context.Context, id string) error {
 	res, err := s.reg.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, id)
@@ -208,7 +221,33 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	s.drop(id)
-	return os.RemoveAll(s.projectDir(id))
+	dir := s.projectDir(id)
+	makeWritableTree(dir)
+	return os.RemoveAll(dir)
+}
+
+func makeWritableTree(root string) {
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		info, statErr := d.Info()
+		if statErr != nil {
+			return nil
+		}
+		mode := info.Mode()
+		if mode&os.ModeSymlink != 0 {
+			return nil
+		}
+		want := mode.Perm() | 0o200
+		if d.IsDir() {
+			want |= 0o700
+		}
+		if mode.Perm() != want {
+			_ = os.Chmod(path, want)
+		}
+		return nil
+	})
 }
 
 func NewID(prefix string) string {

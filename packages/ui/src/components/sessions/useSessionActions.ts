@@ -1,9 +1,12 @@
 import type { MoveToWorktreeInput, NewSessionInput, ProjectSession, SessionMessageResult } from "@octo/agent-client";
 import { useCallback, useMemo, useState } from "react";
 import { useLatest } from "../../lib/hooks";
+import { deleteSessionCleanly } from "../../lib/sessions/deleteSession";
 import { failureText } from "../../lib/sessions/model";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
+import { sessionTab } from "../../state/workspace/layout";
+import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 
 export { failureText };
 
@@ -15,6 +18,8 @@ export { failureText };
 export function useSessionActions() {
   const { bridge } = useApp();
   const { projectId, applySession, state } = useProject();
+  const ws = useOptionalWorkspace();
+  const wsRef = useLatest(ws);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -33,6 +38,7 @@ export function useSessionActions() {
 
   const listRef = useLatest(state.sessions.list);
   const currentId = useLatest(state.sessions.currentId);
+  const defaultIdRef = useLatest(state.sessions.defaultId);
   const changed = useCallback(
     (what: string, call: () => Promise<ProjectSession>) =>
       run(what, async () => {
@@ -69,9 +75,19 @@ export function useSessionActions() {
       archive: (sid: string, archived: boolean) => changed("archive", () => need(bridge.patchSession).call(bridge, projectId, sid, { archived })),
       remove: (sid: string) =>
         run("delete", async () => {
-          await need(bridge.deleteSession).call(bridge, projectId, sid);
+          const target = listRef.current.find((s) => s.id === sid) ?? { id: sid, kind: "main" as const, state: "idle" as const };
+          const res = await deleteSessionCleanly(bridge, projectId, target, listRef.current);
+          if (res.createdSession) applySession({ kind: "upsert", session: res.createdSession });
+          if (res.replacementId) applySession({ kind: "current", id: res.replacementId, previous: sid });
           const children = listRef.current.filter((s) => s.parent_session_id === sid).map((s) => s.id);
           applySession({ kind: "remove", ids: [sid, ...children] });
+          const curWs = wsRef.current;
+          if (curWs) {
+            curWs.dropTab(sessionTab(sid));
+            const shownChat = curWs.chatSessionId ?? defaultIdRef.current;
+            const nextId = res.replacementId ?? listRef.current.find((s) => s.id !== sid && s.kind === "main" && !s.archived)?.id ?? null;
+            if (shownChat === sid && nextId) curWs.showSession(nextId);
+          }
           return true;
         }),
       stop: (sid: string) => changed("stop", () => bridge.stopSession(projectId, sid)),
@@ -88,7 +104,7 @@ export function useSessionActions() {
           return sent;
         }),
     };
-  }, [bridge, projectId, run, changed, applySession, listRef, currentId]);
+  }, [bridge, projectId, run, changed, applySession, listRef, currentId, defaultIdRef, wsRef]);
 
   return { ...api, error, busy, clear: () => setError(null) };
 }

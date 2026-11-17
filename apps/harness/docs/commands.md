@@ -36,7 +36,7 @@ All under `/v1/projects/{pid}`. Errors: `{ "error": { "code", "message" } }`.
 | GET | `/terminals/{tid}/events` | SSE stream (`?token=` supported for `EventSource`) emitting `output` (`{ data: "<base64>" }`) and `exit` (`{ code, reason? }`) |
 | POST | `/terminals/{tid}/input` | `{ data }` (up to 64 KiB) → 202 Accepted |
 | POST | `/terminals/{tid}/resize` | `{ cols, rows }` → 204 No Content |
-| DELETE | `/terminals/{tid}` | Closes the PTY session and terminates its process group → 204 No Content |
+| DELETE | `/terminals/{tid}` | Closes the PTY session and terminates its process group → 204 No Content (`DELETE /v1/projects/{pid}` also closes all open PTY terminals for `{pid}`; `?force=1` stops active turns/sessions first and removes projects even when `project.sqlite` or read-only cache directories fail normal open/remove) |
 
 `{name}` matches case-insensitively and must be URL-encoded. Errors: 404 `command_not_found`, `review_not_found`, `not_found` (project, run, terminal, or worker process), `terminal_closed`; 400 `invalid_cwd`, `unknown_folder`, `no_folder`, `invalid_request`; 409 `too_many_runs` (4 at once per project), `terminal_already_subscribed`, `review_closed`, `worktree_missing`, `no_folder`, `start_failed`; 429 `too_many_terminals` (8 per project).
 

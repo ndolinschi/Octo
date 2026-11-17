@@ -7,9 +7,10 @@ import { CLOCK_SIDEBAR_MS } from "../../lib/constants";
 import { formatRelative } from "../../lib/format";
 import { useNow, useScrollFade } from "../../lib/hooks";
 import { projectRowLines, type OrchestratorState } from "../../lib/orchestrator";
-import { hrefFor } from "../../lib/route";
+import { hrefFor, navigate } from "../../lib/route";
 import { useRovingRows } from "../../lib/rovingRows";
-import { canMoveToWorktree, deleteCopy, failureText, isRunning, sessionWorkspaceLabel } from "../../lib/sessions/model";
+import { deleteSessionCleanly } from "../../lib/sessions/deleteSession";
+import { canMoveToWorktree, deleteCopy, failureText, sessionWorkspaceLabel } from "../../lib/sessions/model";
 import {
   isLive,
   isOpen,
@@ -28,10 +29,12 @@ import { orchestratorGlyph, type GlyphState } from "../../lib/stateGlyph";
 import { jsonCodec, PREFS, usePersistentState } from "../../lib/storage";
 import { useActivity } from "../../state/activity";
 import { useApp } from "../../state/app";
+import { useHost } from "../../state/host";
 import { useNav } from "../../state/nav";
 import { useOrchestrators } from "../../state/orchestrators";
 import { useSessionIndex } from "../../state/sessionIndex";
 import { useTabFlags } from "../../state/tabFlags";
+import { sessionTab } from "../../state/workspace/layout";
 import { requestSession } from "../../state/workspace/sessionsStart";
 import { Glyph } from "../primitives/Glyph";
 import { IconButton } from "../primitives/IconButton";
@@ -45,7 +48,8 @@ import { ConfirmDelete } from "./parts";
 
 const Menu = lazy(() => import("../primitives/Menu").then((m) => ({ default: m.Menu })));
 const MoveToWorktreeDialog = lazy(() => import("../shared/MoveToWorktreeDialog").then((m) => ({ default: m.MoveToWorktreeDialog })));
-const NewSessionPopover = lazy(() => import("./NewSessionPopover").then((m) => ({ default: m.NewSessionPopover })));
+const NewSessionPopover = lazy(() => import("../shared/NewSessionPopover").then((m) => ({ default: m.NewSessionPopover })));
+const DeleteProjectDialog = lazy(() => import("../shared/DeleteProjectDialog").then((m) => ({ default: m.DeleteProjectDialog })));
 
 const openCodec = jsonCodec(parseOpen);
 
@@ -75,6 +79,7 @@ type MenuAt = ({ session: GlobalSession } | { project: ProjectSummary; open: boo
  */
 export function SessionTree(props: SessionTreeProps) {
   const { projects, health, bridge } = useApp();
+  const device = useHost().remoteDevice !== undefined;
   const activity = useActivity();
   const nav = useNav();
   const now = useNow(true, CLOCK_SIDEBAR_MS);
@@ -85,11 +90,12 @@ export function SessionTree(props: SessionTreeProps) {
   const [menu, setMenu] = useState<MenuAt | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<GlobalSession | null>(null);
+  const [deletingProject, setDeletingProject] = useState<ProjectSummary | null>(null);
   const [moving, setMoving] = useState<GlobalSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [creating, setCreating] = useState<{ projectId?: string; anchor: RefObject<HTMLElement | null> } | null>(null);
+  const [creating, setCreating] = useState<{ defaultProjectId?: string | null; anchor: RefObject<HTMLElement | null> } | null>(null);
   const list = useRef<HTMLUListElement>(null);
   useScrollFade(list, "y");
   useRovingRows(list);
@@ -133,8 +139,7 @@ export function SessionTree(props: SessionTreeProps) {
       const patch = bridge.patchSession;
       items.push({ id: "archive", label: "Archive", run: () => void act(() => patch(s.project_id, s.id, { archived: true })) });
     }
-    if (bridge.deleteSession && !isDefault && !isRunning(s))
-      items.push({ id: "sep", separator: true }, { id: "delete", label: "Delete…", run: () => setDeleting(s) });
+    if (bridge.deleteSession) items.push({ id: "sep", separator: true }, { id: "delete", label: "Delete…", run: () => setDeleting(s) });
     return items;
   };
   const menuPoint = (e: MouseEvent | KeyboardEvent, el?: HTMLElement | null) => {
@@ -167,6 +172,12 @@ export function SessionTree(props: SessionTreeProps) {
       run: () => createSession(m.project.id),
     },
     { id: "toggle", label: m.open ? "Hide sessions" : "Show sessions", run: () => toggle(m.project.id, !m.open) },
+    ...(!device
+      ? [
+          { id: "sep-del", separator: true as const },
+          { id: "delete", label: "Delete project…", run: () => setDeletingProject(m.project) },
+        ]
+      : []),
   ];
 
   const tabFlags = useTabFlags();
@@ -292,17 +303,11 @@ export function SessionTree(props: SessionTreeProps) {
         // the flat Sessions list keeps "New session", its glyph's right edge on the rows' meta edge.
         <div data-side-caption className="mt-4 mb-1 flex h-5 shrink-0 items-center pr-0.5 pl-2">
           <h2 className="text-xs text-fg-3">{props.mode === "sessions" ? "Sessions" : "Projects"}</h2>
-          {props.mode === "sessions" && (
-            <NewButton
-              label="New session"
-              disabled={!props.canCreate || !projects?.length}
-              onOpen={(anchor) => {
-                const target = props.activeProjectId ?? (projects?.length === 1 ? projects[0]?.id : null);
-                if (target) createSession(target);
-                else setCreating({ anchor });
-              }}
-            />
-          )}
+          <NewButton
+            label="New session"
+            disabled={!props.canCreate || !projects?.length}
+            onOpen={(anchor) => setCreating({ anchor, defaultProjectId: props.activeProjectId })}
+          />
         </div>
       )}
       {error && (
@@ -384,7 +389,13 @@ export function SessionTree(props: SessionTreeProps) {
       <Presence show={creating !== null}>
         {creating && (
           <Suspense fallback={null}>
-            <NewSessionPopover anchor={creating.anchor} {...(creating.projectId ? { projectId: creating.projectId } : {})} onClose={() => setCreating(null)} />
+            <NewSessionPopover
+              anchor={creating.anchor}
+              defaultProjectId={creating.defaultProjectId ?? props.activeProjectId}
+              activeProjectId={props.activeProjectId}
+              onCreated={props.onPick}
+              onClose={() => setCreating(null)}
+            />
           </Suspense>
         )}
       </Presence>
@@ -398,13 +409,21 @@ export function SessionTree(props: SessionTreeProps) {
             setDeleteError(null);
           }}
           onConfirm={() => {
-            const del = bridge.deleteSession;
-            if (!del) return;
+            if (!bridge.deleteSession) return;
+            const target = deleting;
             setDeleteError(null);
             setBusy(true);
-            void del(deleting.project_id, deleting.id)
+            void deleteSessionCleanly(bridge, target.project_id, target)
               .then(
-                () => {
+                (res) => {
+                  if (target.project_id === props.activeProjectId) {
+                    nav.workspace()?.dropTab?.(sessionTab(target.id));
+                    if (target.id === currentSession && res.replacementId) {
+                      const ws = nav.workspace();
+                      if (ws?.showSession) ws.showSession(res.replacementId);
+                      else navigate(target.project_id, null, res.replacementId);
+                    }
+                  }
                   activity.refreshSessions();
                   setDeleting(null);
                 },
@@ -414,6 +433,9 @@ export function SessionTree(props: SessionTreeProps) {
           }}
         />
       )}
+      <Suspense fallback={null}>
+        {deletingProject && <DeleteProjectDialog project={deletingProject} activeProjectId={props.activeProjectId} onClose={() => setDeletingProject(null)} />}
+      </Suspense>
       <Suspense fallback={null}>{moving && <MoveToWorktreeDialog projectId={moving.project_id} session={moving} onClose={() => setMoving(null)} />}</Suspense>
     </div>
   );
@@ -438,7 +460,7 @@ function projectGlyph(sessions: readonly GlobalSession[], state: OrchestratorSta
   return sum === "idle" && unseen ? "unseen" : sum;
 }
 
-/** A project row of the tree: glyph, name, meta ("2 running", or the time since its last activity); "+" and the chevron on hover. */
+/** A project row of the tree: glyph, name, meta ("2 running", or the time since its last activity); "+", "⋯" and the chevron on hover. */
 function ProjectRow(props: {
   project: ProjectSummary;
   sessions: readonly GlobalSession[];
@@ -484,15 +506,26 @@ function ProjectRow(props: {
           chevron alone, a full 44px target; "New session" is in the row's menu (a long press) and in the header's "⋯". */}
       <span data-tree-actions role="none" className="absolute top-1 right-1 flex touch:top-2">
         {!phone && (
-          <IconButton
-            icon={Plus}
-            size="xs"
-            tabIndex={-1}
-            aria-hidden="true"
-            label={`New session in ${props.project.name}`}
-            disabled={!props.canCreate}
-            onClick={props.onNew}
-          />
+          <>
+            <IconButton
+              icon={Plus}
+              size="xs"
+              tabIndex={-1}
+              aria-hidden="true"
+              label={`New session in ${props.project.name}`}
+              disabled={!props.canCreate}
+              onClick={props.onNew}
+            />
+            <IconButton
+              icon={Ellipsis}
+              size="xs"
+              tabIndex={-1}
+              aria-hidden="true"
+              label={`Actions for ${props.project.name}`}
+              aria-haspopup="menu"
+              onClick={(e) => props.onMenu(e)}
+            />
+          </>
         )}
         <IconButton
           icon={ChevronRight}

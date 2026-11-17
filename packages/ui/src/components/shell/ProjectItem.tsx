@@ -1,5 +1,5 @@
 import type { ProjectSummary } from "@octo/agent-client";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useReadable } from "../../lib/errors/useReadable";
 import { projectRowLines, type OrchestratorState } from "../../lib/orchestrator";
 import { hrefFor } from "../../lib/route";
@@ -25,6 +25,7 @@ export function ProjectItem(props: {
   state: OrchestratorState;
   now: number;
   onPick(): void;
+  onMenu?(e: MouseEvent<HTMLElement>): void;
   /** Mounted under the row (the app passes the expandable sessions of the project). */ extra?: ReactNode;
 }) {
   const { project, active, state } = props;
@@ -33,7 +34,7 @@ export function ProjectItem(props: {
   const unseen = props.unseen && !active;
   const sentence = `${unseen && state.kind === "idle" ? "New activity" : full}${error ? `: ${error}` : ""}`;
   return (
-    <li data-project-row className="group/p relative">
+    <li data-project-row className="group/p relative" onContextMenu={props.onMenu}>
       <ListRow
         href={hrefFor(project.id)}
         selected={active}

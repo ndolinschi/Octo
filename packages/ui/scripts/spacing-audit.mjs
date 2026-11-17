@@ -217,6 +217,7 @@ const PHONE_PANELS = {
   side: "Side question",
   review: "Review",
   browser: "Browser",
+  terminal: "Terminal",
   processes: "Processes",
 };
 
@@ -1070,6 +1071,20 @@ const STATES = [
       await settle(page, 400);
     },
   },
+  {
+    id: "tool-terminal",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await openTool(page, "terminal");
+      try {
+        await page.locator("[data-terminal-tab]").first().waitFor({ timeout: T });
+      } catch {
+        skip("Terminal tab did not render");
+      }
+      await settle(page, 600);
+    },
+  },
   ...PHONE_STATES(),
 ];
 
@@ -1150,6 +1165,7 @@ function PHONE_STATES() {
       },
     },
     { id: "phone-processes", viewports: vps, run: panel("Processes") },
+    { id: "phone-terminal", viewports: vps, run: panel("Terminal") },
     {
       id: "phone-settings",
       viewports: vps,

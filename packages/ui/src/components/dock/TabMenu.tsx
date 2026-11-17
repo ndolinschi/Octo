@@ -1,6 +1,6 @@
 import { sessionChoices } from "../../lib/sessions/picker";
 import { useProject } from "../../state/project";
-import { CHAT, closable, type TabId } from "../../state/workspace/layout";
+import { CHAT, type TabId } from "../../state/workspace/layout";
 import { MOD, useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Menu, type MenuItem } from "../primitives/Menu";
 import { sessionMenuItems, useCreateProjectSession, useSyncProjectSessions } from "../shell/sessionSwitcher";
@@ -40,9 +40,9 @@ export default function TabMenu(props: { tab: TabId; x: number; y: number; tabs:
     );
   }
   items.push(
-    { id: "close", label: "Close", shortcut: `${MOD}W`, disabled: !closable(tab), run: () => ws.requestClose([tab]) },
-    { id: "others", label: "Close others", disabled: props.tabs.filter((t) => t !== tab && closable(t)).length === 0, run: () => ws.closeOthers(tab) },
-    { id: "right", label: "Close tabs to the right", disabled: !props.tabs.slice(at + 1).some(closable), run: () => ws.closeRight(tab) },
+    { id: "close", label: "Close", shortcut: `${MOD}W`, disabled: !ws.canClose(tab), run: () => ws.requestClose([tab]) },
+    { id: "others", label: "Close others", disabled: props.tabs.filter((t) => t !== tab && ws.canClose(t)).length === 0, run: () => ws.closeOthers(tab) },
+    { id: "right", label: "Close tabs to the right", disabled: !props.tabs.slice(at + 1).some((t) => ws.canClose(t)), run: () => ws.closeRight(tab) },
     { id: "sep2", separator: true },
     { id: "reopen", label: "Reopen closed tab", shortcut: `${MOD}Shift+T`, disabled: !ws.canReopen, run: () => ws.reopenClosed() },
   );

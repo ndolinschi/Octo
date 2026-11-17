@@ -11,8 +11,6 @@ import { useProject } from "../state/project";
 import { allTabs, fileTab, focusedGroup, parseTab } from "../state/workspace/layout";
 import { useWorkspace, WorkspaceProvider } from "../state/workspace/WorkspaceProvider";
 import { Dock } from "../components/dock/Dock";
-import { Button } from "../components/primitives/Button";
-import { EmptyState } from "../components/primitives/EmptyState";
 import { Presence } from "../components/primitives/Presence";
 import { ChatSlotsProvider, type ChatSlots } from "../state/chatSlots";
 import { Panel } from "../components/shell/Panel";
@@ -27,9 +25,10 @@ const PhoneHeader = lazy(() => import("../components/dock/phone/PhoneHeader"));
 /** Keeps the project's command runs current for the top row, the run tabs and the status bar (decision 68). */
 const ProjectRunsFeed = lazy(() => import("../components/commands/ProjectRunsFeed"));
 
-/** The project dialog loads on first use (its own chunk). */
+/** The project dialog and error screen load on first use (their own chunks). */
 const CloseDialog = lazy(() => import("../components/shell/DiscardDialogs").then((m) => ({ default: m.CloseDialog })));
 const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
+const LoadError = lazy(() => import("./ProjectWorkspaceStates").then((m) => ({ default: m.LoadError })));
 
 /** The v7 pieces the conversation and the composer show (approvals, forms, the harness queue); each renders nothing when the bridge lacks its methods. */
 const ApprovalsSlot = lazy(() => import("../components/v7/ApprovalsSlot").then((m) => ({ default: m.ApprovalsSlot })));
@@ -170,7 +169,9 @@ function Body() {
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       {loadError && !project ? (
         <Panel className="mt-bar flex-1">
-          <LoadError message={loadError} onRetry={reload} />
+          <Suspense fallback={null}>
+            <LoadError message={loadError} onRetry={reload} />
+          </Suspense>
         </Panel>
       ) : project ? (
         <Dock />
@@ -198,7 +199,8 @@ function SettingsDialog({ show, onClose }: { show: boolean; onClose(): void }) {
               onClose();
             }}
             onDelete={async () => {
-              await bridge.deleteProject(projectId);
+              const { deleteProjectCleanly } = await import("../lib/deleteProject");
+              await deleteProjectCleanly(bridge, projectId);
               onClose();
               const next = projects?.find((p) => p.id !== projectId);
               navigate(next?.id ?? null);
@@ -208,48 +210,5 @@ function SettingsDialog({ show, onClose }: { show: boolean; onClose(): void }) {
         </Suspense>
       )}
     </Presence>
-  );
-}
-
-const NOTICE = "mx-auto w-full max-w-measure px-6 pt-10 text-sm max-drawer:px-4";
-
-/** P1-4: the route's project was deleted (the harness answered 404): nothing else is shown or sent to under its URL. */
-export function ProjectGone() {
-  // B3: the same layout as a gone session (`SessionGone`): centred, the title, one sentence, the way on.
-  return (
-    <div role="alert" data-project-gone className="flex h-full min-h-0 flex-col">
-      <EmptyState
-        title="This project no longer exists"
-        actions={
-          <Button size="sm" onClick={() => navigate(null)}>
-            Go to Home
-          </Button>
-        }
-      >
-        It was deleted, perhaps in another window.
-      </EmptyState>
-    </div>
-  );
-}
-
-function LoadError({ message, onRetry }: { message: string; onRetry(): Promise<void> }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <div role="alert" className={NOTICE}>
-      <p className="text-fg">Couldn't load this project.</p>
-      <p className="mt-1 text-fg-2">{message.replace(/\.$/, "")}. Octo tries again by itself; Retry tries now.</p>
-      <Button
-        size="sm"
-        className="mt-3"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          await onRetry();
-          setBusy(false);
-        }}
-      >
-        {busy ? "Retrying…" : "Retry"}
-      </Button>
-    </div>
   );
 }

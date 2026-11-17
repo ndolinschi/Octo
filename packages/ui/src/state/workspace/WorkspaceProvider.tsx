@@ -132,6 +132,8 @@ export type WorkspaceValue = {
   openIn(tab: TabId, groupId: string): void;
   /** Removes a tab without asking (a restored file that no longer exists). */
   dropTab(tab: TabId): void;
+  /** Whether `tab` can be closed now (Chat is closable whenever another main session tab is open). */
+  canClose(tab: TabId): boolean;
   requestClose(tabs: TabId[]): void;
   confirmClose(): void;
   cancelClose(): void;
@@ -253,13 +255,17 @@ export function WorkspaceProvider({
   const storedGone = picked.stored && picked.id !== null && synced > 0 && !state.sessions.list.some((x) => x.id === picked.id);
   const chatSession = storedGone ? null : picked.id;
   const chatSessionRef = useLatest(chatSession);
+  const effectiveChatId = chatSession ?? state.sessions.defaultId;
+  const effectiveChatRef = useLatest(effectiveChatId);
+  const sessionsRef = useLatest(state.sessions.list);
   const setChatSession = useCallback(
     (sid: string | null) => {
       chatSessionRef.current = sid;
+      effectiveChatRef.current = sid ?? state.sessions.defaultId;
       setChatSessionState({ id: sid, stored: false });
       writePref(PREFS.lastSession(projectId), SESSION_CODEC.stringify(sid));
     },
-    [projectId, chatSessionRef],
+    [projectId, chatSessionRef, effectiveChatRef, state.sessions.defaultId],
   );
   // C3: read before the layout below saves its first value — no saved layout means this is the project's first open here.
   const [firstOpen] = useState(() => readPref(PREFS.layout(projectId)) === null);
@@ -356,12 +362,44 @@ export function WorkspaceProvider({
     return Math.min(1 - EDITOR_MIN_GROUP / inner, Math.max(FILE_GROUP_MIN_FRACTION, 1 - chat / inner));
   }, [widthRef]);
 
+  const isMainSessionTab = useCallback(
+    (t: TabId): boolean => {
+      const r = L.parseTab(t);
+      if (r?.kind !== "session") return false;
+      const known = sessionsRef.current.find((x) => x.id === r.sessionId);
+      return !known || known.kind === "main";
+    },
+    [sessionsRef],
+  );
+
+  const canCloseTab = useCallback(
+    (current: Layout, tab: TabId): boolean => {
+      if (tab !== L.CHAT) return L.closable(tab);
+      return L.allTabs(current).some(isMainSessionTab);
+    },
+    [isMainSessionTab],
+  );
+
   const doClose = useCallback(
     (tabs: TabId[]) => {
       const current = layoutRef.current;
+      const closingChat = tabs.includes(L.CHAT);
+      const chatGroup = L.groupOf(current, L.CHAT);
+      const survivor = closingChat
+        ? (chatGroup?.tabs.find((t) => isMainSessionTab(t) && !tabs.includes(t)) ??
+          L.allTabs(current).find((t) => isMainSessionTab(t) && !tabs.includes(t)) ??
+          null)
+        : null;
+      const survivorRef = survivor ? L.parseTab(survivor) : null;
+      const survivorSid = survivorRef?.kind === "session" ? survivorRef.sessionId : null;
       const entries = tabs.flatMap((t) => {
         const g = L.groupOf(current, t);
-        return g && L.closable(t) ? [{ tab: t, group: g.id, index: g.tabs.indexOf(t) }] : [];
+        if (!g) return [];
+        if (t === L.CHAT) {
+          const oldSid = effectiveChatRef.current;
+          return survivorSid && oldSid ? [{ tab: L.sessionTab(oldSid), group: g.id, index: g.tabs.indexOf(t) }] : [];
+        }
+        return L.closable(t) ? [{ tab: t, group: g.id, index: g.tabs.indexOf(t) }] : [];
       });
       for (const t of tabs) {
         const ref = L.parseTab(t);
@@ -372,25 +410,35 @@ export function WorkspaceProvider({
       setClosedTabs((stack) => pushClosed(stack, entries));
       // Decision 40: closing the side question clears it unless it was pinned ("Keep").
       if (tabs.includes(L.toolTab("side")) && !memory.get(L.toolTab("side"), SIDE_PINNED)) void clearSide().catch(() => undefined);
+      if (survivor && survivorSid) {
+        const sGroup = L.groupOf(current, survivor);
+        const keepActive = L.focusedGroup(current).active === L.CHAT || L.focusedGroup(current).active === survivor;
+        setChatSession(survivorSid);
+        let base = sGroup && chatGroup && sGroup.id !== chatGroup.id ? L.move(current, L.CHAT, sGroup.id) : current;
+        base = L.close(base, [...tabs.filter((t) => t !== L.CHAT), survivor]);
+        if (keepActive) base = L.activate(base, L.CHAT);
+        commit(base, { focusTab: L.focusedGroup(base).active, force: true });
+        return;
+      }
       const next = L.close(current, tabs);
       // Decision 35: focus never falls to the page — the tab that becomes active takes it (also after a pointer close).
       commit(next, { focusTab: L.focusedGroup(next).active });
     },
-    [commit, memory, clearSide, projectId],
+    [commit, memory, clearSide, projectId, isMainSessionTab, effectiveChatRef, setChatSession],
   );
 
   const requestClose = useCallback(
     (tabs: TabId[]) => {
-      const closable = tabs.filter(L.closable);
-      if (!closable.length) return;
-      const files = closable.flatMap((t) => {
+      const closableTabs = tabs.filter((t) => canCloseTab(layoutRef.current, t));
+      if (!closableTabs.length) return;
+      const files = closableTabs.flatMap((t) => {
         const ref = L.parseTab(t);
         return ref?.kind === "file" && code.current?.modified(ref.key) ? [code.current.name(ref.key)] : [];
       });
-      if (files.length) setClosing({ tabs: closable, files });
-      else doClose(closable);
+      if (files.length) setClosing({ tabs: closableTabs, files });
+      else doClose(closableTabs);
     },
-    [doClose],
+    [doClose, canCloseTab],
   );
 
   // Decision 34: an agent opens in a split to the right of the orchestrator, never over it (in one strip when narrow).
@@ -494,6 +542,7 @@ export function WorkspaceProvider({
       focusedSessionId: sessionOf(lastConversation, chatSession) ?? chatSession,
       showSession: (sessionId) => {
         const current = layoutRef.current;
+        if (sessionId === effectiveChatRef.current) return commit(L.activate(current, L.CHAT));
         const tab = L.sessionTab(sessionId);
         if (L.groupOf(current, tab)) return commit(L.activate(current, tab));
         setChatSession(sessionId);
@@ -503,7 +552,10 @@ export function WorkspaceProvider({
       followSession: (from, to) => {
         const current = layoutRef.current;
         const tab = from === null ? null : L.sessionTab(from);
-        if (tab && L.groupOf(current, tab)) return commit(L.replace(current, tab, L.sessionTab(to)));
+        if (tab && L.groupOf(current, tab)) {
+          if (to === effectiveChatRef.current) return commit(L.activate(L.close(current, [tab]), L.CHAT), { force: true });
+          return commit(L.replace(current, tab, L.sessionTab(to)));
+        }
         setChatSession(to);
         commit(L.activate(current, L.CHAT), { force: true });
       },
@@ -611,11 +663,26 @@ export function WorkspaceProvider({
           if (room) return commit(L.open(current, tab, { newAfter: from.id, size: from.size / 2 }));
           return commit(L.open(current, tab, { group: from.id }));
         }
+        const curChat = effectiveChatRef.current;
+        if (curChat === sessionId || (curChat === null && !L.allTabs(current).some(isMainSessionTab))) {
+          if (chatSessionRef.current !== sessionId) setChatSession(sessionId);
+          return commit(L.activate(current, L.CHAT), { force: true });
+        }
+        if (chatSessionRef.current === null && curChat !== null) {
+          setChatSession(curChat);
+        }
         // Main sessions open as tabs in Chat's group so multiple sessions can be open concurrently.
         commit(L.open(current, tab, { group: L.chatGroupOf(current).id }));
       },
-      openIn: (tab, groupId) => commit(L.open(layoutRef.current, tab, { group: groupId })),
+      openIn: (tab, groupId) => {
+        const r = L.parseTab(tab);
+        if (r?.kind === "session" && r.sessionId === effectiveChatRef.current) {
+          return commit(L.activate(layoutRef.current, L.CHAT));
+        }
+        commit(L.open(layoutRef.current, tab, { group: groupId }));
+      },
       dropTab: (tab) => commit(L.close(layoutRef.current, [tab])),
+      canClose: (tab) => canCloseTab(layout, tab),
       requestClose,
       confirmClose: () => {
         if (closing) doClose(closing.tabs);
@@ -721,9 +788,17 @@ export function WorkspaceProvider({
         const g = L.groupOf(layoutRef.current, tab);
         if (g) requestClose(g.tabs.slice(g.tabs.indexOf(tab) + 1));
       },
-      canReopen: closedTabs.some((c) => tabAllowed(L.parseTab(c.tab), tabFlags, memoryBlocked)),
+      canReopen: closedTabs.some((c) => {
+        const r = L.parseTab(c.tab);
+        if (r?.kind === "session" && r.sessionId === effectiveChatId) return false;
+        return tabAllowed(r, tabFlags, memoryBlocked);
+      }),
       reopenClosed: () => {
-        const { entry, rest } = takeClosed(closedTabs, (t) => !!L.groupOf(layoutRef.current, t) || !tabAllowed(L.parseTab(t), tabFlags, memoryBlocked));
+        const { entry, rest } = takeClosed(closedTabs, (t) => {
+          const r = L.parseTab(t);
+          if (r?.kind === "session" && r.sessionId === effectiveChatRef.current) return true;
+          return !!L.groupOf(layoutRef.current, t) || !tabAllowed(r, tabFlags, memoryBlocked);
+        });
         setClosedTabs(rest);
         if (!entry) return;
         const ref = L.parseTab(entry.tab);
@@ -736,16 +811,22 @@ export function WorkspaceProvider({
       },
       recentTabs: () => {
         const current = layoutRef.current;
+        const curChat = effectiveChatRef.current;
         return recentPickerTabs({
-          closed: closedTabs,
+          closed: curChat ? closedTabs.filter((c) => c.tab !== L.sessionTab(curChat)) : closedTabs,
           mru: mru.current,
           open: new Set(L.allTabs(current)),
           active: L.focusedGroup(current).active,
         });
       },
       reopenTab: (tab) => {
-        if (!tabAllowed(L.parseTab(tab), tabFlags, memoryBlocked)) return;
+        const ref = L.parseTab(tab);
+        if (!tabAllowed(ref, tabFlags, memoryBlocked)) return;
         const current = layoutRef.current;
+        if (ref?.kind === "session" && ref.sessionId === effectiveChatRef.current) {
+          commit(L.activate(current, L.CHAT));
+          return;
+        }
         if (L.groupOf(current, tab)) {
           commit(L.activate(current, tab));
           return;
@@ -753,7 +834,6 @@ export function WorkspaceProvider({
         const idx = [...closedTabs].reverse().findIndex((c) => c.tab === tab);
         const entry = idx >= 0 ? closedTabs[closedTabs.length - 1 - idx] : undefined;
         if (entry) setClosedTabs((stack) => stack.filter((c) => c.tab !== tab));
-        const ref = L.parseTab(tab);
         if (ref?.kind === "file") code.current?.restore(ref.key);
         const group =
           entry && (L.groupOf(current, L.CHAT)?.id === entry.group || current.groups.some((g) => g.id === entry.group))
@@ -773,6 +853,11 @@ export function WorkspaceProvider({
     tabFlags,
     chatRoot,
     chatSession,
+    chatSessionRef,
+    effectiveChatId,
+    effectiveChatRef,
+    isMainSessionTab,
+    canCloseTab,
     setChatSession,
     state.sessions.list,
     layout,
@@ -817,6 +902,10 @@ export function WorkspaceProvider({
     }
     if (routeSessionId) {
       const current = layoutRef.current;
+      if (routeSessionId === effectiveChatRef.current) {
+        handled.current = routeKey;
+        return commit(L.activate(current, L.CHAT), { route: false });
+      }
       const tab = L.sessionTab(routeSessionId);
       if (L.groupOf(current, tab)) {
         handled.current = routeKey;
@@ -826,8 +915,8 @@ export function WorkspaceProvider({
       handled.current = routeKey;
       const known = state.sessions.list.find((x) => x.id === routeSessionId);
       if (known?.kind === "agent") return value.openSession(routeSessionId);
-      const shownInChat = chatSessionRef.current ?? state.sessions.defaultId;
-      if (routeSessionId === shownInChat || (!known && state.sessions.list.length === 0)) {
+      const shownInChat = effectiveChatRef.current;
+      if (routeSessionId === shownInChat || shownInChat === null || (!known && state.sessions.list.length === 0)) {
         setChatSession(routeSessionId);
         commit(L.activate(current, L.CHAT), { route: false });
         return;
@@ -851,14 +940,25 @@ export function WorkspaceProvider({
     sessionsKnown,
     state.agents,
     state.sessions.list,
-    state.sessions.defaultId,
-    chatSessionRef,
+    effectiveChatRef,
     projectId,
     commit,
     openAgent,
     setChatSession,
     value,
   ]);
+
+  /* ---------- ensure Chat and session:<id> never duplicate the same session ---------- */
+
+  useEffect(() => {
+    if (!effectiveChatId) return;
+    const dup = L.sessionTab(effectiveChatId);
+    if (!L.groupOf(layoutRef.current, dup)) return;
+    const wasActive = L.focusedGroup(layoutRef.current).active === dup;
+    let next = L.close(layoutRef.current, [dup]);
+    if (wasActive) next = L.activate(next, L.CHAT);
+    commit(next, { route: false });
+  }, [effectiveChatId, layout, commit]);
 
   /* ---------- a tool asked for before this workspace mounted (Home → Usage) ---------- */
 
@@ -933,6 +1033,8 @@ export function WorkspaceProvider({
       focusChat: () => valueRef.current.focusChat(),
       openTool: (tool) => valueRef.current.openTool(tool),
       openSession: (id) => valueRef.current.openSession(id),
+      showSession: (id) => valueRef.current.showSession(id),
+      dropTab: (tab) => valueRef.current.dropTab(tab),
       current: () => valueRef.current,
     };
     nav.setWorkspace(api);

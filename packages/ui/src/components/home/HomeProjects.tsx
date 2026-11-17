@@ -1,6 +1,6 @@
 import type { GlobalSession, ProjectSummary } from "@octo/agent-client";
 import { Plus } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useMemo, useRef, useState, type MouseEvent } from "react";
 import { cn } from "../../lib/cn";
 import { focusSoon, visibleComposer } from "../../lib/focus";
 import { useRowKeys } from "../../lib/hooksMore";
@@ -10,12 +10,16 @@ import { projectWhen, stateLine, type OrchestratorState } from "../../lib/orches
 import { agentStack } from "../../lib/orchestratorMore";
 import { navigate } from "../../lib/route";
 import { TRIAGE_LABEL, TRIAGE_ORDER, triageGroups, type Triage } from "../../lib/triage";
+import { useActivity } from "../../state/activity";
 import { useApp } from "../../state/app";
+import { useHost } from "../../state/host";
 import { isPending } from "../../state/orchestrators";
 import type { Reply } from "../../state/requests";
 import { Card } from "../primitives/Card";
 import { Button } from "../primitives/Button";
 import { ListRow } from "../primitives/ListRow";
+import type { MenuItem } from "../primitives/Menu";
+import { Presence } from "../primitives/Presence";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { Skeleton, SkeletonList } from "../primitives/Skeleton";
 import { OrchestratorGlyph } from "../primitives/Status";
@@ -24,6 +28,10 @@ import { sessionGlyph, sessionMeta, sessionTitle } from "../../lib/sessions/tree
 import { sessionStateWord } from "../../lib/sessions/model";
 import { STILL } from "./still";
 import type { useOverview } from "./useOverview";
+
+const Menu = lazy(() => import("../primitives/Menu").then((m) => ({ default: m.Menu })));
+const NewSessionPopover = lazy(() => import("../shared/NewSessionPopover").then((m) => ({ default: m.NewSessionPopover })));
+const DeleteProjectDialog = lazy(() => import("../shared/DeleteProjectDialog").then((m) => ({ default: m.DeleteProjectDialog })));
 
 /**
  * Rows in the grouped list before "N more projects" (Home fits 1440×900 with the triage row). B55: "Needs you" and "Working" are
@@ -60,13 +68,19 @@ export function Projects({
   filter: Triage | null;
   onNewProject(): void;
 }) {
-  const { health } = useApp();
+  const { health, bridge } = useApp();
+  const device = useHost().remoteDevice !== undefined;
+  const activity = useActivity();
   const list = useRef<HTMLDivElement>(null);
+  const newSessionRef = useRef<HTMLSpanElement>(null);
   useRowKeys(list);
   // 11g: the list is one Tab stop; ↑/↓/Home/End move between its rows.
   useRovingRows(list);
   // B55: "N more projects" shows the whole list here (it opened the palette, which lists six), and "Show fewer" folds it again.
   const [all, setAll] = useState(false);
+  const [creatingSession, setCreatingSession] = useState(false);
+  const [menu, setMenu] = useState<{ project: ProjectSummary; x: number; y: number } | null>(null);
+  const [deletingProject, setDeletingProject] = useState<ProjectSummary | null>(null);
   // Grouped by state in triage order, most recent first within a group (decision 26); a tile shows its group whole.
   const groups = useMemo(() => {
     const by = triageGroups(items.map((x) => ({ project: x.project, triage: x.triage })));
@@ -88,6 +102,30 @@ export function Projects({
   const shown = groups.reduce((n, g) => n + g.rows.length + g.sessions.length, 0);
   const total = items.length + (sessions?.length ?? 0);
   const rest = (filter ? items.filter((x) => x.triage === filter).length + (sessions ?? []).filter((x) => x.triage === filter).length : total) - shown;
+
+  const projectMenuItems = (project: ProjectSummary): MenuItem[] => [
+    {
+      id: "new",
+      label: "New session",
+      disabled: health !== "online",
+      run: () => {
+        void bridge.createSession(project.id, {}).then(
+          ({ session }) => {
+            activity.refreshSessions();
+            navigate(project.id, null, session.id);
+          },
+          () => undefined,
+        );
+      },
+    },
+    ...(!device
+      ? [
+          { id: "sep", separator: true as const },
+          { id: "delete", label: "Delete project…", run: () => setDeletingProject(project) },
+        ]
+      : []),
+  ];
+
   return (
     <div className="flex flex-col gap-1">
       <Card padding="sm">
@@ -105,7 +143,19 @@ export function Projects({
                 <SessionRow key={s.id} session={s} now={now} />
               ))}
               {g.rows.map(({ p, s }) => (
-                <ProjectRow key={p.id} project={p} state={s} reply={data.replies.get(p.id)} loaded={data.replies.has(p.id)} now={now} />
+                <ProjectRow
+                  key={p.id}
+                  project={p}
+                  state={s}
+                  reply={data.replies.get(p.id)}
+                  loaded={data.replies.has(p.id)}
+                  now={now}
+                  onMenu={(e) => {
+                    e.preventDefault();
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setMenu({ project: p, x: e.clientX > 0 ? e.clientX : r.right, y: e.clientY > 0 ? e.clientY : r.bottom });
+                  }}
+                />
               ))}
             </div>
           ))}
@@ -113,15 +163,39 @@ export function Projects({
       </Card>
       {/* Polish step 2 (F5): the actions are not rows of the card: a quiet line under it, the "+" on the cards' glyph column. */}
       <div className="flex items-center gap-1 px-2">
-        <Button variant="quiet" size="sm" icon={Plus} disabled={health !== "online"} onClick={onNewProject}>
-          New project
-        </Button>
+        {!device && (
+          <Button variant="quiet" size="sm" icon={Plus} disabled={health !== "online"} onClick={onNewProject}>
+            New project
+          </Button>
+        )}
+        <span ref={newSessionRef} className="inline-flex">
+          <Button variant="quiet" size="sm" icon={Plus} disabled={health !== "online" || !data.projects?.length} onClick={() => setCreatingSession(true)}>
+            New session
+          </Button>
+        </span>
         {(rest > 0 || (all && !filter)) && (
           <Button variant="quiet" size="sm" aria-expanded={all} onClick={() => setAll((v) => !v)} className="ml-auto">
             {all ? "Show fewer" : `${rest} more ${rest === 1 ? "project" : "projects"}`}
           </Button>
         )}
       </div>
+      <Presence show={creatingSession}>
+        {creatingSession && (
+          <Suspense fallback={null}>
+            <NewSessionPopover anchor={newSessionRef} align="start" activeProjectId={null} onClose={() => setCreatingSession(false)} />
+          </Suspense>
+        )}
+      </Presence>
+      <Presence show={menu !== null} exitMs={0}>
+        {menu && (
+          <Suspense fallback={null}>
+            <Menu label={`${menu.project.name} actions`} x={menu.x} y={menu.y} items={projectMenuItems(menu.project)} onClose={() => setMenu(null)} />
+          </Suspense>
+        )}
+      </Presence>
+      <Suspense fallback={null}>
+        {deletingProject && <DeleteProjectDialog project={deletingProject} activeProjectId={null} onClose={() => setDeletingProject(null)} />}
+      </Suspense>
     </div>
   );
 }
@@ -157,12 +231,14 @@ function ProjectRow({
   reply,
   loaded,
   now,
+  onMenu,
 }: {
   project: ProjectSummary;
   state: OrchestratorState;
   reply: Reply | null | undefined;
   loaded: boolean;
   now: number;
+  onMenu(e: MouseEvent<HTMLElement>): void;
 }) {
   const line = stateLine(state, now, project.updated_at);
   const second = secondLine(state, reply, loaded);
@@ -170,25 +246,27 @@ function ProjectRow({
   // B54: a project never started says "No requests yet" once (its state line and its second line were the same words).
   const status = state.kind === "idle" || state.kind === "new" ? "" : `${line}${second ? " · " : ""}`;
   return (
-    <ListRow
-      size="lg"
-      title={project.name}
-      description={`${status}${second}`}
-      // B6: the sidebar's time, from the same function (since the last turn, else since the project changed).
-      meta={projectWhen(state, now, project.updated_at) ?? undefined}
-      // Decision 76: only a project that is working right now turns its arc; a needs-you row does not pulse. C2: the glyph sits
-      // on the name's line (the 20px title line's centre is 8px above the 36px two-line block's centre).
-      leading={
-        <span className={cn("flex -translate-y-2", state.kind !== "working" && STILL)}>
-          {isPending(state) ? <Skeleton shape="circle" className="size-3.5" /> : <OrchestratorGlyph state={state.kind} />}
-        </span>
-      }
-      tip={`${project.name} — ${line}${second ? `\n${second}` : ""}`}
-      onClick={() => {
-        navigate(project.id);
-        // Decision 35: the opened project's composer takes focus (the row that had it is gone with Home).
-        focusSoon(visibleComposer, { timeout: 3000 });
-      }}
-    />
+    <div onContextMenu={onMenu}>
+      <ListRow
+        size="lg"
+        title={project.name}
+        description={`${status}${second}`}
+        // B6: the sidebar's time, from the same function (since the last turn, else since the project changed).
+        meta={projectWhen(state, now, project.updated_at) ?? undefined}
+        // Decision 76: only a project that is working right now turns its arc; a needs-you row does not pulse. C2: the glyph sits
+        // on the name's line (the 20px title line's centre is 8px above the 36px two-line block's centre).
+        leading={
+          <span className={cn("flex -translate-y-2", state.kind !== "working" && STILL)}>
+            {isPending(state) ? <Skeleton shape="circle" className="size-3.5" /> : <OrchestratorGlyph state={state.kind} />}
+          </span>
+        }
+        tip={`${project.name} — ${line}${second ? `\n${second}` : ""}`}
+        onClick={() => {
+          navigate(project.id);
+          // Decision 35: the opened project's composer takes focus (the row that had it is gone with Home).
+          focusSoon(visibleComposer, { timeout: 3000 });
+        }}
+      />
+    </div>
   );
 }

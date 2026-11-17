@@ -4,7 +4,7 @@ import { lazy, Suspense, useState } from "react";
 import { formatTokens } from "../../lib/format";
 import { DETAIL_COLUMN } from "../../lib/panelColumn";
 import { EMPTY_FIRST_LINE, EMPTY_SESSION_LINE } from "../../lib/sessions/carry";
-import { canDelete, detailLine, earlierSession, hasNoRequests, isDefaultSession, isWorking, parentOf } from "../../lib/sessions/model";
+import { detailLine, earlierSession, hasNoRequests, isDefaultSession, isWorking, parentOf } from "../../lib/sessions/model";
 import { roleText } from "../../lib/orchestrator";
 import { useApp } from "../../state/app";
 import { useModelNames } from "../../state/modelNames";
@@ -86,7 +86,7 @@ export function SessionDetail(props: {
         onMoveToWorktree={bridge.moveSessionToWorktree ? () => setMovingWorktree(true) : undefined}
         onOpen={s.kind === "main" && ws ? () => ws.showSession(s.id) : undefined}
         onArchive={(next) => void actions.archive(s.id, next)}
-        canDelete={canDelete(props.list, s)}
+        canDelete={Boolean(bridge.deleteSession)}
         onDelete={() => {
           actions.clear();
           setConfirm(true);

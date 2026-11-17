@@ -6,7 +6,7 @@ import { formatDuration } from "../../lib/format";
 import { useRowKeys } from "../../lib/hooksMore";
 import { agentActivity, roleText } from "../../lib/orchestrator";
 import { useRovingRows } from "../../lib/rovingRows";
-import { canDelete, canMoveToWorktree, sessionRow, type AgentRowMeta, type SessionNode } from "../../lib/sessions/model";
+import { canMoveToWorktree, sessionRow, type AgentRowMeta, type SessionNode } from "../../lib/sessions/model";
 import { useModelNames } from "../../state/modelNames";
 import { useProject } from "../../state/project";
 import { IconMenu } from "../primitives/IconMenu";
@@ -89,7 +89,7 @@ export function SessionRows(props: {
         items.push({ id: "worktree", label: "Move to worktree…", run: () => move(s) });
       }
       if (!isDefault) items.push({ id: "archive", label: s.archived ? "Unarchive" : "Archive", run: () => menu.onArchive(s, !s.archived) });
-      if (canDelete(menu.list, s)) items.push({ id: "delete", label: "Delete", run: () => menu.onDelete(s) });
+      items.push({ id: "delete", label: "Delete", run: () => menu.onDelete(s) });
     }
     return (
       <ListRow

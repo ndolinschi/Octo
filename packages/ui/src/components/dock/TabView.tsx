@@ -15,11 +15,11 @@ import { transcriptPart } from "../chat/transcriptPart";
 import { useNow } from "../../lib/hooks";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { TranscriptSlot } from "../sessions/parts";
-import { FloatingComposer } from "../chat/FloatingComposer";
 import type { FloatingSlot } from "../files/FileView";
 
-/** The file view (breadcrumbs, tree column, editor host) loads with the first file or Files tab: its own chunk. */
+/** The file view (breadcrumbs, tree column, editor host) and its floating composer load with the first file or Files tab. */
 const FileView = lazy(() => import("../files/FileView").then((m) => ({ default: m.FileView })));
+const FloatingComposer = lazy(() => import("../chat/FloatingComposer").then((m) => ({ default: m.FloatingComposer })));
 
 /** What a file view renders as its floating composer: the dock, not the file feature, knows about chat. */
 const renderFloatingComposer: FloatingSlot = (onHeight, rest) => <ScopedFloatingComposer onHeight={onHeight} rest={rest} />;
@@ -30,7 +30,9 @@ function ScopedFloatingComposer(props: { onHeight(px: number): void; rest?: bool
   const { state } = useProject();
   return (
     <SessionScope sessionId={ws?.focusedSessionId ?? state.sessions.defaultId}>
-      <FloatingComposer onHeight={props.onHeight} rest={props.rest ?? false} />
+      <Suspense fallback={null}>
+        <FloatingComposer onHeight={props.onHeight} rest={props.rest ?? false} />
+      </Suspense>
     </SessionScope>
   );
 }

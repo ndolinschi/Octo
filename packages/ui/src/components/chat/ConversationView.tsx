@@ -18,7 +18,7 @@ import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { roleName as baseRoleName } from "../../lib/orchestrator";
 import { useNav, useNavState } from "../../state/nav";
 import { useComposerAnchor } from "./useComposerAnchor";
-import { Announcer } from "./Announcer";
+const Announcer = lazy(() => import("./Announcer").then((m) => ({ default: m.Announcer })));
 
 /** Decision 63: the project's own agent goes by the project's name in its conversation, never "Orchestrator". */
 const nameIn = (projectName: string) => (a: Pick<Agent, "parent_id" | "role">) => (a.parent_id === null ? projectName : baseRoleName(a));
@@ -424,7 +424,9 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
         )}
       </Presence>
 
-      <Announcer agent={agent} name={roleName(agent)} project={project.name} orchestrator={isOrchestrator} />
+      <Suspense fallback={null}>
+        <Announcer agent={agent} name={roleName(agent)} project={project.name} orchestrator={isOrchestrator} />
+      </Suspense>
     </div>
   );
 }

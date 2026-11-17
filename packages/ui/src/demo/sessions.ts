@@ -462,8 +462,10 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
     };
   };
 
-  const seedAgents = (e: Entry): { main: Main; agent: SeedAgent }[] =>
-    e.mains.filter((m) => !e.deleted.has(m.id)).flatMap((m) => (m.seed?.agents ?? []).map((agent) => ({ main: m, agent })));
+  const seedAgents = (id: string, e: Entry): { main: Main; agent: SeedAgent }[] =>
+    e.mains
+      .filter((m) => !e.deleted.has(m.id))
+      .flatMap((m) => (m.seed?.agents ?? []).filter((agent) => !e.deleted.has(`ses_${id}_${agent.id}`)).map((agent) => ({ main: m, agent })));
 
   const snapshot = async (id: string): Promise<ProjectSession[]> => {
     const rec = recOf(id);
@@ -471,7 +473,7 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
     const live = e.mains.filter((m) => !e.deleted.has(m.id));
     const mains = await Promise.all(live.map((m) => mainSession(id, m)));
     const real = rec.agents
-      .filter((a) => a.parent_id !== null)
+      .filter((a) => a.parent_id !== null && !e.deleted.has(`ses_${a.id}`))
       .map<ProjectSession>((a) => {
         const owner = rootSession(rec, e, a);
         const request = owner ? rec.messages.filter((m) => m.agent_id === owner.root && m.role === "user" && m.created_at <= a.created_at).at(-1) : undefined;
@@ -497,7 +499,7 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
             : { message_blocked: { code: "not_continuable", message: "This agent's conversation was not kept" } }),
         };
       });
-    const seeded = seedAgents(e).map<ProjectSession>(({ main, agent }) => {
+    const seeded = seedAgents(id, e).map<ProjectSession>(({ main, agent }) => {
       const sid = `ses_${id}_${agent.id}`;
       const state = e.agentState.get(sid) ?? agent.state;
       const busy = state === "working";
@@ -734,7 +736,7 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
 
   const agentTranscript = async (id: string, sid: string) => {
     const e = entryOf(id);
-    const seeded = seedAgents(e).find(({ agent }) => `ses_${id}_${agent.id}` === sid);
+    const seeded = seedAgents(id, e).find(({ agent }) => `ses_${id}_${agent.id}` === sid);
     if (seeded) {
       const t = Date.parse(seeded.main.started_at) + seeded.agent.minutesIn * 60_000;
       const base = [say(seeded.agent.id, "user", seeded.agent.task, new Date(t).toISOString())];
@@ -912,8 +914,7 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
       if (s.kind === "main" && isDefaultId(id, sid)) throw new BridgeError(409, "current_session", "the default session cannot be deleted");
       if (s.state === "working" || s.state === "waiting") throw new BridgeError(409, "session_running", "the session is running");
       const gone = [sid, ...(await snapshot(id)).filter((x) => x.parent_session_id === sid).map((x) => x.id)];
-      if (s.kind === "main") e.deleted.add(sid);
-      else e.archived.add(sid);
+      for (const g of gone) e.deleted.add(g);
       for (const g of gone) emit(rec, { type: "session.updated", session_id: g, deleted: true });
     },
     stopSession: async (id, sid) => {
