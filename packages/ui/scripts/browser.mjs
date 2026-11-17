@@ -44,6 +44,9 @@ export function loadPlaywright() {
 export async function launchBrowser(options = {}) {
   const engine = loadPlaywright()[BROWSER];
   if (!engine) throw new Error(`playwright has no ${BROWSER}`);
+  if (BROWSER === "chromium" && !options.executablePath && process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
+    options = { ...options, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH };
+  }
   return engine.launch(options);
 }
 

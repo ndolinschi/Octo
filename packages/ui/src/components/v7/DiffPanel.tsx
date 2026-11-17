@@ -9,6 +9,7 @@ import { IconButton as GoToButton } from "../primitives/IconButton";
 import { FloatRoom } from "../primitives/floatRoom";
 import { IconMenu } from "../primitives/IconMenu";
 import type { MenuItem } from "../primitives/Menu";
+import { MiddleText } from "../primitives/MiddleText";
 import { Spinner } from "../primitives/Status";
 import { DiffEditor, type DiffMonaco } from "./DiffEditor";
 import type { LineComment } from "./DiffComments";
@@ -66,7 +67,7 @@ export function DiffPanel(props: {
           <span className="sr-only">{kindLabel(file.kind)}</span>
         </span>
         <span className="flex min-w-0 flex-1 items-baseline gap-2 pl-1" title={file.path}>
-          <span className="min-w-0 truncate text-sm text-fg">{name}</span>
+          <MiddleText text={name} className="text-sm text-fg" />
           <span className="min-w-0 truncate text-xs text-fg-3 @max-md/diff:hidden">{dir ? `${file.folder}/${dir}` : file.folder}</span>
         </span>
         <LineCounts added={file.added} removed={file.removed} className="ml-2 shrink-0 @max-md/diff:hidden" />

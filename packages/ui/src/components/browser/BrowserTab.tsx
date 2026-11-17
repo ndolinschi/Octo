@@ -124,14 +124,14 @@ export default function BrowserTab(props: { tab: TabId; browserId: string }) {
           Enter a localhost port or URL above, then switch on Design to pick elements, edit copy, tweak CSS, or sketch markup for your session.
         </EmptyState>
       ) : (
-        <div className={cn("relative flex min-h-0 flex-1 justify-center overflow-auto", vpWidth !== null && "bg-surface p-3")}>
+        <div className={cn("relative flex min-h-0 flex-1 justify-center overflow-auto", vpWidth !== null && "bg-window p-3")}>
           <div
             ref={stageBoxRef}
             data-browser-stage
             style={vpWidth !== null ? { width: vpWidth, maxWidth: "100%" } : undefined}
             className={cn(
               "relative flex min-h-0 flex-1 flex-col bg-panel",
-              vpWidth !== null && "flex-initial overflow-hidden rounded-lg border border-line shadow-float",
+              vpWidth !== null && "flex-initial overflow-hidden rounded-md shadow-float forced-colors:border forced-colors:border-[CanvasText]",
             )}
           >
             {(s.frame.src !== null || s.frame.srcdoc !== null) && (

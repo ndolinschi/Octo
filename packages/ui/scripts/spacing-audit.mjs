@@ -1037,6 +1037,39 @@ const STATES = [
       await settle(page, 2500);
     },
   },
+  {
+    id: "tool-browser",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await openTool(page, "browser");
+      try {
+        await page.locator("[data-browser-tab]").first().waitFor({ timeout: T });
+      } catch {
+        skip("Browser tab did not render");
+      }
+      const openBtn = page.locator("[data-browser-tab]").getByRole("button", { name: /^Open / }).first();
+      if (await openBtn.isVisible().catch(() => false)) {
+        await openBtn.click({ timeout: T });
+        await settle(page, 600);
+      }
+      await settle(page, 400);
+    },
+  },
+  {
+    id: "tool-processes",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await openTool(page, "processes");
+      try {
+        await page.locator("[data-processes]").first().waitFor({ timeout: T });
+      } catch {
+        skip("Processes tab did not render");
+      }
+      await settle(page, 400);
+    },
+  },
   ...PHONE_STATES(),
 ];
 
@@ -1104,6 +1137,19 @@ function PHONE_STATES() {
     },
     { id: "phone-files", viewports: vps, run: panel("Files") },
     { id: "phone-changes", viewports: vps, run: panel("Changes") },
+    {
+      id: "phone-browser",
+      viewports: vps,
+      async run(page) {
+        await panel("Browser")(page);
+        const openBtn = page.locator("[data-browser-tab]").getByRole("button", { name: /^Open / }).first();
+        if (await openBtn.isVisible().catch(() => false)) {
+          await openBtn.click({ timeout: T });
+          await settle(page, 600);
+        }
+      },
+    },
+    { id: "phone-processes", viewports: vps, run: panel("Processes") },
     {
       id: "phone-settings",
       viewports: vps,
@@ -1591,6 +1637,7 @@ async function main() {
     await ctx.addInitScript(() => {
       try {
         localStorage.setItem("octo.theme", "dark");
+        localStorage.setItem("octo.sidebarView", "tree");
       } catch {}
     });
     const page = await ctx.newPage();

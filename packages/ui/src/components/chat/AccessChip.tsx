@@ -29,6 +29,7 @@ export function AccessChip(props: ChipProps & { value: AccessMode; onChoose(next
         tip={`Permissions: ${ACCESS_LABEL[props.value]} — ${ACCESS_DETAIL[props.value]}.`}
         bare={props.bare}
         open={open}
+        warn={props.value === "full"}
         disabled={props.disabled}
         aria-haspopup="menu"
         data-chip="access"

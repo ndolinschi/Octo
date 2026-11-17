@@ -271,3 +271,12 @@ settings (folders, instructions, models, notes).
   runs without an API key (used for demos and UI screenshots).
 - TS: `agent-client` unit tests (client request shapes, SSE parsing, event reducer).
 - UI: type-check + build; Playwright smoke run against `harness serve` + `mockllm`.
+
+## As built — relative data-dir SQLite URI (2026-11-17)
+
+- **Normalized SQLite paths in `projectstore` (`apps/harness/internal/projectstore/store.go`, `store_test.go`).**
+  - `Open` and `openSQLite` now resolve `dataDir` and database file paths with `filepath.Abs` (and slash-normalized absolute URI path via `filepath.ToSlash`) before building `url.URL{Scheme: "file", ...}`. Previously, passing the default relative `--data-dir` (`./data/harness`) produced a relative `file:` URI whose first segment was parsed by SQLite as an invalid URI authority (`SQL logic error: invalid uri authority: data`).
+  - Added `TestOpenRelativeDataDir` in `apps/harness/internal/projectstore/store_test.go`.
+
+**Verified.** `gofmt -l .` in `apps/harness` (clean).
+**Not verified.** `go vet ./...`, `go test ./...`, and live `go run ./cmd/harness serve` in this VM (cannot fetch uncached `modernc.org/sqlite@v1.62.0` zip because `proxy.golang.org` redirects to `storage.googleapis.com`, which is blocked with HTTP 403 in the sandbox).

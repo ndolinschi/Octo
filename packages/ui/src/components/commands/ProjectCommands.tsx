@@ -128,13 +128,13 @@ export default function ProjectCommands({
   ];
   return (
     <>
-      <span className="flex min-w-0 shrink-0 items-center gap-1">
+      <span className="relative flex min-w-0 shrink-0 items-center gap-1">
         {restore}
         <span
           ref={pinnedBox}
           aria-hidden={collapsePinned || undefined}
           inert={collapsePinned}
-          className={cn("flex items-center gap-1 max-lg:hidden", collapsePinned && "pointer-events-none invisible absolute")}
+          className={cn("flex items-center gap-1 max-lg:hidden", collapsePinned && "pointer-events-none invisible absolute top-0 left-0")}
         >
           {/* Decision 94c: a pinned command is a quiet button that looks like something that runs: a play glyph and the name;
               while it runs the glyph is the spinner and a click opens its run tab. Polish step 2 (F3): no divider — the end

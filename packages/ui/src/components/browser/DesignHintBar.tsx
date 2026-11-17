@@ -65,7 +65,7 @@ export function DesignHintBar(props: {
         <IconButton icon={Undo2} label={`Undo stroke (${MOD}Z)`} size="xs" disabled={!props.canUndo} onClick={props.onUndo} />
       </div>
 
-      <span title={fullHint} className="hidden min-w-0 flex-1 truncate px-1 text-xs text-fg-3 @[520px]/dh:block">
+      <span title={fullHint} className="hidden min-w-0 flex-1 truncate px-1 text-xs text-fg-3 @[660px]/dh:block">
         {hint}
       </span>
 

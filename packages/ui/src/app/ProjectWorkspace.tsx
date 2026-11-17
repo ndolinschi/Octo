@@ -75,8 +75,12 @@ export function ProjectWorkspace(props: { agentId: string | null; sessionId?: st
             <Suspense fallback={null}>
               <ProjectStatus />
               <ProjectRunsFeed />
-              {phone && <PhoneHeader />}
             </Suspense>
+            {phone && (
+              <Suspense fallback={null}>
+                <PhoneHeader />
+              </Suspense>
+            )}
             <WorkspaceTitle phone={phone} />
             <Body />
           </ChatSlotsProvider>

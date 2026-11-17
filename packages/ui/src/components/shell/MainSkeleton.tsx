@@ -15,7 +15,7 @@ export function MainSkeleton() {
       </div>
       <div className="grid grid-cols-2 gap-3 max-[420px]:grid-cols-1">
         {Array.from({ length: 4 }, (_, i) => (
-          <div key={i} className="flex items-center gap-3 rounded-lg border border-line/60 px-3 py-3">
+          <div key={i} className="flex items-center gap-3 rounded-md border border-line/60 px-3 py-3">
             <Skeleton shape="circle" />
             <Skeleton width={i % 2 === 0 ? "55%" : "45%"} />
           </div>

@@ -104,7 +104,7 @@ export function Dialog(props: {
         <div
           ref={body}
           data-dialog-body
-          className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3 empty:hidden sm:px-5", reading && "fade-y")}
+          className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 empty:hidden sm:px-5", props.footer ? "pb-3" : "pb-4", reading && "fade-y")}
         >
           {props.children}
         </div>

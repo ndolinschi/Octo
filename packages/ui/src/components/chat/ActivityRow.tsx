@@ -164,8 +164,8 @@ export function ActivityRow(props: {
       {mounted && (
         <div data-activity-drawer data-open={shown || undefined} inert={!shown || undefined} aria-hidden={!shown || undefined} className="octo-drawer-rows">
           <div className="min-h-0 overflow-hidden">
-            {/* C1: a subtle tree guide under the parent's glyph center (7px) with 16px indent puts nested content on the parent's text line (24px). */}
-            <div id={id} data-activity-body className="mt-0.5 mb-2 ml-[7px] flex flex-col gap-0.5 border-l border-line pl-4">
+            {/* C1: a subtle tree guide under the parent's glyph center (8px) with 16px indent puts nested content on the parent's text line. */}
+            <div id={id} data-activity-body className="mt-0.5 mb-2 ml-2 flex flex-col gap-0.5 border-l border-line pl-4">
               {props.children}
             </div>
           </div>

@@ -30,14 +30,19 @@ type Store struct {
 }
 
 func Open(dataDir string) (*Store, error) {
-	if err := os.MkdirAll(filepath.Join(dataDir, "projects"), 0o755); err != nil {
-		return nil, err
-	}
-	reg, err := openSQLite(filepath.Join(dataDir, "registry.sqlite"))
+	absDir, err := filepath.Abs(dataDir)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkVersion(context.Background(), reg, filepath.Join(dataDir, "registry.sqlite")); err != nil {
+	if err := os.MkdirAll(filepath.Join(absDir, "projects"), 0o755); err != nil {
+		return nil, err
+	}
+	regPath := filepath.Join(absDir, "registry.sqlite")
+	reg, err := openSQLite(regPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkVersion(context.Background(), reg, regPath); err != nil {
 		_ = reg.Close()
 		return nil, err
 	}
@@ -49,15 +54,23 @@ func Open(dataDir string) (*Store, error) {
 		_ = reg.Close()
 		return nil, err
 	}
-	return &Store{dir: dataDir, reg: reg, dbs: make(map[string]*DB)}, nil
+	return &Store{dir: absDir, reg: reg, dbs: make(map[string]*DB)}, nil
 }
 
 // openSQLite opens one serialized connection: WAL, busy timeout, and a single
 // writer so parallel agents never see SQLITE_BUSY from this process.
 func openSQLite(path string) (*sql.DB, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	uriPath := filepath.ToSlash(abs)
+	if !strings.HasPrefix(uriPath, "/") {
+		uriPath = "/" + uriPath
+	}
 	u := url.URL{
 		Scheme:   "file",
-		Path:     path,
+		Path:     uriPath,
 		RawQuery: "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)",
 	}
 	db, err := sql.Open("sqlite", u.String())

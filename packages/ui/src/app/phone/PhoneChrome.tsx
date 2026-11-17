@@ -62,7 +62,7 @@ export default function PhoneChrome({ projectShown }: { projectShown: boolean })
         <div
           role="status"
           data-phone-tip
-          className="octo-fade octo-phone-tip fixed inset-x-4 z-[70] rounded-lg bg-overlay px-4 py-3 text-sm whitespace-pre-line text-fg shadow-pop"
+          className="octo-fade octo-phone-tip fixed inset-x-4 z-[70] rounded-xl bg-overlay px-4 py-3 text-sm whitespace-pre-line text-fg shadow-pop"
         >
           {tip}
         </div>

@@ -7,6 +7,8 @@ import { cn } from "../../lib/cn";
 import { useOptionalComments } from "../../state/comments";
 import { useStagedDesignNotesCount } from "../../state/designNotes";
 import { useProject } from "../../state/project";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
 import { Popover } from "../primitives/Popover";
 import { Presence } from "../primitives/Presence";
 import { PILL } from "./ComposerPills";
@@ -46,7 +48,7 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
   const n = store?.comments.length ?? 0;
   if (!n) return designCount > 0 ? <DesignNotesControl open={props.open} onOpenChange={props.onOpenChange} /> : null;
   if (!store) return null;
-  const label = `${n} ${n === 1 ? "comment" : "comments"}`;
+  const label = `${n} ${n === 1 ? "comment" : "comments"}`;
   const pill = (
     <>
       <button
@@ -54,18 +56,18 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
         type="button"
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label={`${n} ${n === 1 ? "comment" : "comments"}`}
+        aria-label={label}
         title="Pending comments, sent with your next message"
         onClick={() => setOpen((x) => !x)}
         className={cn(
           chip
-            ? "octo-ring-float flex h-6 shrink-0 press items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs tabular-nums shadow-float hover:text-fg"
-            : cn(PILL, "press pr-2 tabular-nums hover:bg-active hover:text-fg"),
+            ? "octo-ring-float touch-hit flex h-6 shrink-0 press items-center gap-1.5 rounded-full bg-overlay px-2 text-xs tabular-nums shadow-float hover:text-fg forced-colors:border forced-colors:border-[CanvasText]"
+            : cn(PILL, "touch-hit press pr-2 tabular-nums hover:bg-active hover:text-fg"),
           open ? (chip ? "text-fg" : "bg-active text-fg") : chip ? "text-fg-2" : "text-fg",
         )}
       >
         <Glyph icon={MessageSquare} size={14} className={chip ? undefined : "text-fg-3"} />
-        {label}
+        {`${n}\u00a0${n === 1 ? "comment" : "comments"}`}
       </button>
       <Presence show={open}>
         <Popover anchor={anchor} label="Pending comments" side="top" gap={4} onClose={() => setOpen(false)} className="w-[min(380px,calc(100vw-16px))]">
@@ -100,15 +102,13 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
                         {/* Room for the remove button that sits over the row's end. */}
                         <span aria-hidden className="w-6 shrink-0" />
                       </button>
-                      <button
-                        type="button"
-                        aria-label={`Remove comment on ${linesLabel(c.start, c.end)} of ${fileName(c.path)}`}
-                        title="Remove comment"
+                      <IconButton
+                        icon={X}
+                        size="xs"
+                        label={`Remove comment on ${linesLabel(c.start, c.end)} of ${fileName(c.path)}`}
                         onClick={() => store.remove(c.id)}
-                        className="absolute top-1 right-1 grid size-6 press place-items-center rounded-sm text-fg-3 opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 hover:bg-hover hover:text-fg focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-                      >
-                        <Glyph icon={X} size={14} />
-                      </button>
+                        className="absolute top-1 right-1 opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100 focus-visible:opacity-100 touch:opacity-100"
+                      />
                     </li>
                   ))}
                 </ul>
@@ -116,16 +116,16 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
             ))}
           </div>
           <div className="flex h-bar shrink-0 items-center justify-end border-t border-line px-2">
-            <button
-              type="button"
+            <Button
+              size="xs"
+              variant="quiet"
               onClick={() => {
                 store.removeAll();
                 setOpen(false);
               }}
-              className="h-6 shrink-0 press rounded-sm px-2 text-xs text-fg-2 hover:bg-hover hover:text-fg"
             >
               Remove all
-            </button>
+            </Button>
           </div>
         </Popover>
       </Presence>

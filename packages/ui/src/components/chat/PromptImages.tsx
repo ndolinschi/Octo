@@ -63,7 +63,7 @@ export function PromptImages({ blocks }: { blocks: ImageBlock[] }) {
 function Thumb({ block, onOpen }: { block: ImageBlock; onOpen(): void }) {
   const { url, failed } = useAttachmentUrl(block.attachment_id);
   const label = `${block.name ?? "Image"}, ${block.width} by ${block.height}`;
-  if (failed) return <span className="text-xs text-fg-3">{block.name ?? "Image"} could not be loaded</span>;
+  if (failed) return <span className="text-xs opacity-80">{block.name ?? "Image"} could not be loaded</span>;
   return (
     <Button variant="quiet" size="lg" aria-label={`Open ${label}`} title={label} onClick={onOpen} disabled={url === null} className="h-auto p-0">
       {url ? (

@@ -265,3 +265,18 @@ func TestConcurrentWrites(t *testing.T) {
 		t.Fatalf("agents = %d, want 9", len(agents))
 	}
 }
+
+func TestOpenRelativeDataDir(t *testing.T) {
+	t.Chdir(t.TempDir())
+	s, err := Open("./data/harness-test")
+	if err != nil {
+		t.Fatalf("Open relative dataDir: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+
+	db := create(t, s, "rel", Folder{Label: "a", Path: "/tmp/a"})
+	info, err := db.Info(context.Background())
+	if err != nil || info.Name != "rel" {
+		t.Fatalf("Info = %+v, %v", info, err)
+	}
+}

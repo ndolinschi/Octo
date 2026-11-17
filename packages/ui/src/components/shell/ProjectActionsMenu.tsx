@@ -60,16 +60,6 @@ export default function ProjectActionsMenu(props: {
         { id: "usage", label: "Show usage", disabled: !ws, run: () => ws?.openTool("usage") },
         { id: "side", label: "Ask a side question", shortcut: `${MOD_LABEL};`, disabled: !ws, run: () => ws?.openTool("side") },
         { id: "sep", separator: true },
-        ...(total > 0
-          ? [
-              {
-                id: "tokens",
-                caption: `${formatTokens(total)} tokens used`,
-                title: `${total.toLocaleString()} tokens used in this project (${tokens.input.toLocaleString()} in, ${tokens.output.toLocaleString()} out)`,
-              },
-            ]
-          : []),
-        ...(budget && budget.tone === "fg-3" ? [{ id: "budget", caption: `Budget: ${budget.text}` }] : []),
         ...(openProjectInEditor
           ? [{ id: "editor", label: "Open in editor", disabled: project.folders.length === 0, run: () => openProjectInEditor(project.id) }]
           : []),
@@ -88,6 +78,21 @@ export default function ProjectActionsMenu(props: {
         mayChangeProject(remoteDevice)
           ? { id: "settings", label: "Project settings", disabled: !ws, run: () => ws?.openSettings() }
           : { id: "settings", label: "Project settings", sub: ON_YOUR_COMPUTER, disabled: true, run: () => undefined },
+        ...(total > 0 || budget?.tone === "fg-3"
+          ? [
+              { id: "sep-footer", separator: true as const },
+              ...(total > 0
+                ? [
+                    {
+                      id: "tokens",
+                      caption: `${formatTokens(total)} tokens used`,
+                      title: `${total.toLocaleString()} tokens used in this project (${tokens.input.toLocaleString()} in, ${tokens.output.toLocaleString()} out)`,
+                    },
+                  ]
+                : []),
+              ...(budget?.tone === "fg-3" ? [{ id: "budget", caption: `Budget: ${budget.text}` }] : []),
+            ]
+          : []),
       ]}
     />
   );
