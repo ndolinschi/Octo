@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/subtle"
 	_ "embed"
+	"encoding/json"
 	"errors"
+	"html"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -84,7 +87,7 @@ func newInstance(target *url.URL, transport http.RoundTripper) (*instance, error
 			return inst.modifyResponse(resp)
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, proxyErr error) {
-			http.Error(w, "Upstream server unreachable: "+proxyErr.Error(), http.StatusBadGateway)
+			inst.writeUnreachable(w, proxyErr)
 		},
 	}
 
@@ -98,6 +101,24 @@ func newInstance(target *url.URL, transport http.RoundTripper) (*instance, error
 		}
 	}()
 	return inst, nil
+}
+
+// writeUnreachable answers a request whose upstream could not be reached: a 502 with the reason as plain text and, in the
+// same page, a message to the host (channel "octo-browser", type "error", this instance's nonce) so the Browser tab can show
+// its own error state with Retry instead of the bare text.
+func (i *instance) writeUnreachable(w http.ResponseWriter, proxyErr error) {
+	reason := "Upstream server unreachable: " + proxyErr.Error()
+	msg, err := json.Marshal(map[string]string{"channel": "octo-browser", "nonce": i.nonce, "type": "error", "message": reason})
+	if err != nil {
+		http.Error(w, reason, http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusBadGateway)
+	// `</` and U+2028/9 cannot end the script early or the string: json.Marshal escapes <, > and & as \u00XX.
+	_, _ = io.WriteString(w, "<!doctype html><meta charset=\"utf-8\"><title>Unreachable</title><body style=\"font:14px system-ui;padding:16px\">"+
+		html.EscapeString(reason)+"<script>parent.postMessage("+string(msg)+",\"*\")</script>")
 }
 
 func (i *instance) mintTicket(targetPath string) (string, error) {

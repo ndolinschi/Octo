@@ -366,3 +366,37 @@ func TestCrossSiteIframeWithoutCookiesGzipCSPAndOriginRewrite(t *testing.T) {
 		t.Errorf("expected 403 for unsolicited cross-site GET, got %d", unsolicitedResp.StatusCode)
 	}
 }
+
+func TestUnreachableUpstreamPostsAnErrorToTheHost(t *testing.T) {
+	// A port nothing listens on: listen, note the address, close.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := "http://" + ln.Addr().String() + "/"
+	_ = ln.Close()
+
+	mgr := browserproxy.NewManager(browserproxy.Options{})
+	defer func() { _ = mgr.Shutdown(context.Background()) }()
+	sess, err := mgr.Open(context.Background(), "proj-1", target)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	resp, err := client.Get(sess.FrameURL)
+	if err != nil {
+		t.Fatalf("GET frame: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status %d, want 502", resp.StatusCode)
+	}
+	text := string(body)
+	for _, want := range []string{"Upstream server unreachable", `"channel":"octo-browser"`, `"type":"error"`, sess.Nonce} {
+		if !strings.Contains(text, want) {
+			t.Errorf("body lacks %q: %s", want, text)
+		}
+	}
+}

@@ -16,6 +16,8 @@ export type InspectorEvent =
   | { type: "textEditStart"; selector: string }
   | { type: "textEditSaved"; element: PickedElement; before: string; after: string; stageToChat: boolean; clientRect: Rect }
   | { type: "textEditCancelled" }
+  /** The proxy could not reach the page's server: its error page reports why (`browserproxy/handler.go`). */
+  | { type: "error"; message: string }
   | { type: "shortcut"; key: "toggleDesign" | "escape" | "undo" };
 
 const CHANNEL_OUT = "octo-browser";
@@ -194,6 +196,10 @@ export function useInspectorBridge(opts: {
               clientRect,
             });
           }
+          return;
+        }
+        case "error": {
+          onEventRef.current({ type: "error", message: typeof d.message === "string" ? d.message : "" });
           return;
         }
         case "textEditCancelled": {
