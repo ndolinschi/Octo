@@ -738,7 +738,8 @@ export type BridgeEventType = BridgeEvent["type"];
 export type ProviderKind = "api" | "router" | "agent" | "ollama";
 /** `error` is reserved for a provider that is set up but failing; the harness does not report it yet. */
 /** `not_supported`: the agent's CLI cannot work with Octo (manifest `unsupported`); `reason` says why, there is nothing to connect. */
-export type ProviderState = "ready" | "not_connected" | "not_logged_in" | "not_installed" | "not_supported" | "error";
+/** `not_running`: a provider served from a URL (Ollama, the API on a local base URL) where nothing answers; `problem` says how to start it. */
+export type ProviderState = "ready" | "not_connected" | "not_logged_in" | "not_installed" | "not_supported" | "not_running" | "error";
 /**
  * Where a model came from: `catalogue` (the built-in loop's tiers), `manifest` (the plugin lists it), `advertised`
  * (the agent said so in a session), `command` (the manifest's models command printed it), `custom` (a name the user
@@ -791,6 +792,11 @@ export type Provider = {
    * the agent can be chosen).
    */
   login?: "ok" | "not_logged_in" | "unchecked";
+  /**
+   * Ollama, and the API on a local base URL: `ok` its server answered a probe (cached: 15 s when down, a minute when up;
+   * `POST /v1/providers/{id}/recheck` probes now), `not_running` it did not (state `not_running`), `unchecked` not probed.
+   */
+  reach?: "ok" | "not_running" | "unchecked";
   /** Agents: the model used when `acp:<id>` names none ("" or absent: the agent's own default). */
   preferred_model?: string;
   /** Agents: the launch command is not verified (the plugin says so); the UI shows a dim "Experimental" after the name. */

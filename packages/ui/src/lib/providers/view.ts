@@ -17,6 +17,7 @@ export function groupOf(p: Pick<Provider, "state">): ProviderGroupId {
     case "ready":
       return "connected";
     case "not_logged_in":
+    case "not_running":
     case "error":
       return "attention";
     case "not_installed":
@@ -29,6 +30,7 @@ export function groupOf(p: Pick<Provider, "state">): ProviderGroupId {
 const TONE: Record<ProviderState, Tone> = {
   ready: "ok",
   not_logged_in: "warn",
+  not_running: "warn",
   error: "err",
   not_installed: "muted",
   not_connected: "muted",
@@ -102,6 +104,9 @@ export function primaryAction(p: Pick<Provider, "state" | "kind">): PrimaryActio
       return null;
     case "not_connected":
       return "Connect";
+    case "not_running":
+      // Started in a terminal (the reason shows the command): what is left to press is looking again.
+      return "Check again";
     case "not_logged_in":
     case "not_installed":
     case "error":
@@ -130,6 +135,11 @@ export function reasonLine(p: Pick<Provider, "state" | "kind" | "reason" | "prob
       return "This agent is not on this computer yet. Install it and log in once in a terminal, then press Check again.";
     case "not_logged_in":
       return "Installed, but not logged in. Log in once in a terminal, then press Check again.";
+    case "not_running": {
+      const r = plainReason(p).trim() || "Nothing answers at its address.";
+      const hint = p.problem?.hint?.trim() || "Start it, then check again.";
+      return `${r} ${hint}`;
+    }
     case "not_connected":
       if (p.kind === "ollama") return "Set the Ollama URL and completion model in Settings → Editor.";
       return p.kind === "api" ? "Add an API key to bill per token through your own account." : "Turn the Octo router on and add its provider key.";

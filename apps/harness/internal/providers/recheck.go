@@ -7,9 +7,16 @@ import (
 )
 
 // Recheck runs the agent's login probe now and returns its provider entry
-// ("I've logged in: check again"). providers.updated follows when the picture
-// changed. ErrUnknownAgent for an id that is not an agent.
+// ("I've logged in: check again"); for Ollama, and the API on a local base URL,
+// it probes the server now ("I've started it: check again").
+// providers.updated follows when the picture changed. ErrUnknownAgent for an
+// id that is neither an agent nor a probed provider.
 func (s *Service) Recheck(ctx context.Context, id string) (Provider, error) {
+	if s.recheckReach(ctx, id) {
+		s.Refresh()
+		p, _ := s.Provider(id)
+		return p, nil
+	}
 	if _, ok := s.agent(id); !ok {
 		return Provider{}, ErrUnknownAgent
 	}

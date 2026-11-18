@@ -2301,6 +2301,14 @@ equal height, no button inside a row, detail's top equals the list's top.
   The new detail has every one of those fields, so **Settings → Agents is removed** (nav entry, section, search rows); `#/settings/agents`
   opens Providers; its search keywords moved to the Providers row.
 - **Demo.** `?providers=owner` is the owner's live set (twelve providers); the default demo set is unchanged.
+- **Not running (2026-11-18).** A status must be true: Ollama read "Ready · 4 models" with nothing on `:11434` (its list is a
+  catalogue). The harness now probes Ollama, and the API on a local base URL (providers.md, "Reachability"); a server that
+  does not answer is state `not_running`: row "Not running" in the warn tone under **Needs attention**, the detail's reason
+  "Ollama is not running. Start it, then check again." with a **Start** step (`ollama serve` as a `CommandLine`) and the one
+  filled "Check again" (`POST /recheck` probes now), the same row, title and step primitives as an agent that is not
+  installed or not logged in. The Editor's inline-completion row says "Cannot run: Ollama is not running…" with "Check
+  again", and `canRun` keeps refusing `small` / `ollama:<tag>` (the main model picker never lists Ollama). Demo:
+  `?ollama=down` (with `?recheck=ok`, "Check again" starts it).
 - **Verified.** View-model tests (`lib/providers/view.test.ts`: grouping, the folded row, primary action per state, row status,
   model folding); `settingsIndex` tests; tsc for ui and agent-client; eslint on the touched files (no new warnings); prettier;
   spacing audit states `providers` (1440, 1100, 390) and `providers-open` and `settings-page`: total=0, including the three
