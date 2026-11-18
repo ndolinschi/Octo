@@ -4176,3 +4176,8 @@ each deviation.
   right edge 722 → 720; the composer's inner padding departs from the main composer's for this. The empty state is laid over
   the whole body (the composer paints over it), so its title sits at 37 % of the tab (was 32 %), like the other tabs; the
   three starters are text-sized quiet buttons (were full-width). "Keep" and "Clear" both carry an icon (Pin, Eraser).
+- **E. Processes (`processes/ProcessesTab.tsx`).** Stop, Kill and "⋯" show on hover and keyboard focus (`ListRow`'s
+  focus-within), always on touch (`touch:`) and on the phone layout (`trailingShown={phone}`); **revises QA pass 4**, which
+  showed them on every active row. There is no Retry on a process row (a failed run restarts from "⋯"), so nothing stays
+  pinned. Row pitch 44 → 46 (`gap-1.5`, as Notes and the pull list); the filter row is a plain `PanelFilters` of 36 (chips,
+  then the search at the right, `min-w-28`), no longer wrapping.
