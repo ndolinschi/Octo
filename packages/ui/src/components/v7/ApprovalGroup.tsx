@@ -42,8 +42,9 @@ export function ApprovalGroup(props: {
   const allowAll = async () => {
     setBusy(true);
     setError(null);
-    const answer: ApprovalAnswer = answerFor("allow_for_turn");
-    const resolution: Resolution = { decision: "allow_for_turn", by: "you" };
+    // Every request waiting here, and every further one of the same turn (any agent, any kind): what the label says.
+    const answer: ApprovalAnswer = answerFor("allow_all_for_turn");
+    const resolution: Resolution = { decision: "allow_all_for_turn", by: "you" };
     const failed: string[] = [];
     for (const a of approvals) {
       try {
@@ -63,7 +64,14 @@ export function ApprovalGroup(props: {
       title={`${approvals.length} approvals from ${props.source}`}
       meta={left !== null ? <Countdown left={left} /> : undefined}
       primary={
-        <Button variant={alwaysOpen.size > 0 ? "secondary" : "primary"} size="sm" loading={busy} disabled={busy} onClick={() => void allowAll()}>
+        <Button
+          variant={alwaysOpen.size > 0 ? "secondary" : "primary"}
+          size="sm"
+          loading={busy}
+          disabled={busy}
+          title="Allows these and every further request until this request finishes, from any agent; the next request asks again."
+          onClick={() => void allowAll()}
+        >
           Allow all for this request
         </Button>
       }

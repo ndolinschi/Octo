@@ -1162,7 +1162,12 @@ export type SendResult = { message: Message; queued?: undefined } | { queued: Qu
 
 /** The wire carries "write", "command", "acp", "network" (web_fetch), and "memory" (auto-memory prompt/review). */
 export type ApprovalKind = "write" | "command" | "acp" | "network" | "memory";
-export type ApprovalDecision = "allow" | "allow_for_turn" | "allow_always" | "deny";
+/**
+ * `allow_for_turn`: this request, and the same kind from the same agent for the rest of the turn (commands: the same
+ * program; fetches: the same host; ACP: the same tool kind). `allow_all_for_turn`: this request and every further
+ * request of the turn, from any agent and of any kind. Neither outlives the turn.
+ */
+export type ApprovalDecision = "allow" | "allow_for_turn" | "allow_all_for_turn" | "allow_always" | "deny";
 /** A rule an `allow_always` answer saves: `match` is a command prefix (the whole command when `exact`), a path glob or a host glob. */
 export type ApprovalRuleSpec = { tool: string; match: string; exact: boolean };
 /** A saved "always allow" rule of a project. */

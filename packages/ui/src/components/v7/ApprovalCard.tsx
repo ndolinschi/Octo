@@ -13,6 +13,8 @@ import {
   formatCountdown,
   isAllowOption,
   resolutionLabel,
+  turnScopeLabel,
+  type ApprovalAction,
   type Resolution,
 } from "../../lib/v7/approval";
 import { alwaysLabel, canAlwaysAllow } from "../../lib/v7/rules";
@@ -94,6 +96,7 @@ function useAnswers(approval: Approval, c: ReturnType<typeof useApprovalCard>, c
   const quiet = compact || c.alwaysOpen;
   const options = approval.detail.options ?? [];
   const disabled = c.busy !== null;
+  const scope = turnScopeLabel(approval);
   if (options.length > 0) {
     const allows = options.filter(isAllowOption);
     const others = options.filter((o) => !isAllowOption(o));
@@ -109,11 +112,19 @@ function useAnswers(approval: Approval, c: ReturnType<typeof useApprovalCard>, c
         Allow once
       </ActionButton>
     ),
-    alternatives: (
-      <ActionButton variant="quiet" busy={c.busy} action="allow_for_turn" disabled={disabled} onClick={() => c.act("allow_for_turn")}>
-        Allow for this request
+    // The label names what the harness remembers for the turn (one kind, from this agent), never more.
+    alternatives: scope ? (
+      <ActionButton
+        variant="quiet"
+        busy={c.busy}
+        action="allow_for_turn"
+        disabled={disabled}
+        hint={`Allows ${approval.agent_label}'s ${scope} until this request finishes; anything else still asks.`}
+        onClick={() => c.act("allow_for_turn")}
+      >
+        {`Allow ${scope} for this request`}
       </ActionButton>
-    ),
+    ) : null,
     destructive: (
       <ActionButton variant="danger" busy={c.busy} action="deny" disabled={disabled} onClick={() => c.act("deny")} shortcut="D">
         Deny
@@ -425,10 +436,12 @@ function DetailsFold({ children }: { children: ReactNode }) {
 
 function ActionButton(props: {
   variant: "primary" | "secondary" | "quiet" | "danger";
-  action: "allow" | "allow_for_turn" | "allow_always" | "deny";
+  action: ApprovalAction;
   busy: Busy;
   disabled: boolean;
   shortcut?: string;
+  /** The tooltip: what the answer covers. */
+  hint?: string;
   onClick(): void;
   children: string;
 }) {
@@ -440,7 +453,7 @@ function ActionButton(props: {
       disabled={props.disabled}
       loading={mine}
       aria-keyshortcuts={props.shortcut}
-      title={props.shortcut ? `${props.children} (${props.shortcut})` : undefined}
+      title={props.hint ?? (props.shortcut ? `${props.children} (${props.shortcut})` : undefined)}
       onClick={props.onClick}
     >
       {props.children}
@@ -465,7 +478,7 @@ function ResolvedApproval({ approval, resolution }: { approval: Approval; resolu
   return (
     <div
       role="group"
-      aria-label={`${resolutionLabel(resolution)}: ${approval.title}`}
+      aria-label={`${resolutionLabel(resolution, approval)}: ${approval.title}`}
       data-v7-approval={approval.id}
       data-resolved=""
       className="@container/v7 text-sm"
@@ -473,7 +486,7 @@ function ResolvedApproval({ approval, resolution }: { approval: Approval; resolu
       <Card surface="panel" padding="none">
         <div className="flex h-8 min-w-0 items-center gap-2 px-3" title={resolution.note ? `Note: ${resolution.note}` : undefined}>
           <Glyph icon={icon} size={14} className={cn("shrink-0", allowed ? "text-ok" : resolution.by === "timeout" ? "text-warn" : "text-err")} />
-          <span className="shrink-0 text-fg-2">{resolutionLabel(resolution)}</span>
+          <span className="shrink-0 text-fg-2">{resolutionLabel(resolution, approval)}</span>
           <span
             className="min-w-0 truncate font-mono text-xs text-fg-3"
             title={resolution.rule ? `Rule saved: ${resolution.rule}. Remove it in the project's settings.` : undefined}

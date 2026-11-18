@@ -2748,6 +2748,10 @@ Scope: `components/chat`, `components/v7`, the new `components/shared/RequestCar
   always-allow panel (inside the approval) use it. Two or more pending approvals in a row are one `ApprovalGroup` ("3 requests
   from Docs site", one "Allow all for this turn"); its rows are compact (title, command on one mono line, quiet buttons,
   Details fold). Failed-turn blocks are `ErrorNotice` (a `Notice` block) per 94b, not a RequestCard.
+  (2026-11-18) The labels say exactly what is allowed: a card's "Allow <scope> for this request" names the one kind the
+  harness remembers (`lib/v7/approval.ts` `turnScopeLabel`: "edits", "echo commands", "fetches from <host>", ACP tool
+  kind; none for a memory prompt), and the group's "Allow all for this request" sends `allow_all_for_turn`, which the
+  harness applies to every further request of that turn (v7 spec, As built).
 - **91d.** `chat/ActivityRow` (on `ListRow`) is the one step row: glyph (spinner only while running) · verb · dim detail ·
   duration · chevron only when it opens. Used by `ToolGroup`/`ToolRow`, `ThinkingRow` and the live `ActivityLine`. Sub-agent
   rows (`DelegationGroup`) and plan steps (`PlanList`) keep their own layouts: not done.

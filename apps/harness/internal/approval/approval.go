@@ -27,13 +27,25 @@ const (
 
 // Decisions.
 const (
-	Allow        = "allow"
+	Allow = "allow"
+	// AllowForTurn allows this request and, for the rest of the turn, the same
+	// kind of request from the same agent (for commands the same program, for
+	// a fetch the same host, for ACP the same tool kind).
 	AllowForTurn = "allow_for_turn"
+	// AllowAllForTurn allows this request and every further request of the
+	// turn, from any agent and of any kind ("Allow all for this request").
+	AllowAllForTurn = "allow_all_for_turn"
 	// AllowAlways allows this request and saves a rule (see rules.go) that
 	// allows the same kind of request in this project from now on.
 	AllowAlways = "allow_always"
 	Deny        = "deny"
 )
+
+// Decisions are the answers a request takes.
+var Decisions = []string{Allow, AllowForTurn, AllowAllForTurn, AllowAlways, Deny}
+
+// anyKey stands for every agent and every key in a grant of AllowAllForTurn.
+const anyKey = "*"
 
 // DefaultTimeout is how long a request waits for an answer before it is
 // denied (nobody is looking). Options.Timeout overrides it; negative: never.
@@ -195,7 +207,7 @@ func (m *Manager) autoDeny(pid string, it *item, why string) Resolution {
 
 // Resolve answers a pending approval.
 func (m *Manager) Resolve(pid, id string, r Resolution) error {
-	if !slices.Contains([]string{Allow, AllowForTurn, AllowAlways, Deny}, r.Decision) {
+	if !slices.Contains(Decisions, r.Decision) {
 		return ErrInvalid
 	}
 	m.mu.Lock()
@@ -246,7 +258,8 @@ func (m *Manager) Count(pid string) int {
 func (m *Manager) Granted(pid string, turn int64, agent, key string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.grants[pid][grantKey{turn, agent, key}]
+	g := m.grants[pid]
+	return g[grantKey{turn, agent, key}] || g[grantKey{turn, anyKey, anyKey}]
 }
 
 // Grant allows key for the agent for the rest of the turn.
@@ -257,6 +270,26 @@ func (m *Manager) Grant(pid string, turn int64, agent, key string) {
 		m.grants[pid] = map[grantKey]bool{}
 	}
 	m.grants[pid][grantKey{turn, agent, key}] = true
+}
+
+// GrantAll allows every request of the turn, from any agent, for the rest of
+// the turn. Turn 0 (a run outside a request) is not remembered.
+func (m *Manager) GrantAll(pid string, turn int64) {
+	if turn == 0 {
+		return
+	}
+	m.Grant(pid, turn, anyKey, anyKey)
+}
+
+// Remember records what an allow_for_turn or allow_all_for_turn answer grants
+// for the rest of the turn; other answers grant nothing.
+func (m *Manager) Remember(pid string, turn int64, agent, key, decision string) {
+	switch decision {
+	case AllowForTurn:
+		m.Grant(pid, turn, agent, key)
+	case AllowAllForTurn:
+		m.GrantAll(pid, turn)
+	}
 }
 
 // EndTurn forgets the turn's grants.

@@ -183,14 +183,21 @@ func (rt *runtime) approveMemory(ctx context.Context, agentID, label, title stri
 	if !rt.featureEnabled(features.AutoMemory) {
 		return false, "Auto-memory is disabled by feature flag."
 	}
+	m := rt.o.approvals
+	if m.Granted(rt.pid(), rt.turnID, agentID, approval.KindMemory) {
+		return true, "" // "Allow all for this request" earlier in the turn
+	}
 	ap := approval.Approval{
 		AgentID: agentID, AgentLabel: label, TurnID: rt.turnID, SessionID: rt.sessionID,
 		Kind: approval.KindMemory, Title: title, Detail: detail,
 	}
 	rt.activity(agentID, activity.WaitingApproval, "Enable auto memory?", "")
-	res := rt.o.approvals.Request(ctx, rt.pid(), ap)
+	res := m.Request(ctx, rt.pid(), ap)
 	rt.activity(agentID, activity.Thinking, "Thinking", "")
-	if res.Decision == approval.Allow || res.Decision == approval.AllowAlways || res.Decision == approval.AllowForTurn {
+	if res.Decision == approval.AllowAllForTurn {
+		m.GrantAll(rt.pid(), rt.turnID)
+	}
+	if res.Decision != approval.Deny {
 		return true, ""
 	}
 	if rt.memoryMode(ctx) == memory.AutoMemoryBlocked {
@@ -255,14 +262,12 @@ func (rt *runtime) ask(ctx context.Context, agentID, label string, ap approval.A
 	rt.activity(agentID, activity.WaitingApproval, "Waiting for your approval", "")
 	res := m.Request(ctx, rt.pid(), ap)
 	rt.activity(agentID, activity.Thinking, "Thinking", "")
-	switch res.Decision {
-	case approval.AllowForTurn:
-		m.Grant(rt.pid(), rt.turnID, agentID, grantKey)
-		return true, ""
-	case approval.Allow, approval.AllowAlways:
-		return true, "" // allow_always saved its rule when the answer arrived (Orchestrator.ResolveApproval)
+	if res.Decision == approval.Deny {
+		return false, res.Note
 	}
-	return false, res.Note
+	// allow_always saved its rule when the answer arrived (Orchestrator.ResolveApproval).
+	m.Remember(rt.pid(), rt.turnID, agentID, grantKey, res.Decision)
+	return true, ""
 }
 
 // savedRuleAllows reports whether a rule the user saved ("always allow")
@@ -379,9 +384,7 @@ func (p approvalPolicy) Decide(ctx context.Context, req permission.Request) perm
 		AgentID: req.AgentID, AgentLabel: req.Agent, TurnID: req.TurnID, Kind: approval.KindACP, Tool: tool,
 		Title: firstNonEmpty(call.Title, call.Kind, "Permission request"), Detail: detail,
 	})
-	if res.Decision == approval.AllowForTurn {
-		m.Grant(pid, req.TurnID, req.AgentID, key)
-	}
+	m.Remember(pid, req.TurnID, req.AgentID, key, res.Decision)
 	return p.pick(req, res.Decision, res.OptionID, res.Note)
 }
 
@@ -406,7 +409,7 @@ func (p approvalPolicy) detail(r acp.PermissionRequest) approval.Detail {
 // needs an allow option and a deny a reject option; without one the request
 // is cancelled (an empty OptionID), which agents treat as a refusal.
 func (p approvalPolicy) pick(req permission.Request, decision, optionID, note string) permission.Decision {
-	allow := decision != approval.Deny // allow, allow_for_turn and allow_always
+	allow := decision != approval.Deny // allow, allow_for_turn, allow_all_for_turn and allow_always
 	kinds := []acp.OptionKind{acp.RejectOnce, acp.RejectAlways}
 	if allow {
 		kinds = []acp.OptionKind{acp.AllowOnce, acp.AllowAlways}

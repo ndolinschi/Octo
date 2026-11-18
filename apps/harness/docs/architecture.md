@@ -69,7 +69,7 @@ flowchart TB
 | `internal/mcp` | Harness MCP server (Streamable HTTP, POST/JSON, loopback only) with per-session bearer tokens; tools come from a `Backend` |
 | `internal/mcprelay` | `harness mcp-relay`: stdio-to-HTTP relay for agents without HTTP MCP support |
 | `internal/changes`, `internal/diff` | v7 change tracking: per-project tracker (index, pre-image copies, git-aware snapshot walk) and the line-diff counter; see [v7.md](./v7.md) |
-| `internal/approval`, `internal/inputs`, `internal/secrets` | v7 pending approvals and "allow for this turn" grants; open forms (`request_input`); the per-project 0600 secret store and its redactor; see [v7.md](./v7.md) |
+| `internal/approval`, `internal/inputs`, `internal/secrets` | v7 pending approvals and the turn grants ("allow for this request" per kind, "allow all for this request"); open forms (`request_input`); the per-project 0600 secret store and its redactor; see [v7.md](./v7.md) |
 | `internal/memory` | Orchestrator memory service (M1, M2): task records, memory files, search shaping, digest merge, the memory setting, limits and secret redaction; see [memory.md](./memory.md) |
 | `internal/acptrace` | Opt-in ACP wire trace: one redacted, size-capped JSON-lines file per agent process under `{data-dir}/traces/`; see [acp-orchestrator.md](./acp-orchestrator.md#diagnostics-and-the-wire-trace) |
 | `internal/diag` | The diagnostics report (`harness doctor`, `GET /v1/diagnostics`): versions, PATH, per-agent resolution and login state, the scrubbed log ring (last 200 lines) |
