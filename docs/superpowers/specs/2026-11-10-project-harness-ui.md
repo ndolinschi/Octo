@@ -4170,3 +4170,9 @@ each deviation.
   "New commits: update" is a quiet button in the group, and in "⋯" when the group folds below 720. "Submit review" is
   `secondary`: no tool tab has a filled button in its bar. R3's folding order is unchanged (1024 / 720 / 480); at 363 the
   bar holds Back, the title, Run, "⋯" and "Submit". **Departs from R3** in one point: there is no meta line at any width.
+- **D. Side question (`side/SidePanel.tsx`).** One column with two edges: boxes (the list's content box, the composer, the
+  header's actions) at 8 and 728 when maximised, text (title, answers, the input's text, the model picker) at 16 and 720 (the
+  bubble and the send button end on 720). Measured before → after (1422 wide): input text 20 → 16, model picker 14 → 16, send
+  right edge 722 → 720; the composer's inner padding departs from the main composer's for this. The empty state is laid over
+  the whole body (the composer paints over it), so its title sits at 37 % of the tab (was 32 %), like the other tabs; the
+  three starters are text-sized quiet buttons (were full-width). "Keep" and "Clear" both carry an icon (Pin, Eraser).
