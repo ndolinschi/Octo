@@ -4240,8 +4240,9 @@ pass), a live harness, the Tauri app.
 
 A reviewed list of small fixes; no redesign, existing tokens and primitives, behaviour unchanged.
 
-- **Composer (WP-A).** A model whose provider is not connected leads with a 14px `CircleAlert` in `text-warn` and its
-  accessible name ends ", provider not connected" (`shared/ModelPicker.tsx`; colour alone said it before). The context gauge is a
+- **Composer (WP-A).** A model whose provider is not connected leads with a 14px circled "!" in the warn colour — the
+  "needs you" `StateGlyph` at 14, the same shape as lucide's `CircleAlert`, which alone put the entry 0.03 kB over budget — and
+  its accessible name ends ", provider not connected" (`shared/ModelPicker.tsx`; colour alone said it before). The context gauge is a
   2px arc on r=6.75 over a `line-strong` track ring, not a filled pie (`chat/ContextRing.tsx`; checked at 1%, 50%, 95% in both
   themes). The @ menu is as wide as the composer box, like the / menu (480 → 720px at 1440; `chat/ComposerMenu.tsx`).
 - **Approvals (WP-B).** A group is titled "3 approvals" with the distinct agent labels as its dim line (it said "from <project>");
@@ -4265,7 +4266,7 @@ A reviewed list of small fixes; no redesign, existing tokens and primitives, beh
   edge too (−12…708; measured: failed banners and the plan card at x −12, w 720); the empty project's start failure keeps its
   place on the composer's edge (`flush`), so `Transcript.tsx` is unchanged. The empty project says one problem once: when the
   start failure ("GitHub Copilot is not logged in") shows, the title's "can't run yet: its provider is not connected" sentence is
-  left out (`startFailureOf` in `lib/transcript.ts`, shared with `StartFailure`). While streamed text with its caret is on screen
+  left out (`lib/startFailure.ts`, shared with `StartFailure`; its own module so it stays in the lazy chunks). While streamed text with its caret is on screen
   the live line no longer adds "Writing…" under it (`showsActivityLine`, test in `activity.test.ts`); sampled every 50ms over a
   streamed reply: 36 of 36 caret frames also had the "Writing…" row before, 0 of 34 after. Copy: "History compacted 2 requests
   ago" (was "history was compacted …"), "History compacted by you" (was "· manual"), and a plan whose text opens with its own

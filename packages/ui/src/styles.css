@@ -873,7 +873,7 @@
   position: relative;
   /* The glyph sits in the padding, out of the line: an inline SVG is a break opportunity, so "(" ended a line and the chip
      started the next. */
-  padding-left: 22px;
+  padding-left: 24px;
   transition-property: color;
   transition-duration: 100ms;
 }

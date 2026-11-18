@@ -1,4 +1,4 @@
-import { ChevronDown, CircleAlert } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { FIELD } from "../../lib/controls";
@@ -10,6 +10,7 @@ import { useApp } from "../../state/app";
 import { Chip } from "../primitives/Chip";
 import { Glyph } from "../primitives/Glyph";
 import { Presence } from "../primitives/Presence";
+import { StateGlyph } from "../primitives/StateGlyph";
 import type { ModelPickerProps } from "./modelPickerProps";
 
 /** The chip's mark loads the same way (its SVG chunk after it): the box in the Suspense fallback holds its place, 14px, so nothing shifts when it arrives. */
@@ -92,9 +93,10 @@ export function ModelPicker(props: ModelPickerProps) {
       <Chip
         ref={button}
         lead={
-          // A model that cannot run says so by shape and name too, not by the amber colour alone.
+          // A model that cannot run says so by shape and name too, not by the amber colour alone: the circled "!" of the
+          // "needs you" glyph (the same shape as lucide's CircleAlert, already in the entry chunk; the icon was over budget).
           toned ? (
-            <Glyph icon={CircleAlert} size={14} className="shrink-0 text-warn" />
+            <StateGlyph state="needs" size={14} />
           ) : (
             <Suspense fallback={<span className="size-3.5 shrink-0" />}>
               <ProviderMark id={ref ? ref.id : props.value} label={text} size={14} />

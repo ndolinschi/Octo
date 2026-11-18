@@ -1,5 +1,5 @@
 import type { Agent, Project } from "@octo/agent-client";
-import { startFailureOf } from "../../lib/transcript";
+import { startFailureOf } from "../../lib/startFailure";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { canRun, chipLabel, useProviders } from "../../lib/providers";

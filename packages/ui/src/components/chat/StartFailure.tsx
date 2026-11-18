@@ -1,7 +1,7 @@
 import { errorFieldsOf, type Agent } from "@octo/agent-client";
 import { Suspense } from "react";
 import { recheckAgent } from "../../lib/providers/recheck";
-import { startFailureOf } from "../../lib/transcript";
+import { startFailureOf } from "../../lib/startFailure";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { providerIdOf, useAgentName, useLoginHint } from "./agentName";
