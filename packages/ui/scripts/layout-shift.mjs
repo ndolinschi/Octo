@@ -20,7 +20,7 @@ const BASE = opt("--url", "http://localhost:1420").replace(/\/$/, "");
 const W = Number(opt("--width", "1440"));
 const H = Number(opt("--height", "900"));
 const PROJECT = opt("--project", "Atlas API");
-// --anchor: also run lib/scrollAnchor.ts on the conversation's scroller (what the chat feature does once it calls the hook).
+// --anchor: also run lib/scrollAnchorTrack.ts on the conversation's scroller (what the chat feature does once it calls the hook).
 const ANCHOR = argv.includes("--anchor");
 const ITEMS = "article, article :is(p, li, pre, h1, h2, h3, h4, blockquote, tr)";
 
@@ -106,7 +106,7 @@ const groups = await page.locator("[data-dock-group]").count();
 if (groups !== 1) throw new Error(`expected a full-width conversation (1 group), found ${groups}`);
 if (ANCHOR)
   await page.evaluate(async (items) => {
-    const m = await import("/@fs/home/user/Octo/packages/ui/src/lib/scrollAnchor.ts");
+    const m = await import("/@fs/home/user/Octo/packages/ui/src/lib/scrollAnchorTrack.ts");
     const sc = document.querySelector("[data-column]")?.closest(".overflow-y-auto");
     if (sc) m.trackScrollAnchor(sc, items);
   }, ITEMS);
