@@ -214,26 +214,15 @@ func TestAcceptEditsAutoApprovesWritesAndAsksForBash(t *testing.T) {
 	if len(left.Approvals) != 0 {
 		t.Fatalf("unexpected approvals for writes under accept_edits: %+v", left.Approvals)
 	}
-	// Commands still ask.
-	e.into(t, "POST", "/v1/projects/"+pid+"/messages", map[string]string{"text": "Go [bash:echo ok > cmd.txt]"}, http.StatusAccepted, nil)
-	pending := e.waitApprovals(t, pid, 1)
-	if pending[0].Kind != "command" {
-		t.Fatalf("expected command approval, got %+v", pending[0])
+	// Commands still ask. `v7Project` runs three sub-agents that each ask for bash; drain every approval until idle.
+	seen := e.turnWithApprovals(t, pid, "Go [bash:echo ok > cmd.txt]", allow)
+	if len(seen) == 0 {
+		t.Fatal("expected command approvals, got none")
 	}
-	for _, p := range pending {
-		e.answer(t, pid, p.ID, map[string]string{"decision": "allow"})
-	}
-	deadline := time.Now().Add(20 * time.Second)
-	for {
-		var p struct{ Status string }
-		e.into(t, "GET", "/v1/projects/"+pid, nil, http.StatusOK, &p)
-		if p.Status == "idle" {
-			break
+	for _, a := range seen {
+		if a.Kind != "command" {
+			t.Fatalf("expected command approval, got %+v", a)
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("turn did not finish")
-		}
-		time.Sleep(20 * time.Millisecond)
 	}
 	if _, err := os.Stat(filepath.Join(folder, "cmd.txt")); err != nil {
 		t.Fatalf("approved bash did not run: %v", err)

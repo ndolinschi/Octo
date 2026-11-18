@@ -1,5 +1,5 @@
 import { warmBridgeClient } from "@octo/agent-client";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "../lib/cn";
 import { loadPref, PREFS, sidebarViewCodec } from "../lib/storage";
 import { useEscape, useMediaQuery } from "../lib/hooks";
@@ -71,7 +71,6 @@ const SidebarDrawer = lazy(() => import("../components/shell/SidebarDrawer").the
 const loadTree = () => import("../components/sessions/SessionTree");
 const treeChunk = loadTree().catch(() => undefined);
 const SessionTree = lazy(() => treeChunk.then((m) => m ?? loadTree()).then((m) => ({ default: m.SessionTree })));
-const NewSessionPopover = lazy(() => import("../components/shared/NewSessionPopover").then((m) => ({ default: m.NewSessionPopover })));
 /** Direction 7: the phone layout's frame (the top bar off a project, keyboard and touch helpers); its own chunk, only in that mode. */
 const PhoneChrome = lazy(() => import("./phone/PhoneChrome"));
 
@@ -102,7 +101,6 @@ function Shell() {
   const [inlineOpen, setInlineOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [newSessionAnchor, setNewSessionAnchor] = useState<RefObject<HTMLElement | null> | null>(null);
   // Decision 59: Settings is a page at `#/settings/<section>`; "Back" returns to the hash it was opened from.
   const settings = useSettingsSection();
   // Decision 96: what the sidebar lists (Settings → General); read again whenever the settings page opens or closes (the
@@ -348,7 +346,6 @@ function Shell() {
     home: route.projectId === null && (projects?.length ?? 0) > 0,
     unseen,
     onNewProject: newProject,
-    onNewSession: (anchor: RefObject<HTMLElement | null>) => setNewSessionAnchor(anchor),
     onSearch: openPalette,
     showReview: tabFlags.review,
     onReview: () => {
@@ -400,11 +397,11 @@ function Shell() {
             {/* Equal gutters on the other sides of every panel (the sidebar card included); the row above is the top one. Full-bleed on phones. */}
             <main
               className={cn(
-                "relative flex min-w-0 flex-1 flex-col p-gutter pt-0 pb-0 max-sm:p-0",
+                "relative flex min-w-0 flex-1 flex-col p-gutter pt-0 pb-0 max-sm:p-0 phone:px-0",
                 // Direction 7: the phone's window header lies over the panel's top (Home, the connect screen, the no-projects hero):
                 // their content and the streak band start under it, as Settings' do (decision 91a: nothing sits on the band).
                 !(workspace && route.projectId) && "pt-bar phone:pt-bar",
-                !workspace && main === null && startsInProject && "max-sm:pt-bar",
+                !workspace && main === null && startsInProject && "max-sm:pt-bar phone:pt-bar",
               )}
               inert={drawerShown}
             >
@@ -458,20 +455,6 @@ function Shell() {
                 }}
               />
             </Suspense>
-          </Presence>
-          <Presence show={newSessionAnchor !== null}>
-            {newSessionAnchor && (
-              <Suspense fallback={null}>
-                <NewSessionPopover
-                  anchor={newSessionAnchor}
-                  align="start"
-                  defaultProjectId={route.projectId}
-                  activeProjectId={route.projectId}
-                  onCreated={() => setDrawerOpen(false)}
-                  onClose={() => setNewSessionAnchor(null)}
-                />
-              </Suspense>
-            )}
           </Presence>
           <Presence show={connectTarget !== null}>
             <Suspense fallback={null}>

@@ -10,7 +10,7 @@ import { useOptionalComments } from "../../state/comments";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { ComposerMode, ComposerProps } from "./Composer";
-import { draftOf } from "./composerDraft";
+import { applyCrossProjectDraft, draftOf } from "./composerDraft";
 import type { QueuedMessage } from "./ComposerPills";
 import { slot, type TabMemory } from "../../state/workspace/tabMemory";
 import type { TabId } from "../../state/workspace/layout";
@@ -104,6 +104,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   const current = pending ?? project?.models.orchestrator ?? null;
   const queue = useQueue(memory, key);
   const draft = useMemo(() => (memory ? draftOf(memory, key) : undefined), [memory, key]);
+  useEffect(() => applyCrossProjectDraft(draft, projectId, activeSessionId), [draft, projectId, activeSessionId]);
   const lastRequest = useMemo(() => {
     for (let i = (messages?.length ?? 0) - 1; i >= 0; i--) {
       const m = messages?.[i];

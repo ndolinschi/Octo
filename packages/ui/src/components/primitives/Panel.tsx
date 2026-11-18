@@ -170,7 +170,7 @@ export function DetailHeader(props: { title: ReactNode; meta?: ReactNode; action
   return (
     <header data-detail-header className={cn("flex min-w-0 items-start gap-2 pt-2 pb-2", props.className)}>
       {back && (
-        <span className="flex h-ctl-sm shrink-0 items-center @min-[640px]/ld:hidden">
+        <span className="flex h-ctl-sm shrink-0 items-center @min-[640px]/ld:hidden phone:h-ctl-lg">
           <IconButton icon={ArrowLeft} label={`Back to ${back.label}`} size="sm" onClick={back.back} />
         </span>
       )}
@@ -180,7 +180,7 @@ export function DetailHeader(props: { title: ReactNode; meta?: ReactNode; action
         </div>
         {props.meta !== undefined && <p className="truncate text-xs text-fg-3">{props.meta}</p>}
       </div>
-      {props.actions !== undefined && <div className="flex h-ctl-sm shrink-0 items-center gap-1">{props.actions}</div>}
+      {props.actions !== undefined && <div className="flex h-ctl-sm shrink-0 items-center gap-1 phone:min-h-ctl-lg">{props.actions}</div>}
     </header>
   );
 }

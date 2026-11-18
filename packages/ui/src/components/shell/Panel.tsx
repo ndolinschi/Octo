@@ -12,7 +12,7 @@ import { cn } from "../../lib/cn";
  * the panel sideways and shift the pane.
  */
 export const panelClass =
-  "flex min-h-0 min-w-0 flex-col overflow-clip contain-inline-size rounded-xl border border-panel-edge bg-panel shadow-panel max-sm:rounded-none max-sm:border-0 max-sm:shadow-none";
+  "flex min-h-0 min-w-0 flex-col overflow-clip contain-inline-size rounded-xl border border-panel-edge bg-panel shadow-panel max-sm:rounded-none max-sm:border-0 max-sm:shadow-none phone:rounded-none phone:border-0 phone:shadow-none";
 
 export function Panel({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return <div data-panel className={cn(panelClass, className)} {...rest} />;

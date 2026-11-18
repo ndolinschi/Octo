@@ -60,7 +60,7 @@ export function PendingNotesPopover(props: {
                       setOpen(false);
                       props.onSelect(note);
                     }}
-                    className="flex h-row min-w-0 flex-1 items-center gap-2 rounded-sm px-2 text-left press-row focus-inset"
+                    className="flex min-h-row min-w-0 flex-1 items-center gap-2 rounded-sm px-2 text-left press-row focus-inset touch:min-h-ctl-lg"
                   >
                     <span className="shrink-0 font-mono text-xs text-fg-3 tabular-nums">{`#${note.pinNumber ?? idx + 1}`}</span>
                     <span className="shrink-0 font-mono text-xs text-fg-2">{target}</span>

@@ -130,10 +130,10 @@ export class ActivityStore {
   }
   /** Something outside the project's stream changed the sessions (the sidebar's menu): their readers read again. */
   sessionsRound = 0;
-  refreshSessions() {
+  refreshSessions = () => {
     this.sessionsRound += 1;
     this.changed();
-  }
+  };
 
   private pluginList: Promise<Plugin[]> | null = null;
   /** The plugin manifests, read once per session (they change only when the harness restarts). */

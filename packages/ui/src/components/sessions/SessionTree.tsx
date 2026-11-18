@@ -1,6 +1,6 @@
 import type { GlobalSession, ProjectSummary } from "@octo/agent-client";
 import { ChevronRight, Ellipsis, GitBranch, Plus } from "lucide-react";
-import { lazy, Suspense, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from "react";
+import { lazy, Suspense, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { cn } from "../../lib/cn";
 import { usePhone } from "../../lib/phone";
 import { CLOCK_SIDEBAR_MS } from "../../lib/constants";
@@ -9,6 +9,7 @@ import { useNow, useScrollFade } from "../../lib/hooks";
 import { projectRowLines, type OrchestratorState } from "../../lib/orchestrator";
 import { hrefFor, navigate } from "../../lib/route";
 import { useRovingRows } from "../../lib/rovingRows";
+import { createAndOpenSession } from "../../lib/sessions/createSession";
 import { deleteSessionCleanly } from "../../lib/sessions/deleteSession";
 import { canMoveToWorktree, deleteCopy, failureText, sessionWorkspaceLabel } from "../../lib/sessions/model";
 import {
@@ -22,9 +23,9 @@ import {
   sessionTitle,
   treeKey,
   TREE_ALL,
-  visibleSessions,
   type KeyRow,
 } from "../../lib/sessions/tree";
+import { flatSessions, treeSessions } from "../../lib/sessions/flat";
 import { orchestratorGlyph, type GlyphState } from "../../lib/stateGlyph";
 import { jsonCodec, PREFS, usePersistentState } from "../../lib/storage";
 import { useActivity } from "../../state/activity";
@@ -48,7 +49,6 @@ import { ConfirmDelete } from "./parts";
 
 const Menu = lazy(() => import("../primitives/Menu").then((m) => ({ default: m.Menu })));
 const MoveToWorktreeDialog = lazy(() => import("../shared/MoveToWorktreeDialog").then((m) => ({ default: m.MoveToWorktreeDialog })));
-const NewSessionPopover = lazy(() => import("../shared/NewSessionPopover").then((m) => ({ default: m.NewSessionPopover })));
 const DeleteProjectDialog = lazy(() => import("../shared/DeleteProjectDialog").then((m) => ({ default: m.DeleteProjectDialog })));
 
 const openCodec = jsonCodec(parseOpen);
@@ -74,8 +74,8 @@ type MenuAt = ({ session: GlobalSession } | { project: ProjectSummary; open: boo
  * The sidebar's main navigation (UI decision 96): "Projects and sessions" — a `role="tree"` of project rows (32px, the
  * decision-29 glyph summing up their sessions) and, under an open project, its sessions one step in — or "Sessions", a flat
  * list across projects, newest activity first. One Tab stop (roving), ↑/↓/←/→/Home/End/Enter and a letter to jump; a row's
- * "⋯" (and its context menu) renames, makes default, opens in a new tab, stops, archives and deletes; a project's "+" makes a
- * session (`NewSessionPopover`). Open projects are remembered (`PREFS.sidebarOpen`).
+ * "⋯" (and its context menu) renames, makes default, opens in a new tab, stops, archives and deletes; "+" creates a new
+ * session directly without a modal. Open projects are remembered (`PREFS.sidebarOpen`).
  */
 export function SessionTree(props: SessionTreeProps) {
   const { projects, health, bridge } = useApp();
@@ -95,7 +95,6 @@ export function SessionTree(props: SessionTreeProps) {
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [creating, setCreating] = useState<{ defaultProjectId?: string | null; anchor: RefObject<HTMLElement | null> } | null>(null);
   const list = useRef<HTMLUListElement>(null);
   useScrollFade(list, "y");
   useRovingRows(list);
@@ -106,9 +105,16 @@ export function SessionTree(props: SessionTreeProps) {
     () => (projects ? [...projects].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || a.id.localeCompare(b.id)) : null),
     [projects],
   );
-  const flat = useMemo(() => mainSessions(index.all), [index.all]);
   const defaultOf = (pid: string) => index.byProject.get(pid)?.find((s) => s.default ?? s.current)?.id ?? null;
   const currentSession = props.agentRoute ? null : (props.activeSessionId ?? (props.activeProjectId ? defaultOf(props.activeProjectId) : null));
+  const flat = useMemo(() => flatSessions(index.all, currentSession), [index.all, currentSession]);
+  const loading = projects === null && health !== "offline";
+  const sessionsLoading = props.mode === "sessions" && health !== "offline" && projects !== null && projects.length > 0 && !index.loaded && flat.length === 0;
+  const unrepresented = useMemo(() => {
+    if (props.mode !== "sessions" || loading || sessionsLoading) return [];
+    const seen = new Set(flat.map((s) => s.project_id));
+    return (ordered ?? []).filter((p) => !seen.has(p.id));
+  }, [props.mode, loading, sessionsLoading, flat, ordered]);
 
   const toggle = (pid: string, open: boolean) => setStored((s) => ({ ...s, [pid]: open }));
   const act = async (call: () => Promise<unknown>) => {
@@ -158,9 +164,10 @@ export function SessionTree(props: SessionTreeProps) {
   };
   const createSession = (projectId: string) => {
     void act(async () => {
-      const { session } = await bridge.createSession(projectId, {});
-      if (projectId === props.activeProjectId && nav.workspace()) nav.workspace()?.openSession(session.id);
-      else window.location.hash = hrefFor(projectId, null, session.id);
+      const ws = projectId === props.activeProjectId ? nav.workspace() : null;
+      await createAndOpenSession(bridge, projectId, {
+        openInWorkspace: ws ? (id) => ws.openSession(id) : undefined,
+      });
       props.onPick();
     });
   };
@@ -192,7 +199,7 @@ export function SessionTree(props: SessionTreeProps) {
       active,
       sessions.some((s) => !s.archived && isLive(s)),
     );
-    const { shown, hidden } = visibleSessions(sessions, showAll.has(p.id));
+    const { shown, hidden } = treeSessions(sessions, showAll.has(p.id), active ? currentSession : null);
     const showMore = hidden > 0 && (!showAll.has(p.id) || shown.length < TREE_ALL || tabFlags.sessions);
     keyRows.push({ id: rowId("p", p.id), level: 1, open, title: p.name });
     if (open) {
@@ -204,6 +211,7 @@ export function SessionTree(props: SessionTreeProps) {
   if (props.mode === "sessions") {
     keyRows.length = 0;
     for (const s of flat) keyRows.push({ id: rowId("s", s.id), level: 2, title: sessionTitle(s), session: s });
+    for (const p of unrepresented) keyRows.push({ id: rowId("p", p.id), level: 1, open: false, title: p.name });
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
@@ -223,7 +231,6 @@ export function SessionTree(props: SessionTreeProps) {
     else document.getElementById(keyRows[move.focus]?.id ?? "")?.focus();
   };
 
-  const loading = projects === null && health !== "offline";
   const sessionRow = (s: GlobalSession, inTree: boolean) => {
     const selected = s.id === currentSession;
     const meta = sessionMeta(s, now);
@@ -306,7 +313,10 @@ export function SessionTree(props: SessionTreeProps) {
           <NewButton
             label="New session"
             disabled={!props.canCreate || !projects?.length}
-            onOpen={(anchor) => setCreating({ anchor, defaultProjectId: props.activeProjectId })}
+            onClick={() => {
+              const targetId = props.activeProjectId ?? ordered?.[0]?.id;
+              if (targetId) createSession(targetId);
+            }}
           />
         </div>
       )}
@@ -322,56 +332,78 @@ export function SessionTree(props: SessionTreeProps) {
         onKeyDown={onKeyDown}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain fade-y"
       >
-        {loading && <SkeletonList count={3} size="md" />}
-        {props.mode === "sessions"
-          ? flat.map((s) => sessionRow(s, false))
-          : projectRows.map(({ p, sessions, active, open, shown, hidden, showMore }) => (
+        {(loading || sessionsLoading) && <SkeletonList count={3} size="md" />}
+        {props.mode === "sessions" ? (
+          <>
+            {flat.map((s) => sessionRow(s, false))}
+            {unrepresented.map((p) => (
               <li key={p.id} role="none" className="flex flex-col">
                 <ProjectRow
                   project={p}
-                  sessions={sessions}
-                  active={active && (!open || currentSession === null)}
-                  open={open}
-                  unseen={props.unseen.has(p.id) && !active}
+                  sessions={index.byProject.get(p.id) ?? []}
+                  active={p.id === props.activeProjectId}
+                  open={false}
+                  unseen={props.unseen.has(p.id) && p.id !== props.activeProjectId}
                   state={orchestrators.get(p.id) ?? { kind: "idle", at: p.updated_at }}
                   now={now}
                   canCreate={props.canCreate}
-                  onToggle={() => toggle(p.id, !open)}
-                  onOpen={() => {
-                    if (!open) toggle(p.id, true);
-                    props.onPick();
-                  }}
+                  onToggle={() => toggle(p.id, true)}
+                  onOpen={props.onPick}
                   onNew={() => createSession(p.id)}
-                  onMenu={(e) => openProjectMenu(p, open, e)}
+                  onMenu={(e) => openProjectMenu(p, false, e)}
                 />
-                {open && (shown.length > 0 || showMore) && (
-                  <ul role="group" className="flex flex-col">
-                    {shown.map((s) => sessionRow(s, true))}
-                    {showMore && (
-                      <li role="none" data-tree-row data-tree-level={2}>
-                        <ListRow
-                          role="treeitem"
-                          level={2}
-                          id={rowId("m", p.id)}
-                          size="md"
-                          tone="quiet"
-                          leading={<span />}
-                          title={showAll.has(p.id) ? "Open Sessions" : `Show all (${shown.length + hidden})`}
-                          onClick={() => {
-                            if (!showAll.has(p.id) || shown.length < TREE_ALL) return setShowAll((all) => new Set(all).add(p.id));
-                            requestSession(p.id, "");
-                            const ws = nav.workspace();
-                            if (active && ws) ws.openTool("sessions");
-                            else window.location.hash = hrefFor(p.id);
-                            props.onPick();
-                          }}
-                        />
-                      </li>
-                    )}
-                  </ul>
-                )}
               </li>
             ))}
+          </>
+        ) : (
+          projectRows.map(({ p, sessions, active, open, shown, hidden, showMore }) => (
+            <li key={p.id} role="none" className="flex flex-col">
+              <ProjectRow
+                project={p}
+                sessions={sessions}
+                active={active && (!open || !shown.some((s) => s.id === currentSession))}
+                open={open}
+                unseen={props.unseen.has(p.id) && !active}
+                state={orchestrators.get(p.id) ?? { kind: "idle", at: p.updated_at }}
+                now={now}
+                canCreate={props.canCreate}
+                onToggle={() => toggle(p.id, !open)}
+                onOpen={() => {
+                  if (!open) toggle(p.id, true);
+                  props.onPick();
+                }}
+                onNew={() => createSession(p.id)}
+                onMenu={(e) => openProjectMenu(p, open, e)}
+              />
+              {open && (shown.length > 0 || showMore) && (
+                <ul role="group" className="flex flex-col">
+                  {shown.map((s) => sessionRow(s, true))}
+                  {showMore && (
+                    <li role="none" data-tree-row data-tree-level={2}>
+                      <ListRow
+                        role="treeitem"
+                        level={2}
+                        id={rowId("m", p.id)}
+                        size="md"
+                        tone="quiet"
+                        leading={<span />}
+                        title={showAll.has(p.id) ? "Open Sessions" : `Show all (${shown.length + hidden})`}
+                        onClick={() => {
+                          if (!showAll.has(p.id) || shown.length < TREE_ALL) return setShowAll((all) => new Set(all).add(p.id));
+                          requestSession(p.id, "");
+                          const ws = nav.workspace();
+                          if (active && ws) ws.openTool("sessions");
+                          else window.location.hash = hrefFor(p.id);
+                          props.onPick();
+                        }}
+                      />
+                    </li>
+                  )}
+                </ul>
+              )}
+            </li>
+          ))
+        )}
       </ul>
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
@@ -382,19 +414,6 @@ export function SessionTree(props: SessionTreeProps) {
               y={menu.y}
               items={"session" in menu ? menuItems(menu.session) : projectMenuItems(menu)}
               onClose={() => setMenu(null)}
-            />
-          </Suspense>
-        )}
-      </Presence>
-      <Presence show={creating !== null}>
-        {creating && (
-          <Suspense fallback={null}>
-            <NewSessionPopover
-              anchor={creating.anchor}
-              defaultProjectId={creating.defaultProjectId ?? props.activeProjectId}
-              activeProjectId={props.activeProjectId}
-              onCreated={props.onPick}
-              onClose={() => setCreating(null)}
             />
           </Suspense>
         )}
@@ -446,11 +465,8 @@ function rowId(kind: "p" | "s" | "m", id: string): string {
   return `tree-${kind}-${id}`;
 }
 
-function NewButton(props: { label: string; disabled: boolean; onOpen(anchor: RefObject<HTMLElement | null>): void }) {
-  const ref = useRef<HTMLButtonElement>(null);
-  return (
-    <IconButton ref={ref} icon={Plus} size="sm" label={props.label} disabled={props.disabled} className="-my-1 ml-auto" onClick={() => props.onOpen(ref)} />
-  );
+function NewButton(props: { label: string; disabled: boolean; onClick(): void }) {
+  return <IconButton icon={Plus} size="sm" label={props.label} disabled={props.disabled} className="-my-1 ml-auto" onClick={props.onClick} />;
 }
 
 /** The project's glyph from its sessions (needs you > failed > working > queued > idle), else its orchestrator's (no sessions known). */

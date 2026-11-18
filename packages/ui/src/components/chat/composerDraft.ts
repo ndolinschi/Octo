@@ -16,9 +16,42 @@ export function draftOf(memory: TabMemory, tab: TabId): DraftBus {
   return bus;
 }
 
-/** Puts `text` into the conversation's composer (an unsent draft: the person reads it and sends it); round 3: words, B7. */
-export function prefillComposer(memory: TabMemory, tab: TabId, text: string): void {
-  const member = draftOf(memory, tab).join(() => undefined);
+function writeDraft(bus: DraftBus, text: string): void {
+  const member = bus.join(() => undefined);
   member.save(text);
   member.leave();
+}
+
+/** Puts `text` into the conversation's composer (an unsent draft: the person reads it and sends it); round 3: words, B7. */
+export function prefillComposer(memory: TabMemory, tab: TabId, text: string): void {
+  writeDraft(draftOf(memory, tab), text);
+}
+
+/** Clears `bus` directly without retaining a listener (used when carrying a draft away to another project). */
+export function clearDraft(bus: DraftBus): void {
+  writeDraft(bus, "");
+}
+
+type PendingCrossProjectDraft = { projectId: string; sessionId: string | null; text: string };
+let pendingCrossProjectDraft: PendingCrossProjectDraft | null = null;
+
+/** Carries unsent composer text across a project switch initiated from the empty-session project selector. */
+export function stashCrossProjectDraft(projectId: string, sessionId: string | null, text: string): void {
+  pendingCrossProjectDraft = text ? { projectId, sessionId, text } : null;
+}
+
+/** Consumes any stashed draft intended for `(projectId, sessionId)` once mounted in the target workspace. */
+export function takeCrossProjectDraft(projectId: string, sessionId: string | null): string | null {
+  if (!pendingCrossProjectDraft || pendingCrossProjectDraft.projectId !== projectId) return null;
+  if (pendingCrossProjectDraft.sessionId !== null && sessionId !== null && pendingCrossProjectDraft.sessionId !== sessionId) return null;
+  const text = pendingCrossProjectDraft.text;
+  pendingCrossProjectDraft = null;
+  return text;
+}
+
+/** Transfers any matching cross-project draft into an empty target `bus`. */
+export function applyCrossProjectDraft(bus: DraftBus | undefined, projectId: string, sessionId: string | null): void {
+  if (!bus || bus.value) return;
+  const text = takeCrossProjectDraft(projectId, sessionId);
+  if (text !== null) writeDraft(bus, text);
 }
