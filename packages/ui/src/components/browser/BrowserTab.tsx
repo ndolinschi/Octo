@@ -109,12 +109,12 @@ export default function BrowserTab(props: { tab: TabId; browserId: string }) {
           actions={
             <div className="flex flex-wrap items-center justify-center gap-2">
               {s.detectedUrls.map((u) => (
-                <Button key={u} variant="primary" size="sm" onClick={() => void s.goUrl(u)}>
+                <Button key={u} variant="secondary" size="sm" onClick={() => void s.goUrl(u)}>
                   {`Open ${u}`}
                 </Button>
               ))}
               {!s.detectedUrls.includes("http://localhost:5173/") && (
-                <Button variant={s.detectedUrls.length === 0 ? "primary" : "secondary"} size="sm" onClick={() => void s.goUrl("http://localhost:5173/")}>
+                <Button variant="secondary" size="sm" onClick={() => void s.goUrl("http://localhost:5173/")}>
                   Open localhost:5173
                 </Button>
               )}

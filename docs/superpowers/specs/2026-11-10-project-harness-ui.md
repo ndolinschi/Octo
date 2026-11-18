@@ -4186,3 +4186,8 @@ each deviation.
   `SectionHeader` captions (12px `fg-3` on 28, at the rows' text edge) with the count, totals and "Revert" as the aside. The
   revert button moved to the 24px `IconButton` (same pixels, no deprecated wrapper). Checked in the demo: revert a request
   (reverted row struck through with "reverted", failed ones "not reverted" in `err`), no console errors.
+- **G. Terminal and Browser bars (`terminal/TerminalTab.tsx`, `browser/BrowserToolbar.tsx`, `browser/BrowserTab.tsx`).** The
+  terminal bar's inset is 8 (`px-2`, was 12), so its status dot and its last 28px button sit where the Files bar's controls
+  do; the browser's Back / Forward / Reload are 4 apart (were 2), as in Files; the browser's empty-state actions are
+  `secondary`, like every other tab's (was a filled `primary`). Not changed: the terminal's folder `MenuButton` stays 24 high
+  (the primitive's `chip` height everywhere; changing it is a library decision).
