@@ -63,7 +63,7 @@ Project setting `memory: {auto_memory: "off" | "allow" | "review" | "blocked" (d
 - `"review"`: each automatic memory write or `remember` / `task_update` / `memory` write raises a `memory` approval card so the user can **Save** (`allow`), **Allow all** (switches project to `allow`), **Block**, or **Skip** (`deny`).
 - `"allow"`: automatic memory writes, digest, and memory tools run normally without per-write approval.
 - `"blocked"`: memory is disabled for this project; automatic writes and digests are suppressed, `/memory` is blocked, and Memory UI entry points are hidden for the project.
-`GET /v1/config` exposes the evaluated runtime feature flags in `features: {"auto_memory": boolean}` (controlled by `HARNESS_FEATURE_AUTO_MEMORY`, configurable via Settings → Privacy → Feature flags).
+`GET /v1/config` exposes the evaluated runtime feature flags in `features: {"auto_memory": boolean}` (controlled by `HARNESS_FEATURE_AUTO_MEMORY`, configurable via Settings → Privacy → Memory; stored in `harness.env` and applied live).
 
 **Window mode** (built-in orchestrator; sub-agents and side questions are never affected). The orchestrator's request is assembled, each block capped in tokens (four characters a token), stable blocks first:
 
