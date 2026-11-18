@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, CircleAlert } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { FIELD } from "../../lib/controls";
@@ -92,9 +92,14 @@ export function ModelPicker(props: ModelPickerProps) {
       <Chip
         ref={button}
         lead={
-          <Suspense fallback={<span className="size-3.5 shrink-0" />}>
-            <ProviderMark id={ref ? ref.id : props.value} label={text} size={14} />
-          </Suspense>
+          // A model that cannot run says so by shape and name too, not by the amber colour alone.
+          toned ? (
+            <Glyph icon={CircleAlert} size={14} className="shrink-0 text-warn" />
+          ) : (
+            <Suspense fallback={<span className="size-3.5 shrink-0" />}>
+              <ProviderMark id={ref ? ref.id : props.value} label={text} size={14} />
+            </Suspense>
+          )
         }
         name={props.label}
         label={shown}
@@ -103,6 +108,7 @@ export function ModelPicker(props: ModelPickerProps) {
         open={open}
         disabled={props.disabled ?? false}
         warn={toned}
+        aria-label={`${props.label}: ${shown}${toned ? ", provider not connected" : ""}`}
         aria-haspopup="dialog"
         data-model-picker
         onClick={() => setOpen(!open)}
