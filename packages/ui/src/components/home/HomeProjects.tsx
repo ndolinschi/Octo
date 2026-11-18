@@ -8,7 +8,7 @@ import { useRovingRows } from "../../lib/rovingRows";
 import { readable } from "../../lib/errors/plain";
 import { projectWhen, stateLine, type OrchestratorState } from "../../lib/orchestrator";
 import { agentStack } from "../../lib/orchestratorMore";
-import { sessionAgentName } from "../../lib/models";
+import { sessionAgentName } from "../../lib/sessionAgent";
 import { navigate } from "../../lib/route";
 import { createAndOpenSession } from "../../lib/sessions/createSession";
 import { TRIAGE_LABEL, TRIAGE_ORDER, triageGroups, type Triage } from "../../lib/triage";

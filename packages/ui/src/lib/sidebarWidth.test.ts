@@ -8,6 +8,9 @@ test("clampSidebar keeps the width within 200–480 and whole", () => {
   assert.equal(clampSidebar(900), SIDEBAR_MAX);
   assert.equal(clampSidebar(300.6), 301);
   assert.equal(clampSidebar(SIDEBAR_DEFAULT), 260);
+  // What a stored text that is not a width reads as (nothing stored is Number(null) = 0).
+  assert.equal(clampSidebar(Number.NaN), SIDEBAR_DEFAULT);
+  assert.equal(clampSidebar(0), SIDEBAR_DEFAULT);
 });
 
 test("the default width is the --spacing-sidebar token", () => {

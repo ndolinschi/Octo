@@ -4159,7 +4159,7 @@ Small fixes from a review of the shell (sidebar, top bar, status bar, overlays, 
   layout (`display: none`) instead of keeping its width, so the title gains the room (measured 133 → 172 px; was 133 → ~109).
   Rename keeps the row's state glyph and puts the field's text exactly where the title was (x = 48 before and in the field;
   was 48 → 32), selects the whole title and shows its beginning. A session waiting for the person shows its age like a failed
-  one (`sessionMeta`). A session row's tooltip names the agent that runs it (`sessionAgentName` in `lib/models.ts`: an ACP agent
+  one (`sessionMeta`). A session row's tooltip names the agent that runs it (`sessionAgentName` in `lib/sessionAgent.ts`: an ACP agent
   by its label, Octo's own loop by its model).
 - **Sidebar width.** The sidebar has a resize handle in the 8px gutter to the first panel (`primitives/ResizeHandle`, the
   pointer and keyboard logic the dock's `Divider` now also uses; loaded lazily): drag, ←/→ ±16 (Shift ±64), double-click resets.
@@ -4171,7 +4171,7 @@ Small fixes from a review of the shell (sidebar, top bar, status bar, overlays, 
 - **Top bar and status.** The agents count is a count, not a command: dim (`fg-3`, `fg` on hover) tabular figures and 12px
   before the command buttons beside it (measured gap 4 → 12). The status bar says "N projects working" ("1 project working").
   The "+" tab menu opens from the "+" (start-aligned: left edge 188 → 480 with the "+" at 480) instead of over the sidebar.
-  Terminal tabs that would share a name are numbered in open order (`terminalOrdinals` in `state/terminalTabs.ts`): "zsh ·
+  Terminal tabs that would share a name are numbered in open order (`terminalOrdinals` in `components/terminal/ordinals.ts`, written into the tab state by the terminal's session store): "zsh ·
   orbit-app", "zsh · orbit-app 2", in the tab, its tooltip and the tab picker (the command palette lists no terminal tabs).
 - **Overlays.** The command palette lists "New session in …" for the projects the query names (a word of the name starts
   with it), else for two projects (the open one first): "re" gives two such rows, not four. The "Show …" rows' details are
@@ -4189,3 +4189,9 @@ Small fixes from a review of the shell (sidebar, top bar, status bar, overlays, 
   Octo's own loop by its model, "Sonnet 5.5"). The waiting rows there now show their age. With only Ollama ready the
   connect screen's line reads "Ollama is connected. Projects also need a coding agent, an API key or the router."
   (`connectSubtitle`, tested; the screen itself not driven, the demo has no Ollama-only state).
+- **Entry budget.** These items first took the initial JS from 160.92 to 161.64 kB gzip (budget 161.00). Code a module that
+  loads with the app exports stays in the entry even when only a lazy chunk calls it, so: `sessionAgentName` is its own module;
+  the palette's `TOOL_HINT` moved to `state/workspace/paletteCommands.ts`; the terminal ordinals live with the terminal
+  (its session store numbers the tabs when one opens or closes); the sidebar's stored width is read and applied by its edge
+  (`shell/SidebarEdge`), which rides in the Projects list's chunk that the sidebar asks for at once: a width other than the
+  default can show one frame after the first paint. Result: 160.90 kB.

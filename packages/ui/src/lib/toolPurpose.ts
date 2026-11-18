@@ -1,7 +1,7 @@
 /**
  * Walk B13: what each tool tab is for, in one line a newcomer understands. The panels show it behind the (i) after their
  * title (on the phone: "About this panel" in the header's "⋯"), the tabs as their tooltip (`dock/tabInfo`), and the palette
- * searches it (with `TOOL_HINT` as the row's detail): one source.
+ * searches it (with `TOOL_HINT` in `state/workspace/paletteCommands.ts` as the row's detail): one source.
  */
 export const TOOL_PURPOSE = {
   sessions: "Your sessions with Octo, and the agents it started.",
@@ -20,23 +20,3 @@ export const TOOL_PURPOSE = {
 } as const satisfies Record<string, string>;
 
 export type PurposeTool = keyof typeof TOOL_PURPOSE;
-
-/**
- * The same purposes, short: the detail of the palette's "Show …" rows. Shell polish, item 12: each a short sentence, one name
- * per thing (a session is a session, an agent an agent).
- */
-export const TOOL_HINT = {
-  sessions: "Your sessions and their agents.",
-  agents: "What each agent is doing.",
-  notes: "Decisions and facts agents read.",
-  files: "Open a file to read or edit it.",
-  browser: "Preview a page and mark it up for Chat.",
-  terminal: "A shell in the project's folder.",
-  processes: "Running commands and their output.",
-  details: "Folders, models, usage and activity.",
-  changes: "What the agents changed.",
-  review: "Read a pull request and review it.",
-  memory: "What Octo remembers about the project.",
-  usage: "Tokens, cost and limits.",
-  side: "Ask without adding to the session.",
-} as const satisfies Record<PurposeTool, string>;

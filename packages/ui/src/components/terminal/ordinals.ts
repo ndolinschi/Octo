@@ -1,0 +1,26 @@
+/**
+ * Item 15: two terminal tabs must not share a title. Pure; it lives with the terminal (its own chunk) so the app's first
+ * load does not carry it: the session store writes each tab's number into its tab state (`state/terminalTabs`).
+ */
+
+/** The name a terminal tab shows: its own title, else its shell and folder ("zsh · proj"). */
+export function terminalTabName(t: { shell: string; folder: string; title: string }): string {
+  const custom = t.title.trim();
+  if (custom) return custom;
+  const shell = t.shell.trim() || "Terminal";
+  const folder = t.folder.trim();
+  return folder ? `${shell} · ${folder}` : shell;
+}
+
+/**
+ * Tabs that share a name are numbered in the order they were opened: the first keeps its name, the next get 2, 3, … One
+ * entry per name given (in open order): its number, 0 when it needs none.
+ */
+export function terminalOrdinals(names: readonly string[]): number[] {
+  const seen = new Map<string, number>();
+  return names.map((name) => {
+    const n = (seen.get(name) ?? 0) + 1;
+    seen.set(name, n);
+    return n > 1 ? n : 0;
+  });
+}

@@ -7,15 +7,14 @@ import { MOD } from "../../state/workspace/WorkspaceProvider";
 import { ListRow } from "../primitives/ListRow";
 import { SkeletonList } from "../primitives/Skeleton";
 import { usePhone } from "../../lib/phone";
-import { SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, useSidebarWidth } from "../../lib/sidebarWidth";
 import { useHost } from "../../state/host";
-
-/** The edge's resize handle: not needed for the first paint (it draws nothing until hovered). */
-const ResizeHandle = lazy(() => import("../primitives/ResizeHandle").then((m) => ({ default: m.ResizeHandle })));
 
 /** The "Projects" view's list: its own chunk, asked for at once (decision 96: the default view is the tree, `SessionTree`). */
 const listChunk = import("./ProjectList").catch(() => undefined);
-const ProjectList = lazy(() => listChunk.then((m) => m ?? import("./ProjectList")).then((m) => ({ default: m.ProjectList })));
+const list = () => listChunk.then((m) => m ?? import("./ProjectList"));
+const ProjectList = lazy(() => list().then((m) => ({ default: m.ProjectList })));
+/** The edge's resize handle and the stored width (item 3), from the same chunk, which loads before the projects arrive. */
+const SidebarEdge = lazy(() => list().then((m) => ({ default: m.SidebarEdge })));
 
 /** A nav row (decision 90): a 32px `ListRow` with its glyph, label and, when it has one, the key hint. */
 function NavRow(props: { icon: LucideIcon; label: string; onClick(): void; disabled?: boolean; shortcut?: { hint: string; keys: string }; current?: boolean }) {
@@ -59,8 +58,6 @@ export function Sidebar(props: {
   // Remote access: a device never creates a project (local only, and it needs the computer's folder dialog).
   const device = useHost().remoteDevice !== undefined;
   const nav = useRef<HTMLElement>(null);
-  const size = useSidebarWidth(nav);
-  const dragTo = useRef(size.width);
 
   return (
     <nav
@@ -70,28 +67,7 @@ export function Sidebar(props: {
     >
       {!phone && (
         <Suspense fallback={null}>
-          {/* Item 3: the sidebar's edge, in the 8px gutter to the first panel (not in the drawer: its width is the drawer's). The
-              drag previews the width without a render; the release stores it. */}
-          <ResizeHandle
-            label="Resize sidebar"
-            title="Drag to resize; double-click to reset"
-            value={size.width}
-            min={SIDEBAR_MIN}
-            max={SIDEBAR_MAX}
-            onDrag={(_dx, total) => {
-              dragTo.current = size.width + total;
-              size.preview(dragTo.current);
-            }}
-            onDragEnd={() => size.commit(dragTo.current)}
-            onKey={(dx) => size.commit(size.width + dx)}
-            onReset={() => size.commit(SIDEBAR_DEFAULT)}
-            className="group/divider absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize outline-none focus-visible:shadow-none max-drawer:hidden"
-          >
-            <span
-              aria-hidden
-              className="absolute inset-y-2 left-1/2 w-0.5 -translate-x-1/2 rounded-full transition-[background-color] duration-100 group-hover/divider:bg-line-strong group-focus-visible/divider:bg-focus group-data-[dragging]/divider:bg-focus"
-            />
-          </ResizeHandle>
+          <SidebarEdge nav={nav} />
         </Suspense>
       )}
       <div className="flex min-h-0 flex-1 flex-col p-pane">

@@ -121,16 +121,6 @@ export function modelName(value: string, acp: readonly AcpName[] = []): string {
   return ref.model ? `${label} · ${readableModelId(ref.model)}` : label;
 }
 
-/**
- * Who runs a session, for its row: an `acp:` agent by its label alone ("Claude Code", never the id: decision 94e), Octo's own
- * loop by its model ("Opus 5.5"); null when the session names no model.
- */
-export function sessionAgentName(model: string, acp: readonly AcpName[] = []): string | null {
-  if (model.trim() === "") return null;
-  const ref = parseAcp(model);
-  return ref ? (acp.find((a) => a.id === ref.id)?.label ?? agentLabelOf(ref.id)) : modelName(model, acp);
-}
-
 /** The model that answered (decision 37): `served_model` when a router reported one, and the requested one when it differs. */
 export function servedModel(agent: { model: string; served_model?: string | null }, acp: readonly AcpName[] = []): { name: string; asked: string | null } {
   const asked = modelName(agent.model, acp);

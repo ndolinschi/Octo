@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, type RefObject } from "react";
-import { numberCodec, PREFS, usePersistentState } from "./storage";
+import { useLayoutEffect, useState, type RefObject } from "react";
+import { PREFS, readPref, writePref } from "./storage";
 
 /**
  * The sidebar's width (shell polish, item 3): a layout preference the person sets by dragging the sidebar's edge (decision 79:
@@ -10,31 +10,22 @@ export const SIDEBAR_MAX = 480;
 /** The `--spacing-sidebar` token's value (`styles.css`). */
 export const SIDEBAR_DEFAULT = 260;
 
-export const clampSidebar = (px: number): number => Math.round(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, px)));
+/** Within 200–480 and whole; anything that is not a number (nothing stored, foreign text) is the default. */
+export const clampSidebar = (px: number): number =>
+  Number.isFinite(px) && px > 0 ? Math.round(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, px))) : SIDEBAR_DEFAULT;
 
-const codec = numberCodec(SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_DEFAULT);
+/** Sets the width on the element (what its `w-sidebar` reads), without a React render. */
+export const applySidebarWidth = (el: HTMLElement | null, px: number): void => el?.style.setProperty("--spacing-sidebar", `${clampSidebar(px)}px`);
 
-/**
- * The stored width, applied to `ref`'s element as `--spacing-sidebar` (what its `w-sidebar` reads). `preview` sets a width on
- * the element alone, in the next frame and without a React render (a drag: the transcript beside it must not re-render per
- * pointer move); `commit` stores one.
- */
-export function useSidebarWidth(ref: RefObject<HTMLElement | null>): { width: number; preview(px: number): void; commit(px: number): void } {
-  const [width, setWidth] = usePersistentState(PREFS.sidebarWidth, codec, { persistInitial: false });
-  const frame = useRef(0);
-  useLayoutEffect(() => {
-    ref.current?.style.setProperty("--spacing-sidebar", `${width}px`);
-  }, [ref, width]);
-  useLayoutEffect(() => () => cancelAnimationFrame(frame.current), []);
-  const preview = (px: number) => {
-    cancelAnimationFrame(frame.current);
-    frame.current = requestAnimationFrame(() => ref.current?.style.setProperty("--spacing-sidebar", `${clampSidebar(px)}px`));
-  };
+/** The stored width, applied to `ref`'s element; `commit` stores a new one (the edge's drag previews with `applySidebarWidth`). */
+export function useSidebarWidth(ref: RefObject<HTMLElement | null>): { width: number; commit(px: number): void } {
+  const [width, setWidth] = useState(() => clampSidebar(Number(readPref(PREFS.sidebarWidth))));
+  useLayoutEffect(() => applySidebarWidth(ref.current, width), [ref, width]);
   const commit = (px: number) => {
-    cancelAnimationFrame(frame.current);
     const next = clampSidebar(px);
-    ref.current?.style.setProperty("--spacing-sidebar", `${next}px`);
+    applySidebarWidth(ref.current, next);
+    writePref(PREFS.sidebarWidth, String(next));
     setWidth(next);
   };
-  return { width, preview, commit };
+  return { width, commit };
 }

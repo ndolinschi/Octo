@@ -1,16 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  modelLabel,
-  claudeLabel,
-  modelName,
-  sessionAgentName,
-  modelsPatchForSessionChoice,
-  readableModelId,
-  parseAcp,
-  servedModel,
-  servedText,
-} from "./models";
+import { modelLabel, claudeLabel, modelName, modelsPatchForSessionChoice, readableModelId, parseAcp, servedModel, servedText } from "./models";
 import { routeLine, modelIds, budgetState, distinctTails, middleEllipsis, parseBudget, truncateDistinct } from "./modelsMore";
 
 const ACP = [{ id: "claude-code", label: "Claude Code" }];
@@ -162,12 +152,4 @@ test("modelsPatchForSessionChoice aligns all tiers and stale side override to th
     }),
     { orchestrator: "claude-sonnet-5-5" },
   );
-});
-
-test("sessionAgentName names the agent by its label, Octo's own loop by its model", () => {
-  assert.equal(sessionAgentName("acp:claude-code/claude-opus-5-5"), "Claude Code");
-  assert.equal(sessionAgentName("acp:copilot", [{ id: "copilot", label: "GitHub Copilot" }]), "GitHub Copilot");
-  assert.equal(sessionAgentName("acp:my-agent"), "My Agent");
-  assert.equal(sessionAgentName("claude-opus-5-5"), modelName("claude-opus-5-5"));
-  assert.equal(sessionAgentName(""), null);
 });

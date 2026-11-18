@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-export type TerminalTabMeta = { shell: string; folder: string; title: string };
+/** `ordinal`: the tab's number among the project's tabs of the same name (item 15; written by the terminal's session store). */
+export type TerminalTabMeta = { shell: string; folder: string; title: string; ordinal?: number };
 
 const EMPTY: TerminalTabMeta = { shell: "", folder: "", title: "" };
 const state = new Map<string, TerminalTabMeta>();
@@ -13,46 +14,13 @@ function bump(pid: string) {
   subs.get(pid)?.forEach((fn) => fn());
 }
 
-/** The name a terminal tab shows: its own title, else its shell and folder ("zsh · proj"). */
-export function terminalTabName(t: TerminalTabMeta): string {
-  const custom = t.title.trim();
-  if (custom) return custom;
-  const shell = t.shell.trim() || "Terminal";
-  const folder = t.folder.trim();
-  return folder ? `${shell} · ${folder}` : shell;
-}
-
-/**
- * Item 15: tabs that would share a name are numbered in the order they were opened — the first keeps its name, the next ones
- * get 2, 3, … Returns the number of each tab that needs one.
- */
-export function terminalOrdinals(tabs: readonly { id: string; name: string }[]): Map<string, number> {
-  const seen = new Map<string, number>();
-  const out = new Map<string, number>();
-  for (const t of tabs) {
-    const n = (seen.get(t.name) ?? 0) + 1;
-    seen.set(t.name, n);
-    if (n > 1) out.set(t.id, n);
-  }
-  return out;
-}
-
-/** A terminal tab's metadata, with its number when another tab opened before it has the same name (`terminalOrdinals`). */
-export function getTerminalTabState(pid: string, id: string): TerminalTabMeta & { ordinal?: number } {
-  const own = state.get(`${pid}:${id}`);
-  if (!own) return EMPTY;
-  const prefix = `${pid}:`;
-  // The map keeps insertion order: the order the project's terminals were opened.
-  const tabs = [...state].filter(([k]) => k.startsWith(prefix)).map(([k, t]) => ({ id: k.slice(prefix.length), name: terminalTabName(t) }));
-  const ordinal = terminalOrdinals(tabs).get(id);
-  return ordinal === undefined ? own : { ...own, ordinal };
-}
+export const getTerminalTabState = (pid: string, id: string): TerminalTabMeta => state.get(`${pid}:${id}`) ?? EMPTY;
 
 export function updateTerminalTabState(pid: string, id: string, patch: Partial<TerminalTabMeta>): void {
   const k = `${pid}:${id}`;
   const prev = state.get(k) ?? EMPTY;
   const next = { ...prev, ...patch };
-  if (prev.shell === next.shell && prev.folder === next.folder && prev.title === next.title) return;
+  if (prev.shell === next.shell && prev.folder === next.folder && prev.title === next.title && prev.ordinal === next.ordinal) return;
   state.set(k, next);
   bump(pid);
 }

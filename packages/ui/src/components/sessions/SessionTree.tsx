@@ -6,7 +6,7 @@ import { usePhone } from "../../lib/phone";
 import { CLOCK_SIDEBAR_MS } from "../../lib/constants";
 import { formatRelative } from "../../lib/format";
 import { useNow, useScrollFade } from "../../lib/hooks";
-import { sessionAgentName } from "../../lib/models";
+import { sessionAgentName } from "../../lib/sessionAgent";
 import { projectRowLines, type OrchestratorState } from "../../lib/orchestrator";
 import { hrefFor, navigate } from "../../lib/route";
 import { useRovingRows } from "../../lib/rovingRows";
