@@ -31,6 +31,8 @@ export type PaletteWorkspace = {
   closeOthers(tab: TabId): void;
   equalize(): void;
   activate(tab: TabId): void;
+  /** The name of a tab that has no button in the strip now (hidden in "All tabs"): what the strip would show. */
+  tabName?(tab: TabId): string | undefined;
 };
 
 /** What the open project workspace lets the shell (palette) do. */
