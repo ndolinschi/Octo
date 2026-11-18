@@ -4224,3 +4224,10 @@ supersedes an earlier decision, that decision carries a dated note pointing here
 - **F4. A sub-agent's tab is the agent's label** ("Dependency auditor": `roleText` of its role, "Agent" without one, never its
   id), not its task; the task stays in the agent's header and in the tab's tooltip ("Dependency auditor: Breaking changes
   0.76 → 0.80"). Tested in `tabInfo.test.ts`. Revises decision 63 (dated note there).
+- **F5. Ollama alone still does not leave the connect screen.** The owner allowed it if Ollama's models can run tools. The
+  harness has no such signal: its Ollama provider (`internal/providers/providers.go`) is the "dedicated small tier for inline
+  editor completions", its catalogue (`ollamaCatalogue`: Qwen 2.5 Coder 1.5B/3B, StarCoder2 3B, CodeLlama 7B) carries no
+  capability field, `Connected` does not count it, and the only Ollama route in the orchestrator is inline completion
+  (`config.IsOllamaCompletion`). So the gate (decision 53 b, `noProvider` in `app/AppShell.tsx`) is unchanged and the
+  connect line of item 10 says what Ollama does not cover. Leaving the screen needs a harness change first: a tool-capable
+  flag per Ollama model (for example from Ollama's `/api/show` capabilities) and an orchestrator path that runs on it.
