@@ -98,12 +98,19 @@ function terminalTabInfo(t?: { shell: string; folder: string; title: string; ord
   };
 }
 
-type ConversationCtx = { state: ProjectState; projectName?: string | undefined; orchestratorId: string | undefined };
+type ConversationCtx = { state: ProjectState; projectName?: string | undefined; orchestratorId: string | undefined; projectsInTabs?: number };
 
 /**
- * A conversation tab: Chat, or a main session's own tab (decision 96). Decision 63/67: named after the project, the dim part
- * the session ("Project / Session"); the state ring is its root agent's.
+ * Owner decision F2 (2026-11-18, revises 63/67): the conversation tab drops its "Project /" prefix while every tab of the
+ * workspace belongs to one project (the tab says what it is about); with tabs of two or more projects it keeps the project
+ * as the label and the topic dim. Without a topic the label is the project. `name` (the tooltip, the palette) stays whole.
  */
+export function conversationLabel(project: string, topic: string, projectsInTabs: number): { label: string; detail?: string } {
+  if (!topic || topic === project) return { label: middleTruncate(project, 28) };
+  return projectsInTabs > 1 ? { label: middleTruncate(project, 28), detail: middleTruncate(topic, 40) } : { label: middleTruncate(topic, 40) };
+}
+
+/** A conversation tab: Chat, or a main session's own tab (decision 96); the state ring is its root agent's. */
 function conversationInfo(ctx: ConversationCtx, sessionId: string | null): TabInfo {
   const root = (sessionId !== null ? sessionRoot(ctx.state, sessionId) : "") || (sessionId === ctx.state.sessions.defaultId ? ctx.orchestratorId : undefined);
   const status = root ? ctx.state.agents[root]?.status : undefined;
@@ -112,12 +119,12 @@ function conversationInfo(ctx: ConversationCtx, sessionId: string | null): TabIn
   // The session's title (project sessions), else its root's own.
   const own = root ? (ctx.state.agents[root]?.title?.trim() ?? "") : "";
   const topic = currentTitle(ctx.state.sessions.list, sessionId, own).trim();
-  const detail = topic && topic !== name ? middleTruncate(topic, 40) : undefined;
   const queued = sessionId !== null && ctx.state.sessions.list.find((x) => x.id === sessionId)?.state === "queued";
+  // A workspace holds one project's tabs today, so the prefix goes; a caller with tabs of several projects passes the count.
+  const shown = conversationLabel(name, topic, ctx.projectsInTabs ?? 1);
   return {
-    label: middleTruncate(name, 28),
-    ...(detail ? { detail } : {}),
-    name: detail ? `${name} / ${topic}` : name,
+    ...shown,
+    name: topic && topic !== name ? `${name} / ${topic}` : name,
     title: `${name}: the project's session${topic ? ` — ${topic}` : ""}`,
     icon: GLYPH.chat,
     status: running ? "running" : null,
@@ -137,6 +144,8 @@ export function tabInfo(
     orchestratorId: string | undefined;
     /** Decision 96: the main session the conversation tab (Chat) shows; null: the default one. */
     chatSessionId?: string | null;
+    /** How many projects the workspace's tabs belong to (decision F2); one when not given. */
+    projectsInTabs?: number;
     file(key: FileKey): OpenFile | undefined;
     comments(key: FileKey): number;
     /** The state of a project command's latest run (decision 68). */

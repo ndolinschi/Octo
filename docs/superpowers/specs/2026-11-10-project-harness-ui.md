@@ -718,6 +718,9 @@ monochrome dithered illustration):
     separate "PCMS · Working" line under the tabs goes away: state lives on the tab glyph and in the title bar.
     Tool rows never show an empty input (`{}`) or an "Input" label with nothing to say: a row with no arguments
     shows only its name and result.
+    **Revised 2026-11-18 (owner decisions F2 and F4, "Owner decisions — shell polish follow-ups" at the end):** the
+    conversation tab is its topic while the tabs belong to one project; a sub-agent's tab is the agent's label, the task
+    stays in its header.
 64. **Calm, evenly distributed screens** (owner: "the UI must not be gaudy and cluttered; it must be neatly
     distributed between the elements"). Rules every surface is checked against:
     (a) **One job per row, few things per row.** A bar or header shows at most: one title, one state, and three
@@ -799,6 +802,9 @@ monochrome dithered illustration):
       tabs · project actions. Empty areas of every row drag the window.
     - **The conversation tab is the project's breadcrumb:** "Project / what this conversation is about" (the
       latest task title, dim), with the state glyph; its "⋯" holds project actions (settings, export, rewind…).
+      **Revised 2026-11-18 (owner decision F2, "Owner decisions — shell polish follow-ups" at the end):** while every tab
+      belongs to one project the conversation tab is its topic alone; the "Project /" prefix shows only with tabs of two or
+      more projects. The tooltip keeps the whole name.
     - **Right end of the top row: project actions, not model choice.** The model chip is removed from the top
       row — the composer is the one place to choose a model. In its place: at most two pinned **project
       commands** (decision 68) and the "+" that opens a tab. Sub-agent chips stay next to the breadcrumb.
@@ -4206,3 +4212,8 @@ supersedes an earlier decision, that decision carries a dated note pointing here
   from its top, the rename field is 24px in the 28px row (its text still on the title's x, measured 48 → 48), the
   loading skeleton of the flat list has the same height. Project rows and the nav rows above stay 32px; on touch every row
   keeps its 44px (`touch:h-ctl-lg`). Measured: row height 32 → 28 at 1440.
+- **F2. The conversation tab drops "Project /"** while every tab of the workspace belongs to one project (`conversationLabel`
+  in `dock/tabInfo.ts`, tested): the tab reads "Upgrade us to React Native 0.80…", its tooltip and `name` keep "Orbit mobile
+  / …" (the palette's de-duplication reads `name`). With tabs of two or more projects the project is the label and the topic
+  dim. A workspace holds one project's tabs today, so the prefix is always dropped; the count is a parameter (`projectsInTabs`)
+  for the day it does not. Revises decisions 63 and 67 (dated notes there).

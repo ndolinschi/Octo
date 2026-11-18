@@ -1,9 +1,9 @@
 import { emptyProjectState, withSessions, type ProjectState } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { browserTab, sessionTab, terminalTab, toolTab } from "../../state/workspace/layout";
+import { browserTab, CHAT, sessionTab, terminalTab, toolTab } from "../../state/workspace/layout";
 import { GLYPH } from "../primitives/glyphs";
-import { tabInfo } from "./tabInfo";
+import { conversationLabel, tabInfo } from "./tabInfo";
 
 function stateWithSession(over: Partial<ProjectState["sessions"]["list"][number]> = {}): ProjectState {
   const session = {
@@ -112,4 +112,27 @@ test("tabInfo formats singleton and multi-instance terminal tabs with shell and 
   assert.equal(second.detail, "proj 2");
   assert.equal(second.name, "zsh · proj 2");
   assert.equal(second.title, "Terminal: zsh · proj 2");
+});
+
+test("conversationLabel drops the project prefix while the tabs belong to one project (decision F2)", () => {
+  assert.deepEqual(conversationLabel("Atlas API", "Fix the flaky test", 1), { label: "Fix the flaky test" });
+  assert.deepEqual(conversationLabel("Atlas API", "Fix the flaky test", 2), { label: "Atlas API", detail: "Fix the flaky test" });
+  assert.deepEqual(conversationLabel("Atlas API", "", 1), { label: "Atlas API" });
+  assert.deepEqual(conversationLabel("Atlas API", "Atlas API", 2), { label: "Atlas API" });
+});
+
+test("the chat tab is named by its topic, the tooltip and name keep the project", () => {
+  const info = tabInfo(CHAT, {
+    state: stateWithSession({ title: "Fix upload race" }),
+    projectName: "Atlas",
+    orchestratorId: "agt_1",
+    chatSessionId: "ses_2",
+    file: () => undefined,
+    comments: () => 0,
+    runStatus: () => null,
+  });
+  assert.equal(info.label, "Fix upload race");
+  assert.equal(info.detail, undefined);
+  assert.equal(info.name, "Atlas / Fix upload race");
+  assert.match(info.title, /^Atlas: /);
 });
