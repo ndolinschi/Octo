@@ -315,7 +315,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
         <div data-empty-project className="flex flex-[1_0_auto] flex-col justify-end px-(--pad) pt-8 pb-6">
           {!backdrop && appBackdrop !== "off" && <StreakLayer preset={STREAK_EMPTY} theme={theme} mono={appBackdrop === "mono"} />}
           <Suspense fallback={null}>
-            <EmptyTitle project={project} />
+            <EmptyTitle project={project} agent={agent} />
           </Suspense>
           <Suspense fallback={null}>
             <StartFailure agent={agent} />

@@ -10,9 +10,9 @@ export function rewoundLabel(acpReset: boolean): string {
 /** The marker's words for a coding agent that lost its own history in a rewind (it starts over from a recap). */
 export const AGENT_RESET = "agent starts over";
 
-/** The marker's text: the harness's label ("history compacted"), capitalised; manual ones say so. */
+/** The marker's text: the harness's label ("history compacted"), capitalised; manual ones say who. */
 export function compactionLabel(marker: Pick<CompactionMarker, "label" | "manual">): string {
   const base = marker.label?.trim() || "history compacted";
   const text = `${base.charAt(0).toUpperCase()}${base.slice(1)}`;
-  return marker.manual ? `${text} · manual` : text;
+  return marker.manual ? `${text} by you` : text;
 }

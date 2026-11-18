@@ -122,7 +122,7 @@ for (const scheme of ["dark", "light"]) {
   await page.keyboard.press("Enter");
   // Three requests at once are one group (decision 91c); its rows fold the details, so open them.
   await page.waitForSelector("[data-v7-approval-group]", { timeout: 20000 });
-  for (const b of await page.locator("[data-v7-approval-group]").getByRole("button", { name: "Details" }).all()) await b.click();
+  for (const b of await page.locator("[data-v7-approval-group] [data-approval-details]").all()) await b.click();
   await page.waitForSelector("[data-network]", { timeout: 20000 });
   await page.waitForTimeout(500);
   await page

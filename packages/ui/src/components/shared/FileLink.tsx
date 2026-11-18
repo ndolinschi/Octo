@@ -3,6 +3,7 @@ import { fileLookup, looksLikePath, resolveFileRef } from "../../lib/fileLinks";
 import { useOptionalCode } from "../../state/code";
 import { fileIcon } from "../primitives/fileIcons";
 import { Glyph } from "../primitives/Glyph";
+import { InlineButton } from "../primitives/InlineButton";
 
 /**
  * Inline code in assistant prose that names a project file becomes a link to it (decision 19): the file
@@ -23,17 +24,17 @@ export function InlineCode({ children }: { children?: ReactNode }) {
   if (!ref || !code) return <code>{children}</code>;
   const where = ref.start ? (ref.end ? `, lines ${ref.start}–${ref.end}` : `, line ${ref.start}`) : "";
   return (
-    <button
-      type="button"
-      data-file-link
+    // Inline, not a <button>: an atomic inline never breaks and pulled the "(" before it onto the chip's line.
+    <InlineButton
+      data-file-link=""
       className="octo-file-link"
       title={`Open ${ref.folder}/${ref.path}${where}`}
-      onClick={() => code.openFile(ref.folder, ref.path, ref.start ? { line: ref.start, ...(ref.end ? { endLine: ref.end } : {}) } : undefined)}
+      onPress={() => code.openFile(ref.folder, ref.path, ref.start ? { line: ref.start, ...(ref.end ? { endLine: ref.end } : {}) } : undefined)}
     >
       <code>
         <Glyph icon={fileIcon(ref.path)} size={14} />
         {text}
       </code>
-    </button>
+    </InlineButton>
   );
 }

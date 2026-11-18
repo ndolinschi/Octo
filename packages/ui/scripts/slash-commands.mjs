@@ -7,7 +7,10 @@
  * /remember a note, /help the list. Also: Esc closes the menu and keeps the text, a "/" inside a sentence opens nothing, Tab
  * completes, an unknown "/abc" is sent as text, and on a phone (`--phone`) the menu is a sheet a tap runs.
  *
- *   node packages/ui/scripts/slash-commands.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--phone]
+ *   node packages/ui/scripts/slash-commands.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--phone] [--verbose]
+ *
+ * It reloads the app for every case (about 40 cases, 6 to 15 s each on a busy machine): a full run takes 4 to 6 minutes. That is
+ * slow, not stuck; `--verbose` prints each case with its time as it ends.
  *
  * Prints `slash-commands: ok` or each failure. Exit code 1 on a failure, 2 on a problem driving the page.
  */
@@ -20,6 +23,7 @@ const opt = (n, d) => {
 };
 const BASE = opt("--url", "http://localhost:1420").replace(/\/$/, "");
 const PHONE_MODE = argv.includes("--phone");
+const VERBOSE = argv.includes("--verbose");
 const PROJECT_HASH = "#/p/prj_0001/";
 
 const browser = await launchBrowser();
@@ -139,9 +143,11 @@ for (const c of COMMANDS) {
     if (c.args && how !== "full") continue;
     if (c.name === "mode" && c.args === "" && how !== "full") continue;
     const tag = `/${c.name}${c.args ? ` ${c.args}` : ""} (${how})`;
+    const t0 = Date.now();
     await fresh(c.query ?? "");
     await invoke(how, c.name, c.args ?? "");
     await c.check(tag);
+    if (VERBOSE) console.error(`  ${tag}: ${Date.now() - t0} ms`);
     if (c.name !== "clear" && c.name !== "new") {
       const left = await composer()
         .inputValue()

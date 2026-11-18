@@ -89,7 +89,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   }, [code]);
   return (
     // Card inset 12 on all sides: a 20px caption row, 8 below it, then 20px code lines.
-    <div className="my-3 overflow-hidden rounded-md border border-line/70 bg-code-bg p-card">
+    <div className="octo-code-surface my-3 overflow-hidden p-card">
       <div className="mb-2 flex h-5 items-center">
         <span className="font-mono text-xs text-fg-3">{lang ?? "text"}</span>
         <Button variant="quiet" size="xs" icon={copied ? Check : Copy} onClick={() => copy(code)} className="-my-0.5 -mr-2 ml-auto">
