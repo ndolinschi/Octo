@@ -4164,3 +4164,9 @@ each deviation.
   (chips, then the search; in a narrow group the chips scroll under their fade instead of the search taking a second line;
   the placeholder is "Search…", the label still names pull requests, addresses and numbers). The panel title is "Review" (the
   dock tab's name), so "Pull requests" is said once, by the first view tab. Chrome above the first row at 363px: 150 → 114.
+- **C. Open review header (`review/ReviewHeader.tsx`, `ReviewView.tsx`, `Overview.tsx`).** One 40px bar at every width (was 61
+  maximised): Back, the title, the 28px group, the Files bar's hairline. The mono meta line (number, author, branches, viewed,
+  unresolved threads) is the title's tooltip and the first line of Details at every width (it already was in page mode);
+  "New commits: update" is a quiet button in the group, and in "⋯" when the group folds below 720. "Submit review" is
+  `secondary`: no tool tab has a filled button in its bar. R3's folding order is unchanged (1024 / 720 / 480); at 363 the
+  bar holds Back, the title, Run, "⋯" and "Submit". **Departs from R3** in one point: there is no meta line at any width.
