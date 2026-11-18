@@ -77,6 +77,7 @@ test("a session's glyph and meta", () => {
   assert.equal(sessionGlyph(s("a", 1, { needs_you: true })), "needs");
   assert.equal(sessionMeta(s("a", 1, { state: "working" }), NOW), null);
   assert.equal(sessionMeta(s("a", 1, { state: "queued" }), NOW), "queued");
+  assert.equal(sessionMeta(s("a", 90, { state: "waiting" }), NOW), "1h");
   assert.equal(sessionMeta(s("a", 90), NOW), "1h");
 });
 

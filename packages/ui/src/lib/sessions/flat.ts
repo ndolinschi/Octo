@@ -4,7 +4,8 @@ import { byActivity, hasSessionMessages, visibleSessions } from "./tree";
 /**
  * Sessions shown in the flat "Sessions" sidebar view: every non-archived main session with activity, the currently
  * active session even while still empty, plus one fallback session (default else newest) for any project that has
- * no non-empty sessions yet so an open or newly created empty project never vanishes from the sidebar.
+ * no non-empty sessions yet so an open or newly created empty project never vanishes from the sidebar. Newest start first,
+ * then id: a stable order, so rows never swap places under the pointer as activity moves.
  */
 export function flatSessions(list: readonly GlobalSession[], activeSessionId: string | null): GlobalSession[] {
   const mains = list.filter((s) => s.kind === "main" && !s.archived);
@@ -30,8 +31,11 @@ export function flatSessions(list: readonly GlobalSession[], activeSessionId: st
   }
   for (const s of fallbackByProject.values()) picked.add(s.id);
 
-  return mains.filter((s) => picked.has(s.id)).sort(byActivity);
+  return mains.filter((s) => picked.has(s.id)).sort(byStarted);
 }
+
+/** Newest start first (ties: id). */
+const byStarted = (a: GlobalSession, b: GlobalSession): number => b.started_at.localeCompare(a.started_at) || a.id.localeCompare(b.id);
 
 /**
  * Sessions shown under an open project in "Projects and sessions" (`tree`) mode: keeps `visibleSessions` behavior

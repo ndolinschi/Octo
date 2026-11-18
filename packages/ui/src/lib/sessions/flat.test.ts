@@ -63,3 +63,14 @@ test("treeSessions keeps brand-new empty projects compact but reveals an active 
     ["a2", "a1"],
   );
 });
+
+test("flatSessions orders by start, not activity, so rows do not swap as sessions work", () => {
+  const older = g("old", "alpha", 60, { exchanges: 2, last_activity_at: new Date(NOW).toISOString() });
+  const newer = g("new", "beta", 5, { exchanges: 2 });
+  const tieA = g("t-a", "gamma", 30, { exchanges: 1 });
+  const tieB = g("t-b", "gamma", 30, { exchanges: 1 });
+  assert.deepEqual(
+    flatSessions([older, tieB, newer, tieA], null).map((s) => s.id),
+    ["new", "t-a", "t-b", "old"],
+  );
+});

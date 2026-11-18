@@ -1,11 +1,12 @@
 import type { GlobalSession, ProjectSummary } from "@octo/agent-client";
 import { ChevronRight, Ellipsis, GitBranch, Plus } from "lucide-react";
-import { lazy, Suspense, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { lazy, Suspense, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { usePhone } from "../../lib/phone";
 import { CLOCK_SIDEBAR_MS } from "../../lib/constants";
 import { formatRelative } from "../../lib/format";
 import { useNow, useScrollFade } from "../../lib/hooks";
+import { sessionAgentName } from "../../lib/models";
 import { projectRowLines, type OrchestratorState } from "../../lib/orchestrator";
 import { hrefFor, navigate } from "../../lib/route";
 import { useRovingRows } from "../../lib/rovingRows";
@@ -31,6 +32,7 @@ import { jsonCodec, PREFS, usePersistentState } from "../../lib/storage";
 import { useActivity } from "../../state/activity";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
+import { useAcpNames } from "../../state/models";
 import { useNav } from "../../state/nav";
 import { useOrchestrators } from "../../state/orchestrators";
 import { useSessionIndex } from "../../state/sessionIndex";
@@ -85,6 +87,7 @@ export function SessionTree(props: SessionTreeProps) {
   const now = useNow(true, CLOCK_SIDEBAR_MS);
   const index = useSessionIndex(projects);
   const orchestrators = useOrchestrators(projects);
+  const acp = useAcpNames();
   const [stored, setStored] = usePersistentState(PREFS.sidebarOpen, openCodec);
   const [showAll, setShowAll] = useState<ReadonlySet<string>>(new Set());
   const [menu, setMenu] = useState<MenuAt | null>(null);
@@ -109,12 +112,13 @@ export function SessionTree(props: SessionTreeProps) {
   const currentSession = props.agentRoute ? null : (props.activeSessionId ?? (props.activeProjectId ? defaultOf(props.activeProjectId) : null));
   const flat = useMemo(() => flatSessions(index.all, currentSession), [index.all, currentSession]);
   const loading = projects === null && health !== "offline";
-  const sessionsLoading = props.mode === "sessions" && health !== "offline" && projects !== null && projects.length > 0 && !index.loaded && flat.length === 0;
+  // The skeleton stays until the index has loaded: the list takes its final shape once, not empty → partial → whole.
+  const sessionsLoading = props.mode === "sessions" && health !== "offline" && projects !== null && projects.length > 0 && !index.loaded;
   const unrepresented = useMemo(() => {
-    if (props.mode !== "sessions" || loading || sessionsLoading) return [];
+    if (props.mode !== "sessions" || loading || sessionsLoading || !index.loaded) return [];
     const seen = new Set(flat.map((s) => s.project_id));
     return (ordered ?? []).filter((p) => !seen.has(p.id));
-  }, [props.mode, loading, sessionsLoading, flat, ordered]);
+  }, [props.mode, loading, sessionsLoading, index.loaded, flat, ordered]);
 
   const toggle = (pid: string, open: boolean) => setStored((s) => ({ ...s, [pid]: open }));
   const act = async (call: () => Promise<unknown>) => {
@@ -235,11 +239,16 @@ export function SessionTree(props: SessionTreeProps) {
     const selected = s.id === currentSession;
     const meta = sessionMeta(s, now);
     const wsLabel = sessionWorkspaceLabel(s);
+    const tipDetail = [inTree ? "" : s.project_name, sessionAgentName(s.model, acp), wsLabel ? `Worktree: ${wsLabel}` : "", inTree ? "" : meta]
+      .filter(Boolean)
+      .join(" · ");
     return (
       <li key={s.id} role="none" data-tree-row data-tree-level={inTree ? 2 : 1} className="group/r relative" onContextMenu={(e) => openMenu(s, e)}>
         {renaming === s.id ? (
           <RenameRow
             initial={sessionTitle(s)}
+            inTree={inTree}
+            leading={<StateGlyph state={sessionGlyph(s)} size={12} box={16} label />}
             onDone={(title) => {
               setRenaming(null);
               const patch = bridge.patchSession;
@@ -269,13 +278,8 @@ export function SessionTree(props: SessionTreeProps) {
                 )}
               </>
             }
-            tip={
-              inTree
-                ? wsLabel
-                  ? `${sessionTitle(s)} — Worktree: ${wsLabel}`
-                  : sessionTitle(s)
-                : `${sessionTitle(s)} — ${[s.project_name, wsLabel ? `Worktree: ${wsLabel}` : "", meta].filter(Boolean).join(" · ")}`
-            }
+            // 7b: the tooltip names the agent that runs the session (the flat list adds its project and age).
+            tip={[sessionTitle(s), tipDetail].filter(Boolean).join(" — ")}
             meta={
               <span aria-hidden data-tree-meta className="flex min-w-0 items-center gap-1 tabular-nums">
                 {wsLabel && <Glyph icon={GitBranch} size={14} className="shrink-0 text-fg-3" />}
@@ -335,7 +339,7 @@ export function SessionTree(props: SessionTreeProps) {
         {(loading || sessionsLoading) && <SkeletonList count={3} size="md" />}
         {props.mode === "sessions" ? (
           <>
-            {flat.map((s) => sessionRow(s, false))}
+            {!sessionsLoading && flat.map((s) => sessionRow(s, false))}
             {unrepresented.map((p) => (
               <li key={p.id} role="none" className="flex flex-col">
                 <ProjectRow
@@ -558,7 +562,7 @@ function ProjectRow(props: {
 }
 
 /** Rename in place: Enter saves, Esc leaves it as it was (the row comes back). */
-function RenameRow(props: { initial: string; onDone(title: string | null): void }) {
+function RenameRow(props: { initial: string; inTree: boolean; leading: ReactNode; onDone(title: string | null): void }) {
   const [value, setValue] = useState(props.initial);
   const done = useRef(false);
   const finish = (title: string | null) => {
@@ -567,8 +571,12 @@ function RenameRow(props: { initial: string; onDone(title: string | null): void 
     props.onDone(title !== null && title.trim() !== "" && title.trim() !== props.initial ? title.trim() : null);
   };
   return (
-    <div className="flex h-ctl-md items-center px-1 touch:h-ctl-lg">
+    // The row's glyph stays and the text does not move: the field's frame steps 6px left into the gap and its text starts
+    // where the title did (16px glyph + 8px gap; 6px back + 1px border + 5px padding).
+    <div className={cn("flex h-ctl-md items-center gap-2 pr-1 touch:h-ctl-lg", props.inTree ? "pl-6" : "pl-2")}>
+      {props.leading}
       <TextField
+        className="-ml-1.5 pl-1.25"
         // eslint-disable-next-line jsx-a11y/no-autofocus -- the person just chose Rename: the field is what they asked for
         autoFocus
         aria-label="Session title"
@@ -585,6 +593,11 @@ function RenameRow(props: { initial: string; onDone(title: string | null): void 
             e.stopPropagation();
             finish(null);
           }
+        }}
+        // All selected, the caret at the start: the field shows the title's beginning, as the row did.
+        onFocus={(e) => {
+          e.currentTarget.setSelectionRange(0, e.currentTarget.value.length, "backward");
+          e.currentTarget.scrollLeft = 0;
         }}
         onBlur={() => finish(value)}
       />

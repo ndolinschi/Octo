@@ -4148,3 +4148,16 @@ tab runtime layout with live command output; WebKit/Tauri desktop binary.
 **Verified.** `gofmt -l apps/harness/internal/bridge/v7_approvals_test.go`, `pnpm format:check`, `pnpm lint` (`0` errors, `0` cycles across `849` files), `pnpm test` (`184/184` `@octo/agent-client`, `902/902` `@octo/ui` including `phone.test.ts`, `41/41` `@octo/desktop`, `10/10` `test:scripts`), `pnpm --filter @octo/desktop build`, `pnpm --filter @octo/web build`, `node scripts/check-bundle-size.mjs` (`160.92 kB` gzip vs `161.00 kB` budget), `slash-commands.mjs --phone` (`slash-commands: ok`), Playwright Chromium verification across `1440×900`, `844×390` & `740×360` landscape phones (`data-phone=true`, `overflowX=false`, `mainPaddingLeft=0px`), and `390×844` / `360×740` portrait phones (`0` control target issues across Chat, Processes, Sessions, Terminal, Browser, Side question, Agents, Notes, Usage, Review, and Changes; `DiffPanel` `retry.ts` `0` overlap/overflow) with screenshot inspection, plus `spacing-audit.mjs --query "demo=1&tabs=all" --strict` (`total=0`, `skipped=0` across `chat-idle`, `delegation`, `tool-processes`, `tool-browser`, `tool-terminal`, `v7-gallery`, `phone-home`, `phone-nav`, `phone-plus`, `phone-files`, `phone-changes`, `phone-browser`, `phone-processes`, `phone-terminal`, `phone-settings`, and phone panel runs).
 **Not verified.** `go test -race` on `apps/harness/internal/bridge` (`TestAcceptEditsAutoApprovesWritesAndAsksForBash`) could not run in this offline/proxy-blocked VM (`modernc.org/sqlite@v1.62.0` absent from `GOMODCACHE` and `proxy.golang.org` returns HTTP `403`); WebKit Playwright engine and native Tauri desktop binary.
 
+
+## As built — shell polish pass (2026-11-18)
+
+Small fixes from a review of the shell (sidebar, top bar, status bar, overlays, copy). No redesign; existing tokens and primitives.
+
+- **Sidebar list.** The flat Sessions list sorts by start (newest first, then id), not by activity, so rows no longer swap under
+  the pointer every few seconds (`lib/sessions/flat.ts`). It shows its skeleton until the session index has loaded, then the
+  whole list at once (was: empty → three sessions and nine project rows → sixteen session rows). On hover the row's meta leaves the
+  layout (`display: none`) instead of keeping its width, so the title gains the room (measured 133 → 172 px; was 133 → ~109).
+  Rename keeps the row's state glyph and puts the field's text exactly where the title was (x = 48 before and in the field;
+  was 48 → 32), selects the whole title and shows its beginning. A session waiting for the person shows its age like a failed
+  one (`sessionMeta`). A session row's tooltip names the agent that runs it (`sessionAgentName` in `lib/models.ts`: an ACP agent
+  by its label, Octo's own loop by its model).

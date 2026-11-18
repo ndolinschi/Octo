@@ -552,8 +552,9 @@
 [data-tree-row]:is(:hover, :focus-within) > [data-tree-actions] {
   opacity: 1;
 }
-[data-tree-row]:is(:hover, :focus-within) [data-tree-meta] {
-  visibility: hidden;
+/* The meta (and its slot's inset) leaves the row rather than keeping its width: the title gets the room it frees. */
+[data-tree-row]:is(:hover, :focus-within) :has(> [data-tree-meta]) {
+  display: none;
 }
 /* Addendum 13: a session under its project starts its highlight where every sidebar row does; the step in is inside the row
    (its glyph one 16px column right of the project's). */
@@ -571,8 +572,8 @@
   [data-tree-row] > [data-tree-actions] {
     opacity: 1;
   }
-  [data-tree-row] [data-tree-meta] {
-    visibility: hidden;
+  [data-tree-row] :has(> [data-tree-meta]) {
+    display: none;
   }
   [data-tree-project] [data-row] {
     padding-right: 80px;
