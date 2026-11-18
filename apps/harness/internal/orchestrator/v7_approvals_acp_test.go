@@ -100,6 +100,11 @@ func TestACPPermissionRequestBecomesAnApprovalAndAllowReachesTheAgent(t *testing
 		len(a.Detail.Options) != 3 || a.Detail.Path != fakeacp.NoteFile {
 		t.Fatalf("approval = %+v", a)
 	}
+	// The card names its main session, like a built-in card: GET /approvals?session= (a client's reload) and the
+	// session's needs_you count it.
+	if a.SessionID == "" || a.SessionID != child.SessionID {
+		t.Fatalf("approval session = %q, want the turn's main session %q", a.SessionID, child.SessionID)
+	}
 	if _, err := os.Stat(filepath.Join(dir, fakeacp.NoteFile)); err != nil {
 		t.Fatalf("allowed write missing: %v", err)
 	}

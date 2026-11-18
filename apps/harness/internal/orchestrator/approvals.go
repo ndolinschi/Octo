@@ -375,8 +375,9 @@ func (p approvalPolicy) Decide(ctx context.Context, req permission.Request) perm
 	if p.rt.savedRuleAllows(ctx, tool, detail) {
 		return p.pick(req, approval.Allow, "", "")
 	}
+	// SessionID as in ask: without it GET /approvals?session= (a client's reload) and the session's needs_you miss the card.
 	res := m.Request(ctx, pid, approval.Approval{
-		AgentID: req.AgentID, AgentLabel: req.Agent, TurnID: req.TurnID, Kind: approval.KindACP, Tool: tool,
+		AgentID: req.AgentID, AgentLabel: req.Agent, TurnID: req.TurnID, SessionID: p.rt.sessionID, Kind: approval.KindACP, Tool: tool,
 		Title: firstNonEmpty(call.Title, call.Kind, "Permission request"), Detail: detail,
 	})
 	if res.Decision == approval.AllowForTurn {
