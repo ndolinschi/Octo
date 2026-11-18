@@ -179,7 +179,8 @@ async function open(query) {
 async function openProject(page, projects, name) {
   const href = await page.evaluate((n) => {
     for (const a of document.querySelectorAll('nav[aria-label="Projects"] a[href^="#/p/"]'))
-      if ((a.getAttribute("title") || a.textContent.trim()).startsWith(n)) return a.getAttribute("href");
+      // A project row starts with its name; in the flat Sessions list a session row carries it as its meta (the project's part of the link).
+      if ((a.getAttribute("title") || a.textContent.trim()).startsWith(n) || a.textContent.includes(n)) return a.getAttribute("href").match(/^#\/p\/[^/]+/)[0];
     return null;
   }, name);
   if (!href) fail(`project "${name}" not in the sidebar`);

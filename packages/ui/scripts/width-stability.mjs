@@ -100,7 +100,9 @@ if (
 await projects.first().waitFor({ state: "attached", timeout: 10000 });
 const href = await page.evaluate((name) => {
   for (const a of document.querySelectorAll('nav[aria-label="Projects"] a[href^="#/p/"]'))
-    if ((a.getAttribute("title") || a.textContent.trim()).startsWith(name)) return a.getAttribute("href");
+    // A project row starts with its name; in the flat Sessions list a session row carries it as its meta (the project's part of the link).
+    if ((a.getAttribute("title") || a.textContent.trim()).startsWith(name) || a.textContent.includes(name))
+      return a.getAttribute("href").match(/^#\/p\/[^/]+/)[0];
   return null;
 }, PROJECT);
 if (!href) fail(`project "${PROJECT}" not in the sidebar`);

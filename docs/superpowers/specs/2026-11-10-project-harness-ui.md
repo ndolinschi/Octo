@@ -4182,3 +4182,18 @@ Not reached: Terminal (the chunk is warm; what remains is the tab's own mount, x
 `interact.cjs`' `settings:open` (~590 both before and after) is a measuring artefact: its predicate `h1[data-page-title]` is
 already true before the click after the session switches, so it reports the time since the previous click; the numbers above use
 `[data-settings] h1[data-page-title]`. Not verified: WebKit, the Tauri shell, a real harness.
+
+**Load sequence.** What each late piece waited for: the project list and config were asked for only after `/health` answered
+(now in parallel with it, `state/app`); the composer's Mode and Access chips are their own chunks, requested only when the composer
+first rendered and then revealed through the 300 ms fallback throttle (now fetched when `Composer`'s module runs and rendered
+with `readyLazy`, so they appear in the composer's first frame; the same for the top row's commands cluster, `ProjectCommands`);
+the sidebar's session rows waited for the demo's `listAllSessions`, which read every project one after another (~1 s; the
+harness answers it in one request: the demo now reads them in parallel). Milestones (ms from navigation, 1x / 4x): session rows
+1219 -> 1036 / 3557 -> 3125, composer 1219 -> 1136 / 3557 -> 3562, mode and access chips 1630 -> 1136 / 5203 -> 3562 (same frame
+as the composer), first turn 1309 -> 1252 / 4971 -> 3933. Load at 4x: CLS 0.20 -> 0.00 (median of 5; before, every run had one
+0.2027 shift), long tasks 16 -> 11, "interactive" 5410 -> 3803 ms. The 0.2027 shift was the transcript's turn window replacing
+estimated-height shells with mounted turns while pinned to the bottom (`chat/Transcript`, `useTurnWindow`: off limits for this
+pass); it no longer shows in these runs because the chunks the turns wait for are in earlier, but its cause is not fixed there.
+The UI scripts that open a project by its sidebar row (`flicker`, `layout-shift`, `width-stability`, `scroll-on-send`,
+`file-open-stability`) relied on the project rows showing before the session rows; they now also match a session row carrying the
+project's name and take the project's part of its link.

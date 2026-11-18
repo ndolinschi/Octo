@@ -126,12 +126,16 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
       checking = true;
       try {
         // Every read has a deadline: one that is never answered must not hold the first load ("Connecting…") for good.
+        // Coming online, the project list and the config are asked for with the health check, not after it: the shell
+        // settles one round trip sooner. Their failure counts only when the service answered (else health's does).
+        const first = healthRef.current !== "online" ? withDeadline(Promise.all([bridge.listProjects(), bridge.getConfig()])) : null;
+        first?.catch(() => undefined);
         const h = await withDeadline(bridge.health());
         if (cancelled) return;
         setClockOffset(bridge.clockOffset?.() ?? 0);
         setVersion(h.version);
-        if (healthRef.current !== "online") {
-          const [list, cfg] = await withDeadline(Promise.all([bridge.listProjects(), bridge.getConfig()]));
+        if (first) {
+          const [list, cfg] = await first;
           if (cancelled) return;
           setProjects(list);
           setConfig(cfg);

@@ -31,7 +31,10 @@ const pickerPart = readyLazy(() => import("./TabPicker").then((m) => m.TabPicker
 const TabPicker = pickerPart.Component;
 registerWarm("tab-picker", pickerPart.fetch);
 /** The project's commands (decision 68): the pinned buttons and "Run" menu next to the project actions; loads after first paint. */
-const ProjectCommands = lazy(() => import("../commands/ProjectCommands"));
+const commandsPart = readyLazy(() => import("../commands/ProjectCommands").then((m) => m.default));
+// Asked for as this module runs, so the cluster renders with the strip instead of shifting the row a beat later.
+void commandsPart.fetch().catch(() => undefined);
+const ProjectCommands = commandsPart.Component;
 /** The tab context menu builds on first use (its own chunk). */
 const TabMenu = lazy(() => import("./TabMenu"));
 const AllTabsPicker = lazy(() => import("./AllTabsPicker").then((m) => ({ default: m.AllTabsPicker })));
