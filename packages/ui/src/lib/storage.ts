@@ -46,6 +46,8 @@ export const PREFS = {
   sidebarView: key("sidebarView"),
   /** The sidebar tree's project rows the person opened or closed: `{ [projectId]: boolean }`. */
   sidebarOpen: key("sidebarOpen"),
+  /** The sidebar's width in px (200–480), as plain text: set by dragging its edge. */
+  sidebarWidth: key("sidebarWidth"),
   /** The main session a project's conversation tab showed last (decision 96: `#/p/<pid>` opens it), as plain text. */
   lastSession: (projectId: string) => key(`lastSession.${projectId}`),
   /** Per-tab URL, title, viewport and batch-edits toggle of Browser tabs in one project. */

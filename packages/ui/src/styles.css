@@ -556,6 +556,10 @@
 [data-tree-row]:is(:hover, :focus-within) :has(> [data-tree-meta]) {
   display: none;
 }
+/* A flat Sessions row's meta is its project's name: it stops at a third of the row (ListRow's 40% is for a time or a count). */
+li[data-tree-level="1"] :has(> [data-tree-meta]) {
+  max-width: 33%;
+}
 /* Addendum 13: a session under its project starts its highlight where every sidebar row does; the step in is inside the row
    (its glyph one 16px column right of the project's). */
 [data-tree-level="2"] [data-row] {

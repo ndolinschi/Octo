@@ -1,13 +1,17 @@
 import { GitPullRequest, House, Plus, Search, Settings, type LucideIcon } from "lucide-react";
 import { navigate } from "../../lib/route";
 import { Glyph } from "../primitives/Glyph";
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, Suspense, useRef, type ReactNode } from "react";
 import { useApp } from "../../state/app";
 import { MOD } from "../../state/workspace/WorkspaceProvider";
 import { ListRow } from "../primitives/ListRow";
 import { SkeletonList } from "../primitives/Skeleton";
 import { usePhone } from "../../lib/phone";
+import { SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, useSidebarWidth } from "../../lib/sidebarWidth";
 import { useHost } from "../../state/host";
+
+/** The edge's resize handle: not needed for the first paint (it draws nothing until hovered). */
+const ResizeHandle = lazy(() => import("../primitives/ResizeHandle").then((m) => ({ default: m.ResizeHandle })));
 
 /** The "Projects" view's list: its own chunk, asked for at once (decision 96: the default view is the tree, `SessionTree`). */
 const listChunk = import("./ProjectList").catch(() => undefined);
@@ -54,12 +58,42 @@ export function Sidebar(props: {
   const phone = usePhone();
   // Remote access: a device never creates a project (local only, and it needs the computer's folder dialog).
   const device = useHost().remoteDevice !== undefined;
+  const nav = useRef<HTMLElement>(null);
+  const size = useSidebarWidth(nav);
+  const dragTo = useRef(size.width);
 
   return (
     <nav
+      ref={nav}
       aria-label="Projects"
-      className="flex h-full w-sidebar shrink-0 flex-col bg-window pl-gutter phone:min-h-0 phone:w-full phone:flex-1 phone:bg-transparent phone:pl-0"
+      className="relative flex h-full w-sidebar shrink-0 flex-col bg-window pl-gutter phone:min-h-0 phone:w-full phone:flex-1 phone:bg-transparent phone:pl-0"
     >
+      {!phone && (
+        <Suspense fallback={null}>
+          {/* Item 3: the sidebar's edge, in the 8px gutter to the first panel (not in the drawer: its width is the drawer's). The
+              drag previews the width without a render; the release stores it. */}
+          <ResizeHandle
+            label="Resize sidebar"
+            title="Drag to resize; double-click to reset"
+            value={size.width}
+            min={SIDEBAR_MIN}
+            max={SIDEBAR_MAX}
+            onDrag={(_dx, total) => {
+              dragTo.current = size.width + total;
+              size.preview(dragTo.current);
+            }}
+            onDragEnd={() => size.commit(dragTo.current)}
+            onKey={(dx) => size.commit(size.width + dx)}
+            onReset={() => size.commit(SIDEBAR_DEFAULT)}
+            className="group/divider absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize outline-none focus-visible:shadow-none max-drawer:hidden"
+          >
+            <span
+              aria-hidden
+              className="absolute inset-y-2 left-1/2 w-0.5 -translate-x-1/2 rounded-full transition-[background-color] duration-100 group-hover/divider:bg-line-strong group-focus-visible/divider:bg-focus group-data-[dragging]/divider:bg-focus"
+            />
+          </ResizeHandle>
+        </Suspense>
+      )}
       <div className="flex min-h-0 flex-1 flex-col p-pane">
         <div className="flex shrink-0 flex-col">
           <NavRow icon={House} label="Home" onClick={() => navigate(null)} current={props.home} disabled={!projects?.length} />

@@ -4161,3 +4161,10 @@ Small fixes from a review of the shell (sidebar, top bar, status bar, overlays, 
   was 48 → 32), selects the whole title and shows its beginning. A session waiting for the person shows its age like a failed
   one (`sessionMeta`). A session row's tooltip names the agent that runs it (`sessionAgentName` in `lib/models.ts`: an ACP agent
   by its label, Octo's own loop by its model).
+- **Sidebar width.** The sidebar has a resize handle in the 8px gutter to the first panel (`primitives/ResizeHandle`, the
+  pointer and keyboard logic the dock's `Divider` now also uses; loaded lazily): drag, ←/→ ±16 (Shift ±64), double-click resets.
+  The width is the `sidebarWidth` preference (200–480, default 260, `lib/sidebarWidth.ts`), applied as `--spacing-sidebar` on the
+  element; a drag previews it in an animation frame without a React render (measured: the panel beside it mutates at its idle
+  rate during a drag) and stores it on release. Settings' column takes the same width. A flat Sessions row caps its project
+  name at 33% (ListRow's 40% is for a time or a count). Measured at 1440: 260 → 380 by drag, ← to 364, double-click to 260,
+  clamped at 480, kept over a reload; a title in the flat list 123 → 193 px at 380. Not in the drawer or on the phone.
