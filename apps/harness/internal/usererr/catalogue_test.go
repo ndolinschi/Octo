@@ -45,6 +45,8 @@ func samples() map[string]*Error {
 		"ProviderNotConnected": ProviderNotConnected("Anthropic API", "", "no key"),
 		"ProviderNotSupported": ProviderNotSupported("Pi", "its CLI has no ACP mode"),
 		"ProviderNotWorking":   ProviderNotWorking("Claude Code", long),
+		"ProviderNotRunning":   ProviderNotRunning("Ollama", true, "ollama serve", "nothing answers at http://127.0.0.1:11434"),
+		"ProviderNotAnswering": ProviderNotRunning("Ollama", false, "", "nothing answers at http://gpu.example:11434"),
 		"ModelCallFailed":      ModelCallFailed("HTTP 500"),
 		"ModelUnreachable":     ModelUnreachable("unexpected EOF"),
 		"RouterUnreachable":    RouterUnreachable("dial tcp 127.0.0.1:8090: connect: connection refused"),

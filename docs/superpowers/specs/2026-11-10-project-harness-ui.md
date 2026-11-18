@@ -390,7 +390,7 @@ monochrome dithered illustration):
 30. **Composer context bar.** The composer becomes two fused layers (one outline, radius 12, hairline between):
     the input row on top, and under it a 28px bar that states the run's context as quiet buttons with a 14px
     glyph — **folders** (the project's folders; opens project settings), **model** (the picker of decision 27),
-    **access** (Supervised / Full access, from v7; until then not rendered), **routing** (Auto / Ceiling / Fixed
+    **access** (Ask first / Accept edits / Allow all, from v7; "Ask first" because "Ask" is the composer mode, one name per thing), **routing** (Auto / Ceiling / Fixed
     when the router is detected) — left to right, and on the right the hint line ("↵ send") or, while a turn
     runs, the queue count (v7). The loose line of text under the composer goes away. Under 420px the bar keeps
     model and access and folds the rest into a `…` menu. The floating composer has the same two layers.
@@ -2301,6 +2301,14 @@ equal height, no button inside a row, detail's top equals the list's top.
   The new detail has every one of those fields, so **Settings → Agents is removed** (nav entry, section, search rows); `#/settings/agents`
   opens Providers; its search keywords moved to the Providers row.
 - **Demo.** `?providers=owner` is the owner's live set (twelve providers); the default demo set is unchanged.
+- **Not running (2026-11-18).** A status must be true: Ollama read "Ready · 4 models" with nothing on `:11434` (its list is a
+  catalogue). The harness now probes Ollama, and the API on a local base URL (providers.md, "Reachability"); a server that
+  does not answer is state `not_running`: row "Not running" in the warn tone under **Needs attention**, the detail's reason
+  "Ollama is not running. Start it, then check again." with a **Start** step (`ollama serve` as a `CommandLine`) and the one
+  filled "Check again" (`POST /recheck` probes now), the same row, title and step primitives as an agent that is not
+  installed or not logged in. The Editor's inline-completion row says "Cannot run: Ollama is not running…" with "Check
+  again", and `canRun` keeps refusing `small` / `ollama:<tag>` (the main model picker never lists Ollama). Demo:
+  `?ollama=down` (with `?recheck=ok`, "Check again" starts it).
 - **Verified.** View-model tests (`lib/providers/view.test.ts`: grouping, the folded row, primary action per state, row status,
   model folding); `settingsIndex` tests; tsc for ui and agent-client; eslint on the touched files (no new warnings); prettier;
   spacing audit states `providers` (1440, 1100, 390) and `providers-open` and `settings-page`: total=0, including the three
@@ -2748,6 +2756,10 @@ Scope: `components/chat`, `components/v7`, the new `components/shared/RequestCar
   always-allow panel (inside the approval) use it. Two or more pending approvals in a row are one `ApprovalGroup` ("3 requests
   from Docs site", one "Allow all for this turn"); its rows are compact (title, command on one mono line, quiet buttons,
   Details fold). Failed-turn blocks are `ErrorNotice` (a `Notice` block) per 94b, not a RequestCard.
+  (2026-11-18) The labels say exactly what is allowed: a card's "Allow <scope> for this request" names the one kind the
+  harness remembers (`lib/v7/approval.ts` `turnScopeLabel`: "edits", "echo commands", "fetches from <host>", ACP tool
+  kind; none for a memory prompt), and the group's "Allow all for this request" sends `allow_all_for_turn`, which the
+  harness applies to every further request of that turn (v7 spec, As built).
 - **91d.** `chat/ActivityRow` (on `ListRow`) is the one step row: glyph (spinner only while running) · verb · dim detail ·
   duration · chevron only when it opens. Used by `ToolGroup`/`ToolRow`, `ThinkingRow` and the live `ActivityLine`. Sub-agent
   rows (`DelegationGroup`) and plan steps (`PlanList`) keep their own layouts: not done.
@@ -4203,3 +4215,13 @@ each deviation.
 
 **Verified.** Playwright Chromium against `?demo=one` / `?demo=1` / `?demo=many` for each item (screenshots in the session's `fix-rough/` folder); `scrollSpots.test.ts`, `tree.test.ts` (`sessionsBesideTabs`), `terminalTabs.test.ts`; `go test ./internal/browserproxy` (new `TestUnreachableUpstreamPostsAnErrorToTheHost`); `scroll-anchor.mjs` ok.
 **Not verified.** The Browser error against a live harness (the message was posted from the demo frame by hand; the Go side is covered by its test); the `data-offline` wiring against a really stopped harness (the CSS was checked by setting the attribute; the attribute comes from `health === "offline"`); Ctrl+Shift+U with zero usage was checked by forcing the ring off (the demo always reports usage); the palette case of a tab whose label differs from the session title is covered by the unit test only; `stick-on-open.mjs` and `scroll-on-send.mjs` fail intermittently on this loaded machine, also on the unchanged tree (`scroll-on-send`: 38 px short before and after).
+
+## As built — "Ask first": one name per thing (2026-11-18)
+
+"Ask" named two things: the composer mode (Agent / Ask / Plan) and the permission level `supervised` in the composer's
+Permissions menu and the project dialog. The mode keeps "Ask"; the permission level is now **"Ask first"**, beside its
+neighbours "Accept edits" and "Allow all" (the menu's own words: it asks before edits and commands). One place holds the
+label (`lib/access.ts` `ACCESS_LABEL`), so the chip, its tooltip ("Permissions: Ask first — Asks before edits and
+commands."), the menu and the project dialog all change; no slash command, palette entry or settings row names the level.
+Wire values (`supervised`, `accept_edits`, `full`) are unchanged. `lib/access.test.ts` asserts that no permission level
+shares a name with a mode (it failed before). Verified: ui tests, lint, the chip and its menu in the browser.

@@ -96,7 +96,7 @@ export type ComposerProps = {
   tier: { value: TierPolicy; choose(policy: TierPolicy): Promise<void> } | null;
   /** Null when the harness has no modes. */
   mode?: ComposerMode | null;
-  /** v7 permissions mode (Ask / Accept edits / Allow all); null when not connected to a project. */
+  /** v7 permissions mode (Ask first / Accept edits / Allow all); null when not connected to a project. */
   access?: { value: AccessMode; choose(next: AccessMode): Promise<void> } | null;
   /** The session this composer sends to, shown in the "+" menu (with "Move to worktree…" when supported). */
   session?:

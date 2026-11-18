@@ -126,3 +126,19 @@ test("modelsSummary and foldModels", () => {
   assert.equal(foldModels(models(16), true).shown.length, 16);
   assert.equal(foldModels(models(6), false).hidden, 0);
 });
+
+// The QA finding: Ollama read "Ready · 4 models" while nothing listened on its port. The harness now says not_running.
+test("not running: says so, needs attention in the warn tone, offers Check again and the start command's reason", () => {
+  const ollama = p("ollama", "not_running", {
+    kind: "ollama",
+    models: models(4),
+    reason: "Ollama is not running.",
+    problem: { message: "Ollama is not running.", hint: "Start it, then check again.", command: "ollama serve", action: "recheck_provider" },
+  });
+  assert.equal(rowStatus(ollama), "Not running");
+  assert.equal(groupOf(ollama), "attention");
+  assert.equal(primaryAction(ollama), "Check again");
+  assert.equal(reasonLine(ollama), "Ollama is not running. Start it, then check again.");
+  const api = p("api", "not_running", { kind: "api", problem: { message: "The model server is not running.", hint: "Start it, then check again." } });
+  assert.equal(primaryAction(api), "Check again");
+});

@@ -262,3 +262,32 @@ func TestACPAcceptEditsApprovesEditsAndAsksForCommands(t *testing.T) {
 		t.Fatalf("expected 1 command approval, got %+v", seen)
 	}
 }
+
+// An ACP orchestrator asks to run a command, then writes a file through fs/write_text_file: "Allow for this request"
+// (allow_for_turn) covers the tool kind it was given for, so the write still asks; "Allow all for this request"
+// (allow_all_for_turn) covers every further prompt of the turn.
+func TestACPAllowAllForTurnCoversTheNextPromptOfAnotherKind(t *testing.T) {
+	cases := []struct {
+		decision string
+		want     int
+	}{{approval.AllowForTurn, 2}, {approval.AllowAllForTurn, 1}}
+	for _, c := range cases {
+		t.Run(c.decision, func(t *testing.T) {
+			r := newACPRig(t, mockllm.New(0), fakeAgent("fake", true))
+			dir := t.TempDir()
+			pid := r.supervisedProject(t, dir, "acp:fake")
+			ap := r.approver(t, pid, func(approval.Approval) approval.Resolution { return approval.Resolution{Decision: c.decision} })
+			if got := r.runCollect(t, pid, "[perm] [fswrite] run the tests and write", nil); got.status != "completed" {
+				t.Fatalf("turn = %s", got.status)
+			}
+			if seen := ap.all(); len(seen) != c.want {
+				t.Fatalf("approvals = %d (%+v), want %d", len(seen), seen, c.want)
+			}
+			for _, f := range []string{fakeacp.PermFile, fakeacp.WriteFile} {
+				if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+					t.Fatalf("%s missing: %v", f, err)
+				}
+			}
+		})
+	}
+}

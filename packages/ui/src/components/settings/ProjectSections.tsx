@@ -143,7 +143,18 @@ export function EditorSection({ projectId }: { projectId: string | null }) {
                   "No suggestions."
                 ) : ollamaMode ? (
                   stuck ? (
-                    <Notice tone="warn">Cannot run: check the Ollama server URL and model below.</Notice>
+                    <Notice
+                      tone="warn"
+                      action={
+                        <a href={settingsHref("providers")} className="text-link underline-offset-2 hover:underline">
+                          Check again
+                        </a>
+                      }
+                    >
+                      {ollama?.state === "not_running"
+                        ? `Cannot run: ${ollama.problem?.message ?? "Ollama is not running."} Start it, or check the server URL below.`
+                        : "Cannot run: check the Ollama server URL and model below."}
+                    </Notice>
                   ) : (
                     `Runs through Ollama's dedicated small tier (${smallModel}).`
                   )

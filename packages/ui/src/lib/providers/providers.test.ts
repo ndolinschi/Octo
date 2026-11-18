@@ -189,3 +189,17 @@ test("multi-slash ACP model ids preserve provider/model boundary (e.g. opencode/
   assert.equal(canRun(ocList, "acp:opencode/anthropic/claude-sonnet-4"), true);
   assert.equal(canRun(ocList, "acp:opencode/opencode/unknown"), false);
 });
+
+test("canRun: the Ollama tier runs only while Ollama answers", () => {
+  const ollama = (state: "ready" | "not_running"): ProviderList => ({
+    connected: 0,
+    suggested: { orchestrator: "", fast: "", balanced: "", deep: "" },
+    providers: [
+      { id: "ollama", kind: "ollama", label: "Ollama", state, reason: "", install_hint: "", login_hint: "", models: [], default_model: "", flat_rate: true },
+    ],
+  });
+  assert.equal(canRun(ollama("ready"), "small"), true);
+  assert.equal(canRun(ollama("not_running"), "small"), false);
+  assert.equal(canRun(ollama("not_running"), "ollama:qwen2.5-coder:3b"), false);
+  assert.equal(stateText("not_running"), "Not running");
+});

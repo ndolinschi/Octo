@@ -219,7 +219,7 @@ and the tier hint when a router is present.
 2. In a `supervised` project `write_file`, `bash` (any depth), ACP `session/request_permission` (not read/search) and
    ACP `fs/write_text_file` create an `Approval` card (`GET/POST /v1/projects/{pid}/approvals`); under `accept_edits`,
    file edits/writes/deletes/moves are auto-approved while shell commands and other ACP actions still ask. Only the agent
-   that asked blocks. Decisions `allow`, `allow_for_turn`, `deny`. Cancelling the turn denies what is pending; an
+   that asked blocks. Decisions `allow`, `allow_for_turn` (same kind, same agent, rest of the turn), `allow_all_for_turn` (everything, rest of the turn), `allow_always`, `deny`. Cancelling the turn denies what is pending; an
    unanswered request is denied after `HARNESS_APPROVAL_TIMEOUT` (30 min). Events `approval.requested`,
    `approval.resolved`, `project.attention`.
 3. **Changes**: every file change in the project folders is recorded per turn (`write_file`, ACP `fs/*`, plus

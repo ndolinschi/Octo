@@ -40,7 +40,10 @@ const (
 	StateNotInstalled = "not_installed"
 	// StateNotSupported: the agent's CLI has no ACP mode (manifest unsupported); reason says so.
 	StateNotSupported = "not_supported"
-	StateError        = "error"
+	// StateNotRunning: a provider served from a URL (Ollama, the built-in loop
+	// on a local base URL) where nothing answers; problem says how to start it.
+	StateNotRunning = "not_running"
+	StateError      = "error"
 )
 
 // Login values of an agent provider.
@@ -127,6 +130,9 @@ type Provider struct {
 	// positively said so, "unchecked" when there is no probe or it failed to run,
 	// timed out or printed something unexpected (the agent can be used all the same).
 	Login string `json:"login,omitempty"`
+	// Reach (Ollama, and the API on a local base URL): "ok" its server answered,
+	// "not_running" it did not (state not_running), "unchecked" not probed.
+	Reach string `json:"reach,omitempty"`
 	// PreferredModel is the model used when this agent is chosen without one
 	// ("" = the agent's own default). Roles say which model does the work of a
 	// delegation decided fast, balanced or deep ("" = the agent's default).
@@ -197,6 +203,13 @@ type Options struct {
 	// Ollama returns the local Ollama URL and small-tier completion model when
 	// Ollama is enabled (nil: omitted from the provider list).
 	Ollama func() (baseURL, model string)
+	// Reach probes the server of a provider served from a URL (Ollama, and the
+	// built-in loop when APIBaseURL is on this computer); HTTPReach in `serve`.
+	// Nil: never probed, the provider reads ready and its reach "unchecked".
+	Reach func(ctx context.Context, url string) error
+	// APIBaseURL is the Messages API base URL of the built-in loop ("" = the
+	// Anthropic API). Only a local one (localhost, loopback) is probed.
+	APIBaseURL func() string
 	// Agents lists the ACP agents of the loaded plugins, manifest models only.
 	Agents func() []plugins.Agent
 	// Recheck runs an agent's login probe now (plugins.Registry.Recheck); Fresh
@@ -225,7 +238,9 @@ type Service struct {
 	disc        map[string]chan struct{} // agents with a discovery running
 	bg          context.Context          // lifetime of background discoveries (Watch)
 	login       map[string]string        // last login value seen per agent (kickDiscovery)
-	wg          sync.WaitGroup           // background discoveries (WaitIdle)
+	wg          sync.WaitGroup           // background discoveries and reach probes (WaitIdle)
+	reach       map[string]reachResult   // last reachability per URL (reach.go)
+	reaching    map[string]chan struct{} // URLs with a reach probe running
 }
 
 // New builds a Service and loads the advertised-models cache; an unreadable
@@ -234,7 +249,7 @@ func New(opts Options) *Service {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &Service{opts: opts, cache: loadCache(opts.DataDir, opts.Now)}
+	return &Service{opts: opts, cache: loadCache(opts.DataDir, opts.Now), reach: map[string]reachResult{}, reaching: map[string]chan struct{}{}}
 }
 
 // catalogue is the built-in loop's model list: the compiled-in tiers, deepest
@@ -279,6 +294,15 @@ func (s *Service) Snapshot() Response {
 		api.State, api.Reason = StateNotConnected, "The built-in loop runs through the Octo router."
 	case builtinOK:
 		api.State = StateReady
+		if base := s.localAPIBase(); base != "" {
+			reach, r := s.reachOf(base)
+			api.Reach = reach
+			if reach == ReachNotRunning {
+				api.State = StateNotRunning
+				api.Problem = notRunning("The model server", base, r, "")
+				api.Reason = api.Problem.Message
+			}
+		}
 	default:
 		api.State = StateNotConnected
 		api.Problem = usererr.ProviderNotConnected(api.Label, api.LoginHint, builtinWhy)
@@ -293,13 +317,14 @@ func (s *Service) Snapshot() Response {
 	}
 	if s.opts.Ollama != nil {
 		baseURL, smallModel := s.opts.Ollama()
-		if strings.TrimSpace(baseURL) == "" {
+		baseURL = strings.TrimSpace(baseURL)
+		if baseURL == "" {
 			baseURL = config.DefaultOllamaBaseURL
 		}
 		if strings.TrimSpace(smallModel) == "" {
 			smallModel = defaults.SmallModel()
 		}
-		resp.Providers = append(resp.Providers, Provider{
+		ol := Provider{
 			ID:                 IDOllama,
 			Kind:               KindOllama,
 			Label:              "Ollama",
@@ -309,7 +334,16 @@ func (s *Service) Snapshot() Response {
 			DefaultModel:       smallModel,
 			AcceptsCustomModel: true,
 			ModelsNote:         "Dedicated small tier (" + baseURL + ") for inline editor completions.",
-		})
+		}
+		// The list is a catalogue: only a probe of the server says whether any of it can run.
+		reach, r := s.reachOf(baseURL)
+		ol.Reach = reach
+		if reach == ReachNotRunning {
+			ol.State = StateNotRunning
+			ol.Problem = notRunning(ol.Label, baseURL, r, "ollama serve")
+			ol.Reason = ol.Problem.Message
+		}
+		resp.Providers = append(resp.Providers, ol)
 	}
 	for _, a := range orderAgents(agents) {
 		resp.Providers = append(resp.Providers, s.agentProvider(a))
@@ -530,12 +564,28 @@ func isTierOrSmall(model string) bool {
 	return strings.HasPrefix(model, config.OllamaPrefix)
 }
 
+func isOllamaModel(model string) bool {
+	return model == config.CompletionSmall || strings.HasPrefix(model, config.OllamaPrefix)
+}
+
+// ollamaBase is Ollama's configured URL (the default when none is set).
+func (s *Service) ollamaBase() string {
+	if s.opts.Ollama == nil {
+		return ""
+	}
+	u, _ := s.opts.Ollama()
+	if u = strings.TrimSpace(u); u == "" {
+		u = config.DefaultOllamaBaseURL
+	}
+	return u
+}
+
 // Check says why model cannot run now, or nil when it can (or when it is not a
 // model id: a tier name, empty, small, or ollama:<tag>). `acp:<id>[/<model>]` is
 // checked against the agent's state, anything else against the built-in path
 // (the router when one is detected, else the API).
 func (s *Service) Check(model string) *Unavailable {
-	if isTierOrSmall(model) {
+	if isTierOrSmall(model) && (!isOllamaModel(model) || s.opts.Ollama == nil) {
 		return nil
 	}
 	return CheckIn(s.Snapshot(), model)
@@ -543,15 +593,22 @@ func (s *Service) Check(model string) *Unavailable {
 
 // CheckIn is Check against a snapshot already taken.
 func CheckIn(snap Response, model string) *Unavailable {
-	if isTierOrSmall(model) {
-		return nil
-	}
 	byID := func(id string) *Provider {
 		for i := range snap.Providers {
 			if snap.Providers[i].ID == id {
 				return &snap.Providers[i]
 			}
 		}
+		return nil
+	}
+	if isOllamaModel(model) {
+		// "small" and ollama:<tag> run only when Ollama answers (no Ollama entry: not judged here).
+		if p := byID(IDOllama); p != nil && p.State != StateReady {
+			return unavailable(*p, false)
+		}
+		return nil
+	}
+	if isTierOrSmall(model) {
 		return nil
 	}
 	if agentID, _, ok := plugins.ParseACPRef(model); ok {

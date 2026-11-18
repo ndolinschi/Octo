@@ -26,7 +26,7 @@ export function formatCountdown(ms: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
-export type ApprovalAction = "allow" | "allow_for_turn" | "allow_always" | "deny";
+export type ApprovalAction = "allow" | "allow_for_turn" | "allow_all_for_turn" | "allow_always" | "deny";
 
 /** Card keys: `A` allows once, `D` denies, `Enter` on the card allows. Modified keys and typing in a field are not ours. */
 export function keyAction(key: string, mods: { ctrl: boolean; meta: boolean; alt: boolean }, inField: boolean): ApprovalAction | null {
@@ -59,19 +59,74 @@ export type ResolvedBy = "you" | "timeout" | "cancelled" | "elsewhere";
 /** `rule`: the code of the rule an "always allow" saved (parity B4), shown in the resolved line. */
 export type Resolution = { decision: ApprovalDecision; by: ResolvedBy; note?: string; option?: string; rule?: string };
 
-/** The resolved card's one line ("Allowed once", "Denied automatically after 30 minutes" …). */
-export function resolutionLabel(r: Resolution): string {
+/** The program "allow for this request" remembers for a command: its first word, without a directory (harness `program`). */
+function commandProgram(command: string): string {
+  const first = command.trim().split(/\s+/)[0] ?? "";
+  return first.slice(first.lastIndexOf("/") + 1);
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return ""; // not a URL: the label says "fetches" without a host
+  }
+}
+
+/** ACP tool kinds (ACP `ToolKind`) as the plural the label uses; the harness remembers `allow_for_turn` per tool kind. */
+const ACP_KIND_NOUNS: Readonly<Record<string, string>> = {
+  edit: "edits",
+  delete: "deletions",
+  move: "moves",
+  execute: "commands",
+  fetch: "fetches",
+  think: "thinking steps",
+};
+
+/**
+ * What "Allow … for this request" (`allow_for_turn`) covers for the rest of the turn, as the harness remembers it
+ * (apps/harness/docs/v7.md): this agent's edits, its commands of the same program, its fetches from the same host, or
+ * its ACP tool calls of the same kind. Null for a memory prompt, which nothing remembers.
+ */
+export function turnScopeLabel(a: Approval): string | null {
+  switch (a.kind) {
+    case "write":
+      return "edits";
+    case "command": {
+      const program = commandProgram(a.detail.command ?? "");
+      return program ? `${program} commands` : "commands";
+    }
+    case "network": {
+      const host = hostOf(a.detail.url ?? "");
+      return host ? `fetches from ${host}` : "fetches";
+    }
+    case "acp": {
+      const kind = a.tool?.startsWith("acp:") ? a.tool.slice(4) : "";
+      return ACP_KIND_NOUNS[kind] ?? (kind && kind !== "other" ? `${kind} actions` : "other actions");
+    }
+    case "memory":
+      return null;
+  }
+}
+
+/** The resolved card's one line ("Allowed once", "Allowed edits for this request", "Denied automatically" …). */
+export function resolutionLabel(r: Resolution, a?: Approval): string {
   if (r.by === "timeout") return "Denied automatically";
   if (r.by === "cancelled") return "Denied: stopped";
+  const scope = a ? turnScopeLabel(a) : null;
   const verb =
     r.option ??
     (r.decision === "allow"
       ? "Allowed once"
       : r.decision === "allow_for_turn"
-        ? "Allowed for this request"
-        : r.decision === "allow_always"
-          ? "Always allowed"
-          : "Denied");
+        ? scope
+          ? `Allowed ${scope} for this request`
+          : "Allowed for this request"
+        : r.decision === "allow_all_for_turn"
+          ? "Allowed all for this request"
+          : r.decision === "allow_always"
+            ? "Always allowed"
+            : "Denied");
   return r.by === "elsewhere" ? `${verb} elsewhere` : verb;
 }
 
