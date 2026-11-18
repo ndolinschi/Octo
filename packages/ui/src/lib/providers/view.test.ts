@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Provider, ProviderModel } from "@octo/agent-client";
-import { billingLine, defaultProviderId, foldModels, groupOf, modelsSummary, primaryAction, providerGroups, reasonLine, rowStatus } from "./view";
+import {
+  billingLine,
+  connectSubtitle,
+  defaultProviderId,
+  foldModels,
+  groupOf,
+  modelsSummary,
+  primaryAction,
+  providerGroups,
+  reasonLine,
+  rowStatus,
+} from "./view";
 
 const models = (n: number): ProviderModel[] => Array.from({ length: n }, (_, i) => ({ id: `m${i}`, label: `m${i}`, source: "manifest" }));
 const p = (id: string, state: Provider["state"], over: Partial<Provider> = {}): Provider => ({
@@ -125,4 +136,10 @@ test("modelsSummary and foldModels", () => {
   assert.equal(foldModels(models(16), false).shown.length, 6);
   assert.equal(foldModels(models(16), true).shown.length, 16);
   assert.equal(foldModels(models(6), false).hidden, 0);
+});
+
+test("connectSubtitle: Ollama alone is said to be connected and not enough", () => {
+  assert.match(connectSubtitle([{ kind: "ollama", state: "ready" }]), /^Ollama is connected\. Projects also need/);
+  assert.match(connectSubtitle([]), /^Octo needs one of these/);
+  assert.match(connectSubtitle([{ kind: "ollama", state: "not_installed" }]), /^Octo needs one of these/);
 });

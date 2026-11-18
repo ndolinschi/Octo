@@ -4182,3 +4182,10 @@ Small fixes from a review of the shell (sidebar, top bar, status bar, overlays, 
   end); at 1100×700 it scrolls and the last row ends 40px clear of the fade. A tooltip the pointer armed hides on
   `pointerleave` of its control and shows only while the control is still `:hover` and connected (`lib/tooltipGate.ts`,
   tested); measured: after leaving a row to the gutter, and after leaving before the delay, no tooltip.
+- **Copy and identity.** A session title from a request is cut at the last space at or before 80 characters and ends
+  with "…" (`projectstore.SessionTitle`, Go-tested; the demo's `lib/sessions/title.ts` mirrors it); the harness's empty
+  title is "New session" (was "Session"), the one name the UI uses. Home's session rows name who runs them: "Atlas API ·
+  Claude Code · Waiting for you" (`sessionAgentName`: the session's `model`, an ACP agent by its label, never its id;
+  Octo's own loop by its model, "Sonnet 5.5"). The waiting rows there now show their age. With only Ollama ready the
+  connect screen's line reads "Ollama is connected. Projects also need a coding agent, an API key or the router."
+  (`connectSubtitle`, tested; the screen itself not driven, the demo has no Ollama-only state).

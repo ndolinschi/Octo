@@ -33,6 +33,7 @@ export { commandsIn } from "./hints";
 export {
   MODELS_FOLDED,
   billingLine,
+  connectSubtitle,
   defaultProviderId,
   foldModels,
   modelsSummary,

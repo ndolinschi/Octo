@@ -84,6 +84,16 @@ export function providerGroups(providers: readonly Provider[], opts: { expanded?
   });
 }
 
+/**
+ * The connect screen's line under its title (item 10). With Ollama ready and nothing else, "Connect a provider" over
+ * "Connected: Ollama" read as a contradiction: the line says what Ollama does not cover.
+ */
+export function connectSubtitle(providers: readonly Pick<Provider, "kind" | "state">[]): string {
+  const ready = providers.filter((p) => p.state === "ready");
+  if (ready.length > 0 && ready.every((p) => p.kind === "ollama")) return "Ollama is connected. Projects also need a coding agent, an API key or the router.";
+  return "Octo needs one of these: a coding agent on this computer, an API key, or the Octo router.";
+}
+
 /** The provider shown in the detail when none was picked: the first row of the first group. */
 export function defaultProviderId(providers: readonly Provider[]): string | undefined {
   for (const g of GROUP_ORDER) {

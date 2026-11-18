@@ -23,6 +23,7 @@ import {
 } from "@octo/agent-client";
 import { addRoot, addTalk, announceRoot, startIn, SYNC_PROMPT, syncRefactor } from "./parallel";
 import { clone, emit, newId, type ProjectRecord } from "./store";
+import { titleFromRequest } from "../lib/sessions/title";
 
 const delay = () => new Promise((r) => setTimeout(r, 60));
 
@@ -422,7 +423,7 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
     const own = e.titles.get(m.id) ?? m.title;
     if (own) return own;
     const first = rec.messages.find((x) => x.agent_id === m.root && x.role === "user" && x.command === undefined && textOf(x).trim() !== "");
-    return first ? textOf(first).trim().split("\n")[0]?.slice(0, 80) || "New session" : "New session";
+    return first ? titleFromRequest(textOf(first)) : "New session";
   };
 
   const mainSession = async (id: string, m: Main): Promise<ProjectSession> => {

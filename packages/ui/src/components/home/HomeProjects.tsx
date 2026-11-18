@@ -8,12 +8,14 @@ import { useRovingRows } from "../../lib/rovingRows";
 import { readable } from "../../lib/errors/plain";
 import { projectWhen, stateLine, type OrchestratorState } from "../../lib/orchestrator";
 import { agentStack } from "../../lib/orchestratorMore";
+import { sessionAgentName } from "../../lib/models";
 import { navigate } from "../../lib/route";
 import { createAndOpenSession } from "../../lib/sessions/createSession";
 import { TRIAGE_LABEL, TRIAGE_ORDER, triageGroups, type Triage } from "../../lib/triage";
 import { useActivity } from "../../state/activity";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
+import { useAcpNames } from "../../state/models";
 import { isPending } from "../../state/orchestrators";
 import type { Reply } from "../../state/requests";
 import { Card } from "../primitives/Card";
@@ -203,11 +205,13 @@ function SessionRow({ session, now }: { session: GlobalSession; now: number }) {
   const title = sessionTitle(session);
   const state = sessionStateWord(session);
   const when = sessionMeta(session, now);
+  // Who runs the session (the harness this one drives), between where and how it is: "Atlas API · Claude Code · Waiting for you".
+  const agent = sessionAgentName(session.model, useAcpNames());
   return (
     <ListRow
       size="lg"
       title={title}
-      description={`${session.project_name} · ${state}`}
+      description={[session.project_name, agent, state].filter(Boolean).join(" · ")}
       meta={when ?? undefined}
       leading={
         <span className={cn("flex -translate-y-2", session.state !== "working" && STILL)}>
