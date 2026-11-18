@@ -135,6 +135,14 @@ async function reviewOpen(page, env) {
   await page.waitForTimeout(600);
 }
 
+/** Runs a project command from the review's header: its pinned button when there is one, else the "Run" menu that lists every command. */
+async function runReviewCommand(page, name) {
+  const pinned = page.getByRole("button", { name, exact: true }).filter({ visible: true }).first();
+  if (await pinned.count()) return pinned.click({ timeout: 8000 });
+  await page.getByRole("button", { name: /^Run\b/ }).filter({ visible: true }).first().click({ timeout: 8000 });
+  await page.getByRole("menuitem", { name }).first().click({ timeout: 8000 });
+}
+
 /** Opens the project settings dialog from the project's "⋯" menu. */
 async function projectSettings(page) {
   await click(page, /^Project actions$/);
@@ -142,6 +150,9 @@ async function projectSettings(page) {
   await need(page, page.getByRole("dialog"), "project settings dialog");
   await page.waitForTimeout(800);
 }
+
+/** The sessions list of an open tool tab (Sessions, Memory): not the sidebar's own `role="tree"` named "Sessions", which comes first. */
+const tabSessions = (page) => page.locator("[role='tabpanel'] ul[aria-label='Sessions']").filter({ visible: true }).first();
 
 const need = async (page, locator, what, timeout = 8000) => {
   try {
@@ -392,6 +403,9 @@ export const GROUPS = {
         await need(page, page.getByRole("button", { name: /^Stop( the turn| \(|$)/ }), "running turn");
         await page.waitForTimeout(800);
         await send(page, "Then summarise the result in one line");
+        // The queue is one collapsed band ("1 queued · …") above the box: open it to reach the row's buttons.
+        await page.getByText(/^1 queued/).filter({ visible: true }).first().click({ timeout: 8000 });
+        await page.waitForTimeout(400);
         await need(page, page.getByRole("button", { name: /Send now/ }), "queue row with Send now");
       },
     },
@@ -1083,7 +1097,7 @@ export const GROUPS = {
       sizes: "one",
       run: async (page, env) => {
         await reviewOpen(page, env);
-        await page.getByRole("button", { name: "Tests", exact: true }).filter({ visible: true }).first().click();
+        await runReviewCommand(page, "Tests");
         await page.waitForTimeout(1100);
       },
     },
@@ -1093,7 +1107,7 @@ export const GROUPS = {
       sizes: "one",
       run: async (page, env) => {
         await reviewOpen(page, env);
-        await page.getByRole("button", { name: "Typecheck", exact: true }).filter({ visible: true }).first().click();
+        await runReviewCommand(page, "Typecheck");
         await page.waitForTimeout(2800);
       },
     },
@@ -1202,10 +1216,14 @@ export const GROUPS = {
         await click(page, /Save rule and allow/);
         await page.waitForTimeout(1500);
         await projectSettings(page);
-        const h = page.getByText("Always-allowed requests").first();
-        await need(page, h, "rules list");
-        await h.click();
+        // "Always allowed" is a collapsed row of the dialog now: open it, then its list names the rules.
+        const toggle = page.getByRole("button", { name: /^Always allowed/ }).filter({ visible: true }).first();
+        await need(page, toggle, "the Always allowed row");
+        await toggle.scrollIntoViewIfNeeded();
+        await toggle.click({ timeout: 8000 });
         await page.waitForTimeout(700);
+        const h = page.getByText(/Always.allowed/).filter({ visible: true }).first();
+        await need(page, h, "rules list");
         await h.scrollIntoViewIfNeeded();
         await page.waitForTimeout(500);
       },
@@ -1497,7 +1515,7 @@ export const GROUPS = {
         await tool(page, "Show memory");
         await need(page, page.getByRole("tab", { name: "Sessions" }), "Sessions view", 10000);
         await page.getByRole("tab", { name: "Sessions" }).click();
-        await need(page, page.locator("[aria-label='Sessions']").first(), "sessions list", 10000);
+        await need(page, tabSessions(page), "sessions list", 10000);
       },
     },
     {
@@ -1509,7 +1527,7 @@ export const GROUPS = {
         await project(page, env, "Atlas API");
         await tool(page, "Show memory");
         await page.getByRole("tab", { name: "Sessions" }).click();
-        const list = page.locator("[aria-label='Sessions']").first();
+        const list = tabSessions(page);
         await list.waitFor({ timeout: 10000 });
         await list.locator("button[data-row]").first().click();
         await need(page, page.locator("[aria-label='Requests'], [aria-label='Exchanges']").first(), "exchanges", 10000);
@@ -1525,7 +1543,7 @@ export const GROUPS = {
         await project(page, env, "Atlas API");
         await tool(page, "Show memory");
         await page.getByRole("tab", { name: "Sessions" }).click();
-        const list = page.locator("[aria-label='Sessions']").first();
+        const list = tabSessions(page);
         await list.waitFor({ timeout: 10000 });
         await list.locator("button[data-row]").first().click();
         await page
@@ -1552,7 +1570,7 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Atlas API");
         await tool(page, "Show sessions");
-        await need(page, page.locator("[aria-label='Sessions']").first(), "sessions list", 10000);
+        await need(page, tabSessions(page), "sessions list", 10000);
         await page.waitForTimeout(500);
       },
     },
@@ -1564,7 +1582,7 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Atlas API");
         await tool(page, "Show sessions");
-        const list = page.locator("[aria-label='Sessions']").first();
+        const list = tabSessions(page);
         await list.waitFor({ timeout: 10000 });
         await page.waitForTimeout(800);
         await list.locator("button[data-row]").first().click();
@@ -1587,7 +1605,7 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Atlas API");
         await tool(page, "Show sessions");
-        const list = page.locator("[aria-label='Sessions']").first();
+        const list = tabSessions(page);
         await list.waitFor({ timeout: 10000 });
         await page
           .getByRole("radio", { name: /^Agents/ })
@@ -1609,9 +1627,17 @@ export const GROUPS = {
     },
     {
       name: "sidebar-expanded",
-      text: "The sidebar's tree (decision 96): a project open to its sessions (its five latest and any at work, then 'Show all (N)').",
+      text: "The sidebar's tree view (Settings, General, Sidebar: Projects with sessions; decision 96): a project open to its sessions (its five latest and any at work, then 'Show all (N)'). The default sidebar is the flat Sessions list, which the other screens show.",
       sizes: "one",
       run: async (page, env) => {
+        // The sidebar opens as the flat Sessions list; the tree is the "tree" view of that preference.
+        await page.addInitScript(() => {
+          try {
+            localStorage.setItem("octo.sidebarView", "tree");
+          } catch {
+            /* storage unavailable */
+          }
+        });
         await boot(page, env);
         await need(page, page.getByRole("tree").getByRole("group").first(), "sessions under an open project");
         await page.waitForTimeout(400);
@@ -1890,7 +1916,7 @@ export const GROUPS = {
         await project(page, env, "Atlas API");
         await tool(page, "Show memory");
         await page.getByRole("tab", { name: "Sessions" }).click();
-        await need(page, page.locator("[aria-label='Sessions']").first(), "sessions list", 10000);
+        await need(page, tabSessions(page), "sessions list", 10000);
       },
     },
     {
