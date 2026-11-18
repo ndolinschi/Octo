@@ -4160,3 +4160,7 @@ each deviation.
   Agents, Details, Changes, Processes, Review picker, side question) has the same hairline under its bar, also when the header
   is capped to `PANEL_COLUMN`. The two lines that stood in for it are gone (`border-t` on `[data-v7-changes]` and on the
   review picker's `ViewTabs`), so no tab shows a double line.
+- **B. Review picker (`review/PullList.tsx`, `review/ReviewTab.tsx`).** The hand-built filter row is a plain `PanelFilters`
+  (chips, then the search; in a narrow group the chips scroll under their fade instead of the search taking a second line;
+  the placeholder is "Search…", the label still names pull requests, addresses and numbers). The panel title is "Review" (the
+  dock tab's name), so "Pull requests" is said once, by the first view tab. Chrome above the first row at 363px: 150 → 114.
