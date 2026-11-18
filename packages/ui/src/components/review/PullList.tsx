@@ -221,7 +221,6 @@ function Picker(props: {
             options={VIEWS}
             value={view}
             onChange={setView}
-            className="border-t border-line"
             // The folder scopes both views: it sits at the view row's end, so the header keeps the repository whole in a
             // narrow group (R1 asks for it in the header line; there it cut the repository to "/atlas-api" at 360px).
             trailing={

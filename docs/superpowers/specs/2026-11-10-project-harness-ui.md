@@ -4148,3 +4148,15 @@ tab runtime layout with live command output; WebKit/Tauri desktop binary.
 **Verified.** `gofmt -l apps/harness/internal/bridge/v7_approvals_test.go`, `pnpm format:check`, `pnpm lint` (`0` errors, `0` cycles across `849` files), `pnpm test` (`184/184` `@octo/agent-client`, `902/902` `@octo/ui` including `phone.test.ts`, `41/41` `@octo/desktop`, `10/10` `test:scripts`), `pnpm --filter @octo/desktop build`, `pnpm --filter @octo/web build`, `node scripts/check-bundle-size.mjs` (`160.92 kB` gzip vs `161.00 kB` budget), `slash-commands.mjs --phone` (`slash-commands: ok`), Playwright Chromium verification across `1440×900`, `844×390` & `740×360` landscape phones (`data-phone=true`, `overflowX=false`, `mainPaddingLeft=0px`), and `390×844` / `360×740` portrait phones (`0` control target issues across Chat, Processes, Sessions, Terminal, Browser, Side question, Agents, Notes, Usage, Review, and Changes; `DiffPanel` `retry.ts` `0` overlap/overflow) with screenshot inspection, plus `spacing-audit.mjs --query "demo=1&tabs=all" --strict` (`total=0`, `skipped=0` across `chat-idle`, `delegation`, `tool-processes`, `tool-browser`, `tool-terminal`, `v7-gallery`, `phone-home`, `phone-nav`, `phone-plus`, `phone-files`, `phone-changes`, `phone-browser`, `phone-processes`, `phone-terminal`, `phone-settings`, and phone panel runs).
 **Not verified.** `go test -race` on `apps/harness/internal/bridge` (`TestAcceptEditsAutoApprovesWritesAndAsksForBash`) could not run in this offline/proxy-blocked VM (`modernc.org/sqlite@v1.62.0` absent from `GOMODCACHE` and `proxy.golang.org` returns HTTP `403`); WebKit Playwright engine and native Tauri desktop binary.
 
+
+## As built — tool-tab consistency pass (2026-11-18)
+
+Polish, not a redesign: every dock tool tab measured against the Files / Browser bar (40px bar, 8px inset, a `line` hairline
+under it, 28px quiet icon buttons 4 apart, a 36px `PanelFilters` row, `EmptyState`), and the smallest change that removes
+each deviation.
+
+- **A. Panel hairline (`primitives/Panel.tsx`, `v7/ChangesView.tsx`, `review/PullList.tsx`).** The `Panel` header sits in a
+  full-width `[data-panel-bar]` with the Files bar's inset `line` shadow, so every Panel tab (Sessions, Memory, Notes, Usage,
+  Agents, Details, Changes, Processes, Review picker, side question) has the same hairline under its bar, also when the header
+  is capped to `PANEL_COLUMN`. The two lines that stood in for it are gone (`border-t` on `[data-v7-changes]` and on the
+  review picker's `ViewTabs`), so no tab shows a double line.
