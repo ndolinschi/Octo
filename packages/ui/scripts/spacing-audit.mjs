@@ -327,8 +327,10 @@ const STATES = [
             const p = [...document.querySelectorAll(`[data-panel="${name}"]`)].find((e) => e.offsetParent !== null && e.getBoundingClientRect().width > 0);
             if (!p) return { name, missing: true };
             const P = p.getBoundingClientRect();
+            // G1: the bar has no title; its first element (the purpose button, else the meta) carries the inset.
             const title = p.querySelector("[data-panel-title]");
-            let titleLeft = null;
+            const first = p.querySelector("[data-panel-header] > [data-panel-lead] > *, [data-panel-header] > *");
+            let titleLeft = !title && first ? first.getBoundingClientRect().left - P.left : null;
             if (title) {
               const w = document.createTreeWalker(title, NodeFilter.SHOW_TEXT);
               const n = w.nextNode();

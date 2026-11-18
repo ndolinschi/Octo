@@ -94,3 +94,21 @@ test("an action row is plain at rest and an alertdialog with its question when i
   assert.match(confirm, /aria-label="Discard changes"/);
   assert.ok(confirm.indexOf("Discard changes?") < confirm.indexOf(">x<"));
 });
+
+test("G1: the bar draws no title (the tab names the panel); the panel keeps it as its name, lead first, then meta, actions last", () => {
+  const out = html(
+    createElement(Panel, {
+      name: "p",
+      title: "Processes",
+      meta: "3 running",
+      lead: createElement("button", { "data-lead": "" }, "i"),
+      actions: createElement("button", { "data-act": "" }, "New"),
+      children: "BODY",
+    }),
+  );
+  assert.match(out, /<section data-panel="p" aria-label="Processes"/);
+  assert.doesNotMatch(out, /<h2|data-panel-title/);
+  assert.equal(out.split("Processes").length, 2);
+  assert.ok(out.indexOf("data-lead") < out.indexOf("3 running"));
+  assert.ok(out.indexOf("3 running") < out.indexOf("data-act"));
+});

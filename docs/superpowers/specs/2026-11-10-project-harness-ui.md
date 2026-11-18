@@ -4192,3 +4192,12 @@ new dependency, no primitive variant, behaviour unchanged except where stated.
 `@octo/ui` tests, `pnpm --filter @octo/desktop build`, `check-bundle-size.mjs` (160.94 kB of 161.00), `spacing-audit.mjs`
 (`total=0`). **Not verified.** WebKit, a real touch device, the live harness, a real completion model.
 
+Owner decisions of 2026-11-18 (the four items held back from the polish list):
+
+- **G1 (2026-11-18).** A dock tab's bar repeats no title: `Panel` keeps `title` as the section's accessible name only, and the
+  bar is the lead (the (i) purpose button, now `sm` with no negative margin, so its box starts at 8px as the first buttons of
+  Files and Browser; the review's repository menu), the meta ("4 running"), then the actions at the right. A bar with only the
+  (i) stays, so all tabs share one 40px anatomy. Every `Panel` user is a dock tab (no dialog or page uses it). Tested
+  (`Panel.test.ts`); `spacing-audit.mjs` measures the bar's first element instead of the title. Checked all 13 tool tabs in
+  dark and light (`?demo=1&tabs=all`, the Atlas project and Design system tokens): no `h2` in any bar, header 40px.
+
