@@ -77,12 +77,14 @@ function browserTabInfo(b?: { url: string; title: string; pins: number }): TabIn
   };
 }
 
-function terminalTabInfo(t?: { shell: string; folder: string; title: string }): TabInfo {
+function terminalTabInfo(t?: { shell: string; folder: string; title: string; ordinal?: number }): TabInfo {
   const shell = t?.shell.trim() || "Terminal";
   const folder = t?.folder.trim() ?? "";
   const custom = t?.title.trim() ?? "";
-  const label = custom || shell;
-  const detail = !custom && folder ? folder : undefined;
+  // Item 15: a second tab of the same name carries its number ("zsh · proj 2"), in the tab, its tooltip and the palette.
+  const n = t?.ordinal ? ` ${t.ordinal}` : "";
+  const label = custom ? `${custom}${n}` : shell + (folder ? "" : n);
+  const detail = !custom && folder ? `${folder}${n}` : undefined;
   const full = detail ? `${label} · ${detail}` : label;
   return {
     label,
@@ -142,7 +144,7 @@ export function tabInfo(
     /** Browser tab metadata (URL, document title, pending Design Mode pin count). */
     browser?(browserId: string): { url: string; title: string; pins: number } | undefined;
     /** Terminal tab metadata (shell name, folder label, optional title). */
-    terminal?(terminalId: string): { shell: string; folder: string; title: string } | undefined;
+    terminal?(terminalId: string): { shell: string; folder: string; title: string; ordinal?: number } | undefined;
   },
 ): TabInfo {
   const ref = parseTab(tab);

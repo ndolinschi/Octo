@@ -98,4 +98,18 @@ test("tabInfo formats singleton and multi-instance terminal tabs with shell and 
   assert.equal(extra.detail, "atlas-web");
   assert.equal(extra.icon, GLYPH.terminal);
   assert.equal(extra.glyph, null);
+
+  const second = tabInfo(terminalTab("t3"), {
+    state: emptyProjectState(),
+    projectName: "Atlas API",
+    orchestratorId: "agt_1",
+    file: () => undefined,
+    comments: () => 0,
+    runStatus: () => null,
+    terminal: () => ({ shell: "zsh", folder: "proj", title: "", ordinal: 2 }),
+  });
+  assert.equal(second.label, "zsh");
+  assert.equal(second.detail, "proj 2");
+  assert.equal(second.name, "zsh · proj 2");
+  assert.equal(second.title, "Terminal: zsh · proj 2");
 });

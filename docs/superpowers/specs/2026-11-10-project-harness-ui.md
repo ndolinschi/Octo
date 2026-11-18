@@ -4168,3 +4168,8 @@ Small fixes from a review of the shell (sidebar, top bar, status bar, overlays, 
   rate during a drag) and stores it on release. Settings' column takes the same width. A flat Sessions row caps its project
   name at 33% (ListRow's 40% is for a time or a count). Measured at 1440: 260 → 380 by drag, ← to 364, double-click to 260,
   clamped at 480, kept over a reload; a title in the flat list 123 → 193 px at 380. Not in the drawer or on the phone.
+- **Top bar and status.** The agents count is a count, not a command: dim (`fg-3`, `fg` on hover) tabular figures and 12px
+  before the command buttons beside it (measured gap 4 → 12). The status bar says "N projects working" ("1 project working").
+  The "+" tab menu opens from the "+" (start-aligned: left edge 188 → 480 with the "+" at 480) instead of over the sidebar.
+  Terminal tabs that would share a name are numbered in open order (`terminalOrdinals` in `state/terminalTabs.ts`): "zsh ·
+  orbit-app", "zsh · orbit-app 2", in the tab, its tooltip and the tab picker (the command palette lists no terminal tabs).

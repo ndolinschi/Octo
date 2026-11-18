@@ -12,9 +12,9 @@ export function changedText(n: number): string {
   return `${n} changed ${n === 1 ? "file" : "files"}`;
 }
 
-/** Projects with an agent at work: "1 working" / "3 working"; null when none (the item is not shown). */
+/** Projects with an agent at work: "1 project working" / "3 projects working" (the unit said: the count is of projects); null when none (the item is not shown). */
 export function workingText(projectsRunning: number): string | null {
-  return projectsRunning > 0 ? `${projectsRunning} working` : null;
+  return projectsRunning > 0 ? `${projectsRunning} ${projectsRunning === 1 ? "project" : "projects"} working` : null;
 }
 
 /** The connection item: only when the bridge is not fine, and what to do. */
