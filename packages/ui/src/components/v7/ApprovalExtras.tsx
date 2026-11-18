@@ -33,7 +33,7 @@ export function PatchView({ patch, open: shown }: { patch: string; /** Always op
         <pre
           aria-label="Changes"
           className={cn(
-            "octo-code max-h-60 overflow-auto rounded-sm bg-code-bg py-1 font-mono text-xs leading-5 focus-visible:shadow-[0_0_0_2px_var(--octo-focus)]",
+            "octo-code octo-code-surface max-h-60 overflow-auto py-1 font-mono text-xs leading-5 focus-visible:shadow-[0_0_0_2px_var(--octo-focus)]",
             shown === undefined && "mt-1",
           )}
         >

@@ -4165,3 +4165,12 @@ A reviewed list of small fixes; no redesign, existing tokens and primitives, beh
   click `[data-approval-details]`. Cards in the approvals slot span the column's whole edge (`-mx-3`: frame −12…708, the user
   bubble's and the composer's edge) and the RequestCard glyph gains a 4px margin, so glyph x=0 and title x=24 like the activity
   rows (before: glyph 12, title 32, frame 0…696). Measured at 1440, 1000, 760, 560 and 390 (phone): no horizontal scroll.
+- **Code and prose surfaces (WP-C).** One class, `.octo-code-surface` (`styles.css`: 8px radius, `--octo-code-bg`, a
+  `line`/70 hairline; the hairline is dropped under an `.octo-in-card` ancestor, one outline per level), replaces the four
+  treatments: the Markdown fence, the tool body frame (`chat/tools/parts.tsx`: it had no edge, 1.06:1 against the panel), the
+  approval blocks (`ApprovalSubject`, `PatchView`: `rounded-sm` → 8px) and `primitives/CommandLine` (`border-line` → `line`/70).
+  A file chip in prose is `primitives/InlineButton` (a `<span role="button" tabIndex=0>`, Enter/Space press it, a held key
+  presses once, the global focus ring; test `InlineButton.test.ts`, gallery entry) — a native `<button>` is an atomic inline. Its
+  file glyph sits in the code's left padding (`position: absolute`): an inline SVG is a break opportunity too, and it alone kept
+  "after 10 s (" at a line's end. Measured on Atlas API at 1440/1300/1200/1100/1000: the orphaned "(" before
+  `src/http/client.ts` at all five widths before, none after; Enter on a focused chip opens the file (tab count 1 → 2).

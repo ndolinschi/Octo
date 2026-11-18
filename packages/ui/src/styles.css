@@ -523,6 +523,17 @@
   /* Polish step 3, C4: on a raised card the page's hover tint was too faint to say "button"; one step stronger here. */
   --octo-hover: var(--octo-hover-in-card);
 }
+/* The one code surface (a Markdown fence, a tool body, an approval's command or diff, a command line): 8px radius, the code
+   tone and a hairline. Inside a card the card is the outline and the tone tells the block apart, so the hairline goes: one
+   outline per level. */
+.octo-code-surface {
+  border: 1px solid color-mix(in oklab, var(--octo-line) 70%, transparent);
+  border-radius: var(--radius-md);
+  background-color: var(--octo-code-bg);
+}
+.octo-in-card .octo-code-surface {
+  border-width: 0;
+}
 
 /* Polish step 5, P7: a list that pre-opens its first item beside it (wide) marks that row; in one column nothing is open, so
    no row may read as chosen until the person chooses one (`ListDetail` sets `data-unpicked`). */
@@ -867,13 +878,17 @@
   user-select: text;
 }
 .octo-prose .octo-file-link > code {
+  position: relative;
+  /* The glyph sits in the padding, out of the line: an inline SVG is a break opportunity, so "(" ended a line and the chip
+     started the next. */
+  padding-left: 22px;
   transition-property: color;
   transition-duration: 100ms;
 }
 .octo-prose .octo-file-link svg {
-  display: inline-block;
-  margin-right: 4px;
-  vertical-align: -2px;
+  position: absolute;
+  top: 3px;
+  left: 4px;
   color: var(--octo-fg-3);
 }
 @media (hover: hover) {
