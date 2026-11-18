@@ -40,7 +40,7 @@ export function workspaceActions(ws: PaletteWorkspace): WorkspaceCommand[] {
     ...maybeTool("memory", "Show memory"),
     ...maybeTool("usage", "Show usage"),
     ...maybeTool("side", "Ask a side question", `${MOD_LABEL};`),
-    { id: "new-tab", label: "Open a tab…", detail: "tools, sessions, files, agents", shortcut: `${MOD_LABEL}T`, run: () => ws.openPicker() },
+    { id: "new-tab", label: "Open a tab…", detail: "A tool, session, file or agent.", shortcut: `${MOD_LABEL}T`, run: () => ws.openPicker() },
   ];
   if (ws.canMoveToOtherSide(active))
     out.push({ id: "move", label: "Move tab to the other side", detail: name, shortcut: `${MOD_LABEL}\\`, run: () => ws.moveToOtherSide(active) });

@@ -21,19 +21,22 @@ export const TOOL_PURPOSE = {
 
 export type PurposeTool = keyof typeof TOOL_PURPOSE;
 
-/** The same purposes, short: the detail of the palette's "Show …" rows (lowercase, no full stop). */
+/**
+ * The same purposes, short: the detail of the palette's "Show …" rows. Shell polish, item 12: each a short sentence, one name
+ * per thing (a session is a session, an agent an agent).
+ */
 export const TOOL_HINT = {
-  sessions: "sessions and their agents",
-  agents: "what each agent is doing",
-  notes: "decisions and facts agents read",
-  files: "folders; open a file to read or edit",
-  browser: "preview pages and annotate elements for Chat",
-  terminal: "interactive shell in the project",
-  processes: "running commands, logs, kill or restart",
-  details: "folders, models, tokens, activity",
-  changes: "what the agents changed",
-  review: "pick one, read it, comment, submit",
-  memory: "what the project remembers",
-  usage: "tokens, cost, limits",
-  side: "not added to the conversation",
+  sessions: "Your sessions and their agents.",
+  agents: "What each agent is doing.",
+  notes: "Decisions and facts agents read.",
+  files: "Open a file to read or edit it.",
+  browser: "Preview a page and mark it up for Chat.",
+  terminal: "A shell in the project's folder.",
+  processes: "Running commands and their output.",
+  details: "Folders, models, usage and activity.",
+  changes: "What the agents changed.",
+  review: "Read a pull request and review it.",
+  memory: "What Octo remembers about the project.",
+  usage: "Tokens, cost and limits.",
+  side: "Ask without adding to the session.",
 } as const satisfies Record<PurposeTool, string>;

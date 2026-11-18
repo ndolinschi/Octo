@@ -4173,3 +4173,12 @@ Small fixes from a review of the shell (sidebar, top bar, status bar, overlays, 
   The "+" tab menu opens from the "+" (start-aligned: left edge 188 → 480 with the "+" at 480) instead of over the sidebar.
   Terminal tabs that would share a name are numbered in open order (`terminalOrdinals` in `state/terminalTabs.ts`): "zsh ·
   orbit-app", "zsh · orbit-app 2", in the tab, its tooltip and the tab picker (the command palette lists no terminal tabs).
+- **Overlays.** The command palette lists "New session in …" for the projects the query names (a word of the name starts
+  with it), else for two projects (the open one first): "re" gives two such rows, not four. The "Show …" rows' details are
+  short sentences (`TOOL_HINT`: "Read a pull request and review it.", was "pick one, read it, comment, submit"), as are
+  Help's, Change model's and Open a tab's. (With "re" Settings is still below the fold: the sessions and projects that
+  match come first; not changed.) The keyboard-shortcuts sheet's rows are `min-h-row` (28px) and a `reading` dialog body
+  has 24px at its end, the fade's height: at 1440×900 the sheet fits whole (no scroll, last row 40px above the body's
+  end); at 1100×700 it scrolls and the last row ends 40px clear of the fade. A tooltip the pointer armed hides on
+  `pointerleave` of its control and shows only while the control is still `:hover` and connected (`lib/tooltipGate.ts`,
+  tested); measured: after leaving a row to the gutter, and after leaving before the delay, no tooltip.
