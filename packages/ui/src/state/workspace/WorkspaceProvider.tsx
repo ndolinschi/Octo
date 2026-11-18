@@ -11,7 +11,7 @@ import { useProject } from "../project";
 import { useTabFlags } from "../tabFlags";
 import { sessionRoot } from "@octo/agent-client";
 import { updateBrowserTabState } from "../browserTabs";
-import { closeTerminalTab, updateTerminalTabState } from "../terminalTabs";
+import { closeTerminalTab, getTerminalTabState, terminalTabName, updateTerminalTabState } from "../terminalTabs";
 import { hasQueuedSession } from "./sessionsStart";
 import * as L from "./layout";
 import type { Layout, TabId, ToolTab } from "./layout";
@@ -138,6 +138,7 @@ export type WorkspaceValue = {
   confirmClose(): void;
   cancelClose(): void;
   closeOthers(tab: TabId): void;
+  tabName(tab: TabId): string | undefined;
   canMoveToOtherSide(tab: TabId): boolean;
   moveToOtherSide(tab: TabId): void;
   canSplitRight(tab: TabId): boolean;
@@ -694,6 +695,10 @@ export function WorkspaceProvider({
         const pool = narrowRef.current ? L.allTabs(layoutRef.current) : (g?.tabs ?? []);
         commit(L.activate(layoutRef.current, tab));
         requestClose(pool.filter((t) => t !== tab));
+      },
+      tabName: (tab) => {
+        const r = L.parseTab(tab);
+        return r?.kind === "terminal" ? terminalTabName(getTerminalTabState(projectId, r.terminalId)) : r?.kind === "browser" ? "Browser" : undefined;
       },
       canMoveToOtherSide: (tab) => {
         const g = L.groupOf(layout, tab);

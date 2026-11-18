@@ -134,16 +134,30 @@ export default function BrowserTab(props: { tab: TabId; browserId: string }) {
               vpWidth !== null && "flex-initial overflow-hidden rounded-md shadow-float forced-colors:border forced-colors:border-[CanvasText]",
             )}
           >
-            {(s.frame.src !== null || s.frame.srcdoc !== null) && (
-              <iframe
-                key={`${props.browserId}:${s.reloadTick}:${s.frame.src ?? "srcdoc"}`}
-                ref={iframeRef}
-                title={s.tabState.title || "Browser preview"}
-                {...(s.frame.src !== null ? { src: s.frame.src } : {})}
-                {...(s.frame.srcdoc !== null ? { srcDoc: s.frame.srcdoc } : {})}
-                sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"
-                className="h-full w-full flex-1 border-0 bg-white"
-              />
+            {s.pageError !== null ? (
+              <EmptyState
+                tone="err"
+                title="Couldn't load this page"
+                actions={
+                  <Button variant="secondary" size="sm" onClick={s.retry}>
+                    Retry
+                  </Button>
+                }
+              >
+                {s.pageError}
+              </EmptyState>
+            ) : (
+              (s.frame.src !== null || s.frame.srcdoc !== null) && (
+                <iframe
+                  key={`${props.browserId}:${s.reloadTick}:${s.frame.src ?? "srcdoc"}`}
+                  ref={iframeRef}
+                  title={s.tabState.title || "Browser preview"}
+                  {...(s.frame.src !== null ? { src: s.frame.src } : {})}
+                  {...(s.frame.srcdoc !== null ? { srcDoc: s.frame.srcdoc } : {})}
+                  sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"
+                  className="h-full w-full flex-1 border-0 bg-white"
+                />
+              )
             )}
 
             {s.designMode && (

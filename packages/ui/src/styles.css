@@ -1421,6 +1421,15 @@
   animation-play-state: paused;
 }
 
+/* While Octo's local service does not answer (`data-offline` on the app root), whatever was running is not known to be: the
+   working rings, the activity shimmer and the needs-you pulse stand still, and the working ring is drawn in the quiet tone. */
+[data-offline] :is(.octo-ring-turn, .octo-ring-pulse, .octo-shimmer-sweep, .octo-shimmer-text) {
+  animation-play-state: paused;
+}
+[data-offline] [data-state-glyph="working"] {
+  color: var(--octo-fg-3);
+}
+
 /* Streaming cursor: subtle opacity pulse instead of masking the last 24px of typed characters. */
 .octo-prose[data-streaming] > :last-child:not(ul, ol, pre, table, div)::after,
 .octo-prose[data-streaming] > :is(ul, ol):last-child > li:last-child::after {

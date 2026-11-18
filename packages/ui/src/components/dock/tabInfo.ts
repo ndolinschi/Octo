@@ -10,6 +10,7 @@ import { parseTab, type TabId, type ToolTab } from "../../state/workspace/layout
 import { TOOL_PURPOSE } from "../../lib/toolPurpose";
 import { type FileKey, splitKey } from "../../lib/files";
 import type { GlyphState } from "../../lib/stateGlyph";
+import { terminalTabName } from "../../state/terminalTabs";
 
 export type TabInfo = {
   /** Shown on the tab (long file names are shortened in the middle). */
@@ -83,7 +84,7 @@ function terminalTabInfo(t?: { shell: string; folder: string; title: string }): 
   const custom = t?.title.trim() ?? "";
   const label = custom || shell;
   const detail = !custom && folder ? folder : undefined;
-  const full = detail ? `${label} · ${detail}` : label;
+  const full = terminalTabName(t);
   return {
     label,
     ...(detail ? { detail } : {}),
