@@ -4183,3 +4183,11 @@ A reviewed list of small fixes; no redesign, existing tokens and primitives, beh
   streamed reply: 36 of 36 caret frames also had the "Writing…" row before, 0 of 34 after. Copy: "History compacted 2 requests
   ago" (was "history was compacted …"), "History compacted by you" (was "· manual"), and a plan whose text opens with its own
   "Plan…" line takes it as the card title instead of repeating "Plan" (`lib/planTitle.ts`, tested).
+- **E1 — the request bubble is neutral (owner's decision, 2026-11-18).** The user bubble (and its pinned copy, and the side
+  question's) is the raised tone of cards and menus with `fg` text and a 1px `line` hairline, in every theme; the teal fill
+  (#3a786b dark / #356e61 light) and the per-theme `--octo-bubble`/`--octo-bubble-fg` tokens are gone, with the fill-specific
+  selection, "Show more" and focus-ring overrides. Measured: text 13.79:1 (dark) and 15.68:1 (light), was 5.15 and 5.91; the
+  fill against the panel is 1.14:1 (dark) and 1.11:1 (light), under 1.15, hence the hairline; a one-line pill is 40px high (the
+  "1px edges" the R2 note counts; it measured 38 without a border). Checked in the Docs site and Atlas API conversations with a
+  sent @mention and /command, a queued message and a rewind point, dark and light, 1440 and phone 390. Not checked: a bubble
+  with images.
