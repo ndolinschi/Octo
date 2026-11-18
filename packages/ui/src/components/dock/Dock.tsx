@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../state/app";
 import { BackdropProvider, type Backdrop } from "../primitives/backdrop";
 import { StreakLayer } from "../primitives/StreakLayer";
@@ -51,6 +51,20 @@ export function Dock() {
     return () => ro.disconnect();
   }, [setDockWidth]);
 
+  // A divider drag shows the new widths on the groups' own elements, one write per frame, and changes the layout (a render
+  // of the whole dock) only when it lets go.
+  const sections = useRef(new Map<string, HTMLElement>());
+  const preview = useCallback((sized: readonly Group[]) => {
+    for (const g of sized) {
+      const el = sections.current.get(g.id);
+      if (el) el.style.flex = groupFlex(g.size);
+    }
+  }, []);
+  const register = useCallback((id: string, el: HTMLElement | null) => {
+    if (el) sections.current.set(id, el);
+    else sections.current.delete(id);
+  }, []);
+
   const { groups } = ws.layout;
   return (
     <div ref={ref} className="flex min-h-0 min-w-0 flex-1">
@@ -61,7 +75,7 @@ export function Dock() {
           <Fragment key={g.id}>
             {before && !alone && (
               <Suspense fallback={<div className="w-gutter shrink-0" />}>
-                <Divider index={i - 1} value={before.size} />
+                <Divider index={i - 1} value={before.size} preview={preview} />
               </Suspense>
             )}
             <GroupView
@@ -71,6 +85,7 @@ export function Dock() {
               last={i === groups.length - 1 || alone}
               maximised={ws.maximised === g.id}
               stepAside={ws.maximised !== null && ws.maximised !== g.id}
+              register={register}
             />
           </Fragment>
         );
@@ -88,6 +103,8 @@ export function Dock() {
     </div>
   );
 }
+
+const groupFlex = (size: number) => `${size} 1 0px`;
 
 /** Tab views mount on first show and stay mounted (hidden) while the tab stays in this group. */
 function useVisited(group: Group): Set<string> {
@@ -123,8 +140,17 @@ function useFileShellTab(group: Group, visited: Set<string>): TabId | null {
 }
 
 /** `maximised`: this group has the whole dock; `stepAside`: another one has (hidden, not unmounted: scroll, drafts and widths stay). */
-function GroupView(props: { group: Group; name: string; first: boolean; last: boolean; maximised: boolean; stepAside: boolean }) {
-  const { group, name, first, last, maximised, stepAside } = props;
+function GroupView(props: {
+  group: Group;
+  name: string;
+  first: boolean;
+  last: boolean;
+  maximised: boolean;
+  stepAside: boolean;
+  register: (id: string, el: HTMLElement | null) => void;
+}) {
+  const { group, name, first, last, maximised, stepAside, register } = props;
+  const sectionRef = useCallback((el: HTMLElement | null) => register(group.id, el), [register, group.id]);
   const ws = useWorkspace();
   const { sidebarOpen } = useShell();
   // Round 3: narrow — in drawer mode the sidebar floats over the page, so the window buttons stay over the first strip whether or not the drawer is open.
@@ -161,7 +187,8 @@ function GroupView(props: { group: Group; name: string; first: boolean; last: bo
       data-dock-group={group.id}
       aria-label={narrow ? "Panels" : name === "Panels" ? name : `${name} panel`}
       hidden={hidden}
-      style={narrow ? undefined : maximised ? { flex: "1 1 0px", minWidth: 0 } : { flex: `${group.size} 1 0px`, minWidth: ws.floorOf(group.id) }}
+      ref={sectionRef}
+      style={narrow ? undefined : maximised ? { flex: "1 1 0px", minWidth: 0 } : { flex: groupFlex(group.size), minWidth: ws.floorOf(group.id) }}
       onPointerDownCapture={() => ws.focusGroup(group.id)}
       onFocusCapture={() => ws.focusGroup(group.id)}
       className={cn("flex min-h-0 min-w-0 flex-col overflow-clip contain-inline-size", narrow && "flex-1")}
