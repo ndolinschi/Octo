@@ -2,7 +2,9 @@ import { Undo2 } from "lucide-react";
 import type { FileChangeSummary, TurnChanges } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { filesChanged, kindLabel, kindLetter, rowKey, sourceLabel, splitPath } from "../../lib/v7/changes";
-import { IconButton } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
+import { ListRow } from "../primitives/ListRow";
+import { SectionHeader } from "../primitives/SectionHeader";
 import { Spinner } from "../primitives/Status";
 import { LineCounts } from "./parts";
 import type { RowState } from "./useChanges";
@@ -10,8 +12,9 @@ import type { RowState } from "./useChanges";
 const KIND_TONE = { A: "text-ok", M: "text-fg-3", D: "text-err" } as const;
 
 /**
- * One turn's changed files (v7 §1): a caption with the totals and "Revert turn", then one 28px row per file — kind
- * letter, name, muted folder path, source, `+a −r`. Rows are buttons; the selected one is `aria-current`.
+ * One turn's changed files (v7 §1): a caption (`SectionHeader`, as every other list's group head) with the totals and
+ * "Revert turn", then one 32px `ListRow` per file — kind letter, name, muted folder path, source, `+a −r`. The selected
+ * row is `aria-current`.
  */
 export function TurnFiles(props: {
   turn: TurnChanges;
@@ -29,27 +32,32 @@ export function TurnFiles(props: {
   });
   return (
     <section aria-label={`${props.label}: ${filesChanged(turn.files.length)}`} className="flex flex-col">
-      <header className="flex h-8 min-w-0 items-center gap-2 pr-1 pl-2">
-        <span className="min-w-0 truncate text-sm text-fg-2" title={props.label}>
-          {props.label}
-        </span>
-        <span className="shrink-0 text-xs text-fg-3 @max-xs/list:hidden">{filesChanged(turn.files.length)}</span>
-        <LineCounts added={turn.added} removed={turn.removed} className="ml-auto" />
-        {props.reverting ? (
-          <span className="grid size-6 place-items-center" aria-label="Reverting">
-            <Spinner />
-          </span>
-        ) : (
-          <IconButton
-            icon={Undo2}
-            size="sm"
-            label="Revert all changes from this request"
-            disabled={allReverted}
-            onClick={props.onRevertTurn}
-            className="max-md:size-10"
-          />
-        )}
-      </header>
+      <SectionHeader
+        as="h3"
+        inset
+        aside={
+          <>
+            <span className="shrink-0 @max-xs/list:hidden">{filesChanged(turn.files.length)}</span>
+            <LineCounts added={turn.added} removed={turn.removed} className="ml-auto" />
+            {props.reverting ? (
+              <span className="grid size-6 place-items-center" aria-label="Reverting">
+                <Spinner />
+              </span>
+            ) : (
+              <IconButton
+                icon={Undo2}
+                size="xs"
+                label="Revert all changes from this request"
+                disabled={allReverted}
+                onClick={props.onRevertTurn}
+                className="max-md:size-10"
+              />
+            )}
+          </>
+        }
+      >
+        <span title={props.label}>{props.label}</span>
+      </SectionHeader>
       <ul className="flex flex-col">
         {turn.files.map((f) => {
           const key = rowKey(turn.turn_id, f);
@@ -70,36 +78,38 @@ function FileRow({ file, selected, state, onClick }: { file: FileChangeSummary; 
   const reverted = state !== undefined && "reverted" in state;
   const problem = state !== undefined && "problem" in state;
   return (
-    <button
-      type="button"
-      data-row
-      aria-current={selected ? "true" : undefined}
-      title={`${kindLabel(file.kind)} by ${sourceLabel(file.source)}: ${file.folder}/${file.path}${reverted ? " (reverted)" : ""}`}
+    <ListRow
+      size="md"
+      selected={selected}
+      tip={`${kindLabel(file.kind)} by ${sourceLabel(file.source)}: ${file.folder}/${file.path}${reverted ? " (reverted)" : ""}`}
       onClick={onClick}
-      className={cn(
-        "flex h-ctl-md w-full min-w-0 items-center gap-2 rounded-sm px-2 text-left text-sm press-row focus-inset max-md:h-ctl-lg touch:h-ctl-lg",
-        selected ? "bg-active text-fg" : "text-fg-2 hover:bg-hover hover:text-fg",
-      )}
-    >
-      {/* 7e: a span's aria-label is ignored; the letter is hidden and its word read instead. */}
-      <span className={cn("w-4 shrink-0 text-center font-mono text-xs font-medium", KIND_TONE[letter])}>
-        <span aria-hidden>{letter}</span>
-        <span className="sr-only">{kindLabel(file.kind)}</span>
-      </span>
-      <span className={cn("shrink-0 truncate", reverted && "text-fg-3 line-through")}>{name}</span>
-      <span className="min-w-0 flex-1 truncate text-xs text-fg-3" dir="rtl">
-        <bdi>{dir}</bdi>
-      </span>
-      {reverted ? (
-        <span className="shrink-0 text-xs text-fg-3">reverted</span>
-      ) : problem ? (
-        <span className="shrink-0 text-xs text-err">not reverted</span>
-      ) : (
-        <>
-          <span className="shrink-0 text-xs text-fg-3 @max-2xs/list:hidden">{sourceLabel(file.source)}</span>
-          <LineCounts added={file.added} removed={file.removed} />
-        </>
-      )}
-    </button>
+      leading={
+        // 7e: a span's aria-label is ignored; the letter is hidden and its word read instead.
+        <span className={cn("font-mono text-xs font-medium", KIND_TONE[letter])}>
+          <span aria-hidden>{letter}</span>
+          <span className="sr-only">{kindLabel(file.kind)}</span>
+        </span>
+      }
+      title={
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className={cn("shrink-0 truncate", reverted && "text-fg-3 line-through")}>{name}</span>
+          <span className="min-w-0 flex-1 truncate text-xs text-fg-3" dir="rtl">
+            <bdi>{dir}</bdi>
+          </span>
+        </span>
+      }
+      meta={
+        reverted ? (
+          "reverted"
+        ) : problem ? (
+          <span className="text-err">not reverted</span>
+        ) : (
+          <span className="flex items-center gap-2">
+            <span className="@max-2xs/list:hidden">{sourceLabel(file.source)}</span>
+            <LineCounts added={file.added} removed={file.removed} />
+          </span>
+        )
+      }
+    />
   );
 }

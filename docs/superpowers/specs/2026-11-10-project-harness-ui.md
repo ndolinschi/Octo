@@ -4181,3 +4181,8 @@ each deviation.
   showed them on every active row. There is no Retry on a process row (a failed run restarts from "⋯"), so nothing stays
   pinned. Row pitch 44 → 46 (`gap-1.5`, as Notes and the pull list); the filter row is a plain `PanelFilters` of 36 (chips,
   then the search at the right, `min-w-28`), no longer wrapping.
+- **F. Changes list (`v7/TurnFiles.tsx`).** File rows are `ListRow` md (32, text `fg` at rest instead of `fg-2`, kind letter
+  in the leading slot, folder after the name, source and `+a −r` or "reverted" / "not reverted" as the meta); group heads are
+  `SectionHeader` captions (12px `fg-3` on 28, at the rows' text edge) with the count, totals and "Revert" as the aside. The
+  revert button moved to the 24px `IconButton` (same pixels, no deprecated wrapper). Checked in the demo: revert a request
+  (reverted row struck through with "reverted", failed ones "not reverted" in `err`), no console errors.
