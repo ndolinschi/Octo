@@ -1,7 +1,7 @@
 import type { Bridge, TerminalSession } from "@octo/agent-client";
 import { errorMessage } from "../../lib/format";
-import { getTerminalTabState, onTerminalTabClosed, updateTerminalTabState } from "../../state/terminalTabs";
-import { terminalOrdinals, terminalTabName } from "./ordinals";
+import { getTerminalTabState, onTerminalTabClosed, terminalTabName, updateTerminalTabState } from "../../state/terminalTabs";
+import { terminalOrdinals } from "./ordinals";
 
 const MAX_HISTORY_BYTES = 128 * 1024;
 

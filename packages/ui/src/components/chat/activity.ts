@@ -90,6 +90,16 @@ export function activityLine(input: ActivityInput): ActivityLine {
   return { kind: "thinking", label: "Thinking…" };
 }
 
+/**
+ * Whether the live line under a turn adds anything. Not when the newest row above already shows that step (`current`), and
+ * not "Writing…" while streamed text is on screen: its caret already says it, and a spinner row under the text moved down
+ * with every new line (two indicators for one thing).
+ */
+export function showsActivityLine(line: ActivityLine, current: ActivityLine["kind"] | null, streaming: boolean): boolean {
+  if (current !== null && line.kind === current) return false;
+  return !(line.kind === "text" && streaming);
+}
+
 /** The newest tool call in `messages` that has no result yet (the one running now), if any. */
 export function runningToolOf(messages: readonly Message[]): { id: string; name: string; input: unknown } | null {
   const answered = new Set<string>();

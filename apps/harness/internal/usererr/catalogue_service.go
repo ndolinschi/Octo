@@ -27,6 +27,7 @@ const (
 	CodeProviderNotConnected = "provider_not_connected"
 	CodeProviderNotSupported = "provider_not_supported"
 	CodeProviderNotWorking   = "provider_not_working"
+	CodeProviderNotRunning   = "provider_not_running"
 	CodeDiscoveryOff         = "discovery_off"
 	CodeMemoryProblem        = "memory_problem"
 	CodeNoteProblem          = "note_problem"
@@ -82,6 +83,21 @@ func ProviderNotSupported(label, reason string) *Error {
 	return &Error{
 		Code: CodeProviderNotSupported, Message: label + " does not work with Octo yet.",
 		Hint: "Choose another agent for now.", Action: ActionOpenSettings, Details: clip(reason),
+	}
+}
+
+// ProviderNotRunning: a provider served from a URL (Ollama, the built-in loop
+// on a local base URL) where nothing answers. local says the URL is on this
+// computer ("is not running"); command is how to start it ("" when unknown);
+// details is the URL and the technical cause.
+func ProviderNotRunning(label string, local bool, command, details string) *Error {
+	msg, hint := label+" is not running.", "Start it, then check again."
+	if !local {
+		msg, hint = label+" does not answer.", "Check that its server is up and its URL in Settings is right, then check again."
+	}
+	return &Error{
+		Code: CodeProviderNotRunning, Message: msg,
+		Hint: hint, Command: command, Action: ActionRecheckProvider, Details: clip(details),
 	}
 }
 

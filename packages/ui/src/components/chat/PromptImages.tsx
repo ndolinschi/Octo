@@ -1,6 +1,5 @@
 import type { ContentBlock } from "@octo/agent-client";
 import { useEffect, useState } from "react";
-import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { Presence } from "../primitives/Presence";
 import { Skeleton } from "../primitives/Skeleton";
@@ -65,13 +64,22 @@ function Thumb({ block, onOpen }: { block: ImageBlock; onOpen(): void }) {
   const label = `${block.name ?? "Image"}, ${block.width} by ${block.height}`;
   if (failed) return <span className="text-xs opacity-80">{block.name ?? "Image"} could not be loaded</span>;
   return (
-    <Button variant="quiet" size="lg" aria-label={`Open ${label}`} title={label} onClick={onOpen} disabled={url === null} className="h-auto p-0">
+    // A bare button, not `Button size="lg"`: that fixes the height at 40px (`h-ctl-lg`, which a later `h-auto` does not beat), so a
+    // 96px thumbnail overflowed it upwards over the message text. The thumbnail sizes the control.
+    <button
+      type="button"
+      aria-label={`Open ${label}`}
+      title={label}
+      onClick={onOpen}
+      disabled={url === null}
+      className="touch-hit inline-flex shrink-0 press rounded-sm hover:opacity-90 disabled:pointer-events-none"
+    >
       {url ? (
         <img src={url} alt="" className="max-h-24 max-w-40 rounded-sm border border-line object-cover" />
       ) : (
         <Skeleton shape="block" className="h-20 w-28" />
       )}
-    </Button>
+    </button>
   );
 }
 

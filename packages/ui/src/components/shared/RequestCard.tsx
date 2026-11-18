@@ -37,7 +37,8 @@ export const RequestCard = forwardRef<HTMLElement, RequestCardProps>(function Re
       {...rest}
       header={
         <>
-          {glyph === "needs" && <StateGlyph state="needs" />}
+          {/* 7a: the 12px glyph and a 12px gap put the title 24px in, where the activity rows' labels start. */}
+          {glyph === "needs" && <StateGlyph state="needs" className="mr-1" />}
           <h3 id={titleId} className="min-w-0 truncate text-heading text-fg">
             {title}
           </h3>

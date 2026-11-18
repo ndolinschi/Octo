@@ -100,6 +100,11 @@ func TestACPPermissionRequestBecomesAnApprovalAndAllowReachesTheAgent(t *testing
 		len(a.Detail.Options) != 3 || a.Detail.Path != fakeacp.NoteFile {
 		t.Fatalf("approval = %+v", a)
 	}
+	// The card names its main session, like a built-in card: GET /approvals?session= (a client's reload) and the
+	// session's needs_you count it.
+	if a.SessionID == "" || a.SessionID != child.SessionID {
+		t.Fatalf("approval session = %q, want the turn's main session %q", a.SessionID, child.SessionID)
+	}
 	if _, err := os.Stat(filepath.Join(dir, fakeacp.NoteFile)); err != nil {
 		t.Fatalf("allowed write missing: %v", err)
 	}
@@ -255,5 +260,34 @@ func TestACPAcceptEditsApprovesEditsAndAsksForCommands(t *testing.T) {
 	seen := ap.all()
 	if len(seen) != 1 || seen[0].Detail.Command != "npm test" {
 		t.Fatalf("expected 1 command approval, got %+v", seen)
+	}
+}
+
+// An ACP orchestrator asks to run a command, then writes a file through fs/write_text_file: "Allow for this request"
+// (allow_for_turn) covers the tool kind it was given for, so the write still asks; "Allow all for this request"
+// (allow_all_for_turn) covers every further prompt of the turn.
+func TestACPAllowAllForTurnCoversTheNextPromptOfAnotherKind(t *testing.T) {
+	cases := []struct {
+		decision string
+		want     int
+	}{{approval.AllowForTurn, 2}, {approval.AllowAllForTurn, 1}}
+	for _, c := range cases {
+		t.Run(c.decision, func(t *testing.T) {
+			r := newACPRig(t, mockllm.New(0), fakeAgent("fake", true))
+			dir := t.TempDir()
+			pid := r.supervisedProject(t, dir, "acp:fake")
+			ap := r.approver(t, pid, func(approval.Approval) approval.Resolution { return approval.Resolution{Decision: c.decision} })
+			if got := r.runCollect(t, pid, "[perm] [fswrite] run the tests and write", nil); got.status != "completed" {
+				t.Fatalf("turn = %s", got.status)
+			}
+			if seen := ap.all(); len(seen) != c.want {
+				t.Fatalf("approvals = %d (%+v), want %d", len(seen), seen, c.want)
+			}
+			for _, f := range []string{fakeacp.PermFile, fakeacp.WriteFile} {
+				if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+					t.Fatalf("%s missing: %v", f, err)
+				}
+			}
+		})
 	}
 }

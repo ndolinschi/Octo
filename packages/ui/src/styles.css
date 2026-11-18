@@ -90,8 +90,6 @@
   --octo-selection: rgb(77 163 255 / 0.3);
   --octo-comment-line: rgb(77 163 255 / 0.08);
   --octo-ctx-messages: #4da3ff;
-  --octo-bubble: #254b73;
-  --octo-bubble-fg: #ffffff;
 }
 
 /* Claude Code: warm espresso-charcoal surfaces with terracotta-amber accents. */
@@ -120,8 +118,6 @@
   --octo-comment-line: rgb(217 119 87 / 0.09);
   --octo-ctx-messages: #d97757;
   --octo-ctx-notes: #e0a960;
-  --octo-bubble: #8c4730;
-  --octo-bubble-fg: #ffffff;
 }
 
 /* Codex: deep ink-slate surfaces with emerald-mint accents. */
@@ -150,8 +146,6 @@
   --octo-comment-line: rgb(56 184 137 / 0.08);
   --octo-ctx-messages: #38b889;
   --octo-ctx-summary: #52c99d;
-  --octo-bubble: #1f634c;
-  --octo-bubble-fg: #ffffff;
 }
 
 /* OpenCode: midnight graphite surfaces with violet-indigo accents. */
@@ -180,8 +174,6 @@
   --octo-comment-line: rgb(155 138 255 / 0.09);
   --octo-ctx-messages: #9b8aff;
   --octo-ctx-tool_results: #c084fc;
-  --octo-bubble: #4b3f8c;
-  --octo-bubble-fg: #ffffff;
 }
 
 :root[data-theme="light"] {
@@ -522,6 +514,17 @@
   --octo-code-bg: var(--octo-panel);
   /* Polish step 3, C4: on a raised card the page's hover tint was too faint to say "button"; one step stronger here. */
   --octo-hover: var(--octo-hover-in-card);
+}
+/* The one code surface (a Markdown fence, a tool body, an approval's command or diff, a command line): 8px radius, the code
+   tone and a hairline. Inside a card the card is the outline and the tone tells the block apart, so the hairline goes: one
+   outline per level. */
+.octo-code-surface {
+  border: 1px solid color-mix(in oklab, var(--octo-line) 70%, transparent);
+  border-radius: var(--radius-md);
+  background-color: var(--octo-code-bg);
+}
+.octo-in-card .octo-code-surface {
+  border-width: 0;
 }
 
 /* Polish step 5, P7: a list that pre-opens its first item beside it (wide) marks that row; in one column nothing is open, so
@@ -872,13 +875,17 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
   user-select: text;
 }
 .octo-prose .octo-file-link > code {
+  position: relative;
+  /* The glyph sits in the padding, out of the line: an inline SVG is a break opportunity, so "(" ended a line and the chip
+     started the next. */
+  padding-left: 24px;
   transition-property: color;
   transition-duration: 100ms;
 }
 .octo-prose .octo-file-link svg {
-  display: inline-block;
-  margin-right: 4px;
-  vertical-align: -2px;
+  position: absolute;
+  top: 3px;
+  left: 4px;
   color: var(--octo-fg-3);
 }
 @media (hover: hover) {
@@ -1424,6 +1431,15 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
 [data-paused] .octo-shimmer-sweep,
 [data-paused] .octo-shimmer-text {
   animation-play-state: paused;
+}
+
+/* While Octo's local service does not answer (`data-offline` on the app root), whatever was running is not known to be: the
+   working rings, the activity shimmer and the needs-you pulse stand still, and the working ring is drawn in the quiet tone. */
+[data-offline] :is(.octo-ring-turn, .octo-ring-pulse, .octo-shimmer-sweep, .octo-shimmer-text) {
+  animation-play-state: paused;
+}
+[data-offline] [data-state-glyph="working"] {
+  color: var(--octo-fg-3);
 }
 
 /* Streaming cursor: subtle opacity pulse instead of masking the last 24px of typed characters. */
@@ -2425,6 +2441,10 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   min-height: var(--spacing-touch);
   padding-inline: 16px;
 }
+/* A group row's caption disclosure keeps its text on the row's edge, as `-ml-2` does on the desktop. */
+[data-phone] [data-v7-approval] [data-approval-details] {
+  margin-inline-start: -16px;
+}
 /* The desktop's window row and status bar have no place on the phone: the header and the "⋯" sheet carry what they hold. */
 [data-phone] :is([data-title-bar], header[aria-label="Window"]:not([data-phone-header]), [data-status-bar]) {
   display: none;
@@ -2566,18 +2586,10 @@ article:not(:has([data-turn-changes])):is(:hover, :focus-within) [data-restore] 
    Right-aligned, as wide as its text (at most 80 % of the column), at every width (it was a full-width card above 480 px and
    a bubble below). One line and nothing else (`data-one-line`, Transcript's UserPrompt) is a pill: 40 high on the desktop
    (22 + 8 + 8 + the 1px edges), 42 on the phone (24); taller keeps radius 18 with 12 / 16 inside. Its meta (From …, Sent while
-   Octo was working) sits above it, its right edge on the text's. The fill is two variables, so another tone is two values:
-   F4 moves them to the theme blocks with the other tokens. Not scoped to `[data-conv]`: a session's transcript in the
-   Sessions tab and Memory draw the same request (it lost its card there when the classes moved here). */
-:root,
-:root:not([data-theme="light"]):not([data-theme="cursor"]):not([data-theme="claude"]):not([data-theme="codex"]):not([data-theme="opencode"]) {
-  --octo-bubble: #3a786b; /* white text 5.15:1 */
-  --octo-bubble-fg: #ffffff;
-}
-:root[data-theme="light"] {
-  --octo-bubble: #356e61; /* white text 5.91:1 */
-  --octo-bubble-fg: #ffffff;
-}
+   Octo was working) sits above it, its right edge on the text's. Not scoped to `[data-conv]`: a session's transcript in the
+   Sessions tab and Memory draw the same request (it lost its card there when the classes moved here).
+   Owner, 2026-11-18 (E1): the fill is neutral — the raised tone of cards and menus with `fg` text (13.8:1 dark, 15.7:1 light),
+   not teal. Raised against the panel is only 1.14:1 (dark) and 1.11:1 (light), so the 1px edge is the `line` hairline. */
 [data-prompt] {
   display: flex;
   flex-direction: column;
@@ -2611,25 +2623,9 @@ article:not(:has([data-turn-changes])):is(:hover, :focus-within) [data-restore] 
 }
 [data-prompt] > [data-bubble],
 [data-pinned-box] > button {
-  background: var(--octo-bubble);
-  color: var(--octo-bubble-fg);
-}
-/* Inside the fill: the selection and "Show more" use bubble-fg (the blue selection and dim text muddied the fill). */
-[data-prompt] > [data-bubble] ::selection,
-[data-pinned-box] > button ::selection {
-  background: color-mix(in srgb, var(--octo-bubble-fg) 32%, transparent);
-  color: var(--octo-bubble-fg);
-}
-[data-prompt] > [data-bubble] > button {
-  color: color-mix(in srgb, var(--octo-bubble-fg) 85%, transparent);
-}
-[data-prompt] > [data-bubble] > button:hover {
-  color: var(--octo-bubble-fg);
-  background: color-mix(in srgb, var(--octo-bubble-fg) 12%, transparent);
-}
-/* The focus ring on the fill: crisp bubble-fg outline. */
-[data-prompt] > [data-bubble] > button:focus-visible {
-  box-shadow: 0 0 0 2px var(--octo-bubble-fg);
+  border: 1px solid var(--octo-line);
+  background: var(--octo-raised);
+  color: var(--octo-fg);
 }
 @media (forced-colors: active) {
   [data-prompt] > [data-bubble],

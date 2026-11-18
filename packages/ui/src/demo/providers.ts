@@ -202,6 +202,7 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
   const refreshed = new Set<string>();
   /** Agents that passed a "Check again" (their login probe now says yes). */
   const loggedIn = new Set<string>();
+  let ollamaStarted = false;
   const failed = new Map<string, string>();
   /** Per agent: preferred model and role models saved through `setProviderPrefs`. */
   const prefs = new Map<string, ProviderPrefs>();
@@ -315,12 +316,26 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
         ? [{ id: ollamaModel, label: ollamaModel, source: "catalogue" as const }]
         : []),
     ];
+    // `?ollama=down`: nothing answers at the Ollama URL (the harness's reach probe); "Check again" with `?recheck=ok` starts it.
+    const ollamaDown = knob("ollama") === "down" && !ollamaStarted;
     list.splice(routerOn() ? 2 : 1, 0, {
       id: "ollama",
       kind: "ollama",
       label: "Ollama",
-      state: "ready",
-      reason: "",
+      state: ollamaDown ? "not_running" : "ready",
+      reason: ollamaDown ? "Ollama is not running." : "",
+      ...(ollamaDown
+        ? {
+            problem: {
+              message: "Ollama is not running.",
+              hint: "Start it, then check again.",
+              command: "ollama serve",
+              action: "recheck_provider",
+              details: `Nothing answered at ${ollamaUrl}: dial tcp: connect: connection refused.`,
+            },
+          }
+        : {}),
+      reach: ollamaDown ? "not_running" : "ok",
       install_hint: "",
       login_hint: "",
       models: ollamaModels,
@@ -382,6 +397,11 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
     recheckProvider: async (id) => {
       await new Promise((r) => setTimeout(r, 700));
       const p = providers().providers.find((x) => x.id === id);
+      if (p?.kind === "ollama") {
+        if (knob("recheck") === "ok") ollamaStarted = true;
+        trace("recheck", { id });
+        return providers().providers.find((x) => x.id === id) ?? null;
+      }
       if (!p || p.kind !== "agent") throw new BridgeError(404, "not_found", "no such agent");
       if (p.state === "not_logged_in" && knob("recheck") === "ok") loggedIn.add(id);
       trace("recheck", { id });

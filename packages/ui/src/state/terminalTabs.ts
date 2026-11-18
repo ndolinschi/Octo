@@ -14,6 +14,14 @@ function bump(pid: string) {
   subs.get(pid)?.forEach((fn) => fn());
 }
 
+/** The tab's full name, as the tab strip shows it: the title, else the shell ("Terminal" while unknown) with its folder ("zsh · proj"). */
+export function terminalTabName(t?: TerminalTabMeta): string {
+  const custom = t?.title.trim() ?? "";
+  const folder = t?.folder.trim() ?? "";
+  const label = custom || t?.shell.trim() || "Terminal";
+  return !custom && folder ? `${label} · ${folder}` : label;
+}
+
 export const getTerminalTabState = (pid: string, id: string): TerminalTabMeta => state.get(`${pid}:${id}`) ?? EMPTY;
 
 export function updateTerminalTabState(pid: string, id: string, patch: Partial<TerminalTabMeta>): void {

@@ -45,7 +45,7 @@ await ctx.addInitScript((theme) => {
     /* storage unavailable */
   }
 }, THEME);
-const page = await ctx.newPage();
+let page = await ctx.newPage();
 const problems = [];
 const failures = [];
 page.on("pageerror", (e) => isAbortedImport(e.message) || problems.push(`page error: ${String(e.stack ?? e).slice(0, 600)}`));
@@ -160,26 +160,33 @@ for (const [name, sel, hold] of marks) {
 }
 
 // The "+" menu's "Folders" and "Session" entries open their own menus on the "+" (they were chips of the row).
-for (const [name, entry] of [
-  ["folders", /^Folders:/],
-  ["session", /^Session:/],
-]) {
+// "Session" is offered only when its menu has something to run (Composer.tsx `sendTo`): "Make default" on a session that is not the
+// default, "Move to worktree" where the session can move, "Show all sessions" while the `sessions` tab flag is on. With the default
+// flags the demo's session is the default one and cannot move, so the entry is absent (asserted here); the check of its menu runs
+// at the end on a page with `?tabs=sessions`.
+async function subMenu(name, entry, { absent = false } = {}) {
   const plus = chip('[aria-haspopup="listbox"]');
   await plus.focus();
   await page.evaluate(() => document.querySelector('[data-composer] [aria-haspopup="listbox"]')?.setAttribute("data-picker-opener", "1"));
   await plus.click();
   await page.waitForTimeout(300);
   const row = page.locator('[data-composer-menu] [role="option"]', { hasText: entry }).first();
-  if (!(await row.count())) {
-    note(name, `no "${entry.source}" entry in the + menu`);
+  const found = (await row.count()) > 0;
+  if (absent || !found) {
+    if (absent && found) note(name, `the + menu offers "${entry.source}" although its menu has nothing to run with the default tab flags`);
+    if (!absent) note(name, `no "${entry.source}" entry in the + menu`);
     await page.keyboard.press("Escape");
-    continue;
+    await page.waitForTimeout(250);
+    await page.evaluate(() => document.querySelector("[data-picker-opener]")?.removeAttribute("data-picker-opener"));
+    return;
   }
   await row.click();
   await page.waitForTimeout(300);
   await contract(name, { opener: "[data-picker-opener]", hold: false });
   await page.evaluate(() => document.querySelector("[data-picker-opener]")?.removeAttribute("data-picker-opener"));
 }
+await subMenu("folders", /^Folders:/);
+await subMenu("session (default flags: no entry)", /^Session:/, { absent: true });
 
 // Model picker: Left/Right between providers (an agent row opens its models, Left returns).
 {
@@ -226,6 +233,18 @@ for (const [name, entry] of [
     await page.keyboard.press("Escape");
     await page.waitForTimeout(250);
   }
+}
+
+// The "Session" entry and its menu, with the sessions tab on (the entry's "Show all sessions" row).
+{
+  await page.close();
+  page = await ctx.newPage();
+  page.on("pageerror", (e) => isAbortedImport(e.message) || problems.push(`page error: ${String(e.stack ?? e).slice(0, 600)}`));
+  await page.goto(`${BASE}/?demo=1&tabs=sessions`, { waitUntil: "domcontentloaded" });
+  await page.locator('nav[aria-label="Projects"] a', { hasText: PROJECT }).first().click({ timeout: 8000 });
+  await page.locator("#octo-composer").waitFor({ state: "visible", timeout: 8000 }).catch(() => fail("no composer with ?tabs=sessions"));
+  await page.waitForTimeout(800);
+  await subMenu("session", /^Session:/);
 }
 
 await browser.close();

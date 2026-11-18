@@ -63,6 +63,9 @@ export function useBrowserSession(browserId: string, stageRef: RefObject<HTMLEle
   const frame = tabState.url && loadedFrame?.forUrl === tabState.url ? loadedFrame : EMPTY_FRAME;
 
   const [reloadTick, setReloadTick] = useState(0);
+  // The page's server could not be reached (the proxy's error page says so): shown until the next load of the same URL.
+  const [failure, setFailure] = useState<{ forUrl: string; tick: number; message: string } | null>(null);
+  const pageError = failure && failure.forUrl === tabState.url && failure.tick === reloadTick ? failure.message : null;
   const internalUrlRef = useRef<string | null>(null);
   const loadedKeyRef = useRef<string>("");
   const [designMode, setDesignMode] = useState(false);
@@ -207,6 +210,10 @@ export function useBrowserSession(browserId: string, stageRef: RefObject<HTMLEle
         if (patch.url || patch.title) updateBrowserTabState(projectId, browserId, patch);
         return;
       }
+      if (ev.type === "error") {
+        setFailure({ forUrl: tabState.url, tick: reloadTick, message: ev.message });
+        return;
+      }
       if (ev.type === "shortcut") {
         if (ev.key === "toggleDesign") setDesignMode((v) => !v);
         else if (ev.key === "undo") setStrokes((s) => s.slice(0, -1));
@@ -272,7 +279,7 @@ export function useBrowserSession(browserId: string, stageRef: RefObject<HTMLEle
         });
       }
     },
-    [projectId, browserId, buildNote],
+    [projectId, browserId, buildNote, tabState.url, reloadTick],
   );
 
   const pins = useMemo<InspectorPin[]>(
@@ -388,6 +395,8 @@ export function useBrowserSession(browserId: string, stageRef: RefObject<HTMLEle
     detectedUrls,
     frame,
     reloadTick,
+    pageError,
+    retry: () => setReloadTick((n) => n + 1),
     reload: () => {
       inspector.navigate("reload");
       setReloadTick((n) => n + 1);

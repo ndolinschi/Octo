@@ -31,7 +31,7 @@ import { agentGlyph, orchestratorGlyph, type GlyphState } from "../../lib/stateG
 import { projectRowLines } from "../../lib/orchestrator";
 import { isPending, useOrchestrators } from "../../state/orchestrators";
 import { useSessionIndex } from "../../state/sessionIndex";
-import { mainSessions, sessionGlyph, sessionMeta, sessionTitle } from "../../lib/sessions/tree";
+import { mainSessions, sessionGlyph, sessionMeta, sessionsBesideTabs, sessionTitle } from "../../lib/sessions/tree";
 import { useModal } from "../primitives/useModal";
 import { createPointerGate, popupListKey } from "../primitives/popupNav";
 
@@ -297,17 +297,14 @@ export function CommandPalette(props: {
     // Decision 96: every main session (title, project, state glyph), and "New session in <project>". Balance pass: a session
     // already open as a tab is listed once, as the tab (the row above it said the same thing).
     // (The conversation's own tab is "chat", named "Project / Session title".)
-    const openTabs = new Set(tabRows.flatMap((t) => [t.id, t.label]));
-    const sessionRows: Item[] = mainSessions(sessionIndex.all)
-      .filter((s) => !openTabs.has(`tab:${sessionTab(s.id)}`) && !openTabs.has(`${s.project_name} / ${sessionTitle(s)}`))
-      .map((s) => ({
-        id: `ses:${s.id}`,
-        label: sessionTitle(s),
-        detail: [s.project_name, sessionMeta(s, now)].filter(Boolean).join(" · "),
-        search: s.project_name,
-        glyph: sessionGlyph(s),
-        run: go(() => navigate(s.project_id, null, s.id)),
-      }));
+    const sessionRows: Item[] = sessionsBesideTabs(mainSessions(sessionIndex.all), tabRows, (id) => `tab:${sessionTab(id)}`).map((s) => ({
+      id: `ses:${s.id}`,
+      label: sessionTitle(s),
+      detail: [s.project_name, sessionMeta(s, now)].filter(Boolean).join(" · "),
+      search: s.project_name,
+      glyph: sessionGlyph(s),
+      run: go(() => navigate(s.project_id, null, s.id)),
+    }));
     // The open project's row comes first: "New session" must not start one in whichever project is listed first.
     const newSessions: Item[] = [...(projects ?? [])]
       .sort((a, b) => Number(b.id === pid) - Number(a.id === pid))
