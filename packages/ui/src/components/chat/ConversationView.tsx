@@ -51,6 +51,7 @@ import { Presence } from "../primitives/Presence";
 const RewindDialog = lazy(() => import("./RewindDialog").then((m) => ({ default: m.RewindDialog })));
 import { useStuckTurn, useTurnRequests, useViewTurn } from "./turnTracking";
 import { slot } from "../../state/workspace/tabMemory";
+import { restoreScrollWhenReachable, useScrollSpot } from "./useScrollSpot";
 
 type ScrollMemory = { top: number; atBottom: boolean };
 const SCROLL_MEMORY = slot(
@@ -108,7 +109,8 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const memory = ws?.memory;
   // Decision 96: where the reader was is the session's own (Chat shows one session after another).
   const spot = useSessionScope()?.memoryKey ?? tab;
-  const saved = memory?.get(spot, SCROLL_MEMORY);
+  const spotStore = useScrollSpot(projectId, spot);
+  const saved = memory?.get(spot, SCROLL_MEMORY) ?? spotStore.stored;
   const scroll = useStickToBottom<HTMLDivElement>(
     [messages, hasStreaming, agent?.status, agentId],
     saved ? saved.atBottom : isOrchestrator || agent?.status === "running",
@@ -207,18 +209,21 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
 
   // Moving a tab remounts it: put the reader back where they were.
   const restored = useRef(false);
+  const cancelRestore = useRef(() => {});
+  useEffect(() => () => cancelRestore.current(), []);
   useLayoutEffect(() => {
     const el = scroll.ref.current;
     if (restored.current || !el || messages === undefined) return;
     restored.current = true;
     // Read now, not at render: the instance this one replaces saves its position in its cleanup, which runs in the
     // same commit after this render (a moved tab).
-    const at = memory?.get(spot, SCROLL_MEMORY);
+    const at = memory?.get(spot, SCROLL_MEMORY) ?? spotStore.stored;
     if (at && !at.atBottom) {
       scroll.release();
-      el.scrollTop = at.top;
+      // After a reload the transcript is still short: wait until the saved offset exists, or the clamp reads as "at the end".
+      cancelRestore.current = restoreScrollWhenReachable(el, at.top, scroll.release);
     }
-  }, [messages, memory, spot, scroll]);
+  }, [messages, memory, spot, scroll, spotStore.stored]);
   // Opening a file narrows the conversation and the text re-wraps: keep the reader's place (decision 60). The scroller only
   // exists once there are messages, so the tracker is bound again when that changes.
   useScrollAnchor(scroll.ref, "article, article :is(p, li, pre, h1, h2, h3, h4, blockquote, tr)", messages === undefined ? 0 : messages.length === 0 ? 1 : 2);
@@ -228,7 +233,9 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
     const ref = scroll.ref;
     return () => {
       const el = ref.current;
-      if (el && memory) memory.set(spot, SCROLL_MEMORY, { top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight <= 2 });
+      // A view with nothing to scroll (the loading state of a reload) knows nothing about the reader: do not let it hide the saved spot.
+      if (el && memory && el.scrollHeight > el.clientHeight)
+        memory.set(spot, SCROLL_MEMORY, { top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight <= 2 });
     };
   }, [memory, spot, scroll.ref]);
 
@@ -335,8 +342,9 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
           )}
           <div
             ref={scroll.ref}
-            onScroll={() => {
+            onScroll={(e) => {
               scroll.onScroll();
+              spotStore.onScroll(e.currentTarget);
               stuck.onScroll();
             }}
             className="min-h-0 flex-1 overflow-y-auto scroll-quiet"
