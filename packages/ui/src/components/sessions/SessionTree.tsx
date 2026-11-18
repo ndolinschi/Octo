@@ -12,19 +12,8 @@ import { useRovingRows } from "../../lib/rovingRows";
 import { createAndOpenSession } from "../../lib/sessions/createSession";
 import { deleteSessionCleanly } from "../../lib/sessions/deleteSession";
 import { canMoveToWorktree, deleteCopy, failureText, sessionWorkspaceLabel } from "../../lib/sessions/model";
-import {
-  isLive,
-  isOpen,
-  mainSessions,
-  parseOpen,
-  projectSummary,
-  sessionGlyph,
-  sessionMeta,
-  sessionTitle,
-  treeKey,
-  TREE_ALL,
-  type KeyRow,
-} from "../../lib/sessions/tree";
+import { isLive, mainSessions, sessionGlyph, sessionMeta, sessionTitle } from "../../lib/sessions/tree";
+import { isOpen, parseOpen, projectSummary, treeKey, TREE_ALL, type KeyRow } from "../../lib/sessions/treeRows";
 import { flatSessions, treeSessions } from "../../lib/sessions/flat";
 import { orchestratorGlyph, type GlyphState } from "../../lib/stateGlyph";
 import { jsonCodec, PREFS, usePersistentState } from "../../lib/storage";

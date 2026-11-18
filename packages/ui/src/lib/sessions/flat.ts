@@ -1,5 +1,6 @@
 import type { GlobalSession, ProjectSession } from "@octo/agent-client";
-import { byActivity, hasSessionMessages, visibleSessions } from "./tree";
+import { byActivity, hasSessionMessages } from "./tree";
+import { visibleSessions } from "./treeRows";
 
 /**
  * Sessions shown in the flat "Sessions" sidebar view: every non-archived main session with activity, the currently

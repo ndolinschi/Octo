@@ -10,13 +10,20 @@ import { useApp } from "../../state/app";
 import { Chip } from "../primitives/Chip";
 import { Glyph } from "../primitives/Glyph";
 import { Presence } from "../primitives/Presence";
+import { readyLazy } from "../../lib/readyLazy";
+import { registerWarm } from "../../lib/warm";
 import type { ModelPickerProps } from "./modelPickerProps";
 
 /** The chip's mark loads the same way (its SVG chunk after it): the box in the Suspense fallback holds its place, 14px, so nothing shifts when it arrives. */
 const ProviderMark = lazy(() => import("../primitives/ProviderMark").then((m) => ({ default: m.ProviderMark })));
 
-/** The list loads on first open (its own chunk): the chip is all the composer and the title bar need up front. */
-const ModelPickerPanel = lazy(() => import("./ModelPickerPanel").then((m) => ({ default: m.ModelPickerPanel })));
+/**
+ * The list is its own chunk (the chip is all the composer and the title bar need up front), warmed on idle and when the chip is
+ * hovered, focused or pressed (`lib/warm`), so the first open renders at once (`readyLazy`).
+ */
+const panelPart = readyLazy(() => import("./ModelPickerPanel").then((m) => m.ModelPickerPanel));
+const ModelPickerPanel = panelPart.Component;
+registerWarm("model", panelPart.fetch);
 
 /**
  * The one model control (decisions 53, 56, 58, 62): the composer's chip and the title bar's are this same component, reading
@@ -71,6 +78,7 @@ export function ModelPicker(props: ModelPickerProps) {
           aria-expanded={open}
           disabled={props.disabled}
           data-model-picker
+          data-warm="model"
           onClick={() => setOpen(!open)}
           className={cn(
             FIELD,
@@ -105,6 +113,7 @@ export function ModelPicker(props: ModelPickerProps) {
         warn={toned}
         aria-haspopup="dialog"
         data-model-picker
+        data-warm="model"
         onClick={() => setOpen(!open)}
         tip={tip ?? `${props.label}: ${text}`}
         className={cn("max-w-72", props.className)}

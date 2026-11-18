@@ -4148,3 +4148,37 @@ tab runtime layout with live command output; WebKit/Tauri desktop binary.
 **Verified.** `gofmt -l apps/harness/internal/bridge/v7_approvals_test.go`, `pnpm format:check`, `pnpm lint` (`0` errors, `0` cycles across `849` files), `pnpm test` (`184/184` `@octo/agent-client`, `902/902` `@octo/ui` including `phone.test.ts`, `41/41` `@octo/desktop`, `10/10` `test:scripts`), `pnpm --filter @octo/desktop build`, `pnpm --filter @octo/web build`, `node scripts/check-bundle-size.mjs` (`160.92 kB` gzip vs `161.00 kB` budget), `slash-commands.mjs --phone` (`slash-commands: ok`), Playwright Chromium verification across `1440×900`, `844×390` & `740×360` landscape phones (`data-phone=true`, `overflowX=false`, `mainPaddingLeft=0px`), and `390×844` / `360×740` portrait phones (`0` control target issues across Chat, Processes, Sessions, Terminal, Browser, Side question, Agents, Notes, Usage, Review, and Changes; `DiffPanel` `retry.ts` `0` overlap/overflow) with screenshot inspection, plus `spacing-audit.mjs --query "demo=1&tabs=all" --strict` (`total=0`, `skipped=0` across `chat-idle`, `delegation`, `tool-processes`, `tool-browser`, `tool-terminal`, `v7-gallery`, `phone-home`, `phone-nav`, `phone-plus`, `phone-files`, `phone-changes`, `phone-browser`, `phone-processes`, `phone-terminal`, `phone-settings`, and phone panel runs).
 **Not verified.** `go test -race` on `apps/harness/internal/bridge` (`TestAcceptEditsAutoApprovesWritesAndAsksForBash`) could not run in this offline/proxy-blocked VM (`modernc.org/sqlite@v1.62.0` absent from `GOMODCACHE` and `proxy.golang.org` returns HTTP `403`); WebKit Playwright engine and native Tauri desktop binary.
 
+## As built — instant first opens, one-step load, motion tokens (2026-11-18)
+
+Measured on a production build (`vite preview`-equivalent static server), `?demo=1`, 1440x900, Chromium, 5 runs, median, before ->
+after, on a shared machine (load average ~30 on 4 cores: absolute numbers are noisy; before and after ran back to back).
+
+**First opens of lazy surfaces.** The cold gap was not the chunk fetch (the palette, Settings and the model list were already warmed
+1.5 s after start): a plain `React.lazy` suspends on its first render even when its module is in, and React then holds the revealed
+content until 300 ms after the fallback (its fallback throttle). `readyLazy` (moved to `lib/readyLazy`; a failed fetch is now
+retried) renders without suspending once its chunk is in, and now carries the palette, the project dialog, Settings, the model
+list, the "+" picker and the tool tabs (Files, Terminal, Review, Browser, Processes, Changes; `dock/TabView`'s `warmedTool`).
+`lib/warm` is the registry (each surface registers its loader next to its `readyLazy`); `lib/warmSchedule` (its own chunk, loaded
+after first paint) warms on idle 1.5 s after the shell mounts, one key per idle slot, most likely first (palette, model list,
+Settings, "+" picker, project dialog, tool tabs), none under `navigator.connection.saveData`, and on intent: hover, focus or press of
+a control with `data-warm` (sidebar Search/Review/New project/Settings, the model chip, the "+" button) or a picker row whose
+`data-picker-row` id is a key (`tool:terminal`); holding Ctrl/Cmd warms the palette. Monaco is warmed on idle once a file view
+has been on screen 1 s (`warmMonacoSoon`), and at once when the pointer enters or presses the file view. Entry budget: the new
+code is paid for by moving lazy-only exports out of entry modules (`TOOL_HINT` -> `lib/toolHint`; the tree's
+`visibleSessions`/`projectSummary`/`isOpen`/`parseOpen`/`treeKey` -> `lib/sessions/treeRows`): 160.92 -> 160.73 kB.
+
+| 1x (4x) | before | after |
+| --- | --- | --- |
+| Palette, first open (`more`) | 345 | 49 (warm 41) |
+| Palette, first open (`interact`) | 227 (540) | 61 (128) |
+| Model list, first open | 341 (436) | 33 (138); warm 31 |
+| Settings, first open | 360 (423) | 60 (210) |
+| First file (Monaco), Files on screen ~1 s | 1077 (1791) | 211 (884); warm 43 |
+| Review tab | 360 (523) | 61 (275) |
+| Browser tab | 340 (393) | 53 (220) |
+| Terminal tab | 402 (570) | 295 (495) |
+
+Not reached: Terminal (the chunk is warm; what remains is the tab's own mount, xterm and the PTY session, not measured further).
+`interact.cjs`' `settings:open` (~590 both before and after) is a measuring artefact: its predicate `h1[data-page-title]` is
+already true before the click after the session switches, so it reports the time since the previous click; the numbers above use
+`[data-settings] h1[data-page-title]`. Not verified: WebKit, the Tauri shell, a real harness.

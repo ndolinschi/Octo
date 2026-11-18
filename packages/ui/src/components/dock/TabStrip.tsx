@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
+import { readyLazy } from "../../lib/readyLazy";
+import { registerWarm } from "../../lib/warm";
 import { flushSync } from "react-dom";
 import { useOptionalComments } from "../../state/comments";
 import { getBrowserTabPins, getBrowserTabState, useBrowserTabsRevision } from "../../state/browserTabs";
@@ -24,8 +26,10 @@ import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { Glyph } from "../primitives/Glyph";
 import { StateGlyph } from "../primitives/StateGlyph";
-/** The "+" picker and the all-tabs list load when first opened (their own chunks). */
-const TabPicker = lazy(() => import("./TabPicker").then((m) => ({ default: m.TabPicker })));
+/** The "+" picker and the all-tabs list load when first opened (their own chunks); the picker is warmed on idle and on intent. */
+const pickerPart = readyLazy(() => import("./TabPicker").then((m) => m.TabPicker));
+const TabPicker = pickerPart.Component;
+registerWarm("tab-picker", pickerPart.fetch);
 /** The project's commands (decision 68): the pinned buttons and "Run" menu next to the project actions; loads after first paint. */
 const ProjectCommands = lazy(() => import("../commands/ProjectCommands"));
 /** The tab context menu builds on first use (its own chunk). */
@@ -312,6 +316,7 @@ export function TabStrip(props: {
           label="Open a tab"
           title={`Open a tool, session, file or agent (${MOD}T)`}
           data-tab-plus
+          data-warm="tab-picker"
           aria-haspopup="dialog"
           aria-expanded={pickerHere}
           className={cn("shrink-0", pickerHere && "bg-active text-fg")}

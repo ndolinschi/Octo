@@ -1,5 +1,6 @@
 import { MOD_LABEL } from "../../lib/keys";
-import { TOOL_HINT, TOOL_PURPOSE, type PurposeTool } from "../../lib/toolPurpose";
+import { TOOL_PURPOSE, type PurposeTool } from "../../lib/toolPurpose";
+import { TOOL_HINT } from "../../lib/toolHint";
 import type { PaletteWorkspace, WorkspaceCommand } from "../nav";
 import { tabButton } from "./ids";
 import * as L from "./layout";

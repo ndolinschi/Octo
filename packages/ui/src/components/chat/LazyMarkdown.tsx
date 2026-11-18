@@ -1,5 +1,5 @@
 import { Suspense, type ComponentProps } from "react";
-import { readyLazy } from "./readyLazy";
+import { readyLazy } from "../../lib/readyLazy";
 
 /** The Markdown renderer's chunk; once it is in, a reply renders without suspending (see `readyLazy`). */
 export const markdownPart = readyLazy(() => import("../shared/Markdown").then((m) => m.Markdown));

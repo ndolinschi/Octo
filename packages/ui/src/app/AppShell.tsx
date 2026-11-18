@@ -30,15 +30,19 @@ import { ProjectWorkspace } from "./ProjectWorkspace";
 import { warmDrag } from "../components/dock/drag";
 import { transcriptPart } from "../components/chat/transcriptPart";
 import { ActivityProvider } from "../state/activity";
+import { readyLazy } from "../lib/readyLazy";
+import { registerWarm } from "../lib/warm";
 import { DRAWER_QUERY } from "../lib/constants";
 import { usePhone } from "../lib/phone";
 
 /** Home loads on first visit (its own chunk); the app usually opens a project. */
 /** The palette loads after the first paint (idle) or on first use, whichever comes first (its own chunk). */
-const loadPalette = () => import("../components/shell/CommandPalette");
 /** The settings index for the palette's Settings group (loaded with the palette). */
 const loadSettingsIndex = () => import("../components/settings/settingsIndex");
-const CommandPalette = lazy(() => loadPalette().then((m) => ({ default: m.CommandPalette })));
+const palettePart = readyLazy(() => import("../components/shell/CommandPalette").then((m) => m.CommandPalette));
+const CommandPalette = palettePart.Component;
+registerWarm("palette", palettePart.fetch);
+registerWarm("palette", loadSettingsIndex);
 /** The shortcuts sheet: its own chunk, mounted for its "?" key; it renders only while open. */
 const ShortcutsSheet = lazy(() => import("../components/shell/ShortcutsSheet"));
 /** Demo-only `#/p/<id>/memory` (the Memory view on its own); not in a normal start's chunks. */
@@ -50,10 +54,32 @@ const ProjectGone = lazy(() => import("./ProjectWorkspaceStates").then((m) => ({
 const OfflineBanner = lazy(() => import("../components/shell/OfflineState").then((m) => ({ default: m.OfflineBanner })));
 const OfflineState = lazy(() => import("../components/shell/OfflineState").then((m) => ({ default: m.OfflineState })));
 const Home = lazy(() => import("../components/home/Home").then((m) => ({ default: m.Home })));
-/** The project dialog and the settings page load on first use, warmed with the palette (their own chunks; v6.3 bundle). */
-const loadDialogs = () => Promise.all([import("../components/project/ProjectDialog"), import("../components/settings/SettingsPage")]);
-const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
-const SettingsPage = lazy(() => import("../components/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+/** The project dialog and the settings page load on first use, warmed on idle and on intent (their own chunks; v6.3 bundle). */
+const projectDialogPart = readyLazy(() => import("../components/project/ProjectDialog").then((m) => m.ProjectDialog));
+const ProjectDialog = projectDialogPart.Component;
+registerWarm("project-dialog", projectDialogPart.fetch);
+const settingsPart = readyLazy(() => import("../components/settings/SettingsPage").then((m) => m.SettingsPage));
+const SettingsPage = settingsPart.Component;
+registerWarm("settings", settingsPart.fetch);
+/**
+ * Idle warm-up order (`lib/warm`), most likely first: the palette, the model list, Settings, then the tool tabs the "+" picker
+ * offers. Each key's chunk is registered next to its lazy component; one key per idle slot.
+ */
+/** Idle warming starts this long after the shell mounts (the project's first load has the main thread before that). */
+const SHELL_SETTLES_MS = 1500;
+const IDLE_WARM = [
+  "palette",
+  "model",
+  "settings",
+  "tab-picker",
+  "project-dialog",
+  "tool:files",
+  "tool:terminal",
+  "tool:review",
+  "tool:browser",
+  "tool:processes",
+  "tool:changes",
+];
 /** Decision 53: the connect sheet and the no-provider screen (their own chunks). */
 const ConnectSheet = lazy(() => import("../components/providers/ConnectSheet").then((m) => ({ default: m.ConnectSheet })));
 const ConnectScreen = lazy(() => import("../components/providers/ConnectScreen").then((m) => ({ default: m.ConnectScreen })));
@@ -220,20 +246,31 @@ function Shell() {
     return () => window.clearTimeout(id);
   }, []);
 
-  // Warm the palette's chunk once the app is idle, so Ctrl/Cmd+K opens it without a wait.
+  // The lazy surfaces' chunks (palette, model list, Settings, tool tabs), so their first open is as fast as the second
+  // (`lib/warmSchedule`, its own chunk, in right after the first paint): on intent (hover, focus or press of the control that
+  // opens one; holding Ctrl/Cmd for the palette), and on idle once the shell has settled, one chunk per idle slot (none under
+  // Save-Data). A failed warm-up is retried by the real open, which shows the error.
   useEffect(() => {
-    // A failed warm-up is retried by the first Ctrl/Cmd+K (which shows the error if it fails again).
-    const id = window.setTimeout(() => {
-      void loadPalette().catch(() => undefined);
-      void loadDialogs().catch(() => undefined);
-      // The chunks the first minutes most likely need (v6.3 part 2 moved them out of the initial bundle): warmed, so a
-      // file, the "+" picker or the model picker opens without a wait. A failure is retried by the first real open.
-      void import("../components/files/FileView").catch(() => undefined);
-      void import("../components/dock/TabPicker").catch(() => undefined);
-      void import("../components/shared/ModelPickerPanel").catch(() => undefined);
-      void import("../components/chat/RoutingLine").catch(() => undefined);
-    }, 1500);
-    return () => window.clearTimeout(id);
+    let stop: () => void = () => undefined;
+    let live = true;
+    void import("../lib/warmSchedule").then(
+      (m) => {
+        if (!live) return;
+        const unlisten = m.installIntentWarming(document);
+        let cancel: () => void = () => undefined;
+        const id = window.setTimeout(() => (cancel = m.warmOnIdle(IDLE_WARM)), SHELL_SETTLES_MS);
+        stop = () => {
+          unlisten();
+          window.clearTimeout(id);
+          cancel();
+        };
+      },
+      () => undefined, // Nothing is warmed then: every surface still loads on first open.
+    );
+    return () => {
+      live = false;
+      stop();
+    };
   }, []);
 
   // NEW-6: Back / Forward (or any hash change) closes the transient overlays that are not the new route's own: the palette and
