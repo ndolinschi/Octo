@@ -50,6 +50,7 @@ import { mayNearLimit, plainShaping, triggerAt } from "../../lib/composerInput";
 import type * as SizeModule from "../../lib/messageSize";
 import { usePhone } from "../../lib/phone";
 import { useNewSession, type StartedSession } from "./useNewSession";
+import { useContextShortcut } from "./useContextShortcut";
 import { deviceMay, ON_YOUR_COMPUTER } from "../../lib/remoteDevice";
 
 const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
@@ -163,6 +164,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     onMoved?(result: MoveToWorktreeResult): void;
   } | null>(null);
   const box = useRef<HTMLFormElement>(null);
+  useContextShortcut(box, Boolean(props.context.used && props.context.size));
   const plus = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<ComposerMenuHandle>(null);
   const slashRef = useRef<SlashMenuHandle>(null);
