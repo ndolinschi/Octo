@@ -4195,3 +4195,14 @@ Small fixes from a review of the shell (sidebar, top bar, status bar, overlays, 
   (its session store numbers the tabs when one opens or closes); the sidebar's stored width is read and applied by its edge
   (`shell/SidebarEdge`), which rides in the Projects list's chunk that the sidebar asks for at once: a width other than the
   default can show one frame after the first paint. Result: 160.90 kB.
+
+## Owner decisions — shell polish follow-ups (2026-11-18)
+
+The owner approved five changes the polish review had left as their decisions. Each is its own commit; where one
+supersedes an earlier decision, that decision carries a dated note pointing here.
+
+- **F1. Sidebar session rows are 28px** (`--spacing-row`, the tree-row height of the row-height table in `styles.css`), not
+  32: a session row under a project and a row of the flat Sessions list are `ListRow size="sm"`, the row's "⋯" sits 2px
+  from its top, the rename field is 24px in the 28px row (its text still on the title's x, measured 48 → 48), the
+  loading skeleton of the flat list has the same height. Project rows and the nav rows above stay 32px; on touch every row
+  keeps its 44px (`touch:h-ctl-lg`). Measured: row height 32 → 28 at 1440.

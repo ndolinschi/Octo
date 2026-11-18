@@ -261,7 +261,7 @@ export function SessionTree(props: SessionTreeProps) {
             aria-haspopup="menu"
             level={inTree ? 2 : 1}
             id={rowId("s", s.id)}
-            size="md"
+            size="sm"
             tone={selected ? "default" : "quiet"}
             href={hrefFor(s.project_id, null, s.id)}
             onClick={props.onPick}
@@ -290,7 +290,7 @@ export function SessionTree(props: SessionTreeProps) {
         )}
         {renaming !== s.id && (
           // The pointer's way to the row's menu; the keyboard's is Shift+F10 on the row (the button is out of the tree's a11y).
-          <span data-tree-actions role="none" className="absolute top-1 right-1 touch:top-2">
+          <span data-tree-actions role="none" className="absolute top-0.5 right-1 touch:top-2">
             <IconButton
               icon={Ellipsis}
               size={phone ? "lg" : "xs"}
@@ -336,7 +336,7 @@ export function SessionTree(props: SessionTreeProps) {
         onKeyDown={onKeyDown}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain fade-y"
       >
-        {(loading || sessionsLoading) && <SkeletonList count={3} size="md" />}
+        {(loading || sessionsLoading) && <SkeletonList count={3} size={sessionsLoading ? "sm" : "md"} />}
         {props.mode === "sessions" ? (
           <>
             {!sessionsLoading && flat.map((s) => sessionRow(s, false))}
@@ -388,7 +388,7 @@ export function SessionTree(props: SessionTreeProps) {
                         role="treeitem"
                         level={2}
                         id={rowId("m", p.id)}
-                        size="md"
+                        size="sm"
                         tone="quiet"
                         leading={<span />}
                         title={showAll.has(p.id) ? "Open Sessions" : `Show all (${shown.length + hidden})`}
@@ -573,14 +573,14 @@ function RenameRow(props: { initial: string; inTree: boolean; leading: ReactNode
   return (
     // The row's glyph stays and the text does not move: the field's frame steps 6px left into the gap and its text starts
     // where the title did (16px glyph + 8px gap; 6px back + 1px border + 5px padding).
-    <div className={cn("flex h-ctl-md items-center gap-2 pr-1 touch:h-ctl-lg", props.inTree ? "pl-6" : "pl-2")}>
+    <div className={cn("flex h-ctl-sm items-center gap-2 pr-1 touch:h-ctl-lg", props.inTree ? "pl-6" : "pl-2")}>
       {props.leading}
       <TextField
         className="-ml-1.5 pl-1.25"
         // eslint-disable-next-line jsx-a11y/no-autofocus -- the person just chose Rename: the field is what they asked for
         autoFocus
         aria-label="Session title"
-        size="sm"
+        size="xs"
         value={value}
         maxLength={120}
         onChange={(e) => setValue(e.target.value)}
