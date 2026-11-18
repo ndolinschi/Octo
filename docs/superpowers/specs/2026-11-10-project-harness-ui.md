@@ -4191,3 +4191,13 @@ each deviation.
   do; the browser's Back / Forward / Reload are 4 apart (were 2), as in Files; the browser's empty-state actions are
   `secondary`, like every other tab's (was a filled `primary`). Not changed: the terminal's folder `MenuButton` stays 24 high
   (the primitive's `chip` height everywhere; changing it is a library decision).
+
+**Verified.** `pnpm lint` (0 errors; no new warnings in the 13 touched files), `pnpm format:check`, `pnpm --filter @octo/ui test`
+(902/902 at each commit; one later run failed only `streak.test.ts`'s time budget under a machine load of ~34),
+`spacing-audit.mjs` on `?demo=1` and on `?demo=1&tabs=all` (total=0; states that timed out under load were re-run alone with
+longer waits, `panel-frame` and `review-open` included: total=0), `frame-colours.mjs` (ok), `panel-measure.mjs --mode after`
+(every Panel header 40, title at 16, right inset 8), and Playwright Chromium at 1440×900 in dark and light, populated and
+empty: every one of the 13 tool tabs has a 40px bar with one `line` hairline at y 40 and no double line; Review picker chrome
+150 → 114 at 363 wide; the open review's header 61 → 40 (also 40 at 363); side question edges as in D; Processes pitch 46 with
+actions on hover; reverting a request in Changes. **Not verified.** WebKit, the phone layout by eye (the audit's phone states
+pass), a live harness, the Tauri app.
