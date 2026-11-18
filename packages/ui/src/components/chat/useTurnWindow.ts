@@ -95,6 +95,13 @@ function keepPlace(scroller: HTMLElement): ResizeObserver {
   });
 }
 
+/**
+ * The conversation's tab is hidden (`display: none`): every turn reports "not intersecting" with a zero-size box. That says
+ * nothing about the reader — dropping them then stored 0 as each turn's height, and showing the tab again remounted every
+ * turn and lost the reading position.
+ */
+const hiddenRoot = (e: IntersectionObserverEntry) => !e.rootBounds || e.rootBounds.height === 0;
+
 const keyOf = (el: Element) => (el instanceof HTMLElement ? el.dataset.turnKey : undefined);
 
 export function useTurnWindow(agentId: string, turns: readonly Turn[], ready: boolean) {
@@ -139,6 +146,7 @@ export function useTurnWindow(agentId: string, turns: readonly Turn[], ready: bo
       (entries) => {
         const add: string[] = [];
         for (const e of entries) {
+          if (hiddenRoot(e)) continue;
           const key = keyOf(e.target);
           if (key && e.isIntersecting) add.push(key);
         }
@@ -163,7 +171,7 @@ export function useTurnWindow(agentId: string, turns: readonly Turn[], ready: bo
         for (const e of entries) {
           const key = keyOf(e.target);
           // Dropped even if its mount has not committed yet (a fast scroll), or it would stay mounted out of sight.
-          if (!key || e.isIntersecting) continue;
+          if (!key || e.isIntersecting || hiddenRoot(e)) continue;
           if (selectionIn(e.target)) {
             held.add(e.target);
             continue;

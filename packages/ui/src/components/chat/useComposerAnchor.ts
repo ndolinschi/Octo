@@ -14,10 +14,14 @@ export function useComposerAnchor(scroller: RefObject<HTMLElement | null>, compo
     let height = row.getBoundingClientRect().height;
     const ro = new ResizeObserver(() => {
       const next = row.getBoundingClientRect().height;
-      const delta = next - height;
+      // Hidden (a background tab): the row has no height, which is not the composer shrinking. Keeping 0 made the tab
+      // coming back read as the composer growing by its whole height, and the reader's place moved by that much.
+      if (next === 0) return;
+      // Mounted hidden: the first height seen is where it starts, not a change.
+      const delta = height === 0 ? 0 : next - height;
       height = next;
       const el = scroller.current;
-      if (!delta || !el || following.current || next === 0) return;
+      if (!delta || !el || following.current) return;
       el.scrollTop += delta;
     });
     ro.observe(row);

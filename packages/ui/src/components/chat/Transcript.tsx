@@ -437,6 +437,8 @@ const UserPrompt = memo(function UserPrompt({
     const el = box.current;
     if (!el || expanded) return;
     const check = () => {
+      // Hidden (a background tab): no box to measure; keep the shape it had.
+      if (el.clientHeight === 0) return;
       setOverflows(el.scrollHeight > el.clientHeight + 1);
       setOneLine(el.clientHeight <= parseFloat(getComputedStyle(el).lineHeight) * 1.5);
     };
