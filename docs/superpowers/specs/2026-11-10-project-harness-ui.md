@@ -4148,3 +4148,46 @@ tab runtime layout with live command output; WebKit/Tauri desktop binary.
 **Verified.** `gofmt -l apps/harness/internal/bridge/v7_approvals_test.go`, `pnpm format:check`, `pnpm lint` (`0` errors, `0` cycles across `849` files), `pnpm test` (`184/184` `@octo/agent-client`, `902/902` `@octo/ui` including `phone.test.ts`, `41/41` `@octo/desktop`, `10/10` `test:scripts`), `pnpm --filter @octo/desktop build`, `pnpm --filter @octo/web build`, `node scripts/check-bundle-size.mjs` (`160.92 kB` gzip vs `161.00 kB` budget), `slash-commands.mjs --phone` (`slash-commands: ok`), Playwright Chromium verification across `1440×900`, `844×390` & `740×360` landscape phones (`data-phone=true`, `overflowX=false`, `mainPaddingLeft=0px`), and `390×844` / `360×740` portrait phones (`0` control target issues across Chat, Processes, Sessions, Terminal, Browser, Side question, Agents, Notes, Usage, Review, and Changes; `DiffPanel` `retry.ts` `0` overlap/overflow) with screenshot inspection, plus `spacing-audit.mjs --query "demo=1&tabs=all" --strict` (`total=0`, `skipped=0` across `chat-idle`, `delegation`, `tool-processes`, `tool-browser`, `tool-terminal`, `v7-gallery`, `phone-home`, `phone-nav`, `phone-plus`, `phone-files`, `phone-changes`, `phone-browser`, `phone-processes`, `phone-terminal`, `phone-settings`, and phone panel runs).
 **Not verified.** `go test -race` on `apps/harness/internal/bridge` (`TestAcceptEditsAutoApprovesWritesAndAsksForBash`) could not run in this offline/proxy-blocked VM (`modernc.org/sqlite@v1.62.0` absent from `GOMODCACHE` and `proxy.golang.org` returns HTTP `403`); WebKit Playwright engine and native Tauri desktop binary.
 
+
+## As built — tool-tab consistency pass (2026-11-18)
+
+Polish, not a redesign: every dock tool tab measured against the Files / Browser bar (40px bar, 8px inset, a `line` hairline
+under it, 28px quiet icon buttons 4 apart, a 36px `PanelFilters` row, `EmptyState`), and the smallest change that removes
+each deviation.
+
+- **A. Panel hairline (`primitives/Panel.tsx`, `v7/ChangesView.tsx`, `review/PullList.tsx`).** The `Panel` header sits in a
+  full-width `[data-panel-bar]` with the Files bar's inset `line` shadow, so every Panel tab (Sessions, Memory, Notes, Usage,
+  Agents, Details, Changes, Processes, Review picker, side question) has the same hairline under its bar, also when the header
+  is capped to `PANEL_COLUMN`. The two lines that stood in for it are gone (`border-t` on `[data-v7-changes]` and on the
+  review picker's `ViewTabs`), so no tab shows a double line.
+- **B. Review picker (`review/PullList.tsx`, `review/ReviewTab.tsx`).** The hand-built filter row is a plain `PanelFilters`
+  (chips, then the search; in a narrow group the chips scroll under their fade instead of the search taking a second line;
+  the placeholder is "Search…", the label still names pull requests, addresses and numbers). The panel title is "Review" (the
+  dock tab's name), so "Pull requests" is said once, by the first view tab. Chrome above the first row at 363px: 150 → 114.
+- **C. Open review header (`review/ReviewHeader.tsx`, `ReviewView.tsx`, `Overview.tsx`).** One 40px bar at every width (was 61
+  maximised): Back, the title, the 28px group, the Files bar's hairline. The mono meta line (number, author, branches, viewed,
+  unresolved threads) is the title's tooltip and the first line of Details at every width (it already was in page mode);
+  "New commits: update" is a quiet button in the group, and in "⋯" when the group folds below 720. "Submit review" is
+  `secondary`: no tool tab has a filled button in its bar. R3's folding order is unchanged (1024 / 720 / 480); at 363 the
+  bar holds Back, the title, Run, "⋯" and "Submit". **Departs from R3** in one point: there is no meta line at any width.
+- **D. Side question (`side/SidePanel.tsx`).** One column with two edges: boxes (the list's content box, the composer, the
+  header's actions) at 8 and 728 when maximised, text (title, answers, the input's text, the model picker) at 16 and 720 (the
+  bubble and the send button end on 720). Measured before → after (1422 wide): input text 20 → 16, model picker 14 → 16, send
+  right edge 722 → 720; the composer's inner padding departs from the main composer's for this. The empty state is laid over
+  the whole body (the composer paints over it), so its title sits at 37 % of the tab (was 32 %), like the other tabs; the
+  three starters are text-sized quiet buttons (were full-width). "Keep" and "Clear" both carry an icon (Pin, Eraser).
+- **E. Processes (`processes/ProcessesTab.tsx`).** Stop, Kill and "⋯" show on hover and keyboard focus (`ListRow`'s
+  focus-within), always on touch (`touch:`) and on the phone layout (`trailingShown={phone}`); **revises QA pass 4**, which
+  showed them on every active row. There is no Retry on a process row (a failed run restarts from "⋯"), so nothing stays
+  pinned. Row pitch 44 → 46 (`gap-1.5`, as Notes and the pull list); the filter row is a plain `PanelFilters` of 36 (chips,
+  then the search at the right, `min-w-28`), no longer wrapping.
+- **F. Changes list (`v7/TurnFiles.tsx`).** File rows are `ListRow` md (32, text `fg` at rest instead of `fg-2`, kind letter
+  in the leading slot, folder after the name, source and `+a −r` or "reverted" / "not reverted" as the meta); group heads are
+  `SectionHeader` captions (12px `fg-3` on 28, at the rows' text edge) with the count, totals and "Revert" as the aside. The
+  revert button moved to the 24px `IconButton` (same pixels, no deprecated wrapper). Checked in the demo: revert a request
+  (reverted row struck through with "reverted", failed ones "not reverted" in `err`), no console errors.
+- **G. Terminal and Browser bars (`terminal/TerminalTab.tsx`, `browser/BrowserToolbar.tsx`, `browser/BrowserTab.tsx`).** The
+  terminal bar's inset is 8 (`px-2`, was 12), so its status dot and its last 28px button sit where the Files bar's controls
+  do; the browser's Back / Forward / Reload are 4 apart (were 2), as in Files; the browser's empty-state actions are
+  `secondary`, like every other tab's (was a filled `primary`). Not changed: the terminal's folder `MenuButton` stays 24 high
+  (the primitive's `chip` height everywhere; changing it is a library decision).
