@@ -4174,3 +4174,12 @@ A reviewed list of small fixes; no redesign, existing tokens and primitives, beh
   file glyph sits in the code's left padding (`position: absolute`): an inline SVG is a break opportunity too, and it alone kept
   "after 10 s (" at a line's end. Measured on Atlas API at 1440/1300/1200/1100/1000: the orphaned "(" before
   `src/http/client.ts` at all five widths before, none after; Enter on a focused chip opens the file (tab count 1 → 2).
+- **Transcript and copy (WP-D).** A failed or stopped turn's banner (`TurnBanner`) and the plan card span the column's whole
+  edge too (−12…708; measured: failed banners and the plan card at x −12, w 720); the empty project's start failure keeps its
+  place on the composer's edge (`flush`), so `Transcript.tsx` is unchanged. The empty project says one problem once: when the
+  start failure ("GitHub Copilot is not logged in") shows, the title's "can't run yet: its provider is not connected" sentence is
+  left out (`startFailureOf` in `lib/transcript.ts`, shared with `StartFailure`). While streamed text with its caret is on screen
+  the live line no longer adds "Writing…" under it (`showsActivityLine`, test in `activity.test.ts`); sampled every 50ms over a
+  streamed reply: 36 of 36 caret frames also had the "Writing…" row before, 0 of 34 after. Copy: "History compacted 2 requests
+  ago" (was "history was compacted …"), "History compacted by you" (was "· manual"), and a plan whose text opens with its own
+  "Plan…" line takes it as the card title instead of repeating "Plan" (`lib/planTitle.ts`, tested).
