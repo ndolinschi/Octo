@@ -390,7 +390,7 @@ monochrome dithered illustration):
 30. **Composer context bar.** The composer becomes two fused layers (one outline, radius 12, hairline between):
     the input row on top, and under it a 28px bar that states the run's context as quiet buttons with a 14px
     glyph — **folders** (the project's folders; opens project settings), **model** (the picker of decision 27),
-    **access** (Supervised / Full access, from v7; until then not rendered), **routing** (Auto / Ceiling / Fixed
+    **access** (Ask first / Accept edits / Allow all, from v7; "Ask first" because "Ask" is the composer mode, one name per thing), **routing** (Auto / Ceiling / Fixed
     when the router is detected) — left to right, and on the right the hint line ("↵ send") or, while a turn
     runs, the queue count (v7). The loose line of text under the composer goes away. Under 420px the bar keeps
     model and access and folds the rest into a `…` menu. The floating composer has the same two layers.
@@ -4160,3 +4160,13 @@ tab runtime layout with live command output; WebKit/Tauri desktop binary.
 **Verified.** `gofmt -l apps/harness/internal/bridge/v7_approvals_test.go`, `pnpm format:check`, `pnpm lint` (`0` errors, `0` cycles across `849` files), `pnpm test` (`184/184` `@octo/agent-client`, `902/902` `@octo/ui` including `phone.test.ts`, `41/41` `@octo/desktop`, `10/10` `test:scripts`), `pnpm --filter @octo/desktop build`, `pnpm --filter @octo/web build`, `node scripts/check-bundle-size.mjs` (`160.92 kB` gzip vs `161.00 kB` budget), `slash-commands.mjs --phone` (`slash-commands: ok`), Playwright Chromium verification across `1440×900`, `844×390` & `740×360` landscape phones (`data-phone=true`, `overflowX=false`, `mainPaddingLeft=0px`), and `390×844` / `360×740` portrait phones (`0` control target issues across Chat, Processes, Sessions, Terminal, Browser, Side question, Agents, Notes, Usage, Review, and Changes; `DiffPanel` `retry.ts` `0` overlap/overflow) with screenshot inspection, plus `spacing-audit.mjs --query "demo=1&tabs=all" --strict` (`total=0`, `skipped=0` across `chat-idle`, `delegation`, `tool-processes`, `tool-browser`, `tool-terminal`, `v7-gallery`, `phone-home`, `phone-nav`, `phone-plus`, `phone-files`, `phone-changes`, `phone-browser`, `phone-processes`, `phone-terminal`, `phone-settings`, and phone panel runs).
 **Not verified.** `go test -race` on `apps/harness/internal/bridge` (`TestAcceptEditsAutoApprovesWritesAndAsksForBash`) could not run in this offline/proxy-blocked VM (`modernc.org/sqlite@v1.62.0` absent from `GOMODCACHE` and `proxy.golang.org` returns HTTP `403`); WebKit Playwright engine and native Tauri desktop binary.
 
+
+## As built — "Ask first": one name per thing (2026-11-18)
+
+"Ask" named two things: the composer mode (Agent / Ask / Plan) and the permission level `supervised` in the composer's
+Permissions menu and the project dialog. The mode keeps "Ask"; the permission level is now **"Ask first"**, beside its
+neighbours "Accept edits" and "Allow all" (the menu's own words: it asks before edits and commands). One place holds the
+label (`lib/access.ts` `ACCESS_LABEL`), so the chip, its tooltip ("Permissions: Ask first — Asks before edits and
+commands."), the menu and the project dialog all change; no slash command, palette entry or settings row names the level.
+Wire values (`supervised`, `accept_edits`, `full`) are unchanged. `lib/access.test.ts` asserts that no permission level
+shares a name with a mode (it failed before). Verified: ui tests, lint, the chip and its menu in the browser.
