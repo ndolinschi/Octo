@@ -8,7 +8,8 @@ const MAX = 80;
  */
 export function titleFromRequest(request: string): string {
   let line = (request.trim().split(/\r|\n/)[0] ?? "").trim();
-  const chars = [...line];
+  // Characters as the harness counts them (runes: code points), so a cut never splits a surrogate pair.
+  const chars = Array.from(line);
   if (chars.length > MAX) {
     let cut = MAX;
     for (let i = MAX; i > 0; i--) {

@@ -483,8 +483,8 @@ function rowId(kind: "p" | "s" | "m", id: string): string {
 /** A group's caption inside the flat list (decision F3): the section caption's look, on the rows' glyph column. */
 function GroupCaption(props: { first?: boolean; children: string }) {
   return (
-    <li role="none" aria-hidden data-group-caption className={cn("flex h-5 items-center pl-2 text-xs text-fg-3", props.first ? "mb-1" : "mt-3 mb-1")}>
-      {props.children}
+    <li role="none" data-group-caption className={cn("flex h-5 items-center pl-2 text-xs text-fg-3", props.first ? "mb-1" : "mt-3 mb-1")}>
+      <span aria-hidden>{props.children}</span>
     </li>
   );
 }
