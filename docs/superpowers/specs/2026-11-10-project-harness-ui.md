@@ -4191,3 +4191,8 @@ A reviewed list of small fixes; no redesign, existing tokens and primitives, beh
   "1px edges" the R2 note counts; it measured 38 without a border). Checked in the Docs site and Atlas API conversations with a
   sent @mention and /command, a queued message and a rewind point, dark and light, 1440 and phone 390. Not checked: a bubble
   with images.
+- **E2 — one small chevron on a chip (owner's decision, 2026-11-18).** `primitives/Chip` ends its label with one `ChevronDown`
+  at 12px in `fg-3` instead of the 14px up-down pair (mode, permission, model and the folder chip, and the title bar's model chip:
+  one primitive). `Glyph` admits 12 for this one use. Measured in the composer at 1440, 900, 700 and 560: chevron 12px, 6px from
+  the label on every chip, no control outside the box, no label cut; each chip 2px narrower. `Select`'s upward chevron pair is
+  not a chip and is unchanged.

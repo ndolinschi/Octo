@@ -1,12 +1,12 @@
-import { ChevronsUpDown, type LucideIcon } from "lucide-react";
+import { ChevronDown, type LucideIcon } from "lucide-react";
 import { forwardRef, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { Glyph } from "./Glyph";
 import { MiddleText } from "./MiddleText";
 
 /**
- * A ghost chip (decision 62: the composer's control row, and the same model chip in the title bar): 28px, glyph + label + the up-down chevron pair (it opens
- * upward, decision 56). `bare` drops the label (the row is too narrow); the accessible name keeps it.
+ * A ghost chip (decision 62: the composer's control row, and the same model chip in the title bar): 28px, glyph + label + one small down chevron (12px,
+ * `fg-3`; E2, owner 2026-11-18: the up-down pair read as noise four times in a row). `bare` drops the label (the row is too narrow); the accessible name keeps it.
  */
 export const Chip = forwardRef<
   HTMLButtonElement,
@@ -49,7 +49,7 @@ export const Chip = forwardRef<
       {!bare && (
         <span data-chip-label className="flex min-w-0 items-center gap-1.5">
           {parts ? <PartsLabel key={label} parts={parts} /> : cut === "end" ? <span className="min-w-0 truncate">{label}</span> : <MiddleText text={label} />}
-          <Glyph icon={ChevronsUpDown} size={14} className="shrink-0 text-fg-3" />
+          <Glyph icon={ChevronDown} size={12} className="shrink-0 text-fg-3" />
         </span>
       )}
     </button>
