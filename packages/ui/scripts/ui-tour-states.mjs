@@ -326,7 +326,7 @@ export const GROUPS = {
         await send(page, "approvals demo please");
         await need(page, page.locator("[data-v7-approval-group], [data-v7-approval]").first(), "approvals");
         await page.waitForTimeout(500);
-        await page.getByRole("button", { name: "Details" }).first().click();
+        await page.locator("[data-approval-details]").first().click();
         await need(page, page.locator("[data-patch]"), "patch");
         await page.locator("[data-patch]").first().scrollIntoViewIfNeeded();
       },
@@ -341,7 +341,7 @@ export const GROUPS = {
         await send(page, "approvals demo please");
         await need(page, page.locator("[data-v7-approval-group], [data-v7-approval]").first(), "network approval");
         await page.waitForTimeout(500);
-        await page.getByRole("button", { name: "Details" }).nth(1).click();
+        await page.locator("[data-approval-details]").nth(1).click();
         await need(page, page.locator("[data-network]"), "network details");
         await page.locator("[data-network]").first().scrollIntoViewIfNeeded();
       },

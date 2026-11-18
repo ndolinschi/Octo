@@ -2420,6 +2420,10 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   min-height: var(--spacing-touch);
   padding-inline: 16px;
 }
+/* A group row's caption disclosure keeps its text on the row's edge, as `-ml-2` does on the desktop. */
+[data-phone] [data-v7-approval] [data-approval-details] {
+  margin-inline-start: -16px;
+}
 /* The desktop's window row and status bar have no place on the phone: the header and the "⋯" sheet carry what they hold. */
 [data-phone] :is([data-title-bar], header[aria-label="Window"]:not([data-phone-header]), [data-status-bar]) {
   display: none;

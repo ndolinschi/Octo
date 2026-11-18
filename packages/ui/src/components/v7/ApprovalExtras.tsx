@@ -10,26 +10,32 @@ import { Spinner } from "../primitives/Status";
 import { LineCounts } from "./parts";
 
 /** The change as a unified diff, folded behind "Show changes" (the card stays one decision, not a diff viewer). */
-export function PatchView({ patch }: { patch: string }) {
-  const [open, setOpen] = useState(false);
+export function PatchView({ patch, open: shown }: { patch: string; /** Always open, no toggle: an outer disclosure already opened it. */ open?: boolean }) {
+  const [toggled, setOpen] = useState(false);
+  const open = shown ?? toggled;
   const lines = useMemo(() => patchLines(patch), [patch]);
   const counts = useMemo(() => patchCounts(lines), [lines]);
   return (
     <div data-patch>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="-ml-1.5 inline-flex h-6 press items-center gap-1 rounded-sm px-1.5 text-fg-2 hover:bg-hover hover:text-fg"
-      >
-        <Glyph icon={ChevronRight} size={14} className={cn("text-fg-3", open && "rotate-90")} />
-        {open ? "Hide changes" : "Show changes"}
-        <LineCounts added={counts.added} removed={counts.removed} className="ml-1" />
-      </button>
+      {shown === undefined && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="-ml-1.5 inline-flex h-6 press items-center gap-1 rounded-sm px-1.5 text-fg-2 hover:bg-hover hover:text-fg"
+        >
+          <Glyph icon={ChevronRight} size={14} className={cn("text-fg-3", open && "rotate-90")} />
+          {open ? "Hide changes" : "Show changes"}
+          <LineCounts added={counts.added} removed={counts.removed} className="ml-1" />
+        </button>
+      )}
       {open && (
         <pre
           aria-label="Changes"
-          className="octo-code mt-1 max-h-60 overflow-auto rounded-sm bg-code-bg py-1 font-mono text-xs leading-5 focus-visible:shadow-[0_0_0_2px_var(--octo-focus)]"
+          className={cn(
+            "octo-code max-h-60 overflow-auto rounded-sm bg-code-bg py-1 font-mono text-xs leading-5 focus-visible:shadow-[0_0_0_2px_var(--octo-focus)]",
+            shown === undefined && "mt-1",
+          )}
         >
           {lines.map((l, i) => (
             <span

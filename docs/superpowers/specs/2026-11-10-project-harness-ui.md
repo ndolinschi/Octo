@@ -4148,3 +4148,20 @@ tab runtime layout with live command output; WebKit/Tauri desktop binary.
 **Verified.** `gofmt -l apps/harness/internal/bridge/v7_approvals_test.go`, `pnpm format:check`, `pnpm lint` (`0` errors, `0` cycles across `849` files), `pnpm test` (`184/184` `@octo/agent-client`, `902/902` `@octo/ui` including `phone.test.ts`, `41/41` `@octo/desktop`, `10/10` `test:scripts`), `pnpm --filter @octo/desktop build`, `pnpm --filter @octo/web build`, `node scripts/check-bundle-size.mjs` (`160.92 kB` gzip vs `161.00 kB` budget), `slash-commands.mjs --phone` (`slash-commands: ok`), Playwright Chromium verification across `1440×900`, `844×390` & `740×360` landscape phones (`data-phone=true`, `overflowX=false`, `mainPaddingLeft=0px`), and `390×844` / `360×740` portrait phones (`0` control target issues across Chat, Processes, Sessions, Terminal, Browser, Side question, Agents, Notes, Usage, Review, and Changes; `DiffPanel` `retry.ts` `0` overlap/overflow) with screenshot inspection, plus `spacing-audit.mjs --query "demo=1&tabs=all" --strict` (`total=0`, `skipped=0` across `chat-idle`, `delegation`, `tool-processes`, `tool-browser`, `tool-terminal`, `v7-gallery`, `phone-home`, `phone-nav`, `phone-plus`, `phone-files`, `phone-changes`, `phone-browser`, `phone-processes`, `phone-terminal`, `phone-settings`, and phone panel runs).
 **Not verified.** `go test -race` on `apps/harness/internal/bridge` (`TestAcceptEditsAutoApprovesWritesAndAsksForBash`) could not run in this offline/proxy-blocked VM (`modernc.org/sqlite@v1.62.0` absent from `GOMODCACHE` and `proxy.golang.org` returns HTTP `403`); WebKit Playwright engine and native Tauri desktop binary.
 
+
+## As built — conversation and composer polish (2026-11-18)
+
+A reviewed list of small fixes; no redesign, existing tokens and primitives, behaviour unchanged.
+
+- **Composer (WP-A).** A model whose provider is not connected leads with a 14px `CircleAlert` in `text-warn` and its
+  accessible name ends ", provider not connected" (`shared/ModelPicker.tsx`; colour alone said it before). The context gauge is a
+  2px arc on r=6.75 over a `line-strong` track ring, not a filled pie (`chat/ContextRing.tsx`; checked at 1%, 50%, 95% in both
+  themes). The @ menu is as wide as the composer box, like the / menu (480 → 720px at 1440; `chat/ComposerMenu.tsx`).
+- **Approvals (WP-B).** A group is titled "3 approvals" with the distinct agent labels as its dim line (it said "from <project>");
+  its rows name their agent at the end (`text-xs text-fg-3`) when more than one agent asks (`v7/ApprovalGroup.tsx`, test
+  `ApprovalGroup.test.ts`). A row's caption line (what · subject · +N −M) is its Details disclosure (button, chevron,
+  `aria-expanded`, `data-approval-details`); the action row is Allow once · scope · Always · Deny; an edit opens straight onto its
+  diff, so it has one disclosure (`PatchView open`). Scripts that clicked "Details" (`frame-colours.mjs`, `ui-tour-states.mjs`)
+  click `[data-approval-details]`. Cards in the approvals slot span the column's whole edge (`-mx-3`: frame −12…708, the user
+  bubble's and the composer's edge) and the RequestCard glyph gains a 4px margin, so glyph x=0 and title x=24 like the activity
+  rows (before: glyph 12, title 32, frame 0…696). Measured at 1440, 1000, 760, 560 and 390 (phone): no horizontal scroll.
