@@ -140,13 +140,18 @@ func TestRevertedFilesLeaveTheChanges(t *testing.T) {
 	stream := e.subscribe(t, pid)
 	left := 3
 	for _, path := range []string{"made.txt", "old.txt", "README.md"} {
-		var st project.RevertResult
-		e.into(t, "POST", "/v1/projects/"+pid+"/changes/"+itoa(byPath[path].ChangeIDs[0])+"/revert", nil, http.StatusOK, &st)
-		left--
-		ev := waitEvent(t, stream, "change.recorded")
-		if c, _ := ev.Data["change"].(map[string]any); c == nil || c["path"] != path {
-			t.Fatalf("change.recorded after reverting %s = %+v", path, ev.Data)
+		// Newest change first, as the Changes view does: three sub-agents run the command, and under load a snapshot can
+		// catch a file half-written, so a file may have more than one change.
+		ids := byPath[path].ChangeIDs
+		for i := len(ids) - 1; i >= 0; i-- {
+			var st project.RevertResult
+			e.into(t, "POST", "/v1/projects/"+pid+"/changes/"+itoa(ids[i])+"/revert", nil, http.StatusOK, &st)
+			ev := waitEvent(t, stream, "change.recorded")
+			if c, _ := ev.Data["change"].(map[string]any); c == nil || c["path"] != path {
+				t.Fatalf("change.recorded after reverting %s = %+v", path, ev.Data)
+			}
 		}
+		left--
 		now := list("")
 		if _, ok := now[path]; ok || len(now) != left {
 			t.Fatalf("after reverting %s: %+v", path, now)
