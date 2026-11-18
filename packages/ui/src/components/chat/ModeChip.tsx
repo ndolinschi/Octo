@@ -33,7 +33,7 @@ export function ModeChip(props: ChipProps & { value: ProjectMode; isDefault: boo
         data-chip="mode"
         onClick={() => setOpen(!open)}
       />
-      <Presence show={pos !== null} exitMs={0}>
+      <Presence show={pos !== null}>
         {pos && (
           <Menu
             label="Mode"

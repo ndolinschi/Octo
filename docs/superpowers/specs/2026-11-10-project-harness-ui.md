@@ -1547,16 +1547,22 @@ dividers. That is ~800 lines of our own code and keeps every pixel on our tokens
 
 ### Motion
 
+Tokens (styles.css, mirrored in `lib/constants` for the Web Animations API): `--motion-fast` 100ms (hover, reveal, press, every
+exit), `--motion-base` 150ms (overlays, tooltips, chevrons, switches), `--motion-slow` 220ms (drawers, sheets, large surfaces),
+`--ease-out-quint` = `cubic-bezier(0.2,0,0,1)` for enters, ease-out for exits; utilities `duration-fast|base|slow`. No other
+duration is written by hand, and nothing animates a layout property (a test in `lib/constants.test.ts` checks styles.css).
+
 | What | Enter | Exit | Reduced motion |
 | --- | --- | --- | --- |
-| Dialog, palette (opened by pointer) | 160ms, opacity + scale 0.98→1 + 4px rise, `cubic-bezier(0.2,0,0,1)` | 100ms opacity + scale 0.98, ease-out | opacity only (120 / 80ms) |
+| Dialog, palette, popover, menu, context menu (opened by pointer) | base, opacity + scale 0.98→1 + 4px rise, ease-out-quint; a menu grows from the point it opened at | fast, opacity + scale 0.98, ease-out | opacity only (fast / fast) |
+| Tooltip | after 600ms, fast fade; a neighbour while warm shows at once (no fade, no delay) | fast fade | fade |
 | Anything opened from the keyboard (Ctrl/Cmd+K, Shift+F10…) | instant (`html[data-input="keyboard"]`) | instant | — |
-| Context menu | instant | instant | — |
-| Drawer (sidebar) | 160ms, translateX(−12px)→0 + opacity; scrim opacity | 120ms ease-out | opacity only |
-| Press (buttons, icon buttons, send) | `:active` scale 0.97, 120ms ease-out | — | none |
-| Press (rows, tabs) | `:active` hover tint over the current fill, 100ms | — | same (tone) |
-| Drop indicator, drag chip | 120ms fade; zone glides 120ms `cubic-bezier(0.2,0,0,1)` | removed | fade only |
-| Hover fills | 100ms background-color | — | instant |
+| Drawer (sidebar), phone sheet | slow, translateX(−12px)→0 + opacity; scrim base | fast ease-out | opacity only |
+| Press (buttons, icon buttons, send) | `:active` scale 0.97, fast ease-out | — | none |
+| Press (rows, tabs) | `:active` hover tint over the current fill, fast | — | same (tone) |
+| Drop indicator, drag chip | fast fade; zone glides by translate (fast, ease-out-quint), its size snaps | removed | fade only |
+| Hover fills, reveals | fast background-color / opacity | — | instant |
+| Activity steps (expand) | rows open at once, fade in (base) | instant | instant |
 | Tabs open/close, tab switching, group split/merge | instant (no layout jump; panes keep their scroll) | instant | — |
 | Theme switch | transitions suppressed for one frame | | |
 
@@ -4197,3 +4203,16 @@ pass); it no longer shows in these runs because the chunks the turns wait for ar
 The UI scripts that open a project by its sidebar row (`flicker`, `layout-shift`, `width-stability`, `scroll-on-send`,
 `file-open-stability`) relied on the project rows showing before the session rows; they now also match a session row carrying the
 project's name and take the project's part of its link.
+
+**Motion tokens.** `--motion-fast` 100 / `--motion-base` 150 / `--motion-slow` 220 ms with `--ease-out-quint` (table in "Motion"
+above), `duration-fast|base|slow` utilities, mirrored in `lib/constants` (`MOTION_FAST_MS`, `MOTION_BASE_MS`, `EASE_OUT_QUINT`)
+for the tab settle (Web Animations) and `Presence`'s exit timer; every hand-written duration in styles.css and the components
+outside the excluded files now uses them (the 600 ms change flashes, loops and loading thresholds are not motion and stay). The
+context menu (`primitives/Menu`) enters and leaves like the other overlays (`octo-overlay`, growing from the point it opened at;
+the menus' `Presence` wrappers lost `exitMs={0}`), instant from the keyboard as before; tooltips fade in and out (fast, opacity),
+a neighbour shown while warm appears at once (`data-warm`, no fade on top of the warm-up). Layout properties no longer animate:
+the activity steps' `grid-template-rows`, Monaco's scrollbar thumb geometry (it trailed the scroll), the turn rail's mark width
+(now `scale`) and the drop zone's left/top (now `translate`; its size snaps). Reduced motion, the keyboard rule and instant tab
+swaps are unchanged. A test (`lib/constants.test.ts`) keeps styles.css free of hand-written transition durations and layout
+transitions. Checked in Chromium on the dev server (context menu: `octo-overlay-in` 150 ms from its origin, `octo-overlay-out` on
+close; tooltip: `octo-fade-in` 100 ms, `octo-fade-out` on leave); not checked in WebKit or on the phone layout.

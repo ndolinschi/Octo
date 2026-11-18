@@ -35,7 +35,7 @@ export function AccessChip(props: ChipProps & { value: AccessMode; onChoose(next
         data-chip="access"
         onClick={() => setOpen(!open)}
       />
-      <Presence show={pos !== null} exitMs={0}>
+      <Presence show={pos !== null}>
         {pos && (
           <Menu
             label="Permissions"

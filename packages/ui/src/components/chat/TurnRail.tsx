@@ -177,8 +177,9 @@ const RailTick = memo(function RailTick({ req, index: i, last, pitch, active, ta
         <span
           aria-hidden
           className={cn(
-            "h-px transition-[width,background-color] duration-100",
-            active ? "w-3 bg-fg" : "w-2 bg-line-strong group-hover/mark:bg-fg-3",
+            // The mark grows by scale from its right end (never by width: layout).
+            "h-px w-3 origin-right transition-[scale,background-color] duration-fast",
+            active ? "bg-fg" : "scale-x-67 bg-line-strong group-hover/mark:bg-fg-3",
             req.state === "working" && !active && "bg-accent",
             req.state === "failed" && !active && "bg-err",
           )}

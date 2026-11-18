@@ -93,7 +93,7 @@ export function ProjectList(props: { activeProjectId: string | null; unseen: Rea
           />
         ))}
       </ul>
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Suspense fallback={null}>
             <Menu label={`${menu.project.name} actions`} x={menu.x} y={menu.y} items={menuItems(menu.project)} onClose={() => setMenu(null)} />

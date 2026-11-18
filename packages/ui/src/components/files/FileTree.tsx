@@ -140,7 +140,7 @@ const TreeNodeRow = memo(function TreeNodeRow({
         {Icon ? (
           <Glyph icon={Icon} size={14} />
         ) : (
-          <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-150", row.kind === "dir" && row.expanded && "rotate-90")} />
+          <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-base", row.kind === "dir" && row.expanded && "rotate-90")} />
         )}
       </span>
       <span data-label className={cn("ml-1 min-w-0 truncate", isRoot ? "text-xs font-medium text-fg-3" : "text-fg")} title={row.name}>

@@ -516,7 +516,7 @@ function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string;
       >
         …
       </Button>
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Menu
             label="Folders in the path"
@@ -592,7 +592,7 @@ function MoreMenu({ tab, folder, path }: { tab: TabId; folder: string; path: str
           onClick={toggle}
         />
       )}
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Menu
             label="File actions"

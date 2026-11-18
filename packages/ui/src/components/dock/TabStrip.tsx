@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type Keyb
 import { cn } from "../../lib/cn";
 import { readyLazy } from "../../lib/readyLazy";
 import { registerWarm } from "../../lib/warm";
+import { EASE_OUT_QUINT } from "../../lib/constants";
 import { flushSync } from "react-dom";
 import { useOptionalComments } from "../../state/comments";
 import { getBrowserTabPins, getBrowserTabState, useBrowserTabsRevision } from "../../state/browserTabs";
@@ -204,8 +205,7 @@ export function TabStrip(props: {
       const wrapper = button(t)?.parentElement;
       if (!settle || !wrapper || matchMedia("(prefers-reduced-motion: reduce)").matches) continue;
       const dx = settle.left - wrapper.getBoundingClientRect().left;
-      if (Math.abs(dx) > 0.5)
-        wrapper.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], { duration: settle.ms, easing: "cubic-bezier(0.2,0,0,1)" });
+      if (Math.abs(dx) > 0.5) wrapper.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], { duration: settle.ms, easing: EASE_OUT_QUINT });
     }
   }, [props.active, props.tabs, updateFade, listWidth]);
   // Ctrl/Cmd+T opens the picker on the focused group's "+": it must exist before the popover anchors to it.
@@ -391,7 +391,7 @@ export function TabStrip(props: {
           </Suspense>
         )}
       </Presence>
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Suspense fallback={null}>
             <TabMenu

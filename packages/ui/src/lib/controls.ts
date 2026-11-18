@@ -54,13 +54,13 @@ export const CONTROL: Record<ControlSize, ControlSpec> = {
  * the border becomes `fg` and the global shadow ring is switched off. Validation error: `aria-invalid` colours the border.
  */
 export const FIELD_BASE =
-  "rounded-md border border-field-edge bg-panel text-sm text-fg placeholder:text-fg-3 transition-[border-color] duration-100 focus:border-fg focus:outline-none focus-visible:shadow-none aria-invalid:border-err disabled:opacity-50";
+  "rounded-md border border-field-edge bg-panel text-sm text-fg placeholder:text-fg-3 transition-[border-color] duration-fast focus:border-fg focus:outline-none focus-visible:shadow-none aria-invalid:border-err disabled:opacity-50";
 
 export const FIELD = `${FIELD_BASE} touch:text-input-touch`;
 
 /** The same focus rule for a frame that holds an input (`SearchField`): the frame reacts to `focus-within`. */
 export const FIELD_FRAME =
-  "rounded-md border border-field-edge bg-panel text-sm text-fg transition-[border-color] duration-100 focus-within:border-fg touch:text-input-touch";
+  "rounded-md border border-field-edge bg-panel text-sm text-fg transition-[border-color] duration-fast focus-within:border-fg touch:text-input-touch";
 
 /** Padding of a button by look: boxed buttons (filled, bordered, danger) are a step wider than quiet text buttons. */
 export const BUTTON_PAD: Record<"boxed" | "quiet", Record<ControlSize, string>> = {

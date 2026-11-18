@@ -62,7 +62,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
       <span
         aria-hidden
         className={cn(
-          "mt-0.5 grid size-4 shrink-0 place-items-center rounded-xs border transition-[background-color,border-color] duration-100 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-1 peer-focus-visible:outline-focus",
+          "mt-0.5 grid size-4 shrink-0 place-items-center rounded-xs border transition-[background-color,border-color] duration-fast peer-focus-visible:outline-2 peer-focus-visible:outline-offset-1 peer-focus-visible:outline-focus",
           on ? "border-primary bg-primary text-primary-fg" : props.invalid ? "border-err bg-panel" : "border-input-border bg-panel group-hover:border-fg-3",
         )}
       >
