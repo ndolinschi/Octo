@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNow } from "../../lib/hooks";
 import { useProject } from "../../state/project";
 import { ActivityRow } from "./ActivityRow";
-import { activityLine, type ActivityLine as ActivityLineKind, labelParts, runningToolOf } from "./activity";
+import { activityLine, type ActivityLine as ActivityLineKind, labelParts, runningToolOf, showsActivityLine } from "./activity";
 import { useAnimationGate } from "./useAnimationGate";
 
 /**
@@ -54,7 +54,7 @@ export function ActivityLine({
   });
   const ref = useRef<HTMLParagraphElement>(null);
   const paused = useAnimationGate(ref, watched);
-  if (current !== null && line.kind === current) return null;
+  if (!showsActivityLine(line, current, streaming.length > 0)) return null;
   const parts = labelParts(line.label);
   const text = parts.map((p, i) =>
     p.code ? (

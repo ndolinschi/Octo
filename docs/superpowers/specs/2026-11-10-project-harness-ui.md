@@ -4235,3 +4235,51 @@ empty: every one of the 13 tool tabs has a 40px bar with one `line` hairline at 
 150 → 114 at 363 wide; the open review's header 61 → 40 (also 40 at 363); side question edges as in D; Processes pitch 46 with
 actions on hover; reverting a request in Changes. **Not verified.** WebKit, the phone layout by eye (the audit's phone states
 pass), a live harness, the Tauri app.
+
+## As built — conversation and composer polish (2026-11-18)
+
+A reviewed list of small fixes; no redesign, existing tokens and primitives, behaviour unchanged.
+
+- **Composer (WP-A).** A model whose provider is not connected leads with a 14px `CircleAlert` in `text-warn` and its
+  accessible name ends ", provider not connected" (`shared/ModelPicker.tsx`; colour alone said it before). The context gauge is a
+  2px arc on r=6.75 over a `line-strong` track ring, not a filled pie (`chat/ContextRing.tsx`; checked at 1%, 50%, 95% in both
+  themes). The @ menu is as wide as the composer box, like the / menu (480 → 720px at 1440; `chat/ComposerMenu.tsx`).
+- **Approvals (WP-B).** A group is titled "3 approvals" with the distinct agent labels as its dim line (it said "from <project>");
+  its rows name their agent at the end (`text-xs text-fg-3`) when more than one agent asks (`v7/ApprovalGroup.tsx`, test
+  `ApprovalGroup.test.ts`). A row's caption line (what · subject · +N −M) is its Details disclosure (button, chevron,
+  `aria-expanded`, `data-approval-details`); the action row is Allow once · scope · Always · Deny; an edit opens straight onto its
+  diff, so it has one disclosure (`PatchView open`). Scripts that clicked "Details" (`frame-colours.mjs`, `ui-tour-states.mjs`)
+  click `[data-approval-details]`. Cards in the approvals slot span the column's whole edge (`-mx-3`: frame −12…708, the user
+  bubble's and the composer's edge) and the RequestCard glyph gains a 4px margin, so glyph x=0 and title x=24 like the activity
+  rows (before: glyph 12, title 32, frame 0…696). Measured at 1440, 1000, 760, 560 and 390 (phone): no horizontal scroll.
+- **Code and prose surfaces (WP-C).** One class, `.octo-code-surface` (`styles.css`: 8px radius, `--octo-code-bg`, a
+  `line`/70 hairline; the hairline is dropped under an `.octo-in-card` ancestor, one outline per level), replaces the four
+  treatments: the Markdown fence, the tool body frame (`chat/tools/parts.tsx`: it had no edge, 1.06:1 against the panel), the
+  approval blocks (`ApprovalSubject`, `PatchView`: `rounded-sm` → 8px) and `primitives/CommandLine` (`border-line` → `line`/70).
+  A file chip in prose is `primitives/InlineButton` (a `<span role="button" tabIndex=0>`, Enter/Space press it, a held key
+  presses once, the global focus ring; test `InlineButton.test.ts`, gallery entry) — a native `<button>` is an atomic inline. Its
+  file glyph sits in the code's left padding (`position: absolute`): an inline SVG is a break opportunity too, and it alone kept
+  "after 10 s (" at a line's end. Measured on Atlas API at 1440/1300/1200/1100/1000: the orphaned "(" before
+  `src/http/client.ts` at all five widths before, none after; Enter on a focused chip opens the file (tab count 1 → 2).
+- **Transcript and copy (WP-D).** A failed or stopped turn's banner (`TurnBanner`) and the plan card span the column's whole
+  edge too (−12…708; measured: failed banners and the plan card at x −12, w 720); the empty project's start failure keeps its
+  place on the composer's edge (`flush`), so `Transcript.tsx` is unchanged. The empty project says one problem once: when the
+  start failure ("GitHub Copilot is not logged in") shows, the title's "can't run yet: its provider is not connected" sentence is
+  left out (`startFailureOf` in `lib/transcript.ts`, shared with `StartFailure`). While streamed text with its caret is on screen
+  the live line no longer adds "Writing…" under it (`showsActivityLine`, test in `activity.test.ts`); sampled every 50ms over a
+  streamed reply: 36 of 36 caret frames also had the "Writing…" row before, 0 of 34 after. Copy: "History compacted 2 requests
+  ago" (was "history was compacted …"), "History compacted by you" (was "· manual"), and a plan whose text opens with its own
+  "Plan…" line takes it as the card title instead of repeating "Plan" (`lib/planTitle.ts`, tested).
+- **E1 — the request bubble is neutral (owner's decision, 2026-11-18).** The user bubble (and its pinned copy, and the side
+  question's) is the raised tone of cards and menus with `fg` text and a 1px `line` hairline, in every theme; the teal fill
+  (#3a786b dark / #356e61 light) and the per-theme `--octo-bubble`/`--octo-bubble-fg` tokens are gone, with the fill-specific
+  selection, "Show more" and focus-ring overrides. Measured: text 13.79:1 (dark) and 15.68:1 (light), was 5.15 and 5.91; the
+  fill against the panel is 1.14:1 (dark) and 1.11:1 (light), under 1.15, hence the hairline; a one-line pill is 40px high (the
+  "1px edges" the R2 note counts; it measured 38 without a border). Checked in the Docs site and Atlas API conversations with a
+  sent @mention and /command, a queued message and a rewind point, dark and light, 1440 and phone 390. Not checked: a bubble
+  with images.
+- **E2 — one small chevron on a chip (owner's decision, 2026-11-18).** `primitives/Chip` ends its label with one `ChevronDown`
+  at 12px in `fg-3` instead of the 14px up-down pair (mode, permission, model and the folder chip, and the title bar's model chip:
+  one primitive). `Glyph` admits 12 for this one use. Measured in the composer at 1440, 900, 700 and 560: chevron 12px, 6px from
+  the label on every chip, no control outside the box, no label cut; each chip 2px narrower. `Select`'s upward chevron pair is
+  not a chip and is unchanged.

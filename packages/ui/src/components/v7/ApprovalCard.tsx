@@ -1,5 +1,5 @@
-import { Check, Clock, MessageSquarePlus, X } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { Check, ChevronRight, Clock, MessageSquarePlus, X } from "lucide-react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { Approval, ApprovalAnswer, ApprovalOption, AutoMemoryMode } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
@@ -24,12 +24,13 @@ import { Glyph } from "../primitives/Glyph";
 import { Card } from "../primitives/Card";
 import { Notice } from "../primitives/Notice";
 import { ApprovalSubject } from "./ApprovalSubject";
-import { focusOnMount } from "./parts";
+import { focusOnMount, LineCounts } from "./parts";
 import { RequestCard } from "../shared/RequestCard";
 import { useApprovalCard, type Busy } from "./useApprovalCard";
 
 /** Opens on a click only, so it stays out of the entry chunk (bundle budget). */
 const AlwaysPanel = lazy(() => import("./ApprovalExtras").then((m) => ({ default: m.AlwaysPanel })));
+const PatchView = lazy(() => import("./ApprovalExtras").then((m) => ({ default: m.PatchView })));
 
 export type ApprovalCardProps = {
   approval: Approval;
@@ -50,6 +51,8 @@ export type ApprovalCardProps = {
   onOpenAgent?(agentId: string): void;
   /** One row of a group of requests: compact (title, the command on one line, quiet actions, details fold). */
   compact?: boolean;
+  /** A compact row names its agent at its end (the group has more than one agent asking). */
+  showAgent?: boolean;
   /** A compact row tells its group when its "Always allow" panel opens or closes (the panel's save is then the one primary). */
   onAlwaysOpen?(id: string, open: boolean): void;
 };
@@ -358,7 +361,11 @@ export function subjectLine(a: Approval): string {
   return a.detail.command ?? a.detail.path ?? a.detail.url ?? a.detail.memory_text ?? a.detail.memory_path ?? a.title;
 }
 
-/** A row inside a group: title, the command on one line, quiet actions; the full subject folds behind "Details". */
+/**
+ * A row inside a group: its caption line (what · the command, the path or the host) is the Details disclosure, then the
+ * answers in the one order — Allow once · the scope · Always · Deny. An edit opens straight onto its changes (the path is
+ * already on the caption line), so it has one disclosure, not "Details" and then "Show changes".
+ */
 function CompactApproval(props: ApprovalCardProps) {
   const { approval } = props;
   const card = useRef<HTMLElement>(null);
@@ -371,6 +378,9 @@ function CompactApproval(props: ApprovalCardProps) {
   });
   const answers = useAnswers(approval, c, true);
   const rule = canAlwaysAllow(approval) ? approval.suggested_rule : undefined;
+  const [open, setOpen] = useState(false);
+  const detailsId = `v7-details-${approval.id}`;
+  const { patch, diff } = approval.detail;
   const { onAlwaysOpen } = props;
   const alwaysOpen = c.alwaysOpen;
   useEffect(() => {
@@ -387,12 +397,37 @@ function CompactApproval(props: ApprovalCardProps) {
       data-v7-approval={approval.id}
       className="@container/v7 flex min-w-0 flex-col gap-1 rounded-sm px-card py-2 focus-visible:not-data-quiet-focus:shadow-[0_0_0_2px_var(--octo-focus)]"
     >
-      <div className="flex min-w-0 items-baseline gap-2">
-        <span className="shrink-0 text-fg">{approvalCaption(approval)}</span>
-        <span data-allow-truncate className="min-w-0 truncate font-mono text-xs text-fg-2" title={subjectLine(approval)}>
-          {subjectLine(approval)}
-        </span>
+      <div className="flex min-w-0 items-center gap-2">
+        <Button
+          variant="quiet"
+          size="sm"
+          aria-expanded={open}
+          aria-controls={open ? detailsId : undefined}
+          title={open ? "Hide details" : "Show details"}
+          data-approval-details=""
+          onClick={() => setOpen((o) => !o)}
+          className="-ml-2 max-w-full"
+        >
+          <span className="shrink-0 text-fg">{approvalCaption(approval)}</span>
+          <span data-allow-truncate className="min-w-0 truncate font-mono text-xs text-fg-2">
+            {subjectLine(approval)}
+          </span>
+          {diff && <LineCounts added={diff.added} removed={diff.removed} />}
+          <Glyph icon={ChevronRight} size={14} className={cn("shrink-0 text-fg-3", open && "rotate-90")} />
+        </Button>
+        {props.showAgent && <span className="ml-auto shrink-0 text-xs text-fg-3">{approval.agent_label}</span>}
       </div>
+      {open && (
+        <div id={detailsId} className="flex flex-col gap-2 pb-1">
+          {patch ? (
+            <Suspense fallback={<div className="h-6" />}>
+              <PatchView patch={patch} open />
+            </Suspense>
+          ) : (
+            <ApprovalSubject approval={approval} />
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         {answers.primary}
         {answers.alternatives}
@@ -402,9 +437,6 @@ function CompactApproval(props: ApprovalCardProps) {
           </Button>
         )}
         {answers.destructive}
-        <DetailsFold>
-          <ApprovalSubject approval={approval} />
-        </DetailsFold>
       </div>
       {c.alwaysOpen && rule && (
         <Suspense fallback={<div className="h-24" />}>
@@ -419,18 +451,6 @@ function CompactApproval(props: ApprovalCardProps) {
       )}
       {c.error && <Notice tone="error">{c.error}</Notice>}
     </section>
-  );
-}
-
-function DetailsFold({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Button variant="quiet" size="sm" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        {open ? "Hide details" : "Details"}
-      </Button>
-      {open && <div className="mt-1 flex basis-full flex-col gap-2">{children}</div>}
-    </>
   );
 }
 

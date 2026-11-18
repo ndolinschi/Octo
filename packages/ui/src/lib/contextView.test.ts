@@ -45,7 +45,7 @@ test("contextView: categories largest first, then reserved and free; shares sum 
   );
   assert.equal(v.free, 200_000 - 82_000 - 8_000);
   assert.equal(v.usedPercent, 41);
-  assert.equal(v.compacted, "history was compacted 2 requests ago");
+  assert.equal(v.compacted, "History compacted 2 requests ago");
 });
 
 test("the ≈ rule: estimates by the harness are marked, what an agent reports is not", () => {

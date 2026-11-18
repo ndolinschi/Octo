@@ -98,9 +98,9 @@ export function contextView(raw: ContextOverview | ContextBreakdown, now = Date.
   if (free !== null) rows.push({ id: "free", label: "Free", tokens: free, percent: pct[tokens.length - 1] ?? 0, kind: "free" });
   const compacted =
     o.compacted_turns_ago !== undefined
-      ? `history was compacted ${o.compacted_turns_ago === 0 ? "in this request" : o.compacted_turns_ago === 1 ? "1 request ago" : `${o.compacted_turns_ago} requests ago`}`
+      ? `History compacted ${o.compacted_turns_ago === 0 ? "in this request" : o.compacted_turns_ago === 1 ? "1 request ago" : `${o.compacted_turns_ago} requests ago`}`
       : o.compacted_at
-        ? `history was compacted ${timeAgo(o.compacted_at, now)}`
+        ? `History compacted ${timeAgo(o.compacted_at, now)}`
         : null;
   return {
     source: "harness",

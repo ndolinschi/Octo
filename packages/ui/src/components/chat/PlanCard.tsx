@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/cn";
 import { errorCode, errorMessage } from "../../lib/format";
 import { planError } from "../../lib/modeLabels";
+import { planTitle } from "../../lib/planTitle";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { Button } from "../primitives/Button";
@@ -25,6 +26,7 @@ function PlanCard(props: { plan: Plan; onPlan(plan: Plan): void; onRefresh(): Pr
   const [problem, setProblem] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const approved = plan.status === "approved";
+  const shown = planTitle(plan.text);
 
   const approve = async () => {
     if (!bridge.approvePlan || busy) return;
@@ -44,7 +46,8 @@ function PlanCard(props: { plan: Plan; onPlan(plan: Plan): void; onRefresh(): Pr
 
   if (approved) {
     return (
-      <div data-plan="approved" role="group" aria-label="Approved plan" className="text-sm">
+      // 7a/7b: the card spans the column's whole edge (the user bubble's and the composer's), its glyph on the text edge.
+      <div data-plan="approved" role="group" aria-label="Approved plan" className="-mx-3 text-sm">
         <Card surface="panel" padding="none">
           <Button variant="quiet" size="md" fullWidth aria-expanded={open} onClick={() => setOpen((o) => !o)} className="justify-start px-3">
             <Glyph icon={Check} size={14} className="shrink-0 text-ok" />
@@ -65,8 +68,9 @@ function PlanCard(props: { plan: Plan; onPlan(plan: Plan): void; onRefresh(): Pr
     <RequestCard
       data-plan="pending"
       aria-label="Plan to approve"
-      title="Plan"
+      title={shown.title}
       asks="Approve it to start the work"
+      className="-mx-3"
       glyph="needs"
       primary={
         <Button variant="primary" size="sm" disabled={busy || running} loading={busy} onClick={() => void approve()}>
@@ -81,7 +85,7 @@ function PlanCard(props: { plan: Plan; onPlan(plan: Plan): void; onRefresh(): Pr
       error={problem}
     >
       <div className="max-h-80 overflow-y-auto">
-        <LazyMarkdown text={plan.text} className="octo-prose" />
+        <LazyMarkdown text={shown.body} className="octo-prose" />
       </div>
       {running && !problem && <p className="text-fg-3">Octo is still working.</p>}
     </RequestCard>
