@@ -4225,3 +4225,13 @@ label (`lib/access.ts` `ACCESS_LABEL`), so the chip, its tooltip ("Permissions: 
 commands."), the menu and the project dialog all change; no slash command, palette entry or settings row names the level.
 Wire values (`supervised`, `accept_edits`, `full`) are unchanged. `lib/access.test.ts` asserts that no permission level
 shares a name with a mode (it failed before). Verified: ui tests, lint, the chip and its menu in the browser.
+
+**Verified.** `pnpm lint` (0 errors; no new warnings in the 13 touched files), `pnpm format:check`, `pnpm --filter @octo/ui test`
+(902/902 at each commit; one later run failed only `streak.test.ts`'s time budget under a machine load of ~34),
+`spacing-audit.mjs` on `?demo=1` and on `?demo=1&tabs=all` (total=0; states that timed out under load were re-run alone with
+longer waits, `panel-frame` and `review-open` included: total=0), `frame-colours.mjs` (ok), `panel-measure.mjs --mode after`
+(every Panel header 40, title at 16, right inset 8), and Playwright Chromium at 1440×900 in dark and light, populated and
+empty: every one of the 13 tool tabs has a 40px bar with one `line` hairline at y 40 and no double line; Review picker chrome
+150 → 114 at 363 wide; the open review's header 61 → 40 (also 40 at 363); side question edges as in D; Processes pitch 46 with
+actions on hover; reverting a request in Changes. **Not verified.** WebKit, the phone layout by eye (the audit's phone states
+pass), a live harness, the Tauri app.
