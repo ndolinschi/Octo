@@ -81,7 +81,7 @@ const SCENES = [
   { id: "agents", tool: "agents", ready: "[data-agents]" },
   { id: "details", tool: "details", ready: "[data-details]" },
   { id: "changes", tool: "changes", ready: "[data-v7-changes]" },
-  { id: "files", tool: "files", ready: '[role="tree"]' },
+  { id: "files", tool: "files", ready: '[role="tabpanel"] [role="tree"][aria-label="Project files"]' },
 ];
 
 /** In the page: the parts of one screen as rects, by marker (after) or by role (before). */
@@ -231,7 +231,7 @@ async function main() {
       }, theme);
       const page = await ctx.newPage();
       try {
-        await page.goto(`${BASE}/?demo=1`, { waitUntil: "domcontentloaded" });
+        await page.goto(`${BASE}/?demo=1&tabs=all`, { waitUntil: "domcontentloaded" });
         await page.waitForTimeout(1200);
         await openProject(page);
         await openTool(page, scene.tool);
