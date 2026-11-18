@@ -1,7 +1,7 @@
 import { emptyProjectState, withSessions, type ProjectState } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { browserTab, CHAT, sessionTab, terminalTab, toolTab } from "../../state/workspace/layout";
+import { agentTab, browserTab, CHAT, sessionTab, terminalTab, toolTab } from "../../state/workspace/layout";
 import { GLYPH } from "../primitives/glyphs";
 import { conversationLabel, tabInfo } from "./tabInfo";
 
@@ -135,4 +135,33 @@ test("the chat tab is named by its topic, the tooltip and name keep the project"
   assert.equal(info.detail, undefined);
   assert.equal(info.name, "Atlas / Fix upload race");
   assert.match(info.title, /^Atlas: /);
+});
+
+test("an agent tab is the agent's label, its task in the tooltip (decision F4)", () => {
+  const state = emptyProjectState();
+  const a1 = {
+    id: "a1",
+    project_id: "p",
+    parent_id: "root",
+    depth: 1,
+    role: "Dependency auditor",
+    title: "Breaking changes 0.76 → 0.80",
+    task: "List the breaking changes",
+    model: "m",
+    tier: null,
+    status: "running",
+    result: null,
+    error: null,
+    spawn_tool_use_id: null,
+    input_tokens: 0,
+    output_tokens: 0,
+    created_at: "2026-11-10T10:00:00Z",
+    started_at: null,
+    finished_at: null,
+  } as const;
+  const ctx = { state: { ...state, agents: { a1 } }, orchestratorId: "root", file: () => undefined, comments: () => 0, runStatus: () => null };
+  const info = tabInfo(agentTab("a1"), ctx);
+  assert.equal(info.label, "Dependency auditor");
+  assert.equal(info.title, "Dependency auditor: Breaking changes 0.76 → 0.80");
+  assert.equal(tabInfo(agentTab("gone"), ctx).label, "Agent");
 });

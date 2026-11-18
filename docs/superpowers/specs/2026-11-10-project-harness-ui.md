@@ -4221,3 +4221,6 @@ supersedes an earlier decision, that decision carries a dated note pointing here
   the person or failed — Home's rule, `sessionTriageOf` — come first under a "Needs you" caption, the rest under "Other
   sessions"; each group keeps the stable order by start (item 1), so a row moves only when its state changes. No captions
   when nothing needs the person. Revises the pinned-group note of the review (it was left to the owner).
+- **F4. A sub-agent's tab is the agent's label** ("Dependency auditor": `roleText` of its role, "Agent" without one, never its
+  id), not its task; the task stays in the agent's header and in the tab's tooltip ("Dependency auditor: Breaking changes
+  0.76 → 0.80"). Tested in `tabInfo.test.ts`. Revises decision 63 (dated note there).

@@ -174,12 +174,14 @@ export function tabInfo(
   if (ref.kind === "terminal") return terminalTabInfo(ctx.terminal?.(ref.terminalId));
   if (ref.kind === "agent") {
     const agent = ctx.state.agents[ref.agentId];
-    // Decision 63: a sub-agent's tab is its task title (else the first words of its task), the role in the tooltip.
-    const task = agent?.title || firstWords(agent?.task ?? "") || roleText(agent?.role);
+    // Owner decision F4 (2026-11-18, revises 63): a sub-agent's tab is the agent's label ("Dependency auditor", never its
+    // id); its task is in the agent's header and the tooltip.
+    const label = roleText(agent?.role);
+    const task = agent?.title || firstWords(agent?.task ?? "");
     return {
-      label: middleTruncate(task, 28),
-      name: task,
-      title: `${roleText(agent?.role)}: ${task}`,
+      label: middleTruncate(label, 28),
+      name: label,
+      title: task ? `${label}: ${task}` : label,
       icon: GLYPH.agent,
       status: agent?.status === "running" ? "running" : null,
       glyph: agent?.status === "running" ? "working" : agent?.status === "failed" ? "failed" : null,
