@@ -4,6 +4,7 @@ import { GLYPH } from "../primitives/glyphs";
 import { flushSync } from "react-dom";
 import {
   forwardRef,
+  memo,
   lazy,
   Suspense,
   useCallback,
@@ -139,7 +140,7 @@ type MenuState = { mode: "button" } | { mode: "inline"; start: number; query: st
  * (1–10 lines), and the control row — "+", the model / folder / tier chips (labels shed by container width,
  * round 3: narrow: mode, then model, then folder), the context ring and one round button that is Send, Stop, or Queue.
  */
-export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(props, handle) {
+const ComposerView = forwardRef<ComposerHandle, ComposerProps>(function Composer(props, handle) {
   const { text, setText, area, place } = useComposerText(props.draft);
   const pics = useImages();
   const attach = useAttachments(pics.add);
@@ -808,6 +809,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     </div>
   );
 });
+
+/** Memoised: the conversation around it re-renders as the reader scrolls past turns and on every project event. */
+export const Composer = memo(ComposerView);
 
 function Notice({ children }: { children: ReactNode }) {
   return (

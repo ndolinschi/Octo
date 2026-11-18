@@ -45,35 +45,27 @@ export function useScrollSpot(projectId: string, key: string): { stored: ScrollS
   };
 }
 
-/** How long a restore waits for the transcript to grow tall enough (it is lazy: Markdown, turns mounting as they come near). */
-const RESTORE_WAIT_MS = 5000;
-
 /**
- * Scrolls `el` to `top` once the content is tall enough to reach it. Setting it earlier clamps to the end of a still-short
- * transcript, which reads as the reader being at the bottom and makes the view follow the stream down. Gives up after
- * `RESTORE_WAIT_MS` or when the reader scrolls themselves. Returns the cancel function.
+ * Puts a reloaded conversation back at `top`. Usually reachable at once (unmounted turns hold their estimated heights): set
+ * now, before any turn mounts and changes the heights the offset was saved against. Otherwise it waits for the content to
+ * grow (`restoreScrollWhenReachable`, its own chunk: only a conversation with a saved position needs it; a failed load leaves
+ * the view where it opened). Returns the cancel function.
  */
-export function restoreScrollWhenReachable(el: HTMLElement, top: number, applied: () => void): () => void {
-  let done = false;
-  const stop = () => {
-    done = true;
-    ro?.disconnect();
-    window.clearTimeout(giveUp);
-    for (const name of ["wheel", "touchstart", "keydown", "pointerdown"]) el.removeEventListener(name, stop);
+export function restoreScroll(el: HTMLElement, top: number, applied: () => void): () => void {
+  if (el.clientHeight > 0 && el.scrollHeight - el.clientHeight >= top) {
+    el.scrollTop = top;
+    return () => undefined;
+  }
+  let cancel: (() => void) | null = null;
+  let cancelled = false;
+  void import("./scrollRestore").then(
+    (m) => {
+      if (!cancelled) cancel = m.restoreScrollWhenReachable(el, top, applied);
+    },
+    () => undefined,
+  );
+  return () => {
+    cancelled = true;
+    cancel?.();
   };
-  const attempt = () => {
-    if (done) return;
-    if (el.clientHeight > 0 && el.scrollHeight - el.clientHeight >= top) {
-      applied();
-      el.scrollTop = top;
-      stop();
-    }
-  };
-  const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(attempt);
-  ro?.observe(el);
-  if (el.firstElementChild) ro?.observe(el.firstElementChild);
-  const giveUp = window.setTimeout(stop, RESTORE_WAIT_MS);
-  for (const name of ["wheel", "touchstart", "keydown", "pointerdown"]) el.addEventListener(name, stop, { passive: true });
-  attempt();
-  return stop;
 }
