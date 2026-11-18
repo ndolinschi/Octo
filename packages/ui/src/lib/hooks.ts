@@ -78,6 +78,9 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
   const gliding = useRef(false);
   const lastTop = useRef(0);
   const lastHeight = useRef(0);
+  // The end the smooth glide is aimed at. Separate from `lastHeight`: a scroll event of the glide can read the grown
+  // height before the ResizeObserver does, and the growth must still re-aim the glide (scroll-on-send.mjs).
+  const glideEnd = useRef(0);
   // The reader has scrolled away themselves: only then does the first render's guess (agent not loaded yet) stop mattering.
   const touched = useRef(false);
   // The reader's own input inside the scroller (stickDecision): when it last happened, and whether a pointer is held on it
@@ -198,7 +201,11 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
     if (!el) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "reduced";
     const animate = smooth && !reduced;
+    // A long way to go: jump to a screenful above the end and glide only that, so the glide is short (it ends before
+    // more content arrives, and a loaded machine does not leave it halfway).
+    if (animate && el.scrollHeight - el.scrollTop - el.clientHeight > el.clientHeight) el.scrollTop = el.scrollHeight - 2 * el.clientHeight;
     gliding.current = animate;
+    glideEnd.current = el.scrollHeight;
     el.scrollTo({ top: el.scrollHeight, behavior: animate ? "smooth" : "auto" });
     atBottomRef.current = true;
     setAtBottom(true);
@@ -239,7 +246,8 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
       hidden.current = false;
       if (atBottomRef.current) {
         if (gliding.current && !wasHidden) {
-          if (Math.abs(el.scrollHeight - lastHeight.current) > 1) {
+          if (Math.abs(el.scrollHeight - glideEnd.current) > 1) {
+            glideEnd.current = el.scrollHeight;
             el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
           }
         } else {
