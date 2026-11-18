@@ -4,6 +4,7 @@ import { Terminal } from "@xterm/xterm";
 import { Eraser, Plus, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { cn } from "../../lib/cn";
+import { monoFont } from "../../lib/monoFont";
 import { mayChangeProject, ON_YOUR_COMPUTER } from "../../lib/remoteDevice";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
@@ -16,10 +17,10 @@ import { EmptyState } from "../primitives/EmptyState";
 import { IconButton } from "../primitives/IconButton";
 import type { MenuItem } from "../primitives/Menu";
 import { MenuButton } from "../primitives/MenuButton";
-import { getManagedTerminal } from "./sessionStore";
+import { getManagedTerminal, type TerminalStatus } from "./sessionStore";
 import { readXtermTheme } from "./xtermTheme";
 
-const TERMINAL_FONT = 'ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace';
+const STATUS_WORD: Record<TerminalStatus, string> = { connecting: "Connecting", running: "Running", exited: "Exited", error: "Not running" };
 
 export default function TerminalTab(props: { tab: TabId; terminalId: string }) {
   const { bridge } = useApp();
@@ -66,7 +67,7 @@ export default function TerminalTab(props: { tab: TabId; terminalId: string }) {
 
     const term = new Terminal({
       cursorBlink: true,
-      fontFamily: TERMINAL_FONT,
+      fontFamily: monoFont(),
       fontSize: 13,
       lineHeight: 1.35,
       scrollback: 5000,
@@ -189,6 +190,7 @@ export default function TerminalTab(props: { tab: TabId; terminalId: string }) {
       if (f.label !== activeFolder) restart(f.label);
     },
   }));
+  const statusTip = `${STATUS_WORD[snap.status]}${snap.pid > 0 && snap.status === "running" ? ` · PID ${snap.pid}` : ""}`;
 
   return (
     <section
@@ -203,15 +205,16 @@ export default function TerminalTab(props: { tab: TabId; terminalId: string }) {
     >
       <header className="flex h-bar shrink-0 items-center justify-between gap-2 border-b border-line px-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span
-            aria-hidden
-            className={cn(
-              "size-2 shrink-0 rounded-full",
-              snap.status === "running" ? "bg-ok" : snap.status === "connecting" ? "bg-accent" : snap.status === "error" ? "bg-err" : "bg-fg-3",
-            )}
-          />
+          {/* Work-surface polish item 10: the PID lives in the status dot's tooltip, not in the bar. */}
+          <span role="img" aria-label={statusTip} title={statusTip} className="grid size-4 shrink-0 place-items-center">
+            <span
+              className={cn(
+                "size-2 rounded-full",
+                snap.status === "running" ? "bg-ok" : snap.status === "connecting" ? "bg-accent" : snap.status === "error" ? "bg-err" : "bg-fg-3",
+              )}
+            />
+          </span>
           <span className="font-mono text-xs font-medium text-fg">{snap.shell || "shell"}</span>
-          {snap.pid > 0 && snap.status === "running" && <span className="font-mono text-xs text-fg-3">{`PID ${snap.pid}`}</span>}
           {folders.length > 1 ? (
             <MenuButton label="Working folder" text={activeFolder} items={folderItems} />
           ) : (

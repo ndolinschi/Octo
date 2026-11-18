@@ -1,5 +1,6 @@
-import { GitBranch, RefreshCw } from "lucide-react";
+import { GitBranch, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { refusalRepoChoices, repoMenu, type OpenReviewInput, type PullRequestFilter, type PullRequestRow, type ReviewSummary } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { errorMessage, timeAgo } from "../../lib/format";
@@ -9,7 +10,7 @@ import { useRovingRows } from "../../lib/rovingRows";
 import type { ReviewApi } from "../../lib/review/api";
 import { plural } from "../../lib/review/files";
 import { CHECKS_LABEL, ghInstallCommand, listFailure, parsePullInput, reviewSourceText, unavailableTitle } from "../../lib/review/pull";
-import { filterCounts, freshness, PULL_FILTERS, pullRowLine, visibleRows } from "../../lib/review/pullList";
+import { closesSearch, filterCounts, freshness, PULL_FILTERS, pullRowLine, visibleRows } from "../../lib/review/pullList";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { CommandLine } from "../primitives/CommandLine";
@@ -84,6 +85,11 @@ function Picker(props: {
   const { state, updating, reload, loadMore, loadingMore, loadMoreError } = usePullList(api, folder, props.repo);
   const [filter, setFilter] = useState<PullRequestFilter>("all");
   const [query, setQuery] = useState("");
+  // Under 420px the search is a button that opens the field in place of the chips (work-surface polish item 3).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const searchButton = useRef<HTMLButtonElement>(null);
+  const searchShown = searchOpen || query !== "";
   const [view, setViewState] = useState<View>("pulls");
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -250,7 +256,7 @@ function Picker(props: {
                 value={filter}
                 onChange={setFilter}
                 bare
-                className="@max-[560px]:w-full"
+                className={cn("@max-[560px]:w-full @max-[420px]:w-auto @max-[420px]:min-w-0", searchShown && "@max-[420px]:hidden")}
                 options={PULL_FILTERS.map((f) => ({
                   id: f.id,
                   // Until the list is in, the count is a figure-space placeholder of its width: the chips do not grow on arrival.
@@ -258,15 +264,36 @@ function Picker(props: {
                   ...(ready ? { count: counts[f.id] } : {}),
                 }))}
               />
+              <IconButton
+                ref={searchButton}
+                icon={Search}
+                label="Search pull requests"
+                onClick={() => {
+                  flushSync(() => setSearchOpen(true));
+                  searchInput.current?.focus();
+                }}
+                className={cn("ml-auto shrink-0 @min-[420px]:hidden", searchShown && "hidden")}
+              />
               <SearchField
+                ref={searchInput}
                 label="Search pull requests, or paste an address or a number"
                 placeholder="Search pull requests…"
                 value={query}
                 onChange={setQuery}
                 size="sm"
-                onKeyDown={(e) => e.key === "Enter" && submitSearch()}
-                inputProps={{ spellCheck: false, autoComplete: "off" }}
-                className="ml-auto max-w-56 min-w-44 flex-1 @max-[560px]:ml-0 @max-[560px]:max-w-none @max-[560px]:min-w-full @max-[560px]:flex-none"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") submitSearch();
+                  if (closesSearch(e.key, query, searchOpen)) {
+                    e.preventDefault();
+                    flushSync(() => setSearchOpen(false));
+                    searchButton.current?.focus();
+                  }
+                }}
+                inputProps={{ spellCheck: false, autoComplete: "off", onBlur: () => query === "" && setSearchOpen(false) }}
+                className={cn(
+                  "ml-auto max-w-56 min-w-44 flex-1 @max-[560px]:ml-0 @max-[560px]:max-w-none @max-[560px]:min-w-full @max-[560px]:flex-none",
+                  !searchShown && "@max-[420px]:hidden",
+                )}
               />
             </div>
           )}

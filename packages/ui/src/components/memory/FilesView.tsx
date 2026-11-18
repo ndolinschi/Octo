@@ -21,7 +21,7 @@ import { DetailHeader, FormActions } from "../primitives/Panel";
 import { SkeletonText } from "../primitives/Skeleton";
 import { TextArea, TextField } from "../primitives/TextField";
 import { Prose } from "../shared/Prose";
-import { ConfirmDialog, DETAIL_MAX, MemoryError, PaneEmpty, ROW_TAIL, RowLine } from "./parts";
+import { ConfirmDialog, DETAIL_MAX, MemoryError, PaneEmpty, RowLine } from "./parts";
 import { useMemoryFile } from "./useMemory";
 
 /**
@@ -68,7 +68,6 @@ export function FilesView(props: {
                 description={<RowLine end={`${formatBytes(f.size)} · ${formatWhen(f.updated_at, now)}`}>{f.summary}</RowLine>}
                 tip={f.path}
                 onClick={() => select(f.path)}
-                trailing={ROW_TAIL}
               />
             </li>
           ))}

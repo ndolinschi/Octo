@@ -17,7 +17,7 @@ import { Notice } from "../primitives/Notice";
 import { Segmented } from "../primitives/Segmented";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { TextField } from "../primitives/TextField";
-import { ConfirmDialog, Expansion, ROW_TAIL, RowLine, useCollapseOnEscape, useReveal } from "./parts";
+import { ConfirmDialog, Expansion, RowLine, useCollapseOnEscape, useReveal } from "./parts";
 
 export function RememberedHeader(props: { count: number; onAdd?: (() => void) | undefined }) {
   return (
@@ -156,7 +156,6 @@ export function RememberedList(props: {
               meta={g.items.length}
               expanded={!isCollapsed}
               onClick={() => setCollapsed((c) => flip(c, g.key))}
-              trailing={ROW_TAIL}
             />
             {!isCollapsed && (
               <>

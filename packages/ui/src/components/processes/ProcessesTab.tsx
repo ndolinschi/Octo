@@ -1,6 +1,7 @@
 import type { AdhocCommandInput, WorkerProcess } from "@octo/agent-client";
 import { Check, OctagonX, Plus, RefreshCw, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "../../lib/cn";
 import { durationText } from "../../lib/commands/format";
 import { runsReducer } from "../../lib/commands/runs";
 import { errorMessage } from "../../lib/format";
@@ -326,7 +327,6 @@ function ProcessRow(props: {
     <ListRow
       size="md"
       selected={props.selected}
-      trailingShown={canStop || canKill}
       data-process-row={item.key}
       leading={
         tone === "ok" && item.kind === "command" ? (
@@ -355,16 +355,22 @@ function ProcessRow(props: {
         </span>
       }
       onClick={props.onSelect}
+      // QA pass 4 keeps Stop and Kill in view; work-surface polish item 5: every row's action slot is as wide as the widest
+      // set (three xs buttons, or two lg on a phone), so the PID / duration column ends on one edge. A row with only "⋯"
+      // shows it on hover or focus, in the same slot.
+      trailingShown
       trailing={
-        canStop || canKill || (menuItems.length > 0 && !busy) ? (
-          <span className="flex shrink-0 items-center gap-0.5">
-            {canStop && <IconButton icon={Square} size={actionSize} label={`Stop ${name}`} onClick={props.onStop} />}
-            {(!phone || !canStop) && canKill && <IconButton icon={OctagonX} size={actionSize} label={`Kill ${name}`} onClick={props.onKill} />}
-            {menuItems.length > 0 && !busy && <IconMenu label={`Actions for ${name}`} size={actionSize} items={menuItems} />}
-          </span>
-        ) : (
-          <span aria-hidden className={phone ? "size-ctl-lg shrink-0" : "size-6 shrink-0"} />
-        )
+        <span
+          className={cn(
+            "flex shrink-0 items-center justify-end gap-0.5",
+            phone ? "w-21" : "w-19",
+            !canStop && !canKill && "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100",
+          )}
+        >
+          {canStop && <IconButton icon={Square} size={actionSize} label={`Stop ${name}`} onClick={props.onStop} />}
+          {(!phone || !canStop) && canKill && <IconButton icon={OctagonX} size={actionSize} label={`Kill ${name}`} onClick={props.onKill} />}
+          {menuItems.length > 0 && !busy && <IconMenu label={`Actions for ${name}`} size={actionSize} items={menuItems} />}
+        </span>
       }
     />
   );

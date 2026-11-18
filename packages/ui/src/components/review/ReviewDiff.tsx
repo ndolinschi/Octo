@@ -1,12 +1,15 @@
 import type * as Monaco from "monaco-editor";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { MonacoApi } from "../../lib/buffers";
+import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
 import { useLatest } from "../../lib/hooks";
+import { monoFont } from "../../lib/monoFont";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { usePhone } from "../../lib/phone";
 import type { ChangeBlock } from "../../lib/review/changes";
+import { DIFF_WAIT_MS, DIFF_WAIT_START, diffWait } from "../../lib/review/diffWait";
 import { commentableRuns, type Anchor, type LineRun, type Side } from "../../lib/review/position";
 import { DIFF_FLASH_MS } from "../../lib/v7/changes";
 import { EditorContextMenu } from "../shared/EditorContextMenu";
@@ -62,7 +65,9 @@ export function ReviewDiff(props: {
   const [mod, setMod] = useState<ReviewMonaco | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [editor, setEditor] = useState<Monaco.editor.IStandaloneDiffEditor | null>(null);
-  const loading = useDelayedLoading(!mod && !failed);
+  // Item 4 (work-surface polish): new models stay hidden behind the spinner until their diff is computed (lib/review/diffWait).
+  const [wait, dispatchWait] = useReducer(diffWait, DIFF_WAIT_START);
+  const loading = useDelayedLoading((!mod && !failed) || wait.pending);
   const phone = usePhone();
   const { loadMonaco } = props;
   const latest = useLatest(props);
@@ -84,7 +89,7 @@ export function ReviewDiff(props: {
       readOnly: true,
       originalEditable: false,
       automaticLayout: true,
-      fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+      fontFamily: monoFont(),
       fontSize: 13,
       lineHeight: 20,
       minimap: { enabled: false },
@@ -145,6 +150,8 @@ export function ReviewDiff(props: {
     const modified = mod.monaco.editor.createModel(props.after, undefined, uri("after"));
     const old = editor.getModel();
     latest.current.onFirstLine?.(null);
+    dispatchWait({ type: "model", seq: n });
+    const timer = window.setTimeout(() => dispatchWait({ type: "timeout", seq: n }), DIFF_WAIT_MS);
     editor.setModel({ original, modified });
     // Item 4 (polish pass F3): each side's input is named by the file, so a screen reader says which file and which side.
     editor.getOriginalEditor().updateOptions({ ariaLabel: `${props.path}, before` });
@@ -153,6 +160,7 @@ export function ReviewDiff(props: {
     editor.getOriginalEditor().setScrollLeft(0);
     old?.original.dispose();
     old?.modified.dispose();
+    return () => window.clearTimeout(timer);
   }, [mod, editor, props.path, props.before, props.after, latest]);
 
   // "Go to line" (as in Changes): the first changed line of the new side, and its line numbers open the file there.
@@ -370,13 +378,16 @@ export function ReviewDiff(props: {
   const { onReady } = props;
   useEffect(() => {
     if (!editor) return;
-    const sub = editor.onDidUpdateDiff(() => onReady?.());
+    const sub = editor.onDidUpdateDiff(() => {
+      dispatchWait({ type: "computed" });
+      onReady?.();
+    });
     return () => sub.dispose();
   }, [editor, onReady]);
 
   return (
     <div ref={wrap} className="relative min-h-0 flex-1">
-      <div ref={host} className="absolute inset-0" />
+      <div ref={host} className={cn("absolute inset-0", wait.pending && "invisible")} />
       {editor && <EditorContextMenu editor={editor.getModifiedEditor()} path={props.path} />}
       {editor && <EditorContextMenu editor={editor.getOriginalEditor()} path={props.path} />}
       {failed && (

@@ -161,7 +161,8 @@ export function SidePanel() {
               <PanelEmpty
                 title="Ask about this project"
                 actions={STARTERS.map((q) => (
-                  <Button key={q} variant="quiet" size="sm" fullWidth data-row onClick={() => void ask(q)}>
+                  // Work-surface polish item 8: buttons that read as buttons, as the other tabs' empty-state actions.
+                  <Button key={q} variant="secondary" size="sm" data-row onClick={() => void ask(q)}>
                     {q}
                   </Button>
                 ))}

@@ -9,7 +9,7 @@ import { fileIcon } from "../primitives/fileIcons";
 import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
 import { SectionHeader } from "../primitives/SectionHeader";
-import { Expansion, ROW_TAIL, RowLine, useCollapseOnEscape, useReveal } from "./parts";
+import { Expansion, RowLine, useCollapseOnEscape, useReveal } from "./parts";
 
 const STATUS_ICON = { open: Circle, done: CircleCheck, dropped: CircleDashed } as const;
 
@@ -110,7 +110,6 @@ function TaskRow(props: {
         description={<RowLine>{taskDescription(t)}</RowLine>}
         tip={t.title}
         onClick={props.onToggle}
-        trailing={ROW_TAIL}
       />
       {props.open && (
         <Expansion>

@@ -1,12 +1,20 @@
 import type { PullRequestFilter, PullRequestList, PullRequestRow } from "@octo/agent-client";
 
-/** Decision 78: the four filter tabs of the picker, in order. */
+/** Decision 78: the four filter tabs of the picker, in order ("To review": short enough that all four fit a 363px dock). */
 export const PULL_FILTERS: readonly { id: PullRequestFilter; label: string }[] = [
   { id: "all", label: "All" },
-  { id: "review_requested", label: "Review requested" },
+  { id: "review_requested", label: "To review" },
   { id: "mine", label: "Mine" },
   { id: "drafts", label: "Drafts" },
 ];
+
+/**
+ * The picker's search in a narrow group (under 420px) is a button that opens the field in place; Esc in the opened field
+ * closes it again only when there is no text (with text, Esc clears it first — `SearchField`).
+ */
+export function closesSearch(key: string, query: string, opened: boolean): boolean {
+  return opened && key === "Escape" && query === "";
+}
 
 /** The harness's own match: title, number (`#12` too), author, branch or label contains the text, case-insensitive. */
 export function matchesQuery(r: PullRequestRow, query: string): boolean {

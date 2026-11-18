@@ -4,6 +4,7 @@ import type { MonacoApi } from "../../lib/buffers";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
 import { useLatest } from "../../lib/hooks";
+import { monoFont } from "../../lib/monoFont";
 import { usePhone } from "../../lib/phone";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { DIFF_FLASH_MS, type DiffLayout } from "../../lib/v7/changes";
@@ -74,7 +75,7 @@ export function DiffEditor(props: {
       readOnly: true,
       originalEditable: false,
       automaticLayout: true,
-      fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+      fontFamily: monoFont(),
       fontSize: 13,
       lineHeight: 20,
       minimap: { enabled: false },

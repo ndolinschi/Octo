@@ -900,12 +900,12 @@ export const GROUPS = {
     },
     {
       name: "filter-tabs",
-      text: "The picker filtered to 'Review requested'.",
+      text: "The picker filtered to 'To review'.",
       sizes: "one",
       run: async (page, env) => {
         await reviewPicker(page, env);
         await need(page, page.getByText("Retry transient 5xx"), "pull request list", 15000);
-        await clickText(page, /^Review requested/);
+        await clickText(page, /^To review/);
         await page.waitForTimeout(600);
       },
     },

@@ -13,7 +13,7 @@ import { IconMenu } from "../primitives/IconMenu";
 import { ListRow } from "../primitives/ListRow";
 import type { MenuItem } from "../primitives/Menu";
 import { StateGlyph } from "../primitives/StateGlyph";
-import { ROW_TAIL, RowLine } from "./parts";
+import { RowLine } from "./parts";
 
 /**
  * The rows of the Sessions list, Memory's anatomy: state glyph, title, a dim "Nov 12 · 5 exchanges · Opus 5.5" and at its right
@@ -106,7 +106,7 @@ export function SessionRows(props: {
         tip={r.title}
         {...(expanded === undefined ? {} : { expanded })}
         onClick={() => props.onChoose(s)}
-        trailing={items.length > 0 ? <IconMenu label={`Actions for ${r.title}`} size="xs" items={items} /> : ROW_TAIL}
+        trailing={items.length > 0 ? <IconMenu label={`Actions for ${r.title}`} size="xs" items={items} /> : undefined}
       />
     );
   };

@@ -210,7 +210,6 @@ function NoteRow(props: { note: Note; now: number; active: boolean; onPick(): vo
       }
       tip={note.description_auto ? "Auto description: taken from the first line of the note" : note.title}
       onClick={props.onPick}
-      trailing={<span aria-hidden className="size-6" />}
     />
   );
 }

@@ -337,6 +337,8 @@ function Team() {
               </span>
             </div>
             {served?.asked && <p className="-mt-1 truncate px-2 pb-1 text-right text-xs text-fg-3">asked for {served.asked}</p>}
+            {/* Work-surface polish item 15: the warn tone is never the only sign; the reason in words, as on the model chip. */}
+            {stuck && <p className="-mt-1 truncate px-2 pb-1 text-right text-xs text-fg-3">provider not connected</p>}
           </div>
         );
       })}

@@ -33,12 +33,6 @@ export function MemoryError({ message, onRetry }: { message: string; onRetry?: (
 export const DETAIL_MAX = DETAIL_COLUMN;
 
 /**
- * Rows with a "⋯" reserve its width at the right (the row's `trailing` slot); rows without actions reserve the same, so
- * the times and sizes of every Memory list end on one edge.
- */
-export const ROW_TAIL = <span aria-hidden className="size-6" />;
-
-/**
  * The dim second line of a two-line row: text that gives way (ellipsis) and, at the right, a short tail that never does (a
  * time, a size, "current"). A one-line row puts its date in the row's own `meta` slot instead (same dim small style).
  */
@@ -46,7 +40,11 @@ export function RowLine({ children, end }: { children: ReactNode; end?: ReactNod
   return (
     <span className="flex min-w-0 items-baseline gap-2">
       <span className="min-w-0 flex-1 truncate">{children}</span>
-      {end !== undefined && <span className="shrink-0 tabular-nums">{end}</span>}
+      {end !== undefined && (
+        <span data-row-tail className="shrink-0 tabular-nums">
+          {end}
+        </span>
+      )}
     </span>
   );
 }

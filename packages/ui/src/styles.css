@@ -529,6 +529,7 @@
 @container ld (width < 640px) {
   [data-unpicked] .group:has(> [data-row][aria-current="true"]) {
     background-color: transparent;
+    --row-tint: transparent; /* the row actions' overlay (ListRow) matches the row */
   }
 }
 
@@ -1588,11 +1589,12 @@
   background: var(--octo-accent);
 }
 /* completion */
-/* Inline completion (inline completion design, decision 7). Ghost text in the muted tone, never italic. */
+/* Inline completion (inline completion design, decision 7). Ghost text in the line-number tone (a step below comments, so a
+   suggestion does not read as code), never italic. */
 .monaco-editor .ghost-text-decoration,
 .monaco-editor .ghost-text-decoration-preview,
 .monaco-editor .ghost-text {
-  color: var(--octo-fg-3) !important;
+  color: var(--vscode-editorLineNumber-foreground, var(--octo-fg-3)) !important;
   font-style: normal !important;
 }
 /* "Thinking": a 1px line under the status item with a light sweeping across it; a still line under reduced motion. */
@@ -1662,6 +1664,7 @@
 @container providers (width < 768px) {
   [data-unpicked] .group:has(> [data-row][aria-current="true"]) {
     background-color: transparent;
+    --row-tint: transparent; /* the row actions' overlay (ListRow) matches the row */
   }
 }
 /* end polish step 6a */
@@ -2058,10 +2061,10 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 .octo-diff {
   --diff-gap: 8px;
   --diff-gutter-w: calc(12px + 1ch + var(--diff-gap));
-  --diff-add: color-mix(in srgb, var(--octo-ok) 9%, transparent);
-  --diff-del: color-mix(in srgb, var(--octo-err) 8%, transparent);
-  --diff-add-gutter: color-mix(in srgb, var(--octo-ok) 18%, var(--octo-code-bg));
-  --diff-del-gutter: color-mix(in srgb, var(--octo-err) 15%, var(--octo-code-bg));
+  --diff-add: color-mix(in srgb, var(--octo-ok) 14%, transparent);
+  --diff-del: color-mix(in srgb, var(--octo-err) 12%, transparent);
+  --diff-add-gutter: color-mix(in srgb, var(--octo-ok) 22%, var(--octo-code-bg));
+  --diff-del-gutter: color-mix(in srgb, var(--octo-err) 20%, var(--octo-code-bg));
 }
 .octo-diff[data-numbered] {
   --diff-gutter-w: calc(12px + 2 * var(--diff-digits) + 1ch + 3 * var(--diff-gap));
@@ -2632,5 +2635,49 @@ article:not(:has([data-turn-changes])):is(:hover, :focus-within) [data-restore] 
     border-color: CanvasText;
     background: Canvas;
     color: CanvasText;
+  }
+}
+
+/* Row actions (ListRow; work-surface polish item 5): actions that show on hover or focus take no width. With a fine pointer
+   in a wide window they overlay the row's end on the row's own fill (the list's surface, `--row-surface`, under the row's
+   tint), and the row's tails (the meta, a date marked `data-row-tail`) give way while they show, so a right-hand column
+   lines up across rows and nothing moves on hover. On touch (the `touch` variant's complement) they stay in the flow and
+   always show, as before. */
+.octo-row-actions {
+  opacity: 0;
+  transition: opacity 100ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.group:is(:hover, :focus-within) > .octo-row-actions {
+  opacity: 1;
+}
+@media (pointer: coarse), (max-width: 767.98px) {
+  .octo-row-actions {
+    opacity: 1;
+  }
+}
+@media (min-width: 768px) {
+  @media not (pointer: coarse) {
+    .octo-row-host {
+      position: relative;
+      --row-tint: transparent;
+    }
+    .octo-row-host:hover {
+      --row-tint: var(--octo-hover);
+    }
+    /* The selected (or active) row is the one ListRow fills with `bg-active`. */
+    .octo-row-host.bg-active {
+      --row-tint: var(--octo-active);
+    }
+    .octo-row-actions {
+      position: absolute;
+      inset-block: 0;
+      right: 0;
+      padding-left: 4px;
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      background: linear-gradient(var(--row-tint), var(--row-tint)), var(--row-surface, var(--octo-panel));
+    }
+    .octo-row-host:is(:hover, :focus-within) [data-row-tail] {
+      visibility: hidden;
+    }
   }
 }

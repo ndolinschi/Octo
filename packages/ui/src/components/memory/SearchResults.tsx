@@ -14,7 +14,7 @@ import { ScrollArea } from "../primitives/ScrollArea";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { SkeletonList } from "../primitives/Skeleton";
 import { FloatRoom } from "../primitives/floatRoom";
-import { MemoryError, ROW_TAIL, RowLine } from "./parts";
+import { MemoryError, RowLine } from "./parts";
 import type { SearchState } from "./useMemorySearch";
 
 /**
@@ -113,7 +113,6 @@ function HitRow(props: { hit: UiHit; now: number; openable: boolean; onOpen(targ
           })}
       tip={hit.name}
       tone={hit.superseded ? "quiet" : "default"}
-      trailing={ROW_TAIL}
       {...(props.openable && target ? { onClick: () => props.onOpen(target) } : {})}
     />
   );

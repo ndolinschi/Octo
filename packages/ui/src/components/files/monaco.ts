@@ -154,17 +154,19 @@ const CHROME: Record<Theme, Chrome> = {
 
 /**
  * Item 8: the diff editors (Changes, Review) use the conversation's diff tints (styles.css, `.octo-diff`): a changed line is
- * the ok / err token at 9 % / 8 % (it runs under the line numbers too), a changed word at 18 % / 15 % (alpha hex: 9 % = 17,
- * 8 % = 14, 18 % = 2e, 15 % = 26). The gutter keys stay transparent: in the inline layout Monaco paints the removed-gutter
+ * the ok / err token at 14 % / 12 % (alpha hex 24 / 1f; work-surface polish item 7: 9 % / 8 % was 1.15:1 against the editor,
+ * now 1.28 / 1.21 dark, 1.23 / 1.22 light). A changed word adds the same tint again on top of its line's (Monaco stacks the
+ * two), about 26 % / 23 % in all, as strong as the old 9 + 18 % and the most that keeps every syntax colour near 4.5:1
+ * (code text: 7:1 and up); 28 % on top would take comments and keywords down to 3.4:1. The gutter keys stay transparent: in the inline layout Monaco paints the removed-gutter
  * colour down the old-number column of the whole hunk, inserted lines included. No borders; the overview marks are at 60 %.
  */
 function diffColors(chrome: Chrome, p: Palette): Record<string, string> {
   const none = "#00000000";
   return {
-    "diffEditor.insertedLineBackground": `${chrome.ok}17`,
-    "diffEditor.removedLineBackground": `${chrome.err}14`,
-    "diffEditor.insertedTextBackground": `${chrome.ok}2e`,
-    "diffEditor.removedTextBackground": `${chrome.err}26`,
+    "diffEditor.insertedLineBackground": `${chrome.ok}24`,
+    "diffEditor.removedLineBackground": `${chrome.err}1f`,
+    "diffEditor.insertedTextBackground": `${chrome.ok}24`,
+    "diffEditor.removedTextBackground": `${chrome.err}1f`,
     "diffEditorGutter.insertedLineBackground": none,
     "diffEditorGutter.removedLineBackground": none,
     "diffEditor.insertedTextBorder": none,
@@ -248,9 +250,9 @@ function theme(base: "vs" | "vs-dark", p: Palette, chrome: Chrome): monaco.edito
       "editor.findMatchHighlightBackground": chrome.findOthers,
       "editor.findMatchBorder": "#00000000",
       "editor.findMatchHighlightBorder": "#00000000",
-      // Inline completion: the meta tone (styles.css also keeps it upright).
-      "editorGhostText.foreground": p.comment,
-      "editorGhostText.border": "#00000000",
+      // Inline completion: the line-number tone, a step below comments so a suggestion never reads as code (styles.css
+      // also keeps it upright). No `editorGhostText.border`: even a transparent one is drawn 1px each side of every token.
+      "editorGhostText.foreground": p.lineNumber,
       "editor.rangeHighlightBackground": p.tint("0a"),
       "editorWhitespace.foreground": p.tint("1f"),
       "editorIndentGuide.background1": p.tint("0d"),

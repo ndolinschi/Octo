@@ -38,15 +38,16 @@ export function BoundaryMarker(props: { earlier: string; onOpenEarlier?: (() => 
   );
 }
 
-/** Rows reserve the width of a "⋯" so their times end on one edge, as in Memory's lists. */
-export const ROW_TAIL = <span aria-hidden className="size-6" />;
-
 /** The dim second line of a two-line row: text that gives way, and at the right a short tail that never does. */
 export function RowLine({ children, end }: { children: ReactNode; end?: ReactNode }) {
   return (
     <span className="flex min-w-0 items-baseline gap-2">
       <span className="min-w-0 flex-1 truncate">{children}</span>
-      {end !== undefined && <span className="shrink-0 tabular-nums">{end}</span>}
+      {end !== undefined && (
+        <span data-row-tail className="shrink-0 tabular-nums">
+          {end}
+        </span>
+      )}
     </span>
   );
 }

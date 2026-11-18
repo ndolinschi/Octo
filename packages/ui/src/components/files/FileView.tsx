@@ -85,9 +85,10 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   const shell = useTreeShell(root, tab, fileKey, groupId);
   const { width, page, showEditor } = shell;
   const treeId = `${domId(tab)}-tree`;
-  // A narrow bar: the completion model and the server's name fold to their glyphs (B21: never the file name first).
+  // A narrow bar: the completion model folds to its glyph (B21: never the file name first) and a ready server shows nothing
+  // (its lone dot beside "Unsaved" read as a second unsaved mark; work-surface polish item 11).
   const compact = width > 0 && width < 640;
-  // A very narrow bar (a phone): the page switch is its glyph, "Unsaved" a dot (the tab says it too), a ready server nothing.
+  // A very narrow bar (a phone): the page switch is its glyph, "Unsaved" only for screen readers (the tab's dot says it).
   const narrow = width > 0 && width < 440;
   // Page mode (E7): the page that shows takes focus — the selected row (else the filter) for the tree, the editor for a file.
   const showTreePage = () => {
@@ -263,12 +264,12 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
               <Spinner size={10} /> Saving…
             </>
           )}
-          {file?.modified && !saving && (narrow ? <UnsavedDot /> : <span className="shrink-0">Unsaved</span>)}
+          {file?.modified && !saving && <span className={narrow ? "sr-only" : "shrink-0"}>Unsaved</span>}
         </span>
         {fileKey && (
           <EditorStatus
             compact={compact}
-            hideReady={narrow}
+            hideReady={compact}
             intel={code.intel}
             fileKey={fileKey}
             onJump={(p) => code.openFile(folder, path, { line: p.line, column: p.column })}
@@ -361,16 +362,6 @@ function Cover(props: { title: string; children?: ReactNode; actions?: ReactNode
         {props.children}
       </EmptyState>
     </div>
-  );
-}
-
-/** "Unsaved" in a narrow bar: a dot with the word for screen readers and in the tooltip. */
-function UnsavedDot() {
-  return (
-    <span title="Unsaved changes" className="grid size-4 shrink-0 place-items-center">
-      <span aria-hidden className="size-2 rounded-full bg-fg-2" />
-      <span className="sr-only">Unsaved</span>
-    </span>
   );
 }
 

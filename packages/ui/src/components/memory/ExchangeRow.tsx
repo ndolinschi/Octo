@@ -12,7 +12,7 @@ import { Notice } from "../primitives/Notice";
 import { Presence } from "../primitives/Presence";
 import { Prose } from "../shared/Prose";
 import { ReceiptPopover } from "../shared/ReceiptPopover";
-import { ConfirmDialog, Expansion, ROW_TAIL, RowLine, useCollapseOnEscape, useReveal } from "./parts";
+import { ConfirmDialog, Expansion, RowLine, useCollapseOnEscape, useReveal } from "./parts";
 
 const OUTCOME_ICON = { done: CircleCheck, failed: CircleAlert, stopped: CirclePause } as const;
 
@@ -50,7 +50,7 @@ export function ExchangeRow(props: {
     return (
       <li data-exchange={e.id}>
         {/* B32: the glyph column and the time column of the other exchanges, so the text edge does not jump. */}
-        <ListRow size="md" tone="quiet" leading={<Glyph icon={Eraser} size={14} />} title="Forgotten request" meta="removed" trailing={ROW_TAIL} />
+        <ListRow size="md" tone="quiet" leading={<Glyph icon={Eraser} size={14} />} title="Forgotten request" meta="removed" />
       </li>
     );
   }
