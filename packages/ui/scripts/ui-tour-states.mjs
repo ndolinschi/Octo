@@ -8,8 +8,14 @@
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Opens the demo; `q` is the whole query string (default `demo=1`), `hash` the route. */
+/**
+ * Opens the demo; `q` is the whole query string (default `demo=1`), `hash` the route. The tour shows every screen, so a demo
+ * query without a `tabs` knob gets `tabs=all`: the default flags (`lib/tabFlags.ts`) hide the Sessions, Agents, Notes,
+ * Details, Usage and Memory tabs, and the states that open them would never be reached. A state about the default experience
+ * passes its own `tabs=` (an empty `tabs=` keeps the defaults) and is left alone.
+ */
 async function boot(page, env, q = "demo=1", hash = "") {
+  if (/^demo=/.test(q) && !/(^|&)tabs=/.test(q)) q += "&tabs=all";
   await page.goto(`${env.base}/?${q}${hash}`);
   await page.locator("body").waitFor();
   await page.waitForTimeout(1200);
@@ -675,6 +681,28 @@ export const GROUPS = {
         await need(page, page.getByRole("dialog").or(page.getByRole("meter")), "context popover");
       },
     },
+    {
+      name: "project-selector-closed",
+      text: "Design system tokens (an empty session): the project selector above the composer, closed.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Design system tokens");
+        await need(page, page.locator("[data-project-selector]"), "project selector");
+      },
+    },
+    {
+      name: "project-selector-open",
+      text: "The composer's project selector open: every project with its state and when it last changed, the current one checked.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Design system tokens");
+        await page.locator("[data-project-selector]").filter({ visible: true }).first().click({ timeout: 8000 });
+        await need(page, page.getByPlaceholder("Switch project…"), "the project list");
+        await page.waitForTimeout(400);
+      },
+    },
   ],
 
   files: [
@@ -866,6 +894,91 @@ export const GROUPS = {
         await page.waitForTimeout(900);
       },
     })),
+  ],
+
+  "dock-tools": [
+    {
+      name: "terminal",
+      text: "Atlas API, Terminal tab: the interactive shell with its prompt (zsh, PID, working folder).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Open terminal");
+        await need(page, page.locator("[data-terminal-tab] [data-terminal-screen]"), "terminal screen", 15000);
+        await need(page, page.getByText(/maya@octo/), "the shell prompt", 15000);
+        await page.waitForTimeout(600);
+      },
+    },
+    {
+      name: "terminal-second",
+      text: "Atlas API: a second terminal tab opened beside the first (Ctrl+Shift+`), both tabs in the strip.",
+      sizes: "one",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Open terminal");
+        await need(page, page.locator("[data-terminal-tab] [data-terminal-screen]"), "terminal screen", 15000);
+        await page.keyboard.press("Control+Shift+`");
+        await page.waitForTimeout(1200);
+        const terminals = await page.locator('[role="tab"][data-tab-id*="terminal"]').count();
+        if (terminals < 2) throw new Error(`not reached: a second terminal tab (${terminals} terminal tabs)`);
+        await need(page, page.getByText(/maya@octo/), "the second shell prompt", 15000);
+        await page.waitForTimeout(600);
+      },
+    },
+    {
+      name: "browser-empty",
+      text: "Atlas API, Browser tab before any page: the address field and the hint to enter a localhost port or URL.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Show browser");
+        await need(page, page.locator("[data-browser-tab]"), "browser tab", 15000);
+        await need(page, page.getByText(/Open a local preview or web page/), "the empty browser hint");
+      },
+    },
+    {
+      name: "browser-loaded",
+      text: "Atlas API, Browser tab with http://localhost:5173 loaded (the demo's local preview page).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Show browser");
+        await need(page, page.locator("[data-browser-tab]"), "browser tab", 15000);
+        await page.getByLabel("Page URL").filter({ visible: true }).first().fill("http://localhost:5173");
+        await page.keyboard.press("Enter");
+        await need(page, page.locator("[data-browser-tab] iframe"), "the loaded page", 15000);
+        await page.waitForTimeout(1500);
+      },
+    },
+    {
+      name: "processes-populated",
+      text: "Atlas API, Processes tab: the seeded dev server, test run and workers, the first one's live output on the right.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Show processes");
+        await need(page, page.locator("[data-processes] [data-row]"), "a process row", 15000);
+        await page.waitForTimeout(800);
+      },
+    },
+    {
+      name: "processes-empty",
+      text: "Design system tokens, Processes tab: no command has run (the empty state with its way to start one).",
+      sizes: "one",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Design system tokens");
+        await tool(page, "Show processes");
+        await need(page, page.locator("[data-processes]"), "processes tab", 15000);
+        if (await page.locator("[data-processes] [data-row]").filter({ visible: true }).count()) throw new Error("not reached: the empty state (the project lists processes)");
+        await page.waitForTimeout(600);
+      },
+    },
   ],
 
   review: [
@@ -1502,6 +1615,23 @@ export const GROUPS = {
         await boot(page, env);
         await need(page, page.getByRole("tree").getByRole("group").first(), "sessions under an open project");
         await page.waitForTimeout(400);
+      },
+    },
+    {
+      name: "conversation-tab",
+      text: "Atlas API: a project session opened from the sidebar tree as its own conversation tab (Plan the release).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await page
+          .getByRole("treeitem", { name: /Plan the release/ })
+          .filter({ visible: true })
+          .first()
+          .click({ timeout: 8000 });
+        await need(page, page.getByText(/Three things block Friday/), "the session's conversation", 15000);
+        await need(page, page.locator('[role="tab"][data-tab-id^="session:"]'), "a session tab in the strip");
+        await page.waitForTimeout(600);
       },
     },
   ],

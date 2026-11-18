@@ -21,17 +21,29 @@ const SIZES = opt("--sizes", "1440x900,900x600,390x700")
   .split(",")
   .map((s) => s.split("x").map(Number));
 
-const menuButton = async (page) => {
-  const b = page.getByRole("button", { name: /^(Show|Open) sidebar$|^Menu$/ }).first();
-  await b.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
-  if (await b.isVisible().catch(() => false)) await b.click();
-  await page.waitForTimeout(300);
+/**
+ * Brings `target` into view. On a narrow window the project list is a drawer behind a menu button that is not mounted until the
+ * app has rendered: wait for the target or the button (the app may still be loading on a busy machine), press the button, and
+ * press it again only if the drawer did not come up (a second press on an open drawer would close it).
+ */
+const reveal = async (page, target) => {
+  const menu = page.getByRole("button", { name: /^(Show|Open) sidebar$|^Menu$/ }).first();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const ready = await target.waitFor({ state: "visible", timeout: attempt === 0 ? 6000 : 2500 }).then(
+      () => true,
+      () => false,
+    );
+    if (ready) return;
+    if (await menu.isVisible().catch(() => false)) await menu.click({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+  }
+  await target.waitFor({ state: "visible", timeout: 8000 });
 };
 
 const home = async (page) => {
   const b = page.getByRole("button", { name: "Home" }).first();
-  if (!(await b.isVisible().catch(() => false))) await menuButton(page);
-  await b.click();
+  await reveal(page, b);
+  await b.click({ timeout: 8000 });
 };
 
 const SCREENS = [
@@ -44,7 +56,7 @@ const SCREENS = [
     tree: true,
     go: async (page) => {
       const item = page.locator("a", { hasText: "Design system tokens" }).first();
-      if (!(await item.isVisible().catch(() => false))) await menuButton(page);
+      await reveal(page, item);
       await item.click({ timeout: 8000 });
     },
   },
