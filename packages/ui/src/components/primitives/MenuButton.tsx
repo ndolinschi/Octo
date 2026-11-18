@@ -27,7 +27,7 @@ export function MenuButton(props: { label: string; text: string; items: MenuItem
         aria-expanded={menu !== null}
         onClick={toggle}
         className={cn(
-          "flex h-chip shrink-0 press items-center gap-1 rounded-sm px-2 text-sm whitespace-nowrap hover:bg-hover hover:text-fg",
+          "touch-hit flex h-chip shrink-0 press items-center gap-1 rounded-sm px-2 text-sm whitespace-nowrap hover:bg-hover hover:text-fg phone:h-ctl-lg phone:min-w-ctl-lg",
           menu ? "bg-active text-fg" : "text-fg-2",
           props.className,
         )}

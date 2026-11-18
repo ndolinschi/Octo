@@ -64,6 +64,8 @@ export const EDGES = "scroll-quiet overflow-hidden px-(--pad)";
 
 /** The empty project's title loads when an empty project shows (its own chunk; the composer is not in it). */
 const EmptyTitle = lazy(() => import("./EmptyProject").then((m) => ({ default: m.EmptyTitle })));
+/** The agy-style inline project selector loads only on empty sessions (kept out of the initial bundle). */
+const ComposerProjectBar = lazy(() => import("./ComposerProjectBar").then((m) => ({ default: m.ComposerProjectBar })));
 
 /** The turn rail appears from the first request (decision 34). */
 
@@ -89,7 +91,7 @@ export function ConversationView(props: { agentId: string; tab?: TabId }) {
 function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string; tab?: TabId; rewindRef: { current: (() => void) | undefined } }) {
   const ws = useOptionalWorkspace();
   const slots = useChatSlots();
-  const { theme, backdrop: appBackdrop, bridge } = useApp();
+  const { theme, backdrop: appBackdrop, bridge, projects } = useApp();
   const { project, state, running, ensureMessages, projectId, loadFailures, reload } = useProject();
   const agent = state.agents[agentId];
   const messages = state.messages[agentId];
@@ -173,7 +175,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   });
   const { onScroll: measureStuck } = stuck;
   useEffect(measureStuck, [messages, hasStreaming, measureStuck]);
-  // Decision 56: "Jump to latest" hides while a popover of the composer is open.
+  // Decision 56: "Jump to latest" hides while a popover of the composer or its inline project bar is open.
   const [overlay, setOverlay] = useState(false);
   const composerRow = useRef<HTMLDivElement>(null);
   useComposerAnchor(scroll.ref, composerRow, scroll.atBottom);
@@ -266,6 +268,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const watched = ws ? ws.watched === tab : true;
 
   const empty = showStarters;
+  const showProjectBar = empty && !!projects?.length;
   const totalNotes = composerProps.commentCount + composerProps.designNoteCount;
   const commentsSlot = totalNotes
     ? { count: totalNotes, render: (open: boolean, setOpen: (open: boolean) => void) => <CommentsControl open={open} onOpenChange={setOpen} /> }
@@ -397,7 +400,14 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
       <div ref={composerRow} className={cn(EDGES, "relative shrink-0", !empty && "pt-2 pb-3")}>
         <div data-column-edge className={cn("mx-auto w-full", empty ? "max-w-float" : "max-w-measure")}>
           {isOrchestrator ? (
-            <Composer ref={composer} {...composerProps} comments={commentsSlot} onOverlay={setOverlay} />
+            <div data-composer-shell={showProjectBar || undefined} className={cn(showProjectBar && "octo-composer-shell p-0.5")}>
+              {showProjectBar && (
+                <Suspense fallback={<div className="h-8 px-1.5" aria-hidden />}>
+                  <ComposerProjectBar project={project} projects={projects} draft={composerProps.draft} onOverlay={setOverlay} />
+                </Suspense>
+              )}
+              <Composer ref={composer} {...composerProps} comments={commentsSlot} onOverlay={setOverlay} />
+            </div>
           ) : (
             <Suspense fallback={<div className="h-bar" />}>
               <ObserverBar />

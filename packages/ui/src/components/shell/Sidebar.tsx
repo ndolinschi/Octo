@@ -1,7 +1,7 @@
 import { GitPullRequest, House, Plus, Search, Settings, type LucideIcon } from "lucide-react";
 import { navigate } from "../../lib/route";
 import { Glyph } from "../primitives/Glyph";
-import { lazy, Suspense, useRef, type ReactNode, type RefObject } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { useApp } from "../../state/app";
 import { MOD } from "../../state/workspace/WorkspaceProvider";
 import { ListRow } from "../primitives/ListRow";
@@ -39,7 +39,6 @@ export function Sidebar(props: {
   /** Projects with activity the user has not seen (see `useUnseen`). */
   unseen: Set<string>;
   onNewProject(): void;
-  onNewSession?(anchor: RefObject<HTMLElement | null>): void;
   onSearch(): void;
   /** Opens the Review tab of the open project. */
   onReview(): void;
@@ -55,7 +54,6 @@ export function Sidebar(props: {
   const phone = usePhone();
   // Remote access: a device never creates a project (local only, and it needs the computer's folder dialog).
   const device = useHost().remoteDevice !== undefined;
-  const newSessionRef = useRef<HTMLDivElement>(null);
 
   return (
     <nav
@@ -84,11 +82,6 @@ export function Sidebar(props: {
               <NavRow icon={GitPullRequest} label="Review" onClick={props.onReview} />
             ))}
           {!device && <NavRow icon={Plus} label="New project" onClick={props.onNewProject} disabled={!canCreate} />}
-          {props.onNewSession && (
-            <div ref={newSessionRef} className="flex flex-col">
-              <NavRow icon={Plus} label="New session" onClick={() => props.onNewSession?.(newSessionRef)} disabled={!canCreate || !projects?.length} />
-            </div>
-          )}
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col">

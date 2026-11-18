@@ -96,15 +96,8 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
         actions={
           <NewSessionButton
             loading={actions.busy === "create"}
-            projectId={projectId}
             memoryBlocked={project?.memory?.auto_memory === "blocked"}
-            onCreate={(targetPid) => {
-              if (targetPid && targetPid !== projectId) {
-                void bridge.createSession(targetPid, {}).then(({ session }) => {
-                  window.location.hash = `#/p/${encodeURIComponent(targetPid)}/s/${encodeURIComponent(session.id)}`;
-                });
-                return;
-              }
+            onCreate={() => {
               void actions.create().then((created) => {
                 // Decision 96: "New session" makes and opens a session in its own tab; the default stays where it is.
                 if (created) ws?.openSession(created.id);

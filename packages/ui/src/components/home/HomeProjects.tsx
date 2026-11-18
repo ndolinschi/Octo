@@ -9,6 +9,7 @@ import { readable } from "../../lib/errors/plain";
 import { projectWhen, stateLine, type OrchestratorState } from "../../lib/orchestrator";
 import { agentStack } from "../../lib/orchestratorMore";
 import { navigate } from "../../lib/route";
+import { createAndOpenSession } from "../../lib/sessions/createSession";
 import { TRIAGE_LABEL, TRIAGE_ORDER, triageGroups, type Triage } from "../../lib/triage";
 import { useActivity } from "../../state/activity";
 import { useApp } from "../../state/app";
@@ -30,7 +31,6 @@ import { STILL } from "./still";
 import type { useOverview } from "./useOverview";
 
 const Menu = lazy(() => import("../primitives/Menu").then((m) => ({ default: m.Menu })));
-const NewSessionPopover = lazy(() => import("../shared/NewSessionPopover").then((m) => ({ default: m.NewSessionPopover })));
 const DeleteProjectDialog = lazy(() => import("../shared/DeleteProjectDialog").then((m) => ({ default: m.DeleteProjectDialog })));
 
 /**
@@ -72,7 +72,6 @@ export function Projects({
   const device = useHost().remoteDevice !== undefined;
   const activity = useActivity();
   const list = useRef<HTMLDivElement>(null);
-  const newSessionRef = useRef<HTMLSpanElement>(null);
   useRowKeys(list);
   // 11g: the list is one Tab stop; ↑/↓/Home/End move between its rows.
   useRovingRows(list);
@@ -103,20 +102,21 @@ export function Projects({
   const total = items.length + (sessions?.length ?? 0);
   const rest = (filter ? items.filter((x) => x.triage === filter).length + (sessions ?? []).filter((x) => x.triage === filter).length : total) - shown;
 
+  const startNewSession = () => {
+    const targetId = items[0]?.project.id ?? data.projects?.[0]?.id;
+    if (!targetId || health !== "online" || creatingSession) return;
+    setCreatingSession(true);
+    void createAndOpenSession(bridge, targetId, { refreshSessions: () => activity.refreshSessions() })
+      .catch(() => undefined)
+      .finally(() => setCreatingSession(false));
+  };
+
   const projectMenuItems = (project: ProjectSummary): MenuItem[] => [
     {
       id: "new",
       label: "New session",
       disabled: health !== "online",
-      run: () => {
-        void bridge.createSession(project.id, {}).then(
-          ({ session }) => {
-            activity.refreshSessions();
-            navigate(project.id, null, session.id);
-          },
-          () => undefined,
-        );
-      },
+      run: () => void createAndOpenSession(bridge, project.id, { refreshSessions: () => activity.refreshSessions() }).catch(() => undefined),
     },
     ...(!device
       ? [
@@ -168,24 +168,22 @@ export function Projects({
             New project
           </Button>
         )}
-        <span ref={newSessionRef} className="inline-flex">
-          <Button variant="quiet" size="sm" icon={Plus} disabled={health !== "online" || !data.projects?.length} onClick={() => setCreatingSession(true)}>
-            New session
-          </Button>
-        </span>
+        <Button
+          variant="quiet"
+          size="sm"
+          icon={Plus}
+          loading={creatingSession}
+          disabled={health !== "online" || !data.projects?.length}
+          onClick={startNewSession}
+        >
+          New session
+        </Button>
         {(rest > 0 || (all && !filter)) && (
           <Button variant="quiet" size="sm" aria-expanded={all} onClick={() => setAll((v) => !v)} className="ml-auto">
             {all ? "Show fewer" : `${rest} more ${rest === 1 ? "project" : "projects"}`}
           </Button>
         )}
       </div>
-      <Presence show={creatingSession}>
-        {creatingSession && (
-          <Suspense fallback={null}>
-            <NewSessionPopover anchor={newSessionRef} align="start" activeProjectId={null} onClose={() => setCreatingSession(false)} />
-          </Suspense>
-        )}
-      </Presence>
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
           <Suspense fallback={null}>

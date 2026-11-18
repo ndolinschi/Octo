@@ -1256,6 +1256,19 @@
 .octo-composer:focus-within {
   outline-color: var(--octo-input-border);
 }
+/* Empty-session composer shell: outer rounded frame holding the inline project selector above the raised composer card. */
+.octo-composer-shell {
+  border-radius: calc(var(--radius-xl) + 2px);
+  background-color: color-mix(in srgb, var(--octo-window) 75%, var(--octo-panel));
+  outline: 1px solid var(--octo-line);
+  outline-offset: -1px;
+}
+:root[data-theme="light"] .octo-composer-shell {
+  background-color: var(--octo-window);
+}
+:root[data-theme="light"] .octo-composer-shell .octo-composer {
+  background-color: var(--octo-panel);
+}
 .octo-composer[data-floating] {
   outline-color: transparent;
   box-shadow: var(--octo-shadow-float);
@@ -2358,11 +2371,25 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] [data-composer-row] > [data-composer-spacer] {
   display: none;
 }
-/* 32px controls on the field's first line (the 44px target is the touch hit area around them). */
+[data-phone] :is(button, a).touch-hit:where(.size-ctl-xs, .size-ctl-sm, .size-ctl-md) {
+  width: var(--spacing-ctl-lg);
+  height: var(--spacing-ctl-lg);
+}
+[data-phone] button.touch-hit:where(.h-ctl-xs, .h-ctl-sm, .h-ctl-md) {
+  min-width: var(--spacing-ctl-lg);
+  height: var(--spacing-ctl-lg);
+}
+/* Touch controls sit on the field's baseline with a full 44px box. */
 [data-phone] [data-composer-row] > button {
-  width: var(--spacing-ctl-md);
-  height: var(--spacing-ctl-md);
-  margin: 0 4px 6px;
+  min-width: var(--spacing-ctl-lg);
+  height: var(--spacing-ctl-lg);
+  margin: 0 2px;
+}
+[data-phone] [data-key-hint][class~="max-sm:hidden"] {
+  display: none;
+}
+[data-phone] [data-jump-room] {
+  height: var(--spacing-ctl-lg);
 }
 [data-phone] [data-composer-row] > :is([data-composer-size], [data-composer-note]) {
   align-self: center;

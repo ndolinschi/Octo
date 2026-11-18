@@ -10,7 +10,7 @@ import { Spinner } from "../primitives/Status";
 import type { ImageChip } from "./useImages";
 
 /** The pill shape shared by attachments, comments and queued messages (exported for CommentsControl's pill variant). */
-export const PILL = "flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-sm bg-hover pl-2 text-sm text-fg-2";
+export const PILL = "flex min-h-7 max-w-full min-w-0 items-center gap-1.5 rounded-sm bg-hover pl-2 text-sm text-fg-2 phone:min-h-ctl-lg";
 
 function Pill({
   icon,

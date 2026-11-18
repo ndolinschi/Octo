@@ -74,7 +74,7 @@ export function ModelPicker(props: ModelPickerProps) {
           onClick={() => setOpen(!open)}
           className={cn(
             FIELD,
-            "flex h-ctl-md w-full min-w-0 press items-center gap-1.5 px-3 text-left whitespace-nowrap hover:bg-hover disabled:pointer-events-none disabled:text-fg-3",
+            "flex h-ctl-md w-full min-w-0 press items-center gap-1.5 px-3 text-left whitespace-nowrap hover:bg-hover disabled:pointer-events-none disabled:text-fg-3 touch:h-ctl-lg",
             open && "border-fg bg-active",
             toned && "text-warn",
             props.className,

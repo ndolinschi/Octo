@@ -54,7 +54,11 @@ export function FilterTabs<T extends string>(props: {
       tabIndex={-1}
       aria-label={props.label}
       onKeyDown={onKeyDown}
-      className={cn("flex min-w-0 items-center gap-1 overflow-x-auto fade-x text-xs", props.bare ? "shrink" : "h-row shrink-0 px-pane", props.className)}
+      className={cn(
+        "flex min-w-0 items-center gap-1 overflow-x-auto fade-x text-xs",
+        props.bare ? "shrink" : "h-row shrink-0 px-pane phone:h-ctl-lg",
+        props.className,
+      )}
     >
       {props.options.map((o) => {
         const on = o.id === props.value;
@@ -68,7 +72,7 @@ export function FilterTabs<T extends string>(props: {
             title={o.title}
             onClick={() => props.onChange(o.id)}
             className={cn(
-              "touch-hit flex h-ctl-xs shrink-0 items-center gap-1 rounded-sm px-2 whitespace-nowrap press-row focus-inset",
+              "touch-hit flex h-ctl-xs shrink-0 items-center justify-center gap-1 rounded-sm px-2 whitespace-nowrap press-row focus-inset phone:h-ctl-lg phone:min-w-ctl-lg",
               on ? "text-fg" : "text-fg-3 hover:text-fg-2",
             )}
           >

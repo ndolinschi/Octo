@@ -1,5 +1,5 @@
 import type { AdhocCommandInput, WorkerProcess } from "@octo/agent-client";
-import { Check, Plus, RefreshCw } from "lucide-react";
+import { Check, OctagonX, Plus, RefreshCw, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { durationText } from "../../lib/commands/format";
 import { runsReducer } from "../../lib/commands/runs";
@@ -306,12 +306,16 @@ function ProcessRow(props: {
   onRestart(): void;
 }) {
   const { item, canManage, busy } = props;
+  const phone = usePhone();
   const active = isProcessActive(item);
   const restartable = canRestartProcess(item);
   const tone = processTone(item);
   const pid = processPid(item);
   const name = processName(item);
   const cmd = processCommand(item);
+  const canStop = canManage && active && item.kind === "command" && !busy;
+  const canKill = canManage && active && !busy;
+  const actionSize = phone ? "lg" : "xs";
 
   const menuItems: MenuItem[] = [];
   if (canManage && restartable) menuItems.push({ id: "restart", label: "Restart", run: props.onRestart });
@@ -322,6 +326,7 @@ function ProcessRow(props: {
     <ListRow
       size="md"
       selected={props.selected}
+      trailingShown={canStop || canKill}
       data-process-row={item.key}
       leading={
         tone === "ok" && item.kind === "command" ? (
@@ -351,10 +356,14 @@ function ProcessRow(props: {
       }
       onClick={props.onSelect}
       trailing={
-        menuItems.length > 0 && !busy ? (
-          <IconMenu label={`Actions for ${name}`} size="xs" items={menuItems} />
+        canStop || canKill || (menuItems.length > 0 && !busy) ? (
+          <span className="flex shrink-0 items-center gap-0.5">
+            {canStop && <IconButton icon={Square} size={actionSize} label={`Stop ${name}`} onClick={props.onStop} />}
+            {(!phone || !canStop) && canKill && <IconButton icon={OctagonX} size={actionSize} label={`Kill ${name}`} onClick={props.onKill} />}
+            {menuItems.length > 0 && !busy && <IconMenu label={`Actions for ${name}`} size={actionSize} items={menuItems} />}
+          </span>
         ) : (
-          <span aria-hidden className="size-6 shrink-0" />
+          <span aria-hidden className={phone ? "size-ctl-lg shrink-0" : "size-6 shrink-0"} />
         )
       }
     />

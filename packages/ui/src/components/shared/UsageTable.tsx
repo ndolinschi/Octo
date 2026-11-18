@@ -263,7 +263,7 @@ export function UsageTable({
           </tr>
         </tfoot>
       </table>
-      <div className="flex h-row items-center gap-2 px-2 text-xs text-fg-3">
+      <div className="flex min-h-row items-center gap-2 px-2 text-xs text-fg-3 phone:min-h-ctl-lg">
         <span className="min-w-0 truncate">{note}</span>
         <Button variant="quiet" size="xs" icon={copied ? Check : Copy} className="-mr-1.5 ml-auto" onClick={() => copy(csv())}>
           {copied ? "Copied" : "Copy as CSV"}

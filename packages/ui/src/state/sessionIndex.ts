@@ -76,6 +76,6 @@ export function useSessionIndex(projects: readonly ProjectSummary[] | null): Ses
         );
     }
     const all = [...byProject.values()].flat().sort(byActivity);
-    return { byProject, all, loaded: read !== undefined };
-  }, [store, version, projects, read]);
+    return { byProject, all, loaded: read !== undefined || failed > 0 };
+  }, [store, version, projects, read, failed]);
 }

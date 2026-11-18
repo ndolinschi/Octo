@@ -51,8 +51,9 @@ export function focusSoon(
 /** The visible orchestrator composer: the Chat tab's, else the floating one. */
 export function visibleComposer(): HTMLTextAreaElement | null {
   for (const id of ["octo-composer", "octo-composer-float"]) {
-    const el = document.getElementById(id) as HTMLTextAreaElement | null;
-    if (el && el.offsetParent !== null) return el;
+    for (const el of document.querySelectorAll<HTMLTextAreaElement>(`#${id}`)) {
+      if (el.offsetParent !== null) return el;
+    }
   }
   return null;
 }
