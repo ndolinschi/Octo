@@ -1,4 +1,5 @@
 import type { GlobalSession, ProjectSession } from "@octo/agent-client";
+import { sessionTriageOf } from "../triage";
 import { byActivity, hasSessionMessages, visibleSessions } from "./tree";
 
 /**
@@ -36,6 +37,18 @@ export function flatSessions(list: readonly GlobalSession[], activeSessionId: st
 
 /** Newest start first (ties: id). */
 const byStarted = (a: GlobalSession, b: GlobalSession): number => b.started_at.localeCompare(a.started_at) || a.id.localeCompare(b.id);
+
+/**
+ * Owner decision F3 (2026-11-18): the flat list pins what needs the person on top — Home's "Needs you" (waiting for them,
+ * or failed: `sessionTriageOf`) — and the rest follows; both keep the list's order (by start), so a row moves only when its
+ * state does.
+ */
+export function pinNeedsYou(list: readonly GlobalSession[]): { needs: GlobalSession[]; rest: GlobalSession[] } {
+  const needs: GlobalSession[] = [];
+  const rest: GlobalSession[] = [];
+  for (const s of list) (sessionTriageOf(s, false, false) === "needs" ? needs : rest).push(s);
+  return { needs, rest };
+}
 
 /**
  * Sessions shown under an open project in "Projects and sessions" (`tree`) mode: keeps `visibleSessions` behavior

@@ -26,7 +26,7 @@ import {
   TREE_ALL,
   type KeyRow,
 } from "../../lib/sessions/tree";
-import { flatSessions, treeSessions } from "../../lib/sessions/flat";
+import { flatSessions, pinNeedsYou, treeSessions } from "../../lib/sessions/flat";
 import { orchestratorGlyph, type GlyphState } from "../../lib/stateGlyph";
 import { jsonCodec, PREFS, usePersistentState } from "../../lib/storage";
 import { useActivity } from "../../state/activity";
@@ -110,7 +110,9 @@ export function SessionTree(props: SessionTreeProps) {
   );
   const defaultOf = (pid: string) => index.byProject.get(pid)?.find((s) => s.default ?? s.current)?.id ?? null;
   const currentSession = props.agentRoute ? null : (props.activeSessionId ?? (props.activeProjectId ? defaultOf(props.activeProjectId) : null));
-  const flat = useMemo(() => flatSessions(index.all, currentSession), [index.all, currentSession]);
+  // Decision F3: what needs the person is pinned on top; both groups keep the stable order by start.
+  const pinned = useMemo(() => pinNeedsYou(flatSessions(index.all, currentSession)), [index.all, currentSession]);
+  const flat = useMemo(() => [...pinned.needs, ...pinned.rest], [pinned]);
   const loading = projects === null && health !== "offline";
   // The skeleton stays until the index has loaded: the list takes its final shape once, not empty → partial → whole.
   const sessionsLoading = props.mode === "sessions" && health !== "offline" && projects !== null && projects.length > 0 && !index.loaded;
@@ -339,7 +341,16 @@ export function SessionTree(props: SessionTreeProps) {
         {(loading || sessionsLoading) && <SkeletonList count={3} size={sessionsLoading ? "sm" : "md"} />}
         {props.mode === "sessions" ? (
           <>
-            {!sessionsLoading && flat.map((s) => sessionRow(s, false))}
+            {!sessionsLoading && pinned.needs.length > 0 && (
+              <>
+                {/* Decision F3: Home's "Needs you" pinned on top, captioned like the section; no caption when nothing needs you.
+                    The rows' glyphs say "Needs you" / "Failed" to a screen reader, so the captions are for the eye. */}
+                <GroupCaption first>Needs you</GroupCaption>
+                {pinned.needs.map((s) => sessionRow(s, false))}
+                <GroupCaption>Other sessions</GroupCaption>
+              </>
+            )}
+            {!sessionsLoading && (pinned.needs.length > 0 ? pinned.rest : flat).map((s) => sessionRow(s, false))}
             {unrepresented.map((p) => (
               <li key={p.id} role="none" className="flex flex-col">
                 <ProjectRow
@@ -467,6 +478,15 @@ export function SessionTree(props: SessionTreeProps) {
 /** A row's DOM id: what the keyboard focuses. */
 function rowId(kind: "p" | "s" | "m", id: string): string {
   return `tree-${kind}-${id}`;
+}
+
+/** A group's caption inside the flat list (decision F3): the section caption's look, on the rows' glyph column. */
+function GroupCaption(props: { first?: boolean; children: string }) {
+  return (
+    <li role="none" aria-hidden data-group-caption className={cn("flex h-5 items-center pl-2 text-xs text-fg-3", props.first ? "mb-1" : "mt-3 mb-1")}>
+      {props.children}
+    </li>
+  );
 }
 
 function NewButton(props: { label: string; disabled: boolean; onClick(): void }) {

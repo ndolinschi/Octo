@@ -4217,3 +4217,7 @@ supersedes an earlier decision, that decision carries a dated note pointing here
   / …" (the palette's de-duplication reads `name`). With tabs of two or more projects the project is the label and the topic
   dim. A workspace holds one project's tabs today, so the prefix is always dropped; the count is a parameter (`projectsInTabs`)
   for the day it does not. Revises decisions 63 and 67 (dated notes there).
+- **F3. The flat Sessions list pins "Needs you"** (`pinNeedsYou` in `lib/sessions/flat.ts`, tested): sessions that wait for
+  the person or failed — Home's rule, `sessionTriageOf` — come first under a "Needs you" caption, the rest under "Other
+  sessions"; each group keeps the stable order by start (item 1), so a row moves only when its state changes. No captions
+  when nothing needs the person. Revises the pinned-group note of the review (it was left to the owner).
