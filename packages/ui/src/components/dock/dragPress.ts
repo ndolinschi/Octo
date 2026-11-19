@@ -2,6 +2,7 @@ import type { TabId } from "../../state/workspace/layout";
 import { clampLeft, insertionIndex, toMoveIndex, type Slot } from "../../state/workspace/tabStrip";
 import type { DropTarget, WorkspaceValue } from "../../state/workspace/WorkspaceProvider";
 import { getDrag, setDrag, setSettle, type Rect } from "./dragStore";
+import { MOTION_BASE_MS, MOTION_FAST_MS } from "../../lib/constants";
 
 /* The pointer part of dragging a tab (decision 25), loaded with the first press (`drag.ts`). It reads the dock's `data-*` drag protocol. */
 
@@ -166,8 +167,8 @@ export function trackPress(p: Press, ws: WorkspaceValue, tab: TabId, label: stri
     delete document.documentElement.dataset.dragging;
     const last = getDrag();
     const target = drop ? last?.target : null;
-    // The tab settles from where it was drawn: 120ms into a new slot, 150ms back to its own.
-    if (dragging && last?.attached) setSettle({ tab, left: own.left + last.dx, ms: target ? 120 : 150 });
+    // The tab settles from where it was drawn: fast into a new slot, a little slower back to its own (the motion tokens).
+    if (dragging && last?.attached) setSettle({ tab, left: own.left + last.dx, ms: target ? MOTION_FAST_MS : MOTION_BASE_MS });
     setDrag(null);
     if (dragging && target) ws.drop(tab, target);
   };

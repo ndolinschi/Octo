@@ -30,7 +30,7 @@ export function IconMenu(props: { label: string; items: MenuItem[]; icon?: Lucid
           if (r) setMenu(menu ? null : { x: r.right, y: r.bottom + 4 });
         }}
       />
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && <Menu label={props.label} x={menu.x} y={menu.y} alignEnd ignoreRef={button} items={props.items} onClose={() => setMenu(null)} />}
       </Presence>
     </>

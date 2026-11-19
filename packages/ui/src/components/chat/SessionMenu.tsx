@@ -28,7 +28,7 @@ export function SessionMenu(props: { anchor: RefObject<HTMLElement | null>; sess
   const move = session.onMoveToWorktree;
   const showAll = session.onShowAll;
   return (
-    <Presence show={open} exitMs={0}>
+    <Presence show={open}>
       {open && (
         <Suspense fallback={null}>
           <Menu

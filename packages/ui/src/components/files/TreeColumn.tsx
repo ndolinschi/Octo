@@ -146,7 +146,7 @@ function ResizeHandle({ groupId, width, max }: { groupId: string; width: number;
         aria-hidden
         // Polish step 4, E3: the column's own hairline stays; over it the handle draws a 2px line, `line-strong` on hover and
         // `fg-3` while dragged or focused: visible, never louder than the text.
-        className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 transition-[background-color] duration-100 group-hover/handle:bg-line-strong group-focus-visible/handle:bg-fg-3 group-active/handle:bg-fg-3"
+        className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 transition-[background-color] duration-fast group-hover/handle:bg-line-strong group-focus-visible/handle:bg-fg-3 group-active/handle:bg-fg-3"
       />
     </div>
   );

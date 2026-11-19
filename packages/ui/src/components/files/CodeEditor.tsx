@@ -5,6 +5,7 @@ import type { OpenFile } from "../../state/code";
 import type { Theme } from "../../lib/theme";
 import { useLatest } from "../../lib/hooks";
 import { monoFont } from "../../lib/monoFont";
+import { browserIdle, saveData } from "../../lib/warmSchedule";
 import { EditorContextMenu } from "../shared/EditorContextMenu";
 import { EditorSkeleton } from "./EditorSkeleton";
 import type { EditorBuffers, MonacoApi } from "../../lib/buffers";
@@ -16,6 +17,8 @@ type MonacoModule = typeof import("./monaco");
 const InlineCompletion = lazy(() => import("./editor/completion/InlineCompletion"));
 
 let pending: Promise<MonacoModule> | null = null;
+/** How long a file view is on screen before Monaco is warmed for it. */
+const MONACO_WARM_AFTER_MS = 1000;
 
 /** Loads Monaco (and defines the themes) once, on first use. */
 export function loadMonaco(): Promise<MonacoModule> {
@@ -24,6 +27,23 @@ export function loadMonaco(): Promise<MonacoModule> {
     throw e;
   });
   return pending;
+}
+
+/** Monaco before the first file: on idle once a file view has been on screen for a second (not under Save-Data). Returns a cancel. */
+export function warmMonacoSoon(): () => void {
+  if (saveData()) return () => undefined;
+  let cancel: () => void = () => undefined;
+  const id = window.setTimeout(() => (cancel = browserIdle(() => warmMonacoNow())), MONACO_WARM_AFTER_MS);
+  return () => {
+    window.clearTimeout(id);
+    cancel();
+  };
+}
+
+/** Intent (the pointer over the file view, a press in it): Monaco at once, so a click on a file finds it loading or in. */
+export function warmMonacoNow(): void {
+  // A failure shows where the editor mounts (it loads again then).
+  void loadMonaco().catch(() => undefined);
 }
 
 /**

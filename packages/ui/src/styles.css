@@ -231,6 +231,25 @@
 
 /* Spacing scale (px): 2 4 6 8 12 16 20 24 32 40 — nothing else. Tailwind steps 0.5 1 1.5 2 3 4 5 6 8 10
    are exactly these; the semantic names below say what a value is for. Prose uses the --octo-* ones. */
+/* Motion (spec "Motion"): three durations and one curve. fast — hover fills, reveals, presses and every exit; base — overlays
+   (menus, popovers, dialogs, the palette, tooltips), chevrons, switches; slow — drawers, sheets and large surfaces. Enters use
+   `--ease-out-quint`, exits ease-out. Only opacity, transforms (scale, translate, rotate), colours and shadows move: never a
+   layout property. Tab and panel swaps are instant. `lib/constants` mirrors the durations for the Web Animations API. */
+:root {
+  --motion-fast: 100ms;
+  --motion-base: 150ms;
+  --motion-slow: 220ms;
+}
+@utility duration-fast {
+  transition-duration: var(--motion-fast);
+}
+@utility duration-base {
+  transition-duration: var(--motion-base);
+}
+@utility duration-slow {
+  transition-duration: var(--motion-slow);
+}
+
 :root {
   --octo-prose-gap: 12px; /* between paragraphs, lists, tables, code blocks, cards */
   --octo-prose-heading-top: 24px;
@@ -441,7 +460,7 @@
 /* Pressed state for buttons: a small scale, never under reduced motion, never when disabled. */
 @utility press {
   transition-property: scale, background-color, color, opacity, border-color;
-  transition-duration: 120ms;
+  transition-duration: var(--motion-fast);
   transition-timing-function: ease-out;
   -webkit-tap-highlight-color: transparent;
   @media (prefers-reduced-motion: no-preference) {
@@ -454,7 +473,7 @@
 /* Pressed state for rows and tabs: the hover tint layered over whatever fill the row has. */
 @utility press-row {
   transition-property: background-color, color, box-shadow;
-  transition-duration: 100ms;
+  transition-duration: var(--motion-fast);
   transition-timing-function: ease-out;
   -webkit-tap-highlight-color: transparent;
   &:active:not(:disabled, [aria-disabled="true"]) {
@@ -551,7 +570,7 @@
    the row's meta is; the meta gives way to them. Always shown on touch and in the drawer, where there is no hover. */
 [data-tree-row] > [data-tree-actions] {
   opacity: 0;
-  transition: opacity 100ms;
+  transition: opacity var(--motion-fast);
 }
 [data-tree-row]:is(:hover, :focus-within) > [data-tree-actions] {
   opacity: 1;
@@ -603,7 +622,7 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
   display: flex;
   gap: 2px;
   opacity: 0;
-  transition: opacity 100ms;
+  transition: opacity var(--motion-fast);
 }
 [data-row-overlay]:is(:hover, :focus-within) > [data-row-actions] {
   opacity: 1;
@@ -655,38 +674,49 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
 /* Overlays (dialog, palette, menu, drawer, scrim) enter with opacity + a slight scale/rise on a
    decelerating curve and leave faster; `data-state="closed"` is set by <Presence> during the exit. */
 .octo-overlay {
-  animation: octo-overlay-in 160ms var(--ease-out-quint) both;
+  animation: octo-overlay-in var(--motion-base) var(--ease-out-quint) both;
   transform-origin: var(--octo-origin, 50% 0);
 }
 .octo-overlay[data-state="closed"] {
-  animation: octo-overlay-out 100ms ease-out both;
+  animation: octo-overlay-out var(--motion-fast) ease-out both;
 }
-/* Context menus and anything opened from the keyboard appear and leave instantly (see Presence). */
+/* Tooltips: a short fade in and out, no rise (they appear under the pointer). A tooltip that follows another while the layer is
+   warm (`data-warm`) shows at once: the fade never stacks on top of the warm-up. */
+.octo-tooltip {
+  animation: octo-fade-in var(--motion-fast) ease-out both;
+}
+.octo-tooltip[data-warm] {
+  animation: none;
+}
+.octo-tooltip[data-state="closed"] {
+  animation: octo-fade-out var(--motion-fast) ease-out both;
+}
+/* Anything opened from the keyboard appears and leaves instantly (see Presence). */
 :root[data-input="keyboard"] .octo-overlay,
 :root[data-input="keyboard"] .octo-scrim,
 :root[data-input="keyboard"] .octo-drawer {
   animation: none !important;
 }
 .octo-drawer {
-  animation: octo-drawer-in 160ms var(--ease-out-quint) both;
+  animation: octo-drawer-in var(--motion-slow) var(--ease-out-quint) both;
 }
 .octo-drawer[data-state="closed"] {
-  animation: octo-drawer-out 120ms ease-out both;
+  animation: octo-drawer-out var(--motion-fast) ease-out both;
 }
 .octo-scrim {
-  animation: octo-fade-in 160ms var(--ease-out-quint) both;
+  animation: octo-fade-in var(--motion-base) var(--ease-out-quint) both;
 }
 .octo-scrim[data-state="closed"] {
-  animation: octo-fade-out 100ms ease-out both;
+  animation: octo-fade-out var(--motion-fast) ease-out both;
 }
 /* Drop indicator and drag chip: fade in, then glide (see DragLayer). */
 .octo-fade {
-  animation: octo-fade-in 120ms ease-out both;
+  animation: octo-fade-in var(--motion-fast) ease-out both;
 }
 /* A loading placeholder (MainSkeleton): the same fade, after 300ms, so a fast load (switching projects takes about 240ms
    in the demo) never shows it. */
 .octo-fade-late {
-  animation: octo-fade-in 120ms ease-out 300ms both;
+  animation: octo-fade-in var(--motion-fast) ease-out 300ms both;
 }
 @keyframes octo-fade-in {
   from {
@@ -751,20 +781,22 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
-  /* Overlays keep a plain cross-fade. */
+  /* Overlays keep a plain cross-fade (tooltips are one already). */
   .octo-overlay,
   .octo-drawer,
   .octo-sheet,
-  .octo-scrim {
+  .octo-scrim,
+  .octo-tooltip:not([data-warm]) {
     animation-name: octo-fade-in !important;
-    animation-duration: 120ms !important;
+    animation-duration: var(--motion-fast) !important;
   }
   .octo-overlay[data-state="closed"],
   .octo-drawer[data-state="closed"],
   .octo-sheet[data-state="closed"],
-  .octo-scrim[data-state="closed"] {
+  .octo-scrim[data-state="closed"],
+  .octo-tooltip[data-state="closed"] {
     animation-name: octo-fade-out !important;
-    animation-duration: 80ms !important;
+    animation-duration: var(--motion-fast) !important;
   }
 }
 
@@ -881,7 +913,7 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
      started the next. */
   padding-left: 24px;
   transition-property: color;
-  transition-duration: 100ms;
+  transition-duration: var(--motion-fast);
 }
 .octo-prose .octo-file-link svg {
   position: absolute;
@@ -1039,8 +1071,10 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
    wider and stronger while hovered or dragged. Colours come from the theme. */
 .monaco-editor .monaco-scrollable-element > .scrollbar > .slider {
   border-radius: 999px;
-  transition-property: width, height, left, top, background-color;
-  transition-duration: 100ms;
+  /* Only the colour: Monaco moves the thumb with top/left as the view scrolls (a transition there made it trail the scroll),
+     and the thicker hovered thumb is a layout change, so it snaps. */
+  transition-property: background-color;
+  transition-duration: var(--motion-fast);
   transition-timing-function: ease-out;
 }
 /* Polish step 4, E4: a 4px thumb (was 6) centred in its track (8px in the editor, 10 in the diffs), 6px while hovered or dragged. */
@@ -1113,7 +1147,7 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
 .octo-streak-layer {
   height: var(--octo-band-h);
   mask-image: linear-gradient(to bottom, #000 0, #000 55%, transparent 100%);
-  animation: octo-fade-in 240ms ease-out both;
+  animation: octo-fade-in var(--motion-slow) ease-out both;
 }
 .octo-streak {
   position: absolute;
@@ -1123,7 +1157,7 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
   image-rendering: auto;
   opacity: 0;
   transition-property: opacity;
-  transition-duration: 240ms;
+  transition-duration: var(--motion-slow);
 }
 .octo-streak[data-drawn] {
   opacity: 1;
@@ -1264,7 +1298,7 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
   border-radius: var(--radius-xl);
   outline: 1px solid var(--octo-line);
   outline-offset: -1px;
-  transition: outline-color 100ms;
+  transition: outline-color var(--motion-fast);
 }
 .octo-composer:focus-within {
   outline-color: var(--octo-input-border);
@@ -1407,7 +1441,7 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
   /* Copy and time under a reply: on hover or tap only. */
   [data-conv] [data-turn-footer] {
     opacity: 0;
-    transition: opacity 100ms;
+    transition: opacity var(--motion-fast);
   }
   [data-conv] article:hover [data-turn-footer],
   [data-conv] article:focus-within [data-turn-footer],
@@ -1468,14 +1502,13 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
   animation-play-state: paused;
 }
 
-/* Smooth collapsible drawer for activity steps (GPU-friendly grid-row transition). */
+/* Collapsible activity steps: the rows open at once (their height is layout, never animated: the conversation below would
+   reflow on every frame) and fade in. */
 .octo-drawer-rows {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transition:
-    grid-template-rows 180ms var(--ease-out-quint),
-    opacity 140ms ease-out;
+  transition: opacity var(--motion-base) ease-out;
 }
 .octo-drawer-rows[data-open] {
   grid-template-rows: 1fr;
@@ -1489,7 +1522,7 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
   }
 }
 [data-live-enter] {
-  animation: octo-msg-in 180ms var(--ease-out-quint) both;
+  animation: octo-msg-in var(--motion-base) var(--ease-out-quint) both;
 }
 
 /* The activity line's shimmer: a bright copy of the label seen through a moving soft window. The window and the
@@ -2232,17 +2265,17 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   padding-bottom: var(--octo-safe-bottom);
   box-shadow: var(--octo-shadow-pop);
-  animation: octo-sheet-in 200ms var(--ease-out-quint) both;
+  animation: octo-sheet-in var(--motion-slow) var(--ease-out-quint) both;
 }
 .octo-sheet[data-sheet="full"] {
   top: var(--octo-vv-top, 0px);
   height: var(--octo-vvh, 100vh);
   padding-bottom: var(--octo-safe-bottom);
   background: var(--octo-window);
-  animation: octo-fade-in 160ms var(--ease-out-quint) both;
+  animation: octo-fade-in var(--motion-base) var(--ease-out-quint) both;
 }
 .octo-sheet[data-state="closed"] {
-  animation: octo-sheet-out 120ms ease-out both;
+  animation: octo-sheet-out var(--motion-fast) ease-out both;
 }
 @keyframes octo-sheet-in {
   from {
@@ -2271,7 +2304,7 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   box-shadow:
     0 0 0 100vmax var(--octo-scrim),
     var(--octo-shadow-pop) !important;
-  animation: octo-sheet-in 200ms var(--ease-out-quint) both;
+  animation: octo-sheet-in var(--motion-slow) var(--ease-out-quint) both;
 }
 :root[data-phone] body > :is([data-slash-menu], [data-composer-menu][data-inline]) {
   left: 8px !important;
@@ -2576,7 +2609,7 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
    (shown at all times), and appears on hover or focus under a reply that did not (on the phone: focus only, no hover). */
 article:not(:has([data-turn-changes])) [data-restore] {
   opacity: 0;
-  transition: opacity 100ms;
+  transition: opacity var(--motion-fast);
 }
 article:not(:has([data-turn-changes])):is(:hover, :focus-within) [data-restore] {
   opacity: 1;
@@ -2646,7 +2679,7 @@ article:not(:has([data-turn-changes])):is(:hover, :focus-within) [data-restore] 
    always show, as before. */
 .octo-row-actions {
   opacity: 0;
-  transition: opacity 100ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity var(--motion-fast) ease-out;
 }
 .group:is(:hover, :focus-within) > .octo-row-actions {
   opacity: 1;

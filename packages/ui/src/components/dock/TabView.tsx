@@ -1,5 +1,7 @@
 import { sessionRoot } from "@octo/agent-client";
-import { lazy, Suspense, useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useState, type ComponentType } from "react";
+import { readyLazy } from "../../lib/readyLazy";
+import { registerWarm } from "../../lib/warm";
 import { resolveSessionRoute } from "../../lib/route";
 import { sessionTabMode } from "../../lib/sessions/current";
 import { isTabEnabled } from "../../lib/tabFlags";
@@ -17,9 +19,19 @@ import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { TranscriptSlot } from "../sessions/parts";
 import type { FloatingSlot } from "../files/FileView";
 
+/**
+ * A tool's view in its own chunk, warmed under `key` on idle and on intent (`lib/warm`: the "+" picker's row, the sidebar's
+ * Review), so its first open renders at once (`readyLazy`) instead of suspending.
+ */
+function warmedTool<P extends object>(key: string, load: () => Promise<ComponentType<P>>): ComponentType<P> {
+  const part = readyLazy(load);
+  registerWarm(key, part.fetch);
+  return part.Component;
+}
+
 /** The file view (breadcrumbs, tree column, editor host) and its floating composer load with the first file or Files tab. */
-const FileView = lazy(() => import("../files/FileView").then((m) => ({ default: m.FileView })));
-const FloatingComposer = lazy(() => import("../chat/FloatingComposer").then((m) => ({ default: m.FloatingComposer })));
+const FileView = warmedTool("tool:files", () => import("../files/FileView").then((m) => m.FileView));
+const FloatingComposer = warmedTool("tool:files", () => import("../chat/FloatingComposer").then((m) => m.FloatingComposer));
 
 /** What a file view renders as its floating composer: the dock, not the file feature, knows about chat. */
 const renderFloatingComposer: FloatingSlot = (onHeight, rest) => <ScopedFloatingComposer onHeight={onHeight} rest={rest} />;
@@ -43,7 +55,7 @@ const DetailsPanel = lazy(() => import("../details/DetailsPanel").then((m) => ({
 const AgentsPanel = lazy(() => import("../agents/AgentsPanel").then((m) => ({ default: m.AgentsPanel })));
 const NotesPanel = lazy(() => import("../notes/NotesPanel").then((m) => ({ default: m.NotesPanel })));
 /** Changes (v7): the diff review of what the agents changed. */
-const ChangesPane = lazy(() => import("./ChangesPane").then((m) => ({ default: m.ChangesPane })));
+const ChangesPane = warmedTool("tool:changes", () => import("./ChangesPane").then((m) => m.ChangesPane));
 /** Memory (its own chunk). */
 const MemoryTab = lazy(() => import("../memory/MemoryTab").then((m) => ({ default: m.MemoryTab })));
 /** Sessions (project sessions): the list-detail tab and one session in a tab of its own. Their own chunks. */
@@ -76,18 +88,18 @@ function SessionTranscript(props: Parameters<TranscriptSlot>[0]) {
 const renderSessionTranscript: TranscriptSlot = (props) => <SessionTranscript {...props} />;
 
 /** Review (RV2): pick a pull request, read it, comment, submit. Monaco comes from the files feature, as for Changes. */
-const ReviewTab = lazy(() => import("../review/ReviewTab").then((m) => ({ default: m.ReviewTab })));
+const ReviewTab = warmedTool("tool:review", () => import("../review/ReviewTab").then((m) => m.ReviewTab));
 const loadReviewMonaco = () => import("../files/monaco");
 /** Run buttons and the run panel of a review (decision 68): its own chunk, handed to the review as a kit. */
 const loadReviewCommands = () => import("../commands/kit").then((m) => m.reviewCommandsKit);
 /** The output of a project command (decision 68): the commands feature's run panel in a tab, its own chunk. */
 const RunTab = lazy(() => import("../commands/RunTab"));
 /** Browser + Design Mode (singleton `tool:browser` and multi-instance `browser:<id>`): its own chunk. */
-const BrowserTab = lazy(() => import("../browser/BrowserTab"));
+const BrowserTab = warmedTool("tool:browser", () => import("../browser/BrowserTab").then((m) => m.default));
 /** Interactive PTY shell (singleton `tool:terminal` and multi-instance `terminal:<id>`): its own chunk. */
-const TerminalTab = lazy(() => import("../terminal/TerminalTab"));
+const TerminalTab = warmedTool("tool:terminal", () => import("../terminal/TerminalTab").then((m) => m.default));
 /** Working processes, dev servers and background workers (`tool:processes`): its own chunk. */
-const ProcessesTab = lazy(() => import("../processes/ProcessesTab"));
+const ProcessesTab = warmedTool("tool:processes", () => import("../processes/ProcessesTab").then((m) => m.default));
 /** The side question (decision 40). */
 const SidePanel = lazy(() => import("../side/SidePanel").then((m) => ({ default: m.SidePanel })));
 /** The Usage tab too (v6.2). */

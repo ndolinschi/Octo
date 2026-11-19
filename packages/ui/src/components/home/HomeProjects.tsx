@@ -25,7 +25,7 @@ import type { MenuItem } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { Skeleton, SkeletonList } from "../primitives/Skeleton";
-import { OrchestratorGlyph } from "../primitives/Status";
+import { OrchestratorGlyph } from "../primitives/statusMore";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { sessionGlyph, sessionMeta, sessionTitle } from "../../lib/sessions/tree";
 import { sessionStateWord } from "../../lib/sessions/model";
@@ -186,7 +186,7 @@ export function Projects({
           </Button>
         )}
       </div>
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Suspense fallback={null}>
             <Menu label={`${menu.project.name} actions`} x={menu.x} y={menu.y} items={projectMenuItems(menu.project)} onClose={() => setMenu(null)} />

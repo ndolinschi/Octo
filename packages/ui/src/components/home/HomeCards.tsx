@@ -11,7 +11,7 @@ import { Card } from "../primitives/Card";
 import { ListRow } from "../primitives/ListRow";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { SkeletonList } from "../primitives/Skeleton";
-import { RunningDot } from "../primitives/Status";
+import { RunningDot } from "../primitives/statusMore";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { WAIT_TEXT, type AgentWait } from "../../lib/agentWaiting";
 import { useAgentWaits } from "./useAgentWaits";

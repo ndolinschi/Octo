@@ -6,7 +6,7 @@ import { hrefFor } from "../../lib/route";
 import { isPending } from "../../state/orchestrators";
 import { ListRow } from "../primitives/ListRow";
 import { Skeleton } from "../primitives/Skeleton";
-import { OrchestratorGlyph } from "../primitives/Status";
+import { OrchestratorGlyph } from "../primitives/statusMore";
 
 /**
  * A project row (decision 23: the sidebar lists projects, each one an orchestrator at work). Polish step 2 (F1): every row is

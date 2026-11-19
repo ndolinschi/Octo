@@ -18,7 +18,7 @@ import { ListDetail } from "../primitives/ListDetail";
 import { ListRow } from "../primitives/ListRow";
 import { Notice } from "../primitives/Notice";
 import { DetailHeader, FormActions } from "../primitives/Panel";
-import { SkeletonText } from "../primitives/Skeleton";
+import { SkeletonText } from "../primitives/SkeletonText";
 import { TextArea, TextField } from "../primitives/TextField";
 import { Prose } from "../shared/Prose";
 import { ConfirmDialog, DETAIL_MAX, MemoryError, PaneEmpty, RowLine } from "./parts";

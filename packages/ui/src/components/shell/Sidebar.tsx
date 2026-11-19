@@ -17,7 +17,16 @@ const ProjectList = lazy(() => list().then((m) => ({ default: m.ProjectList })))
 const SidebarEdge = lazy(() => list().then((m) => ({ default: m.SidebarEdge })));
 
 /** A nav row (decision 90): a 32px `ListRow` with its glyph, label and, when it has one, the key hint. */
-function NavRow(props: { icon: LucideIcon; label: string; onClick(): void; disabled?: boolean; shortcut?: { hint: string; keys: string }; current?: boolean }) {
+/** `warm`: the lazy surface the row opens, warmed on hover, focus or press (`lib/warm`). */
+function NavRow(props: {
+  icon: LucideIcon;
+  label: string;
+  onClick(): void;
+  disabled?: boolean;
+  shortcut?: { hint: string; keys: string };
+  current?: boolean;
+  warm?: string;
+}) {
   return (
     <ListRow
       size="md"
@@ -27,6 +36,7 @@ function NavRow(props: { icon: LucideIcon; label: string; onClick(): void; disab
       selected={props.current === true}
       disabled={props.disabled === true}
       onClick={props.onClick}
+      data-warm={props.warm}
     />
   );
 }
@@ -73,7 +83,13 @@ export function Sidebar(props: {
       <div className="flex min-h-0 flex-1 flex-col p-pane">
         <div className="flex shrink-0 flex-col">
           <NavRow icon={House} label="Home" onClick={() => navigate(null)} current={props.home} disabled={!projects?.length} />
-          <NavRow icon={Search} label="Search" onClick={props.onSearch} {...(phone ? {} : { shortcut: { hint: `${MOD}K`, keys: "Control+K Meta+K" } })} />
+          <NavRow
+            icon={Search}
+            label="Search"
+            warm="palette"
+            onClick={props.onSearch}
+            {...(phone ? {} : { shortcut: { hint: `${MOD}K`, keys: "Control+K Meta+K" } })}
+          />
           {props.showReview !== false &&
             (props.activeProjectId === null ? (
               // Unavailable on Home: a focusable wrapper carries the reason (a disabled button gets no focus or tooltip).
@@ -89,9 +105,9 @@ export function Sidebar(props: {
                 <ListRow size="md" leading={<Glyph icon={GitPullRequest} size={16} className="text-fg-2" />} title="Review" disabled />
               </span>
             ) : (
-              <NavRow icon={GitPullRequest} label="Review" onClick={props.onReview} />
+              <NavRow icon={GitPullRequest} label="Review" warm="tool:review" onClick={props.onReview} />
             ))}
-          {!device && <NavRow icon={Plus} label="New project" onClick={props.onNewProject} disabled={!canCreate} />}
+          {!device && <NavRow icon={Plus} label="New project" warm="project-dialog" onClick={props.onNewProject} disabled={!canCreate} />}
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col">
@@ -103,7 +119,7 @@ export function Sidebar(props: {
         </div>
 
         <div className="relative mt-2 shrink-0">
-          <NavRow icon={Settings} label="Settings" onClick={props.onSettings} />
+          <NavRow icon={Settings} label="Settings" warm="settings" onClick={props.onSettings} />
         </div>
       </div>
     </nav>

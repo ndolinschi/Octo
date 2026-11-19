@@ -1553,16 +1553,22 @@ dividers. That is ~800 lines of our own code and keeps every pixel on our tokens
 
 ### Motion
 
+Tokens (styles.css, mirrored in `lib/constants` for the Web Animations API): `--motion-fast` 100ms (hover, reveal, press, every
+exit), `--motion-base` 150ms (overlays, tooltips, chevrons, switches), `--motion-slow` 220ms (drawers, sheets, large surfaces),
+`--ease-out-quint` = `cubic-bezier(0.2,0,0,1)` for enters, ease-out for exits; utilities `duration-fast|base|slow`. No other
+duration is written by hand, and nothing animates a layout property (a test in `lib/constants.test.ts` checks styles.css).
+
 | What | Enter | Exit | Reduced motion |
 | --- | --- | --- | --- |
-| Dialog, palette (opened by pointer) | 160ms, opacity + scale 0.98→1 + 4px rise, `cubic-bezier(0.2,0,0,1)` | 100ms opacity + scale 0.98, ease-out | opacity only (120 / 80ms) |
+| Dialog, palette, popover, menu, context menu (opened by pointer) | base, opacity + scale 0.98→1 + 4px rise, ease-out-quint; a menu grows from the point it opened at | fast, opacity + scale 0.98, ease-out | opacity only (fast / fast) |
+| Tooltip | after 600ms, fast fade; a neighbour while warm shows at once (no fade, no delay) | fast fade | fade |
 | Anything opened from the keyboard (Ctrl/Cmd+K, Shift+F10…) | instant (`html[data-input="keyboard"]`) | instant | — |
-| Context menu | instant | instant | — |
-| Drawer (sidebar) | 160ms, translateX(−12px)→0 + opacity; scrim opacity | 120ms ease-out | opacity only |
-| Press (buttons, icon buttons, send) | `:active` scale 0.97, 120ms ease-out | — | none |
-| Press (rows, tabs) | `:active` hover tint over the current fill, 100ms | — | same (tone) |
-| Drop indicator, drag chip | 120ms fade; zone glides 120ms `cubic-bezier(0.2,0,0,1)` | removed | fade only |
-| Hover fills | 100ms background-color | — | instant |
+| Drawer (sidebar), phone sheet | slow, translateX(−12px)→0 + opacity; scrim base | fast ease-out | opacity only |
+| Press (buttons, icon buttons, send) | `:active` scale 0.97, fast ease-out | — | none |
+| Press (rows, tabs) | `:active` hover tint over the current fill, fast | — | same (tone) |
+| Drop indicator, drag chip | fast fade; zone glides by translate (fast, ease-out-quint), its size snaps | removed | fade only |
+| Hover fills, reveals | fast background-color / opacity | — | instant |
+| Activity steps (expand) | rows open at once, fade in (base) | instant | instant |
 | Tabs open/close, tab switching, group split/merge | instant (no layout jump; panes keep their scroll) | instant | — |
 | Theme switch | transitions suppressed for one frame | | |
 
@@ -4448,3 +4454,78 @@ A reviewed list of small fixes; no redesign, existing tokens and primitives, beh
   one primitive). `Glyph` admits 12 for this one use. Measured in the composer at 1440, 900, 700 and 560: chevron 12px, 6px from
   the label on every chip, no control outside the box, no label cut; each chip 2px narrower. `Select`'s upward chevron pair is
   not a chip and is unchanged.
+
+## As built — instant first opens, one-step load, motion tokens (2026-11-18)
+
+Measured on a production build (`vite preview`-equivalent static server), `?demo=1`, 1440x900, Chromium, 5 runs, median, before ->
+after, on a shared machine (load average ~30 on 4 cores: absolute numbers are noisy; before and after ran back to back).
+
+**First opens of lazy surfaces.** The cold gap was not the chunk fetch (the palette, Settings and the model list were already warmed
+1.5 s after start): a plain `React.lazy` suspends on its first render even when its module is in, and React then holds the revealed
+content until 300 ms after the fallback (its fallback throttle). `readyLazy` (moved to `lib/readyLazy`; a failed fetch is now
+retried) renders without suspending once its chunk is in, and now carries the palette, the project dialog, Settings, the model
+list, the "+" picker and the tool tabs (Files, Terminal, Review, Browser, Processes, Changes; `dock/TabView`'s `warmedTool`).
+`lib/warm` is the registry (each surface registers its loader next to its `readyLazy`); `lib/warmSchedule` (its own chunk, loaded
+after first paint) warms on idle 1.5 s after the shell mounts, one key per idle slot, most likely first (palette, model list,
+Settings, "+" picker, project dialog, tool tabs), none under `navigator.connection.saveData`, and on intent: hover, focus or press of
+a control with `data-warm` (sidebar Search/Review/New project/Settings, the model chip, the "+" button) or a picker row whose
+`data-picker-row` id is a key (`tool:terminal`); holding Ctrl/Cmd warms the palette. Monaco is warmed on idle once a file view
+has been on screen 1 s (`warmMonacoSoon`), and at once when the pointer enters or presses the file view. Entry budget: the new
+code is paid for by moving lazy-only exports out of entry modules (`TOOL_HINT` out of `lib/toolPurpose`, now in `state/workspace/paletteCommands`; the tree's
+`visibleSessions`/`projectSummary`/`isOpen`/`parseOpen`/`treeKey` -> `lib/sessions/treeRows`): 160.92 -> 160.73 kB. After merging
+the tool-tab, QA, approval and composer passes (161.71 kB) more lazy-only code left the entry: `agentActivity`/`teamRoles` ->
+`lib/orchestratorMore`, `railLayout` -> `lib/railLayout`, `sessionTitle` -> `lib/sessions/title` (so `lib/sessions/tree` leaves
+the entry): 160.93 kB. After the shell-polish merge (161.92 kB on its own; 161.32 merged): the after-first-paint
+warm-up moved into its own chunk (`app/warmApp`: the first-paint imports, the intent listeners and the idle queue), and
+`THEME_CHOICES` (`lib/themeChoices`), `usePageVisible` (`lib/hooksMore`), the chips' `useChipMenu` (`chat/chipMenu`), `SkeletonText`
+(`primitives/SkeletonText`), `RunningDot`/`OrchestratorGlyph` (`primitives/statusMore`) and the demo's `titleFromRequest`
+(`lib/sessions/requestTitle`) left entry modules: 160.28 kB (0.72 kB of room). Next candidates, each blocked by a file another
+pass owns: `turnHead`/`turnFailureText`/`turnDurationMs`/`compactionSlots`/`turnWarning` (`lib/transcript`, read only by
+`chat/Transcript`), `formatSeparator`/`needsSeparator` (`lib/format`, Transcript), `useLoginHint` (`chat/agentName`, Transcript),
+`useCopy` (`lib/hooks`, Transcript and Processes), `useRequests` and `projectRowLines` (the palette), `useAllRequests` (needs the
+request store's hook exported), the conversation's scroll spots (`chat/useScrollSpot` + `lib/scrollSpots`, ~0.6 kB, loaded with
+the conversation but only read after a scroll).
+
+| 1x (4x) | before | after |
+| --- | --- | --- |
+| Palette, first open (`more`) | 345 | 49 (warm 41) |
+| Palette, first open (`interact`) | 227 (540) | 61 (128) |
+| Model list, first open | 341 (436) | 33 (138); warm 31 |
+| Settings, first open | 360 (423) | 60 (210) |
+| First file (Monaco), Files on screen ~1 s | 1077 (1791) | 211 (884); warm 43 |
+| Review tab | 360 (523) | 61 (275) |
+| Browser tab | 340 (393) | 53 (220) |
+| Terminal tab | 402 (570) | 295 (495) |
+
+Not reached: Terminal (the chunk is warm; what remains is the tab's own mount, xterm and the PTY session, not measured further).
+`interact.cjs`' `settings:open` (~590 both before and after) is a measuring artefact: its predicate `h1[data-page-title]` is
+already true before the click after the session switches, so it reports the time since the previous click; the numbers above use
+`[data-settings] h1[data-page-title]`. Not verified: WebKit, the Tauri shell, a real harness.
+
+**Load sequence.** What each late piece waited for: the project list and config were asked for only after `/health` answered
+(now in parallel with it, `state/app`); the composer's Mode and Access chips are their own chunks, requested only when the composer
+first rendered and then revealed through the 300 ms fallback throttle (now fetched when `Composer`'s module runs and rendered
+with `readyLazy`, so they appear in the composer's first frame; the same for the top row's commands cluster, `ProjectCommands`);
+the sidebar's session rows waited for the demo's `listAllSessions`, which read every project one after another (~1 s; the
+harness answers it in one request: the demo now reads them in parallel). Milestones (ms from navigation, 1x / 4x): session rows
+1219 -> 1036 / 3557 -> 3125, composer 1219 -> 1136 / 3557 -> 3562, mode and access chips 1630 -> 1136 / 5203 -> 3562 (same frame
+as the composer), first turn 1309 -> 1252 / 4971 -> 3933. Load at 4x: CLS 0.20 -> 0.00 (median of 5; before, every run had one
+0.2027 shift), long tasks 16 -> 11, "interactive" 5410 -> 3803 ms. The 0.2027 shift was the transcript's turn window replacing
+estimated-height shells with mounted turns while pinned to the bottom (`chat/Transcript`, `useTurnWindow`: off limits for this
+pass); it no longer shows in these runs because the chunks the turns wait for are in earlier, but its cause is not fixed there.
+The UI scripts that open a project by its sidebar row (`flicker`, `layout-shift`, `width-stability`, `scroll-on-send`,
+`file-open-stability`) relied on the project rows showing before the session rows; they now also match a session row carrying the
+project's name and take the project's part of its link.
+
+**Motion tokens.** `--motion-fast` 100 / `--motion-base` 150 / `--motion-slow` 220 ms with `--ease-out-quint` (table in "Motion"
+above), `duration-fast|base|slow` utilities, mirrored in `lib/constants` (`MOTION_FAST_MS`, `MOTION_BASE_MS`, `EASE_OUT_QUINT`)
+for the tab settle (Web Animations) and `Presence`'s exit timer; every hand-written duration in styles.css and the components
+outside the excluded files now uses them (the 600 ms change flashes, loops and loading thresholds are not motion and stay). The
+context menu (`primitives/Menu`) enters and leaves like the other overlays (`octo-overlay`, growing from the point it opened at;
+the menus' `Presence` wrappers lost `exitMs={0}`), instant from the keyboard as before; tooltips fade in and out (fast, opacity),
+a neighbour shown while warm appears at once (`data-warm`, no fade on top of the warm-up). Layout properties no longer animate:
+the activity steps' `grid-template-rows`, Monaco's scrollbar thumb geometry (it trailed the scroll), the turn rail's mark width
+(now `scale`) and the drop zone's left/top (now `translate`; its size snaps). Reduced motion, the keyboard rule and instant tab
+swaps are unchanged. A test (`lib/constants.test.ts`) keeps styles.css free of hand-written transition durations and layout
+transitions. Checked in Chromium on the dev server (context menu: `octo-overlay-in` 150 ms from its origin, `octo-overlay-out` on
+close; tooltip: `octo-fade-in` 100 ms, `octo-fade-out` on leave); not checked in WebKit or on the phone layout.

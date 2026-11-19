@@ -1,4 +1,4 @@
-import { readyLazy } from "./readyLazy";
+import { readyLazy } from "../../lib/readyLazy";
 
 /**
  * The transcript (turns, the turn window, the activity rows) is its own chunk, fetched with the conversation's first render

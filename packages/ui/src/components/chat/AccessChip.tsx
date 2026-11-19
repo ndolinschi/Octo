@@ -4,7 +4,8 @@ import { ACCESS_DETAIL, ACCESS_LABEL, ACCESS_MODES } from "../../lib/access";
 import { Chip } from "../primitives/Chip";
 import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
-import { useChipMenu, type ChipProps } from "./ComposerChips";
+import type { ChipProps } from "./ComposerChips";
+import { useChipMenu } from "./chipMenu";
 
 const ACCESS_ICON: Record<AccessMode, LucideIcon> = {
   supervised: ShieldCheck,
@@ -35,7 +36,7 @@ export function AccessChip(props: ChipProps & { value: AccessMode; onChoose(next
         data-chip="access"
         onClick={() => setOpen(!open)}
       />
-      <Presence show={pos !== null} exitMs={0}>
+      <Presence show={pos !== null}>
         {pos && (
           <Menu
             label="Permissions"

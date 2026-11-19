@@ -14,7 +14,7 @@ import { IconMenu } from "../primitives/IconMenu";
 import { ListDetail } from "../primitives/ListDetail";
 import { ListRow } from "../primitives/ListRow";
 import { DetailHeader } from "../primitives/Panel";
-import { SkeletonText } from "../primitives/Skeleton";
+import { SkeletonText } from "../primitives/SkeletonText";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { Prose } from "../shared/Prose";
 import { ExchangeRow } from "./ExchangeRow";

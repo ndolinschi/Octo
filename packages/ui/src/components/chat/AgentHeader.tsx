@@ -126,7 +126,7 @@ export function AgentHeader({ agent, now: nowProp }: { agent: Agent; now?: numbe
         <div className="mt-2">
           <Button variant="quiet" size="xs" aria-expanded={briefOpen} aria-controls={briefId} onClick={() => setBriefOpen((o) => !o)} className="-ml-1.5">
             Task brief
-            <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-150", briefOpen && "rotate-90")} />
+            <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-base", briefOpen && "rotate-90")} />
           </Button>
           {briefOpen && (
             <div id={briefId} className="mt-1 border-l border-line-strong pl-3">

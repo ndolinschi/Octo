@@ -1,5 +1,8 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
+import { readyLazy } from "../../lib/readyLazy";
+import { registerWarm } from "../../lib/warm";
+import { EASE_OUT_QUINT } from "../../lib/constants";
 import { flushSync } from "react-dom";
 import { useOptionalComments } from "../../state/comments";
 import { getBrowserTabPins, getBrowserTabState, useBrowserTabsRevision } from "../../state/browserTabs";
@@ -24,10 +27,15 @@ import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { Glyph } from "../primitives/Glyph";
 import { StateGlyph } from "../primitives/StateGlyph";
-/** The "+" picker and the all-tabs list load when first opened (their own chunks). */
-const TabPicker = lazy(() => import("./TabPicker").then((m) => ({ default: m.TabPicker })));
+/** The "+" picker and the all-tabs list load when first opened (their own chunks); the picker is warmed on idle and on intent. */
+const pickerPart = readyLazy(() => import("./TabPicker").then((m) => m.TabPicker));
+const TabPicker = pickerPart.Component;
+registerWarm("tab-picker", pickerPart.fetch);
 /** The project's commands (decision 68): the pinned buttons and "Run" menu next to the project actions; loads after first paint. */
-const ProjectCommands = lazy(() => import("../commands/ProjectCommands"));
+const commandsPart = readyLazy(() => import("../commands/ProjectCommands").then((m) => m.default));
+// Asked for as this module runs, so the cluster renders with the strip instead of shifting the row a beat later.
+void commandsPart.fetch().catch(() => undefined);
+const ProjectCommands = commandsPart.Component;
 /** The tab context menu builds on first use (its own chunk). */
 const TabMenu = lazy(() => import("./TabMenu"));
 const AllTabsPicker = lazy(() => import("./AllTabsPicker").then((m) => ({ default: m.AllTabsPicker })));
@@ -197,8 +205,7 @@ export function TabStrip(props: {
       const wrapper = button(t)?.parentElement;
       if (!settle || !wrapper || matchMedia("(prefers-reduced-motion: reduce)").matches) continue;
       const dx = settle.left - wrapper.getBoundingClientRect().left;
-      if (Math.abs(dx) > 0.5)
-        wrapper.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], { duration: settle.ms, easing: "cubic-bezier(0.2,0,0,1)" });
+      if (Math.abs(dx) > 0.5) wrapper.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], { duration: settle.ms, easing: EASE_OUT_QUINT });
     }
   }, [props.active, props.tabs, updateFade, listWidth]);
   // Ctrl/Cmd+T opens the picker on the focused group's "+": it must exist before the popover anchors to it.
@@ -312,6 +319,7 @@ export function TabStrip(props: {
           label="Open a tab"
           title={`Open a tool, session, file or agent (${MOD}T)`}
           data-tab-plus
+          data-warm="tab-picker"
           aria-haspopup="dialog"
           aria-expanded={pickerHere}
           className={cn("shrink-0", pickerHere && "bg-active text-fg")}
@@ -383,7 +391,7 @@ export function TabStrip(props: {
           </Suspense>
         )}
       </Presence>
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Suspense fallback={null}>
             <TabMenu

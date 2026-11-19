@@ -11,7 +11,7 @@ import { SaveStatus, SELECT_W, SettingsGroup, SettingsRow } from "./parts";
 import { useSave } from "./useSave";
 import { startupCodec, useMotionPref } from "./prefs";
 import type { Backdrop, ThemePref } from "../../state/app";
-import { THEME_CHOICES } from "../../lib/theme";
+import { THEME_CHOICES } from "../../lib/themeChoices";
 
 export function GeneralSection() {
   const [startup, setStartup] = usePersistentState(PREFS.startup, startupCodec);

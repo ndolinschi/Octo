@@ -124,25 +124,6 @@ export function projectRowLines(s: OrchestratorState, now: number, fallbackAt?: 
   return { meta: projectWhen(s, now, fallbackAt), full };
 }
 
-const ACTIVITY: Record<string, string> = {
-  bash: "Running a command…",
-  read_file: "Reading files…",
-  list_dir: "Listing folders…",
-  write_file: "Writing files…",
-};
-
-/** What an agent is doing now, from its live tools, children and stream (delegation rows, team strip). */
-export function agentActivity(state: ProjectState, agentId: string): string {
-  const working = state.agentOrder.flatMap((id) => {
-    const c = state.agents[id];
-    return c?.parent_id === agentId && c.status === "running" ? [c.role] : [];
-  });
-  if (working.length) return `Waiting on ${working.join(", ")}…`;
-  const tool = Object.values(state.activeTools[agentId] ?? {})[0];
-  if (tool) return ACTIVITY[tool.name] ?? `Using ${tool.name}…`;
-  return state.streaming[agentId] ? "Writing…" : "Thinking…";
-}
-
 /**
  * The agents of the orchestrator's latest turn (decision 34's team line): every sub-agent that started at or after the
  * orchestrator's last turn began, in start order. Empty before the first turn.
@@ -152,28 +133,6 @@ export function lastTeam(agents: readonly Agent[]): Agent[] {
   const since = root?.started_at ? Date.parse(root.started_at) : NaN;
   if (Number.isNaN(since)) return [];
   return agents.filter((a) => a.parent_id !== null && Date.parse(a.started_at ?? a.created_at) >= since).sort(byStart);
-}
-
-export type TeamRole = { role: string; count: number; status: Agent["status"]; agent: Agent };
-
-/**
- * The team grouped by role for the header chips ("Code explorer ×4"): first-seen order; the group's status is the most
- * urgent of its agents (running, then failed, then the rest); `agent` is the one a click opens — the running one, else
- * the latest.
- */
-export function teamRoles(team: readonly Agent[]): TeamRole[] {
-  const rank = (s: Agent["status"]) => (s === "running" ? 2 : s === "failed" ? 1 : 0);
-  const out: TeamRole[] = [];
-  for (const a of team) {
-    const g = out.find((x) => x.role === a.role);
-    if (!g) out.push({ role: a.role, count: 1, status: a.status, agent: a });
-    else {
-      g.count += 1;
-      if (rank(a.status) > rank(g.status)) g.status = a.status;
-      if (rank(a.status) >= rank(g.agent.status)) g.agent = a;
-    }
-  }
-  return out;
 }
 
 /** A role as people read it: the project's agent is always "Octo" (the harness stores "orchestrator"; the dictionary's name). */
