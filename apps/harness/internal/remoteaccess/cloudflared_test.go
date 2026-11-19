@@ -35,11 +35,18 @@ func TestInstallLines(t *testing.T) {
 	if !strings.Contains(InstallLine("windows", "amd64"), "winget") {
 		t.Fatal("windows")
 	}
-	if l := InstallLine("linux", "arm64"); !strings.Contains(l, "cloudflared-linux-arm64") {
-		t.Fatal(l)
-	}
-	if l := InstallLine("linux", "riscv64"); !strings.Contains(l, "cloudflared-linux-amd64") {
-		t.Fatal(l)
+	// Linux: Cloudflare's signed package repository (apt checks the signature), never an unverified "latest"
+	// binary (security review finding 7b).
+	for _, arch := range []string{"amd64", "arm64", "riscv64"} {
+		l := InstallLine("linux", arch)
+		for _, want := range []string{"https://pkg.cloudflare.com/cloudflare-main.gpg", "signed-by=", "apt-get install -y cloudflared"} {
+			if !strings.Contains(l, want) {
+				t.Errorf("%s: %q lacks %q", arch, l, want)
+			}
+		}
+		if strings.Contains(l, "releases/latest") || strings.Contains(l, "chmod +x") {
+			t.Errorf("%s: unverified download: %q", arch, l)
+		}
 	}
 }
 

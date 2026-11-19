@@ -104,7 +104,7 @@ Event: `remote.changed {state, online, pending}` on every project stream (no URL
 
 ## The tunnel process
 
-Found as `HARNESS_REMOTE_CLOUDFLARED` (a path or a name), else `cloudflared` on `PATH`. Run in its own process group
+Found as `HARNESS_REMOTE_CLOUDFLARED` (a path or a name), else `cloudflared` on `PATH`. The harness never downloads it; when it is missing, `cloudflared_missing` carries an install command that verifies what it installs: `brew install cloudflared` (macOS), `winget install --id Cloudflare.cloudflared` (Windows), and on Linux Cloudflare's signed apt repository (`pkg.cloudflare.com`, key `cloudflare-main.gpg`, `signed-by`), with the vendor's downloads page in `details` for other distributions. (Before 2026-11-19 the Linux line fetched `releases/latest` from GitHub with no checksum.) Run in its own process group
 with the child environment filter (`internal/childenv`); its output is scanned for the first
 `https://<label>.trycloudflare.com` (the API host `api.trycloudflare.com` in error lines is ignored), and
 "Registered tunnel connection" sets `connected`. No URL within 30 s, or an exit, restarts it after 1, 2, 4, 8, 16 s

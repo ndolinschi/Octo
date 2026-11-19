@@ -347,4 +347,8 @@ Not verified: a real `cloudflared`, a real quick tunnel (SSE refusal, 100 s limi
   request", "Always allow", "Allow all for this request" and an agent's `*_always` options when `remoteDevice` is set.
   Verified: `remoteaccess` `TestRemoteApprovalAnswersAreOnceOnly` (failed before: 200 for each), `lib/remoteDevice.test.ts`,
   and the reviewer's proof against a built harness (see the review report). Not verified on a real phone.
+- **Install hint.** The Linux `cloudflared_missing` command downloaded `releases/latest` with no checksum. It is now
+  Cloudflare's signed apt repository (apt verifies the packages); other distributions get the vendor's downloads page in
+  `details`. Verified: `TestInstallLines` (failed before), the repository's `Packages` index answered (2026.11.1) on
+  2026-11-19. Not run: the install command itself (needs sudo on a Debian/Ubuntu host).
 

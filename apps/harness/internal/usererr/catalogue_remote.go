@@ -8,7 +8,9 @@ package usererr
 func CloudflaredMissing(install string) *Error {
 	return &Error{
 		Code: "cloudflared_missing", Message: "Remote access needs Cloudflare's tunnel program, and it is not installed.",
-		Hint: "Install it, then check again.", Command: install, Action: ActionRetry,
+		Hint: "Install it, then check again. Without apt on Linux, use Cloudflare's downloads page.", Command: install,
+		Action:  ActionRetry,
+		Details: "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/",
 	}
 }
 
