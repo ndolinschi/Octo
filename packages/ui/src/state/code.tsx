@@ -56,7 +56,8 @@ type CodeValue = {
   /** Every file in the loaded directories, folder by folder, paths sorted. */
   loadedFiles: { folder: string; path: string }[];
   isExpanded(key: FileKey): boolean;
-  setExpanded(folder: string, path: string, expanded: boolean): void;
+  /** A list is a compact row's directories (decision 98): all open or close together, and only the last one is listed. */
+  setExpanded(folder: string, path: string | readonly string[], expanded: boolean): void;
   ensureDir(folder: string, path: string): void;
   reloadDir(folder: string, path: string): void;
   /** Tree row that reflects the latest open/reveal/focused file; bumps `revealTick` to scroll it into view. */
@@ -367,10 +368,24 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       onEvent((event) => {
         if (event.type !== "file.changed") return;
         const path = normalizePath(event.path);
-        const parent = fileKey(event.folder, parentPath(path));
-        if (dirsRef.current[parent] && (expandedRef.current[parent] ?? parentPath(path) === "")) {
-          void loadDir(event.folder, parentPath(path), true);
-        }
+        const dirPath = parentPath(path);
+        const listed = dirsRef.current[fileKey(event.folder, dirPath)];
+        const shown = listed && (expandedRef.current[fileKey(event.folder, dirPath)] ?? dirPath === "");
+        void (async () => {
+          const before = listed?.entries.length ?? 0;
+          const after = shown ? ((await loadDir(event.folder, dirPath, true))?.length ?? before) : before;
+          // Decision 98: a directory that is not listed, or holds (held) one entry, may sit in a compact row, whose
+          // `chain` hint comes from the nearest listed ancestor: list that again so the row re-forms or splits.
+          if (!dirPath || (listed && before > 1 && after > 1)) return;
+          for (let a = parentPath(dirPath); ; a = parentPath(a)) {
+            const k = fileKey(event.folder, a);
+            if (dirsRef.current[k]) {
+              if (expandedRef.current[k] ?? a === "") void loadDir(event.folder, a, true);
+              return;
+            }
+            if (!a) return;
+          }
+        })();
         const key = fileKey(event.folder, path);
         const f = filesRef.current.find((x) => x.key === key);
         // While saving, our own write is in flight; its response carries the new mtime.
@@ -440,9 +455,10 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       loadedFiles,
       isExpanded,
       setExpanded: (folder, path, value) => {
-        const key = fileKey(folder, path);
-        setExpandedState((x) => ({ ...x, [key]: value }));
-        if (value) ensureDir(folder, path);
+        const paths = typeof path === "string" ? [path] : path;
+        setExpandedState((x) => ({ ...x, ...Object.fromEntries(paths.map((p) => [fileKey(folder, p), value])) }));
+        const last = paths.at(-1);
+        if (value && last !== undefined) ensureDir(folder, last);
       },
       ensureDir,
       reloadDir: (folder, path) => void loadDir(folder, path),

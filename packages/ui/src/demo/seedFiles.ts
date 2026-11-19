@@ -656,6 +656,21 @@ const INFRA: Seed = {
   "envs/production/main.tf": 'module "pool_a" {\n  source = "../../modules/node-pool"\n  name   = "pool-a"\n  size   = 6\n}\n',
 };
 
+/** Decision 98: the owner's screenshot, a Maven module whose source packages nest one directory per level. */
+const PKG = "management-system-application/src/main/java/com/wsgc/ecommerce/product/configurator/management/data/subsystem";
+const JAVA_PKG = "com.wsgc.ecommerce.product.configurator.management.data.subsystem";
+const CONFIGURATOR: Seed = {
+  "README.md": "# product-configurator\n\nProduct data management subsystem.\n",
+  "pom.xml": "<project>\n  <modelVersion>4.0.0</modelVersion>\n  <artifactId>product-configurator</artifactId>\n  <packaging>pom</packaging>\n</project>\n",
+  "management-system-application/pom.xml":
+    "<project>\n  <modelVersion>4.0.0</modelVersion>\n  <artifactId>management-system-application</artifactId>\n</project>\n",
+  [`${PKG}/config/SubsystemConfig.java`]: `package ${JAVA_PKG}.config;\n\npublic class SubsystemConfig {\n  public int pageSize = 50;\n}\n`,
+  [`${PKG}/mdm/MdmClient.java`]: `package ${JAVA_PKG}.mdm;\n\npublic interface MdmClient {\n  String fetch(String sku);\n}\n`,
+  [`${PKG}/model/Product.java`]: `package ${JAVA_PKG}.model;\n\npublic record Product(String sku, String name) {}\n`,
+  [`${PKG}/model/Option.java`]: `package ${JAVA_PKG}.model;\n\npublic record Option(String code, String label) {}\n`,
+  "docs/guides/setup/README.md": "# Setup\n\nRun `mvn verify`.\n",
+};
+
 const GENERIC: Seed = {
   "README.md": "# Project\n\nAttach notes about setup here.\n",
   "package.json": '{\n  "name": "project",\n  "private": true\n}\n',
@@ -670,6 +685,7 @@ const SEEDS: Record<string, Seed> = {
   "stress-kit": STRESS_KIT,
   ledger: LEDGER,
   infra: INFRA,
+  "product-configurator": CONFIGURATOR,
 };
 
 /** The in-memory tree for a folder label; unknown labels get a tiny generic project. */

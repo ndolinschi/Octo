@@ -411,9 +411,18 @@ function seed(): ProjectRecord[] {
     now - 40 * 24 * HOUR,
   );
   startScript(stress, now - 30 * HOUR, stressHistory);
+  // Decision 98: a Maven module whose package directories each hold one directory (the owner's screenshot), for compact folders.
+  const configurator = makeProject(
+    {
+      name: "Product configurator",
+      description: "Java service: product data management subsystem",
+      folders: [{ path: "/Users/maya/code/product-configurator", label: "product-configurator" }],
+    },
+    now - 45 * 24 * HOUR,
+  );
   payments.project.budget_usd = 120;
   payments.project.spent_usd = 38.2;
-  return [orbit, atlas, docs, payments, infra, webhooks, release, copilot, tokens, stress];
+  return [orbit, atlas, docs, payments, infra, webhooks, release, copilot, tokens, stress, configurator];
 }
 
 function seedMany(): ProjectRecord[] {
