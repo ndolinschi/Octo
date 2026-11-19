@@ -13,6 +13,8 @@ export const MIDDLE_MIN_LENGTH = 14;
 const MIDDLE_TAIL_MAX = 8;
 /** A shared head shorter than this is no reason to cut: the start already tells the names apart. */
 const SHARED_MIN = 6;
+/** The longest last segment (with its slash) a path keeps whole at its end. */
+const PATH_TAIL_MAX = 24;
 
 export type MiddleSplit = { head: string; tail: string; distinct?: true };
 
@@ -21,6 +23,9 @@ export function middleSplit(text: string, siblings: readonly string[] = []): Mid
   const shared = sharedHead(chars, siblings);
   if (shared >= SHARED_MIN && shared < chars.length) return { ...cut(chars, shared), distinct: true };
   if (chars.length <= MIDDLE_MIN_LENGTH) return null;
+  // A path with no spaces (a compact folder chain "com/wsgc/ecommerce/config") keeps its last segment whole.
+  const slash = chars.lastIndexOf("/");
+  if (slash > 0 && !chars.some((c) => /\s/.test(c)) && chars.length - slash <= PATH_TAIL_MAX) return cut(chars, slash);
   return cut(chars, chars.length - Math.min(MIDDLE_TAIL_MAX, Math.floor(chars.length / 3)));
 }
 

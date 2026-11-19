@@ -208,3 +208,26 @@ func TestAgentWriteEmitsFileChanged(t *testing.T) {
 		t.Fatalf("note = %q, %v", b, err)
 	}
 }
+
+// A directory entry carries `chain` (compact folders) only when it has one; a file never does.
+func TestFileListChain(t *testing.T) {
+	e := newEnv(t, nil)
+	pid, label, dir := newFileProject(t, e)
+	if err := os.MkdirAll(filepath.Join(dir, "lib", "src", "main", "java", "com", "acme"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var list struct {
+		Entries []map[string]any
+	}
+	e.into(t, "GET", filesURL(pid, "", label, ""), nil, http.StatusOK, &list)
+	for _, en := range list.Entries {
+		chain, has := en["chain"]
+		if en["name"] == "lib" {
+			if got, _ := chain.([]any); len(got) != 5 || got[0] != "src" || got[4] != "acme" {
+				t.Fatalf("lib chain = %v", chain)
+			}
+		} else if has {
+			t.Fatalf("%v has chain %v", en["name"], chain)
+		}
+	}
+}

@@ -199,6 +199,8 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /v1/projects/{pid}/memory", s.listMemory)
 	mux.HandleFunc("GET /v1/projects/{pid}/memory/search", s.searchMemory)
 	mux.HandleFunc("GET /v1/projects/{pid}/workspaces", s.listWorkspaces)
+	mux.HandleFunc("GET /v1/projects/{pid}/branches", s.listBranches)
+	mux.HandleFunc("POST /v1/projects/{pid}/branches/switch", s.switchBranch)
 	mux.HandleFunc("GET /v1/projects/{pid}/sessions", s.listSessions)
 	mux.HandleFunc("POST /v1/projects/{pid}/sessions", s.createSession)
 	mux.HandleFunc("DELETE /v1/projects/{pid}/sessions", s.deleteProjectSessions)

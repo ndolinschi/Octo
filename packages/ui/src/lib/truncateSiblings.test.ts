@@ -20,6 +20,13 @@ test("siblings that differ early, or a name with no siblings, cut as before", ()
   assert.equal(middleSplit("PCFS", ["PCMS + PCFS"]), null, "a short name is one plain span");
 });
 
+test("a compact folder chain keeps its last folder whole; a spaced label with a slash cuts as before", () => {
+  assert.deepEqual(middleSplit("com/wsgc/ecommerce/product/configurator"), { head: "com/wsgc/ecommerce/product", tail: "/configurator" });
+  assert.equal(middleSplit("a/b"), null);
+  assert.equal(middleSplit(`com/${"x".repeat(30)}`)?.tail, "x".repeat(8), "a very long last folder: the plain cut");
+  assert.equal(middleSplit("Claude Code · Opus 5.5 · 58k in / 2.8k out")?.tail.trim(), "2.8k out");
+});
+
 test("a name that is the whole head of a sibling is not split into an empty tail", () => {
   assert.equal(middleSplit("web-app", ["web-app-legacy"]), null);
 });

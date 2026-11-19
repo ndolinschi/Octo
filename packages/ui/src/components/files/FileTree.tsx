@@ -3,9 +3,11 @@ import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
-import { ancestors, fileKey, parentPath, type FileKey } from "../../lib/files";
+import { ancestors, fileKey, parentPath } from "../../lib/files";
+import { useCompactFolders } from "../../lib/compactFoldersPref";
 import { TreeScrollController } from "../../lib/treeScroll";
-import { useCode, type DirState } from "../../state/code";
+import { useCode } from "../../state/code";
+import { isNode, treeRows, TYPE_AHEAD_MS, typeAhead, type NodeRow, type Row } from "./treeRows";
 import { useOptionalComments } from "../../state/comments";
 import { CommentCount, commentsDescription } from "./CommentCount";
 import { fileIcon } from "../primitives/fileIcons";
@@ -18,12 +20,6 @@ import { Presence } from "../primitives/Presence";
 import { chatMention } from "../../lib/chatMention";
 import { addToChat, canAddToChat } from "../../state/chatInsert";
 
-type NodeRow = { id: string; kind: "dir" | "file"; folder: string; path: string; name: string; level: number; expanded: boolean; title: string };
-type StateRow = { id: string; kind: "loading" | "error"; folder: string; path: string; level: number; error: string | null };
-type Row = NodeRow | StateRow;
-
-const isNode = (row: Row): row is NodeRow => row.kind === "dir" || row.kind === "file";
-
 /**
  * Indent per level (polish step 4, E2: was 16). A root folder is the tree's section head and its entries start on its own
  * edge, so the 24px glyph box of level n ≥ 2 starts at (n − 2) × 12: five levels deep a name still starts 76px in.
@@ -31,49 +27,12 @@ const isNode = (row: Row): row is NodeRow => row.kind === "dir" || row.kind === 
 const INDENT = 12;
 const indentOf = (level: number) => Math.max(0, level - 2) * INDENT;
 
-function flatten(
-  folders: { label: string; path: string }[],
-  dirs: Record<string, DirState>,
-  isExpanded: (key: FileKey) => boolean,
-  /** While filtering: only these keys are shown (matches and their ancestors), every shown directory open. */
-  only: Set<string> | null,
-): Row[] {
-  const rows: Row[] = [];
-  const walk = (folder: string, path: string, level: number) => {
-    const key = fileKey(folder, path);
-    const dir = dirs[key];
-    if (!dir || (dir.status === "loading" && !dir.entries.length)) {
-      if (!only) rows.push({ id: `${key}\u0001loading`, kind: "loading", folder, path, level, error: null });
-      return;
-    }
-    if (dir.status === "error") {
-      if (!only) rows.push({ id: `${key}\u0001error`, kind: "error", folder, path, level, error: dir.error });
-      return;
-    }
-    for (const e of dir.entries) {
-      const id = fileKey(folder, e.path);
-      if (only && !only.has(id)) continue;
-      const expanded = e.type === "dir" && (only ? true : isExpanded(id));
-      rows.push({ id, kind: e.type, folder, path: e.path, name: e.name, level, expanded, title: `${folder}/${e.path}` });
-      if (expanded) walk(folder, e.path, level + 1);
-    }
-  };
-  for (const f of folders) {
-    const id = fileKey(f.label, "");
-    if (only && !only.has(id)) continue;
-    const expanded = only ? true : isExpanded(id);
-    rows.push({ id, kind: "dir", folder: f.label, path: "", name: f.label, level: 1, expanded, title: f.path });
-    if (expanded) walk(f.label, "", 2);
-  }
-  return rows;
-}
-
 /** Updates a row's path tooltip lazily on hover/focus so tree expansion avoids full-DOM layout reads. */
 function updateRowTip(row: HTMLDivElement) {
   const path = row.dataset.path;
   if (!path) return;
   const label = row.querySelector<HTMLElement>("[data-label]");
-  const cut = row.dataset.root !== undefined || (label !== null && label.scrollWidth > label.clientWidth + 1);
+  const cut = row.dataset.root !== undefined || row.dataset.compact !== undefined || (label !== null && label.scrollWidth > label.clientWidth + 1);
   if (cut) {
     if (row.title !== path) row.title = path;
     if (row.dataset.tip !== undefined && row.dataset.tip !== path) row.dataset.tip = path;
@@ -123,9 +82,14 @@ const TreeNodeRow = memo(function TreeNodeRow({
   const indent = indentOf(row.level);
   const isRoot = row.kind === "dir" && row.path === "";
   const Icon = row.kind === "file" ? fileIcon(row.name) : null;
+  const chain = row.paths.length > 1;
   return (
     <div
-      ref={(el) => setRowRef(row.id, el)}
+      // A compact row answers for each of its directories, so revealing one scrolls to it (decision 98).
+      ref={(el) => {
+        setRowRef(row.id, el);
+        if (chain) for (const p of row.paths) setRowRef(fileKey(row.folder, p), el);
+      }}
       role="treeitem"
       aria-level={row.level}
       tabIndex={tabbable ? 0 : -1}
@@ -134,6 +98,7 @@ const TreeNodeRow = memo(function TreeNodeRow({
       aria-description={row.kind === "file" ? commentsDescription(comments) : undefined}
       data-path={row.title}
       data-root={isRoot || undefined}
+      data-compact={chain || undefined}
       onPointerEnter={(e) => updateRowTip(e.currentTarget)}
       onFocus={(e) => {
         updateRowTip(e.currentTarget);
@@ -142,7 +107,7 @@ const TreeNodeRow = memo(function TreeNodeRow({
       onKeyDown={(e) => onKeyDownRow(e, row)}
       onClick={() => onActivateRow(row)}
       onContextMenu={(e) => {
-        if (row.kind !== "file") return;
+        if (isRoot) return;
         e.preventDefault();
         onMenuRow(row, { x: e.clientX, y: e.clientY });
       }}
@@ -162,8 +127,17 @@ const TreeNodeRow = memo(function TreeNodeRow({
           <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-base", row.kind === "dir" && row.expanded && "rotate-90")} />
         )}
       </span>
-      <span data-label className={cn("ml-1 min-w-0 truncate", isRoot ? "text-xs font-medium text-fg-3" : "text-fg")} title={row.name}>
-        {isRoot ? <MiddleText text={row.name} siblings={roots} /> : query && row.kind === "file" ? <Highlight text={row.name} query={query} /> : row.name}
+      <span data-label className={cn("ml-1 min-w-0 truncate", isRoot ? "text-xs font-medium text-fg-3" : "text-fg")} title={chain ? row.title : row.name}>
+        {/* A root keeps what tells it from the other roots; a compact chain ("com/wsgc/…/config") keeps its last folder. */}
+        {isRoot ? (
+          <MiddleText text={row.name} siblings={roots} />
+        ) : chain ? (
+          <MiddleText text={row.name} />
+        ) : query && row.kind === "file" ? (
+          <Highlight text={row.name} query={query} />
+        ) : (
+          row.name
+        )}
       </span>
       {comments > 0 && (
         <span className="ml-auto pr-1 pl-2">
@@ -211,7 +185,8 @@ export const FileTree = forwardRef<
     return keys;
   }, [query, loadedFiles]);
 
-  const allRows = useMemo(() => flatten(folders, dirs, isExpanded, only), [folders, dirs, isExpanded, only]);
+  const compact = useCompactFolders();
+  const allRows = useMemo(() => treeRows(folders, dirs, isExpanded, only, compact), [folders, dirs, isExpanded, only, compact]);
   // Loading rows appear only for slow folders (after 200ms) and then stay ≥300ms.
   const slow = useDelayedLoading(allRows.some((r) => r.kind === "loading"));
   const rows = useMemo(() => (slow ? allRows : allRows.filter((r) => r.kind !== "loading")), [allRows, slow]);
@@ -220,6 +195,7 @@ export const FileTree = forwardRef<
   const openMenu = useCallback((row: NodeRow, at: { x: number; y: number }) => setMenu({ row, ...at }), []);
   const refs = useRef(new Map<string, HTMLDivElement>());
   const scrollCtrl = useRef(new TreeScrollController());
+  const typed = useRef({ text: "", at: 0 });
 
   const setRowRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) refs.current.set(id, el);
@@ -242,7 +218,12 @@ export const FileTree = forwardRef<
   }, [revealTick, selectedKey, rows]);
 
   const ids = useMemo(() => rows.map((r) => r.id), [rows]);
-  const tabId = focusId && ids.includes(focusId) ? focusId : selectedKey && ids.includes(selectedKey) ? selectedKey : ids[0];
+  // A directory revealed in the middle of a compact row selects that row (decision 98).
+  const selectedId = useMemo(
+    () => (selectedKey && rows.find((r) => isNode(r) && r.paths.length > 1 && r.paths.some((p) => fileKey(r.folder, p) === selectedKey))?.id) ?? selectedKey,
+    [rows, selectedKey],
+  );
+  const tabId = focusId && ids.includes(focusId) ? focusId : selectedId && ids.includes(selectedId) ? selectedId : ids[0];
 
   const focus = useCallback((id: string | undefined) => {
     if (!id) return;
@@ -261,7 +242,7 @@ export const FileTree = forwardRef<
       else if (row.kind === "dir") {
         if (!query) {
           scrollCtrl.current.cancel();
-          code.setExpanded(row.folder, row.path, !row.expanded);
+          code.setExpanded(row.folder, row.paths, !row.expanded);
         }
       } else if (row.kind === "error") code.reloadDir(row.folder, row.path);
     },
@@ -273,7 +254,7 @@ export const FileTree = forwardRef<
       const i = ids.indexOf(row.id);
       const parentId = () => {
         if (row.kind !== "dir" && row.kind !== "file") return fileKey(row.folder, row.path);
-        return row.path ? fileKey(row.folder, parentPath(row.path)) : undefined;
+        return row.head ? fileKey(row.folder, parentPath(row.head)) : undefined;
       };
       const moves: Record<string, () => void> = {
         ArrowDown: () => focus(ids[i + 1]),
@@ -284,13 +265,13 @@ export const FileTree = forwardRef<
           if (row.kind !== "dir") return;
           if (!row.expanded) {
             scrollCtrl.current.cancel();
-            code.setExpanded(row.folder, row.path, true);
+            code.setExpanded(row.folder, row.paths, true);
           } else focus(ids[i + 1]);
         },
         ArrowLeft: () => {
           if (row.kind === "dir" && row.expanded && !query) {
             scrollCtrl.current.cancel();
-            code.setExpanded(row.folder, row.path, false);
+            code.setExpanded(row.folder, row.paths, false);
           } else focus(parentId());
         },
         Enter: () => activate(row),
@@ -300,9 +281,19 @@ export const FileTree = forwardRef<
       if (fn) {
         e.preventDefault();
         fn();
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const t = typed.current;
+        t.text = (e.timeStamp - t.at > TYPE_AHEAD_MS ? "" : t.text) + e.key;
+        t.at = e.timeStamp;
+        // A word being typed may still match the focused row; a first letter moves on from it.
+        const id = typeAhead(rows, t.text.length > 1 ? i - 1 : i, t.text);
+        if (id) {
+          e.preventDefault();
+          focus(id);
+        }
       }
     },
-    [ids, focus, onExitTop, code, query, activate],
+    [ids, rows, focus, onExitTop, code, query, activate],
   );
 
   const firstRoot = rows.find((r) => r.kind === "dir" && r.path === "");
@@ -347,7 +338,7 @@ export const FileTree = forwardRef<
           <TreeNodeRow
             key={row.id}
             row={row}
-            selected={row.id === selectedKey}
+            selected={row.id === selectedId}
             tabbable={row.id === tabId}
             isFirstRoot={row === firstRoot}
             roots={roots}
@@ -363,14 +354,17 @@ export const FileTree = forwardRef<
       })}
       {query && rows.length === 0 && <p className="flex h-row items-center px-2 text-xs text-fg-3">No files match</p>}
       <Presence show={menu !== null}>
-        {menu && <Menu label={menu.row.name} x={menu.x} y={menu.y} items={fileMenu(menu.row)} onClose={() => setMenu(null)} />}
+        {menu && <Menu label={menu.row.name} x={menu.x} y={menu.y} items={rowMenu(menu.row)} onClose={() => setMenu(null)} />}
       </Presence>
     </div>
   );
 });
 
-/** G4: a file's right-click menu: Add to chat (the file as a mention in the composer), when a composer is there; Copy path. */
-function fileMenu(row: NodeRow): MenuItem[] {
+/**
+ * G4: a row's right-click menu: Add to chat (the file or folder as a mention in the composer), when a composer is there; Copy
+ * path. A compact row's menu acts on its last directory, as in VS Code (decision 98).
+ */
+function rowMenu(row: NodeRow): MenuItem[] {
   const items: MenuItem[] = [];
   if (canAddToChat()) items.push({ id: "chat", label: "Add to chat", run: () => void addToChat(chatMention(row.path)) });
   items.push({ id: "path", label: "Copy path", run: () => void navigator.clipboard.writeText(row.path) });
