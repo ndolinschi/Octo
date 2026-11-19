@@ -252,3 +252,6 @@ Details: [`apps/harness/docs/acp-orchestrator.md`](../../../apps/harness/docs/ac
   `dtolnay/rust-toolchain` gets `toolchain:` since it can no longer read the version from its ref. Checked by
   `scripts/workflows-pinned.test.mjs` (`pnpm test:scripts`; failed before). Not run: the workflows on GitHub.
 
+- **dompurify.** `monaco-editor` 0.57.0 pins `dompurify` 3.4.15 (5 low advisories, fixed in 3.4.17); `pnpm-workspace.yaml`
+  overrides it to 3.4.18 (same minor). `pnpm audit --prod`: 5 low before, none after; the desktop build and its bundle
+  budget unchanged (160.57 of 161.00 kB).
