@@ -1,5 +1,6 @@
 import type { MemoryExchange, MemorySession } from "@octo/agent-client";
-import { formatDuration, formatSeparator } from "../format";
+import { formatDuration } from "../format";
+import { formatSeparator } from "../timeSeparator";
 import { formatDay, formatWhen } from "./dates";
 
 /** "3 exchanges" / "1 exchange" / "empty" for a session whose exchanges were all forgotten. */

@@ -1,5 +1,5 @@
 import type { ChangeDetail, ChangeKind, ChangeNote, ChangeSource, FileChangeSummary, TurnChanges } from "@octo/agent-client";
-import { formatSeparator } from "../format";
+import { formatSeparator } from "../timeSeparator";
 
 /**
  * The changes view (v7 §1, decision 47): per-turn file rows, net diffs, the revert order and its 409s, the diff layout.

@@ -73,8 +73,9 @@ import { gzipSync } from "node:zlib";
  * (`isInterruption`, `stepState`, `turnHead`, `turnDurationMs`, `turnFailureText`, `spawnStatus`, `compactionSlots`,
  * `turnWarning`, the restart texts) moved from `lib/transcript` (which the entry imports for `buildTurns` and the request
  * summaries) to `lib/turnEnding`, read only by the transcript, tool-line and delegation chunks: 159.85 kB, 1.15 of room.
- * Next candidates, unchanged: `formatSeparator`/`needsSeparator` (`lib/format`; also `v7/changes`, `memory/sessions`),
- * `useLoginHint`, `useCopy`, the scroll spots, `useRequests`/`projectRowLines`. Budget unchanged.
+ * After merging the integration tip (compact folders, branch picker): 160.05 kB; the time separators (`formatSeparator`,
+ * `needsSeparator`, read by the transcript, Changes and memory sessions) moved from `lib/format` to `lib/timeSeparator`:
+ * 159.87 kB, 1.13 of room. Next candidates: `useLoginHint`, `useCopy`, the scroll spots, `useRequests`/`projectRowLines`. Budget unchanged.
  */
 const BUDGET_KB = 161.0;
 
