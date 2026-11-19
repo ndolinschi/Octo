@@ -27,6 +27,7 @@ test("nodeText: the text of a meta node, through wrapper elements; nothing for a
   assert.equal(nodeText({ props: { "aria-hidden": true, children: "2 running" } }), "2 running");
   assert.equal(nodeText({ props: { children: ["Ctrl", "+K"] } }), "Ctrl+K");
   assert.equal(nodeText({ props: { className: "dot" } }), "");
+  assert.equal(nodeText({ props: { children: [false, { props: { text: "PCMS + PCFS" } }] } }), "PCMS + PCFS", "a MiddleText's words");
   assert.equal(nodeText(null), "");
   assert.equal(nodeText(false), "");
 });

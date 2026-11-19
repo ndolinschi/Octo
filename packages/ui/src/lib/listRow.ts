@@ -36,6 +36,8 @@ export function nodeText(node: unknown): string {
   if (node !== null && typeof node === "object" && "props" in node) {
     const props: unknown = node.props;
     if (props !== null && typeof props === "object" && "children" in props) return nodeText(props.children);
+    // A label component that takes its words as `text` (`MiddleText`).
+    if (props !== null && typeof props === "object" && "text" in props && typeof props.text === "string") return props.text;
   }
   return "";
 }

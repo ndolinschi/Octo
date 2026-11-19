@@ -22,7 +22,7 @@ import { MiddleText } from "./MiddleText";
  *   and half of it on an `option` row, so in a listbox the pointer's row never looks like the selected one (B58).
  * - Truncation: the title has priority and gives way last; `truncate="middle"` keeps the end of a path or id; the meta and
  *   description give way first. The meta never shrinks (a short time or count always shows whole) but stops at 40% of the
- *   row, where it clips with an ellipsis.
+ *   row, where it clips with an ellipsis; a `metaYields` meta (a name) instead takes what the title leaves and gives way first.
  * - `tone`: `default` (`fg`) or `quiet` (`fg-2`, secondary lists).
  *
  * Not for: a table (`DataTable`), a menu item (`Menu`), a tab (`ViewTabs`), a settings row with a control on the right
@@ -34,6 +34,11 @@ export function ListRow(props: {
   control?: ReactNode;
   leading?: ReactNode;
   meta?: ReactNode;
+  /**
+   * The meta is a name (a session's project), not a time or a count: it takes the room the title leaves, past 40%, and gives
+   * way first, down to 64px, so the title wins.
+   */
+  metaYields?: boolean;
   trailing?: ReactNode;
   /** The trailing actions show at all times, not on hover/focus (the one action a row needs: Retry on a failed row). */
   trailingShown?: boolean;
@@ -97,7 +102,9 @@ export function ListRow(props: {
         <MiddleText text={props.title} />
       </span>
     ) : (
-      <span id={`${ids}t`} className="min-w-0 truncate">
+      // `metaYields`: the title keeps its whole width up to what leaves the meta its 64px floor and the 8px gap (no shrink
+      // weight, which would shave a subpixel off a title that fits and draw a false ellipsis).
+      <span id={`${ids}t`} className={cn("truncate", props.metaYields && hasMeta ? "max-w-[calc(100%-var(--spacing)*18)] shrink-0" : "min-w-0")}>
         {props.title}
       </span>
     );
@@ -115,7 +122,12 @@ export function ListRow(props: {
             <span
               aria-hidden={metaText !== "" || undefined}
               data-row-tail
-              className={cn("ml-auto max-w-[40%] shrink-0 truncate pl-1 text-xs", selected || active ? "text-fg-2" : "text-fg-3")}
+              className={cn(
+                "ml-auto truncate pl-1 text-xs",
+                // A yielding meta takes the rest of the row (at least 64px, the title's cap leaves it) and ends on its edge.
+                props.metaYields ? "min-w-0 text-right" : "max-w-[40%] shrink-0",
+                selected || active ? "text-fg-2" : "text-fg-3",
+              )}
             >
               {props.meta}
             </span>

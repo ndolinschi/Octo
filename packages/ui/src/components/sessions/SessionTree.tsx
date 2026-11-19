@@ -32,6 +32,7 @@ import { Glyph } from "../primitives/Glyph";
 import { IconButton } from "../primitives/IconButton";
 import { ListRow } from "../primitives/ListRow";
 import type { MenuItem } from "../primitives/Menu";
+import { MiddleText } from "../primitives/MiddleText";
 import { Presence } from "../primitives/Presence";
 import { SkeletonList } from "../primitives/Skeleton";
 import { StateGlyph } from "../primitives/StateGlyph";
@@ -102,6 +103,7 @@ export function SessionTree(props: SessionTreeProps) {
   // Decision F3: what needs the person is pinned on top; both groups keep the stable order by start.
   const pinned = useMemo(() => pinNeedsYou(flatSessions(index.all, currentSession)), [index.all, currentSession]);
   const flat = useMemo(() => [...pinned.needs, ...pinned.rest], [pinned]);
+  const oneProject = useMemo(() => new Set(flat.map((s) => s.project_id)).size <= 1, [flat]);
   const loading = projects === null && health !== "offline";
   // The skeleton stays until the index has loaded: the list takes its final shape once, not empty → partial → whole.
   const sessionsLoading = props.mode === "sessions" && health !== "offline" && projects !== null && projects.length > 0 && !index.loaded;
@@ -271,11 +273,23 @@ export function SessionTree(props: SessionTreeProps) {
             }
             // 7b: the tooltip names the agent that runs the session (the flat list adds its project and age).
             tip={[sessionTitle(s), tipDetail].filter(Boolean).join(" — ")}
+            // The flat list's meta is the project's name: it gives way before the title, keeps both ends of a long name, and is
+            // left out when every listed session is in one project.
+            metaYields={!inTree}
             meta={
-              <span aria-hidden data-tree-meta className="flex min-w-0 items-center gap-1 tabular-nums">
-                {wsLabel && <Glyph icon={GitBranch} size={14} className="shrink-0 text-fg-3" />}
-                <span className="min-w-0 truncate">{inTree ? meta : s.project_name}</span>
-              </span>
+              inTree || wsLabel || !oneProject ? (
+                <span aria-hidden data-tree-meta className="flex min-w-0 items-center justify-end gap-1 tabular-nums">
+                  {wsLabel && <Glyph icon={GitBranch} size={14} className="shrink-0 text-fg-3" />}
+                  {inTree ? (
+                    <span className="min-w-0 truncate">{meta}</span>
+                  ) : oneProject ? null : /\s/.test(s.project_name) ? (
+                    // A name of words reads from its start ("Billing w…"); one long identifier keeps its end ("pro…system").
+                    <span className="min-w-0 truncate">{s.project_name}</span>
+                  ) : (
+                    <MiddleText text={s.project_name} />
+                  )}
+                </span>
+              ) : undefined
             }
           />
         )}
