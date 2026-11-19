@@ -209,6 +209,10 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	}()
 	store, err := projectstore.Open(cfg.DataDir)
 	if err != nil {
+		// The list of projects cannot be worked around: stop, naming the file and what to do; it is left untouched.
+		if u := usererr.As(err); u != nil {
+			return fmt.Errorf("%w %s (%s)", u, u.Hint, u.Details)
+		}
 		return err
 	}
 	defer func() {
@@ -216,6 +220,9 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 			slog.Error("close store", "err", err)
 		}
 	}()
+	// Cancelled before the store closes (defers run in reverse), so background work started below stops quietly.
+	ctx, cancelStore := context.WithCancel(ctx)
+	defer cancelStore()
 
 	apiToken, err := setupAPIToken(cfg)
 	if err != nil {

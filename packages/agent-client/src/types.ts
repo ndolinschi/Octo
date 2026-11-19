@@ -107,7 +107,8 @@ export type ProjectSummary = {
   id: string;
   name: string;
   description: string;
-  status: "idle" | "running";
+  /** "unavailable": the project's saved data cannot be opened (damaged, unreadable, newer schema); `error` says why. */
+  status: "idle" | "running" | "unavailable";
   folder_count: number;
   agent_count: number;
   created_at: string;
@@ -120,6 +121,8 @@ export type ProjectSummary = {
   attention?: ProjectAttentionKind;
   /** Parallel sessions (schema 15): the project's main sessions (not archived) by live state. */
   sessions?: ProjectSessionsSummary;
+  /** Set with status "unavailable": the catalogue case (the file's path in `details`). */
+  error?: ErrorInfo;
 };
 
 /** Parallel sessions: counts of a project's main sessions (absent on an older harness). */

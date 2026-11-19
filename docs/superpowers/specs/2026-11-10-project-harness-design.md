@@ -280,3 +280,18 @@ settings (folders, instructions, models, notes).
 
 **Verified.** `gofmt -l .` in `apps/harness` (clean).
 **Not verified.** `go vet ./...`, `go test ./...`, and live `go run ./cmd/harness serve` in this VM (cannot fetch uncached `modernc.org/sqlite@v1.62.0` zip because `proxy.golang.org` redirects to `storage.googleapis.com`, which is blocked with HTTP 403 in the sandbox).
+
+## As built — an unavailable project does not stop the harness (2026-11-19)
+
+A project whose `project.sqlite` cannot be opened or read (random bytes, truncated, `user_version` above this build's,
+unreadable) no longer stops `harness serve`: restart recovery skips it (one `ERROR project unavailable` log line with the
+path), every other project starts. `GET /v1/projects` lists it with `status: "unavailable"` and `error`
+(`{message, hint, details}`; `details` names the file and any `.pre-*` backup beside it), its name from the registry.
+`GET /v1/projects/{pid}`, sending a message and every other route of it answer 409 with that case (`project_unavailable`, or
+`newer_schema` for a newer schema). Nothing is deleted, moved or rewritten; `DELETE /v1/projects/{pid}` still removes
+Octo's copy when the person asks. The state lasts until the next start (restore the file, restart). A damaged
+`registry.sqlite` still stops the harness, now with the catalogue sentence, its hint and the file
+(`registry_unavailable`), and without the spurious `prune attachments … database is closed` line. UI: the sidebar row shows
+the project as needing the user with the message as its tooltip, and opening it shows the structured notice (with Retry
+and Delete project). Verified: `TestServeStartsWithUnavailableProjects`, `TestServeStopsOnDamagedRegistry` (real data
+folders, real `serve`) and the reviewer's reproduction; the UI was type-checked, not driven in a browser.

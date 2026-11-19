@@ -16,7 +16,9 @@ const AttachmentRetention = 30 * 24 * time.Hour
 func (o *Orchestrator) PruneAttachments(ctx context.Context) int {
 	ids, err := o.store.IDs(ctx)
 	if err != nil {
-		slog.Error("prune attachments: list projects", "err", err)
+		if ctx.Err() == nil { // not the store closing at shutdown
+			slog.Error("prune attachments: list projects", "err", err)
+		}
 		return 0
 	}
 	cutoff := projectstore.Stamp(o.now().Add(-AttachmentRetention))

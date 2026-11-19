@@ -40,6 +40,13 @@ func samples() map[string]*Error {
 
 		"RequestTooLarge":      RequestTooLarge(1 << 20),
 		"DataDirInUse":         DataDirInUse("/home/me/.octo", "resource temporarily unavailable"),
+		"ProjectDamaged":       ProjectDamaged(true, "/d/projects/p/project.sqlite: file is not a database (26)"),
+		"ProjectDamaged.plain": ProjectDamaged(false, "/d/projects/p/project.sqlite: file is not a database (26)"),
+		"ProjectUnreadable":    ProjectUnreadable("/d/projects/p/project.sqlite: permission denied"),
+		"RegistryUnavailable":  RegistryUnavailable("/d/registry.sqlite", "database disk image is malformed (11)"),
+		"FolderMissing":        FolderMissing("app", "/home/me/app", "no such file or directory"),
+		"FolderMissing.plain":  FolderMissing("", "/home/me/app", "no such file or directory"),
+		"DataDirUnwritable":    DataDirUnwritable("/d", "permission denied"),
 		"Unexpected":           Unexpected(errors.New(long)),
 		"NoProvider":           NoProvider(),
 		"ProviderNotConnected": ProviderNotConnected("Anthropic API", "", "no key"),

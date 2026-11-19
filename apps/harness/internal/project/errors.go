@@ -107,6 +107,10 @@ func queueFull() *Error { return of(KindConflict, usererr.QueueFull(projectstore
 // database written by a newer version of the app answers 409 newer_schema with
 // what to do about it, not a bare 500.
 func storeErr(err error) error {
+	var ue *projectstore.UnavailableError
+	if errors.As(err, &ue) {
+		return &Error{Kind: KindConflict, Code: ue.User.Code, Message: ue.User.Message, User: ue.User}
+	}
 	var ne *projectstore.NewerSchemaError
 	if errors.As(err, &ne) {
 		return of(KindConflict, usererr.NewerSchema(ne.Error()))

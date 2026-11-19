@@ -5,6 +5,7 @@ import { useHost } from "../state/host";
 import { useProject } from "../state/project";
 import { Button } from "../components/primitives/Button";
 import { EmptyState } from "../components/primitives/EmptyState";
+import { ErrorNotice } from "../components/shared/ErrorNotice";
 
 const NOTICE = "mx-auto w-full max-w-measure px-6 pt-10 text-sm max-drawer:px-4";
 
@@ -35,10 +36,19 @@ export function LoadError({ message, onRetry }: { message: string; onRetry(): Pr
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
+  // A project whose saved data cannot be opened: the harness's own case (what happened, the file, what to do).
+  const summary = projects?.find((p) => p.id === projectId);
+  const problem = summary?.status === "unavailable" ? summary.error : undefined;
   return (
     <div role="alert" className={NOTICE}>
-      <p className="text-fg">Couldn't load this project.</p>
-      <p className="mt-1 text-fg-2">{message.replace(/\.$/, "")}. Octo tries again by itself; Retry tries now.</p>
+      {problem ? (
+        <ErrorNotice fields={problem} data="project-unavailable" />
+      ) : (
+        <>
+          <p className="text-fg">Couldn't load this project.</p>
+          <p className="mt-1 text-fg-2">{message.replace(/\.$/, "")}. Octo tries again by itself; Retry tries now.</p>
+        </>
+      )}
       {deleteErr && <p className="mt-2 text-xs text-err">{deleteErr}</p>}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button
