@@ -42,7 +42,7 @@ Cost detail: `or_cost_micros`, `upstream_cost_micros`, `estimated_cost_micros`, 
 
 Observe: `client_model`, `client_has_thinking`, `client_tool_names`, `bg_signal`, `hk_text_signal`.
 
-Payloads: `request_payload` / `response_payload` (JSON envelopes). With `store_payloads = false`, text payload columns are omitted; metrics and observe columns remain.
+Payloads: `request_payload` / `response_payload` (JSON envelopes). **`store_payloads` is `true` by default**: request and response text is kept in the history database. To turn it off set `store_payloads = false` under `[history]` in `config/history.toml` (`$OCTO_CONFIG/history.toml`); text payload columns are then omitted; metrics and observe columns remain.
 
 The `calls` row of an autoroute call also has `request_id` (the `x-octo-request-id` value). Autoroute call records and per-budget-key spend are persisted in the `autoroute_calls` and `budget_spend` tables with their own retention (`calls_max_age_days`, `calls_max_rows`, `budget_spend_max_age_days`, `prune_interval_secs`); see [autoroute.md](./autoroute.md#harness-integration).
 

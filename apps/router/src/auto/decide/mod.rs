@@ -170,6 +170,7 @@ impl Auto {
         let configured = Budget {
             micros: self.tiers.session_budget_micros,
             action: self.tiers.session_budget_action,
+            from_header: false,
         };
         let Some(limit) = budget_key.and_then(|key| self.ledger.lock().ok()?.limit(key)) else {
             return configured;
@@ -180,6 +181,7 @@ impl Auto {
         Budget {
             micros: limit,
             action: BudgetAction::Reject,
+            from_header: true,
         }
     }
 
@@ -445,6 +447,8 @@ impl Auto {
 pub struct Budget {
     pub micros: u64,
     pub action: BudgetAction,
+    /// The limit came from the request's `x-octo-budget-usd` header, not from the config.
+    pub from_header: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -544,6 +548,7 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
             budget_micros: budget.micros,
             spent_micros: spent,
             budget_key: budget_key.clone(),
+            from_header: budget.from_header,
         });
     }
     let max_band = match hints.policy {
