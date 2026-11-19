@@ -4,7 +4,8 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1] ?? "";
+// A file, not an inline script: the Content-Security-Policy (tauri.conf.json, script-src 'self') blocks inline scripts.
+const script = readFileSync(new URL("../public/theme.js", import.meta.url), "utf8");
 
 /** Runs index.html's first-paint script against a fake page; returns the data-theme it leaves and a way to flip the system theme. */
 function run(opts: { stored?: string | null; light: boolean; storageThrows?: boolean }) {
@@ -34,8 +35,10 @@ function run(opts: { stored?: string | null; light: boolean; storageThrows?: boo
   };
 }
 
-test("first paint: index.html has the script, no hard-coded dark theme and a colour-scheme meta", () => {
+test("first paint: index.html loads the script from a file, no inline script, no hard-coded dark theme, a colour-scheme meta", () => {
   assert.equal(script.length > 0, true);
+  assert.equal(html.includes(`<script src="/theme.js"></script>`), true);
+  assert.equal(/<script>/.test(html), false);
   assert.equal(/<html[^>]*data-theme/.test(html), false);
   assert.equal(html.includes(`<meta name="color-scheme" content="light dark"`), true);
 });
