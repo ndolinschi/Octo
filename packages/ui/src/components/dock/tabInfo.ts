@@ -78,13 +78,15 @@ function browserTabInfo(b?: { url: string; title: string; pins: number }): TabIn
   };
 }
 
-function terminalTabInfo(t?: { shell: string; folder: string; title: string }): TabInfo {
+function terminalTabInfo(t?: { shell: string; folder: string; title: string; ordinal?: number }): TabInfo {
   const shell = t?.shell.trim() || "Terminal";
   const folder = t?.folder.trim() ?? "";
   const custom = t?.title.trim() ?? "";
-  const label = custom || shell;
-  const detail = !custom && folder ? folder : undefined;
-  const full = terminalTabName(t);
+  // Item 15: a second tab of the same name carries its number ("zsh · proj 2"), in the tab, its tooltip and the palette.
+  const n = t?.ordinal ? ` ${t.ordinal}` : "";
+  const label = custom ? `${custom}${n}` : shell + (folder ? "" : n);
+  const detail = !custom && folder ? `${folder}${n}` : undefined;
+  const full = terminalTabName(t) + n;
   return {
     label,
     ...(detail ? { detail } : {}),
@@ -97,12 +99,19 @@ function terminalTabInfo(t?: { shell: string; folder: string; title: string }): 
   };
 }
 
-type ConversationCtx = { state: ProjectState; projectName?: string | undefined; orchestratorId: string | undefined };
+type ConversationCtx = { state: ProjectState; projectName?: string | undefined; orchestratorId: string | undefined; projectsInTabs?: number };
 
 /**
- * A conversation tab: Chat, or a main session's own tab (decision 96). Decision 63/67: named after the project, the dim part
- * the session ("Project / Session"); the state ring is its root agent's.
+ * Owner decision F2 (2026-11-18, revises 63/67): the conversation tab drops its "Project /" prefix while every tab of the
+ * workspace belongs to one project (the tab says what it is about); with tabs of two or more projects it keeps the project
+ * as the label and the topic dim. Without a topic the label is the project. `name` (the tooltip, the palette) stays whole.
  */
+export function conversationLabel(project: string, topic: string, projectsInTabs: number): { label: string; detail?: string } {
+  if (!topic || topic === project) return { label: middleTruncate(project, 28) };
+  return projectsInTabs > 1 ? { label: middleTruncate(project, 28), detail: middleTruncate(topic, 40) } : { label: middleTruncate(topic, 40) };
+}
+
+/** A conversation tab: Chat, or a main session's own tab (decision 96); the state ring is its root agent's. */
 function conversationInfo(ctx: ConversationCtx, sessionId: string | null): TabInfo {
   const root = (sessionId !== null ? sessionRoot(ctx.state, sessionId) : "") || (sessionId === ctx.state.sessions.defaultId ? ctx.orchestratorId : undefined);
   const status = root ? ctx.state.agents[root]?.status : undefined;
@@ -111,12 +120,12 @@ function conversationInfo(ctx: ConversationCtx, sessionId: string | null): TabIn
   // The session's title (project sessions), else its root's own.
   const own = root ? (ctx.state.agents[root]?.title?.trim() ?? "") : "";
   const topic = currentTitle(ctx.state.sessions.list, sessionId, own).trim();
-  const detail = topic && topic !== name ? middleTruncate(topic, 40) : undefined;
   const queued = sessionId !== null && ctx.state.sessions.list.find((x) => x.id === sessionId)?.state === "queued";
+  // A workspace holds one project's tabs today, so the prefix goes; a caller with tabs of several projects passes the count.
+  const shown = conversationLabel(name, topic, ctx.projectsInTabs ?? 1);
   return {
-    label: middleTruncate(name, 28),
-    ...(detail ? { detail } : {}),
-    name: detail ? `${name} / ${topic}` : name,
+    ...shown,
+    name: topic && topic !== name ? `${name} / ${topic}` : name,
     title: `${name}: the project's session${topic ? ` — ${topic}` : ""}`,
     icon: GLYPH.chat,
     status: running ? "running" : null,
@@ -136,6 +145,8 @@ export function tabInfo(
     orchestratorId: string | undefined;
     /** Decision 96: the main session the conversation tab (Chat) shows; null: the default one. */
     chatSessionId?: string | null;
+    /** How many projects the workspace's tabs belong to (decision F2); one when not given. */
+    projectsInTabs?: number;
     file(key: FileKey): OpenFile | undefined;
     comments(key: FileKey): number;
     /** The state of a project command's latest run (decision 68). */
@@ -143,7 +154,7 @@ export function tabInfo(
     /** Browser tab metadata (URL, document title, pending Design Mode pin count). */
     browser?(browserId: string): { url: string; title: string; pins: number } | undefined;
     /** Terminal tab metadata (shell name, folder label, optional title). */
-    terminal?(terminalId: string): { shell: string; folder: string; title: string } | undefined;
+    terminal?(terminalId: string): { shell: string; folder: string; title: string; ordinal?: number } | undefined;
   },
 ): TabInfo {
   const ref = parseTab(tab);
@@ -164,12 +175,14 @@ export function tabInfo(
   if (ref.kind === "terminal") return terminalTabInfo(ctx.terminal?.(ref.terminalId));
   if (ref.kind === "agent") {
     const agent = ctx.state.agents[ref.agentId];
-    // Decision 63: a sub-agent's tab is its task title (else the first words of its task), the role in the tooltip.
-    const task = agent?.title || firstWords(agent?.task ?? "") || roleText(agent?.role);
+    // Owner decision F4 (2026-11-18, revises 63): a sub-agent's tab is the agent's label ("Dependency auditor", never its
+    // id); its task is in the agent's header and the tooltip.
+    const label = roleText(agent?.role);
+    const task = agent?.title || firstWords(agent?.task ?? "");
     return {
-      label: middleTruncate(task, 28),
-      name: task,
-      title: `${roleText(agent?.role)}: ${task}`,
+      label: middleTruncate(label, 28),
+      name: label,
+      title: task ? `${label}: ${task}` : label,
       icon: GLYPH.agent,
       status: agent?.status === "running" ? "running" : null,
       glyph: agent?.status === "running" ? "working" : agent?.status === "failed" ? "failed" : null,

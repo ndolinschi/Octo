@@ -81,9 +81,12 @@ export function projectSummary(list: readonly ProjectSession[]): { glyph: GlyphS
   return { glyph, running: mains.filter((s) => s.state === "working").length };
 }
 
-/** A session row's meta: nothing while it works (the glyph turns), "waiting" for a slot, else the time since its activity. */
+/**
+ * A session row's meta: nothing while it works (the glyph turns), "queued" for a slot, else the time since its activity
+ * (also while it waits for the person: how long it has waited, as a failed row says how long ago it failed).
+ */
 export function sessionMeta(s: Pick<ProjectSession, "state" | "last_activity_at" | "started_at">, now: number): string | null {
-  if (s.state === "working" || s.state === "waiting") return null;
+  if (s.state === "working") return null;
   if (s.state === "queued") return "queued";
   return formatRelative(s.last_activity_at || s.started_at, now);
 }

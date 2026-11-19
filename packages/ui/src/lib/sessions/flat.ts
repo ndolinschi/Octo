@@ -1,10 +1,12 @@
 import type { GlobalSession, ProjectSession } from "@octo/agent-client";
+import { sessionTriageOf } from "../triage";
 import { byActivity, hasSessionMessages, visibleSessions } from "./tree";
 
 /**
  * Sessions shown in the flat "Sessions" sidebar view: every non-archived main session with activity, the currently
  * active session even while still empty, plus one fallback session (default else newest) for any project that has
- * no non-empty sessions yet so an open or newly created empty project never vanishes from the sidebar.
+ * no non-empty sessions yet so an open or newly created empty project never vanishes from the sidebar. Newest start first,
+ * then id: a stable order, so rows never swap places under the pointer as activity moves.
  */
 export function flatSessions(list: readonly GlobalSession[], activeSessionId: string | null): GlobalSession[] {
   const mains = list.filter((s) => s.kind === "main" && !s.archived);
@@ -30,7 +32,22 @@ export function flatSessions(list: readonly GlobalSession[], activeSessionId: st
   }
   for (const s of fallbackByProject.values()) picked.add(s.id);
 
-  return mains.filter((s) => picked.has(s.id)).sort(byActivity);
+  return mains.filter((s) => picked.has(s.id)).sort(byStarted);
+}
+
+/** Newest start first (ties: id). */
+const byStarted = (a: GlobalSession, b: GlobalSession): number => b.started_at.localeCompare(a.started_at) || a.id.localeCompare(b.id);
+
+/**
+ * Owner decision F3 (2026-11-18): the flat list pins what needs the person on top — Home's "Needs you" (waiting for them,
+ * or failed: `sessionTriageOf`) — and the rest follows; both keep the list's order (by start), so a row moves only when its
+ * state does.
+ */
+export function pinNeedsYou(list: readonly GlobalSession[]): { needs: GlobalSession[]; rest: GlobalSession[] } {
+  const needs: GlobalSession[] = [];
+  const rest: GlobalSession[] = [];
+  for (const s of list) (sessionTriageOf(s, false, false) === "needs" ? needs : rest).push(s);
+  return { needs, rest };
 }
 
 /**

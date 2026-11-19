@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { tipMayShow } from "../../lib/tooltipGate";
 
 /** First tooltip waits this long; while "warm" (another one closed recently) the next shows at once. */
 const DELAY = 600;
@@ -73,7 +74,7 @@ export function Tooltips() {
       if (el === current) return;
       if (!el) return hide();
       if (pressedAt) return;
-      arm(el);
+      arm(el, true);
     };
     // Keyboard focus shows the focused control's tooltip too (same delay and warmth); pointer focus does not. Only focus the
     // person moved (Tab, arrows, Home/End): a tab or dialog that puts focus on a row by itself shows no tooltip (B57).
@@ -95,7 +96,7 @@ export function Tooltips() {
     const focusOut = (e: FocusEvent) => {
       if (current && current === e.target) hide();
     };
-    const arm = (el: HTMLElement) => {
+    const arm = (el: HTMLElement, byPointer = false) => {
       window.clearTimeout(timer);
       watch.disconnect();
       watch.observe(el, { attributes: true, attributeFilter: ["title"] });
@@ -104,8 +105,14 @@ export function Tooltips() {
       setTip(null);
       const text = tipOf(el);
       if (!text || disabled(el)) return;
+      // Item 14: the pointer leaving the control hides its tooltip even when no `pointerover` follows (a row that re-rendered
+      // or moved under a still pointer), and a tooltip the pointer armed shows only while the control is still hovered.
+      if (byPointer) el.addEventListener("pointerleave", () => current === el && hide(), { once: true });
       const show = () => {
-        if (current !== el || !el.isConnected) return;
+        if (!tipMayShow({ armed: current === el, connected: el.isConnected, byPointer, hovered: el.matches(":hover") })) {
+          if (current === el) hide();
+          return;
+        }
         const now = tipOf(el) ?? text;
         // Tall targets (dividers, rows of text) anchor at the pointer rather than their whole box.
         const box = el.getBoundingClientRect();

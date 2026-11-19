@@ -25,7 +25,8 @@ test("texts", () => {
   assert.equal(changedText(1), "1 changed file");
   assert.equal(changedText(2), "2 changed files");
   assert.equal(workingText(0), null);
-  assert.equal(workingText(2), "2 working");
+  assert.equal(workingText(1), "1 project working");
+  assert.equal(workingText(2), "2 projects working");
   assert.equal(connectionText("online"), null);
   assert.equal(connectionText("offline")?.text, "Offline");
   assert.doesNotMatch(connectionText("offline")?.hint ?? "", /bridge/i);
