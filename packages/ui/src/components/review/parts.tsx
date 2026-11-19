@@ -58,9 +58,9 @@ export function Notice(props: { title: string; children?: ReactNode; actions?: R
 }
 
 /** "owner/name" gives way from the owner ("atl…/atlas-api"); any other text from its middle. */
-function CutText({ text, className }: { text: string; className: string }) {
+function CutText({ text, className, siblings }: { text: string; className: string; siblings?: readonly string[] | undefined }) {
   const slash = text.lastIndexOf("/");
-  if (slash <= 0) return <MiddleText text={text} {...(className ? { className } : {})} />;
+  if (slash <= 0) return <MiddleText text={text} {...(siblings ? { siblings } : {})} {...(className ? { className } : {})} />;
   return (
     <span className={cn("flex min-w-0 items-baseline", className)}>
       <span className="min-w-0 truncate">{text.slice(0, slash)}</span>
@@ -74,7 +74,16 @@ function CutText({ text, className }: { text: string; className: string }) {
  * header line keeps its one line in a narrow group. `MenuButton` is 24px and never truncates; this composes `Button` and
  * `Menu` for the review's headers only.
  */
-export function TextMenu(props: { label: string; text: string; items: MenuItem[]; mono?: boolean; alignEnd?: boolean; className?: string }) {
+export function TextMenu(props: {
+  label: string;
+  text: string;
+  items: MenuItem[];
+  mono?: boolean;
+  alignEnd?: boolean;
+  /** The other choices: a name sharing a long head with them keeps the part that tells it apart. */
+  siblings?: readonly string[];
+  className?: string;
+}) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const button = useRef<HTMLButtonElement>(null);
   return (
@@ -93,7 +102,7 @@ export function TextMenu(props: { label: string; text: string; items: MenuItem[]
         }}
         className={cn("min-w-0 shrink! gap-1!", menu && "bg-active text-fg", props.className)}
       >
-        <CutText text={props.text} className={props.mono ? "font-mono text-xs" : ""} />
+        <CutText text={props.text} siblings={props.siblings} className={props.mono ? "font-mono text-xs" : ""} />
         <Glyph icon={ChevronDown} size={14} className="shrink-0 text-fg-3" />
       </Button>
       <Presence show={menu !== null} exitMs={0}>

@@ -167,7 +167,21 @@ function Picker(props: {
     else if (shown[0]) openRow(shown[0]);
   };
 
-  const lead = menu?.show ? (
+  // 2026-11-19 (owner: "uneven"): one anatomy in every state. The bar holds what is reviewed, at its 8px inset as Files' crumb:
+  // the folder (a menu when the project has several; its name keeps the part that tells it from the others), then the
+  // repository; status and refresh at the right. The view row holds only the views. With no repository known (loading, an
+  // error) the folder stays, so the bar is never empty and nothing changes rows between states.
+  const labels = props.folders.map((f) => f.label);
+  const folderLead =
+    props.folders.length > 1 ? (
+      <TextMenu
+        label="Repository folder"
+        text={folder}
+        siblings={labels}
+        items={props.folders.map((f) => ({ id: f.id, label: f.label, title: f.path, checked: f.label === folder, run: () => props.onFolder(f.label) }))}
+      />
+    ) : null;
+  const repoLead = menu?.show ? (
     <TextMenu
       label="Repository"
       text={menu.current}
@@ -191,6 +205,18 @@ function Picker(props: {
       <span className="h-2 rounded-full bg-hover" />
     </span>
   ) : null;
+  const onlyFolder = props.folders[0];
+  const lead = (
+    <>
+      {folderLead}
+      {repoLead ||
+        (!folderLead && onlyFolder && (
+          <span title={onlyFolder.path} className="flex min-w-0 px-2 text-xs text-fg-3">
+            <MiddleText text={onlyFolder.label} />
+          </span>
+        ))}
+    </>
+  );
   const fresh = updating ? "Updating" : ready ? freshness(ready, now) : "";
   const emptyText =
     rows.length === 0
@@ -207,7 +233,7 @@ function Picker(props: {
         name="review"
         // The tab's name: "Pull requests" is the first view under it, so the title does not say it twice.
         title="Review"
-        lead={lead || undefined}
+        lead={lead}
         actions={
           <>
             <span role="status" className="flex items-center gap-1.5 px-1 text-xs whitespace-nowrap text-fg-3 empty:hidden">
@@ -222,26 +248,7 @@ function Picker(props: {
             />
           </>
         }
-        views={
-          <ViewTabs<View>
-            label="What to review"
-            options={VIEWS}
-            value={view}
-            onChange={setView}
-            // The folder scopes both views: it sits at the view row's end, so the header keeps the repository whole in a
-            // narrow group (R1 asks for it in the header line; there it cut the repository to "/atlas-api" at 360px).
-            trailing={
-              props.folders.length > 1 ? (
-                <TextMenu
-                  label="Repository folder"
-                  text={folder}
-                  alignEnd
-                  items={props.folders.map((f) => ({ id: f.id, label: f.label, checked: f.label === folder, run: () => props.onFolder(f.label) }))}
-                />
-              ) : undefined
-            }
-          />
-        }
+        views={<ViewTabs<View> label="What to review" options={VIEWS} value={view} onChange={setView} />}
       >
         <div className="flex h-full min-h-0 flex-col">
           {view === "pulls" && (available || state.loading) && (
@@ -336,14 +343,9 @@ function Picker(props: {
               )}
             </PanelEmpty>
           ) : state.error && !ready && resume.length === 0 ? (
-            <PanelBody>
-              <ErrorNotice
-                title="The pull requests did not load"
-                fields={{ ...listFailure(state.error), details: state.error, action: "retry" }}
-                onRetry={reload}
-                retrying={updating}
-              />
-            </PanelBody>
+            // Nothing else to show: the tab's empty state, as "not available" above and every tool tab's load failure (centred,
+            // one text edge), not a tinted card from the pane's edge under the views.
+            <ListFailed error={state.error} retrying={updating} onRetry={reload} />
           ) : available && rows.length === 0 && !typed && resume.length === 0 ? (
             <PanelEmpty title="No open pull requests">
               There is nothing open on {ready.repo ?? "this repository"} right now. Paste an address or type a number above to review a closed one.
@@ -487,6 +489,34 @@ function OpenRow({ r, now, onOpen }: { r: ReviewSummary; now: number; onOpen(): 
       }
       onClick={onOpen}
     />
+  );
+}
+
+/** The list did not load and there is nothing in progress to show: the reason in words, Retry, and the raw text only in Details. */
+function ListFailed(props: { error: string; retrying: boolean; onRetry(): void }) {
+  const [open, setOpen] = useState(false);
+  const { message, hint } = listFailure(props.error);
+  return (
+    // An alert, as the notice it replaces (`contents`: the block still fills the body's height).
+    <div role="alert" className="contents">
+      <PanelEmpty
+        title="The pull requests did not load"
+        actions={
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button size="sm" variant="secondary" loading={props.retrying} disabled={props.retrying} onClick={props.onRetry}>
+              Retry
+            </Button>
+            <Button size="sm" variant="quiet" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+              {open ? "Hide details" : "Details"}
+            </Button>
+          </div>
+        }
+      >
+        <p>{message}</p>
+        <p>{hint}</p>
+        {open && <p className="mt-2 font-mono text-xs break-words whitespace-pre-wrap text-fg-3">{props.error}</p>}
+      </PanelEmpty>
+    </div>
   );
 }
 

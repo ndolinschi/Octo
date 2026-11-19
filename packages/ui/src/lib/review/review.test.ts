@@ -247,6 +247,10 @@ test("review keys: mapped, ignored with a modifier and inside text fields, kept 
 
 test("a failed list is a plain sentence; a source id loses its prefix", () => {
   assert.equal(listFailure("git fetch failed: could not resolve host").message, "Could not reach GitHub.");
+  // A client-side cut-off is said in the catalogue's words; the raw text stays for Details.
+  for (const raw of ["Fetch is aborted", "The operation was aborted.", "signal timed out"])
+    assert.equal(listFailure(raw).message, "GitHub did not answer in time, so the request was cancelled.", raw);
+  assert.equal(listFailure("HTTP 502").message, "GitHub did not answer the list request.");
   assert.deepEqual(ghInstallCommand("brew install gh && gh auth login", "MacIntel"), { command: "brew install gh && gh auth login", other: null });
   assert.deepEqual(ghInstallCommand("brew install gh && gh auth login", "Linux x86_64"), {
     command: "sudo apt install gh && gh auth login",
