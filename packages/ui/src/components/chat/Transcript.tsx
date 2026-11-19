@@ -37,7 +37,8 @@ import { readyLazy, usePartsReady } from "./readyLazy";
 import { turnSig, useTurnWindow } from "./useTurnWindow";
 /** Code comments sent with a prompt render with the first such prompt (their own chunk). */
 /** The failed or stopped turn's notice: its own chunk (error mapping, notice, retry), warmed after first paint. */
-export const TurnBanner = lazy(() => import("./TurnBanner").then((m) => ({ default: m.TurnBanner })));
+const turnBanner = readyLazy(() => import("./TurnBanner").then((m) => m.TurnBanner));
+export const TurnBanner = turnBanner.Component;
 const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
 const PlanList = lazy(() => import("./LivePanels").then((m) => ({ default: m.PlanList })));
 const ThinkingRow = lazy(() => import("./LivePanels").then((m) => ({ default: m.ThinkingRow })));
@@ -45,9 +46,12 @@ const PromptImages = lazy(() => import("./PromptImages").then((m) => ({ default:
 const SentComments = lazy(() => import("./SentComments").then((m) => ({ default: m.SentComments })));
 const SentDesignNotes = lazy(() => import("./SentDesignNotes").then((m) => ({ default: m.SentDesignNotes })));
 /** The plan card loads with the first plan (parity B3). */
-const CompactedMarker = lazy(() => import("./CompactedMarker").then((m) => ({ default: m.CompactedMarker })));
+const compactedMarker = readyLazy(() => import("./CompactedMarker").then((m) => m.CompactedMarker));
+const CompactedMarker = compactedMarker.Component;
 const PlanForTurn = lazy(() => import("./PlanCard").then((m) => ({ default: m.PlanForTurn })));
-const TurnChanges = lazy(() => import("./TurnChanges").then((m) => ({ default: m.TurnChanges })));
+/** Decision 99: a part (below) so a project shown for the first time lays its turns out with their "N files changed" lines. */
+const turnChanges = readyLazy(() => import("./TurnChanges").then((m) => m.TurnChanges));
+const TurnChanges = turnChanges.Component;
 
 /** Plan cards are looked for under this many of the newest requests (a plan belongs to the newest plan turn). */
 const PLAN_TURNS = 5;
@@ -58,7 +62,9 @@ const delegationGroup = readyLazy(() => import("./DelegationGroup").then((m) => 
 const ToolGroup = toolGroup.Component;
 const DelegationGroup = delegationGroup.Component;
 /** A long conversation mounts its turns once these are in, so each turn is laid out once, complete (no shift on open). */
-const TURN_PARTS = [markdownPart, toolGroup, delegationGroup];
+const TURN_PARTS = [markdownPart, toolGroup, delegationGroup, turnChanges, turnBanner, compactedMarker];
+// Decision 99: fetched with this chunk (warmed after first paint), so a project first shown from Home lays its turns out at once.
+for (const part of TURN_PARTS) void part.fetch().catch(() => undefined);
 import { TranscriptContext, useTranscript, type ToolResult, type TranscriptCtx } from "./transcriptContext";
 import { proseClass } from "../primitives/Prose";
 import { ActivityLine, useBatched } from "./LiveActivity";
@@ -648,13 +654,15 @@ const NO_ENDINGS: StoredEndingLookup = () => undefined;
  */
 function useStoredEndings(enabled: boolean, refresh: string, messageSessions: string): { lookup: StoredEndingLookup; settled: boolean } {
   const { bridge } = useApp();
-  const { projectId, state } = useProject();
+  const { projectId, state, kept } = useProject();
   // The conversation's own session (decision 96), else the project's default one.
   const sessionId = useSessionScope()?.sessionId ?? state.sessions.currentId;
-  const [lookup, setLookup] = useState<StoredEndingLookup>(() => NO_ENDINGS);
+  // Decision 99: what the last read found (this project shown before) paints at once; the read below brings it up to date.
+  const known = sessionId ? kept.endings.get(sessionId) : undefined;
+  const [lookup, setLookup] = useState<StoredEndingLookup>(() => known ?? NO_ENDINGS);
   // NEW-4: the first answer (or its failure, or the wait running out) lets the turns mount, so a turn's head is laid out once
   // with its stored ending instead of changing ("Stopped after…") under the reader. Later reads never hold the turns back.
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(known !== undefined);
   // A conversation opened while it works (or without sessions) mounts at once and is never held back later (a turn ending).
   const [unneeded] = useState(() => !enabled || !sessionId || !bridge.getSession);
   useEffect(() => {
@@ -670,7 +678,11 @@ function useStoredEndings(enabled: boolean, refresh: string, messageSessions: st
     const read = (id: string) => getSession(projectId, id).then((d) => d.exchanges);
     Promise.all([read(sessionId), Promise.all(others.map((id) => read(id).catch(() => []))), import("../../lib/storedEndings")])
       .then(
-        ([own, rest, m]) => alive && setLookup(() => m.storedEndingLookup(own, ...rest)),
+        ([own, rest, m]) => {
+          const next = m.storedEndingLookup(own, ...rest);
+          kept.endings.set(sessionId, next);
+          if (alive) setLookup(() => next);
+        },
         // Unreadable: the turns keep what the transcript itself says.
         () => undefined,
       )
@@ -679,7 +691,7 @@ function useStoredEndings(enabled: boolean, refresh: string, messageSessions: st
       alive = false;
       window.clearTimeout(wait);
     };
-  }, [enabled, sessionId, bridge, projectId, refresh, messageSessions]);
+  }, [enabled, sessionId, bridge, projectId, refresh, messageSessions, kept]);
   return { lookup, settled: loaded || unneeded };
 }
 

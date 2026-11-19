@@ -2,7 +2,8 @@ import { focusSoon, focusSurfaceSoon } from "../../lib/focus";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMediaQuery, useLatest } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
-import { loadPref, numberCodec, PREFS, readPref, usePersistentState, writePref, type Codec } from "../../lib/storage";
+import { loadPref, numberCodec, PREFS, readPref, usePersistentState, writePref } from "../../lib/storage";
+import { lastSessionCodec } from "../projectCache";
 import { changedFileCount } from "../../lib/statusBar";
 import { isTabEnabled, type TabFeatureFlags } from "../../lib/tabFlags";
 import { useApp } from "../app";
@@ -227,9 +228,6 @@ function sessionOf(tab: TabId, chat: string | null): string | null | undefined {
   return undefined;
 }
 
-/** A session id as plain text; nothing stored is null. */
-const SESSION_CODEC: Codec<string | null> = { parse: (raw) => (raw && raw.trim() !== "" ? raw : null), stringify: (v) => v ?? "" };
-
 /**
  * The dock of one project: tab groups, what is open where, persistence, routing and the
  * keyboard shortcuts. Layout operations are the pure functions in `layout.ts`.
@@ -250,7 +248,7 @@ export function WorkspaceProvider({
   const { projectId, project, state, clearSide, synced } = useProject();
   // Decision 96: `#/p/<pid>/s/<sid>` shows that session; `#/p/<pid>` the one shown last here, else the default.
   const [picked, setChatSessionState] = useState<{ id: string | null; stored: boolean }>(() =>
-    routeSessionId !== null ? { id: routeSessionId, stored: false } : { id: loadPref(PREFS.lastSession(projectId), SESSION_CODEC), stored: true },
+    routeSessionId !== null ? { id: routeSessionId, stored: false } : { id: loadPref(PREFS.lastSession(projectId), lastSessionCodec), stored: true },
   );
   // A session shown from storage (not asked for by the route) that no longer exists: the default session instead.
   const storedGone = picked.stored && picked.id !== null && synced > 0 && !state.sessions.list.some((x) => x.id === picked.id);
@@ -264,7 +262,7 @@ export function WorkspaceProvider({
       chatSessionRef.current = sid;
       effectiveChatRef.current = sid ?? state.sessions.defaultId;
       setChatSessionState({ id: sid, stored: false });
-      writePref(PREFS.lastSession(projectId), SESSION_CODEC.stringify(sid));
+      writePref(PREFS.lastSession(projectId), lastSessionCodec.stringify(sid));
     },
     [projectId, chatSessionRef, effectiveChatRef, state.sessions.defaultId],
   );

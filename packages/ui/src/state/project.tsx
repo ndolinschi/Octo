@@ -26,6 +26,7 @@ import { errorMessage } from "../lib/format";
 import { SUMMARY_DISAGREE_MS } from "../lib/constants";
 import { useLatest } from "../lib/hooks";
 import { createRequiredContext } from "../lib/context";
+import { keepLatest, projectSnapshots, type ProjectKept } from "./projectCache";
 
 export type SessionChange = { kind: "upsert"; session: ProjectSession } | { kind: "remove"; ids: string[] } | { kind: "current"; id: string; previous: string };
 
@@ -73,9 +74,11 @@ type ProjectValue = {
   applySession(change: SessionChange): void;
   /** Observe raw bridge events on this project's existing subscription (no extra connection). */
   onEvent(listener: (event: BridgeEvent) => void): () => void;
+  /** What the conversation's own reads found (its queue, its stored endings), kept across switches (decision 99). */
+  kept: ProjectKept;
 };
 
-export const { Provider: ProjectContextProvider, useRequired: useProject } = createRequiredContext<ProjectValue>("useProject");
+export const { Provider: ProjectContextProvider, useRequired: useProject, useOptional: useOptionalProject } = createRequiredContext<ProjectValue>("useProject");
 
 /** A note as the list holds it: no body (M5). */
 function listed(doc: NoteDocument): Note {
@@ -85,10 +88,17 @@ function listed(doc: NoteDocument): Note {
 
 export function ProjectProvider({ projectId, children }: { projectId: string; children: ReactNode }) {
   const { bridge, refreshProjects, refreshConfig, projects, probe } = useApp();
-  const [state, dispatch] = useReducer(projectReducer, undefined, emptyProjectState);
-  const [project, setProject] = useState<Project | null>(null);
+  // A project read before starts from what was known then (decision 99): its conversation paints complete in the first frame,
+  // and `syncAll` below reads everything again, as after a reopened stream (A11).
+  const [kept] = useState(() => projectSnapshots(bridge).get(projectId));
+  const [state, dispatch] = useReducer(projectReducer, undefined, () => kept?.state ?? emptyProjectState());
+  const [project, setProject] = useState<Project | null>(kept?.project ?? null);
   const [live, setLive] = useState<LiveStatus>("connecting");
-  const loaded = useRef(new Set<string>());
+  const loaded = useRef(new Set<string>(kept?.loaded));
+  const [reads] = useState<ProjectKept>(() => kept?.kept ?? { queues: new Map(), endings: new Map(), files: new Map() });
+  useEffect(() => {
+    if (project) keepLatest(projectSnapshots(bridge), projectId, { project, state, loaded: loaded.current, kept: reads });
+  }, [bridge, projectId, project, state, reads]);
   const observers = useRef(new Set<(event: BridgeEvent) => void>());
   const [steered, setSteered] = useState<readonly string[]>([]);
   const [synced, setSynced] = useState(0);
@@ -167,8 +177,9 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       dispatch({ type: "notes", notes });
       if (sessions) dispatch({ type: "sessions", sessions });
       // NEW-3: what waits for the person (a helper waiting for an approval reads "Waiting for your approval", not "Thinking…"),
-      // also when it was asked before this window opened. Unreadable: events still bring new ones.
-      void Promise.all([
+      // also when it was asked before this window opened. Unreadable: events still bring new ones. Awaited with the messages: a
+      // project read ahead of a switch (decision 99) shows its cards with the transcript.
+      const waits = Promise.all([
         bridge.listApprovals ? withDeadline(bridge.listApprovals(projectId)).catch(() => null) : null,
         bridge.listInputs ? withDeadline(bridge.listInputs(projectId)).catch(() => null) : null,
       ]).then(([approvals, inputs]) => dispatch({ type: "waits", approvals, inputs }));
@@ -177,7 +188,10 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       const parallel = sessions?.some((s) => s.kind === "main" && s.default !== undefined) ?? false;
       const resumed = sessions && !parallel ? transcriptSession(sessions, sessions.find((s) => s.kind === "main" && s.current)?.id ?? null) : undefined;
       const ids = new Set([p.orchestrator_agent_id, ...loaded.current]);
-      await Promise.all([...ids].map((id) => fetchMessages(id, id === p.orchestrator_agent_id && resumed !== undefined ? { sessionId: resumed } : undefined)));
+      await Promise.all([
+        waits,
+        ...[...ids].map((id) => fetchMessages(id, id === p.orchestrator_agent_id && resumed !== undefined ? { sessionId: resumed } : undefined)),
+      ]);
       // A11: what the stream missed is in the stored messages now; streamed text of a turn that ended goes.
       dispatch({ type: "settle" });
       setSynced((n) => n + 1);
@@ -384,8 +398,9 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
           observers.current.delete(listener);
         };
       },
+      kept: reads,
     }),
-    [projectId, project, loadFailures, synced, state, live, running, parallel, syncAll, fetchMessages, bridge, steered, showSession, refreshProjects],
+    [projectId, project, loadFailures, synced, state, live, running, parallel, syncAll, fetchMessages, bridge, steered, showSession, refreshProjects, reads],
   );
 
   return <ProjectContextProvider value={value}>{children}</ProjectContextProvider>;

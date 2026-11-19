@@ -4570,6 +4570,55 @@ switch 196/131 → 149/128 ms. Load at 4x: CLS 0 in all 5 runs before and after;
 pass did not show, so whether its cause is gone is not verified. Entry bundle 160.24 kB (integration tip 160.28). Not verified:
 WebKit, the Tauri shell, a real harness, the phone layout.
 
+## As built — changing project without a blink (decision 99, 2026-11-19)
+
+**The blink** (owner: "when I change the project, the chat page blinks"). Recorded per painted frame (`project-switch.mjs`,
+production build, 1440×900): clicking a session of another project unmounted the whole workspace in the next frame (tab strips,
+composer and conversation gone), showed the project's loading placeholder for ~150–250 ms (`MainSkeleton`, invisible for its
+first 300 ms: a blank panel), then the new dock with an empty conversation ("Waiting on …" only, ~70–200 ms), then the
+transcript filled in at the top and jumped to its end, then the approval and form cards, the queue row over the composer, the
+turns' "N files changed" lines, compaction markers, file links and stored turn endings popped in one by one (each a jump of
+22–600 px). Same in dark and light, dev and production, every way of changing project (sidebar sessions list and tree,
+composer project selector, "New session in …", Home rows, palette, Back/Forward). Switching sessions of one project did not
+blink (one frame).
+
+**Root cause.** `AppShell` mounts `<ProjectProvider key={route.projectId}>`: a project change unmounts the provider and the
+whole workspace and mounts a new provider that starts from `emptyProjectState()` and `project = null`, so `ProjectWorkspace`'s
+`Body` renders `MainSkeleton` until `syncAll` answers, and every piece of the conversation that reads for itself (approvals
+and forms, queue, stored endings, turn changes, the file index) starts its read only after that mount; lazy parts that had
+never rendered (`lazy` suspends on its first render even when loaded) and the dock's width (measured by a ResizeObserver
+after the first paint, so the first frame was laid out zero-wide) added more stages. Not a regression: the keyed remount is
+in `c29ae1e` (the commit before the polish pass) and back to 423cf23 (2026-11-11); `c29ae1e` measures the same frames.
+
+**Fix.** A project is shown only when it can be painted complete, in one frame, at its scroll position:
+- `state/projectCache`: the provider keeps a snapshot of what it knew per project (state, project, read agents, and `kept`:
+  the queue per session, stored endings per session, the walked file list), at most 8 projects per bridge; a provider for a
+  project read before starts from it and reads everything again behind it, as after a reopened stream (A11: a rewind made in
+  another window while away shows after the next reload, as after a reconnect).
+- `app/useProjectSwitch` + `state/projectPreload` (its own chunk): a project not read yet is read out of sight (project,
+  sessions, what waits, the opening conversation, its queue, stored endings, turn changes, the file walk for at most 1 s)
+  while the previous screen (conversation or Home) stays; after `SWITCH_HOLD_MS` (150) the loading state shows at once (no
+  late fade) and stays at least 150 ms, then the project complete. `syncAll` awaits what waits with the messages.
+- Slots and parts that render without suspending once fetched (`readyLazy`), fetched after first paint or with their chunk:
+  approvals/queue slots, `EmptyTitle`, `TurnChanges`, `TurnBanner`, `CompactedMarker` (in `TURN_PARTS`), Markdown's table
+  frame. The slots seed from the project state / `kept`; `TurnChanges`' cache is keyed by the bridge's `listChanges`, so a
+  session's bridge shares it. `Dock` measures its width in a layout effect (before the first paint).
+- To keep the entry within budget (not raised): the project settings dialog (`app/ProjectSettingsDialog`), the New project
+  dialog's submit (`app/NewProjectDialog`) and the "Agent not found" view (`chat/AgentGone`) are their own chunks; entry
+  160.97 kB after the merge with the integration tip (its own 160.74).
+
+**Check.** `packages/ui/scripts/project-switch.mjs` (flicker.mjs's sibling): every path above, cold (first visit) and warm,
+classified frame by frame; fails on a blank frame, a frame of the next conversation that differs from its final one
+(scroll, heights, held-invisible turns, composer, tab strips), a replayed `octo-msg-in`, or a loading state shown early or for
+under ~150 ms, and when the next screen is not shown 1.5 s after the click. Before (`c29ae1e`, production): every project
+path fails (blank 2–9 frames, then 3–600 px fill-in). After, on the merged tree (production build): `project-switch: ok` on
+all paths in dark at 1x, and on sidebar, composer selector and Home in light; light and 4x CPU (both themes) were ok on all
+paths before the last fixes (file walk, table frame, the merge) and were not run again. flicker, layout-shift, scroll-anchor,
+scroll-on-send, stick-on-open: ok, once each. Dev server: sidebar, tree, composer selector, new session and Home ok (before
+the merge). Measured on a heavily loaded build machine (load 30). Not verified: WebKit,
+the phone layout, a real harness (cold reads there are ~10 ms, so the hold rarely shows the loading state), the composer and
+tab strip staying the same DOM nodes (they are replaced in the same frame, as when switching sessions of one project).
+
 ## As built — macOS traffic-light alignment (2026-11-19)
 
 Owner, on the real macOS app: "traffic light is not aligned with buttons in left sidebar". Measured on the owner's screenshots

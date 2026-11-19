@@ -1,10 +1,11 @@
 import { Check, Copy } from "lucide-react";
 import { Button } from "../primitives/Button";
-import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { memo, Suspense, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useCopy, useScrollFade } from "../../lib/hooks";
 import { InlineCode } from "./FileLink";
+import { readyLazy } from "../../lib/readyLazy";
 import { NUMERIC_CELL } from "../../lib/numericCell";
 import { remarkSoftBreaks } from "../../lib/softBreaks";
 
@@ -148,7 +149,10 @@ const REHYPE = [rehypeNumericColumns];
 /** P2-13: single newlines are line breaks in paragraphs that read as lines, spaces in hard-wrapped prose (lib/softBreaks). */
 const REMARK = [remarkGfm, remarkSoftBreaks];
 
-const TableFrame = lazy(() => import("./DataTable").then((m) => ({ default: m.TableFrame })));
+/** Decision 99: fetched with this chunk and rendered without suspending once in, so a table is framed in its first frame. */
+const tableFrame = readyLazy(() => import("./DataTable").then((m) => m.TableFrame));
+void tableFrame.fetch().catch(() => undefined);
+const TableFrame = tableFrame.Component;
 
 const COMPONENTS: Components = {
   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,

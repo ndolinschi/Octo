@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { fileLookup, looksLikePath, resolveFileRef } from "../../lib/fileLinks";
 import { useOptionalCode } from "../../state/code";
+import { useOptionalProject } from "../../state/project";
 import { fileIcon } from "../primitives/fileIcons";
 import { Glyph } from "../primitives/Glyph";
 import { InlineButton } from "../primitives/InlineButton";
@@ -20,7 +21,18 @@ export function InlineCode({ children }: { children?: ReactNode }) {
   useEffect(() => {
     if (candidate && status === "idle") indexFiles?.();
   }, [candidate, status, indexFiles]);
-  const ref = candidate && code && text ? resolveFileRef(text, fileLookup(code.loadedFiles)) : null;
+  // Decision 99: until this view's walk is done, the files as last walked (a project shown again, or read before it was shown),
+  // so a link is a link in the first frame; the walk's result is kept for the next time.
+  const kept = useOptionalProject()?.kept;
+  const done = status === "done";
+  const loaded = code?.loadedFiles;
+  useEffect(() => {
+    if (!done || !kept || !loaded) return;
+    kept.files.clear();
+    for (const f of loaded) kept.files.set(f.folder, [...(kept.files.get(f.folder) ?? []), f.path]);
+  }, [done, kept, loaded]);
+  const files = !done && kept?.files.size ? [...kept.files].flatMap(([folder, paths]) => paths.map((path) => ({ folder, path }))) : loaded;
+  const ref = candidate && code && text && files ? resolveFileRef(text, fileLookup(files)) : null;
   if (!ref || !code) return <code>{children}</code>;
   const where = ref.start ? (ref.end ? `, lines ${ref.start}–${ref.end}` : `, line ${ref.start}`) : "";
   return (

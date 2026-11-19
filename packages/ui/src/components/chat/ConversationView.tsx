@@ -2,14 +2,12 @@ import { useScrollAnchor } from "../../lib/scrollAnchor";
 import type { Agent } from "@octo/agent-client";
 import { ArrowDown } from "lucide-react";
 import { IconButton } from "../primitives/IconButton";
-import { Button } from "../primitives/Button";
-import { EmptyState } from "../primitives/EmptyState";
 import { InlineNotesProvider } from "./notesContext";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
+import { readyLazy } from "../../lib/readyLazy";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { useNow, useStickToBottom } from "../../lib/hooks";
-import { hrefFor } from "../../lib/route";
 import { useChatSlots } from "../../state/chatSlots";
 import { useProject } from "../../state/project";
 import { CHAT, type TabId } from "../../state/workspace/layout";
@@ -74,7 +72,10 @@ function notesSlot(count: number): ComposerProps["comments"] {
 export const EDGES = "scroll-quiet overflow-hidden px-(--pad)";
 
 /** The empty project's title loads when an empty project shows (its own chunk; the composer is not in it). */
-const EmptyTitle = lazy(() => import("./EmptyProject").then((m) => ({ default: m.EmptyTitle })));
+/** Decision 99: renders without suspending once in (the shell warms it after first paint), so a new session paints whole. */
+export const emptyTitlePart = readyLazy(() => import("./EmptyProject").then((m) => m.EmptyTitle));
+const EmptyTitle = emptyTitlePart.Component;
+const AgentGone = lazy(() => import("./AgentGone"));
 /** The agy-style inline project selector loads only on empty sessions (kept out of the initial bundle). */
 const ComposerProjectBar = lazy(() => import("./ComposerProjectBar").then((m) => ({ default: m.ComposerProjectBar })));
 
@@ -256,25 +257,9 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const roleName = nameIn(project.name);
   if (!agent) {
     return (
-      <div className="flex h-full min-h-0 flex-col">
-        <EmptyState
-          title="Agent not found"
-          actions={
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                if (ws) ws.focusChat();
-                else window.location.hash = hrefFor(projectId);
-              }}
-            >
-              Back to session
-            </Button>
-          }
-        >
-          This agent isn&apos;t part of {project.name}.
-        </EmptyState>
-      </div>
+      <Suspense fallback={null}>
+        <AgentGone projectId={projectId} projectName={project.name} />
+      </Suspense>
     );
   }
 
