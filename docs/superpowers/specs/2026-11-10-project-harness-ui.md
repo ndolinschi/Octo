@@ -4668,3 +4668,44 @@ e. **Several repositories:** one section per repository titled "name · current 
   light at 1440×900 and 390×700. `spacing-audit` total=0, `composer-fit`, `picker-keys`, `dropdown-scroll` ok; entry bundle 160.57 kB (budget 161).
   **Not verified:** WebKit, Tauri, Windows paths, real agents, a repository with thousands of branches (only 140 in the demo
   and the harness test's paging), touch on a device.
+
+## As built — last performance gaps: terminal first paint, 4x scroll, load shift, entry room (2026-11-19)
+
+Production builds, `vite preview`, headless Chromium 1440×900, before/after interleaved. The machine was shared (load 10–45 on
+4 cores for most of the pass), so the scroll is compared by main-thread CPU (trace `tdur`, medians of 3) as well as frames.
+
+**Terminal tab, first open.** Profile: React flushes the effects of a click's render before paint, so the tab's effect
+(`terminal/TerminalTab`) built xterm (`open`: font measure with a forced layout, row creation, `fit`) inside the click task
+(277 ms at 4x, one long task). Now `terminal/useTerminalSurface` asks for the shell at once, sized from the box
+(`terminal/grid`: the fit addon's arithmetic on a canvas-measured cell), and builds xterm in the task after the first paint;
+the store keeps the last requested size and applies it when a session that was still connecting opens. Bar and frame:
+68.5 → 51.8 ms (1x), 293 → 208 ms (4x; Browser 220); prompt 126 → 114 ms (1x), 451 → 474 ms (4x, within noise: the xterm
+build still precedes it). The screen box is the same from the first frame (no jump), the empty frame is `--octo-panel` like
+xterm's background, focus lands in xterm, typing works. The old 295 ms (1x) did not reproduce on a quiet machine (52–67 ms).
+
+**Scroll, Stress, 4x.** Profile: per-turn-mount work (render, commit, layout, paint of mounted turns below a mount) and per
+turn boundary work: the request in view was `NavProvider` context state (provider re-render, React's search for readers,
+`ConversationView` re-rendered whole: 60 renders per scroll), `TurnRail` read its list's box on every change (forced layout),
+`useViewTurn` measured every turn each frame, the turn window's far observer asked the selection `isCollapsed` per turn
+(a layout of the dirty page), and each first mount of a request bubble rendered and laid out twice (the pill guess was
+wrong). Changes: the request in view is a store in `state/nav` (`viewTurn`/`onViewTurn`, `useNavState` via
+`useSyncExternalStore`; `ConversationView` reads it on Alt+↑/↓); `contain: layout style` on mounted turn sections (a moved
+turn keeps its paint; checked: no fixed, vertically overflowing or z-stacked turn content); the rail decides from its
+layout; bisection in `useViewTurn` (`lib/bisect`; same answer as the linear scan at 61/61 positions); a `selectionchange`
+flag gates the selection check; `lib/promptShape` starts a bubble from its remembered or learned shape (the layout effect
+still measures and corrects before paint; shapes identical per turn at 1440 and 390). CPU per scroll 6049–7436 → 4855–5727 ms
+(−20 to −23 %), PrePaint 680 → 260, Paint 1220 → 750, tasks over 50 ms of CPU 14–17 → 4–8. Frames > 50 ms: not measured
+reliably (the loaded machine gave 27–77 for either build); the ≤ 15 target is **not shown to be met**. A variant that never
+unmounts (all 100 turns mounted) cut CPU only 17 %: per-frame Layerize/Paint/Commit grow with the mounted document, so
+keeping turns alive was not adopted. Tried and dropped: measuring the bubble only from a ResizeObserver (could not prove no
+one-frame flash); `contain: paint` (no extra gain, clips). scroll-anchor worst 0 px, scroll-on-send, stick-on-open and
+restore-on-reload unchanged.
+
+**Load layout shift.** Reproduced deterministically: 4x CPU with the Markdown (or ToolGroup) chunk held back 2 s by route
+interception gives one 0.159 shift every run: the empty estimated-height turn sections pinned to the end moving as the turns
+mount. The placeholders are invisible until the turn parts are in (they show nothing either way): CLS 0.1602 → 0.0012
+(3/3 runs; no delay and a late Transcript chunk: 0.0003 both). Until then the browser's find does not reach those turns.
+
+**Entry.** 160.57 → 159.85 kB (`lib/turnEnding`: how turns and steps ended, out of `lib/transcript`); after merging the
+integration tip 160.05 → 159.87 kB (`lib/timeSeparator` out of `lib/format`). Not verified: WebKit, the Tauri shell, a real
+harness PTY, the phone layout's scroll.
