@@ -577,7 +577,17 @@ export type SideThinkingEvent = { type: "side.thinking"; seq: number; side_id: s
 export type SideActivityEvent = { type: "side.activity"; seq: number; side_id: string; kind: string; label: string; tool_use_id?: string };
 export type SideToolEvent = { type: "side.tool"; seq: number; side_id: string; tool_use_id: string; title?: string; kind?: string; status?: string };
 
-export type FileEntry = { name: string; path: string; type: "file" | "dir"; size: number };
+export type FileEntry = {
+  name: string;
+  path: string;
+  type: "file" | "dir";
+  size: number;
+  /**
+   * A directory's single-child chain (compact folders; optional, older harnesses omit it): the directories below it while
+   * each is the only entry of its parent and a real directory, at most 32 — `src` → `["main", "java", "com"]`.
+   */
+  chain?: string[];
+};
 export type FileStat = { folder: string; path: string; size: number; mtime: string };
 export type FileContent = FileStat & { content: string };
 export type WriteFileInput = {
