@@ -3,6 +3,9 @@
 # changes and diffs (bash snapshots, revert), approvals (built-in tools and an ACP agent), the message queue,
 # forms and secrets (the secret value must appear nowhere), and the default access mode.
 # Mock model + scripted ACP agent; no network, no third-party agent CLI. Needs Go and python3.
+# Ports: E2E_MOCK_PORT (8830) and E2E_HARNESS_PORT (8831); a busy default moves to the next free port, a busy port you
+# set is an error. Waits are on state, not time: E2E_WAIT_SECS (default 120) bounds each one, and a timeout prints the
+# last state it saw. The queue step holds the first turn open with the mock's [hold:NAME] marker instead of racing it.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 TMP=$(mktemp -d)
@@ -10,33 +13,32 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; sleep 0.3; rm -rf "$TMP"; }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+source "$ROOT/scripts/lib-ports.sh"
+pick_port E2E_MOCK_PORT 8830; pick_port E2E_HARNESS_PORT 8831
+WAIT=${E2E_WAIT_SECS:-120}
 
 # The harness requires a bridge API token on /v1: every harness started below gets this one, every curl sends it
 # (except to the router, which would forward it upstream). The check itself is exercised by the 401 test further down.
 export HARNESS_API_TOKEN="e2e-token-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 curl() {
-  case "$*" in
-    *127.0.0.1:8811*|*127.0.0.1:8812*) command curl "$@" ;;
-    *) command curl -H "Authorization: Bearer $HARNESS_API_TOKEN" "$@" ;;
-  esac
+  command curl --max-time 30 -H "Authorization: Bearer $HARNESS_API_TOKEN" "$@"
 }
 jget() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 SECRET="sk-e2e-Zq81xT0pL9vB"
 
 (cd "$ROOT/apps/harness" && go build -o "$TMP/harness" ./cmd/harness && go build -o "$TMP/fakeacp" ./examples/fakeacp \
   && go build -o "$TMP/mockllm" ./examples/mockllm)
-"$TMP/mockllm" --addr 127.0.0.1:8830 --delay 50ms >"$TMP/mock.log" 2>&1 & PIDS+=($!)
+"$TMP/mockllm" --addr 127.0.0.1:$E2E_MOCK_PORT --delay 50ms >"$TMP/mock.log" 2>&1 & PIDS+=($!)
 
 mkdir -p "$TMP/plugins/fake"
 cat >"$TMP/plugins/fake/plugin.json" <<JSON
 {"name":"fake","version":"1","agents":[{"id":"scripted","label":"Scripted","command":"$TMP/fakeacp",
  "env":{"OCTO_FAKEACP_UNIQUE_SESSIONS":"1"}}]}
 JSON
-BASE=http://127.0.0.1:8831
-HARNESS_DEFAULT_ACCESS=supervised HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:8831 --data-dir "$TMP/data" \
-  --base-url http://127.0.0.1:8830 --plugins-dir "$TMP/plugins" >"$TMP/harness.log" 2>&1 & PIDS+=($!)
-for _ in $(seq 60); do curl -fsS "$BASE/health" >/dev/null 2>&1 && break; sleep 0.2; done
-curl -fsS "$BASE/health" >/dev/null 2>&1 || fail "harness did not start: $(cat "$TMP/harness.log")"
+BASE=http://127.0.0.1:$E2E_HARNESS_PORT
+HARNESS_DEFAULT_ACCESS=supervised HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:$E2E_HARNESS_PORT --data-dir "$TMP/data" \
+  --base-url http://127.0.0.1:$E2E_MOCK_PORT --plugins-dir "$TMP/plugins" >"$TMP/harness.log" 2>&1 & PIDS+=($!)
+wait_http "$BASE/health" "$WAIT" "${PIDS[1]}" || fail "harness did not start: $(cat "$TMP/harness.log")"
 
 [ "$(command curl -s -o /dev/null -w '%{http_code}' "$BASE/v1/projects")" = 401 ] || fail "/v1/projects answered without the API token"
 [ "$(command curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer wrong' "$BASE/v1/projects")" = 401 ] || fail "/v1/projects accepted a wrong token"
@@ -47,18 +49,23 @@ newproject() { # name access [orchestrator] -> prints id; folder $TMP/$1
   local access=""; [ -n "${2:-}" ] && access=",\"access\":\"$2\""
   post POST /v1/projects "{\"name\":\"$1\",\"folders\":[{\"path\":\"$TMP/$1\"}]$access$models}" | jget 'd["id"]'
 }
-idle() { # project: wait for status idle and an empty queue
-  for _ in $(seq 300); do
+idle() { # project: wait for status idle and an empty queue (up to $WAIT s)
+  local end=$((SECONDS + WAIT)) s="" q=""
+  while [ $SECONDS -lt $end ]; do
     s=$(curl -fsS "$BASE/v1/projects/$1" | jget 'd["status"]'); q=$(curl -fsS "$BASE/v1/projects/$1/queue" | jget 'len(d["messages"])')
     [ "$s" = idle ] && [ "$q" = 0 ] && { sleep 0.3; [ "$(curl -fsS "$BASE/v1/projects/$1" | jget 'd["status"]')" = idle ] && return; }
     sleep 0.2
   done
-  fail "project $1 did not go idle"
+  fail "project $1 did not go idle within ${WAIT}s (status $s, queue length $q); the end of the harness log: $(tail -n 5 "$TMP/harness.log")"
 }
-waitfor() { # description, command... : retries for ~30s
-  local what=$1; shift
-  for _ in $(seq 300); do "$@" >/dev/null 2>&1 && return; sleep 0.2; done
-  fail "timed out waiting for $what"
+waitfor() { # description, command... : retries for $WAIT s; on failure prints the last output of the command
+  local what=$1 end=$((SECONDS + WAIT)) out=""; shift
+  while [ $SECONDS -lt $end ]; do
+    "$@" >/dev/null 2>&1 && return
+    sleep 0.2
+  done
+  out=$("$@" 2>&1 || true)
+  fail "timed out after ${WAIT}s waiting for $what (last output: ${out:-none}; tasks: $(curl -fsS "$BASE/v1/projects/${P6:-none}/tasks" 2>&1 | head -c 600))"
 }
 count_of() { curl -fsS "$BASE/v1/projects/$1/$2" | jget "len(d[\"$2\"])"; }
 has_n() { [ "$(count_of "$1" "$2")" -ge "$3" ]; }
@@ -124,17 +131,23 @@ assert files["own-edit.txt"]["source"]=="acp_turn" and files["README.md"]["kind"
 
 echo "== queue: messages sent during a turn run in order"
 P4=$(newproject queue full)
-post POST "/v1/projects/$P4/messages" '{"text":"quick one"}' >/dev/null
+# The first turn is held open by the mock ([hold:q4]) until we release it, so the next three messages are queued
+# whatever the machine's speed. Only then does the queue get inspected.
+post POST "/v1/projects/$P4/messages" '{"text":"quick one [hold:q4]"}' >/dev/null
+held4() { [ "$(command curl -fsS --max-time 10 "http://127.0.0.1:$E2E_MOCK_PORT/v1/mock/held?name=q4")" -ge 1 ]; }
+waitfor "the first queue turn to reach the model (held)" held4
 for t in two three four; do
   [ "$(post POST "/v1/projects/$P4/messages" "{\"text\":\"quick $t\"}" | jget '"queued" in d')" = True ] || fail "quick $t was not queued"
 done
 q=$(curl -fsS "$BASE/v1/projects/$P4/queue")
 qid=$(jget 'd["messages"][2]["id"]' <<<"$q")
 curl -fsS -X DELETE "$BASE/v1/projects/$P4/queue/$qid" -o /dev/null
+[ "$(curl -fsS "$BASE/v1/projects/$P4/queue" | jget 'len(d["messages"])')" = 2 ] || fail "the queue did not hold two messages after the delete"
+command curl -fsS --max-time 10 -X POST "http://127.0.0.1:$E2E_MOCK_PORT/v1/mock/release?name=q4" -o /dev/null
 idle "$P4"
 orch=$(curl -fsS "$BASE/v1/projects/$P4" | jget 'd["orchestrator_agent_id"]')
 texts=$(curl -fsS "$BASE/v1/projects/$P4/agents/$orch/messages" | jget '"|".join(m["content"][0]["text"] for m in d["messages"] if m["role"]=="user" and m["content"][0]["type"]=="text")')
-[ "$texts" = "quick one|quick two|quick three" ] || fail "turn order: $texts"
+[ "$texts" = "quick one [hold:q4]|quick two|quick three" ] || fail "turn order: $texts"
 
 echo "== forms and secrets: the value never leaves the harness"
 P5=$(newproject forms full)
@@ -181,6 +194,9 @@ curl -fsS -X DELETE "$BASE/v1/projects/$P5/secrets/password" -o /dev/null
 
 echo "== memory (M1): task record, digest, search, files"
 P6=$(newproject memory full)
+# The product default is memory.auto_memory "off" (docs/memory.md): no post-turn summary and no task record are written
+# until the project allows it. This section tests what automatic memory does, so the project switches it on first.
+post PATCH "/v1/projects/$P6" '{"memory":{"auto_memory":"allow"}}' >/dev/null
 post POST "/v1/projects/$P6/messages" '{"text":"quick: Нужно уложиться в бюджет проекта [goal: Уложиться в бюджет] [decision: Не превышать бюджет] [fact: The dev server port is 8790] [quote: Нужно уложиться в бюджет]"}' >/dev/null
 idle "$P6"
 nfacts() { [ "$(curl -fsS "$BASE/v1/projects/$P6/tasks" | jget 'sum(len(t["facts"]) for t in d["tasks"])')" -ge "$1" ]; }
@@ -273,6 +289,7 @@ PY
 
 echo "== memory (M6): a question is not a task, work is, a follow-up joins, the list shape"
 P8=$(newproject m6 full)
+post PATCH "/v1/projects/$P8" '{"memory":{"auto_memory":"allow"}}' >/dev/null
 for i in 1 2 3; do
   post POST "/v1/projects/$P8/messages" "{\"text\":\"quick: what is about this repo $i [goal: Know the repo] [fact: Repo note $i]\"}" >/dev/null
   idle "$P8"
