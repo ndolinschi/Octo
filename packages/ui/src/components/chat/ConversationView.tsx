@@ -312,7 +312,9 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
       )}
     >
       {empty ? (
-        <div data-empty-project className="flex flex-[1_0_auto] flex-col justify-end px-(--pad) pt-8 pb-6">
+        // The composer row's edges (EDGES: its padding and its scrollbar gutter), so the title sits on the composer's text edge
+        // in every layout, not 10px off it where the gutter takes room (Chromium, a split group).
+        <div data-empty-project className={cn(EDGES, "flex flex-[1_0_auto] flex-col justify-end pt-8 pb-6")}>
           {!backdrop && appBackdrop !== "off" && <StreakLayer preset={STREAK_EMPTY} theme={theme} mono={appBackdrop === "mono"} />}
           <Suspense fallback={null}>
             <EmptyTitle project={project} agent={agent} />
