@@ -6,23 +6,40 @@
 # It first occupies the default bridge port (8790) with a stand-in listener and asserts that dev.sh moves to another
 # free port (read from its "ready" block), leaves the stand-in alone, refuses an explicitly requested busy port by
 # name, and prints no ERR_PNPM noise on Ctrl+C. Needs python3 for the stand-in listener.
+# It never fails because a stack is already running: when 8790 is taken it moves the whole default set
+# (OCTO_DEV_PORT_BASE) to free ports; $OCTO_TEST_PORT_BASE=N chooses the base (N..N+3 must be free, else it stops
+# with a message). Every wait has a timeout.
 # Usage: scripts/test-dev-sh.sh [--] [--mock] [--router] [--help]    (the flags are passed to dev.sh)
 set -euo pipefail
 
 if [[ "${1:-}" == -- ]]; then shift; fi # `pnpm test:dev-sh -- --router` (pnpm 10 hands the `--` on)
 case "${1:-}" in
   -h | --help)
-    sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 0
     ;;
 esac
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # The default bridge port is what the test occupies; the ports dev.sh really uses are read from its output.
-BUSY_PORT=8790
+source "$ROOT/scripts/lib-ports.sh"
 WANT_ROUTER=0
 for a in "$@"; do [[ "$a" == --router ]] && WANT_ROUTER=1; done
-unset OCTO_DEV_BRIDGE_PORT OCTO_DEV_ROUTER_PORT OCTO_DEV_MOCK_PORT OCTO_DEV_UI_PORT
+unset OCTO_DEV_BRIDGE_PORT OCTO_DEV_ROUTER_PORT OCTO_DEV_MOCK_PORT OCTO_DEV_UI_PORT OCTO_DEV_PORT_BASE
+free_range() { local p; for p in "$1" "$(($1 + 1))" "$(($1 + 2))" "$(($1 + 3))"; do ! port_in_use "$p" || return 1; done; }
+if [[ -n "${OCTO_TEST_PORT_BASE:-}" ]]; then
+  BUSY_PORT="$OCTO_TEST_PORT_BASE"
+  free_range "$BUSY_PORT" || { echo "FAIL: OCTO_TEST_PORT_BASE=$BUSY_PORT: a port in $BUSY_PORT..$((BUSY_PORT + 3)) is in use; choose a free range" >&2; exit 1; }
+  export OCTO_DEV_PORT_BASE="$BUSY_PORT"
+elif port_in_use 8790; then
+  # a stack is running on the defaults: move this test's whole default set to a free range
+  BUSY_PORT=8800
+  until free_range "$BUSY_PORT"; do BUSY_PORT=$((BUSY_PORT + 4)); [[ $BUSY_PORT -lt 9500 ]] || { echo "FAIL: no free port range found" >&2; exit 1; }; done
+  echo "note: port 8790 is busy; the default ports for this test start at $BUSY_PORT"
+  export OCTO_DEV_PORT_BASE="$BUSY_PORT"
+else
+  BUSY_PORT=8790 # other defaults (8791, 1420, ...) may be busy: dev.sh moves those by itself
+fi
 LOG="$(mktemp "${TMPDIR:-/tmp}/octo-dev-sh.XXXXXX")"
 DATA="$(mktemp -d "${TMPDIR:-/tmp}/octo-dev-sh-data.XXXXXX")"
 export HARNESS_DATA_DIR="$DATA"
@@ -36,10 +53,7 @@ fail() {
   exit 1
 }
 
-port_in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
-for p in $BUSY_PORT 1420 8791 8792; do
-  if port_in_use "$p"; then fail "port $p is busy before the test; stop whatever uses it"; fi
-done
+curl() { command curl --max-time 15 "$@"; }
 
 command -v python3 >/dev/null 2>&1 || fail "python3 is needed for the stand-in listener on port $BUSY_PORT"
 # The stand-in: a listener on the default bridge port that must survive the whole run untouched.
