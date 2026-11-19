@@ -27,7 +27,7 @@ lib/                    pure helpers and small hooks: models (names, served mode
                         modelPicker, picker, recap, triage, table, contextMeter, agentGroups, keys, files, buffers (EditorBuffers: Monaco models, type-only import), format, match (+ group ranking), comments, transcript, tools, route,
                         storage, fileLinks, codePalette, highlight (lazy), streak, focus, constants, context, orchestrator
                         (a project's orchestrator state), usage (report arithmetic, chart scale, limits), memory/ (task filters, receipt arithmetic, search form), crumbs
-                        (breadcrumb fit), frontMatter, languages, streakPresets (band geometry per start screen) — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
+                        (breadcrumb fit), frontMatter, languages, streakPresets (band geometry per start screen), branches (the composer's branch chip and picker rows, decision 98) — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
 demo/                   in-memory Bridge with seeded projects (for ?demo= and for scripted checks); its own entry point,
                         `@octo/ui/demo` (`demo/index.ts`), not part of the package root
 styles.css              design tokens (@theme), base rules, Monaco widget overrides

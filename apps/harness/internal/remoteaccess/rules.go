@@ -79,6 +79,7 @@ var rules = []rule{
 	{"DELETE", "/v1/projects/*/sessions", ClassDeny},
 	{"POST", "/v1/projects/*/sessions/import", ClassDeny},
 	{"POST", "/v1/projects/*/sessions/*/worktree", ClassDeny},
+	{"POST", "/v1/projects/*/branches/switch", ClassDeny},
 	{"DELETE", "/v1/sessions", ClassDeny},
 	{"GET", "/v1/sessions/importable", ClassDeny},
 

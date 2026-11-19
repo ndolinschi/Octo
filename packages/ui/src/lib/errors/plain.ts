@@ -34,6 +34,8 @@ const ACTION_NEXT: Record<ErrorAction, (command: string | undefined) => NextStep
   retry: () => ({ kind: "retry" }),
   open_settings: () => null,
   update_agent: () => null,
+  // Decision 98: the branch picker shows its own "Start in a worktree from <branch>" button.
+  use_worktree: () => null,
 };
 
 /**
