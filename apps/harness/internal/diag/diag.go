@@ -93,6 +93,10 @@ type Report struct {
 	ACPTrace TraceReport `json:"acp_trace"`
 	LogTail  []string    `json:"log_tail"`
 	Problems []string    `json:"problems"`
+	// PluginProblems lists every plugin error (also in Problems).
+	PluginProblems []PluginProblem `json:"plugin_problems"`
+	// ModelAPI is the model probe's result (nil when the built-in loop is off or nothing probed).
+	ModelAPI *ModelAPIReport `json:"model_api,omitempty"`
 	// ShowProbeOutput makes Text print the first lines of each probe's output
 	// (`harness doctor --show-probe-output`). Never in JSON, never served.
 	ShowProbeOutput bool `json:"-"`
@@ -139,6 +143,25 @@ type Inputs struct {
 	RouterPending bool
 	// Cloudflared: see Report.Cloudflared.
 	Cloudflared *CloudflaredReport
+	// Plugins are the loaded plugins; each one's errors (a manifest that does not parse, an agent without an id or a
+	// command) is a problem of the report.
+	Plugins []plugins.Plugin
+	// ModelProbe, when set, asks the built-in loop's model API now (a short timeout): reachable, unreachable or
+	// unauthorized, and what was seen.
+	ModelProbe func() (state, detail string)
+}
+
+// PluginProblem is one error of a plugin: its name, its manifest file and the error.
+type PluginProblem struct {
+	Plugin   string `json:"plugin"`
+	Manifest string `json:"manifest"`
+	Error    string `json:"error"`
+}
+
+// ModelAPIReport is whether the built-in loop's model API answers.
+type ModelAPIReport struct {
+	State  string `json:"state"`
+	Detail string `json:"detail"`
 }
 
 // CloudflaredReport is whether Cloudflare's tunnel program (remote access) is installed.
@@ -253,6 +276,24 @@ func Build(in Inputs) Report {
 	case in.RouterPending:
 		r.Router.Note = RouterPendingNote
 	}
+	r.PluginProblems = []PluginProblem{}
+	for _, p := range in.Plugins {
+		manifest := "(built in)"
+		if p.Dir != "" {
+			manifest = filepath.Join(p.Dir, plugins.ManifestName)
+		}
+		for _, e := range p.Errors {
+			r.PluginProblems = append(r.PluginProblems, PluginProblem{Plugin: p.Name, Manifest: manifest, Error: e})
+			r.Problems = append(r.Problems, fmt.Sprintf("plugin %s (%s): %s", p.Name, manifest, e))
+		}
+	}
+	if in.BuiltinOK && in.ModelProbe != nil {
+		state, detail := in.ModelProbe()
+		r.ModelAPI = &ModelAPIReport{State: state, Detail: detail}
+		if state != "reachable" {
+			r.Problems = append(r.Problems, fmt.Sprintf("the built-in agent loop's model API is %s: %s", state, detail))
+		}
+	}
 	r.ACPTrace = TraceReport{Enabled: acptrace.Enabled(), Dir: acptrace.Dir(), Files: acptrace.Files()}
 	if in.Log != nil {
 		r.LogTail = in.Log.Lines(LogLines)
@@ -300,6 +341,9 @@ func (r Report) Text() string {
 	fmt.Fprintf(&b, "login-shell variables child processes get (names only): %s\n", strings.Join(r.ShellEnvSet, ", "))
 	fmt.Fprintf(&b, "provider/router variables set: %s\n", strings.Join(r.EnvSet, ", "))
 	fmt.Fprintf(&b, "built-in loop: available=%v %s\n", r.BuiltinLoop.Available, r.BuiltinLoop.Reason)
+	if m := r.ModelAPI; m != nil {
+		fmt.Fprintf(&b, "  model API: %s (%s)\n", m.State, m.Detail)
+	}
 	fmt.Fprintf(&b, "router: base url %q, detected=%v, capabilities=%s\n", r.Router.BaseURL, r.Router.Detected, strings.Join(r.Router.Capabilities, ","))
 	if r.Router.Note != "" {
 		fmt.Fprintf(&b, "  note: %s\n", r.Router.Note)

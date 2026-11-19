@@ -14,6 +14,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/diag"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
+	"github.com/ndolinschi/Octo/apps/harness/internal/providers"
 	"github.com/ndolinschi/Octo/apps/harness/internal/remoteaccess"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
@@ -24,7 +25,10 @@ func diagnostics(cfg config.Config, reg *plugins.Registry, octo *router.Router, 
 	ring *diag.LogRing, probe func(plugins.Agent) plugins.ProbeReport, tune ...func(*diag.Inputs)) diag.Report {
 	in := diag.Inputs{
 		Version: bridge.Version, DataDir: cfg.DataDir, Agents: reg.Agents(), BuiltinOK: builtinOK, BuiltinWhy: builtinWhy,
-		BaseURL: cfg.BaseURL, Log: ring, Probe: probe,
+		BaseURL: cfg.BaseURL, Log: ring, Probe: probe, Plugins: reg.Plugins(),
+		ModelProbe: func() (string, string) {
+			return providers.ProbeModelAPI(context.Background(), cfg.BaseURL, cfg.APIKey, cfg.OctoKey)
+		},
 	}
 	if octo != nil {
 		in.RouterOn, in.RouterCaps = octo.Enabled(), octo.Capabilities()

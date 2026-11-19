@@ -386,7 +386,9 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
 		bridge.WithDiagnostics(func() any {
 			ok, why := builtin()
-			return diagnostics(cfg, pluginReg, octo, ok, why, logRing, nil)
+			c := cfg
+			c.APIKey = keys.Get() // the key the settings screen may have changed, for the model probe
+			return diagnostics(c, pluginReg, octo, ok, why, logRing, nil)
 		}),
 	}
 	// Remote access (spec 2026-11-14-remote-access-mobile-design.md): off at every start; its control routes live
