@@ -25,7 +25,7 @@ import { Panel, PanelBody, PanelEmpty, PanelFilters } from "../primitives/Panel"
 import { FilterTabs } from "../primitives/FilterTabs";
 import { ViewTabs } from "../primitives/ViewTabs";
 import { Spinner } from "../primitives/Status";
-import { ErrorNotice } from "../shared/ErrorNotice";
+import { ScrollArea } from "../primitives/ScrollArea";
 import { BranchList } from "./BranchList";
 import { CutText, ChecksMark, Counts, TextMenu } from "./parts";
 import { usePullList } from "./usePullList";
@@ -343,10 +343,22 @@ function Picker(props: {
                 </div>
               )}
             </PanelEmpty>
-          ) : state.error && !ready && resume.length === 0 ? (
-            // Nothing else to show: the tab's empty state, as "not available" above and every tool tab's load failure (centred,
-            // one text edge), not a tinted card from the pane's edge under the views.
-            <ListFailed error={state.error} retrying={updating} onRetry={reload} />
+          ) : state.error && !ready ? (
+            // The tab's empty state, as "not available" above and every tool tab's load failure (centred, one text edge, at every
+            // width), not a tinted card from the pane's edge under the views. Reviews in progress stay reachable under it.
+            <div className="flex h-full min-h-0 flex-col">
+              <ListFailed error={state.error} retrying={updating} onRetry={reload} />
+              {resume.length > 0 && (
+                <ScrollArea className="max-h-[40%] shrink-0 px-pane pb-2">
+                  <section aria-label="Reviews in progress" className="flex flex-col gap-1.5">
+                    <SectionHeader inset>Reviews in progress</SectionHeader>
+                    {resume.map((r) => (
+                      <OpenRow key={r.id} r={r} now={now} onOpen={() => props.onOpen(r.id)} />
+                    ))}
+                  </section>
+                </ScrollArea>
+              )}
+            </div>
           ) : available && rows.length === 0 && !typed && resume.length === 0 ? (
             <PanelEmpty title="No open pull requests">
               There is nothing open on {ready.repo ?? "this repository"} right now. Paste an address or type a number above to review a closed one.
@@ -354,17 +366,6 @@ function Picker(props: {
           ) : (
             <PanelBody>
               <div>
-                {/* The list is not available, but reviews in progress are: say why above them (a tone, no outline). */}
-                {state.error && !ready && (
-                  <div className="pb-3">
-                    <ErrorNotice
-                      title="The pull requests did not load"
-                      fields={{ ...listFailure(state.error), details: state.error, action: "retry" }}
-                      onRetry={reload}
-                      retrying={updating}
-                    />
-                  </div>
-                )}
                 {ready && !available && (
                   <ViewNotice
                     form="block"
