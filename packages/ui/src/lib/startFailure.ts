@@ -1,5 +1,5 @@
 import type { Agent, TurnOutcome } from "@octo/agent-client";
-import { turnWarning } from "./transcript";
+import { turnWarning } from "./turnEnding";
 
 /**
  * Its own module: only the lazy empty-project chunks read it, so it stays out of the entry (bundle budget).

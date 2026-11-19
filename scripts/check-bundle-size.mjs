@@ -67,6 +67,14 @@ import { gzipSync } from "node:zlib";
  * kept out of initial JS); first-paint entry carries only `browser:<id>` tab layout/info, `GLYPH.browser`, tab-strip pin/title
  * state, `openBrowser`, staged design-note count subscription, and `rare.ts` forwarders: 158.10 -> 160.01 kB gzip.
  * Budget = measured + 1.0 = 161.0.
+ *
+ * Performance pass 3 (2026-11-19): the integration tip measured 160.57 kB (0.43 of room); this pass's scroll work put 0.08 into
+ * entry modules (the request-in-view store in `state/nav`, the bisection in `chat/turnTracking`). How turns and steps ended
+ * (`isInterruption`, `stepState`, `turnHead`, `turnDurationMs`, `turnFailureText`, `spawnStatus`, `compactionSlots`,
+ * `turnWarning`, the restart texts) moved from `lib/transcript` (which the entry imports for `buildTurns` and the request
+ * summaries) to `lib/turnEnding`, read only by the transcript, tool-line and delegation chunks: 159.85 kB, 1.15 of room.
+ * Next candidates, unchanged: `formatSeparator`/`needsSeparator` (`lib/format`; also `v7/changes`, `memory/sessions`),
+ * `useLoginHint`, `useCopy`, the scroll spots, `useRequests`/`projectRowLines`. Budget unchanged.
  */
 const BUDGET_KB = 161.0;
 

@@ -1,5 +1,6 @@
 import { acpCall } from "./tools";
-import type { StepState, TurnEnd } from "./transcript";
+import type { TurnEnd } from "./transcript";
+import type { StepState } from "./turnEnding";
 
 /*
  * retest3 G1/G2: a tool call as an action with its outcome. Pure view models for the opened call's body (its own chunk, with

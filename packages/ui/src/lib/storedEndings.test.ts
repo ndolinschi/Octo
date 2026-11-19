@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { storedEndingLookup, storedEndingOf, storedEndings } from "./storedEndings";
-import { RESTART_EMPTY_HINT, RESTART_INTERRUPTION, RESTART_KEPT_HINT } from "./transcript";
+import { RESTART_EMPTY_HINT, RESTART_INTERRUPTION, RESTART_KEPT_HINT } from "./turnEnding";
 
 test("B4: a stored exchange gives a request's ending and duration, only for the prompt it started with", () => {
   const endings = storedEndings([

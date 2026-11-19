@@ -1,5 +1,5 @@
 import type { ErrorAction, ErrorFields, MemoryExchange, Message } from "@octo/agent-client";
-import { RESTART_EMPTY_HINT, RESTART_INTERRUPTION, RESTART_KEPT_HINT, type StoredEnding } from "./transcript";
+import { RESTART_EMPTY_HINT, RESTART_INTERRUPTION, RESTART_KEPT_HINT, type StoredEnding } from "./turnEnding";
 
 /*
  * B4, how each request ended as the harness stored it: its own chunk, imported with the session read that needs it (the

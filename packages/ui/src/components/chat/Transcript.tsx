@@ -10,19 +10,8 @@ import { guessOneLine, promptShape, rememberPromptShape } from "../../lib/prompt
 import { useCopy } from "../../lib/hooks";
 import { splitComments } from "../../lib/comments";
 import { splitDesignNotes } from "../../lib/browser/designNotes";
-import {
-  buildTurns,
-  compactionSlots,
-  promptText,
-  stepState,
-  turnDurationMs,
-  turnFailureText,
-  turnHead,
-  turnWarning,
-  type StoredEnding,
-  type Turn,
-  type TurnEnd,
-} from "../../lib/transcript";
+import { buildTurns, promptText, type Turn, type TurnEnd } from "../../lib/transcript";
+import { compactionSlots, stepState, turnDurationMs, turnFailureText, turnHead, turnWarning, type StoredEnding } from "../../lib/turnEnding";
 import type { StoredEndingLookup } from "../../lib/storedEndings";
 import { useStopping } from "../../lib/stopping";
 import { hasLongWord } from "../../lib/composerInput";

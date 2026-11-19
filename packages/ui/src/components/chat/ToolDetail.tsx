@@ -20,7 +20,8 @@ import {
   viewState,
   type ToolKind,
 } from "../../lib/toolView";
-import { stepState, type ToolUse, type TurnEnd } from "../../lib/transcript";
+import { type ToolUse, type TurnEnd } from "../../lib/transcript";
+import { stepState } from "../../lib/turnEnding";
 import { HighlightedCode } from "../shared/Markdown";
 import { EditBody } from "./tools/EditBody";
 import { BodyFrame, INSET, useCallTimes, type RawCall } from "./tools/parts";
