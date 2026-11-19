@@ -121,7 +121,7 @@ export type ProjectSummary = {
   attention?: ProjectAttentionKind;
   /** Parallel sessions (schema 15): the project's main sessions (not archived) by live state. */
   sessions?: ProjectSessionsSummary;
-  /** Set with status "unavailable": the catalogue case (the file's path in `details`). */
+  /** With status "unavailable": why the saved data cannot be opened (the file in `details`); otherwise a missing project folder (`folder_missing`). */
   error?: ErrorInfo;
 };
 

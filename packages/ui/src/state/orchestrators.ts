@@ -36,8 +36,8 @@ export function useOrchestrators(projects: readonly ProjectSummary[] | null): Ma
     void version;
     const out = new Map<string, OrchestratorState>();
     for (const p of projects ?? []) {
-      // A project whose saved data cannot be opened needs the user, with the harness's sentence.
-      if (p.status === "unavailable") {
+      // A project whose saved data cannot be opened, or whose folder is missing, needs the user, with the harness's sentence.
+      if (p.status === "unavailable" || (p.error && p.status === "idle")) {
         out.set(p.id, { kind: "needs", error: p.error?.message ?? null, at: null });
         continue;
       }

@@ -101,6 +101,9 @@ func revertUnavailable(note string) *Error {
 	return &Error{Kind: KindConflict, Code: "revert_unavailable", Message: msg}
 }
 
+// folderMissing: a project folder is gone (409 folder_missing, which folder in the message, its path in details).
+func folderMissing(u *usererr.Error) *Error { return of(KindConflict, u) }
+
 func queueFull() *Error { return of(KindConflict, usererr.QueueFull(projectstore.MaxQueue)) }
 
 // storeErr maps a store failure that has a clear meaning for the caller: a

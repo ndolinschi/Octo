@@ -295,3 +295,13 @@ Octo's copy when the person asks. The state lasts until the next start (restore 
 the project as needing the user with the message as its tooltip, and opening it shows the structured notice (with Retry
 and Delete project). Verified: `TestServeStartsWithUnavailableProjects`, `TestServeStopsOnDamagedRegistry` (real data
 folders, real `serve`) and the reviewer's reproduction; the UI was type-checked, not driven in a browser.
+
+## As built — a missing project folder (2026-11-19)
+
+`projectstore.Folder.Missing()` stats the folder (exists, is a folder, can be opened). A project whose folder is gone carries
+`error` (the `folder_missing` case: which folder, its path in `details`) in `GET /v1/projects` and `GET /v1/projects/{pid}`
+while its status stays as it is, so it can still be opened and its settings fixed; the sidebar row shows it as needing the
+user with the message. Sending a message, starting a terminal, starting a Processes run and the file routes of that folder
+answer 409 `folder_missing` instead of `internal` / `start_failed: fork/exec …`. The deleted-project screen
+(`ProjectGone`, data-project-gone) stays for a 404 only. Verified: `TestServeMissingProjectFolder` (real serve, the folder
+renamed away) and the reviewer's reproduction; the UI hunk was type-checked only.

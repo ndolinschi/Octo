@@ -196,13 +196,18 @@ func resolveDir(ctx context.Context, db *projectstore.DB, cmd projcfg.Command, r
 			return "", conflict("no_folder", "the project has no folder to run the command in")
 		}
 		base = folders[0].Path
-		if cmd.Cwd == "" {
-			return base, nil
-		}
+		chosen := folders[0]
 		for _, f := range folders {
 			if f.Label == cmd.Cwd {
-				return f.Path, nil
+				chosen = f
 			}
+		}
+		// A folder moved away: say which, not "fork/exec /usr/bin/bash: no such file or directory".
+		if u := chosen.Missing(); u != nil {
+			return "", u
+		}
+		if cmd.Cwd == "" || chosen.Label == cmd.Cwd {
+			return chosen.Path, nil
 		}
 	}
 	rel := filepath.FromSlash(strings.ReplaceAll(cmd.Cwd, "\\", "/"))
