@@ -5,7 +5,8 @@ import { MODES } from "../../lib/modes";
 import { Chip } from "../primitives/Chip";
 import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
-import { useChipMenu, type ChipProps } from "./ComposerChips";
+import type { ChipProps } from "./ComposerChips";
+import { useChipMenu } from "./chipMenu";
 
 const MODE_ICON: Record<ProjectMode, LucideIcon> = { agent: Wrench, ask: MessageCircleQuestionMark, plan: ListChecks };
 

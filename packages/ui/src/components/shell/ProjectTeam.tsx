@@ -59,7 +59,8 @@ export function ProjectTeam({ orchestrator, compact = false }: { orchestrator: O
           variant="quiet"
           size="sm"
           data-team-button
-          className="relative"
+          // Item 8: a count, not a command — dim tabular figures and 12px (with the strip's 4) before the commands beside it.
+          className="group/team relative mr-2 tabular-nums"
           title={`${detail}\n${teamHint}`}
           aria-label={working ? `${label}, working` : label}
           onClick={() => {
@@ -72,8 +73,16 @@ export function ProjectTeam({ orchestrator, compact = false }: { orchestrator: O
             {/* Polish step 2 (F3): the slot always shows a glyph (the people glyph at rest), like its neighbours' play glyphs. */}
             {working ? <StateGlyph state="working" /> : <Glyph icon={Users} size={14} />}
           </span>
-          {compact && <span aria-hidden>{team.length}</span>}
-          <span data-team-label aria-hidden={compact || undefined} className={compact ? "pointer-events-none invisible absolute" : undefined}>
+          {compact && (
+            <span aria-hidden className="text-fg-3 group-hover/team:text-fg">
+              {team.length}
+            </span>
+          )}
+          <span
+            data-team-label
+            aria-hidden={compact || undefined}
+            className={cn("text-fg-3 group-hover/team:text-fg", compact && "pointer-events-none invisible absolute")}
+          >
             {label}
           </span>
         </Button>

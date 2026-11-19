@@ -1,7 +1,7 @@
 /**
  * Walk B13: what each tool tab is for, in one line a newcomer understands. The panels show it behind the (i) after their
  * title (on the phone: "About this panel" in the header's "⋯"), the tabs as their tooltip (`dock/tabInfo`), and the palette
- * searches it (with `TOOL_HINT`, `lib/toolHint`, as the row's detail): one source.
+ * searches it (with `TOOL_HINT` in `state/workspace/paletteCommands.ts` as the row's detail): one source.
  */
 export const TOOL_PURPOSE = {
   sessions: "Your sessions with Octo, and the agents it started.",

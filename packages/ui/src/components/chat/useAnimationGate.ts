@@ -1,5 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
-import { usePageVisible } from "../../lib/hooks";
+import { usePageVisible } from "../../lib/hooksMore";
 
 /**
  * Decision 45: a work-in-progress effect pauses while the window is hidden or its element is off-screen (or in a

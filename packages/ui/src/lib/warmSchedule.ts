@@ -17,9 +17,10 @@ export function saveData(nav: unknown = typeof navigator === "undefined" ? undef
 /** Schedules `run` once the main thread is idle; returns a cancel. */
 export type IdleScheduler = (run: () => void) => () => void;
 
-export const browserIdle: IdleScheduler = (run) => {
+/** `timeout`: the longest the work waits for an idle moment. */
+export const browserIdle = (run: () => void, timeout = 4000): (() => void) => {
   if (typeof window.requestIdleCallback === "function") {
-    const id = window.requestIdleCallback(run, { timeout: 4000 });
+    const id = window.requestIdleCallback(run, { timeout });
     return () => window.cancelIdleCallback(id);
   }
   // WebKit has no idle callback: a timer long enough to land after the first paint's work.

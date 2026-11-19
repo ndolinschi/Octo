@@ -1,5 +1,5 @@
 import type { AgentStatus, Tier } from "@octo/agent-client";
-import { agentGlyph } from "../../lib/stateGlyph";
+import { agentGlyph, orchestratorGlyph } from "../../lib/stateGlyph";
 import { modelName } from "../../lib/models";
 import { StateGlyph } from "./StateGlyph";
 
@@ -36,4 +36,17 @@ export function isTier(v: unknown): v is Tier {
 /** A model setting as people read it ("Sonnet 5.5", "Claude Code · Opus 5.5"): `lib/models.ts`, without agent labels. */
 export function modelLabel(model: string): string {
   return modelName(model);
+}
+
+/** Something is running: the working ring centred in a `box`-sized square. */
+export function RunningDot({ box = 12, className }: { box?: number; className?: string }) {
+  return <StateGlyph state="working" size={box >= 16 ? 14 : 12} box={box} {...(className === undefined ? {} : { className })} />;
+}
+
+/**
+ * The orchestrator's state in one 16px slot (sidebar rows, Home, the header): its ring at 14px — working (turning arc),
+ * needs you (pulsing dot, `warn`), unseen activity (accent disc), not started (dashed), idle (thin ring).
+ */
+export function OrchestratorGlyph({ state, unseen = false }: { state: "working" | "needs" | "idle" | "new"; unseen?: boolean }) {
+  return <StateGlyph state={orchestratorGlyph(state, unseen)} size={14} box={16} label />;
 }

@@ -1,4 +1,3 @@
-import { warmBridgeClient } from "@octo/agent-client";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "../lib/cn";
 import { loadPref, PREFS, sidebarViewCodec } from "../lib/storage";
@@ -27,8 +26,6 @@ import { TitleBar } from "../components/shell/TitleBar";
 import { StatusBar } from "../components/status/StatusBar";
 import { StatusSlotsContext } from "../state/statusSlots";
 import { ProjectWorkspace } from "./ProjectWorkspace";
-import { warmDrag } from "../components/dock/drag";
-import { transcriptPart } from "../components/chat/transcriptPart";
 import { ActivityProvider } from "../state/activity";
 import { readyLazy } from "../lib/readyLazy";
 import { registerWarm } from "../lib/warm";
@@ -61,25 +58,6 @@ registerWarm("project-dialog", projectDialogPart.fetch);
 const settingsPart = readyLazy(() => import("../components/settings/SettingsPage").then((m) => m.SettingsPage));
 const SettingsPage = settingsPart.Component;
 registerWarm("settings", settingsPart.fetch);
-/**
- * Idle warm-up order (`lib/warm`), most likely first: the palette, the model list, Settings, then the tool tabs the "+" picker
- * offers. Each key's chunk is registered next to its lazy component; one key per idle slot.
- */
-/** Idle warming starts this long after the shell mounts (the project's first load has the main thread before that). */
-const SHELL_SETTLES_MS = 1500;
-const IDLE_WARM = [
-  "palette",
-  "model",
-  "settings",
-  "tab-picker",
-  "project-dialog",
-  "tool:files",
-  "tool:terminal",
-  "tool:review",
-  "tool:browser",
-  "tool:processes",
-  "tool:changes",
-];
 /** Decision 53: the connect sheet and the no-provider screen (their own chunks). */
 const ConnectSheet = lazy(() => import("../components/providers/ConnectSheet").then((m) => ({ default: m.ConnectSheet })));
 const ConnectScreen = lazy(() => import("../components/providers/ConnectScreen").then((m) => ({ default: m.ConnectScreen })));
@@ -220,52 +198,17 @@ function Shell() {
   useEffect(() => setDrawerOpen(false), [route.projectId, route.agentId, route.sessionId, drawerMode]);
   useEscape(drawerMode && drawerOpen && !palette, () => setDrawerOpen(false));
 
-  // The first assistant message must not flash as plain text before Markdown arrives: fetch that chunk right after first
-  // paint (idle callback; WebKit has none, so a short timer), still outside the initial bundle.
-  useEffect(() => {
-    const warm = () => {
-      warmBridgeClient();
-      warmDrag();
-      void import("../components/shared/Markdown").catch(() => undefined);
-      void transcriptPart.fetch().catch(() => undefined);
-      void import("../components/chat/ToolGroup").catch(() => undefined);
-      void import("../components/chat/DelegationGroup").catch(() => undefined);
-      void import("../components/chat/TurnBanner").catch(() => undefined);
-      void import("../components/shell/DiscardDialogs").catch(() => undefined);
-      void import("../components/primitives/Menu").catch(() => undefined);
-      void import("../components/chat/ComposerPills").catch(() => undefined);
-      void import("../components/shell/SidebarDrawer").catch(() => undefined);
-      void import("../components/chat/ContextRing").catch(() => undefined);
-      void import("../components/chat/SessionMenu").catch(() => undefined);
-    };
-    if (Reflect.has(window, "requestIdleCallback")) {
-      const id = window.requestIdleCallback(warm, { timeout: 500 });
-      return () => window.cancelIdleCallback(id);
-    }
-    const id = window.setTimeout(warm, 50);
-    return () => window.clearTimeout(id);
-  }, []);
-
-  // The lazy surfaces' chunks (palette, model list, Settings, tool tabs), so their first open is as fast as the second
-  // (`lib/warmSchedule`, its own chunk, in right after the first paint): on intent (hover, focus or press of the control that
-  // opens one; holding Ctrl/Cmd for the palette), and on idle once the shell has settled, one chunk per idle slot (none under
-  // Save-Data). A failed warm-up is retried by the real open, which shows the error.
+  // Warming after the first paint (`app/warmApp`, its own chunk): the chunks the first minutes need (Markdown, the transcript,
+  // tool lines…), then the lazy surfaces on intent and on idle. A failed load of that chunk only means nothing is warmed: every
+  // surface still loads on first open.
   useEffect(() => {
     let stop: () => void = () => undefined;
     let live = true;
-    void import("../lib/warmSchedule").then(
+    void import("./warmApp").then(
       (m) => {
-        if (!live) return;
-        const unlisten = m.installIntentWarming(document);
-        let cancel: () => void = () => undefined;
-        const id = window.setTimeout(() => (cancel = m.warmOnIdle(IDLE_WARM)), SHELL_SETTLES_MS);
-        stop = () => {
-          unlisten();
-          window.clearTimeout(id);
-          cancel();
-        };
+        if (live) stop = m.startWarming(document);
       },
-      () => undefined, // Nothing is warmed then: every surface still loads on first open.
+      () => undefined,
     );
     return () => {
       live = false;

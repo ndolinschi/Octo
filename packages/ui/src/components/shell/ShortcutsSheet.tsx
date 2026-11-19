@@ -128,7 +128,7 @@ function Sheet({ onClose }: { onClose(): void }) {
             <SectionHeader as="h3">{g.title}</SectionHeader>
             <ul className="flex flex-col">
               {g.items.map((s) => (
-                <li key={s.does} className="flex min-h-ctl-md items-center justify-between gap-3 py-1 text-sm text-fg">
+                <li key={s.does} className="flex min-h-row items-center justify-between gap-3 py-0.5 text-sm text-fg">
                   <span className="min-w-0">{s.does}</span>
                   <span className="flex shrink-0 items-center gap-1 text-fg-2">
                     <span className="sr-only">{s.keys.map(name).join(" plus ")}</span>

@@ -1,4 +1,3 @@
-import { orchestratorGlyph } from "../../lib/stateGlyph";
 import { StateGlyph } from "./StateGlyph";
 import { spinnerBox, type ControlSize } from "../../lib/controls";
 
@@ -11,17 +10,4 @@ import { spinnerBox, type ControlSize } from "../../lib/controls";
 export function Spinner({ size = 12, className = "text-fg-2" }: { size?: ControlSize | number; className?: string }) {
   const box = spinnerBox(size);
   return <StateGlyph state="working" size={box >= 14 ? 14 : 12} box={box} className={className} />;
-}
-
-/** Something is running: the working ring centred in a `box`-sized square. */
-export function RunningDot({ box = 12, className }: { box?: number; className?: string }) {
-  return <StateGlyph state="working" size={box >= 16 ? 14 : 12} box={box} {...(className === undefined ? {} : { className })} />;
-}
-
-/**
- * The orchestrator's state in one 16px slot (sidebar rows, Home, the header): its ring at 14px — working (turning arc),
- * needs you (pulsing dot, `warn`), unseen activity (accent disc), not started (dashed), idle (thin ring).
- */
-export function OrchestratorGlyph({ state, unseen = false }: { state: "working" | "needs" | "idle" | "new"; unseen?: boolean }) {
-  return <StateGlyph state={orchestratorGlyph(state, unseen)} size={14} box={16} label />;
 }
