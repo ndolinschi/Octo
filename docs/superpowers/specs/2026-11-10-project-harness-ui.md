@@ -4663,6 +4663,78 @@ to be the macOS shell and draws the three lights from the same constants; `apps/
 (dark/light, sidebar shown/hidden, default/380 wide, full screen, plain browser): before 34 failures (centre 21 vs 20, red left 16 vs 24, gap 12 vs 4), after all hold.
 **Not verified:** the real window (this environment is not macOS and cannot build the Tauri shell); on macOS 15 and older (lights 20 apart) the green-to-toggle
 gap would be 10 px, not 4 (the UA cannot tell the versions apart).
+## As built — a project of several folders: names that stay apart, the tree column, the new-session edge (2026-11-19)
+
+Owner (macOS, a project "PCMS + PCFS" of two folders whose names share `product-configuration-`): "project and multiple
+projects looks not correct and not balanced". Reproduced in `?demo=1` with a demo project of the same shape ("PCMS + PCFS":
+`product-configuration-management-system` + `product-configuration-facade-service`; and "PCFS", one of them), Chromium,
+1440×900 and 1100×700 dark and light, 390×700 phone. Decisions:
+
+a. **One middle-cut for names, and siblings keep what tells them apart.** `lib/truncate.middleSplit` / `lib/distinctSplit` (kept out of the entry chunk) /
+   `primitives/MiddleText` are the one helper: a name is cut by CSS only when its box is too narrow, its end stays; with
+   `siblings` (the other names shown beside it) the tail is everything after the longest head it shares with one of them, from
+   the word break before the difference, and the head gives way first (down to its first letter, `min-w-4`) before the tail is
+   cut. Lengths count code points (no split surrogate pairs). Used by the file tree's roots, the status bar's folder, the
+   sidebar's project meta, and (already) chips and list rows; ordinary titles and prose keep the CSS end-ellipsis. Full name:
+   always in the tooltip. Tests: `lib/truncate.test.ts`, `lib/distinctSplit.test.ts` (shared-prefix siblings, the owner's
+   `…-management-data-subsystem` pair, short names, non-ASCII and emoji).
+   A path without spaces (a compact folder chain of decision 98: "src/main/java", "com.wsgc.….subsystem") keeps its last folder whole (up to
+   24 characters); its tooltip is the chain's full path.
+   Measured, Files tree roots at 1440×900: "product-configuration-ma…" twice → "product-co…management-system" /
+   "product-configur…facade-service" (tails 123/88 px, whole).
+b. **Status bar, one rule.** One folder: its name, middle-cut. Several: "2 folders" (a first name and "+1" read as that folder
+   alone; the project's name is the heading, the composer chip and the tab already — one name per thing). The tooltip names
+   each folder with its path. Before: "product-configuration-… +1" (192 px); after: "2 folders" (86 px).
+c. **Sidebar session meta (the flat Sessions list) is the project's name, and the title wins.** ListRow `metaYields`: the title
+   keeps its natural width up to what leaves the meta 64 px (+ the 8 px gap), the meta takes the rest (no 33% cap any more,
+   the `li[data-tree-level="1"]` rule in `styles.css` is gone). A name of words ends with "…"; one long identifier keeps both
+   ends (`MiddleText`). Left out when every listed session is in one project. `nodeText` reads a `MiddleText`'s words, so the
+   row's accessible name keeps the project. Before: "New session · PCMS + …" (meta 61 px); after: "New session · PCMS + PCFS"
+   (84 px whole); long titles unchanged (124 px, meta 64 px).
+d. **The tree column's default follows the file view.** A column nobody dragged (stored width 0, `state/fileViewPrefs`
+   `TREE_DEFAULT`; the old fixed 220 every untouched project stored reads as the default) is 40% of the view, 220–360, never
+   leaving the editor less than its 360 (`lib/treeLayout`). It depends on the layout only (decision 79), never on whether a
+   file is open (decision 85). Dragging stores a width (200–480, per group, the project's default); double-click on the edge
+   goes back to the default. The edge is now the shared `primitives/ResizeHandle` (drag coalesced per frame, ←/→ 16, Shift 64;
+   Home/End of the old local handle are gone). Measured at 1440×900 with Files beside the conversation: column 220 → 254 of a
+   634 px view; the owner's 760 px view: 304.
+e. **Roots read as roots, each on its own.** Kept as the tree's section heads (12 px caption, chevron, 8 px above every root
+   but the first, own expand state per root); only the label changed (a). Filter, reveal and the file menu were not changed
+   and work per root (checked: filtering shows matches under each root).
+f. **New-session heading on the composer's text edge, in every layout.** The title block uses the composer row's edges
+   (`EDGES`: the padding and the scrollbar gutter) and the shell's 2 px + the text's 12 px, so the first letter of the heading,
+   of a notice and of the prompt's placeholder start on one line. Before: wide 542 vs text 544 (−2), split (Files open) 305 vs
+   317 (−12: the composer row's scrollbar gutter, absent from the title's row, in Chromium); after: 544/544 and 317/317; phone
+   26 (on the project chip's glyph). Vertical position measured and kept: the block's centre is 8 px above the pane's centre in
+   both wide and split (title top 341 in both), the same rule as before; Home is a list page and starts under the band on purpose.
+g. **Naming, as found.** The project's name: heading, composer chip, Files bar's root crumb (one folder or several), tab
+   tooltip, Home rows, the sidebar's tree. A folder's name: tree roots, the file breadcrumb, mentions, the terminal's folder menu,
+   Processes, Changes group heads, the composer's folder menu. Unchanged; only the cutting of both changed.
+
+h. **Review, one anatomy in every state** (owner, screenshot of the same project: "uneven"). Before: the 40 px bar was empty but
+   for the refresh button in the error state, and the folder menu sat at the right end of the view-tabs row ("Pull requests |
+   Local branches … product-configuration-management-data-subsystem ⌄"); in a one-folder project the bar held the repository.
+   Now the bar holds what is reviewed at its 8 px inset (as Files' crumb): the folder menu when the project has several (its
+   text cut with the siblings rule of a), then the repository (menu or text); with no repository known (loading, a failure)
+   the folder alone (a one-folder project: its name, quiet). Status and refresh stay at the right; the view row holds only the
+   views. Measured (`?review=aborted,noopen`, 1440×900 and 1100×700, dock 634 and 365 px): bar text "" → "product-configuration-
+   ⋯management-system" (lead 805,47 307×28); view row "Pull requests Local branches product-configuration-managemen…" →
+   "Pull requests Local branches".
+i. **A list that did not load, with nothing else to show, is the tab's empty state** (`PanelEmpty`, centred, one text edge, as
+   "not available" in the same tab and the load failures of the other tool tabs) with Retry and Details, in an `alert`; the
+   tinted block from the pane's edge (box 8 px, text 44 px, under tabs whose text is at 16) is gone. With reviews in progress
+   below, the structured `ErrorNotice` stays in the list, on the rows' box edge, as the "not available" block there. The
+   reason is the catalogue's: `lib/review/pull.listFailure` maps a client cut-off ("Fetch is aborted", "The operation was
+   aborted", a timeout) to "GitHub did not answer in time, so the request was cancelled."; the raw text is only under Details.
+   The title colour and frame are the shared `Notice`'s (decision 81: no coloured frame; glyph and title carry the tone) and
+   unchanged. Demo knobs: `?review=aborted` (the client cuts the list request off) and `noopen` (no review in progress).
+j. **Composer chips at this width** (checked, unchanged): under 460 px of composer the mode and permission chips drop their
+   labels first and the model chip keeps its own (it is the one that changes most and says most); a bare chip keeps its
+   accessible name and tooltip ("Mode: Agent", "Permissions: Ask first"; `primitives/Chip`).
+
+Verified: the gates in the commit of this change (lint, format, unit tests, build and bundle, spacing-audit, width-stability,
+layout-shift, file-open-stability, composer-fit). Not verified: macOS WebKit (the owner's machine), a real harness and a real
+GitHub failure (the demo's AbortError stands in for it).
 
 ## Decision 98 — compact folders in the file tree (2026-11-19)
 

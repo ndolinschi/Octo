@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { PERSIST_TREE_MS, FOCUS_REQUEST_TTL_MS } from "../lib/constants";
 import { PREFS, usePersistentState } from "../lib/storage";
-import { TREE_DEFAULT, TREE_MAX, TREE_MIN, clamp, treePrefCodec } from "./fileViewPrefs";
+import { TREE_DEFAULT, TREE_MAX, TREE_MIN, columnWidth, treePrefCodec } from "./fileViewPrefs";
 import { createRequiredContext } from "../lib/context";
 
 export { TREE_DEFAULT, TREE_MAX, TREE_MIN };
@@ -51,7 +51,7 @@ export function FileViewProvider({ projectId, children }: { projectId: string; c
   );
   const column = useCallback((groupId: string) => groups[groupId] ?? initial, [groups, initial]);
   const setColumnOpen = useCallback((groupId: string, open: boolean) => patch(groupId, { open }), [patch]);
-  const setColumnWidth = useCallback((groupId: string, width: number) => patch(groupId, { width: clamp(width) }), [patch]);
+  const setColumnWidth = useCallback((groupId: string, width: number) => patch(groupId, { width: columnWidth(width) }), [patch]);
   const requested = useRef(0);
   const focusTree = useCallback(
     (groupId?: string) => {

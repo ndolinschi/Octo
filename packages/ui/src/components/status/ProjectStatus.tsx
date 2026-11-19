@@ -13,6 +13,7 @@ import { useProject } from "../../state/project";
 import { useStatusSlots } from "../../state/statusSlots";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Glyph } from "../primitives/Glyph";
+import { MiddleText } from "../primitives/MiddleText";
 import { GLYPH } from "../primitives/glyphs";
 import { StatusButton } from "./StatusButton";
 
@@ -58,15 +59,21 @@ function Start() {
   const ws = useOptionalWorkspace();
   const changed = useChangedFiles();
   if (!project) return null;
-  const first = project.folders[0];
-  const more = project.folders.length - 1;
+  const { folders } = project;
+  const first = folders[0];
   return (
     <>
       {first && (!ws || ws.toolEnabled("files")) && (
-        <StatusButton className="max-w-48 min-w-0 shrink" title={`${first.path}\nOpen the project's files`} onClick={() => ws?.openTool("files")}>
+        // One folder: its name, cut in the middle so its end stays. Several: how many ("2 folders"); a first name and "+1"
+        // read as that folder alone, and the project's own name is the heading, the chip and the tab already. The tooltip
+        // names each folder with its path.
+        <StatusButton
+          className="max-w-48 min-w-0 shrink"
+          title={`${folders.map((f) => f.path).join("\n")}\nOpen the project's files`}
+          onClick={() => ws?.openTool("files")}
+        >
           <Glyph icon={GLYPH.files} size={14} />
-          <span className="truncate">{first.label}</span>
-          {more > 0 && <span className="shrink-0 tabular-nums">+{more}</span>}
+          {folders.length > 1 ? <span className="tabular-nums">{folders.length} folders</span> : <MiddleText text={first.label} />}
         </StatusButton>
       )}
       {changed > 0 && (!ws || ws.toolEnabled("changes")) && (

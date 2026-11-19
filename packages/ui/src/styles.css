@@ -579,10 +579,27 @@
 [data-tree-row]:is(:hover, :focus-within) :has(> [data-tree-meta]) {
   display: none;
 }
-/* A flat Sessions row's meta is its project's name: it stops at a third of the row (ListRow's 40% is for a time or a count). */
-li[data-tree-level="1"] :has(> [data-tree-meta]) {
-  max-width: 33%;
+/* MiddleText with a distinguishing tail (lib/distinctSplit): the head gives way first, down to its first letter; then the tail. */
+.octo-mid[data-distinct] > :first-child {
+  min-width: calc(var(--spacing) * 4);
 }
+.octo-mid[data-distinct] > :last-child {
+  max-width: calc(100% - var(--spacing) * 4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* ListRow `metaYields`: no shrink weight on the title (it would shave a subpixel off a title that fits and draw a false
+   ellipsis); a cap that leaves the meta 64px and the 8px gap instead. */
+[data-meta-yields] > :first-child {
+  flex-shrink: 0;
+  max-width: calc(100% - var(--spacing) * 18);
+}
+[data-meta-yields] > [data-row-tail] {
+  min-width: 0;
+  text-align: right;
+}
+/* A flat Sessions row's meta is its project's name: no cap of its own (2026-11-19). ListRow's `metaYields` gives it the room a
+   short title leaves ("New session  PCMS + PCFS" whole) and makes it give way first, down to 64px, under a long one. */
 /* Addendum 13: a session under its project starts its highlight where every sidebar row does; the step in is inside the row
    (its glyph one 16px column right of the project's). */
 [data-tree-level="2"] [data-row] {

@@ -64,7 +64,9 @@ export function unavailableTitle(reason: string | undefined): string {
 /** A failed list call as one plain sentence and a next step; the technical text is the caller's "Details" (decision 94b). */
 export function listFailure(raw: string): { message: string; hint: string } {
   const hint = "Check the connection and refresh. You can still review a local branch: pick Local branches above.";
-  if (/resolve host|network|unreachable|timed out|timeout|connection|offline|dns/i.test(raw)) return { message: "Could not reach GitHub.", hint };
+  if (/resolve host|network|unreachable|connection|offline|dns/i.test(raw)) return { message: "Could not reach GitHub.", hint };
+  // A request the client gave up on ("Fetch is aborted", "The operation was aborted", AbortError) or that ran out of time.
+  if (/abort|timed out|timeout|cancel/i.test(raw)) return { message: "GitHub did not answer in time, so the request was cancelled.", hint };
   return { message: "GitHub did not answer the list request.", hint };
 }
 
