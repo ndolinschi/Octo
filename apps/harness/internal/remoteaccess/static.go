@@ -11,8 +11,11 @@ import (
 )
 
 // CSP is the Content-Security-Policy of the web app's pages: its own scripts only, inline styles (React's style
-// attributes), images and fonts from itself or data:/blob:, workers from itself (the editor), no framing.
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
+// attributes), images and fonts from itself or data:/blob:, workers from itself (the editor), no framing. Images
+// may come from https: only because Markdown loads a remote image when the person presses "Load image" (it never
+// loads one by itself). apps/web's build carries the same policy as a <meta> (apps/web/vite.config.ts, which a
+// test compares with this one).
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; " +
 	"font-src 'self' data:; worker-src 'self' blob:; connect-src 'self'; manifest-src 'self'; frame-ancestors 'none'; " +
 	"base-uri 'none'; form-action 'none'; object-src 'none'"
 

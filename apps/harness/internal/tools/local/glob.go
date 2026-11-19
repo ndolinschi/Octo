@@ -1,19 +1,17 @@
 package local
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
+	"github.com/ndolinschi/Octo/apps/harness/internal/gitx"
 	"github.com/ndolinschi/Octo/apps/harness/internal/globx"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
@@ -109,19 +107,17 @@ func GlobFiles(ctx context.Context, root, dir, pattern string, max int) (files [
 func gitFiles(ctx context.Context, root, relDir string) ([]string, bool) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	args := []string{"-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"}
+	args := []string{"ls-files", "-z", "--cached", "--others", "--exclude-standard"}
 	if relDir != "" {
 		args = append(args, "--", relDir)
 	}
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = append(childenv.Build(os.Environ(), nil), "GIT_OPTIONAL_LOCKS=0")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
+	// gitx.Run: the repository's own config and hooks never run a program (core.fsmonitor runs on ls-files).
+	out, err := gitx.Run(ctx, root, args...)
+	if err != nil {
 		return nil, false
 	}
 	var paths []string
-	for _, p := range strings.Split(out.String(), "\x00") {
+	for _, p := range strings.Split(string(out), "\x00") {
 		if p == "" || p == ".git" || strings.HasPrefix(p, ".git/") {
 			continue
 		}

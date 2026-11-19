@@ -2,6 +2,7 @@ package remoteaccess
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -25,6 +26,11 @@ func OptionsFromEnv(o *Options, getenv func(string) string) error {
 	}
 	o.Cloudflared = getenv(EnvCloudflared)
 	o.Addr = strings.TrimSpace(getenv(EnvAddr))
+	if o.Addr != "" {
+		if err := CheckAddr(o.Addr); err != nil {
+			return err
+		}
+	}
 	o.WebDir = strings.TrimSpace(getenv(EnvWebDir))
 	o.WebProxy = strings.TrimSpace(getenv(EnvWebProxy))
 	perms, err := ParsePerms(getenv(EnvAllow))
@@ -50,4 +56,20 @@ func OptionsFromEnv(o *Options, getenv func(string) string) error {
 		}
 	}
 	return nil
+}
+
+// CheckAddr refuses a tunnel listener address that is not loopback: the listener answers paired devices without
+// the desktop token and cloudflared reaches it on this computer, so a LAN or wildcard address would open it to the
+// network. "localhost" and any 127.0.0.0/8 or ::1 address are accepted; a port is required (0 picks a free one).
+func CheckAddr(addr string) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err == nil && port != "" {
+		if host == "localhost" {
+			return nil
+		}
+		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s must be a loopback address with a port, such as 127.0.0.1:0 (got %q): the remote-access listener is for cloudflared on this computer only", EnvAddr, addr)
 }

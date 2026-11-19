@@ -1,6 +1,9 @@
 package remoteaccess
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -126,6 +129,35 @@ func TestTunnelListenerGate(t *testing.T) {
 	}
 }
 
+// A paired phone answers an approval once: "allow" or "deny". Saving a rule (allow_always), allowing for the rest of
+// the request (allow_for_turn, allow_all_for_turn) or anything unreadable is refused at the gate, before the bridge
+// (security review finding 5).
+func TestRemoteApprovalAnswersAreOnceOnly(t *testing.T) {
+	r := newRig(t, "", nil)
+	r.on()
+	tok, _ := r.pair(true)
+	for _, d := range []string{"allow", "deny"} {
+		res := r.do("POST", "/v1/projects/p1/approvals/a1", tok, map[string]string{"decision": d, "note": "ok"})
+		if res.status != 200 || res.body["path"] != "/v1/projects/p1/approvals/a1" {
+			t.Errorf("%s: %d %s", d, res.status, res.raw)
+		}
+	}
+	for _, body := range []any{
+		map[string]string{"decision": "allow_always", "match": "curl"},
+		map[string]string{"decision": "allow_always"},
+		map[string]string{"decision": "allow_for_turn"},
+		map[string]string{"decision": "allow_all_for_turn"},
+		map[string]string{"decision": "allow", "match": "*"},
+		map[string]any{"decision": []string{"allow"}},
+		"not json",
+		nil,
+	} {
+		if res := r.do("POST", "/v1/projects/p1/approvals/a1", tok, body); res.status != 403 || res.code() != "remote_decision_forbidden" || res.body["error"].(map[string]any)["hint"] == nil {
+			t.Errorf("%v: %d %s", body, res.status, res.raw)
+		}
+	}
+}
+
 func TestPermissionSettingAppliesToEveryDevice(t *testing.T) {
 	r := newRig(t, "", func(o *Options) { o.Allow = Perms{ClassSend: true} })
 	r.on()
@@ -145,16 +177,36 @@ func TestPairingThroughTheListener(t *testing.T) {
 	r := newRig(t, "", nil)
 	r.on()
 	st, _ := r.m.IssueCode()
+	claim := func(from string, body any) resp {
+		t.Helper()
+		b, _ := json.Marshal(body)
+		req, _ := http.NewRequest("POST", r.base()+"/pair/claim", bytes.NewReader(b))
+		req.Header.Set("Cf-Connecting-Ip", from)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		raw, _ := io.ReadAll(res.Body)
+		out := resp{status: res.StatusCode, header: res.Header, raw: string(raw)}
+		_ = json.Unmarshal(raw, &out.body)
+		return out
+	}
 	for i := 1; i < MaxWrongTry; i++ {
-		if res := r.do("POST", "/pair/claim", "", map[string]string{"code": "ZZZZ-ZZZZ"}); res.status != 403 || res.code() != "pairing_code_invalid" {
+		if res := claim("203.0.113.9", map[string]string{"code": "ZZZZ-ZZZZ"}); res.status != 403 || res.code() != "pairing_code_invalid" {
 			t.Fatalf("wrong %d: %d %s", i, res.status, res.raw)
 		}
 	}
-	if res := r.do("POST", "/pair/claim", "", map[string]string{"code": "ZZZZ-ZZZZ"}); res.status != 423 || res.code() != "pairing_locked" {
-		t.Fatalf("lock: %d %s", res.status, res.raw)
+	res := claim("203.0.113.9", map[string]string{"code": "ZZZZ-ZZZZ"})
+	if res.status != 429 || res.code() != "pairing_backoff" || res.header.Get("Retry-After") != "30" {
+		t.Fatalf("backoff: %d %s %v", res.status, res.raw, res.header)
 	}
-	if res := r.do("POST", "/pair/claim", "", map[string]string{"code": st.Pairing.Code}); res.status != 423 {
-		t.Fatalf("right code while locked: %d", res.status)
+	if res := claim("203.0.113.9", map[string]string{"code": st.Pairing.Code}); res.status != 429 {
+		t.Fatalf("right code while waiting: %d", res.status)
+	}
+	// The phone, from another address, still pairs with the same code.
+	if res := claim("198.51.100.7", map[string]string{"code": st.Pairing.Code, "name": "Phone"}); res.status != 201 {
+		t.Fatalf("right code from another source: %d %s", res.status, res.raw)
 	}
 	if res := r.do("POST", "/pair/claim", "", "not an object"); res.status != 400 {
 		t.Fatalf("bad body: %d", res.status)

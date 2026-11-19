@@ -86,9 +86,11 @@ const ACP_KIND_NOUNS: Readonly<Record<string, string>> = {
 /**
  * What "Allow … for this request" (`allow_for_turn`) covers for the rest of the turn, as the harness remembers it
  * (apps/harness/docs/v7.md): this agent's edits, its commands of the same program, its fetches from the same host, or
- * its ACP tool calls of the same kind. Null for a memory prompt, which nothing remembers.
+ * its ACP tool calls of the same kind. Null for a memory prompt and for a compound command (`no_turn_grant`), which
+ * nothing remembers: the card offers only "Allow once" there.
  */
 export function turnScopeLabel(a: Approval): string | null {
+  if (a.no_turn_grant) return null;
   switch (a.kind) {
     case "write":
       return "edits";

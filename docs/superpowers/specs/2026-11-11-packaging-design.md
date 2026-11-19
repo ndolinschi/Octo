@@ -229,3 +229,29 @@ Details: [`apps/harness/docs/acp-orchestrator.md`](../../../apps/harness/docs/ac
 - **R1.5.** `harness doctor [--json]` and `GET /v1/diagnostics` (`internal/diag`): see the doc; the log tail is a ring of the last 200 records scrubbed of credentials. The ACP wire trace (`internal/acptrace`, `HARNESS_ACP_TRACE`, also the setting `HARNESS_ACP_TRACE`, applied at once): per-process files under `{data-dir}/traces/`, 5 MB cap per file (oldest half dropped), 20 files, redaction of secret-named values, env/header pairs, bearer tokens, manifest env values, the MCP token and project secrets. Doctor runs each agent's login probe (exit status only); the endpoint does not run anything. Not in the report: environment values, file contents of the project.
 - **R1.6.** `PRAGMA user_version` stamps `registry.sqlite` and every `project.sqlite` (`projectstore.SchemaVersion` was 1 when this was written; it is **3** now, after memory M1 and M2 — each bump is a forward migration with a test; databases without a stamp are older and migrate forward as before). A database stamped higher is refused before anything is changed: `... was written by a newer version of the app (database schema N, this version understands M up to): update the app; the database was left untouched` (`NewerSchemaError`; `harness serve` fails to start on a newer registry, a newer project fails to open with this message). Tests: migration from the schema of commit 20d4d6b (embedded as `testdata/project_schema_20d4d6b.sql`, with rows kept and the new tables usable), refusal of a newer project database (and that it was not touched) and of a newer registry.
 - Related: the server default access of new projects is `full` until the UI ships approval cards (`HARNESS_DEFAULT_ACCESS=supervised` still works).
+
+---
+
+## As built — security review (2026-11-19)
+
+- **Go toolchain.** `apps/harness/go.mod` keeps `go 1.26.0` and pins `toolchain go1.26.11`; `scripts/install-go-toolchain.sh`
+  defaults to 1.26.11 and checks the tarball against the SHA-256 Go publishes (`dl.google.com/go/<file>.sha256`) before
+  extracting it, exiting non-zero on a mismatch or a missing checksum; `.github/workflows/harness.yml` reads the version
+  with `go-version-file`. Verified: `govulncheck ./...` reported 31 reachable standard-library vulnerabilities on go1.26.0
+  and none on go1.26.11; the checksum step was run against the real 1.26.11 linux-amd64 tarball (match). Not run: the
+  install script end to end (it installs into `/usr/local` with sudo), the CI workflow.
+- **Private data directory.** Project databases were `0644` in `0755` directories. `projectstore` now creates the
+  `projects` and project directories `0700`, makes each SQLite file and its `-wal`/`-shm` `0600` when it opens it, makes
+  the `.pre-*` backups `0600`, and at every start removes group/other bits from the data dir and three levels below
+  (registry, traces, project files, `worktrees/`, `attachments/`); `gitx` creates worktree parents `0700`; the shell's
+  `CappedLog` creates its directory `0700` and the logs `0600`, also tightening existing ones. Windows: no-op. Verified:
+  `projectstore` `TestDataDirIsPrivate` (failed before: projects dirs `0755`, databases, WAL and SHM `0644`),
+  `octo-sidecar` `the_log_and_its_directory_are_private_also_when_they_existed` (`cargo test -p octo-sidecar`).
+- **CI actions pinned.** Every `uses:` in `.github/workflows/*.yml` is a commit SHA with the tag in a comment, resolved on
+  2026-11-19 with `git ls-remote` (the `^{}` commit for the annotated tags of `pnpm/action-setup` and `Swatinem/rust-cache`);
+  `dtolnay/rust-toolchain` gets `toolchain:` since it can no longer read the version from its ref. Checked by
+  `scripts/workflows-pinned.test.mjs` (`pnpm test:scripts`; failed before). Not run: the workflows on GitHub.
+
+- **dompurify.** `monaco-editor` 0.57.0 pins `dompurify` 3.4.15 (5 low advisories, fixed in 3.4.17); `pnpm-workspace.yaml`
+  overrides it to 3.4.18 (same minor). `pnpm audit --prod`: 5 low before, none after; the desktop build and its bundle
+  budget unchanged (160.57 of 161.00 kB).

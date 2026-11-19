@@ -1,10 +1,12 @@
 import { useCallback, useState } from "react";
 import type { Approval, ApprovalAnswer } from "@octo/agent-client";
 import { errorMessage } from "../../lib/format";
+import { mayGrantBeyondOnce } from "../../lib/remoteDevice";
 import { APPROVAL_TIMEOUT_MS, answerFor, approvalDeadline, type Resolution } from "../../lib/v7/approval";
 import { Button } from "../primitives/Button";
 import { ApprovalCard, Countdown, useApprovalLeft, type ApprovalCardProps } from "./ApprovalCard";
 import { RequestCard } from "../shared/RequestCard";
+import { useHost } from "../../state/host";
 
 /** The agents that ask, by label, each once and in the order they first asked. */
 export function askingAgents(approvals: readonly Approval[]): string[] {
@@ -28,6 +30,8 @@ export function ApprovalGroup(props: {
   const agents = askingAgents(approvals);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A paired phone answers each request once (the harness refuses allow_all_for_turn from a device).
+  const allowAllOffered = mayGrantBeyondOnce(useHost().remoteDevice);
   // Rows whose "Always allow" panel is open: while one is, its save is the one primary button and "Allow all" is secondary.
   const [alwaysOpen, setAlwaysOpen] = useState<ReadonlySet<string>>(new Set());
   const onAlwaysOpen = useCallback(
@@ -73,16 +77,18 @@ export function ApprovalGroup(props: {
       asks={agents.join(", ")}
       meta={left !== null ? <Countdown left={left} /> : undefined}
       primary={
-        <Button
-          variant={alwaysOpen.size > 0 ? "secondary" : "primary"}
-          size="sm"
-          loading={busy}
-          disabled={busy}
-          title="Allows these and every further request until this request finishes, from any agent; the next request asks again."
-          onClick={() => void allowAll()}
-        >
-          Allow all for this request
-        </Button>
+        allowAllOffered && (
+          <Button
+            variant={alwaysOpen.size > 0 ? "secondary" : "primary"}
+            size="sm"
+            loading={busy}
+            disabled={busy}
+            title="Allows these and every further request until this request finishes, from any agent; the next request asks again."
+            onClick={() => void allowAll()}
+          >
+            Allow all for this request
+          </Button>
+        )
       }
       error={error}
     >

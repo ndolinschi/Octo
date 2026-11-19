@@ -214,7 +214,7 @@ func writeFileHandler(rs *rootSet) tools.Handler {
 		if err := json.Unmarshal(input, &in); err != nil {
 			return err.Error(), true, nil
 		}
-		_, path, err := rs.resolve(in.Folder, in.Path)
+		_, path, err := rs.resolveWrite(in.Folder, in.Path)
 		if err != nil {
 			return err.Error(), true, nil
 		}

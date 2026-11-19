@@ -56,6 +56,7 @@ func samples() map[string]*Error {
 		"NameRequired":         NameRequired(),
 		"FolderInvalid":        FolderInvalid("/nope", "not a directory"),
 		"NoteTitleTaken":       NoteTitleTaken("Plan", "n1"),
+		"GitPathRefused":       GitPathRefused(".git/config"),
 		"BudgetReached":        BudgetReached(4.2, 5),
 		"BudgetCut":            BudgetCut(0.0011, 0.0005),
 		"TurnInProgress":       TurnInProgress(),

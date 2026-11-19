@@ -14,7 +14,7 @@ Contents: [Parts](#the-five-parts) · [Process diagram](#the-running-desktop-app
 | Part | Path | Stack | What it is |
 | --- | --- | --- | --- |
 | **router** (crate `octo`) | `apps/router/` | Rust (Axum 0.8, Tokio, SQLite via sqlx) | HTTP proxy for OpenAI-style chat, Anthropic Messages and OpenRouter, plus `/autoroute/*`: a session-aware model ladder, a price rule, a routing decision for delegated tasks, per-key budgets and a SQLite call history. Holds no provider key: it forwards the caller's credential |
-| **harness** | `apps/harness/` | Go 1.26 (own `go.mod`) | `harness serve`: the project server. Projects, one orchestrator per project, nested sub-agents, per-project SQLite, file API, plugin registry (language servers, ACP agents, tool servers), an MCP server for ACP orchestrators, settings API, diagnostics. Also CLI commands `doctor`, `mcp-relay`, `run`, `sessions`, `show` |
+| **harness** | `apps/harness/` | Go 1.26, toolchain pinned to go1.26.11 (own `go.mod`) | `harness serve`: the project server. Projects, one orchestrator per project, nested sub-agents, per-project SQLite, file API, plugin registry (language servers, ACP agents, tool servers), an MCP server for ACP orchestrators, settings API, diagnostics. Also CLI commands `doctor`, `mcp-relay`, `run`, `sessions`, `show` |
 | **agent-client** (`@octo/agent-client`) | `packages/agent-client/` | TypeScript, no DOM, no React | The `Bridge` interface and its HTTP + SSE implementation, the pure project-state reducer, a message-port bridge for embedded hosts, language-server sessions. Types mirror the harness JSON |
 | **ui** (`@octo/ui`) | `packages/ui/` | React 19, Tailwind 4, Monaco | Shell-agnostic UI: sidebar, tab workspace, orchestrator conversation, agent transcripts, file view with code comments and LSP, usage, settings. Talks only through `Bridge`. Has an in-memory demo bridge (`@octo/ui/demo`) |
 | **desktop** (`@octo/desktop`) | `apps/desktop/` | Vite + React host, Tauri 2 shell (`src-tauri/`), crate `octo-sidecar` (`src-tauri/sidecar/`) | Hosts the UI. Inside Tauri the Rust shell starts, watches and stops the bundled harness and (optionally) router as sidecars. `octo-sidecar` has no Tauri dependency, so it is unit-tested anywhere |
@@ -108,7 +108,7 @@ Nothing below is shared between harness, router and shell.
 
 | What | Where | Owner | Notes |
 | --- | --- | --- | --- |
-| Harness data dir | `--data-dir` / `HARNESS_DATA_DIR`, default `./data/harness`. In the desktop app: `<Tauri app data dir>/harness` (the identifier is `com.ndolinschi.octo.desktop`; the per-OS base path was not checked here) | harness | Created `0700`. `HARNESS_DATA_DIR` cannot come from `harness.env` |
+| Harness data dir | `--data-dir` / `HARNESS_DATA_DIR`, default `./data/harness`. In the desktop app: `<Tauri app data dir>/harness` (the identifier is `com.ndolinschi.octo.desktop`; the per-OS base path was not checked here) | harness | Private: directories `0700`, files `0600` (databases with their WAL/SHM, `.pre-*` backups, attachments, worktree directories, traces). At every start `projectstore.Open` removes group/other bits from the data dir and everything up to three levels below it (deeper entries, such as a worktree's checked-out files, sit under a `0700` directory); a no-op on Windows. `HARNESS_DATA_DIR` cannot come from `harness.env` |
 | `harness.env` | `{data-dir}/harness.env`, mode `0600` (a group-readable file is refused) | harness (settings API writes it atomically); the shell reads the three `OCTO_ROUTER_*` keys | `KEY=VALUE` lines. Precedence: flags > process environment > file |
 | `registry.sqlite` | `{data-dir}/registry.sqlite` | harness | Project registry. Stamped with `user_version`; a newer database is refused untouched |
 | `project.sqlite` | `{data-dir}/projects/{pid}/project.sqlite` | harness | Messages, agents, usage rows, notes, tasks and facts, memory sessions and exchanges, project sessions, memory files, search index (FTS5), queue, changes, approvals, compactions, ACP session ids, context receipts. Same version stamp: **schema 14** (`projectstore.SchemaVersion`); the memory M6 clean-up migration leaves `project.sqlite.pre-m6` (a numbered name when one exists) beside it |
@@ -119,7 +119,7 @@ Nothing below is shared between harness, router and shell.
 | `harness.pid` | `{data-dir}/harness.pid` | desktop shell | Leftover cleanup after a crash |
 | Router config | Directory named by `OCTO_CONFIG`; standalone default `./config/` (cwd). In the desktop app `<app data>/router/config/` (`server.toml` `0600`, `limits.toml`, `history.toml`, rewritten at every start) | router (shell writes it) | `[server]` and `[limits]` are required |
 | Router store | `history.toml` `database_path`, standalone default `data/history.sqlite`; in the app `<app data>/router/history.sqlite` (+ `.key` for the token HMAC unless `OCTO_HISTORY_TOKEN_KEY`) | router | Calls, decisions, session outcomes, `autoroute_calls` records, `budget_spend`. Soft-fail: if it cannot open, the proxy runs without history |
-| Logs | Tauri app log dir: `harness.log`, `router.log` (2 MiB cap, one `.1` kept) | desktop shell | `harness doctor` and `GET /v1/diagnostics` also carry the last 200 harness log records, scrubbed |
+| Logs | Tauri app log dir: `harness.log`, `router.log` (2 MiB cap, one `.1` kept; directory `0700`, files `0600`, also when they existed) | desktop shell | `harness doctor` and `GET /v1/diagnostics` also carry the last 200 harness log records, scrubbed |
 | UI preferences | Browser `localStorage` (theme `octo.theme`, layout, tab memory) | ui | Per webview, not shared |
 
 ## Main flows
@@ -340,6 +340,7 @@ flags beat both. Test-only variables (`OCTO_FAKEACP_*`) are left out.
 | `HARNESS_API_TOKEN` | harness (env only, not a setting) | generated per start into `{data-dir}/api-token` | Bearer token required on `/v1/**` (16+ printable ASCII characters); never passed to children. The Tauri shell, `scripts/dev.sh` and the e2e scripts set it |
 | `HARNESS_NO_API_TOKEN` (flag `--no-api-token`) | harness | off | `1` turns the token check off (tests and scripts only; logs a warning) |
 | `VITE_HARNESS_API_TOKEN` | desktop dev server | none | The token a browser dev UI sends (`scripts/dev.sh` sets it); do not set it for a production build |
+| `HARNESS_UI_ORIGINS` | harness (env only, not a setting) | none | Extra browser origins of the UI, comma-separated, beside `tauri://localhost`, `http://tauri.localhost`, `http://localhost:1420`, `http://127.0.0.1:1420` (`bridge.DefaultUIOrigins`). Only these get CORS answers and reach the settings routes; any other localhost port (the Browser tab's proxy, another dev server) does not. `scripts/dev.sh` sets it to the dev server's port |
 | `OCTO_BRIDGE_TOKEN` | Tauri shell | none | The API token of the harness at `OCTO_BRIDGE_URL` (an externally started harness) |
 | `HARNESS_EXIT_ON_STDIN_CLOSE` (flag `--exit-on-stdin-close`) | harness | off | The shell sets `1` |
 | `HARNESS_ACP_TRACE` | harness (setting, applies at once) | off | Wire trace under `{data-dir}/traces/` |
@@ -492,7 +493,7 @@ written in the file, shortened.
 | agent-client | `pnpm --filter @octo/agent-client lint`, `... test`, `... format:check` |
 | ui | `pnpm --filter @octo/ui lint`, `... test`, `... format:check`; `node packages/ui/scripts/spacing-audit.mjs --url http://localhost:1420` against a dev server must print `total=0` |
 | desktop | `pnpm --filter @octo/desktop lint`, `... test`, `... build`; `node scripts/check-bundle-size.mjs` after the build |
-| whole frontend | `pnpm lint` (tsc, eslint, `scripts/check-cycles.mjs`), `pnpm format:check`, `pnpm test:scripts` |
+| whole frontend | `pnpm lint` (tsc, eslint, `scripts/check-cycles.mjs`), `pnpm format:check`, `pnpm test:scripts` (also `scripts/workflows-pinned.test.mjs`: every action in `.github/workflows` is pinned to a commit SHA with its tag in a comment; `dtolnay/rust-toolchain` then names its `toolchain` explicitly) |
 | Shell | `cd apps/desktop/src-tauri && cargo test -p octo-sidecar`; `cargo check` needs the sidecar binaries and WebKitGTK |
 | End to end (`e2e` job of harness.yml) | `bash apps/harness/scripts/e2e-acp-orchestrator.sh`, `e2e-router.sh` (needs `cargo build -p octo` first), `e2e-v7.sh`; `pnpm test:dev-sh` |
 | Live (needs accounts) | `bash apps/harness/scripts/test-subscriptions.sh [agent ...]` (or `all`) |

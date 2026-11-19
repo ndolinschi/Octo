@@ -8,7 +8,9 @@ package usererr
 func CloudflaredMissing(install string) *Error {
 	return &Error{
 		Code: "cloudflared_missing", Message: "Remote access needs Cloudflare's tunnel program, and it is not installed.",
-		Hint: "Install it, then check again.", Command: install, Action: ActionRetry,
+		Hint: "Install it, then check again. Without apt on Linux, use Cloudflare's downloads page.", Command: install,
+		Action:  ActionRetry,
+		Details: "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/",
 	}
 }
 
@@ -30,6 +32,8 @@ func Remote(code string) *Error {
 		e.Message, e.Hint = "Remote access is off.", "Turn it on first."
 	case "remote_forbidden":
 		e.Message, e.Hint = "A paired phone cannot do this.", "Do it on the computer."
+	case "remote_decision_forbidden":
+		e.Message, e.Hint = "A paired phone can only allow or deny one request at a time.", "Save a rule or allow more on the computer."
 	case "remote_read_only":
 		e.Message, e.Hint = "This phone can only read.", "Allow more for it in Remote access on the computer."
 	case "device_not_paired":
@@ -44,6 +48,8 @@ func Remote(code string) *Error {
 		e.Message, e.Hint = "That pairing code has expired.", "Ask the computer for a new code."
 	case "pairing_locked":
 		e.Message, e.Hint = "Too many wrong codes were tried.", "Ask the computer for a new code."
+	case "pairing_backoff":
+		e.Message, e.Hint = "Too many wrong codes were typed here.", "Wait a few minutes, then type the code again."
 	case "pairing_rate_limited":
 		e.Message, e.Hint = "Too many tries at once.", "Wait a second, then try again."
 	case "stream_gone":
@@ -59,8 +65,8 @@ func Remote(code string) *Error {
 // RemoteCodes lists the codes Remote knows (for the catalogue tests and the docs).
 func RemoteCodes() []string {
 	return []string{
-		"remote_ack_required", "remote_off", "remote_forbidden", "remote_read_only", "device_not_paired", "device_pending",
-		"device_expired", "pairing_code_invalid", "pairing_code_expired", "pairing_locked", "pairing_rate_limited",
+		"remote_ack_required", "remote_off", "remote_forbidden", "remote_decision_forbidden", "remote_read_only", "device_not_paired", "device_pending",
+		"device_expired", "pairing_code_invalid", "pairing_code_expired", "pairing_locked", "pairing_backoff", "pairing_rate_limited",
 		"stream_gone", "query_token_refused",
 	}
 }

@@ -10,7 +10,7 @@ The **`bash`** tool runs real shell commands as the user running the harness. It
 
 ## Prerequisites
 
-- Go 1.26+ (`bash scripts/install-go-toolchain.sh` from the monorepo root)
+- Go 1.26+; `go.mod` pins `toolchain go1.26.11` (the first 1.26 release with no reachable standard-library advisory under `govulncheck`), so with `GOTOOLCHAIN=auto` (the default) an older 1.26 fetches it. `bash scripts/install-go-toolchain.sh` from the monorepo root installs that version and checks the tarball's published SHA-256. CI reads the version from `go.mod` (`go-version-file`).
 - Optional: `ANTHROPIC_API_KEY` (sent upstream; for Octo, use the same key your client would send to Messages). `harness serve` starts without any key; the built-in Messages-API loop is then unavailable (see "Running without a key") and projects run on an ACP agent such as Claude Code on its subscription.
 
 Coding standards (agents/editors): `.cursor/rules/octo-go.mdc`, `go-pr-checklist.mdc`, `verify-go.mdc`.

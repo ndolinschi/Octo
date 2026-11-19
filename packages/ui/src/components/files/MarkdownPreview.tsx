@@ -1,5 +1,3 @@
-import { Image } from "lucide-react";
-import { Glyph } from "../primitives/Glyph";
 import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { splitFrontMatter } from "../../lib/frontMatter";
 import type { Components } from "react-markdown";
@@ -7,6 +5,7 @@ import { normalizePath, parentPath } from "../../lib/files";
 import type { OpenFile } from "../../state/code";
 import { useCode } from "../../state/code";
 import { Markdown } from "../shared/Markdown";
+import { ImageChip } from "../shared/MarkdownImage";
 
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
@@ -71,17 +70,7 @@ export function MarkdownPreview({ file, bottomRoom, onOpen }: { file: OpenFile; 
           </a>
         );
       },
-      img: ({ alt, src }) => (
-        <span
-          role="img"
-          aria-label={alt || "Image"}
-          title={`Images aren't loaded in the preview${typeof src === "string" && src ? `: ${src}` : ""}`}
-          className="inline-flex h-6 max-w-full items-center gap-2 rounded-sm border border-line px-2 align-middle text-xs text-fg-3"
-        >
-          <Glyph icon={Image} size={14} className="shrink-0" />
-          <span className="truncate">{alt || "Image"}</span>
-        </span>
-      ),
+      img: ({ alt, src }) => <ImageChip alt={alt} title={`Images aren't loaded in the preview${typeof src === "string" && src ? `: ${src}` : ""}`} />,
     };
   }, [file.folder, file.path, onOpen]);
 

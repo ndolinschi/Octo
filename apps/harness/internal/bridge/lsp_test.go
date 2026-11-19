@@ -413,7 +413,7 @@ func TestLSPCORSPreflight(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req.Header.Set("Origin", "http://localhost:5173")
+		req.Header.Set("Origin", "http://localhost:1420")
 		req.Header.Set("Access-Control-Request-Method", method)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {

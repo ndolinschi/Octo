@@ -1,6 +1,7 @@
 package local
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,6 +46,47 @@ func isProtected(p string) bool {
 // Resolve returns the absolute path of rel under root, rejecting absolute
 // paths, traversal and symlink escape. An empty rel is an error.
 func Resolve(root, rel string) (string, error) { return resolveUnderWorkspace(root, rel) }
+
+// ErrGitPath: a write, delete, rename or revert names a path inside a Git
+// directory (or a worktree's or submodule's .git file). Git runs programs
+// named there (core.fsmonitor, hooks, ...) on the harness's own git calls,
+// so a file write must never reach it; reads are allowed.
+var ErrGitPath = errors.New("path is inside .git: Octo does not change Git's own files")
+
+// ResolveWritable is Resolve for a path about to be written, deleted,
+// renamed or restored: it also refuses any path with a .git segment, matched
+// case-insensitively (case-insensitive file systems), both as named and after
+// symlinks are followed.
+func ResolveWritable(root, rel string) (string, error) {
+	abs, err := resolveUnderWorkspace(root, rel)
+	if err != nil {
+		return "", err
+	}
+	if hasGitSegment(filepath.Clean(rel)) {
+		return "", ErrGitPath
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", err
+	}
+	realTarget, err := resolveRealPath(abs)
+	if err != nil {
+		return "", err
+	}
+	if inside, err := filepath.Rel(realRoot, realTarget); err != nil || hasGitSegment(inside) {
+		return "", ErrGitPath
+	}
+	return abs, nil
+}
+
+func hasGitSegment(p string) bool {
+	for _, seg := range strings.Split(filepath.ToSlash(p), "/") {
+		if strings.EqualFold(seg, ".git") {
+			return true
+		}
+	}
+	return false
+}
 
 func resolveUnderWorkspace(workspace, rel string) (string, error) {
 	if rel == "" {

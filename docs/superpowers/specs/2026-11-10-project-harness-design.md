@@ -280,3 +280,42 @@ settings (folders, instructions, models, notes).
 
 **Verified.** `gofmt -l .` in `apps/harness` (clean).
 **Not verified.** `go vet ./...`, `go test ./...`, and live `go run ./cmd/harness serve` in this VM (cannot fetch uncached `modernc.org/sqlite@v1.62.0` zip because `proxy.golang.org` redirects to `storage.googleapis.com`, which is blocked with HTTP 403 in the sandbox).
+
+---
+
+## As built — `.git` is read-only to the harness; git runs no repository programs (security review, 2026-11-19)
+
+The reviewer wrote `.git/config` with `core.fsmonitor = <command>` through `PUT /files/content`; a later worktree
+creation ran it. Now (a) every write path (file API, `write_file`, `edit`, ACP `fs/write_text_file`, revert, rewind)
+resolves through `local.ResolveWritable`, which refuses a path with a `.git` segment, case-insensitively, as named and
+after symlinks (`400 invalid_request`, catalogue `usererr.GitPathRefused`); reads are unchanged. (b) `gitx.Run`, the
+one git runner (now also used by the `glob` and change-tracking file listings), sets `core.fsmonitor=false`,
+`core.hooksPath=/dev/null`, `core.pager=cat`, `core.askPass=`, `protocol.ext.allow=never` and `--no-ext-diff
+--no-textconv` for `diff`/`log`/`show`; hooks never run for harness git, including a checkout the person asked for.
+`core.sshCommand` and `credential.helper` stay as configured (global auth). Verified: `tools/local`
+`TestResolveWritableRefusesGitPaths`, bridge `TestFileWriteRefusesGitDir` (failed before: 200), `gitx`
+`TestRunIgnoresRepositoryProgramsAndHooks` (a real repository whose fsmonitor, diff.external, textconv, pager and
+seven hooks touch a marker; before: fsmonitor, external diff, textconv, post-checkout, reference-transaction and
+post-index-change ran, and the external diff broke carrying changes into a worktree), and the reviewer's proof on a
+built harness (see the review report). Not verified: Windows (`os.DevNull` is `NUL`), git older than 2.31 for the
+environment form (the `-c` form covers every version).
+
+## As built — Browser tab proxy hardening (security review, 2026-11-19)
+
+`AddBlockedPort` was never called and the proxy's cookieless path (an active instance, no Origin or Referer) checked no
+Host. Now `harness serve` blocks the bridge port, the router's loopback port from `ANTHROPIC_BASE_URL`
+(`proxyBlockedPorts`) and the remote-access listener's port each time it opens (`remoteaccess.Options.OnListen`), and
+every proxied request must carry the instance's own loopback Host (DNS rebinding gets `403`). Verified:
+`browserproxy` `TestForeignHostIsRefusedEvenWhenActive`, `remoteaccess` `TestOnListenNamesTheListenerPort`,
+`cmd/harness` `TestProxyBlockedPorts` (each failed or did not compile before). Not verified in the desktop webview.
+
+## As built — CORS for the UI's origins only (security review, 2026-11-19)
+
+The bridge answered CORS for any `http(s)://localhost|127.0.0.1:<port>`, including the Browser tab's proxy origin,
+while `scripts/dev.sh` bakes `VITE_HARNESS_API_TOKEN` into the dev bundle (which Vite serves with
+`Access-Control-Allow-Origin: *`): a previewed page could read the token and call the bridge. Now only
+`bridge.DefaultUIOrigins` (the Tauri origins and the dev server on 1420) and `HARNESS_UI_ORIGINS` are allowed, for CORS
+and for the settings guard; `dev.sh` exports `HARNESS_UI_ORIGINS` for the port it picked. Verified: bridge
+`TestHealthConfigAndCORS` (`127.0.0.1:5173` and an ephemeral port now refused; failed before) and
+`TestConfiguredUIOrigins`. Not run here: `pnpm test:dev-sh`.
+

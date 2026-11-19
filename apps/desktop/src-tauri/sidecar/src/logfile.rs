@@ -19,8 +19,11 @@ pub struct CappedLog {
 
 impl CappedLog {
     /// Opens `dir/name` for appending (creating `dir`), rotating first when it is already over the cap.
+    /// The directory and the files are the user's alone (0700 / 0600 on Unix, also when they existed): the log quotes
+    /// the harness's output.
     pub fn open(dir: &Path, name: &str, max_bytes: u64) -> io::Result<Self> {
         fs::create_dir_all(dir)?;
+        make_private(dir, 0o700)?;
         let path = dir.join(name);
         let mut log = Self {
             file: open_append(&path)?,
@@ -69,7 +72,28 @@ impl Write for CappedLog {
 }
 
 fn open_append(path: &Path) -> io::Result<File> {
-    OpenOptions::new().create(true).append(true).open(path)
+    let mut opts = OpenOptions::new();
+    opts.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let file = opts.open(path)?;
+    make_private(path, 0o600)?;
+    Ok(file)
+}
+
+/// Sets `mode` on Unix (an existing log or directory may have been created wider); nothing elsewhere.
+#[cfg(unix)]
+fn make_private(path: &Path, mode: u32) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+}
+
+#[cfg(not(unix))]
+fn make_private(_path: &Path, _mode: u32) -> io::Result<()> {
+    Ok(())
 }
 
 pub fn rotated_path(path: &Path) -> PathBuf {
@@ -156,6 +180,31 @@ mod tests {
         assert!(!d.join("h.log.2").exists());
         assert!(tail_lines(log.path(), 1).contains("entry number 039"));
         let _ = fs::remove_dir_all(d);
+    }
+
+    /// The harness's output can quote prompts and tool output: the log is the user's alone (security review finding 6).
+    #[cfg(unix)]
+    #[test]
+    fn the_log_and_its_directory_are_private_also_when_they_existed() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("private");
+        fs::create_dir_all(&d).unwrap();
+        fs::set_permissions(&d, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::write(d.join("h.log"), b"old\n").unwrap();
+        fs::set_permissions(d.join("h.log"), fs::Permissions::from_mode(0o644)).unwrap();
+        let mut log = CappedLog::open(&d, "h.log", 10).unwrap();
+        log.line("a line long enough to rotate").unwrap();
+        log.line("next").unwrap();
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&d), 0o700);
+        assert_eq!(mode(log.path()), 0o600);
+        assert_eq!(mode(&rotated_path(log.path())), 0o600);
+        let fresh = tmp("private-new");
+        let log = CappedLog::open(&fresh, "h.log", 10).unwrap();
+        assert_eq!(mode(&fresh), 0o700);
+        assert_eq!(mode(log.path()), 0o600);
+        let _ = fs::remove_dir_all(d);
+        let _ = fs::remove_dir_all(fresh);
     }
 
     #[test]

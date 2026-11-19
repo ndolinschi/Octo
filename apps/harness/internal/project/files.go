@@ -13,6 +13,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/files"
 	"github.com/ndolinschi/Octo/apps/harness/internal/instructions"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 type FileStat struct {
@@ -204,6 +205,8 @@ func fileErr(err error) error {
 	switch {
 	case errors.Is(err, files.ErrNotFound):
 		return notFound("path")
+	case errors.Is(err, files.ErrGitPath):
+		return of(KindInvalid, usererr.GitPathRefused(err.Error()))
 	case errors.Is(err, files.ErrInvalidPath):
 		return invalid("%s", err.Error())
 	case errors.Is(err, files.ErrNotFile):

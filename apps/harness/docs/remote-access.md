@@ -27,7 +27,8 @@ tunnel; the main bridge port never is.
   mounted, and the routes that check for loopback (settings, folder dialog) are refused by the allow-list.
 - Headers on every answer: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`,
   `Permissions-Policy`; API, pairing and poll answers `Cache-Control: no-store`; the web app's HTML carries the CSP
-  (`remoteaccess.CSP`), `/assets/*` is cached as immutable. **No CORS header at all**; a preflight gets 405.
+  (`remoteaccess.CSP`; `img-src` allows `https:` only for an image the person loads with "Load image"; the web build
+  carries the same policy as a `<meta>`, without `frame-ancestors`, which the harness test `TestWebBuildCSPIsTheHeader` keeps equal), `/assets/*` is cached as immutable. **No CORS header at all**; a preflight gets 405.
 
 ### Allow-list for devices
 
@@ -42,7 +43,7 @@ bridge's route table and fails for a `/v1` route that no rule names, so a new ro
 | stop | `POST …/cancel`, `…/sessions/{sid}/stop` | `stop` and not read-only |
 | deny | settings, diagnostics, `fs/*`, `remote/*`, provider writes, project create/patch/delete, secrets, `lsp`, commands and run stops, `complete`, file writes, change revert, rewind, compact, clear, facts, memory and notes writes, approval-rule deletes, session patch/delete, every review write, `/mcp` | never |
 
-A read-only device (`403 remote_read_only`) gets the read class only. `HARNESS_REMOTE_ALLOW` removes a class for every
+An approval answer from a device is for that one request only: the gate reads the body of `POST …/approvals/{id}` and lets through `decision` `allow` or `deny` (with `note`); `allow_always` (a saved rule, `match`), `allow_for_turn`, `allow_all_for_turn` or an unreadable body is `403 remote_decision_forbidden` before the bridge, and the forwarded body is rebuilt from `decision` and `note`, so an ACP `option_id` (which could be the agent's own "always" option) is dropped and the harness picks the agent's allow-once or reject-once option. The UI on a device offers only those answers (`mayGrantBeyondOnce`). A read-only device (`403 remote_read_only`) gets the read class only. `HARNESS_REMOTE_ALLOW` removes a class for every
 device.
 
 ### Events without SSE
@@ -65,8 +66,12 @@ carries SSE); browsers cannot send that header with `EventSource`, so the web cl
 - `POST /v1/remote/pairing` (computer) issues a code: 8 characters of Crockford's base32 shown `ABCD-EFGH`, valid 5
   minutes, single use; a new code replaces the old. The QR link is `<url>/#pair=<code>` (the fragment never reaches a
   server). Typed codes ignore case, spaces and dashes; `O`, `I`, `L` read as `0`, `1`, `1`.
-- Claims are spaced at least 1 s apart across the listener (`429 pairing_rate_limited`, `Retry-After: 1`); 5 wrong
-  codes burn the code (`423 pairing_locked`, even for the right code) until the computer issues a new one.
+- Claims are counted per source: the address Cloudflare's edge saw (`Cf-Connecting-Ip`, set by the edge), else the peer
+  address. A source's claims are spaced at least 1 s apart (`429 pairing_rate_limited`, `Retry-After: 1`); after 5 wrong
+  codes that source waits 30 s, doubled by each further wrong code up to 15 min (`429 pairing_backoff`, `Retry-After`
+  in seconds), and the code stays good for every other source, so a stranger with the URL cannot burn it. 200 wrong
+  codes from all sources together (or more than 4096 sources) burn it (`423 pairing_locked`, even for the right code)
+  until the computer issues a new one.
 - A claimed device is **pending** (`403 device_pending` on `/v1`) until the computer allows it
   (`POST /v1/remote/devices/{id}/confirm`). A pending device not allowed within 5 minutes disappears; pending devices
   never survive a restart or turning remote access off.
@@ -104,7 +109,7 @@ Event: `remote.changed {state, online, pending}` on every project stream (no URL
 
 ## The tunnel process
 
-Found as `HARNESS_REMOTE_CLOUDFLARED` (a path or a name), else `cloudflared` on `PATH`. Run in its own process group
+Found as `HARNESS_REMOTE_CLOUDFLARED` (a path or a name), else `cloudflared` on `PATH`. The harness never downloads it; when it is missing, `cloudflared_missing` carries an install command that verifies what it installs: `brew install cloudflared` (macOS), `winget install --id Cloudflare.cloudflared` (Windows), and on Linux Cloudflare's signed apt repository (`pkg.cloudflare.com`, key `cloudflare-main.gpg`, `signed-by`), with the vendor's downloads page in `details` for other distributions. (Before 2026-11-19 the Linux line fetched `releases/latest` from GitHub with no checksum.) Run in its own process group
 with the child environment filter (`internal/childenv`); its output is scanned for the first
 `https://<label>.trycloudflare.com` (the API host `api.trycloudflare.com` in error lines is ignored), and
 "Registered tunnel connection" sets `connected`. No URL within 30 s, or an exit, restarts it after 1, 2, 4, 8, 16 s
@@ -117,7 +122,7 @@ group, 3 s, `SIGKILL`. Auto-off: no device request for `HARNESS_REMOTE_IDLE_OFF_
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `HARNESS_REMOTE_CLOUDFLARED` | `cloudflared` on PATH | the tunnel program |
-| `HARNESS_REMOTE_ADDR` | `127.0.0.1:0` | the tunnel listener |
+| `HARNESS_REMOTE_ADDR` | `127.0.0.1:0` | the tunnel listener; loopback only (`127.0.0.0/8`, `::1` or `localhost`, with a port): another address (`0.0.0.0`, a LAN IP, no port) stops `harness serve` with an error naming the variable |
 | `HARNESS_REMOTE_WEB_DIR` (`serve --remote-web-dir`) | none | the built web app (`apps/web/dist`) |
 | `HARNESS_REMOTE_WEB_PROXY` | none | development: proxy the web app to a Vite dev server |
 | `HARNESS_REMOTE_ALLOW` | `send,answer,stop` | what devices may do beyond reading (`none` = read only) |

@@ -303,5 +303,6 @@ func (d *DB) backupAs(ctx context.Context, suffix string) (string, error) {
 	if _, err := d.sql.ExecContext(ctx, `VACUUM INTO ?`, path); err != nil {
 		return "", fmt.Errorf("write the backup %s: %w", path, err)
 	}
+	makePrivate(path)
 	return path, nil
 }

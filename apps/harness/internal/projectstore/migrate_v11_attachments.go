@@ -69,7 +69,7 @@ func (d *DB) attachmentPath(sha string) string { return filepath.Join(d.dir, "at
 func (d *DB) PutAttachment(ctx context.Context, info attachments.Info, name string, data []byte) (Attachment, error) {
 	path := d.attachmentPath(info.SHA256)
 	if _, err := os.Stat(path); err != nil {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), privateDir); err != nil {
 			return Attachment{}, err
 		}
 		tmp := path + ".tmp"

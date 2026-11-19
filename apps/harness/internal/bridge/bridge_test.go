@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/bridge"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
@@ -293,9 +294,13 @@ func TestHealthConfigAndCORS(t *testing.T) {
 	if cfg.DefaultMaxDepth != 3 || cfg.DefaultModels.Orchestrator == "" {
 		t.Fatalf("config = %+v", cfg)
 	}
+	// Only the UI's own origins: the desktop shell's and the dev server's (security review finding 11). Any other
+	// localhost port, such as the Browser tab's proxy (http://127.0.0.1:<ephemeral>) or another local dev server, is
+	// not the UI, and a dev bundle carries the API token.
 	for origin, allowed := range map[string]bool{
-		"http://localhost:1420": true, "http://127.0.0.1:5173": true, "tauri://localhost": true,
-		"http://tauri.localhost": true, "http://evil.example": false, "http://localhost.evil.com": false,
+		"http://localhost:1420": true, "http://127.0.0.1:1420": true, "tauri://localhost": true,
+		"http://tauri.localhost": true, "http://127.0.0.1:5173": false, "http://127.0.0.1:43123": false,
+		"http://localhost:3000": false, "http://evil.example": false, "http://localhost.evil.com": false,
 	} {
 		req, err := http.NewRequest(http.MethodOptions, e.url+"/v1/projects", nil)
 		if err != nil {
@@ -310,6 +315,26 @@ func TestHealthConfigAndCORS(t *testing.T) {
 		got := resp.Header.Get("Access-Control-Allow-Origin") == origin
 		if got != allowed || resp.StatusCode != http.StatusNoContent {
 			t.Errorf("origin %s: allowed=%v status=%d", origin, got, resp.StatusCode)
+		}
+	}
+}
+
+// HARNESS_UI_ORIGINS (bridge.WithUIOrigins) names the dev server's origin when it is not on the default port.
+func TestConfiguredUIOrigins(t *testing.T) {
+	e := newEnvWith(t, nil, nil, bridge.WithUIOrigins(bridge.ParseUIOrigins(" http://localhost:1500 , http://127.0.0.1:1500/ ")))
+	for origin, allowed := range map[string]bool{
+		"http://localhost:1500": true, "http://127.0.0.1:1500": true, "tauri://localhost": true, "http://localhost:1420": true,
+		"http://localhost:1501": false,
+	} {
+		req, _ := http.NewRequest(http.MethodOptions, e.url+"/v1/projects", nil)
+		req.Header.Set("Origin", origin)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if got := resp.Header.Get("Access-Control-Allow-Origin") == origin; got != allowed {
+			t.Errorf("origin %s: allowed=%v", origin, got)
 		}
 	}
 }

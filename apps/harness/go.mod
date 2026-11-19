@@ -2,6 +2,8 @@ module github.com/ndolinschi/Octo/apps/harness
 
 go 1.26.0
 
+toolchain go1.26.11
+
 require (
 	github.com/anthropics/anthropic-sdk-go/v2 v2.7.0
 	golang.org/x/sync v0.24.0

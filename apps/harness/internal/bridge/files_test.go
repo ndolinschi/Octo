@@ -120,6 +120,37 @@ func TestFileEndpoints(t *testing.T) {
 	}
 }
 
+// The reviewer's proof: PUT .git/config with core.fsmonitor made a later worktree creation run the command. The file
+// API refuses every path under .git (any case, through a symlink, the .git file of a worktree) with a structured
+// error and leaves the file alone; reading it still works (security review finding 3a).
+func TestFileWriteRefusesGitDir(t *testing.T) {
+	e := newEnv(t, nil)
+	pid, label, dir := newFileProject(t, e)
+	if err := os.WriteFile(filepath.Join(dir, ".git/config"), []byte("[core]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(".git", filepath.Join(dir, "g")); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{".git/config", ".GIT/config", "g/config", "src/../.git/hooks/post-checkout"} {
+		var resp struct {
+			Error struct{ Code, Message, Hint string } `json:"error"`
+		}
+		e.into(t, "PUT", "/v1/projects/"+pid+"/files/content",
+			map[string]any{"folder": label, "path": p, "content": "[core]\n\tfsmonitor = touch pwned\n"}, http.StatusBadRequest, &resp)
+		if resp.Error.Code != "invalid_request" || !strings.Contains(resp.Error.Message, ".git") || resp.Error.Hint == "" {
+			t.Errorf("PUT %s error = %+v", p, resp.Error)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, ".git/config")); string(b) != "[core]\n" {
+		t.Fatalf(".git/config = %q", b)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git/hooks/post-checkout")); err == nil {
+		t.Fatal("a hook was written")
+	}
+	e.into(t, "GET", filesURL(pid, "/content", label, ".git/config"), nil, http.StatusOK, nil)
+}
+
 func TestFileEndpointErrors(t *testing.T) {
 	e := newEnv(t, nil)
 	pid, label, _ := newFileProject(t, e)

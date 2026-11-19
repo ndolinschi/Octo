@@ -148,8 +148,9 @@ is now per session (20 waiting messages of one session).
 | `tunnel_failed` (in `error`) | `TunnelFailed(tail)` | "The tunnel to Cloudflare could not be opened." (details: the last output lines) | 5 failed runs in a row, or the listener could not open |
 | `remote_ack_required` (409), `remote_off` (409) | `Remote(code)` | "Remote access has to be confirmed the first time." / "Remote access is off." | first `enable` without `acknowledge`; a pairing code while off |
 | `remote_forbidden` (403), `remote_read_only` (403) | `Remote(code)` | "A paired phone cannot do this." / "This phone can only read." | a device on a denied route / a read-only device on a send, answer or stop route |
+| `remote_decision_forbidden` (403) | `Remote(code)` | "A paired phone can only allow or deny one request at a time." | a device answers an approval with anything but a single `allow` or `deny` |
 | `device_not_paired` (401), `device_pending` (403), `device_expired` (401) | `Remote(code)` | "This phone is not paired, or it was disconnected on the computer." / "…waiting to be allowed on the computer." / "…not used for too long and was disconnected." | unknown or revoked token (the local API token too) / not yet allowed / idle too long |
-| `pairing_code_invalid` (403), `pairing_code_expired` (403), `pairing_locked` (423), `pairing_rate_limited` (429) | `Remote(code)` | "That pairing code is not right." / "…has expired." / "Too many wrong codes were tried." / "Too many tries at once." | `POST /pair/claim` |
+| `pairing_code_invalid` (403), `pairing_code_expired` (403), `pairing_locked` (423), `pairing_backoff` (429), `pairing_rate_limited` (429) | `Remote(code)` | "That pairing code is not right." / "…has expired." / "Too many wrong codes were tried." / "Too many wrong codes were typed here." / "Too many tries at once." | `POST /pair/claim` |
 | `stream_gone` (410), `query_token_refused` (401) | `Remote(code)` | "The live updates stopped." / "A token in the address is not accepted here." | long poll / `?token=` on the tunnel listener |
 
 `TestRemoteWording` holds every code to the sentence rules.

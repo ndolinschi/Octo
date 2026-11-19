@@ -15,7 +15,7 @@ const newFileMode fs.FileMode = 0o644
 // directory must exist. When expected is non-nil the file must exist with
 // exactly that modification time, else ErrChanged.
 func Write(root, rel, content string, expected *time.Time) (Info, error) {
-	abs, clean, err := resolve(root, rel)
+	abs, clean, err := resolveWrite(root, rel)
 	if err != nil {
 		return Info{}, err
 	}

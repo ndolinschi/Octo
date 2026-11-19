@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import { useCopy, useScrollFade } from "../../lib/hooks";
 import { InlineCode } from "./FileLink";
 import { readyLazy } from "../../lib/readyLazy";
+import { MarkdownImage } from "./MarkdownImage";
 import { NUMERIC_CELL } from "../../lib/numericCell";
 import { remarkSoftBreaks } from "../../lib/softBreaks";
 
@@ -175,6 +176,8 @@ const COMPONENTS: Components = {
       {children}
     </a>
   ),
+  // A remote image waits for "Load image" (its URL alone could carry data out); overrides may replace it.
+  img: ({ src, alt }) => <MarkdownImage src={typeof src === "string" ? src : undefined} alt={alt} />,
 };
 
 const WITH_FILE_LINKS: Components = { ...COMPONENTS, code: ({ children }) => <InlineCode>{children}</InlineCode> };

@@ -83,16 +83,60 @@ const DefaultTimeout = 2 * time.Minute
 // MaxOutput caps what Run keeps of stdout.
 const MaxOutput = 64 << 20
 
-// Env is the environment of every git child.
+// safeConfig is set on every git call the harness makes, so that a
+// repository's own config (.git/config, which an agent's shell command can
+// still write) never makes the harness run a program: no file-system
+// monitor, no hooks (core.hooksPath points at a path that holds none, for
+// every command, including a checkout the person asked for), no pager, no
+// password prompt program, no ext:: transport. External diff drivers and
+// text conversion are switched off per command (hardenArgs). Left as
+// configured, on purpose: core.sshCommand and credential.helper, which a
+// person's global config needs for fetches to authenticate; the system and
+// global config are read as usual.
+var safeConfig = [][2]string{
+	{"core.fsmonitor", "false"},
+	{"core.hooksPath", os.DevNull},
+	{"core.pager", "cat"},
+	{"core.askPass", ""},
+	{"protocol.ext.allow", "never"},
+}
+
+// Env is the environment of every git child. It carries safeConfig as
+// GIT_CONFIG_* variables too (git 2.31+), so a git process that git or
+// another tool starts gets it as well.
 func Env() []string {
 	env := childenv.Build(os.Environ(), nil)
-	return append(env,
+	env = append(env,
 		"GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_PAGER=cat", "GIT_EDITOR=true",
-		"LC_ALL=C.UTF-8", "LANG=C.UTF-8")
+		"LC_ALL=C.UTF-8", "LANG=C.UTF-8", fmt.Sprintf("GIT_CONFIG_COUNT=%d", len(safeConfig)))
+	for i, kv := range safeConfig {
+		env = append(env, fmt.Sprintf("GIT_CONFIG_KEY_%d=%s", i, kv[0]), fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", i, kv[1]))
+	}
+	return env
+}
+
+// hardenArgs is the full argv after `git`: dir, safeConfig as -c options, the
+// fixed flags, and for the commands that can show a diff, no external diff
+// program and no text conversion.
+func hardenArgs(dir string, args []string) []string {
+	full := []string{"-C", dir}
+	for _, kv := range safeConfig {
+		full = append(full, "-c", kv[0]+"="+kv[1])
+	}
+	full = append(full, "-c", "core.quotepath=off", "--literal-pathspecs")
+	if len(args) > 0 {
+		switch args[0] {
+		case "diff", "log", "show":
+			full = append(full, args[0], "--no-ext-diff", "--no-textconv")
+			return append(full, args[1:]...)
+		}
+	}
+	return append(full, args...)
 }
 
 // Run runs `git -C dir <args>` and returns stdout. Safe flags are always set:
-// no quoted paths, literal pathspecs, no external diff or text conversion.
+// no quoted paths, literal pathspecs, no external diff or text conversion,
+// and no program a repository's config or hooks name (safeConfig).
 func Run(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	return RunIn(ctx, dir, nil, args...)
 }
@@ -108,8 +152,7 @@ func RunIn(ctx context.Context, dir string, stdin io.Reader, args ...string) ([]
 		ctx, cancel = context.WithTimeout(ctx, DefaultTimeout)
 		defer cancel()
 	}
-	full := append([]string{"-C", dir, "-c", "core.quotepath=off", "--literal-pathspecs"}, args...)
-	cmd := exec.CommandContext(ctx, b, full...)
+	cmd := exec.CommandContext(ctx, b, hardenArgs(dir, args)...)
 	cmd.Env = Env()
 	cmd.Stdin = stdin
 	var out bytes.Buffer
@@ -287,7 +330,7 @@ func Remotes(ctx context.Context, dir string) (map[string]string, error) {
 
 // WorktreeAdd checks commit out detached into path (which must not exist).
 func WorktreeAdd(ctx context.Context, repo, path, commit string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	_, err := Run(ctx, repo, "worktree", "add", "--detach", "--force", "--end-of-options", path, commit)
@@ -346,7 +389,7 @@ func WorktreeAddBranch(ctx context.Context, repo, path, branch, startPoint strin
 	} else if !ValidRefName(startPoint) {
 		return fmt.Errorf("invalid base revision %q", startPoint)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	_, err := Run(ctx, repo, "worktree", "add", "-b", branch, "--end-of-options", path, startPoint)

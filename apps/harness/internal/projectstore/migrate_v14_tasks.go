@@ -267,5 +267,6 @@ func (d *DB) backupBeforeCleanup(ctx context.Context) (string, error) {
 	if _, err := d.sql.ExecContext(ctx, `VACUUM INTO ?`, path); err != nil {
 		return "", fmt.Errorf("write the backup %s: %w", path, err)
 	}
+	makePrivate(path)
 	return path, nil
 }

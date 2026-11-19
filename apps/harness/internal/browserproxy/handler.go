@@ -202,6 +202,9 @@ func (i *instance) hasValidCookie(r *http.Request) bool {
 // (SameSite=Lax cross-site iframe or Safari/WKWebView ITP). Foreign Origins and unsolicited
 // cross-site requests are still rejected.
 func (i *instance) isAuthorized(r *http.Request) bool {
+	if !i.isOwnHost(r.Host) {
+		return false
+	}
 	if i.hasValidCookie(r) {
 		return true
 	}
@@ -219,6 +222,25 @@ func (i *instance) isAuthorized(r *http.Request) bool {
 		return isSafeNavMethod && i.hasPendingNav(r.URL.RequestURI())
 	}
 	return true
+}
+
+// isOwnHost says the request names this proxy's own loopback listener (127.0.0.1:port, or localhost / another
+// loopback IP on the same port). Any other Host is a page that rebound its DNS name to 127.0.0.1, or a request that
+// was never meant for this proxy: refused whatever cookie it carries.
+func (i *instance) isOwnHost(host string) bool {
+	if host == i.proxyHost {
+		return true
+	}
+	h, port, err := net.SplitHostPort(host)
+	_, ownPort, _ := net.SplitHostPort(i.proxyHost)
+	if err != nil || port != ownPort {
+		return false
+	}
+	if strings.EqualFold(h, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(h)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (i *instance) handler(rp *httputil.ReverseProxy) http.Handler {
