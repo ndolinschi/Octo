@@ -24,7 +24,7 @@ pnpm --filter @octo/desktop tauri dev
 
 ```bash
 pnpm dev:all            # browser: harness (no API key needed) + UI at http://localhost:1420; Ctrl+C stops both. A busy default port (8790, 1420, 8791, 8792) moves to the next free one and the final block lists the chosen addresses; an explicit --bridge-port / OCTO_DEV_*_PORT that is busy is an error naming the process
-pnpm dev:all -- --mock  # same, plus the mock model server
+pnpm dev:all -- --mock  # same, plus the mock model server (the `--` is optional: `pnpm dev:all --mock` works too)
 pnpm dev:all -- --router --mock   # also the Octo router in front of the harness (router -> mock model); without --mock set OCTO_ROUTER_UPSTREAM_KEY
 pnpm install:app        # build the harness and router sidecars + the Tauri app and install it (macOS: /Applications/Octo.app, add `-- --user` for ~/Applications; Linux: ~/.local/bin/octo)
 pnpm install:app -- --no-install   # only build
