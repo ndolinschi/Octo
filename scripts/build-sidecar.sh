@@ -2,12 +2,13 @@
 # Builds the sidecars for this machine and puts them where Tauri expects them:
 #   apps/desktop/src-tauri/binaries/harness-<host target triple>[.exe]   (apps/harness, Go)
 #   apps/desktop/src-tauri/binaries/octo-<host target triple>[.exe]      (the Octo router, Rust; --no-router skips it)
+#   apps/web/dist                                                       (the phone web client, @octo/web; --no-web skips it)
 # Run by `pnpm tauri dev` / `pnpm tauri build` (see tauri.conf.json) and by scripts/install.sh.
 set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/build-sidecar.sh [--no-router] [--help]
+Usage: scripts/build-sidecar.sh [--no-router] [--no-web] [--help]
 
 Builds apps/harness (CGO off, stripped) for the host and writes
 apps/desktop/src-tauri/binaries/harness-<triple>, the name `bundle.externalBin` needs.
@@ -18,15 +19,22 @@ The host triple comes from `rustc -vV`. Needs Go 1.26+ and Rust.
   --no-router   skip the router build (also: OCTO_NO_ROUTER=1). `tauri-build` still needs the file, so a
                 placeholder script is written when no router binary is there yet; the app then shows a
                 "router did not start" notice if someone switches the router on. Never use it for a release build.
+  --no-web      skip building the phone web client (`pnpm --filter @octo/web build` -> apps/web/dist, which the
+                app bundles as a resource and the shell passes to the harness as HARNESS_REMOTE_WEB_DIR). `tauri-build`
+                still needs the directory, so an empty one (with a .not-built note) is created; the app then says in
+                `harness doctor` that the phone client is not available. Never use it for a release build.
 USAGE
 }
 
 ROUTER=1
+WEB=1
 [[ "${OCTO_NO_ROUTER:-0}" == 1 ]] && ROUTER=0
+[[ "${OCTO_NO_WEB:-0}" == 1 ]] && WEB=0
 for arg in "$@"; do
   case "$arg" in
     -h | --help) usage; exit 0 ;;
     --no-router) ROUTER=0 ;;
+    --no-web) WEB=0 ;;
     *) echo "build-sidecar: unknown argument: $arg" >&2; usage >&2; exit 2 ;;
   esac
 done
@@ -88,4 +96,24 @@ else
   cp -f "$BUILT" "$ROUTER_OUT"
   chmod +x "$ROUTER_OUT"
   echo "build-sidecar: $ROUTER_OUT"
+fi
+
+# --- the phone web client -------------------------------------------------------------------------------------------
+# tauri.conf.json bundles apps/web/dist as the resource "web-client"; the shell hands it to the harness
+# (HARNESS_REMOTE_WEB_DIR) unless harness.env sets one. The directory must exist for tauri-build.
+WEB_DIST="$ROOT/apps/web/dist"
+if [[ "$WEB" -eq 1 ]]; then
+  need pnpm "Install pnpm 10+ (corepack enable, or npm install -g pnpm), or pass --no-web."
+  echo "build-sidecar: building the phone web client (pnpm --filter @octo/web build)"
+  (cd "$ROOT" && pnpm --filter @octo/web build)
+  if [[ ! -f "$WEB_DIST/index.html" ]]; then
+    echo "build-sidecar: the web build finished but $WEB_DIST/index.html does not exist" >&2
+    exit 1
+  fi
+else
+  echo "build-sidecar: skipping the phone web client (--no-web)"
+  if [[ ! -d "$WEB_DIST" ]]; then
+    mkdir -p "$WEB_DIST"
+    echo "The phone web client was not built (scripts/build-sidecar.sh --no-web)." >"$WEB_DIST/.not-built"
+  fi
 fi

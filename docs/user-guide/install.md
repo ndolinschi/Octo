@@ -29,8 +29,8 @@ git submodule update --init --recursive
 pnpm install:app
 ```
 
-`pnpm install:app` runs `scripts/install.sh`. It installs the JavaScript dependencies, builds the harness and the Octo router
-for your machine (both are bundled inside the app), builds the Tauri app, and installs it. The first build takes a while,
+`pnpm install:app` runs `scripts/install.sh`. It installs the JavaScript dependencies, builds the harness, the Octo router and the phone web client
+for your machine (all three are bundled inside the app), builds the Tauri app, and installs it. The first build takes a while,
 mostly the Rust build of the router.
 
 | System | What you get | Where |

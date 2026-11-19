@@ -25,6 +25,18 @@ fn sidecar_path(name: &str, env_override: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(file))
 }
 
+/// Where the built phone web client may be: the bundle's `web-client` resource (tauri.conf.json `bundle.resources`),
+/// then this source tree's `apps/web/dist` (for `tauri dev`). The sidecar crate picks the first that holds an
+/// `index.html` and passes it to the harness unless `harness.env` sets `HARNESS_REMOTE_WEB_DIR`.
+fn web_dirs(resource_dir: Option<PathBuf>) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = resource_dir
+        .into_iter()
+        .map(|r| r.join("web-client"))
+        .collect();
+    dirs.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../web/dist"));
+    dirs
+}
+
 /// The harness URL and API token for the webview (`{ url, token }`): starts the harness on first call (or returns
 /// `OCTO_BRIDGE_URL`). Blocking work runs off the UI thread; concurrent calls share one start.
 #[tauri::command]
@@ -116,7 +128,8 @@ pub fn run() {
                 override_url,
             )
             .with_override_token(std::env::var("OCTO_BRIDGE_TOKEN").ok())
-            .with_router(sidecar_path("octo", "OCTO_ROUTER_BIN"));
+            .with_router(sidecar_path("octo", "OCTO_ROUTER_BIN"))
+            .with_web_dirs(web_dirs(app.path().resource_dir().ok()));
             app.manage(BridgeState(Arc::new(Bridge::new(cfg))));
             Ok(())
         })

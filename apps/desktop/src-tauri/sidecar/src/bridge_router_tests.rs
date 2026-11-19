@@ -12,7 +12,7 @@ const FAKE_PY: &str = r#"
 import http.server, json, os, re, signal, sys, time
 role, mode, outdir = sys.argv[1], sys.argv[2], sys.argv[3]
 args = sys.argv[4:]
-rec = {"role": role, "args": args, "env": {k: os.environ.get(k) for k in ("HARNESS_OCTO_KEY", "HARNESS_API_TOKEN", "ANTHROPIC_API_KEY", "OCTO_CONFIG", "HARNESS_EXIT_ON_STDIN_CLOSE", "OCTO_EXIT_ON_STDIN_CLOSE")}}
+rec = {"role": role, "args": args, "env": {k: os.environ.get(k) for k in ("HARNESS_OCTO_KEY", "HARNESS_API_TOKEN", "ANTHROPIC_API_KEY", "OCTO_CONFIG", "HARNESS_REMOTE_WEB_DIR", "HARNESS_EXIT_ON_STDIN_CLOSE", "OCTO_EXIT_ON_STDIN_CLOSE")}}
 cfg = os.environ.get("OCTO_CONFIG")
 if cfg:
     for name in ("server.toml", "history.toml", "limits.toml"):
@@ -167,6 +167,49 @@ macro_rules! need_python {
 }
 
 const ON: &str = "OCTO_ROUTER_ENABLED=1\nOCTO_ROUTER_UPSTREAM_KEY=sk-upstream-test\n";
+
+#[test]
+fn the_bundled_phone_client_is_handed_to_the_harness_unless_the_person_chose_one() {
+    need_python!();
+    // The process environment is shared: only run when it does not set the variable.
+    if std::env::var_os("HARNESS_REMOTE_WEB_DIR").is_some() {
+        return;
+    }
+    let e = Env::new("web");
+    let web = e.dir.join("web-client");
+    std::fs::create_dir_all(&web).unwrap();
+    std::fs::write(web.join("index.html"), "<!doctype html>").unwrap();
+    let mk = || {
+        let mut cfg = BridgeConfig::new(
+            e.fake("harness", "ok"),
+            e.dir.join("data"),
+            e.dir.join("logs"),
+            None,
+        )
+        .with_web_dirs(vec![e.dir.join("missing"), web.clone()]);
+        cfg.health_timeout = Duration::from_secs(10);
+        Bridge::new(cfg)
+    };
+    let b = mk();
+    b.url().unwrap();
+    let h = e.record("harness").expect("harness ran");
+    assert_eq!(
+        h["env"]["HARNESS_REMOTE_WEB_DIR"].as_str(),
+        Some(web.to_str().unwrap())
+    );
+    b.stop();
+    e.forget("harness");
+
+    e.settings("HARNESS_REMOTE_WEB_DIR=/my/own/dist\n");
+    let b = mk();
+    b.url().unwrap();
+    let h = e.record("harness").expect("harness ran");
+    assert!(
+        h["env"]["HARNESS_REMOTE_WEB_DIR"].is_null(),
+        "the shell leaves a harness.env value to the harness: {h}"
+    );
+    b.stop();
+}
 
 #[test]
 fn router_off_starts_the_harness_alone() {

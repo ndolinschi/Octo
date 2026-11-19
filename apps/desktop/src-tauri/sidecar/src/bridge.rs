@@ -48,6 +48,9 @@ pub struct BridgeConfig {
     pub health_timeout: Duration,
     pub router_health_timeout: Duration,
     pub log_max_bytes: u64,
+    /// Where the built phone web client may be, best first (see [`crate::web`]). The first with an `index.html`
+    /// becomes the harness's `HARNESS_REMOTE_WEB_DIR` unless the person set one.
+    pub web_dir_candidates: Vec<PathBuf>,
 }
 
 impl BridgeConfig {
@@ -74,7 +77,14 @@ impl BridgeConfig {
             health_timeout: health::DEFAULT_TIMEOUT,
             router_health_timeout: ROUTER_HEALTH_TIMEOUT,
             log_max_bytes: DEFAULT_MAX_BYTES,
+            web_dir_candidates: Vec::new(),
         }
+    }
+
+    /// Sets where the built phone web client may be, best first.
+    pub fn with_web_dirs(mut self, dirs: Vec<PathBuf>) -> Self {
+        self.web_dir_candidates = dirs;
+        self
     }
 
     /// Sets the API token of an overridden (externally started) harness.
@@ -432,6 +442,22 @@ impl Bridge {
         }
         env.extend(login.vars);
         env.push(("PATH".into(), path));
+        // The phone web client the app ships, unless the person pointed the harness at another one.
+        let process_web = std::env::var(crate::web::WEB_DIR_ENV).ok();
+        if let Some(dir) =
+            crate::web::resolve_web_dir(&cfg.web_dir_candidates, &user_set, process_web.as_deref())
+        {
+            if let Ok(mut l) = log.lock() {
+                let _ = l.line(&format!(
+                    "--- octo: phone web client served from {}",
+                    dir.display()
+                ));
+            }
+            env.push((
+                crate::web::WEB_DIR_ENV.into(),
+                dir.to_string_lossy().into_owned(),
+            ));
+        }
         // A new bridge token for every run, in the environment only (not an argument, not the log).
         let token = router::generate_key();
         env.push((TOKEN_ENV.into(), token.clone()));

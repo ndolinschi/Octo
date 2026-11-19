@@ -312,6 +312,10 @@ Screen"; the latency of long polls through Cloudflare; Windows.
 
 ## As built
 
+### Packaged app serves the phone client (2026-11-19)
+
+The desktop app bundles `apps/web/dist` and passes it as `HARNESS_REMOTE_WEB_DIR` unless the person set one; `harness doctor` reports whether the phone client is available and why not. See the packaging spec's "the installed app serves the phone client". Not verified: a packaged install on a real machine.
+
 ### Phase 1 (2026-11-14): harness, web host, desktop section
 
 Built: `apps/harness/internal/remoteaccess` (tunnel runner, state machine, second listener, allow-list, pairing, device

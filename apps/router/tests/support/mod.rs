@@ -308,3 +308,72 @@ pub async fn spawn_scripted_server(
     ready_rx.await.unwrap();
     (addr, captured)
 }
+
+/// How a fake SSE upstream ends its response.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StreamEnd {
+    /// The body is complete and the connection closes cleanly (a well-formed response).
+    Clean,
+    /// The upstream promises more bytes than it sends, then drops the connection (a transport error mid-body).
+    Cut,
+}
+
+/// A raw-TCP upstream answering every POST with `200 text/event-stream` and `body`, then ending as `end` says.
+/// Raw sockets, so the stream can really be cut mid-way. Serves any number of requests.
+pub async fn spawn_sse_server(body: &str, end: StreamEnd) -> SocketAddr {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let body = body.to_string();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let body = body.clone();
+            tokio::spawn(async move {
+                let mut buf = Vec::new();
+                let mut tmp = [0_u8; 4096];
+                // Read the head, then the request body it announces, so the close is not a reset.
+                let (head_end, want) = loop {
+                    let Ok(n) = socket.read(&mut tmp).await else {
+                        return;
+                    };
+                    if n == 0 {
+                        return;
+                    }
+                    buf.extend_from_slice(&tmp[..n]);
+                    if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        let head = String::from_utf8_lossy(&buf[..i]).to_ascii_lowercase();
+                        let len = head
+                            .lines()
+                            .find_map(|l| l.strip_prefix("content-length:"))
+                            .and_then(|v| v.trim().parse::<usize>().ok())
+                            .unwrap_or(0);
+                        break (i + 4, len);
+                    }
+                };
+                while buf.len() < head_end + want {
+                    let Ok(n) = socket.read(&mut tmp).await else {
+                        return;
+                    };
+                    if n == 0 {
+                        return;
+                    }
+                    buf.extend_from_slice(&tmp[..n]);
+                }
+                let promised = match end {
+                    StreamEnd::Clean => body.len(),
+                    StreamEnd::Cut => body.len() + 5_000,
+                };
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {promised}\r\nConnection: close\r\n\r\n"
+                );
+                let _ = socket.write_all(head.as_bytes()).await;
+                let _ = socket.write_all(body.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            });
+        }
+    });
+    addr
+}

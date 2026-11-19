@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -72,4 +73,22 @@ func CheckAddr(addr string) error {
 		}
 	}
 	return fmt.Errorf("%s must be a loopback address with a port, such as 127.0.0.1:0 (got %q): the remote-access listener is for cloudflared on this computer only", EnvAddr, addr)
+}
+
+// WebClientStatus says whether the phone web app can be served with these settings: ok when a dev proxy is set or
+// WebDir holds an index.html; otherwise why not, naming the variable and the fix (shown by `harness doctor` and
+// GET /v1/diagnostics).
+func WebClientStatus(dir, proxy string) (ok bool, detail string) {
+	if strings.TrimSpace(proxy) != "" {
+		return true, "proxied to the dev server " + strings.TrimSpace(proxy) + " (" + EnvWebProxy + ")"
+	}
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return false, EnvWebDir + " is not set, so paired phones get a page saying the app is not installed. " +
+			"The desktop app sets it to its bundled copy; for a bare harness build it with `pnpm --filter @octo/web build` and set it to apps/web/dist"
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "index.html")); err != nil || fi.IsDir() {
+		return false, EnvWebDir + " is " + dir + ", which has no index.html. Build the web app with `pnpm --filter @octo/web build` and point it at apps/web/dist"
+	}
+	return true, "served from " + dir
 }

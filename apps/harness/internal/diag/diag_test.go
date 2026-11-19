@@ -63,6 +63,18 @@ func TestReportContainsNoSecrets(t *testing.T) {
 	}
 }
 
+func TestReportSaysWhetherThePhoneClientIsAvailable(t *testing.T) {
+	off := Build(Inputs{Version: "1", DataDir: "/d", Env: []string{"PATH=/bin"},
+		WebClient: &WebClientReport{Detail: "HARNESS_REMOTE_WEB_DIR is not set"}})
+	if !strings.Contains(off.Text(), "phone web client: not available (HARNESS_REMOTE_WEB_DIR is not set)") {
+		t.Errorf("text:\n%s", off.Text())
+	}
+	on := Build(Inputs{Version: "1", DataDir: "/d", Env: []string{"PATH=/bin"}, WebClient: &WebClientReport{Available: true, Detail: "served from /w"}})
+	if !strings.Contains(on.Text(), "phone web client: available (served from /w)") {
+		t.Errorf("text:\n%s", on.Text())
+	}
+}
+
 func TestReportListsForwardedShellVariablesByNameOnly(t *testing.T) {
 	rep := Build(Inputs{
 		Version: "1", DataDir: "/d",

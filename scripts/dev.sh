@@ -52,6 +52,8 @@ Ctrl+C stops everything. Runs `pnpm install` first when node_modules is missing.
 The harness requires a bridge API token (HARNESS_API_TOKEN) on /v1: dev.sh generates one per run, or uses the
 HARNESS_API_TOKEN you export, and gives it to the harness and to the UI dev server.
 The harness keeps its data in its default data directory; set HARNESS_DATA_DIR to use another one.
+Remote access (phones): when apps/web/dist is built (pnpm --filter @octo/web build) the harness is started with
+HARNESS_REMOTE_WEB_DIR pointing at it; one you export (or HARNESS_REMOTE_WEB_PROXY) is left alone.
 USAGE
 }
 
@@ -254,6 +256,18 @@ fi
 API_TOKEN="${HARNESS_API_TOKEN:-$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')}"
 export HARNESS_API_TOKEN="$API_TOKEN"
 
+# Remote access (phones): serve the built mobile client when there is one, like the app does with its bundled copy.
+# A HARNESS_REMOTE_WEB_DIR or HARNESS_REMOTE_WEB_PROXY you export wins.
+WEB_NOTE=""
+if [[ -z "${HARNESS_REMOTE_WEB_DIR+x}" && -z "${HARNESS_REMOTE_WEB_PROXY:-}" ]]; then
+  if [[ -f "$ROOT/apps/web/dist/index.html" ]]; then
+    export HARNESS_REMOTE_WEB_DIR="$ROOT/apps/web/dist"
+    WEB_NOTE="phone client served from apps/web/dist"
+  else
+    WEB_NOTE="phone client not built (pnpm --filter @octo/web build, then restart) - Remote access would show 'not installed'"
+  fi
+fi
+
 HARNESS_ARGS=(serve --addr "127.0.0.1:$BRIDGE_PORT")
 # The bridge answers CORS for the UI's own origin only (bridge.DefaultUIOrigins); the dev server may have moved port.
 export HARNESS_UI_ORIGINS="http://localhost:$UI_PORT,http://127.0.0.1:$UI_PORT"
@@ -316,6 +330,7 @@ echo
 echo "dev.sh: ready"
 echo "  UI      http://localhost:$UI_PORT"
 echo "  bridge  http://127.0.0.1:$BRIDGE_PORT"
+[[ -n "$WEB_NOTE" ]] && echo "  remote  $WEB_NOTE"
 [[ "$MOCK" -eq 1 ]] && echo "  mock    http://127.0.0.1:$MOCK_PORT"
 [[ "$ROUTER" -eq 1 ]] && echo "  router  http://127.0.0.1:$ROUTER_PORT/autoroute   (log: $ROUTER_DIR/router.log)"
 if [[ ${#NOTES[@]} -gt 0 ]]; then

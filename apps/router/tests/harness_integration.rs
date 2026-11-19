@@ -24,7 +24,7 @@ use tower::ServiceExt;
 
 const COSTLY_OK: &str = r#"{"type":"message","role":"assistant","content":[],"usage":{"input_tokens":10,"output_tokens":5,"cost":2.0}}"#;
 const PLAIN_OK: &str = r#"{"type":"message","role":"assistant","content":[],"usage":{"input_tokens":1000,"output_tokens":500}}"#;
-const SSE_OK: &str = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":100,\"output_tokens\":1}}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":7}}\n\n";
+const SSE_OK: &str = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":100,\"output_tokens\":1}}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":7}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
 const JEV_LOW: &str = r#"{"is_hard":{"noul":0.1},"is_easy":{"noul":0.9}}"#;
 const JEV_HIGH: &str = r#"{"is_hard":{"noul":0.9},"is_easy":{"noul":0.1}}"#;
 
