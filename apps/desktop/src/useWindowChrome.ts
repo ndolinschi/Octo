@@ -1,7 +1,7 @@
 import type { WindowChrome } from "@octo/ui";
 import { useEffect, useState } from "react";
 import { isTauri } from "./bridgeChoice";
-import { chromeFor, describeChrome, isDragTarget, type ChromeDebug } from "./windowChrome";
+import { chromeFor, describeChrome, isDragTarget, macPreview, PREVIEW_MAC_UA, type ChromeDebug } from "./windowChrome";
 
 /**
  * The window frame for `OctoApp`'s `chrome` prop. In a browser it is the default (nothing loaded). In the macOS app it also
@@ -11,11 +11,12 @@ import { chromeFor, describeChrome, isDragTarget, type ChromeDebug } from "./win
 export function useWindowChrome(): WindowChrome {
   const tauri = isTauri(window);
   const [fullscreen, setFullscreen] = useState(false);
-  const chrome = chromeFor(tauri, navigator.userAgent, fullscreen);
+  const preview = import.meta.env.DEV ? macPreview(window.location.search) : null;
+  const chrome = preview ? chromeFor(true, PREVIEW_MAC_UA, preview === "mac-fullscreen") : chromeFor(tauri, navigator.userAgent, fullscreen);
   const overlay = chrome.overlay;
 
   useEffect(() => {
-    if (!overlay) return;
+    if (!overlay || !tauri) return;
     let live = true;
     let stop: (() => void) | null = null;
     void import("@tauri-apps/api/window").then(async ({ getCurrentWindow }) => {
@@ -39,7 +40,7 @@ export function useWindowChrome(): WindowChrome {
       live = false;
       stop?.();
     };
-  }, [overlay]);
+  }, [overlay, tauri]);
 
   return chrome;
 }
