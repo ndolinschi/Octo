@@ -27,7 +27,7 @@ import { ViewTabs } from "../primitives/ViewTabs";
 import { Spinner } from "../primitives/Status";
 import { ErrorNotice } from "../shared/ErrorNotice";
 import { BranchList } from "./BranchList";
-import { ChecksMark, Counts, TextMenu } from "./parts";
+import { CutText, ChecksMark, Counts, TextMenu } from "./parts";
 import { usePullList } from "./usePullList";
 
 type View = "pulls" | "branches";
@@ -185,7 +185,8 @@ function Picker(props: {
     <TextMenu
       label="Repository"
       text={menu.current}
-      mono
+      // The folder, listed first, gives way before the repository does: its distinct tail stays whole while the owner shrinks.
+      className="shrink-[0.7]!"
       items={menu.items.map((i) => ({
         id: i.key,
         label: i.label,
@@ -197,7 +198,7 @@ function Picker(props: {
   ) : ready ? (
     ready.repo && (
       <span title={ready.repo} className="flex min-w-0 px-2 text-xs text-fg-3">
-        <MiddleText text={ready.repo} className="font-mono" />
+        <CutText text={ready.repo} />
       </span>
     )
   ) : state.loading && seenMenu.get(folder) !== false ? (
@@ -236,7 +237,7 @@ function Picker(props: {
         lead={lead}
         actions={
           <>
-            <span role="status" className="flex items-center gap-1.5 px-1 text-xs whitespace-nowrap text-fg-3 empty:hidden">
+            <span role="status" className="flex items-center gap-1.5 px-1 text-xs whitespace-nowrap text-fg-3 empty:hidden @max-[600px]:px-0">
               {updating && <Spinner />}
               {fresh && <span className="@max-[600px]:sr-only">{fresh}</span>}
             </span>
