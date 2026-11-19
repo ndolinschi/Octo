@@ -16,7 +16,7 @@ import { CHAT, type TabId } from "../../state/workspace/layout";
 import { useSessionScope } from "../../state/session";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { roleName as baseRoleName } from "../../lib/orchestrator";
-import { useNav, useNavState } from "../../state/nav";
+import { useNav } from "../../state/nav";
 import { useComposerAnchor } from "./useComposerAnchor";
 const Announcer = lazy(() => import("./Announcer").then((m) => ({ default: m.Announcer })));
 
@@ -192,10 +192,11 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const composerRow = useRef<HTMLDivElement>(null);
   useComposerAnchor(scroll.ref, composerRow, scroll.atBottom);
   const nav = useNav();
-  const { viewTurn } = useNavState();
+  // The request in view is read when the keys are pressed: subscribing re-rendered the whole view at every turn boundary.
   // Decision 57: Alt+↑/↓ anywhere in the conversation jumps between requests.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown") || requests.length === 0) return;
+    const viewTurn = nav.viewTurn();
     const at = viewTurn?.projectId === projectId ? requests.findIndex((r) => r.id === viewTurn.messageId) : -1;
     const to = at < 0 ? requests.length - 1 : at + (e.key === "ArrowDown" ? 1 : -1);
     const target = requests[Math.max(0, Math.min(requests.length - 1, to))];
