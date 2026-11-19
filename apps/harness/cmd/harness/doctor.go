@@ -35,6 +35,8 @@ func diagnostics(cfg config.Config, reg *plugins.Registry, octo *router.Router, 
 	}
 	cf := remoteaccess.FindCloudflared(context.Background(), os.Getenv(remoteaccess.EnvCloudflared))
 	in.Cloudflared = &diag.CloudflaredReport{Found: cf.Found, Path: cf.Path, Version: cf.Version, Install: cf.Install}
+	webOK, webWhy := remoteaccess.WebClientStatus(os.Getenv(remoteaccess.EnvWebDir), os.Getenv(remoteaccess.EnvWebProxy))
+	in.WebClient = &diag.WebClientReport{Available: webOK, Detail: webWhy}
 	for _, t := range tune {
 		t(&in)
 	}

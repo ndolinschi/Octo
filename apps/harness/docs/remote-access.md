@@ -123,7 +123,7 @@ group, 3 s, `SIGKILL`. Auto-off: no device request for `HARNESS_REMOTE_IDLE_OFF_
 | --- | --- | --- |
 | `HARNESS_REMOTE_CLOUDFLARED` | `cloudflared` on PATH | the tunnel program |
 | `HARNESS_REMOTE_ADDR` | `127.0.0.1:0` | the tunnel listener; loopback only (`127.0.0.0/8`, `::1` or `localhost`, with a port): another address (`0.0.0.0`, a LAN IP, no port) stops `harness serve` with an error naming the variable |
-| `HARNESS_REMOTE_WEB_DIR` (`serve --remote-web-dir`) | none | the built web app (`apps/web/dist`) |
+| `HARNESS_REMOTE_WEB_DIR` (`serve --remote-web-dir`) | none | the built web app (`apps/web/dist`). The desktop app sets it to the copy it bundles unless `harness.env` (or its environment) already sets one; `scripts/dev.sh` sets it when `apps/web/dist` is built. `harness doctor` and `GET /v1/diagnostics` (`web_client`) say whether the phone client is available and, if not, why |
 | `HARNESS_REMOTE_WEB_PROXY` | none | development: proxy the web app to a Vite dev server |
 | `HARNESS_REMOTE_ALLOW` | `send,answer,stop` | what devices may do beyond reading (`none` = read only) |
 | `HARNESS_REMOTE_DEVICE_IDLE_DAYS` | `30` | a device unused this long is removed |

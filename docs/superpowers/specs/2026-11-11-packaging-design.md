@@ -278,6 +278,22 @@ the proxy (they used to start it and fail on the config). `GET /health` of the h
 Settings → About shows the harness, router (while one runs) and UI versions. Verified: `TestVersionFlag`,
 `TestVersionFromHealth`, `cli::tests`, the built binaries; the About page was type-checked, not driven in a browser.
 
+## As built — the installed app serves the phone client (2026-11-19)
+
+Remote access needed `HARNESS_REMOTE_WEB_DIR` set by hand because nothing shipped `@octo/web`. Now
+`scripts/build-sidecar.sh` (run by `pnpm sidecar`, `tauri build` and `install.sh`) also runs `pnpm --filter @octo/web build`
+(`--no-web` / `OCTO_NO_WEB=1` skips it and leaves an empty `apps/web/dist` for `tauri-build`; `beforeDevCommand` uses it), and
+`tauri.conf.json` has `bundle.resources: {"../../web/dist": "web-client"}`. The shell (`src/lib.rs` `web_dirs`) lists the
+bundled `web-client` directory, then the source tree's `apps/web/dist` (for `tauri dev`); `octo_sidecar::web::resolve_web_dir`
+picks the first with an `index.html` and `Bridge` passes it as `HARNESS_REMOTE_WEB_DIR`, unless `harness.env` or the app's
+environment sets that name. `scripts/dev.sh` exports it when `apps/web/dist` is built and says so in its ready block.
+`harness doctor` / `GET /v1/diagnostics` (`web_client`) report "phone web client: available / not available (why)"
+(`remoteaccess.WebClientStatus`). Verified: `web::tests` and `the_bundled_phone_client_is_handed_to_the_harness_unless_the_person_chose_one`
+(`cargo test -p octo-sidecar`, fake directories and a fake harness), `TestWebClientStatus`, the diag test, and a real harness
+with a real `apps/web/dist` (index.html and an asset with CSP, nosniff and referrer headers; without the variable the 503 page
+and the doctor line). Not verified: the Tauri shell edit (no WebKitGTK here), that the bundler places the resource where
+`resource_dir()/web-client` finds it, and a packaged install on macOS or Linux.
+
 ## As built — start-up messages (2026-11-19)
 
 Non-loopback `--addr`: a WARN line, the token requirement unchanged (`TestServeWarnsOnNonLoopbackAddr`). Unwritable data
