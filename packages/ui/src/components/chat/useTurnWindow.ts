@@ -156,7 +156,15 @@ export function useTurnWindow(agentId: string, turns: readonly Turn[], ready: bo
     );
     // Far turns kept for the reader's selection: looked at again once the selection lets them go (observing anew reports them).
     const held = new Set<Element>();
+    // Whether the document has a selected range, kept by `selectionchange`: asking the selection whether it is collapsed makes
+    // the engine lay out a dirty page, and the far observer's callback asked once per turn while turns mounted under a scroll.
+    const ranged = () => {
+      const s = document.getSelection();
+      return !!s && !s.isCollapsed;
+    };
+    let hasRange = ranged();
     const onSelection = () => {
+      hasRange = ranged();
       for (const t of held) {
         if (selectionIn(t)) continue;
         held.delete(t);
@@ -172,7 +180,7 @@ export function useTurnWindow(agentId: string, turns: readonly Turn[], ready: bo
           const key = keyOf(e.target);
           // Dropped even if its mount has not committed yet (a fast scroll), or it would stay mounted out of sight.
           if (!key || e.isIntersecting || hiddenRoot(e)) continue;
-          if (selectionIn(e.target)) {
+          if (hasRange && selectionIn(e.target)) {
             held.add(e.target);
             continue;
           }

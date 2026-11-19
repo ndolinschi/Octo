@@ -51,13 +51,16 @@ export const TurnRail = memo(function TurnRail({
   // N7: targets 16 tall with room, at least 12 while the height holds them, then nearest-wins cells (`railLayout`).
   const { pitch, height } = railLayout(n, maxHeight, EDGE);
 
-  // The request in view stays inside a scrolling rail.
+  // The request in view stays inside a scrolling rail. Whether it scrolls is known from its layout (the list is `height` tall
+  // with EDGE inside; the ticks are `pitch` apart): reading the list's box here forced a layout of the page on every turn
+  // boundary while scrolling the conversation.
   const currentIndex = requests.findIndex((r) => r.id === current);
+  const scrolls = n * pitch + 2 * EDGE > height;
   useLayoutEffect(() => {
     const el = list.current;
-    if (!el || currentIndex < 0 || el.scrollHeight <= el.clientHeight) return;
-    el.scrollTop = EDGE + currentIndex * pitch + pitch / 2 - el.clientHeight / 2;
-  }, [currentIndex, pitch]);
+    if (!el || currentIndex < 0 || !scrolls) return;
+    el.scrollTop = EDGE + currentIndex * pitch + pitch / 2 - height / 2;
+  }, [currentIndex, pitch, height, scrolls]);
 
   // The card is centred on its marker, then clamped inside the rail's box (never under the header).
   const shownIndex = requests.findIndex((r) => r.id === shown);
