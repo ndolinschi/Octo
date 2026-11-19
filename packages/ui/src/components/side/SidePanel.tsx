@@ -1,6 +1,6 @@
 import { BridgeError, type SideMessage } from "@octo/agent-client";
 import { useQuietOpen } from "../../lib/quietFocus";
-import { ArrowUp, Pin, Square } from "lucide-react";
+import { ArrowUp, Eraser, Pin, Square } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
@@ -147,7 +147,7 @@ export function SidePanel() {
                   >
                     {pinned ? "Kept" : "Keep"}
                   </Button>
-                  <Button variant="quiet" size="sm" onClick={clear}>
+                  <Button variant="quiet" size="sm" icon={Eraser} onClick={clear}>
                     Clear
                   </Button>
                 </>
@@ -155,9 +155,11 @@ export function SidePanel() {
             }
           : {})}
       >
-        <div className="flex h-full min-h-0 flex-col">
+        <div className="relative flex h-full min-h-0 flex-col">
           {empty && (
-            <div className={cn("min-h-0 flex-1", PANEL_COLUMN)}>
+            // Over the whole body (the composer below paints over it), so the block sits where every other tab's empty state
+            // does (its centre at 42 % of the body), not at 42 % of what the composer leaves.
+            <div className={cn("absolute inset-y-0 left-0 flex flex-col", PANEL_COLUMN)}>
               <PanelEmpty
                 title="Ask about this project"
                 actions={STARTERS.map((q) => (
@@ -237,7 +239,8 @@ export function SidePanel() {
             </div>
             <FloatRoom />
           </ScrollArea>
-          <div className={cn("shrink-0 px-pane pb-pane", PANEL_COLUMN)}>
+          {/* One column: boxes (list, composer, header actions) on the 8px edges, text (title, answers, input, model) on 16. */}
+          <div className={cn("relative mt-auto shrink-0 px-pane pb-pane", PANEL_COLUMN)}>
             <form
               className="octo-composer flex w-full flex-col bg-raised"
               onSubmit={(e) => {
@@ -259,10 +262,10 @@ export function SidePanel() {
                   placeholder={working ? "Answering…" : "Ask about this project…"}
                   autoComplete="off"
                   aria-describedby={sendError && sendError.code !== "no_provider" ? `${SIDE_INPUT_ID}-error` : undefined}
-                  className="octo-composer-input px-3"
+                  className="octo-composer-input px-2"
                 />
               </div>
-              <div className="flex items-center gap-1 px-1.5 pb-2">
+              <div className="flex items-center gap-1 px-2 pb-2">
                 {sideModel !== null && (
                   <ModelPicker
                     label="Side question model"

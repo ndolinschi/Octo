@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-export type TerminalTabMeta = { shell: string; folder: string; title: string };
+/** `ordinal`: the tab's number among the project's tabs of the same name (item 15; written by the terminal's session store). */
+export type TerminalTabMeta = { shell: string; folder: string; title: string; ordinal?: number };
 
 const EMPTY: TerminalTabMeta = { shell: "", folder: "", title: "" };
 const state = new Map<string, TerminalTabMeta>();
@@ -13,13 +14,21 @@ function bump(pid: string) {
   subs.get(pid)?.forEach((fn) => fn());
 }
 
+/** The tab's full name, as the tab strip shows it: the title, else the shell ("Terminal" while unknown) with its folder ("zsh · proj"). */
+export function terminalTabName(t?: TerminalTabMeta): string {
+  const custom = t?.title.trim() ?? "";
+  const folder = t?.folder.trim() ?? "";
+  const label = custom || t?.shell.trim() || "Terminal";
+  return !custom && folder ? `${label} · ${folder}` : label;
+}
+
 export const getTerminalTabState = (pid: string, id: string): TerminalTabMeta => state.get(`${pid}:${id}`) ?? EMPTY;
 
 export function updateTerminalTabState(pid: string, id: string, patch: Partial<TerminalTabMeta>): void {
   const k = `${pid}:${id}`;
   const prev = state.get(k) ?? EMPTY;
   const next = { ...prev, ...patch };
-  if (prev.shell === next.shell && prev.folder === next.folder && prev.title === next.title) return;
+  if (prev.shell === next.shell && prev.folder === next.folder && prev.title === next.title && prev.ordinal === next.ordinal) return;
   state.set(k, next);
   bump(pid);
 }

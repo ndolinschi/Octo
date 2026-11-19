@@ -149,6 +149,9 @@ async function open(query) {
   await ctx.addInitScript(() => {
     try {
       localStorage.setItem("octo.theme", "dark");
+      // The scripts open a project by its sidebar row: the tree view lists every project (the flat Sessions view, the default,
+      // lists a project only while it has no session).
+      localStorage.setItem("octo.sidebarView", "tree");
       for (const k of Object.keys(localStorage)) if (k.startsWith("octo.layout.") || k.startsWith("octo.fileTree.")) localStorage.removeItem(k);
     } catch {
       /* storage unavailable */

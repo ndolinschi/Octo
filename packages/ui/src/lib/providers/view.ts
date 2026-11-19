@@ -17,6 +17,7 @@ export function groupOf(p: Pick<Provider, "state">): ProviderGroupId {
     case "ready":
       return "connected";
     case "not_logged_in":
+    case "not_running":
     case "error":
       return "attention";
     case "not_installed":
@@ -29,6 +30,7 @@ export function groupOf(p: Pick<Provider, "state">): ProviderGroupId {
 const TONE: Record<ProviderState, Tone> = {
   ready: "ok",
   not_logged_in: "warn",
+  not_running: "warn",
   error: "err",
   not_installed: "muted",
   not_connected: "muted",
@@ -84,6 +86,16 @@ export function providerGroups(providers: readonly Provider[], opts: { expanded?
   });
 }
 
+/**
+ * The connect screen's line under its title (item 10). With Ollama ready and nothing else, "Connect a provider" over
+ * "Connected: Ollama" read as a contradiction: the line says what Ollama does not cover.
+ */
+export function connectSubtitle(providers: readonly Pick<Provider, "kind" | "state">[]): string {
+  const ready = providers.filter((p) => p.state === "ready");
+  if (ready.length > 0 && ready.every((p) => p.kind === "ollama")) return "Ollama is connected. Projects also need a coding agent, an API key or the router.";
+  return "Octo needs one of these: a coding agent on this computer, an API key, or the Octo router.";
+}
+
 /** The provider shown in the detail when none was picked: the first row of the first group. */
 export function defaultProviderId(providers: readonly Provider[]): string | undefined {
   for (const g of GROUP_ORDER) {
@@ -102,6 +114,9 @@ export function primaryAction(p: Pick<Provider, "state" | "kind">): PrimaryActio
       return null;
     case "not_connected":
       return "Connect";
+    case "not_running":
+      // Started in a terminal (the reason shows the command): what is left to press is looking again.
+      return "Check again";
     case "not_logged_in":
     case "not_installed":
     case "error":
@@ -130,6 +145,11 @@ export function reasonLine(p: Pick<Provider, "state" | "kind" | "reason" | "prob
       return "This agent is not on this computer yet. Install it and log in once in a terminal, then press Check again.";
     case "not_logged_in":
       return "Installed, but not logged in. Log in once in a terminal, then press Check again.";
+    case "not_running": {
+      const r = plainReason(p).trim() || "Nothing answers at its address.";
+      const hint = p.problem?.hint?.trim() || "Start it, then check again.";
+      return `${r} ${hint}`;
+    }
     case "not_connected":
       if (p.kind === "ollama") return "Set the Ollama URL and completion model in Settings → Editor.";
       return p.kind === "api" ? "Add an API key to bill per token through your own account." : "Turn the Octo router on and add its provider key.";

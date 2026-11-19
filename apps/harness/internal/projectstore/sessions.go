@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // DocExchange is the kind of the search document of an exchange.
@@ -123,17 +124,29 @@ func scanExchange(sc interface{ Scan(...any) error }) (Exchange, error) {
 	return e, nil
 }
 
-// SessionTitle is the first line of a request, trimmed to 80 characters.
+// sessionTitleMax is the longest title, in characters, before the ellipsis.
+const sessionTitleMax = 80
+
+// SessionTitle is the first line of a request. A longer line is cut at the last space at or before 80 characters (at 80
+// when the first word is longer) and ends with "…"; an empty one is "New session", the name the UI gives a session.
 func SessionTitle(request string) string {
 	line := strings.TrimSpace(request)
 	if i := strings.IndexAny(line, "\r\n"); i >= 0 {
 		line = strings.TrimSpace(line[:i])
 	}
-	if r := []rune(line); len(r) > 80 {
-		line = string(r[:80])
+	if r := []rune(line); len(r) > sessionTitleMax {
+		cut := sessionTitleMax
+		// A space right after the 80th character still ends a whole word.
+		for i := sessionTitleMax; i > 0; i-- {
+			if unicode.IsSpace(r[i]) {
+				cut = i
+				break
+			}
+		}
+		line = strings.TrimRightFunc(string(r[:cut]), func(c rune) bool { return unicode.IsSpace(c) || unicode.IsPunct(c) }) + "…"
 	}
 	if line == "" {
-		return "Session"
+		return "New session"
 	}
 	return line
 }

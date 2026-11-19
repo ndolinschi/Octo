@@ -21,7 +21,7 @@ import { SearchField } from "../primitives/SearchField";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { SkeletonList } from "../primitives/Skeleton";
 import { MiddleText } from "../primitives/MiddleText";
-import { Panel, PanelBody, PanelEmpty } from "../primitives/Panel";
+import { Panel, PanelBody, PanelEmpty, PanelFilters } from "../primitives/Panel";
 import { FilterTabs } from "../primitives/FilterTabs";
 import { ViewTabs } from "../primitives/ViewTabs";
 import { Spinner } from "../primitives/Status";
@@ -205,7 +205,8 @@ function Picker(props: {
     <div ref={quiet} className="@container h-full min-h-0">
       <Panel
         name="review"
-        title="Pull requests"
+        // The tab's name: "Pull requests" is the first view under it, so the title does not say it twice.
+        title="Review"
         lead={lead || undefined}
         actions={
           <>
@@ -227,7 +228,6 @@ function Picker(props: {
             options={VIEWS}
             value={view}
             onChange={setView}
-            className="border-t border-line"
             // The folder scopes both views: it sits at the view row's end, so the header keeps the repository whole in a
             // narrow group (R1 asks for it in the header line; there it cut the repository to "/atlas-api" at 360px).
             trailing={
@@ -245,18 +245,15 @@ function Picker(props: {
       >
         <div className="flex h-full min-h-0 flex-col">
           {view === "pulls" && (available || state.loading) && (
-            // R1: the frame's one filter row (36, the chips then the search). In a narrow group (under 560) the search takes a
-            // line of its own above the chips, with balanced vertical breathing room and full-width FilterTabs so fade-x works cleanly.
-            <div
-              data-panel-filters
-              className="flex min-h-9 shrink-0 items-center gap-x-2 gap-y-2 px-pane @max-[560px]:flex-wrap @max-[560px]:py-1.5 touch:min-h-ctl-lg"
-            >
+            // R1: the frame's one filter row (36, the chips then the search), as in every other tab. In a narrow group the chips
+            // scroll sideways under their fade (FilterTabs) and the search keeps a usable width, so the row never wraps.
+            <PanelFilters>
               <FilterTabs<PullRequestFilter>
                 label="Show"
                 value={filter}
                 onChange={setFilter}
                 bare
-                className={cn("@max-[560px]:w-full @max-[420px]:w-auto @max-[420px]:min-w-0", searchShown && "@max-[420px]:hidden")}
+                className={cn(searchShown && "@max-[420px]:hidden")}
                 options={PULL_FILTERS.map((f) => ({
                   id: f.id,
                   // Until the list is in, the count is a figure-space placeholder of its width: the chips do not grow on arrival.
@@ -277,7 +274,7 @@ function Picker(props: {
               <SearchField
                 ref={searchInput}
                 label="Search pull requests, or paste an address or a number"
-                placeholder="Search pull requests…"
+                placeholder="Search…"
                 value={query}
                 onChange={setQuery}
                 size="sm"
@@ -290,12 +287,9 @@ function Picker(props: {
                   }
                 }}
                 inputProps={{ spellCheck: false, autoComplete: "off", onBlur: () => query === "" && setSearchOpen(false) }}
-                className={cn(
-                  "ml-auto max-w-56 min-w-44 flex-1 @max-[560px]:ml-0 @max-[560px]:max-w-none @max-[560px]:min-w-full @max-[560px]:flex-none",
-                  !searchShown && "@max-[420px]:hidden",
-                )}
+                className={cn("ml-auto max-w-56 min-w-28 flex-1", searchShown ? "@max-[420px]:max-w-none" : "@max-[420px]:hidden")}
               />
-            </div>
+            </PanelFilters>
           )}
           {(error || refusal?.view === view) && (
             <div className="flex shrink-0 flex-col gap-2 px-pane pt-1 pb-2">

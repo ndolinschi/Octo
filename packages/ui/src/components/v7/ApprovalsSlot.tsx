@@ -144,13 +144,13 @@ function Live({ onOpenAgent }: ApprovalsSlotProps) {
   if (!approvals.items.length && !forms.forms.length) return null;
   const newest = [...approvals.items].reverse().find((i) => i.resolution === null)?.approval.id;
   return (
-    <div className="mt-4 flex flex-col gap-4" data-v7-slot="approvals">
+    // 7a: the cards' frames span the column's whole edge (the user bubble's and the composer's), so their glyph sits at 0.
+    <div className="-mx-3 mt-4 flex flex-col gap-4" data-v7-slot="approvals">
       {segments(approvals.items).map((seg) =>
         seg.kind === "group" ? (
           <ApprovalGroup
             key={seg.items[0]?.id}
             approvals={seg.items.map((a) => ({ ...a, agent_label: name(a.agent_label) }))}
-            source={project?.name ?? "this project"}
             memoryMode={memoryMode}
             onSetAutoMemory={setAutoMemory}
             onResolve={resolve}

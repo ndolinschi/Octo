@@ -31,7 +31,7 @@ export function ReviewTab(props: Loaders) {
   const api = useMemo(() => reviewApi(bridge, projectId), [bridge, projectId]);
   if (!api) {
     return (
-      <Panel name="review" title="Pull requests" lead={<PanelPurpose tool="review" />}>
+      <Panel name="review" title="Review" lead={<PanelPurpose tool="review" />}>
         <PanelEmpty title="This version of Octo's local service cannot review pull requests">Update Octo to review pull requests.</PanelEmpty>
       </Panel>
     );

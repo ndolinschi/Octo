@@ -7,6 +7,7 @@ import { ListRow } from "../primitives/ListRow";
 import { ScrollArea } from "../primitives/ScrollArea";
 import { SearchField } from "../primitives/SearchField";
 import { cn } from "../../lib/cn";
+import { useSidebarWidth } from "../../lib/sidebarWidth";
 import { navGroups } from "./navGroups";
 import { useHost } from "../../state/host";
 import { ON_YOUR_COMPUTER, sectionLocked } from "../../lib/remoteDevice";
@@ -43,8 +44,11 @@ export function SettingsNav(props: {
   const sections = useRef<HTMLDivElement>(null);
   useRowKeys(sections);
   const device = useHost().remoteDevice;
+  // The sidebar's width (the person's drag of its edge): Settings' column stands where the sidebar did.
+  const nav = useRef<HTMLElement>(null);
+  useSidebarWidth(nav);
   return (
-    <nav aria-label="Settings" className="flex h-full w-sidebar shrink-0 flex-col bg-window pl-gutter max-settings:hidden">
+    <nav ref={nav} aria-label="Settings" className="flex h-full w-sidebar shrink-0 flex-col bg-window pl-gutter max-settings:hidden">
       {/* The sidebar's frame (8 gutter, 8 inset): "Back" on the sidebar's first row, every glyph on x=24, every label on x=48. */}
       <div className="flex min-h-0 flex-1 flex-col gap-2 p-pane">
         <ListRow

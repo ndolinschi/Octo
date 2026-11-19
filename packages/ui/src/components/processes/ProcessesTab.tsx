@@ -236,7 +236,7 @@ export default function ProcessesTab() {
             selected={picked?.key ?? null}
             onSelect={setSelected}
             listHeader={
-              <PanelFilters className="flex-wrap gap-y-2 py-1">
+              <PanelFilters>
                 <FilterTabs<ProcessFilter> label="Filter processes" bare options={filterOptions} value={filter} onChange={(v) => setFilter(v)} />
                 <SearchField
                   label="Filter by name, command or PID"
@@ -244,7 +244,7 @@ export default function ProcessesTab() {
                   size="sm"
                   value={query}
                   onChange={setQuery}
-                  className="min-w-44 flex-1"
+                  className="ml-auto max-w-56 min-w-28 flex-1"
                 />
               </PanelFilters>
             }
@@ -264,7 +264,7 @@ export default function ProcessesTab() {
               shown.length === 0 ? (
                 <PanelEmpty>{query.trim() ? `No process matches "${query.trim()}".` : "No processes in this state."}</PanelEmpty>
               ) : (
-                <ul ref={listRef} aria-label="Processes" className="flex flex-col gap-1">
+                <ul ref={listRef} aria-label="Processes" className="flex flex-col gap-1.5">
                   {shown.map((item) => (
                     <li key={item.key}>
                       <ProcessRow
@@ -332,6 +332,8 @@ function ProcessRow(props: {
     <ListRow
       size="md"
       selected={props.selected}
+      // Revealed on hover and keyboard focus like every other list (ListRow; always on touch); on a phone always shown.
+      trailingShown={phone}
       data-process-row={item.key}
       leading={
         tone === "ok" && item.kind === "command" ? (
@@ -367,18 +369,10 @@ function ProcessRow(props: {
         </span>
       }
       onClick={props.onSelect}
-      // QA pass 4 keeps Stop and Kill in view; work-surface polish item 5: every row's action slot is as wide as the widest
-      // set (three xs buttons, or two lg on a phone), so the PID / duration column ends on one edge. A row with only "⋯"
-      // shows it on hover or focus, in the same slot.
-      trailingShown
+      // Work-surface polish item 5: hidden actions overlay the row's end (ListRow), so the PID / duration column ends on one
+      // edge; on a phone they show in a slot as wide as the widest set (two lg buttons), so the column lines up there too.
       trailing={
-        <span
-          className={cn(
-            "flex shrink-0 items-center justify-end gap-0.5",
-            phone ? "w-21" : "w-19",
-            !canStop && !canKill && "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100",
-          )}
-        >
+        <span className={cn("flex shrink-0 items-center justify-end gap-0.5", phone && "w-21")}>
           {canStop && <IconButton icon={Square} size={actionSize} label={`Stop ${name}`} onClick={props.onStop} />}
           {(!phone || !canStop) && canKill && <IconButton icon={OctagonX} size={actionSize} label={`Kill ${name}`} onClick={props.onKill} />}
           {menuItems.length > 0 && !busy && <IconMenu label={`Actions for ${name}`} size={actionSize} items={menuItems} />}

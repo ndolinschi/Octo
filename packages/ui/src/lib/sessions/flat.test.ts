@@ -1,7 +1,27 @@
 import type { GlobalSession } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { flatSessions, treeSessions } from "./flat";
+import { flatSessions, pinNeedsYou, treeSessions } from "./flat";
+
+test("pinNeedsYou puts waiting and failed sessions first, each group in the list's order", () => {
+  const list = [
+    g("a", "p", 1, { exchanges: 1, state: "working" }),
+    g("b", "p", 2, { exchanges: 1, state: "waiting" }),
+    g("c", "p", 3, { exchanges: 1 }),
+    g("d", "p", 4, { exchanges: 1, state: "failed" }),
+    g("e", "p", 5, { exchanges: 1, needs_you: true }),
+  ];
+  const { needs, rest } = pinNeedsYou(list);
+  assert.deepEqual(
+    needs.map((s) => s.id),
+    ["b", "d", "e"],
+  );
+  assert.deepEqual(
+    rest.map((s) => s.id),
+    ["a", "c"],
+  );
+  assert.deepEqual(pinNeedsYou([g("x", "p", 1)]).needs, []);
+});
 
 const NOW = Date.parse("2026-11-17T22:00:00Z");
 const g = (id: string, projectId: string, minutesAgo: number, over: Partial<GlobalSession> = {}): GlobalSession => ({
@@ -61,5 +81,16 @@ test("treeSessions keeps brand-new empty projects compact but reveals an active 
   assert.deepEqual(
     treeSessions(mixed, false, "a2").shown.map((s) => s.id),
     ["a2", "a1"],
+  );
+});
+
+test("flatSessions orders by start, not activity, so rows do not swap as sessions work", () => {
+  const older = g("old", "alpha", 60, { exchanges: 2, last_activity_at: new Date(NOW).toISOString() });
+  const newer = g("new", "beta", 5, { exchanges: 2 });
+  const tieA = g("t-a", "gamma", 30, { exchanges: 1 });
+  const tieB = g("t-b", "gamma", 30, { exchanges: 1 });
+  assert.deepEqual(
+    flatSessions([older, tieB, newer, tieA], null).map((s) => s.id),
+    ["new", "t-a", "t-b", "old"],
   );
 });

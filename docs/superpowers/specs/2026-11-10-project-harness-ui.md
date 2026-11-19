@@ -390,7 +390,7 @@ monochrome dithered illustration):
 30. **Composer context bar.** The composer becomes two fused layers (one outline, radius 12, hairline between):
     the input row on top, and under it a 28px bar that states the run's context as quiet buttons with a 14px
     glyph — **folders** (the project's folders; opens project settings), **model** (the picker of decision 27),
-    **access** (Supervised / Full access, from v7; until then not rendered), **routing** (Auto / Ceiling / Fixed
+    **access** (Ask first / Accept edits / Allow all, from v7; "Ask first" because "Ask" is the composer mode, one name per thing), **routing** (Auto / Ceiling / Fixed
     when the router is detected) — left to right, and on the right the hint line ("↵ send") or, while a turn
     runs, the queue count (v7). The loose line of text under the composer goes away. Under 420px the bar keeps
     model and access and folds the rest into a `…` menu. The floating composer has the same two layers.
@@ -718,6 +718,9 @@ monochrome dithered illustration):
     separate "PCMS · Working" line under the tabs goes away: state lives on the tab glyph and in the title bar.
     Tool rows never show an empty input (`{}`) or an "Input" label with nothing to say: a row with no arguments
     shows only its name and result.
+    **Revised 2026-11-18 (owner decisions F2 and F4, "Owner decisions — shell polish follow-ups" at the end):** the
+    conversation tab is its topic while the tabs belong to one project; a sub-agent's tab is the agent's label, the task
+    stays in its header.
 64. **Calm, evenly distributed screens** (owner: "the UI must not be gaudy and cluttered; it must be neatly
     distributed between the elements"). Rules every surface is checked against:
     (a) **One job per row, few things per row.** A bar or header shows at most: one title, one state, and three
@@ -799,6 +802,9 @@ monochrome dithered illustration):
       tabs · project actions. Empty areas of every row drag the window.
     - **The conversation tab is the project's breadcrumb:** "Project / what this conversation is about" (the
       latest task title, dim), with the state glyph; its "⋯" holds project actions (settings, export, rewind…).
+      **Revised 2026-11-18 (owner decision F2, "Owner decisions — shell polish follow-ups" at the end):** while every tab
+      belongs to one project the conversation tab is its topic alone; the "Project /" prefix shows only with tabs of two or
+      more projects. The tooltip keeps the whole name.
     - **Right end of the top row: project actions, not model choice.** The model chip is removed from the top
       row — the composer is the one place to choose a model. In its place: at most two pinned **project
       commands** (decision 68) and the "+" that opens a tab. Sub-agent chips stay next to the breadcrumb.
@@ -2301,6 +2307,14 @@ equal height, no button inside a row, detail's top equals the list's top.
   The new detail has every one of those fields, so **Settings → Agents is removed** (nav entry, section, search rows); `#/settings/agents`
   opens Providers; its search keywords moved to the Providers row.
 - **Demo.** `?providers=owner` is the owner's live set (twelve providers); the default demo set is unchanged.
+- **Not running (2026-11-18).** A status must be true: Ollama read "Ready · 4 models" with nothing on `:11434` (its list is a
+  catalogue). The harness now probes Ollama, and the API on a local base URL (providers.md, "Reachability"); a server that
+  does not answer is state `not_running`: row "Not running" in the warn tone under **Needs attention**, the detail's reason
+  "Ollama is not running. Start it, then check again." with a **Start** step (`ollama serve` as a `CommandLine`) and the one
+  filled "Check again" (`POST /recheck` probes now), the same row, title and step primitives as an agent that is not
+  installed or not logged in. The Editor's inline-completion row says "Cannot run: Ollama is not running…" with "Check
+  again", and `canRun` keeps refusing `small` / `ollama:<tag>` (the main model picker never lists Ollama). Demo:
+  `?ollama=down` (with `?recheck=ok`, "Check again" starts it).
 - **Verified.** View-model tests (`lib/providers/view.test.ts`: grouping, the folded row, primary action per state, row status,
   model folding); `settingsIndex` tests; tsc for ui and agent-client; eslint on the touched files (no new warnings); prettier;
   spacing audit states `providers` (1440, 1100, 390) and `providers-open` and `settings-page`: total=0, including the three
@@ -2748,6 +2762,10 @@ Scope: `components/chat`, `components/v7`, the new `components/shared/RequestCar
   always-allow panel (inside the approval) use it. Two or more pending approvals in a row are one `ApprovalGroup` ("3 requests
   from Docs site", one "Allow all for this turn"); its rows are compact (title, command on one mono line, quiet buttons,
   Details fold). Failed-turn blocks are `ErrorNotice` (a `Notice` block) per 94b, not a RequestCard.
+  (2026-11-18) The labels say exactly what is allowed: a card's "Allow <scope> for this request" names the one kind the
+  harness remembers (`lib/v7/approval.ts` `turnScopeLabel`: "edits", "echo commands", "fetches from <host>", ACP tool
+  kind; none for a memory prompt), and the group's "Allow all for this request" sends `allow_all_for_turn`, which the
+  harness applies to every further request of that turn (v7 spec, As built).
 - **91d.** `chat/ActivityRow` (on `ListRow`) is the one step row: glyph (spinner only while running) · verb · dim detail ·
   duration · chevron only when it opens. Used by `ToolGroup`/`ToolRow`, `ThinkingRow` and the live `ActivityLine`. Sub-agent
   rows (`DelegationGroup`) and plan steps (`PlanList`) keep their own layouts: not done.
@@ -4221,3 +4239,212 @@ Owner decisions of 2026-11-18 (the four items held back from the polish list):
   `editor-context-menu.mjs` now also checks both entries (the composer holds `@src/auth/refresh.ts:2 ` and has focus; then
   `@src/auth/tokens.ts `). The Changes and Review diffs offer it too (they share `EditorContextMenu`).
 
+Merged with the tool-tab consistency pass (2026-11-19): Processes follows that pass (E: actions on hover and focus, always on
+touch and the phone), and with this pass's `ListRow` overlay the hidden actions take no width, so the PID / duration column
+lines up; the fixed 76px slot above is gone, the phone keeps an 84px slot. The review picker keeps that pass's single
+`PanelFilters` row (B) and adds the search button below 420px. The side question's starters stay `secondary` (item 8; that
+pass made them quiet text-sized buttons, and calls `secondary` the other tabs' empty-state action). `Panel` keeps that pass's
+full-width bar hairline (A) around G1's title-less header.
+
+
+
+## As built — shell polish pass (2026-11-18)
+
+Small fixes from a review of the shell (sidebar, top bar, status bar, overlays, copy). No redesign; existing tokens and primitives.
+
+- **Sidebar list.** The flat Sessions list sorts by start (newest first, then id), not by activity, so rows no longer swap under
+  the pointer every few seconds (`lib/sessions/flat.ts`). It shows its skeleton until the session index has loaded, then the
+  whole list at once (was: empty → three sessions and nine project rows → sixteen session rows). On hover the row's meta leaves the
+  layout (`display: none`) instead of keeping its width, so the title gains the room (measured 133 → 172 px; was 133 → ~109).
+  Rename keeps the row's state glyph and puts the field's text exactly where the title was (x = 48 before and in the field;
+  was 48 → 32), selects the whole title and shows its beginning. A session waiting for the person shows its age like a failed
+  one (`sessionMeta`). A session row's tooltip names the agent that runs it (`sessionAgentName` in `lib/sessionAgent.ts`: an ACP agent
+  by its label, Octo's own loop by its model).
+- **Sidebar width.** The sidebar has a resize handle in the 8px gutter to the first panel (`primitives/ResizeHandle`, the
+  pointer and keyboard logic the dock's `Divider` now also uses; loaded lazily): drag, ←/→ ±16 (Shift ±64), double-click resets.
+  The width is the `sidebarWidth` preference (200–480, default 260, `lib/sidebarWidth.ts`), applied as `--spacing-sidebar` on the
+  element; a drag previews it in an animation frame without a React render (measured: the panel beside it mutates at its idle
+  rate during a drag) and stores it on release. Settings' column takes the same width. A flat Sessions row caps its project
+  name at 33% (ListRow's 40% is for a time or a count). Measured at 1440: 260 → 380 by drag, ← to 364, double-click to 260,
+  clamped at 480, kept over a reload; a title in the flat list 123 → 193 px at 380. Not in the drawer or on the phone.
+- **Top bar and status.** The agents count is a count, not a command: dim (`fg-3`, `fg` on hover) tabular figures and 12px
+  before the command buttons beside it (measured gap 4 → 12). The status bar says "N projects working" ("1 project working").
+  The "+" tab menu opens from the "+" (start-aligned: left edge 188 → 480 with the "+" at 480) instead of over the sidebar.
+  Terminal tabs that would share a name are numbered in open order (`terminalOrdinals` in `components/terminal/ordinals.ts`, written into the tab state by the terminal's session store): "zsh ·
+  orbit-app", "zsh · orbit-app 2", in the tab, its tooltip and the tab picker (the command palette lists no terminal tabs).
+- **Overlays.** The command palette lists "New session in …" for the projects the query names (a word of the name starts
+  with it), else for two projects (the open one first): "re" gives two such rows, not four. The "Show …" rows' details are
+  short sentences (`TOOL_HINT`: "Read a pull request and review it.", was "pick one, read it, comment, submit"), as are
+  Help's, Change model's and Open a tab's. (With "re" Settings is still below the fold: the sessions and projects that
+  match come first; not changed.) The keyboard-shortcuts sheet's rows are `min-h-row` (28px) and a `reading` dialog body
+  has 24px at its end, the fade's height: at 1440×900 the sheet fits whole (no scroll, last row 40px above the body's
+  end); at 1100×700 it scrolls and the last row ends 40px clear of the fade. A tooltip the pointer armed hides on
+  `pointerleave` of its control and shows only while the control is still `:hover` and connected (`lib/tooltipGate.ts`,
+  tested); measured: after leaving a row to the gutter, and after leaving before the delay, no tooltip.
+- **Copy and identity.** A session title from a request is cut at the last space at or before 80 characters and ends
+  with "…" (`projectstore.SessionTitle`, Go-tested; the demo's `lib/sessions/title.ts` mirrors it); the harness's empty
+  title is "New session" (was "Session"), the one name the UI uses. Home's session rows name who runs them: "Atlas API ·
+  Claude Code · Waiting for you" (`sessionAgentName`: the session's `model`, an ACP agent by its label, never its id;
+  Octo's own loop by its model, "Sonnet 5.5"). The waiting rows there now show their age. With only Ollama ready the
+  connect screen's line reads "Ollama is connected. Projects also need a coding agent, an API key or the router."
+  (`connectSubtitle`, tested; the screen itself not driven, the demo has no Ollama-only state).
+- **Entry budget.** These items first took the initial JS from 160.92 to 161.64 kB gzip (budget 161.00). Code a module that
+  loads with the app exports stays in the entry even when only a lazy chunk calls it, so: `sessionAgentName` is its own module;
+  the palette's `TOOL_HINT` moved to `state/workspace/paletteCommands.ts`; the terminal ordinals live with the terminal
+  (its session store numbers the tabs when one opens or closes); the sidebar's stored width is read and applied by its edge
+  (`shell/SidebarEdge`), which rides in the Projects list's chunk that the sidebar asks for at once: a width other than the
+  default can show one frame after the first paint. Result: 160.90 kB.
+
+## Owner decisions — shell polish follow-ups (2026-11-18)
+
+The owner approved five changes the polish review had left as their decisions. Each is its own commit; where one
+supersedes an earlier decision, that decision carries a dated note pointing here.
+
+- **F1. Sidebar session rows are 28px** (`--spacing-row`, the tree-row height of the row-height table in `styles.css`), not
+  32: a session row under a project and a row of the flat Sessions list are `ListRow size="sm"`, the row's "⋯" sits 2px
+  from its top, the rename field is 24px in the 28px row (its text still on the title's x, measured 48 → 48), the
+  loading skeleton of the flat list has the same height. Project rows and the nav rows above stay 32px; on touch every row
+  keeps its 44px (`touch:h-ctl-lg`). Measured: row height 32 → 28 at 1440.
+- **F2. The conversation tab drops "Project /"** while every tab of the workspace belongs to one project (`conversationLabel`
+  in `dock/tabInfo.ts`, tested): the tab reads "Upgrade us to React Native 0.80…", its tooltip and `name` keep "Orbit mobile
+  / …" (the palette's de-duplication reads `name`). With tabs of two or more projects the project is the label and the topic
+  dim. A workspace holds one project's tabs today, so the prefix is always dropped; the count is a parameter (`projectsInTabs`)
+  for the day it does not. Revises decisions 63 and 67 (dated notes there).
+- **F3. The flat Sessions list pins "Needs you"** (`pinNeedsYou` in `lib/sessions/flat.ts`, tested): sessions that wait for
+  the person or failed — Home's rule, `sessionTriageOf` — come first under a "Needs you" caption, the rest under "Other
+  sessions"; each group keeps the stable order by start (item 1), so a row moves only when its state changes. No captions
+  when nothing needs the person. Revises the pinned-group note of the review (it was left to the owner).
+- **F4. A sub-agent's tab is the agent's label** ("Dependency auditor": `roleText` of its role, "Agent" without one, never its
+  id), not its task; the task stays in the agent's header and in the tab's tooltip ("Dependency auditor: Breaking changes
+  0.76 → 0.80"). Tested in `tabInfo.test.ts`. Revises decision 63 (dated note there).
+- **F5. Ollama alone still does not leave the connect screen.** The owner allowed it if Ollama's models can run tools. The
+  harness has no such signal: its Ollama provider (`internal/providers/providers.go`) is the "dedicated small tier for inline
+  editor completions", its catalogue (`ollamaCatalogue`: Qwen 2.5 Coder 1.5B/3B, StarCoder2 3B, CodeLlama 7B) carries no
+  capability field, `Connected` does not count it, and the only Ollama route in the orchestrator is inline completion
+  (`config.IsOllamaCompletion`). So the gate (decision 53 b, `noProvider` in `app/AppShell.tsx`) is unchanged and the
+  connect line of item 10 says what Ollama does not cover. Leaving the screen needs a harness change first: a tool-capable
+  flag per Ollama model (for example from Ollama's `/api/show` capabilities) and an orchestrator path that runs on it.
+
+## As built — tool-tab consistency pass (2026-11-18)
+
+Polish, not a redesign: every dock tool tab measured against the Files / Browser bar (40px bar, 8px inset, a `line` hairline
+under it, 28px quiet icon buttons 4 apart, a 36px `PanelFilters` row, `EmptyState`), and the smallest change that removes
+each deviation.
+
+- **A. Panel hairline (`primitives/Panel.tsx`, `v7/ChangesView.tsx`, `review/PullList.tsx`).** The `Panel` header sits in a
+  full-width `[data-panel-bar]` with the Files bar's inset `line` shadow, so every Panel tab (Sessions, Memory, Notes, Usage,
+  Agents, Details, Changes, Processes, Review picker, side question) has the same hairline under its bar, also when the header
+  is capped to `PANEL_COLUMN`. The two lines that stood in for it are gone (`border-t` on `[data-v7-changes]` and on the
+  review picker's `ViewTabs`), so no tab shows a double line.
+- **B. Review picker (`review/PullList.tsx`, `review/ReviewTab.tsx`).** The hand-built filter row is a plain `PanelFilters`
+  (chips, then the search; in a narrow group the chips scroll under their fade instead of the search taking a second line;
+  the placeholder is "Search…", the label still names pull requests, addresses and numbers). The panel title is "Review" (the
+  dock tab's name), so "Pull requests" is said once, by the first view tab. Chrome above the first row at 363px: 150 → 114.
+- **C. Open review header (`review/ReviewHeader.tsx`, `ReviewView.tsx`, `Overview.tsx`).** One 40px bar at every width (was 61
+  maximised): Back, the title, the 28px group, the Files bar's hairline. The mono meta line (number, author, branches, viewed,
+  unresolved threads) is the title's tooltip and the first line of Details at every width (it already was in page mode);
+  "New commits: update" is a quiet button in the group, and in "⋯" when the group folds below 720. "Submit review" is
+  `secondary`: no tool tab has a filled button in its bar. R3's folding order is unchanged (1024 / 720 / 480); at 363 the
+  bar holds Back, the title, Run, "⋯" and "Submit". **Departs from R3** in one point: there is no meta line at any width.
+- **D. Side question (`side/SidePanel.tsx`).** One column with two edges: boxes (the list's content box, the composer, the
+  header's actions) at 8 and 728 when maximised, text (title, answers, the input's text, the model picker) at 16 and 720 (the
+  bubble and the send button end on 720). Measured before → after (1422 wide): input text 20 → 16, model picker 14 → 16, send
+  right edge 722 → 720; the composer's inner padding departs from the main composer's for this. The empty state is laid over
+  the whole body (the composer paints over it), so its title sits at 37 % of the tab (was 32 %), like the other tabs; the
+  three starters are text-sized quiet buttons (were full-width). "Keep" and "Clear" both carry an icon (Pin, Eraser).
+- **E. Processes (`processes/ProcessesTab.tsx`).** Stop, Kill and "⋯" show on hover and keyboard focus (`ListRow`'s
+  focus-within), always on touch (`touch:`) and on the phone layout (`trailingShown={phone}`); **revises QA pass 4**, which
+  showed them on every active row. There is no Retry on a process row (a failed run restarts from "⋯"), so nothing stays
+  pinned. Row pitch 44 → 46 (`gap-1.5`, as Notes and the pull list); the filter row is a plain `PanelFilters` of 36 (chips,
+  then the search at the right, `min-w-28`), no longer wrapping.
+- **F. Changes list (`v7/TurnFiles.tsx`).** File rows are `ListRow` md (32, text `fg` at rest instead of `fg-2`, kind letter
+  in the leading slot, folder after the name, source and `+a −r` or "reverted" / "not reverted" as the meta); group heads are
+  `SectionHeader` captions (12px `fg-3` on 28, at the rows' text edge) with the count, totals and "Revert" as the aside. The
+  revert button moved to the 24px `IconButton` (same pixels, no deprecated wrapper). Checked in the demo: revert a request
+  (reverted row struck through with "reverted", failed ones "not reverted" in `err`), no console errors.
+- **G. Terminal and Browser bars (`terminal/TerminalTab.tsx`, `browser/BrowserToolbar.tsx`, `browser/BrowserTab.tsx`).** The
+  terminal bar's inset is 8 (`px-2`, was 12), so its status dot and its last 28px button sit where the Files bar's controls
+  do; the browser's Back / Forward / Reload are 4 apart (were 2), as in Files; the browser's empty-state actions are
+  `secondary`, like every other tab's (was a filled `primary`). Not changed: the terminal's folder `MenuButton` stays 24 high
+  (the primitive's `chip` height everywhere; changing it is a library decision).
+
+## As built — QA rough-edges pass (2026-11-18)
+
+- **Image thumbnails no longer overlap the bubble's text (`chat/PromptImages.tsx`).** `Button size="lg"` fixes the height at `h-ctl-lg` (40 px) and a later `h-auto` does not beat it (`cn` is `clsx`, no merge), so the 96 px thumbnail overflowed upwards over the text. The thumbnail is now a bare `button` sized by its image. Checked at 400, 700, 1000 and 1300 px with 1, 3 and 4 images.
+- **Scroll position survives a reload (`lib/scrollSpots.ts`, `chat/useScrollSpot.ts`, `ConversationView.tsx`).** Saved per project and conversation key under `octo.scroll.<project>` (debounced on scroll, flushed on `pagehide`, at most 40 entries); an entry exists only while the reader is off the bottom, so "stick to bottom" is unchanged. The restore waits until the transcript is tall enough to reach the offset (setting it earlier clamps to the end of a short transcript, which read as "at the end" and made the view follow the stream), and gives up after 5 s or on the reader's own input. A loading view with nothing to scroll no longer writes its position to the tab memory (it hid the saved spot).
+- **Palette (`lib/sessions/tree.ts` `sessionsBesideTabs`, `state/workspace/paletteCommands.ts`, `state/terminalTabs.ts`).** A session open as a tab was dropped from the Sessions rows even when the tab's label did not carry its title; it is now dropped only when the label does. A terminal tab with no button in the strip (under "All tabs") was listed by its raw id; the workspace now names it as the strip does (`terminalTabName`, shared with `tabInfo`).
+- **Ctrl/Cmd+Shift+U (`chat/useContextShortcut.ts`).** Handled only by the ring, which is not mounted before a turn reports usage. The composer answers it then with the `/context` report.
+- **Unreachable page in Browser (`apps/harness/internal/browserproxy/handler.go`, `browser/useInspectorBridge.ts`, `useBrowserSession.ts`, `BrowserTab.tsx`).** The proxy's 502 page now also posts `{ channel: "octo-browser", type: "error", nonce, message }`; the tab swaps the frame for `EmptyState` (title, reason, Retry). Retry re-opens the proxy.
+- **Offline (`app/AppShell.tsx`, `styles.css`).** The app root carries `data-offline` while `health` is `offline`; the working ring, the activity shimmer and the needs-you pulse are paused and the working ring takes the quiet tone.
+
+**Verified.** Playwright Chromium against `?demo=one` / `?demo=1` / `?demo=many` for each item (screenshots in the session's `fix-rough/` folder); `scrollSpots.test.ts`, `tree.test.ts` (`sessionsBesideTabs`), `terminalTabs.test.ts`; `go test ./internal/browserproxy` (new `TestUnreachableUpstreamPostsAnErrorToTheHost`); `scroll-anchor.mjs` ok.
+**Not verified.** The Browser error against a live harness (the message was posted from the demo frame by hand; the Go side is covered by its test); the `data-offline` wiring against a really stopped harness (the CSS was checked by setting the attribute; the attribute comes from `health === "offline"`); Ctrl+Shift+U with zero usage was checked by forcing the ring off (the demo always reports usage); the palette case of a tab whose label differs from the session title is covered by the unit test only; `stick-on-open.mjs` and `scroll-on-send.mjs` fail intermittently on this loaded machine, also on the unchanged tree (`scroll-on-send`: 38 px short before and after).
+
+## As built — "Ask first": one name per thing (2026-11-18)
+
+"Ask" named two things: the composer mode (Agent / Ask / Plan) and the permission level `supervised` in the composer's
+Permissions menu and the project dialog. The mode keeps "Ask"; the permission level is now **"Ask first"**, beside its
+neighbours "Accept edits" and "Allow all" (the menu's own words: it asks before edits and commands). One place holds the
+label (`lib/access.ts` `ACCESS_LABEL`), so the chip, its tooltip ("Permissions: Ask first — Asks before edits and
+commands."), the menu and the project dialog all change; no slash command, palette entry or settings row names the level.
+Wire values (`supervised`, `accept_edits`, `full`) are unchanged. `lib/access.test.ts` asserts that no permission level
+shares a name with a mode (it failed before). Verified: ui tests, lint, the chip and its menu in the browser.
+
+**Verified.** `pnpm lint` (0 errors; no new warnings in the 13 touched files), `pnpm format:check`, `pnpm --filter @octo/ui test`
+(902/902 at each commit; one later run failed only `streak.test.ts`'s time budget under a machine load of ~34),
+`spacing-audit.mjs` on `?demo=1` and on `?demo=1&tabs=all` (total=0; states that timed out under load were re-run alone with
+longer waits, `panel-frame` and `review-open` included: total=0), `frame-colours.mjs` (ok), `panel-measure.mjs --mode after`
+(every Panel header 40, title at 16, right inset 8), and Playwright Chromium at 1440×900 in dark and light, populated and
+empty: every one of the 13 tool tabs has a 40px bar with one `line` hairline at y 40 and no double line; Review picker chrome
+150 → 114 at 363 wide; the open review's header 61 → 40 (also 40 at 363); side question edges as in D; Processes pitch 46 with
+actions on hover; reverting a request in Changes. **Not verified.** WebKit, the phone layout by eye (the audit's phone states
+pass), a live harness, the Tauri app.
+
+## As built — conversation and composer polish (2026-11-18)
+
+A reviewed list of small fixes; no redesign, existing tokens and primitives, behaviour unchanged.
+
+- **Composer (WP-A).** A model whose provider is not connected leads with a 14px circled "!" in the warn colour — the
+  "needs you" `StateGlyph` at 14, the same shape as lucide's `CircleAlert`, which alone put the entry 0.03 kB over budget — and
+  its accessible name ends ", provider not connected" (`shared/ModelPicker.tsx`; colour alone said it before). The context gauge is a
+  2px arc on r=6.75 over a `line-strong` track ring, not a filled pie (`chat/ContextRing.tsx`; checked at 1%, 50%, 95% in both
+  themes). The @ menu is as wide as the composer box, like the / menu (480 → 720px at 1440; `chat/ComposerMenu.tsx`).
+- **Approvals (WP-B).** A group is titled "3 approvals" with the distinct agent labels as its dim line (it said "from <project>");
+  its rows name their agent at the end (`text-xs text-fg-3`) when more than one agent asks (`v7/ApprovalGroup.tsx`, test
+  `ApprovalGroup.test.ts`). A row's caption line (what · subject · +N −M) is its Details disclosure (button, chevron,
+  `aria-expanded`, `data-approval-details`); the action row is Allow once · scope · Always · Deny; an edit opens straight onto its
+  diff, so it has one disclosure (`PatchView open`). Scripts that clicked "Details" (`frame-colours.mjs`, `ui-tour-states.mjs`)
+  click `[data-approval-details]`. Cards in the approvals slot span the column's whole edge (`-mx-3`: frame −12…708, the user
+  bubble's and the composer's edge) and the RequestCard glyph gains a 4px margin, so glyph x=0 and title x=24 like the activity
+  rows (before: glyph 12, title 32, frame 0…696). Measured at 1440, 1000, 760, 560 and 390 (phone): no horizontal scroll.
+- **Code and prose surfaces (WP-C).** One class, `.octo-code-surface` (`styles.css`: 8px radius, `--octo-code-bg`, a
+  `line`/70 hairline; the hairline is dropped under an `.octo-in-card` ancestor, one outline per level), replaces the four
+  treatments: the Markdown fence, the tool body frame (`chat/tools/parts.tsx`: it had no edge, 1.06:1 against the panel), the
+  approval blocks (`ApprovalSubject`, `PatchView`: `rounded-sm` → 8px) and `primitives/CommandLine` (`border-line` → `line`/70).
+  A file chip in prose is `primitives/InlineButton` (a `<span role="button" tabIndex=0>`, Enter/Space press it, a held key
+  presses once, the global focus ring; test `InlineButton.test.ts`, gallery entry) — a native `<button>` is an atomic inline. Its
+  file glyph sits in the code's left padding (`position: absolute`): an inline SVG is a break opportunity too, and it alone kept
+  "after 10 s (" at a line's end. Measured on Atlas API at 1440/1300/1200/1100/1000: the orphaned "(" before
+  `src/http/client.ts` at all five widths before, none after; Enter on a focused chip opens the file (tab count 1 → 2).
+- **Transcript and copy (WP-D).** A failed or stopped turn's banner (`TurnBanner`) and the plan card span the column's whole
+  edge too (−12…708; measured: failed banners and the plan card at x −12, w 720); the empty project's start failure keeps its
+  place on the composer's edge (`flush`), so `Transcript.tsx` is unchanged. The empty project says one problem once: when the
+  start failure ("GitHub Copilot is not logged in") shows, the title's "can't run yet: its provider is not connected" sentence is
+  left out (`lib/startFailure.ts`, shared with `StartFailure`; its own module so it stays in the lazy chunks). While streamed text with its caret is on screen
+  the live line no longer adds "Writing…" under it (`showsActivityLine`, test in `activity.test.ts`); sampled every 50ms over a
+  streamed reply: 36 of 36 caret frames also had the "Writing…" row before, 0 of 34 after. Copy: "History compacted 2 requests
+  ago" (was "history was compacted …"), "History compacted by you" (was "· manual"), and a plan whose text opens with its own
+  "Plan…" line takes it as the card title instead of repeating "Plan" (`lib/planTitle.ts`, tested).
+- **E1 — the request bubble is neutral (owner's decision, 2026-11-18).** The user bubble (and its pinned copy, and the side
+  question's) is the raised tone of cards and menus with `fg` text and a 1px `line` hairline, in every theme; the teal fill
+  (#3a786b dark / #356e61 light) and the per-theme `--octo-bubble`/`--octo-bubble-fg` tokens are gone, with the fill-specific
+  selection, "Show more" and focus-ring overrides. Measured: text 13.79:1 (dark) and 15.68:1 (light), was 5.15 and 5.91; the
+  fill against the panel is 1.14:1 (dark) and 1.11:1 (light), under 1.15, hence the hairline; a one-line pill is 40px high (the
+  "1px edges" the R2 note counts; it measured 38 without a border). Checked in the Docs site and Atlas API conversations with a
+  sent @mention and /command, a queued message and a rewind point, dark and light, 1440 and phone 390. Not checked: a bubble
+  with images.
+- **E2 — one small chevron on a chip (owner's decision, 2026-11-18).** `primitives/Chip` ends its label with one `ChevronDown`
+  at 12px in `fg-3` instead of the 14px up-down pair (mode, permission, model and the folder chip, and the title bar's model chip:
+  one primitive). `Glyph` admits 12 for this one use. Measured in the composer at 1440, 900, 700 and 560: chevron 12px, 6px from
+  the label on every chip, no control outside the box, no label cut; each chip 2px narrower. `Select`'s upward chevron pair is
+  not a chip and is unchanged.

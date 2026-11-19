@@ -13,11 +13,11 @@ import { ScrollArea } from "./ScrollArea";
  * padding or header.
  *
  * Top to bottom (each part is optional except the header):
- * 1. header: 40px line, title at the left, the `actions` at the right (one height, one baseline). The primary action is a
+ * 1. header: 40px line with a `line` hairline under it (as the Files bar), title at the left, the `actions` at the right (one height, one baseline). The primary action is a
  *    quiet or secondary `Button` of size sm; `meta` is a dim count or state after the title.
  * 2. `filters`: at most one row of 36px, `FilterTabs` first, then a `SearchField` (`PanelFilters`). It may also be a
  *    `ListDetail`'s `listHeader`, so it sits over the list column only.
- * 3. `views`: a `ViewTabs` row (decision 82), its hairline is the only separator the frame draws.
+ * 3. `views`: a `ViewTabs` row (decision 82) with its own hairline. Content under the header draws no top line of its own.
  * 4. the content: a `ListDetail`, or `PanelBody` for one scrolling column.
  * 5. `footer`: one dim line.
  *
@@ -51,23 +51,26 @@ export function Panel(props: {
   const measure = props.column === "measure" ? PANEL_COLUMN : undefined;
   return (
     <section data-panel={props.name} aria-label={props.title} className={cn("flex h-full min-h-0 flex-col", props.className)}>
-      <header data-panel-header className={cn("flex h-ctl-lg shrink-0 items-center gap-2 px-pane", measure)}>
-        {/* G1 (2026-11-18): a dock tab's label already names the panel, so the bar shows no title (the section keeps it as
-            its name); the lead (the purpose button, the review's repository menu) starts at the 8px inset, as Files and Browser. */}
-        {props.lead !== undefined && (
-          <div data-panel-lead className="flex min-w-0 items-center gap-1">
-            {props.lead}
-          </div>
-        )}
-        <span className="flex min-w-0 flex-1 items-baseline">
-          {props.meta !== undefined && <span className="shrink-0 px-1 text-xs text-fg-3 tabular-nums">{props.meta}</span>}
-        </span>
-        {props.actions !== undefined && (
-          <div data-panel-actions className="flex shrink-0 items-center gap-1">
-            {props.actions}
-          </div>
-        )}
-      </header>
+      {/* The bar's hairline runs the tab's full width (like the Files and Browser bars), also when the header is capped. */}
+      <div data-panel-bar className="shrink-0 shadow-[inset_0_-1px_0_var(--octo-line)]">
+        <header data-panel-header className={cn("flex h-ctl-lg shrink-0 items-center gap-2 px-pane", measure)}>
+          {/* G1 (2026-11-18): a dock tab's label already names the panel, so the bar shows no title (the section keeps it as
+              its name); the lead (the purpose button, the review's repository menu) starts at the 8px inset, as Files and Browser. */}
+          {props.lead !== undefined && (
+            <div data-panel-lead className="flex min-w-0 items-center gap-1">
+              {props.lead}
+            </div>
+          )}
+          <span className="flex min-w-0 flex-1 items-baseline">
+            {props.meta !== undefined && <span className="shrink-0 px-1 text-xs text-fg-3 tabular-nums">{props.meta}</span>}
+          </span>
+          {props.actions !== undefined && (
+            <div data-panel-actions className="flex shrink-0 items-center gap-1">
+              {props.actions}
+            </div>
+          )}
+        </header>
+      </div>
       {props.notice !== undefined && <div className={cn("shrink-0 px-pane pb-2", measure)}>{props.notice}</div>}
       {props.filters !== undefined && props.filters}
       {props.views}

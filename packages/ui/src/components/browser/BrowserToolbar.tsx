@@ -67,7 +67,7 @@ export function BrowserToolbar(props: {
 
   return (
     <header className="@container/bt flex h-bar shrink-0 items-center gap-1.5 border-b border-line px-2">
-      <div className="flex shrink-0 items-center gap-0.5">
+      <div className="flex shrink-0 items-center gap-1">
         <IconButton icon={ArrowLeft} label="Back" size="sm" disabled={!props.url} onClick={() => props.onNavigate("back")} />
         <IconButton
           icon={ArrowRight}

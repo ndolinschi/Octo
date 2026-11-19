@@ -81,15 +81,38 @@ export function projectSummary(list: readonly ProjectSession[]): { glyph: GlyphS
   return { glyph, running: mains.filter((s) => s.state === "working").length };
 }
 
-/** A session row's meta: nothing while it works (the glyph turns), "waiting" for a slot, else the time since its activity. */
+/**
+ * A session row's meta: nothing while it works (the glyph turns), "queued" for a slot, else the time since its activity
+ * (also while it waits for the person: how long it has waited, as a failed row says how long ago it failed).
+ */
 export function sessionMeta(s: Pick<ProjectSession, "state" | "last_activity_at" | "started_at">, now: number): string | null {
-  if (s.state === "working" || s.state === "waiting") return null;
+  if (s.state === "working") return null;
   if (s.state === "queued") return "queued";
   return formatRelative(s.last_activity_at || s.started_at, now);
 }
 
 /** A session's title as a row shows it. */
 export const sessionTitle = (s: Pick<ProjectSession, "title">): string => (s.title.trim() === "" ? "New session" : s.title.trim());
+
+/**
+ * The sessions the palette lists as rows of their own: those an open tab does not already show. A tab counts only when its
+ * label carries the session's title (a tab still called "New session" while the sidebar says "Alpha session" must not hide
+ * the session: typing its name has to find it).
+ */
+export function sessionsBesideTabs<T extends Pick<ProjectSession, "id" | "title"> & { project_name: string }>(
+  sessions: readonly T[],
+  tabs: readonly { id: string; label: string }[],
+  tabIdOf: (sessionId: string) => string,
+): T[] {
+  const labels = new Map(tabs.map((t) => [t.id, t.label]));
+  return sessions.filter((s) => {
+    const title = sessionTitle(s);
+    const own = labels.get(tabIdOf(s.id));
+    if (own !== undefined && own.includes(title)) return false;
+    // The conversation tab (Chat) is named "Project / Session title".
+    return !tabs.some((t) => t.label === `${s.project_name} / ${title}`);
+  });
+}
 
 /**
  * Whether a project is open in the tree: what the person chose last (stored), else open when it is the active project or

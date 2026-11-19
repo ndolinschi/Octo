@@ -203,7 +203,7 @@ export default function TerminalTab(props: { tab: TabId; terminalId: string }) {
       }}
       className="flex min-h-0 flex-1 flex-col bg-panel outline-none"
     >
-      <header className="flex h-bar shrink-0 items-center justify-between gap-2 border-b border-line px-3">
+      <header className="flex h-bar shrink-0 items-center justify-between gap-2 border-b border-line px-2">
         <div className="flex min-w-0 items-center gap-2">
           {/* Work-surface polish item 10: the PID lives in the status dot's tooltip, not in the bar. */}
           <span role="img" aria-label={statusTip} title={statusTip} className="grid size-4 shrink-0 place-items-center">

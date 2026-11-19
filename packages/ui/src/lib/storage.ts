@@ -46,10 +46,14 @@ export const PREFS = {
   sidebarView: key("sidebarView"),
   /** The sidebar tree's project rows the person opened or closed: `{ [projectId]: boolean }`. */
   sidebarOpen: key("sidebarOpen"),
+  /** The sidebar's width in px (200–480), as plain text: set by dragging its edge. */
+  sidebarWidth: key("sidebarWidth"),
   /** The main session a project's conversation tab showed last (decision 96: `#/p/<pid>` opens it), as plain text. */
   lastSession: (projectId: string) => key(`lastSession.${projectId}`),
   /** Per-tab URL, title, viewport and batch-edits toggle of Browser tabs in one project. */
   browserTabs: (projectId: string) => key(`browserTabs.${projectId}`),
+  /** Where the reader scrolled each conversation of one project to, restored on reload: `{ [memoryKey]: { top, atBottom } }` (`scrollSpots.ts`). */
+  scrollSpots: (projectId: string) => key(`scroll.${projectId}`),
 } as const;
 
 /** How a value is stored. `parse` never throws: missing, malformed or foreign text becomes a valid (default) value. */

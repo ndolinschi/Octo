@@ -1,7 +1,7 @@
 import { GitPullRequest, House, Plus, Search, Settings, type LucideIcon } from "lucide-react";
 import { navigate } from "../../lib/route";
 import { Glyph } from "../primitives/Glyph";
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, Suspense, useRef, type ReactNode } from "react";
 import { useApp } from "../../state/app";
 import { MOD } from "../../state/workspace/WorkspaceProvider";
 import { ListRow } from "../primitives/ListRow";
@@ -11,7 +11,10 @@ import { useHost } from "../../state/host";
 
 /** The "Projects" view's list: its own chunk, asked for at once (decision 96: the default view is the tree, `SessionTree`). */
 const listChunk = import("./ProjectList").catch(() => undefined);
-const ProjectList = lazy(() => listChunk.then((m) => m ?? import("./ProjectList")).then((m) => ({ default: m.ProjectList })));
+const list = () => listChunk.then((m) => m ?? import("./ProjectList"));
+const ProjectList = lazy(() => list().then((m) => ({ default: m.ProjectList })));
+/** The edge's resize handle and the stored width (item 3), from the same chunk, which loads before the projects arrive. */
+const SidebarEdge = lazy(() => list().then((m) => ({ default: m.SidebarEdge })));
 
 /** A nav row (decision 90): a 32px `ListRow` with its glyph, label and, when it has one, the key hint. */
 function NavRow(props: { icon: LucideIcon; label: string; onClick(): void; disabled?: boolean; shortcut?: { hint: string; keys: string }; current?: boolean }) {
@@ -54,12 +57,19 @@ export function Sidebar(props: {
   const phone = usePhone();
   // Remote access: a device never creates a project (local only, and it needs the computer's folder dialog).
   const device = useHost().remoteDevice !== undefined;
+  const nav = useRef<HTMLElement>(null);
 
   return (
     <nav
+      ref={nav}
       aria-label="Projects"
-      className="flex h-full w-sidebar shrink-0 flex-col bg-window pl-gutter phone:min-h-0 phone:w-full phone:flex-1 phone:bg-transparent phone:pl-0"
+      className="relative flex h-full w-sidebar shrink-0 flex-col bg-window pl-gutter phone:min-h-0 phone:w-full phone:flex-1 phone:bg-transparent phone:pl-0"
     >
+      {!phone && (
+        <Suspense fallback={null}>
+          <SidebarEdge nav={nav} />
+        </Suspense>
+      )}
       <div className="flex min-h-0 flex-1 flex-col p-pane">
         <div className="flex shrink-0 flex-col">
           <NavRow icon={House} label="Home" onClick={() => navigate(null)} current={props.home} disabled={!projects?.length} />

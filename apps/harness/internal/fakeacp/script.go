@@ -219,7 +219,11 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 	case has(MarkerOwnEdit):
 		return a.ownEdit(cwd)
 	case has(MarkerPerm):
-		return a.permScript(ctx, cwd)
+		stop := a.permScript(ctx, cwd)
+		if has(MarkerWrite) && stop == "end_turn" {
+			return a.fsWrite(ctx, cwd) // a second prompt of another kind in the same turn
+		}
+		return stop
 	case has(MarkerMode):
 		a.mu.Lock()
 		cur := a.mode
@@ -227,16 +231,7 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		a.say("mode=" + cur)
 		return "end_turn"
 	case has(MarkerWrite):
-		_, rpcErr, err := a.call(ctx, "fs/write_text_file", map[string]any{"sessionId": a.sid(), "path": filepath.Join(cwd, WriteFile), "content": "written\n"})
-		switch {
-		case err != nil:
-			return "cancelled"
-		case rpcErr != nil:
-			a.say("fswrite refused: " + rpcErr.Message)
-		default:
-			a.say("fswrite ok")
-		}
-		return "end_turn"
+		return a.fsWrite(ctx, cwd)
 	case has(MarkerAskForm):
 		return a.askForm(ctx)
 	case has(MarkerBlocks):

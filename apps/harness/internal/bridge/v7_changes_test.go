@@ -93,6 +93,78 @@ func TestChangesPerTurnAcrossAgents(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(folder, first.Path)); !os.IsNotExist(err) {
 		t.Fatalf("created file still there: %v", err)
 	}
+	// Created and reverted away: the file leaves the list, the other two stay.
+	e.into(t, "GET", "/v1/projects/"+pid+"/changes", nil, http.StatusOK, &got)
+	if len(got.Turns) != 1 || len(got.Turns[0].Files) != 2 {
+		t.Fatalf("after reverting %s: %+v", first.Path, got.Turns)
+	}
+	for _, f := range got.Turns[0].Files {
+		if f.Path == first.Path {
+			t.Fatalf("reverted file still listed: %+v", f)
+		}
+	}
+}
+
+// A revert is recorded as a change of the turn it undoes (change.recorded): a file reverted to what it was before the
+// turn leaves GET /changes (also ?session=), the way a file an agent created and deleted again does (v7 §1).
+func TestRevertedFilesLeaveTheChanges(t *testing.T) {
+	e := newEnv(t, nil)
+	pid, folder := e.v7Project(t, "full")
+	if err := os.WriteFile(filepath.Join(folder, "old.txt"), []byte("a\nb\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := "printf 'a\\nB\\nc\\n' > old.txt && echo hi > made.txt && rm README.md"
+	e.runTurn(t, pid, "Run it [bash:"+cmd+"]")
+	list := func(query string) map[string]changes.FileChangeSummary {
+		t.Helper()
+		var got turnsResp
+		e.into(t, "GET", "/v1/projects/"+pid+"/changes"+query, nil, http.StatusOK, &got)
+		out := map[string]changes.FileChangeSummary{}
+		for _, tc := range got.Turns {
+			for _, f := range tc.Files {
+				out[f.Path] = f
+			}
+		}
+		return out
+	}
+	byPath := list("")
+	if len(byPath) != 3 {
+		t.Fatalf("files = %+v", byPath)
+	}
+	var sid string
+	{
+		var got turnsResp
+		e.into(t, "GET", "/v1/projects/"+pid+"/changes", nil, http.StatusOK, &got)
+		sid = got.Turns[0].SessionID
+	}
+	stream := e.subscribe(t, pid)
+	left := 3
+	for _, path := range []string{"made.txt", "old.txt", "README.md"} {
+		// Newest change first, as the Changes view does: three sub-agents run the command, and under load a snapshot can
+		// catch a file half-written, so a file may have more than one change.
+		ids := byPath[path].ChangeIDs
+		for i := len(ids) - 1; i >= 0; i-- {
+			var st project.RevertResult
+			e.into(t, "POST", "/v1/projects/"+pid+"/changes/"+itoa(ids[i])+"/revert", nil, http.StatusOK, &st)
+			ev := waitEvent(t, stream, "change.recorded")
+			if c, _ := ev.Data["change"].(map[string]any); c == nil || c["path"] != path {
+				t.Fatalf("change.recorded after reverting %s = %+v", path, ev.Data)
+			}
+		}
+		left--
+		now := list("")
+		if _, ok := now[path]; ok || len(now) != left {
+			t.Fatalf("after reverting %s: %+v", path, now)
+		}
+		if sid != "" {
+			if scoped := list("?session=" + sid); len(scoped) != left {
+				t.Fatalf("after reverting %s, ?session=%s: %+v", path, sid, scoped)
+			}
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(folder, "old.txt")); string(b) != "a\nb\n" {
+		t.Fatalf("old.txt after revert: %q", b)
+	}
 }
 
 func TestBashChangesAreRecorded(t *testing.T) {

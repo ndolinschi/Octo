@@ -24,7 +24,8 @@ export function ProviderDetail({ provider: p, onRouter }: { provider: Provider; 
   const harness = useHarnessSettings();
   // A2: the API provider's one action is its key form's "Save key"; a second filled "Connect" beside it did nothing visible.
   // The router's "Connect" opens the Router group below, where its switch and upstream key are.
-  const action = p.kind === "api" ? null : primaryAction(p);
+  // A server that does not answer (Ollama, a local base URL) has nothing to save: its action is looking again.
+  const action = p.kind === "api" && p.state !== "not_running" ? null : primaryAction(p);
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
   const check = async () => {
@@ -118,10 +119,12 @@ function Reason({ provider: p, text }: { provider: Provider; text: string }) {
           ...(p.state === "not_installed" ? [{ title: /too old/i.test(p.reason) ? "Update" : "Install", hint: p.install_hint }] : []),
           { title: "Log in", hint: p.login_hint },
         ]
-      : [];
+      : p.state === "not_running" && p.problem?.command
+        ? [{ title: "Start", hint: `\`${p.problem.command}\`` }]
+        : [];
   // S5: the API provider's "No API key" is said by its key group; one label, not three. C17: "Grok is not installed." after
   // "Not installed" and the reason line says nothing new.
-  const extra = p.kind === "api" || (p.state === "not_installed" && /not installed/i.test(extraReason(p))) ? "" : extraReason(p);
+  const extra = p.kind === "api" || p.state === "not_running" || (p.state === "not_installed" && /not installed/i.test(extraReason(p))) ? "" : extraReason(p);
   return (
     <section className="flex flex-col gap-3">
       <p className="text-sm text-fg-2">

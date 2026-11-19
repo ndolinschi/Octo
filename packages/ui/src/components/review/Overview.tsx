@@ -25,7 +25,13 @@ function Item({ item, now }: { item: ReviewConversationItem; now: number }) {
 }
 
 /** Above the diff, on demand: the description, the conversation, the checks and the commits of the pull request. */
-export function Overview({ review, facts }: { review: Review; /** Page mode: the header's meta line is not drawn, so its facts lead here. */ facts?: string }) {
+export function Overview({
+  review,
+  facts,
+}: {
+  review: Review;
+  /** The header is one bar, so what it is, who wrote it and how far you are lead here. */ facts?: string;
+}) {
   const [now] = useState(() => Date.now());
   const conversation = review.meta.conversation ?? [];
   const checks = review.meta.checks ?? [];

@@ -263,7 +263,7 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
       placeholder="Open a tool, session, file or agent"
       sections={sections}
       onClose={onClose}
-      align="end"
+      align="start"
       footer={
         error ? (
           <div className="border-t border-line px-3 py-2">

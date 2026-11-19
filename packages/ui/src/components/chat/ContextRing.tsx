@@ -10,13 +10,13 @@ import { Presence } from "../primitives/Presence";
 
 const ContextPopover = lazy(() => import("./ContextPopover").then((m) => ({ default: m.ContextPopover })));
 
-/** The wedge is a circle of radius R drawn with a stroke as wide as its diameter: a pie from the centre out to 2R. */
-const R = 2.5;
+/** The gauge is a 2px arc on the track ring's radius, from twelve o'clock. */
+const R = 6.75;
 const C = 2 * Math.PI * R;
 
 /**
- * The context indicator (decisions 62, 65): a gauge of how full the context window is — a rim and a filled wedge from twelve
- * o'clock (polish step 3, C6: a pie, so it never reads as the working spinner's arc) — with the percentage beside it once it
+ * The context indicator (decisions 62, 65): a gauge of how full the context window is — a track ring and a 2px arc from twelve
+ * o'clock (a filled pie read as a theme icon at 16px) — with the percentage beside it once it
  * passes 50% (warn colour from 80%), and a real button: click, Enter or Ctrl/Cmd+Shift+U open the popover — the headline, one
  * stacked bar and a list by category, cached vs. uncached input of the last request, "Compact now" (when the bridge can),
  * and "Open context details". An agent that manages its own context says so. Not rendered while a number is unknown.
@@ -80,14 +80,14 @@ export function ContextRing(props: { used: number | null | undefined; size: numb
         className={share <= 0.5 ? "w-7 justify-center rounded-full px-0" : undefined}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden data-gauge className="-rotate-90">
-          <circle cx="8" cy="8" r="6.75" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-fg-3" />
+          <circle cx="8" cy="8" r={R} fill="none" stroke="currentColor" strokeWidth="2" className="text-line-strong" />
           <circle
             cx="8"
             cy="8"
             r={R}
             fill="none"
             stroke="currentColor"
-            strokeWidth={2 * R}
+            strokeWidth="2"
             strokeDasharray={`${Math.max(0.04 * C, share * C)} ${C}`}
             className={cn(share >= 0.8 ? "text-warn" : "text-fg-2")}
           />

@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Provider, ProviderModel } from "@octo/agent-client";
-import { billingLine, defaultProviderId, foldModels, groupOf, modelsSummary, primaryAction, providerGroups, reasonLine, rowStatus } from "./view";
+import {
+  billingLine,
+  connectSubtitle,
+  defaultProviderId,
+  foldModels,
+  groupOf,
+  modelsSummary,
+  primaryAction,
+  providerGroups,
+  reasonLine,
+  rowStatus,
+} from "./view";
 
 const models = (n: number): ProviderModel[] => Array.from({ length: n }, (_, i) => ({ id: `m${i}`, label: `m${i}`, source: "manifest" }));
 const p = (id: string, state: Provider["state"], over: Partial<Provider> = {}): Provider => ({
@@ -125,4 +136,27 @@ test("modelsSummary and foldModels", () => {
   assert.equal(foldModels(models(16), false).shown.length, 6);
   assert.equal(foldModels(models(16), true).shown.length, 16);
   assert.equal(foldModels(models(6), false).hidden, 0);
+});
+
+test("connectSubtitle: Ollama alone is said to be connected and not enough", () => {
+  assert.match(connectSubtitle([{ kind: "ollama", state: "ready" }]), /^Ollama is connected\. Projects also need/);
+  assert.match(connectSubtitle([]), /^Octo needs one of these/);
+  assert.match(connectSubtitle([{ kind: "ollama", state: "not_installed" }]), /^Octo needs one of these/);
+  assert.match(connectSubtitle([{ kind: "ollama", state: "not_running" }]), /^Octo needs one of these/);
+});
+
+// The QA finding: Ollama read "Ready · 4 models" while nothing listened on its port. The harness now says not_running.
+test("not running: says so, needs attention in the warn tone, offers Check again and the start command's reason", () => {
+  const ollama = p("ollama", "not_running", {
+    kind: "ollama",
+    models: models(4),
+    reason: "Ollama is not running.",
+    problem: { message: "Ollama is not running.", hint: "Start it, then check again.", command: "ollama serve", action: "recheck_provider" },
+  });
+  assert.equal(rowStatus(ollama), "Not running");
+  assert.equal(groupOf(ollama), "attention");
+  assert.equal(primaryAction(ollama), "Check again");
+  assert.equal(reasonLine(ollama), "Ollama is not running. Start it, then check again.");
+  const api = p("api", "not_running", { kind: "api", problem: { message: "The model server is not running.", hint: "Start it, then check again." } });
+  assert.equal(primaryAction(api), "Check again");
 });

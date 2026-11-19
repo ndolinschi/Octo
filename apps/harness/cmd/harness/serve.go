@@ -257,6 +257,8 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	provSvc := providers.New(providers.Options{
 		Discovery: modelDiscovery(&orchRef),
 		DataDir:   cfg.DataDir, Builtin: builtin, Router: octo, Agents: pluginReg.Agents, Recheck: pluginReg.Recheck, Fresh: pluginReg.Fresh,
+		// Ollama, and the built-in loop on a local base URL, read ready only while their server answers.
+		Reach: providers.HTTPReach, APIBaseURL: func() string { return cfg.BaseURL },
 		Ollama: func() (string, string) {
 			if o := orchRef.Load(); o != nil {
 				return o.OllamaConfig()

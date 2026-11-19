@@ -1,6 +1,7 @@
 import type { Bridge, TerminalSession } from "@octo/agent-client";
 import { errorMessage } from "../../lib/format";
-import { getTerminalTabState, onTerminalTabClosed, updateTerminalTabState } from "../../state/terminalTabs";
+import { getTerminalTabState, onTerminalTabClosed, terminalTabName, updateTerminalTabState } from "../../state/terminalTabs";
+import { terminalOrdinals } from "./ordinals";
 
 const MAX_HISTORY_BYTES = 128 * 1024;
 
@@ -57,12 +58,20 @@ function disposeSession(entry: InternalEntry) {
   }
 }
 
+/** Item 15: numbers the project's terminal tabs that share a name, in the order they were opened (this map's), in their tab state. */
+function renumber(projectId: string) {
+  const mine = [...entries.values()].filter((e) => e.projectId === projectId);
+  const numbers = terminalOrdinals(mine.map((e) => terminalTabName(getTerminalTabState(projectId, e.terminalId))));
+  mine.forEach((e, i) => updateTerminalTabState(projectId, e.terminalId, { ordinal: numbers[i] ?? 0 }));
+}
+
 onTerminalTabClosed((projectId, terminalId) => {
   const key = `${projectId}:${terminalId}`;
   const entry = entries.get(key);
   if (!entry) return;
   entries.delete(key);
   disposeSession(entry);
+  renumber(projectId);
 });
 
 export function getManagedTerminal(projectId: string, terminalId: string, defaultFolder: string): ManagedTerminal {
@@ -146,6 +155,7 @@ export function getManagedTerminal(projectId: string, terminalId: string, defaul
         error: null,
       };
       updateTerminalTabState(projectId, terminalId, { folder });
+      renumber(projectId);
       notify();
 
       bridge
@@ -169,6 +179,7 @@ export function getManagedTerminal(projectId: string, terminalId: string, defaul
             shell: session.shell,
             folder: session.folder || folder,
           });
+          renumber(projectId);
           entry.unsubOutput = session.onOutput((chunk) => {
             if (entry.gen !== myGen) return;
             appendChunk(chunk);

@@ -43,7 +43,7 @@ commands/commands.go|notFound|command_not_found
 commands/commands.go|notFound|not_found
 commands/commands.go|notFound|review_not_found
 project/approvals.go|invalid|%s
-project/approvals.go|invalid|decision must be allow, allow_for_turn, allow_always or deny
+project/approvals.go|invalid|decision must be allow, allow_for_turn, allow_all_for_turn, allow_always or deny
 project/approvals.go|invalid|note or match is too long
 project/approvals.go|notFound|approval
 project/approvals.go|notFound|approval rule

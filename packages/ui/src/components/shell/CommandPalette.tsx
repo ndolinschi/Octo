@@ -31,7 +31,7 @@ import { agentGlyph, orchestratorGlyph, type GlyphState } from "../../lib/stateG
 import { projectRowLines } from "../../lib/orchestrator";
 import { isPending, useOrchestrators } from "../../state/orchestrators";
 import { useSessionIndex } from "../../state/sessionIndex";
-import { mainSessions, sessionGlyph, sessionMeta, sessionTitle } from "../../lib/sessions/tree";
+import { mainSessions, sessionGlyph, sessionMeta, sessionsBesideTabs, sessionTitle } from "../../lib/sessions/tree";
 import { useModal } from "../primitives/useModal";
 import { createPointerGate, popupListKey } from "../primitives/popupNav";
 
@@ -201,12 +201,12 @@ export function CommandPalette(props: {
         ? []
         : [
             { id: "x:shortcuts", label: "Keyboard shortcuts", detail: "?", run: go(openShortcuts) },
-            { id: "x:help", label: "Help", detail: "Shortcuts and help", run: go(openShortcuts) },
+            { id: "x:help", label: "Help", detail: "Shortcuts and how things work.", run: go(openShortcuts) },
           ]),
       {
         id: "x:model",
         label: "Change model",
-        detail: "Model for this project",
+        detail: "Choose the model this project uses.",
         run: go(() => {
           const chip = [...document.querySelectorAll<HTMLElement>("[data-model-picker]")].find((el) => el.offsetParent !== null);
           if (chip) chip.click();
@@ -297,17 +297,14 @@ export function CommandPalette(props: {
     // Decision 96: every main session (title, project, state glyph), and "New session in <project>". Balance pass: a session
     // already open as a tab is listed once, as the tab (the row above it said the same thing).
     // (The conversation's own tab is "chat", named "Project / Session title".)
-    const openTabs = new Set(tabRows.flatMap((t) => [t.id, t.label]));
-    const sessionRows: Item[] = mainSessions(sessionIndex.all)
-      .filter((s) => !openTabs.has(`tab:${sessionTab(s.id)}`) && !openTabs.has(`${s.project_name} / ${sessionTitle(s)}`))
-      .map((s) => ({
-        id: `ses:${s.id}`,
-        label: sessionTitle(s),
-        detail: [s.project_name, sessionMeta(s, now)].filter(Boolean).join(" · "),
-        search: s.project_name,
-        glyph: sessionGlyph(s),
-        run: go(() => navigate(s.project_id, null, s.id)),
-      }));
+    const sessionRows: Item[] = sessionsBesideTabs(mainSessions(sessionIndex.all), tabRows, (id) => `tab:${sessionTab(id)}`).map((s) => ({
+      id: `ses:${s.id}`,
+      label: sessionTitle(s),
+      detail: [s.project_name, sessionMeta(s, now)].filter(Boolean).join(" · "),
+      search: s.project_name,
+      glyph: sessionGlyph(s),
+      run: go(() => navigate(s.project_id, null, s.id)),
+    }));
     // The open project's row comes first: "New session" must not start one in whichever project is listed first.
     const newSessions: Item[] = [...(projects ?? [])]
       .sort((a, b) => Number(b.id === pid) - Number(a.id === pid))
@@ -326,8 +323,19 @@ export function CommandPalette(props: {
           );
         }),
       }));
+    // Item 12: "New session in …" for every project buried the rest ("re" listed four of thirteen and pushed Settings out of
+    // sight). The projects the query names (a word of the name starts with it), else the first two (the open project first).
+    const lq = q.toLowerCase();
+    const names = (name: string) =>
+      name.toLowerCase().startsWith(lq) ||
+      name
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .some((w) => w.startsWith(lq));
+    const named = q === "" ? [] : (projects ?? []).filter((p) => names(p.name)).map((p) => `n:${p.id}`);
+    const newSessionRows = named.length > 0 ? newSessions.filter((i) => named.includes(i.id)) : newSessions.slice(0, 2);
     // One real (substring) hit anywhere drops every loose letter-by-letter hit: "key" is not "Knock every yellow".
-    const strict = [tabRows, projectRows, sessionRows, loaded, agentRows, actions, newSessions, settingRows].some((l) =>
+    const strict = [tabRows, projectRows, sessionRows, loaded, agentRows, actions, newSessionRows, settingRows].some((l) =>
       l.some((i) => fieldScore(q, i.label, i.search ?? i.detail).sub),
     );
     const rank = (items: Item[]) => rankMatches(q, items, (i) => [i.label, i.search ?? i.detail], LIMIT, strict);
@@ -347,7 +355,7 @@ export function CommandPalette(props: {
           { title: "Tabs", items: rank(tabRows) },
           { title: "Projects", items: rank(projectRows) },
           { title: "Sessions", items: rank(sessionRows) },
-          { title: "Actions", items: rank([...actions, ...newSessions]) },
+          { title: "Actions", items: rank([...actions, ...newSessionRows]) },
           { title: "Settings", items: rank(settingRows) },
           { title: "Requests", items: [...rank(loaded), ...past] },
           { title: "Agents", items: rank(agentRows) },
