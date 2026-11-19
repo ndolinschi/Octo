@@ -24,9 +24,12 @@ jobs:
       - run: pnpm --filter @octo/agent-client test
       - run: pnpm --filter @octo/ui test
       - run: pnpm --filter @octo/desktop test
+      # The mobile web client (the root `test` and `build` scripts do not include it)
+      - run: pnpm --filter @octo/web test
       # layer-imports ESLint rule (import cycles are checked by `pnpm lint`)
       - run: pnpm test:scripts
       - run: pnpm --filter @octo/desktop build
+      - run: pnpm --filter @octo/web build
       # Initial JS (gzip) must stay within the budget recorded in the script.
       - run: node scripts/check-bundle-size.mjs
 
@@ -61,6 +64,13 @@ jobs:
           touch "apps/desktop/src-tauri/binaries/octo-$triple"
       - working-directory: apps/desktop/src-tauri
         run: cargo check
+      - working-directory: apps/desktop/src-tauri
+        run: cargo fmt --check
+      - working-directory: apps/desktop/src-tauri
+        run: cargo clippy -p octo-sidecar --all-targets -- -D warnings
+      # Needs WebKitGTK, which was not available where this was written: the shell crate's clippy is unverified.
+      - working-directory: apps/desktop/src-tauri
+        run: cargo clippy -- -D warnings
       # Port choice, login-shell PATH parsing, health wait, log cap, process-group shutdown, harness.env parsing and the
       # two-sidecar start order with fake binaries (router off / on / failing, shutdown order, restart) - no WebKit needed.
       - working-directory: apps/desktop/src-tauri
