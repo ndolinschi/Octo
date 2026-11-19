@@ -108,6 +108,10 @@ type Approval struct {
 	// it is absent when no rule can be saved for the request.
 	Tool          string    `json:"tool,omitempty"`
 	SuggestedRule *RuleSpec `json:"suggested_rule,omitempty"`
+	// NoTurnGrant: "allow for this request" (allow_for_turn) would remember
+	// nothing for this request (a compound shell command), so a client does
+	// not offer it; the answer, if sent, allows this request once.
+	NoTurnGrant bool `json:"no_turn_grant,omitempty"`
 }
 
 // Resolution is the user's answer (or the automatic one).
@@ -255,15 +259,34 @@ func (m *Manager) Count(pid string) int {
 }
 
 // Granted reports whether the agent was allowed key for the rest of the turn.
+// An empty key (a request "allow for this request" cannot cover, such as a
+// compound shell command) is covered only by allow_all_for_turn.
 func (m *Manager) Granted(pid string, turn int64, agent, key string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	g := m.grants[pid]
-	return g[grantKey{turn, agent, key}] || g[grantKey{turn, anyKey, anyKey}]
+	return key != "" && g[grantKey{turn, agent, key}] || g[grantKey{turn, anyKey, anyKey}]
 }
 
-// Grant allows key for the agent for the rest of the turn.
+// CommandGrantKey is what "allow for this request" remembers for a shell
+// command: its program, and only when the command is a single simple command
+// (Tokens). For anything else (separators, pipes, substitutions,
+// redirections, subshells, expansions) it is empty: the answer allows that
+// command once, and no grant covers such a command.
+func CommandGrantKey(command string) string {
+	words, simple := Tokens(command)
+	if !simple {
+		return ""
+	}
+	return KindCommand + ":" + program(words[0])
+}
+
+// Grant allows key for the agent for the rest of the turn. An empty key
+// grants nothing.
 func (m *Manager) Grant(pid string, turn int64, agent, key string) {
+	if key == "" {
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.grants[pid] == nil {

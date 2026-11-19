@@ -7,7 +7,6 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/activity"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
@@ -300,16 +299,6 @@ func denied(note string) string {
 	return "Denied by the user: " + strings.TrimSpace(note)
 }
 
-// program is the first word of a shell command, the unit "allow for this turn"
-// remembers for commands.
-func program(command string) string {
-	f := strings.Fields(command)
-	if len(f) == 0 {
-		return ""
-	}
-	return filepath.Base(f[0])
-}
-
 // writeDetail describes a write of content to rel under folder: the size of
 // the change against what is on disk now.
 func writeDetail(folder, abs, rel, content string) approval.Detail {
@@ -348,9 +337,12 @@ func (rt *runtime) approveCommand(ctx context.Context, agentID, label, folder, c
 	if i := strings.IndexByte(title, '\n'); i >= 0 {
 		title = title[:i] + " ..."
 	}
+	// Only a simple command has a turn grant (its program); a compound one asks every time.
+	key := approval.CommandGrantKey(command)
 	return rt.ask(ctx, agentID, label, approval.Approval{
 		Kind: approval.KindCommand, Title: clip(title, 200), Tool: approval.ToolBash, Detail: approval.Detail{Folder: folder, Command: command},
-	}, approval.KindCommand+":"+program(command))
+		NoTurnGrant: key == "",
+	}, key)
 }
 
 // approvalPolicy answers one agent's session/request_permission: automatically

@@ -202,6 +202,28 @@ func TestAllowForTurnIsPerKind(t *testing.T) {
 	}
 }
 
+// "Allow for this request" on a simple command never covers a later compound command that starts with the same
+// program, and a compound command grants nothing: each agent is asked for all three commands, and the compound ones
+// run only because they were answered (security review finding 2).
+func TestAllowForTurnDoesNotCoverCompoundCommands(t *testing.T) {
+	e := newEnv(t, nil)
+	pid, _ := e.v7Project(t, "supervised")
+	evs := e.answerEvery(t, pid, "Go [bash:echo a] [bash:echo b; echo c] [bash:echo d && echo e]", "allow_for_turn")
+	if kinds := requestedKinds(evs); kinds["command"] != 9 {
+		t.Fatalf("requested = %v, want 9 commands (3 agents x 3)", kinds)
+	}
+	for _, ev := range evs {
+		if ev.Type != "approval.requested" {
+			continue
+		}
+		a := ev.Data["approval"].(map[string]any)
+		cmd, _ := a["detail"].(map[string]any)["command"].(string)
+		if compound := strings.ContainsAny(cmd, ";&"); compound != (a["no_turn_grant"] == true) {
+			t.Errorf("%q: no_turn_grant = %v", cmd, a["no_turn_grant"])
+		}
+	}
+}
+
 // "Allow all for this request" (allow_all_for_turn) allows every further prompt of the turn, whatever the kind or
 // agent, and nothing past it.
 func TestAllowAllForTurnCoversEveryFurtherPrompt(t *testing.T) {

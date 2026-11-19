@@ -1213,6 +1213,8 @@ export type Approval = {
   tool?: string;
   /** The rule `allow_always` saves by default; absent when no rule can be saved (a compound shell command, ...). */
   suggested_rule?: ApprovalRuleSpec;
+  /** `allow_for_turn` would remember nothing (a compound shell command): do not offer it; sent anyway, it allows once. */
+  no_turn_grant?: boolean;
 };
 /** `match` (with `allow_always`) overrides the suggested rule; it must cover the request (400 `invalid_request` otherwise; 422 `no_rule` when none can be saved). */
 export type ApprovalAnswer = { decision: ApprovalDecision; option_id?: string; note?: string; match?: string };
