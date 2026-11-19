@@ -18,7 +18,7 @@ export type ProjectKept = {
 };
 
 /**
- * What a project's provider knew when it last ran (UI decision 98: switching projects). A switch to a project read before
+ * What a project's provider knew when it last ran (UI decision 99: switching projects). A switch to a project read before
  * paints this at once, complete, and reads everything again behind it (as after a reopened stream, A11).
  */
 export type ProjectSnapshot = {

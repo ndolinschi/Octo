@@ -57,9 +57,31 @@ export function listDemoFiles(rec: ProjectRecord, folder: string, rawPath: strin
     const name = rest.split("/")[0];
     if (name === undefined || name === ".git" || entries.has(name)) continue;
     const dir = rest.includes("/");
-    entries.set(name, { name, path: prefix + name, type: dir ? "dir" : "file", size: dir ? 0 : size(file) });
+    const chain = dir ? demoChain(tree, prefix + name) : [];
+    entries.set(name, { name, path: prefix + name, type: dir ? "dir" : "file", size: dir ? 0 : size(file), ...(chain.length ? { chain } : {}) });
   }
   return [...entries.values()].sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === "dir" ? -1 : 1));
+}
+
+/** The harness's `FileEntry.chain` (decision 98): the directories below `path` while each holds one entry, a directory. */
+export function demoChain(tree: ReadonlyMap<string, unknown>, path: string): string[] {
+  const out: string[] = [];
+  for (let cur = path; out.length < 32;) {
+    const kids = new Map<string, boolean>();
+    for (const p of tree.keys()) {
+      if (!p.startsWith(`${cur}/`)) continue;
+      const rest = p.slice(cur.length + 1);
+      const name = rest.split("/")[0] ?? "";
+      if (name === ".git") continue;
+      kids.set(name, (kids.get(name) ?? false) || rest.includes("/"));
+      if (kids.size > 1) break;
+    }
+    const only = kids.size === 1 ? [...kids][0] : undefined;
+    if (!only?.[1]) break;
+    out.push(only[0]);
+    cur = `${cur}/${only[0]}`;
+  }
+  return out;
 }
 
 function stat(folder: string, path: string, file: DemoFile): FileStat {

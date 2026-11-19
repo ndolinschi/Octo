@@ -62,7 +62,7 @@ export const PROJECTS_POLL_IDLE_MS = 12_000;
 export const PERSIST_LAYOUT_MS = 250;
 export const PERSIST_TREE_MS = 150;
 
-/** Decision 98: a switch to a project not read yet keeps the previous screen this long before its loading state shows. */
+/** Decision 99: a switch to a project not read yet keeps the previous screen this long before its loading state shows. */
 export const SWITCH_HOLD_MS = 150;
 /** "Copied" feedback stays this long. */
 export const COPY_FEEDBACK_MS = 1400;

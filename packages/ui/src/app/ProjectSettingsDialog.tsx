@@ -6,7 +6,7 @@ import { Presence } from "../components/primitives/Presence";
 
 const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
 
-/** The open project's settings (its "⋯" → Settings): its own chunk, loaded on first open (entry budget, decision 98). */
+/** The open project's settings (its "⋯" → Settings): its own chunk, loaded on first open (entry budget, decision 99). */
 export default function ProjectSettingsDialog({ show, onClose }: { show: boolean; onClose(): void }) {
   const { bridge, refreshProjects, projects } = useApp();
   const { project, update, projectId } = useProject();

@@ -29,7 +29,7 @@ const SettingsDialog = lazy(() => import("./ProjectSettingsDialog"));
 const LoadError = lazy(() => import("./ProjectWorkspaceStates").then((m) => ({ default: m.LoadError })));
 
 /** The v7 pieces the conversation and the composer show (approvals, forms, the harness queue); each renders nothing when the bridge lacks its methods. */
-/** Decision 98: they render without suspending once in (`warmApp` fetches them), so a project shown first paints with them. */
+/** Decision 99: they render without suspending once in (`warmApp` fetches them), so a project shown first paints with them. */
 export const approvalsPart = readyLazy(() => import("../components/v7/ApprovalsSlot").then((m) => m.ApprovalsSlot));
 export const queuePart = readyLazy(() => import("../components/v7/QueueSlot").then((m) => m.QueueSlot));
 const ApprovalsSlot = approvalsPart.Component;

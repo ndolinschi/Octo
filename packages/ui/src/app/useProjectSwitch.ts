@@ -4,7 +4,7 @@ import type { Route } from "../lib/route";
 import { canPaint, projectSnapshots } from "../state/projectCache";
 
 /**
- * Decision 98: switching to another project never shows a blank or half-read screen. A project whose conversation is known
+ * Decision 99: switching to another project never shows a blank or half-read screen. A project whose conversation is known
  * (`projectCache`) is shown at once, complete. One not read yet is read out of sight (`preload`, `state/projectPreload`) while
  * the screen keeps what it showed (`shown`: the previous project's conversation, or Home); the preload says when its loading
  * state is due (`onLate`, after SWITCH_HOLD_MS) and when to show the project (`onShow`, complete).

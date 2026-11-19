@@ -44,6 +44,8 @@ import type {
   ProjectSession,
   ProjectMode,
   MoveToWorktreeResult,
+  BranchesResult,
+  RepoBranches,
   SendResult,
   ProjectSessionDetail,
   SessionMessageResult,
@@ -568,6 +570,20 @@ export function createRareMethods({
     listImportableSessions: () => unwrap<ImportableSession[]>(request("GET", "/v1/sessions/importable"), "sessions"),
     importSessions: (id, sessions) => request("POST", `${p(id)}/sessions/import`, { sessions }) as Promise<ImportSessionsResult>,
     listWorkspaces: (id) => unwrap<Workspace[]>(request("GET", `${p(id)}/workspaces`), "workspaces"),
+    listBranches: (id, params) => {
+      const q: string[] = [];
+      if (params?.folder) q.push(`folder=${encodeURIComponent(params.folder)}`);
+      if (params?.workspace) q.push(`workspace=${encodeURIComponent(params.workspace)}`);
+      if (params?.q) q.push(`q=${encodeURIComponent(params.q)}`);
+      if (params?.offset) q.push(`offset=${params.offset}`);
+      if (params?.limit) q.push(`limit=${params.limit}`);
+      return request("GET", `${p(id)}/branches${q.length ? `?${q.join("&")}` : ""}`) as Promise<BranchesResult>;
+    },
+    switchBranch: async (id, input) => {
+      const body = await request("POST", `${p(id)}/branches/switch`, input);
+      if (!isRecord(body) || !isRecord(body.repo)) throw new BridgeError(0, "invalid_response", 'missing "repo" in response');
+      return body.repo as RepoBranches;
+    },
     moveSessionToWorktree: (id, sid, input) => request("POST", `${s(id, sid)}/worktree`, input ?? {}) as Promise<MoveToWorktreeResult>,
     stopSession: (id, sid) => unwrap<ProjectSession>(request("POST", `${p(id)}/sessions/${encodeURIComponent(sid)}/stop`), "session"),
     messageSession: async (id, sid, text, opts) => {

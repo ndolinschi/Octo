@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Decision 98 (flicker.mjs's sibling): changing the project never blinks. For every way a person changes project, the
+ * Decision 99 (flicker.mjs's sibling): changing the project never blinks. For every way a person changes project, the
  * conversation on screen is sampled at every painted frame (the same ResizeObserver probe as flicker.mjs) from just before the
  * click until 1.5 s after it, and each frame is classified: the previous screen, the next conversation, the loading state,
  * or blank. Asserted, for the first switch to a project (cold: read out of sight first) and for a switch back (warm: known):

@@ -41,7 +41,7 @@ export function Dock() {
   const ref = useRef<HTMLDivElement>(null);
   const { setDockWidth } = ws;
 
-  // Measured before the first paint (decision 98): a project shown for the first time is laid out at its width at once, not
+  // Measured before the first paint (decision 99): a project shown for the first time is laid out at its width at once, not
   // first as a zero-wide dock (no fitting groups) and then again when the observer reports.
   useLayoutEffect(() => {
     const el = ref.current;

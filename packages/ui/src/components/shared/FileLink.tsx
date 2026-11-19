@@ -21,7 +21,7 @@ export function InlineCode({ children }: { children?: ReactNode }) {
   useEffect(() => {
     if (candidate && status === "idle") indexFiles?.();
   }, [candidate, status, indexFiles]);
-  // Decision 98: until this view's walk is done, the files as last walked (a project shown again, or read before it was shown),
+  // Decision 99: until this view's walk is done, the files as last walked (a project shown again, or read before it was shown),
   // so a link is a link in the first frame; the walk's result is kept for the next time.
   const kept = useOptionalProject()?.kept;
   const done = status === "done";

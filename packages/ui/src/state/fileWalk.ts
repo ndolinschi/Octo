@@ -5,7 +5,7 @@ const INDEX_MAX_DIRS = 200;
 const INDEX_MAX_ENTRIES = 5000;
 
 /**
- * Decision 98: the walk of `CodeProvider`'s file index, for `projectPreload` (a project read before it is shown, so file links
+ * Decision 99: the walk of `CodeProvider`'s file index, for `projectPreload` (a project read before it is shown, so file links
  * in its prose are links in the first frame). One level at a time, the directories of a level side by side (its time is the
  * tree's depth, not its size). `list` gives a directory's entries (null: unreadable, skipped).
  */

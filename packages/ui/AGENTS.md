@@ -21,7 +21,7 @@ pnpm --filter @octo/desktop build               # also reports chunk sizes
 node scripts/check-bundle-size.mjs              # after the build: initial JS gzip must stay within the budget
 node packages/ui/scripts/spacing-audit.mjs --url http://localhost:1420   # must print total=0
 node packages/ui/scripts/flicker.mjs --url http://localhost:1420   # decisions 69/76: per-frame stability while typing a long prompt; no running animation on idle screens
-node packages/ui/scripts/project-switch.mjs --url http://localhost:1420   # decision 98: every way of changing project (sidebar, tree, composer selector, new session, Home, palette, back/forward) paints the next conversation complete in one frame, no blank, no fill-in; `--theme light`, `--cpu 4`, `--shots DIR`
+node packages/ui/scripts/project-switch.mjs --url http://localhost:1420   # decision 99: every way of changing project (sidebar, tree, composer selector, new session, Home, palette, back/forward) paints the next conversation complete in one frame, no blank, no fill-in; `--theme light`, `--cpu 4`, `--shots DIR`
 node packages/ui/scripts/width-stability.mjs --url http://localhost:1420   # decision 79: must print "width-stability: ok" (also at --width 900 --height 600)
 node packages/ui/scripts/frame-colours.mjs --url http://localhost:1420   # decision 81: no warn/error/accent border, outline or ring (approval, form, plan, failed turn, review screens)
 node packages/ui/scripts/scroll-on-send.mjs --url http://localhost:1420   # rule: sending scrolls to the sent message and re-pins to the bottom

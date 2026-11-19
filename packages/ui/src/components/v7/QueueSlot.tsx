@@ -26,7 +26,7 @@ export function QueueSlot(props: QueueSlotProps) {
 function Live({ onCount }: QueueSlotProps) {
   const { bridge } = useApp();
   const { projectId, project, synced, state, kept } = useProject();
-  // Decision 98: the queue as last read (this project shown before) paints with the conversation; the read updates it.
+  // Decision 99: the queue as last read (this project shown before) paints with the conversation; the read updates it.
   const key = useSessionScope()?.sessionId ?? "";
   const [queue, setQueue] = useState<QueueState>(() => kept.queues.get(key) ?? { paused: false, messages: [] });
   useEffect(() => {

@@ -4,7 +4,7 @@ import test from "node:test";
 import { canPaint, KEEP, keepLatest, lastSessionCodec, projectSnapshots } from "./projectCache";
 import { openingConversation } from "./projectOpening";
 
-/** Decision 98: what a project switch can paint at once. */
+/** Decision 99: what a project switch can paint at once. */
 
 const session = (id: string, over: Partial<ProjectSession> = {}): ProjectSession => ({
   id,

@@ -20,7 +20,7 @@ const WALK_WAIT_MS = 1000;
 type OwnRead = { exchanges: MemoryExchange[]; lookup: typeof storedEndingLookup } | null;
 
 /**
- * Decision 98: a project switched to that this window has not read yet is read here, out of sight, while the screen keeps
+ * Decision 99: a project switched to that this window has not read yet is read here, out of sight, while the screen keeps
  * what it showed: the project, its sessions, what waits, the conversation the route opens, its queue, how its requests
  * ended and the files its turns changed. What is read stays in the project's snapshot (`projectCache`), so the workspace
  * mounted next paints it complete in one frame.

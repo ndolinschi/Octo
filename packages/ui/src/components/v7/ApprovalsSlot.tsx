@@ -34,7 +34,7 @@ function segments(items: readonly ApprovalItem[]): Segment[] {
 
 /**
  * `synced`: bumped by every re-read after a reconnect; the lists load again (what the stream missed). `initial`: what the
- * project state already holds (its last read and events), so the cards paint with the transcript (decision 98).
+ * project state already holds (its last read and events), so the cards paint with the transcript (decision 99).
  */
 type Ids<T> = { projectId: string; bridge: Bridge; synced: number; initial: readonly T[] };
 

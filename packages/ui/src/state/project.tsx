@@ -74,7 +74,7 @@ type ProjectValue = {
   applySession(change: SessionChange): void;
   /** Observe raw bridge events on this project's existing subscription (no extra connection). */
   onEvent(listener: (event: BridgeEvent) => void): () => void;
-  /** What the conversation's own reads found (its queue, its stored endings), kept across switches (decision 98). */
+  /** What the conversation's own reads found (its queue, its stored endings), kept across switches (decision 99). */
   kept: ProjectKept;
 };
 
@@ -88,7 +88,7 @@ function listed(doc: NoteDocument): Note {
 
 export function ProjectProvider({ projectId, children }: { projectId: string; children: ReactNode }) {
   const { bridge, refreshProjects, refreshConfig, projects, probe } = useApp();
-  // A project read before starts from what was known then (decision 98): its conversation paints complete in the first frame,
+  // A project read before starts from what was known then (decision 99): its conversation paints complete in the first frame,
   // and `syncAll` below reads everything again, as after a reopened stream (A11).
   const [kept] = useState(() => projectSnapshots(bridge).get(projectId));
   const [state, dispatch] = useReducer(projectReducer, undefined, () => kept?.state ?? emptyProjectState());
@@ -178,7 +178,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       if (sessions) dispatch({ type: "sessions", sessions });
       // NEW-3: what waits for the person (a helper waiting for an approval reads "Waiting for your approval", not "Thinking…"),
       // also when it was asked before this window opened. Unreadable: events still bring new ones. Awaited with the messages: a
-      // project read ahead of a switch (decision 98) shows its cards with the transcript.
+      // project read ahead of a switch (decision 99) shows its cards with the transcript.
       const waits = Promise.all([
         bridge.listApprovals ? withDeadline(bridge.listApprovals(projectId)).catch(() => null) : null,
         bridge.listInputs ? withDeadline(bridge.listInputs(projectId)).catch(() => null) : null,

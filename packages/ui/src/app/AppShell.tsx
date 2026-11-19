@@ -76,7 +76,7 @@ const SidebarDrawer = lazy(() => import("../components/shell/SidebarDrawer").the
 const loadTree = () => import("../components/sessions/SessionTree");
 const treeChunk = loadTree().catch(() => undefined);
 const SessionTree = lazy(() => treeChunk.then((m) => m ?? loadTree()).then((m) => ({ default: m.SessionTree })));
-/** Decision 98: reads a project switched to out of sight (its own chunk, warmed after the first paint). */
+/** Decision 99: reads a project switched to out of sight (its own chunk, warmed after the first paint). */
 const ProjectPreload = lazy(() => import("../state/projectPreload"));
 /** Direction 7: the phone layout's frame (the top bar off a project, keyboard and touch helpers); its own chunk, only in that mode. */
 const PhoneChrome = lazy(() => import("./phone/PhoneChrome"));
@@ -151,7 +151,7 @@ function Shell() {
   const [missing, setMissing] = useState<ReadonlySet<string>>(() => new Set());
   const routeState = resolveProjectRoute(route.projectId, projects, missing);
   const known = routeState === "show";
-  // Decision 98: what the main area shows lags the route while a project switched to is read out of sight.
+  // Decision 99: what the main area shows lags the route while a project switched to is read out of sight.
   const { shown, preload, loading, onLate, onShow } = useProjectSwitch(route, bridge, known);
   const lookingUp = useRef<string | null>(null);
   const lookUp = useCallback(

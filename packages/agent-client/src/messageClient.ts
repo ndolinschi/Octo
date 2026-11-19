@@ -1,4 +1,4 @@
-import { BridgeError, type Bridge, type SubscribeHandlers } from "./client";
+import { BridgeError, isErrorAction, type Bridge, type SubscribeHandlers } from "./client";
 import { createLspChannel, type LspChannel } from "./lspChannel";
 import {
   isHostMessage,
@@ -9,6 +9,7 @@ import {
   type MessagePortLike,
   type ResultMessage,
   type Theme,
+  type WireError,
 } from "./messageProtocol";
 import type { LanguageServerSession } from "./types";
 
@@ -18,6 +19,17 @@ function wireFields(v: unknown): { fields: Record<string, string> } | undefined 
   const out: Record<string, string> = {};
   for (const [id, m] of Object.entries(v)) if (typeof m === "string") out[id] = m;
   return Object.keys(out).length ? { fields: out } : undefined;
+}
+
+/** The optional parts of a wire failure: fields, hint, a known action, details. */
+function wireDetail(e: WireError): ConstructorParameters<typeof BridgeError>[3] {
+  const action = isErrorAction(e.action) ? e.action : undefined;
+  return {
+    ...wireFields(e.fields),
+    ...(typeof e.hint === "string" && e.hint ? { hint: e.hint } : {}),
+    ...(action ? { action } : {}),
+    ...(typeof e.details === "string" && e.details ? { details: e.details } : {}),
+  };
 }
 
 export type MessageClient = {
@@ -47,7 +59,7 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     if (!p) return;
     pending.delete(msg.id);
     if (msg.ok) p.resolve(msg.value);
-    else p.reject(new BridgeError(msg.error.status, msg.error.code, msg.error.message, wireFields(msg.error.fields)));
+    else p.reject(new BridgeError(msg.error.status, msg.error.code, msg.error.message, wireDetail(msg.error)));
   }
 
   function openedSession(msg: Extract<LspOpenedMessage, { ok: true }>): LanguageServerSession {
@@ -162,6 +174,8 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     stopSession: (id, sid) => call("stopSession", [id, sid]),
     sendSessionMessage: (id, sid, text, opts) => call("sendSessionMessage", opts === undefined ? [id, sid, text] : [id, sid, text, opts]),
     listAllSessions: (params) => call("listAllSessions", params === undefined ? [] : [params]),
+    listBranches: (id, params) => call("listBranches", params === undefined ? [id] : [id, params]),
+    switchBranch: (id, input) => call("switchBranch", [id, input]),
     openLanguageServer: (projectId, serverId) => {
       const id = nextId++;
       return new Promise<LanguageServerSession>((resolve, reject) => {

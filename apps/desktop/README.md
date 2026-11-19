@@ -90,10 +90,10 @@ start-up and failure screens (`HostStatus`, `HostNotice`) use the same tokens as
 ## Traffic lights and the title row (macOS)
 
 `src-tauri/tauri.macos.conf.json` (merged over `tauri.conf.json` by `tauri dev` and `tauri build` alike; `scripts/install.sh` passes no `--config`)
-sets `titleBarStyle: "Overlay"`, `hiddenTitle` and `trafficLightPosition {x: 16, y: 23}`. The key is applied (tauri-utils 2.10.2
+sets `titleBarStyle: "Overlay"`, `hiddenTitle` and `trafficLightPosition {x: 24, y: 22}` (x: the sidebar's glyph column; y: the lights' centre lands on the row's centre line). The key is applied (tauri-utils 2.10.2
 `WindowConfig::traffic_light_position`, needs Overlay and decorations), but `y` is not the lights' position: tao 0.37.2
 (`platform_impl/macos/view.rs`, `inset_traffic_lights`) makes the title bar container `button height + y` tall and leaves the buttons at
-their offset inside it, so the lights' centre is `y` plus a constant of the macOS version (measured about -3: `y: 14` gave a centre near 11 pt).
+their offset inside it, so the lights' centre is `y` plus a constant of the macOS version (measured -2 on a 2x screenshot: `y: 23` gave a centre 21 pt).
 `src/windowChrome.ts` holds the numbers (`MAC_LIGHTS_X`, `MAC_LIGHTS_Y`, `MAC_CONTROLS_CENTER_Y = 20`, `MAC_INSET_START`); a test keeps the
 config file equal to them. The shell passes the UI `chrome.controlsCenterY`, and the title row centres its controls on it.
 

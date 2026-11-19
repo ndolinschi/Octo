@@ -41,7 +41,7 @@ function warmFirstPaint() {
   void import("../components/shell/SidebarDrawer").catch(() => undefined);
   void import("../components/chat/ContextRing").catch(() => undefined);
   void import("../components/chat/SessionMenu").catch(() => undefined);
-  // Decision 98: a project shown for the first time (from Home, or switched to) paints with its slots and is read out of sight.
+  // Decision 99: a project shown for the first time (from Home, or switched to) paints with its slots and is read out of sight.
   for (const part of [approvalsPart, queuePart, emptyTitlePart]) void part.fetch().catch(() => undefined);
   void import("../state/projectPreload").catch(() => undefined);
 }

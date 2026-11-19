@@ -49,7 +49,7 @@ const SentDesignNotes = lazy(() => import("./SentDesignNotes").then((m) => ({ de
 const compactedMarker = readyLazy(() => import("./CompactedMarker").then((m) => m.CompactedMarker));
 const CompactedMarker = compactedMarker.Component;
 const PlanForTurn = lazy(() => import("./PlanCard").then((m) => ({ default: m.PlanForTurn })));
-/** Decision 98: a part (below) so a project shown for the first time lays its turns out with their "N files changed" lines. */
+/** Decision 99: a part (below) so a project shown for the first time lays its turns out with their "N files changed" lines. */
 const turnChanges = readyLazy(() => import("./TurnChanges").then((m) => m.TurnChanges));
 const TurnChanges = turnChanges.Component;
 
@@ -63,7 +63,7 @@ const ToolGroup = toolGroup.Component;
 const DelegationGroup = delegationGroup.Component;
 /** A long conversation mounts its turns once these are in, so each turn is laid out once, complete (no shift on open). */
 const TURN_PARTS = [markdownPart, toolGroup, delegationGroup, turnChanges, turnBanner, compactedMarker];
-// Decision 98: fetched with this chunk (warmed after first paint), so a project first shown from Home lays its turns out at once.
+// Decision 99: fetched with this chunk (warmed after first paint), so a project first shown from Home lays its turns out at once.
 for (const part of TURN_PARTS) void part.fetch().catch(() => undefined);
 import { TranscriptContext, useTranscript, type ToolResult, type TranscriptCtx } from "./transcriptContext";
 import { proseClass } from "../primitives/Prose";
@@ -657,7 +657,7 @@ function useStoredEndings(enabled: boolean, refresh: string, messageSessions: st
   const { projectId, state, kept } = useProject();
   // The conversation's own session (decision 96), else the project's default one.
   const sessionId = useSessionScope()?.sessionId ?? state.sessions.currentId;
-  // Decision 98: what the last read found (this project shown before) paints at once; the read below brings it up to date.
+  // Decision 99: what the last read found (this project shown before) paints at once; the read below brings it up to date.
   const known = sessionId ? kept.endings.get(sessionId) : undefined;
   const [lookup, setLookup] = useState<StoredEndingLookup>(() => known ?? NO_ENDINGS);
   // NEW-4: the first answer (or its failure, or the wait running out) lets the turns mount, so a turn's head is laid out once

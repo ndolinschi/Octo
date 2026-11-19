@@ -8,6 +8,7 @@ import { formatRelative } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
 import { filterSections, type PickerRow, type PickerSection } from "../../lib/picker";
 import { navigate } from "../../lib/route";
+import { branchLabel, branchTitle } from "../../lib/branches";
 import { canMoveToWorktree, isDefaultSession, sessionWorkspaceLabel } from "../../lib/sessions/current";
 import { orchestratorGlyph } from "../../lib/stateGlyph";
 import { useActivity } from "../../state/activity";
@@ -17,14 +18,17 @@ import { useProject } from "../../state/project";
 import { useSessionScope } from "../../state/session";
 import { sessionTab } from "../../state/workspace/layout";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { Chip } from "../primitives/Chip";
 import { Glyph } from "../primitives/Glyph";
 import { Picker } from "../primitives/Picker";
 import { Presence } from "../primitives/Presence";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { clearDraft, stashCrossProjectDraft } from "./composerDraft";
 import type { ComposerDraft } from "./useComposerText";
+import { useBranchHead } from "./useBranchHead";
 
 const Menu = lazy(() => import("../primitives/Menu").then((m) => ({ default: m.Menu })));
+const BranchPicker = lazy(() => import("./BranchPicker").then((m) => ({ default: m.BranchPicker })));
 const MoveToWorktreeDialog = lazy(() => import("../shared/MoveToWorktreeDialog").then((m) => ({ default: m.MoveToWorktreeDialog })));
 
 const isUnusedEmptyMain = (s: ProjectSession): boolean =>
@@ -56,12 +60,13 @@ export function ComposerProjectBar(props: {
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [wsMenu, setWsMenu] = useState<{ x: number; y: number } | null>(null);
   const [movingWorktree, setMovingWorktree] = useState(false);
+  const [branchPicker, setBranchPicker] = useState(false);
 
   const activeSessionId = scope?.sessionId ?? ws?.chatSessionId ?? state.sessions.defaultId ?? null;
   const activeSession = scope?.session ?? (activeSessionId ? state.sessions.list.find((s) => s.id === activeSessionId) : undefined);
 
   const onOverlay = props.onOverlay;
-  const overlay = projectPickerOpen || wsMenu !== null || movingWorktree;
+  const overlay = projectPickerOpen || wsMenu !== null || movingWorktree || branchPicker;
   useEffect(() => onOverlay?.(overlay), [overlay, onOverlay]);
   useEffect(() => () => onOverlay?.(false), [onOverlay]);
 
@@ -136,6 +141,24 @@ export function ComposerProjectBar(props: {
 
   const wsLabel = activeSession ? sessionWorkspaceLabel(activeSession) : null;
   const canMove = Boolean(bridge.moveSessionToWorktree && activeSession && canMoveToWorktree(activeSession) && props.project.folders.length > 0);
+  // Decision 98: the chip shows the branch the session's checkout is on, read from disk (first repository of the project).
+  const workspaceId = activeSession?.workspace?.id ?? "shared";
+  const branchHead = useBranchHead(props.project.id, workspaceId, props.project.folders.length > 0);
+  const repo = branchHead.result?.repos[0];
+  const worktreeLabel = wsLabel !== null ? (repo ? branchLabel(repo) : wsLabel) : null;
+
+  // "Start in a worktree from <branch>": the empty session moves into a new worktree (nothing in the main checkout changes);
+  // a session that cannot move gets a new session in one.
+  const startWorktree = async (branch: string) => {
+    if (activeSession && canMove && bridge.moveSessionToWorktree) {
+      const res = await bridge.moveSessionToWorktree(props.project.id, activeSession.id, { base_ref: branch, carry_changes: false });
+      applySession({ kind: "upsert", session: res.session });
+      return;
+    }
+    const { session } = await bridge.createSession(props.project.id, { workspace: { kind: "worktree", base_ref: branch } });
+    activity.refreshSessions();
+    navigate(props.project.id, null, session.id);
+  };
 
   return (
     <>
@@ -159,12 +182,34 @@ export function ComposerProjectBar(props: {
           <span className="min-w-0 truncate">{props.project.name}</span>
           <Glyph icon={ChevronDown} size={14} className="shrink-0 text-fg-3" />
         </button>
-        {wsLabel !== null ? (
-          <span data-workspace-label title={`Worktree: ${wsLabel}`} className="flex h-ctl-sm min-w-0 items-center gap-1.5 px-2 text-sm text-fg-3">
+        {worktreeLabel !== null ? (
+          <span
+            data-workspace-label
+            title={repo ? branchTitle(repo, "worktree") : `${worktreeLabel} — worktree`}
+            className="flex h-ctl-sm min-w-0 items-center gap-1.5 px-2 text-sm text-fg-3"
+          >
             <Glyph icon={GitBranch} size={14} className="shrink-0" />
-            <span className="min-w-0 truncate">{wsLabel}</span>
+            <span className="min-w-0 truncate">{worktreeLabel}</span>
           </span>
+        ) : repo ? (
+          <Chip
+            ref={wsBtn}
+            data-branch-selector
+            aria-haspopup="dialog"
+            icon={GitBranch}
+            name="Branch"
+            label={branchLabel(repo)}
+            tip={branchTitle(repo, "shared")}
+            open={branchPicker}
+            disabled={switching}
+            className="max-w-[45%]"
+            onClick={() => {
+              if (!branchPicker) branchHead.refresh();
+              setBranchPicker((v) => !v);
+            }}
+          />
         ) : (
+          !bridge.listBranches &&
           canMove && (
             <button
               ref={wsBtn}
@@ -223,6 +268,21 @@ export function ComposerProjectBar(props: {
                 { id: "shared", label: "Main checkout", checked: true, run: () => undefined },
                 { id: "worktree", label: "Move to worktree…", icon: GitBranch, run: () => setMovingWorktree(true) },
               ]}
+            />
+          </Suspense>
+        )}
+      </Presence>
+      <Presence show={branchPicker} exitMs={0}>
+        {branchPicker && (
+          <Suspense fallback={null}>
+            <BranchPicker
+              anchor={wsBtn}
+              projectId={props.project.id}
+              canWorktree
+              onClose={() => setBranchPicker(false)}
+              onSwitched={branchHead.set}
+              onWorktree={startWorktree}
+              onMoveToWorktree={canMove ? () => setMovingWorktree(true) : undefined}
             />
           </Suspense>
         )}

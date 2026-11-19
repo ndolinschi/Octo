@@ -11,7 +11,7 @@
  *   idle     loads Home with no project at work, an idle project and Settings and asserts that `document.getAnimations()`
  *            has no animation in `playState === "running"`.
  *
- * Changing the project (every way a person does it) is `project-switch.mjs` (decision 98): per-frame classification of the
+ * Changing the project (every way a person does it) is `project-switch.mjs` (decision 99): per-frame classification of the
  * conversation across the switch.
  *
  *   node packages/ui/scripts/flicker.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--width 1440] [--height 900] [--only typing|idle]

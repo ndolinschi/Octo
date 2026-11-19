@@ -149,7 +149,7 @@ const REHYPE = [rehypeNumericColumns];
 /** P2-13: single newlines are line breaks in paragraphs that read as lines, spaces in hard-wrapped prose (lib/softBreaks). */
 const REMARK = [remarkGfm, remarkSoftBreaks];
 
-/** Decision 98: fetched with this chunk and rendered without suspending once in, so a table is framed in its first frame. */
+/** Decision 99: fetched with this chunk and rendered without suspending once in, so a table is framed in its first frame. */
 const tableFrame = readyLazy(() => import("./DataTable").then((m) => m.TableFrame));
 void tableFrame.fetch().catch(() => undefined);
 const TableFrame = tableFrame.Component;

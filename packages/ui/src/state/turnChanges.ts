@@ -3,7 +3,7 @@ import type { Bridge, TurnChanges } from "@octo/agent-client";
 /*
  * The project's recorded changes by turn (`listChanges`), read once and shared by every turn's "N files changed" line
  * (`chat/TurnChanges`), read again when a change is recorded. Here, not in the chat chunk, so a project switched to is read
- * with them before it is shown (decision 98, `projectPreload`).
+ * with them before it is shown (decision 99, `projectPreload`).
  */
 
 /** `reader`: the project view that last asked; a new one (the project shown again) reads again, showing what it had meanwhile. */

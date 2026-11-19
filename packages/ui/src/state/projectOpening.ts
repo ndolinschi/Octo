@@ -1,7 +1,7 @@
 import { hasParallelSessions, sessionRoot, type Project, type ProjectState } from "@octo/agent-client";
 
 /**
- * Decision 98: the conversation a route to this project opens first, which `projectPreload` reads before the project is shown:
+ * Decision 99: the conversation a route to this project opens first, which `projectPreload` reads before the project is shown:
  * its agent (whose messages must be in) and the main session it belongs to ("" without parallel sessions). The same choice
  * as `WorkspaceProvider`: the route's agent or session, else the session Chat showed last, else the default session.
  */
