@@ -4569,3 +4569,49 @@ long tasks 28/41 → 9/5; scroll frames > 50 ms 51/49 → 43/45 (long tasks 12/6
 switch 196/131 → 149/128 ms. Load at 4x: CLS 0 in all 5 runs before and after; the 0.2027 turn-window shift of the previous
 pass did not show, so whether its cause is gone is not verified. Entry bundle 160.24 kB (integration tip 160.28). Not verified:
 WebKit, the Tauri shell, a real harness, the phone layout.
+
+## Decision 98 — compact folders in the file tree (2026-11-19)
+
+Owner (a Java project's screenshot, `management-system-application > src > main > java > com > wsgc > … > subsystem > config`,
+one row and one indent level per directory): "java subpackages is too long, should be like in IDEA com.package1.package2 if no
+child files".
+a. **A chain is one row.** Directories that each hold exactly one entry, a directory, form one row with one chevron and one
+   indent level; its children are the last directory's. A directory holding a file, two or more entries, or nothing ends the
+   chain (it is the last segment). IntelliJ's "compact middle packages", VS Code's "compact folders".
+b. **Separator.** Inside a JVM source root (`…/src/<set>/<java|kotlin|scala|groovy>`) the row is a package and reads
+   `com.wsgc.ecommerce`; elsewhere it reads `src/main/java`. A source root ends a `/` row, so the screenshot's module reads
+   `management-system-application`, `src/main/java`, `com.wsgc.ecommerce.product.configurator.management.data.subsystem`, then
+   `config`, `mdm`, `model`. A row with a dot in a name uses `/` (a dot would read as a package separator). Rule:
+   `lib/compactFolders.ts` (`compactChain`, `isSourceRoot`), unit-tested.
+c. **The row acts on its last directory.** Open/close, the context menu (Add to chat, Copy path), ← (to the first directory's
+   parent row), reveal and selection; the row's tooltip is the last directory's full path and its label truncates with an
+   ellipsis. Opening or closing a chain opens or closes every directory in it (expanded state stays per real path), so a chain
+   that splits keeps its open subtree. Type-ahead matches any segment.
+d. **One listing per visible row.** `GET …/files` gives a directory entry an optional `chain` (the names below it while each is
+   the only entry, at most 32, never through a symlink, `.git` ignored); the tree takes a directory's own listing when it has one
+   and the hint otherwise. A `file.changed` in a directory that is not listed, or that holds (or held) one entry, lists the nearest
+   listed ancestor again, so the row splits or re-forms.
+e. **Setting.** Settings → Editor → File tree → "Compact folders", on by default, stored in `octo.compactFolders`; off is the tree
+   as before (one row per directory).
+
+### As built — decision 98 (2026-11-19)
+
+Built as described. Harness: `files.List` fills `Entry.Chain` (`internal/files`, tests `TestListChain`, `TestListChainCap`;
+`internal/bridge` `TestFileListChain`), documented in `apps/harness/docs/architecture.md`; `FileEntry.chain?` in
+`@octo/agent-client`. UI: rows come from `components/files/treeRows.ts` (`treeRows`, `typeAhead`; tests beside it); the
+preference is `lib/compactFoldersPref.ts`, imported only by the lazy file view and the lazy settings page. The demo has a
+"Product configurator" project shaped like the screenshot; its bridge returns `chain` (`demoChain`, tested). The tree had no
+type-ahead before; it has one now (700 ms, like `Select`). There is no rename, delete or new file/folder in the tree (nor a harness
+route for them), so those were not built; the directory context menu is new (it was files-only).
+Run: Go `gofmt -l .` (empty), `go vet ./...`, `go test ./...` in `apps/harness`; `pnpm lint` (0 errors), `pnpm format:check`,
+agent-client and UI tests (the UI suite's wall-clock `streak.test.ts` budget case failed once under the machine's parallel load and
+passes alone); build: initial JS 160.71 kB gzip (budget 161.00; the preference module and the tree code are in lazy chunks, the
+entry gains the `PREFS` key and `state/code`'s refresh rule). Scripts (Chromium, 1440×900): `spacing-audit` total=0,
+`file-open-stability` ok, `editor-context-menu` ok, `layout-shift` ok. Playwright on `?demo=1` and against a real `harness serve`
+with the screenshot's tree on disk: the three rows, one indent level each, 24px rows, indent guides, ellipsis and full-path
+tooltip, ←/→/↓/Home/End, type-ahead on a later segment, filter (rows shown, highlight), reveal of a file opened deep in the chain,
+the directory menu (Copy path gives the last directory), the setting off (one row per directory) and on, dark and light; a file
+written with `PUT …/files/content` into `ecommerce` split the row in place within 0.4 s (`com.wsgc.ecommerce` and
+`product.configurator.management.data.subsystem`, both still open). Not verified: a file created from a terminal — the harness has no
+file-system watcher, so no `file.changed` arrives and the tree (any tree, compact or not) shows it only after the folder is listed
+again; a chain re-forming after a delete (unit-tested only: no delete route); WebKit, the Tauri shell, the phone layout.
