@@ -102,6 +102,21 @@ func TestAgentSectionSaysWhatIsMissing(t *testing.T) {
 	}
 }
 
+func TestProblemWithoutInstallHintHasNoDanglingSentence(t *testing.T) {
+	rep := Build(Inputs{Env: []string{"PATH=/bin"}, Agents: []plugins.Agent{
+		{ID: "droid", Label: "Droid", Available: false, UnavailableReason: `"droid" was not found on PATH`},
+	}})
+	var got string
+	for _, p := range rep.Problems {
+		if strings.HasPrefix(p, "droid:") {
+			got = p
+		}
+	}
+	if got == "" || strings.HasSuffix(got, " ") || strings.HasSuffix(got, ". ") {
+		t.Fatalf("problem = %q (all: %v)", got, rep.Problems)
+	}
+}
+
 type discard struct{}
 
 func (discard) Write(p []byte) (int, error) { return len(p), nil }
