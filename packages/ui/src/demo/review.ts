@@ -44,9 +44,11 @@ type Knobs = {
   clean: boolean;
   slow: boolean;
   single: boolean;
+  aborted: boolean;
+  noopen: boolean;
 };
 
-/** `?review=nogh|notloggedin|empty|fail|single` (comma separated; `single`: one repository instead of the fork and its parent; `submitlogin` makes the first submit say not logged in). */
+/** `?review=nogh|notloggedin|empty|fail|aborted|single` (comma separated; `aborted`: the list request is cut off by the client; `noopen`: no review in progress; `single`: one repository instead of the fork and its parent; `submitlogin` makes the first submit say not logged in). */
 function knobs(): Knobs {
   const raw = typeof location === "undefined" ? "" : (new URLSearchParams(location.search).get("review") ?? "");
   const set = new Set(raw.split(",").map((s) => s.trim()));
@@ -60,6 +62,8 @@ function knobs(): Knobs {
     clean: set.has("clean"),
     slow: set.has("slow"),
     single: set.has("single"),
+    aborted: set.has("aborted"),
+    noopen: set.has("noopen"),
   };
 }
 
@@ -431,6 +435,8 @@ export function withDemoReview(base: Bridge, records: Map<string, ProjectRecord>
     const repoKey = resolveRepo(params?.repo);
     const common = { host: DEMO_HOST, folder: folderLabel(rec), repos };
     if (k.fail) throw err(500, "git_error", "git fetch failed: could not resolve host");
+    // The client gave up on the request (WebKit words it so): what the owner saw when GitHub never answered.
+    if (k.aborted) throw new DOMException("Fetch is aborted", "AbortError");
     if (k.nogh)
       return {
         ...common,
@@ -498,6 +504,7 @@ export function withDemoReview(base: Bridge, records: Map<string, ProjectRecord>
     listPullRequests: (pid, params) => list(pid, params),
     listReviews: async (pid) => {
       await delay();
+      if (k.noopen) return [];
       seeded(pid);
       return [...project(pid).reviews.values()].map((r) => {
         const o = reviewOut(r);

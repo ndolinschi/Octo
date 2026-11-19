@@ -411,9 +411,20 @@ function seed(): ProjectRecord[] {
     now - 40 * 24 * HOUR,
   );
   startScript(stress, now - 30 * HOUR, stressHistory);
+  // A project of two folders whose names share a long head (the owner's real pair), and a project of one of them: the names
+  // that end-truncation cannot tell apart.
+  const pcms = makeProject(
+    {
+      name: "PCMS + PCFS",
+      description: "Product configuration: management system and facade service",
+      folders: [{ path: "/Users/maya/code/product-configuration-management-system" }, { path: "/Users/maya/code/product-configuration-facade-service" }],
+    },
+    now - 50 * 24 * HOUR,
+  );
+  const pcfs = makeProject({ name: "PCFS", folders: [{ path: "/Users/maya/code/product-configuration-facade-service" }] }, now - 51 * 24 * HOUR);
   payments.project.budget_usd = 120;
   payments.project.spent_usd = 38.2;
-  return [orbit, atlas, docs, payments, infra, webhooks, release, copilot, tokens, stress];
+  return [orbit, atlas, docs, payments, infra, webhooks, release, copilot, tokens, stress, pcms, pcfs];
 }
 
 function seedMany(): ProjectRecord[] {
