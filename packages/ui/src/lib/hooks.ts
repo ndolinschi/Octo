@@ -38,17 +38,6 @@ export function useNow(active: boolean, intervalMs = NOW_ACTIVE_MS, paused = fal
   return now;
 }
 
-/** Whether the page is visible (`document.visibilityState`); polling and clocks stop while it is not (decision 36). */
-export function usePageVisible(): boolean {
-  const [visible, setVisible] = useState(() => document.visibilityState !== "hidden");
-  useEffect(() => {
-    const on = () => setVisible(document.visibilityState !== "hidden");
-    document.addEventListener("visibilitychange", on);
-    return () => document.removeEventListener("visibilitychange", on);
-  }, []);
-  return visible;
-}
-
 export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {

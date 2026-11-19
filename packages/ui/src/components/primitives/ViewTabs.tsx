@@ -82,9 +82,7 @@ export function ViewTabs<T extends string>(props: {
         </div>
         {props.trailing && <div className="flex shrink-0 items-center pl-2">{props.trailing}</div>}
       </div>
-      <Presence show={menu !== null} exitMs={0}>
-        {menu && <Menu label={menu.label} x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
-      </Presence>
+      <Presence show={menu !== null}>{menu && <Menu label={menu.label} x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}</Presence>
     </div>
   );
 }

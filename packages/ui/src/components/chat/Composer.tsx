@@ -19,6 +19,8 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "../../lib/cn";
+import { readyLazy } from "../../lib/readyLazy";
+import { registerWarm } from "../../lib/warm";
 import { useChatSlots } from "../../state/chatSlots";
 import { errorMessage } from "../../lib/format";
 import { canForce, refusedProvider } from "../../lib/providers/refusal";
@@ -61,11 +63,23 @@ const FolderMenu = lazy(() => import("./FolderMenu").then((m) => ({ default: m.F
 const SessionMenu = lazy(() => import("./SessionMenu").then((m) => ({ default: m.SessionMenu })));
 /** Parts of the composer that only matter once used load on demand (the initial bundle budget). */
 const ComposerMenu = lazy(() => import("./ComposerMenu").then((m) => ({ default: m.ComposerMenu })));
-const ModeChip = lazy(() => import("./ModeChip").then((m) => ({ default: m.ModeChip })));
-const AccessChip = lazy(() => import("./AccessChip").then((m) => ({ default: m.AccessChip })));
+/**
+ * The mode and access chips are their own chunks (the entry budget), asked for as soon as this module runs, so they are in
+ * when the project's composer first renders and appear with it (`readyLazy`) instead of popping in a beat later.
+ */
+const modeChip = readyLazy(() => import("./ModeChip").then((m) => m.ModeChip));
+const accessChip = readyLazy(() => import("./AccessChip").then((m) => m.AccessChip));
+// A failed early fetch is tried again by the chip's own render.
+void modeChip.fetch().catch(() => undefined);
+void accessChip.fetch().catch(() => undefined);
+const ModeChip = modeChip.Component;
+const AccessChip = accessChip.Component;
 /** The pills band (queued messages, attachments, images, comments) only exists while there is something in it. */
 const ComposerPills = lazy(() => import("./ComposerPills").then((m) => ({ default: m.ComposerPills })));
-const RoutingLine = lazy(() => import("./RoutingLine").then((m) => ({ default: m.RoutingLine })));
+const loadRoutingLine = () => import("./RoutingLine");
+const RoutingLine = lazy(() => loadRoutingLine().then((m) => ({ default: m.RoutingLine })));
+/** The routing line is the model list's footer: warmed with it (`lib/warm`). */
+registerWarm("model", loadRoutingLine);
 const SlashMenu = lazy(() => import("./SlashMenu").then((m) => ({ default: m.SlashMenu })));
 /** The context gauge shows once the harness reports the context's size (after the project's state loads): warmed after first paint. */
 const ContextRing = lazy(() => import("./ContextRing").then((m) => ({ default: m.ContextRing })));

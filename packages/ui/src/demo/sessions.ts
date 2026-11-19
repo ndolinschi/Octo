@@ -23,6 +23,7 @@ import {
 } from "@octo/agent-client";
 import { addRoot, addTalk, announceRoot, startIn, SYNC_PROMPT, syncRefactor } from "./parallel";
 import { clone, emit, newId, type ProjectRecord } from "./store";
+import { titleFromRequest } from "../lib/sessions/requestTitle";
 
 const delay = () => new Promise((r) => setTimeout(r, 60));
 
@@ -422,7 +423,7 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
     const own = e.titles.get(m.id) ?? m.title;
     if (own) return own;
     const first = rec.messages.find((x) => x.agent_id === m.root && x.role === "user" && x.command === undefined && textOf(x).trim() !== "");
-    return first ? textOf(first).trim().split("\n")[0]?.slice(0, 80) || "New session" : "New session";
+    return first ? titleFromRequest(textOf(first)) : "New session";
   };
 
   const mainSession = async (id: string, m: Main): Promise<ProjectSession> => {
@@ -847,11 +848,12 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
     },
     listAllSessions: async (params) => {
       await delay();
-      const out: GlobalSession[] = [];
-      for (const rec of records.values()) {
-        const id = rec.project.id;
-        for (const s of await snapshot(id)) if (s.kind === "main") out.push({ ...s, project_id: id, project_name: rec.project.name });
-      }
+      // All projects at once (the harness answers this in one request; one project after another took ~1 s in the demo).
+      const recs = [...records.values()];
+      const snaps = await Promise.all(recs.map((rec) => snapshot(rec.project.id)));
+      const out: GlobalSession[] = recs.flatMap((rec, i) =>
+        (snaps[i] ?? []).filter((s) => s.kind === "main").map((s) => ({ ...s, project_id: rec.project.id, project_name: rec.project.name })),
+      );
       const archived = params?.archived ?? false;
       return out
         .filter((s) => (params?.state ? s.state === params.state : true) && (archived === "all" || s.archived === archived))

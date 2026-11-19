@@ -84,6 +84,9 @@ const ctx = await newContext(browser, { viewport: { width: W, height: H } });
 await ctx.addInitScript(() => {
   try {
     localStorage.setItem("octo.theme", "dark");
+    // The scripts open a project by its sidebar row: the tree view lists every project (the flat Sessions view, the default,
+    // lists a project only while it has no session).
+    localStorage.setItem("octo.sidebarView", "tree");
     for (const k of Object.keys(localStorage)) if (k.startsWith("octo.layout.") || k.startsWith("octo.fileTree.")) localStorage.removeItem(k);
   } catch {}
 });
@@ -94,7 +97,9 @@ await page.goto(`${BASE}/?demo=1`, { waitUntil: "domcontentloaded" });
 await page.locator('nav[aria-label="Projects"] a').first().waitFor({ timeout: 8000 });
 const href = await page.evaluate((name) => {
   for (const a of document.querySelectorAll('nav[aria-label="Projects"] a[href^="#/p/"]'))
-    if ((a.getAttribute("title") || a.textContent.trim()).startsWith(name)) return a.getAttribute("href");
+    // A project row starts with its name; in the flat Sessions list a session row carries it as its meta (the project's part of the link).
+    if ((a.getAttribute("title") || a.textContent.trim()).startsWith(name) || a.textContent.includes(name))
+      return a.getAttribute("href").match(/^#\/p\/[^/]+/)[0];
   return null;
 }, PROJECT);
 if (!href) throw new Error(`project "${PROJECT}" not in the sidebar`);

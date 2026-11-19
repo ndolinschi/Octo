@@ -26,7 +26,7 @@ import { Presence } from "../primitives/Presence";
 import { Segmented } from "../primitives/Segmented";
 import { Spinner } from "../primitives/Status";
 import { EditorSkeleton } from "./EditorSkeleton";
-import { CodeEditor } from "./CodeEditor";
+import { CodeEditor, warmMonacoNow, warmMonacoSoon } from "./CodeEditor";
 import { EditorStatus } from "./EditorStatus";
 import { fileIcon, isMarkdown } from "../primitives/fileIcons";
 import { fileSizeLabel, imageType, isSvg } from "../../lib/imagePreview";
@@ -145,6 +145,8 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   // whatever stands in for it (the empty view, the loading skeleton, a message, the Markdown preview) is a cover over the same
   // box. `shown` is the last file that was ready: the model the editor keeps until the next one is.
   const [lastShown, setLastShown] = useState<OpenFile | null>(null);
+  // The first file opens like the second: Monaco is warmed once the view has been on screen a second, or at once on intent.
+  useEffect(() => warmMonacoSoon(), []);
   useEffect(() => {
     if (file?.status === "ready") setLastShown(file);
   }, [file]);
@@ -217,7 +219,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   );
 
   return (
-    <div ref={root} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
+    <div ref={root} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown} onPointerOver={warmMonacoNow} onPointerDown={warmMonacoNow}>
       {/* The hairline is an inset shadow, so the 40px row keeps a 40px content box (no half-pixel centring). Polish step 4, E1:
           navigation · crumbs · one status slot (meta words: saving, unsaved, the language server when it is not ready) · one
           right-hand group of 28px controls with 16px glyphs, 4 apart. In page mode the Files / Editor switch is the first item. */}
@@ -514,7 +516,7 @@ function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string;
       >
         …
       </Button>
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Menu
             label="Folders in the path"
@@ -590,7 +592,7 @@ function MoreMenu({ tab, folder, path }: { tab: TabId; folder: string; path: str
           onClick={toggle}
         />
       )}
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Menu
             label="File actions"

@@ -718,6 +718,9 @@ monochrome dithered illustration):
     separate "PCMS · Working" line under the tabs goes away: state lives on the tab glyph and in the title bar.
     Tool rows never show an empty input (`{}`) or an "Input" label with nothing to say: a row with no arguments
     shows only its name and result.
+    **Revised 2026-11-18 (owner decisions F2 and F4, "Owner decisions — shell polish follow-ups" at the end):** the
+    conversation tab is its topic while the tabs belong to one project; a sub-agent's tab is the agent's label, the task
+    stays in its header.
 64. **Calm, evenly distributed screens** (owner: "the UI must not be gaudy and cluttered; it must be neatly
     distributed between the elements"). Rules every surface is checked against:
     (a) **One job per row, few things per row.** A bar or header shows at most: one title, one state, and three
@@ -799,6 +802,9 @@ monochrome dithered illustration):
       tabs · project actions. Empty areas of every row drag the window.
     - **The conversation tab is the project's breadcrumb:** "Project / what this conversation is about" (the
       latest task title, dim), with the state glyph; its "⋯" holds project actions (settings, export, rewind…).
+      **Revised 2026-11-18 (owner decision F2, "Owner decisions — shell polish follow-ups" at the end):** while every tab
+      belongs to one project the conversation tab is its topic alone; the "Project /" prefix shows only with tabs of two or
+      more projects. The tooltip keeps the whole name.
     - **Right end of the top row: project actions, not model choice.** The model chip is removed from the top
       row — the composer is the one place to choose a model. In its place: at most two pinned **project
       commands** (decision 68) and the "+" that opens a tab. Sub-agent chips stay next to the breadcrumb.
@@ -1547,16 +1553,22 @@ dividers. That is ~800 lines of our own code and keeps every pixel on our tokens
 
 ### Motion
 
+Tokens (styles.css, mirrored in `lib/constants` for the Web Animations API): `--motion-fast` 100ms (hover, reveal, press, every
+exit), `--motion-base` 150ms (overlays, tooltips, chevrons, switches), `--motion-slow` 220ms (drawers, sheets, large surfaces),
+`--ease-out-quint` = `cubic-bezier(0.2,0,0,1)` for enters, ease-out for exits; utilities `duration-fast|base|slow`. No other
+duration is written by hand, and nothing animates a layout property (a test in `lib/constants.test.ts` checks styles.css).
+
 | What | Enter | Exit | Reduced motion |
 | --- | --- | --- | --- |
-| Dialog, palette (opened by pointer) | 160ms, opacity + scale 0.98→1 + 4px rise, `cubic-bezier(0.2,0,0,1)` | 100ms opacity + scale 0.98, ease-out | opacity only (120 / 80ms) |
+| Dialog, palette, popover, menu, context menu (opened by pointer) | base, opacity + scale 0.98→1 + 4px rise, ease-out-quint; a menu grows from the point it opened at | fast, opacity + scale 0.98, ease-out | opacity only (fast / fast) |
+| Tooltip | after 600ms, fast fade; a neighbour while warm shows at once (no fade, no delay) | fast fade | fade |
 | Anything opened from the keyboard (Ctrl/Cmd+K, Shift+F10…) | instant (`html[data-input="keyboard"]`) | instant | — |
-| Context menu | instant | instant | — |
-| Drawer (sidebar) | 160ms, translateX(−12px)→0 + opacity; scrim opacity | 120ms ease-out | opacity only |
-| Press (buttons, icon buttons, send) | `:active` scale 0.97, 120ms ease-out | — | none |
-| Press (rows, tabs) | `:active` hover tint over the current fill, 100ms | — | same (tone) |
-| Drop indicator, drag chip | 120ms fade; zone glides 120ms `cubic-bezier(0.2,0,0,1)` | removed | fade only |
-| Hover fills | 100ms background-color | — | instant |
+| Drawer (sidebar), phone sheet | slow, translateX(−12px)→0 + opacity; scrim base | fast ease-out | opacity only |
+| Press (buttons, icon buttons, send) | `:active` scale 0.97, fast ease-out | — | none |
+| Press (rows, tabs) | `:active` hover tint over the current fill, fast | — | same (tone) |
+| Drop indicator, drag chip | fast fade; zone glides by translate (fast, ease-out-quint), its size snaps | removed | fade only |
+| Hover fills, reveals | fast background-color / opacity | — | instant |
+| Activity steps (expand) | rows open at once, fade in (base) | instant | instant |
 | Tabs open/close, tab switching, group split/merge | instant (no layout jump; panes keep their scroll) | instant | — |
 | Theme switch | transitions suppressed for one frame | | |
 
@@ -4161,6 +4173,83 @@ tab runtime layout with live command output; WebKit/Tauri desktop binary.
 **Not verified.** `go test -race` on `apps/harness/internal/bridge` (`TestAcceptEditsAutoApprovesWritesAndAsksForBash`) could not run in this offline/proxy-blocked VM (`modernc.org/sqlite@v1.62.0` absent from `GOMODCACHE` and `proxy.golang.org` returns HTTP `403`); WebKit Playwright engine and native Tauri desktop binary.
 
 
+## As built — shell polish pass (2026-11-18)
+
+Small fixes from a review of the shell (sidebar, top bar, status bar, overlays, copy). No redesign; existing tokens and primitives.
+
+- **Sidebar list.** The flat Sessions list sorts by start (newest first, then id), not by activity, so rows no longer swap under
+  the pointer every few seconds (`lib/sessions/flat.ts`). It shows its skeleton until the session index has loaded, then the
+  whole list at once (was: empty → three sessions and nine project rows → sixteen session rows). On hover the row's meta leaves the
+  layout (`display: none`) instead of keeping its width, so the title gains the room (measured 133 → 172 px; was 133 → ~109).
+  Rename keeps the row's state glyph and puts the field's text exactly where the title was (x = 48 before and in the field;
+  was 48 → 32), selects the whole title and shows its beginning. A session waiting for the person shows its age like a failed
+  one (`sessionMeta`). A session row's tooltip names the agent that runs it (`sessionAgentName` in `lib/sessionAgent.ts`: an ACP agent
+  by its label, Octo's own loop by its model).
+- **Sidebar width.** The sidebar has a resize handle in the 8px gutter to the first panel (`primitives/ResizeHandle`, the
+  pointer and keyboard logic the dock's `Divider` now also uses; loaded lazily): drag, ←/→ ±16 (Shift ±64), double-click resets.
+  The width is the `sidebarWidth` preference (200–480, default 260, `lib/sidebarWidth.ts`), applied as `--spacing-sidebar` on the
+  element; a drag previews it in an animation frame without a React render (measured: the panel beside it mutates at its idle
+  rate during a drag) and stores it on release. Settings' column takes the same width. A flat Sessions row caps its project
+  name at 33% (ListRow's 40% is for a time or a count). Measured at 1440: 260 → 380 by drag, ← to 364, double-click to 260,
+  clamped at 480, kept over a reload; a title in the flat list 123 → 193 px at 380. Not in the drawer or on the phone.
+- **Top bar and status.** The agents count is a count, not a command: dim (`fg-3`, `fg` on hover) tabular figures and 12px
+  before the command buttons beside it (measured gap 4 → 12). The status bar says "N projects working" ("1 project working").
+  The "+" tab menu opens from the "+" (start-aligned: left edge 188 → 480 with the "+" at 480) instead of over the sidebar.
+  Terminal tabs that would share a name are numbered in open order (`terminalOrdinals` in `components/terminal/ordinals.ts`, written into the tab state by the terminal's session store): "zsh ·
+  orbit-app", "zsh · orbit-app 2", in the tab, its tooltip and the tab picker (the command palette lists no terminal tabs).
+- **Overlays.** The command palette lists "New session in …" for the projects the query names (a word of the name starts
+  with it), else for two projects (the open one first): "re" gives two such rows, not four. The "Show …" rows' details are
+  short sentences (`TOOL_HINT`: "Read a pull request and review it.", was "pick one, read it, comment, submit"), as are
+  Help's, Change model's and Open a tab's. (With "re" Settings is still below the fold: the sessions and projects that
+  match come first; not changed.) The keyboard-shortcuts sheet's rows are `min-h-row` (28px) and a `reading` dialog body
+  has 24px at its end, the fade's height: at 1440×900 the sheet fits whole (no scroll, last row 40px above the body's
+  end); at 1100×700 it scrolls and the last row ends 40px clear of the fade. A tooltip the pointer armed hides on
+  `pointerleave` of its control and shows only while the control is still `:hover` and connected (`lib/tooltipGate.ts`,
+  tested); measured: after leaving a row to the gutter, and after leaving before the delay, no tooltip.
+- **Copy and identity.** A session title from a request is cut at the last space at or before 80 characters and ends
+  with "…" (`projectstore.SessionTitle`, Go-tested; the demo's `lib/sessions/title.ts` mirrors it); the harness's empty
+  title is "New session" (was "Session"), the one name the UI uses. Home's session rows name who runs them: "Atlas API ·
+  Claude Code · Waiting for you" (`sessionAgentName`: the session's `model`, an ACP agent by its label, never its id;
+  Octo's own loop by its model, "Sonnet 5.5"). The waiting rows there now show their age. With only Ollama ready the
+  connect screen's line reads "Ollama is connected. Projects also need a coding agent, an API key or the router."
+  (`connectSubtitle`, tested; the screen itself not driven, the demo has no Ollama-only state).
+- **Entry budget.** These items first took the initial JS from 160.92 to 161.64 kB gzip (budget 161.00). Code a module that
+  loads with the app exports stays in the entry even when only a lazy chunk calls it, so: `sessionAgentName` is its own module;
+  the palette's `TOOL_HINT` moved to `state/workspace/paletteCommands.ts`; the terminal ordinals live with the terminal
+  (its session store numbers the tabs when one opens or closes); the sidebar's stored width is read and applied by its edge
+  (`shell/SidebarEdge`), which rides in the Projects list's chunk that the sidebar asks for at once: a width other than the
+  default can show one frame after the first paint. Result: 160.90 kB.
+
+## Owner decisions — shell polish follow-ups (2026-11-18)
+
+The owner approved five changes the polish review had left as their decisions. Each is its own commit; where one
+supersedes an earlier decision, that decision carries a dated note pointing here.
+
+- **F1. Sidebar session rows are 28px** (`--spacing-row`, the tree-row height of the row-height table in `styles.css`), not
+  32: a session row under a project and a row of the flat Sessions list are `ListRow size="sm"`, the row's "⋯" sits 2px
+  from its top, the rename field is 24px in the 28px row (its text still on the title's x, measured 48 → 48), the
+  loading skeleton of the flat list has the same height. Project rows and the nav rows above stay 32px; on touch every row
+  keeps its 44px (`touch:h-ctl-lg`). Measured: row height 32 → 28 at 1440.
+- **F2. The conversation tab drops "Project /"** while every tab of the workspace belongs to one project (`conversationLabel`
+  in `dock/tabInfo.ts`, tested): the tab reads "Upgrade us to React Native 0.80…", its tooltip and `name` keep "Orbit mobile
+  / …" (the palette's de-duplication reads `name`). With tabs of two or more projects the project is the label and the topic
+  dim. A workspace holds one project's tabs today, so the prefix is always dropped; the count is a parameter (`projectsInTabs`)
+  for the day it does not. Revises decisions 63 and 67 (dated notes there).
+- **F3. The flat Sessions list pins "Needs you"** (`pinNeedsYou` in `lib/sessions/flat.ts`, tested): sessions that wait for
+  the person or failed — Home's rule, `sessionTriageOf` — come first under a "Needs you" caption, the rest under "Other
+  sessions"; each group keeps the stable order by start (item 1), so a row moves only when its state changes. No captions
+  when nothing needs the person. Revises the pinned-group note of the review (it was left to the owner).
+- **F4. A sub-agent's tab is the agent's label** ("Dependency auditor": `roleText` of its role, "Agent" without one, never its
+  id), not its task; the task stays in the agent's header and in the tab's tooltip ("Dependency auditor: Breaking changes
+  0.76 → 0.80"). Tested in `tabInfo.test.ts`. Revises decision 63 (dated note there).
+- **F5. Ollama alone still does not leave the connect screen.** The owner allowed it if Ollama's models can run tools. The
+  harness has no such signal: its Ollama provider (`internal/providers/providers.go`) is the "dedicated small tier for inline
+  editor completions", its catalogue (`ollamaCatalogue`: Qwen 2.5 Coder 1.5B/3B, StarCoder2 3B, CodeLlama 7B) carries no
+  capability field, `Connected` does not count it, and the only Ollama route in the orchestrator is inline completion
+  (`config.IsOllamaCompletion`). So the gate (decision 53 b, `noProvider` in `app/AppShell.tsx`) is unchanged and the
+  connect line of item 10 says what Ollama does not cover. Leaving the screen needs a harness change first: a tool-capable
+  flag per Ollama model (for example from Ollama's `/api/show` capabilities) and an orchestrator path that runs on it.
+
 ## As built — tool-tab consistency pass (2026-11-18)
 
 Polish, not a redesign: every dock tool tab measured against the Files / Browser bar (40px bar, 8px inset, a `line` hairline
@@ -4284,3 +4373,78 @@ A reviewed list of small fixes; no redesign, existing tokens and primitives, beh
   one primitive). `Glyph` admits 12 for this one use. Measured in the composer at 1440, 900, 700 and 560: chevron 12px, 6px from
   the label on every chip, no control outside the box, no label cut; each chip 2px narrower. `Select`'s upward chevron pair is
   not a chip and is unchanged.
+
+## As built — instant first opens, one-step load, motion tokens (2026-11-18)
+
+Measured on a production build (`vite preview`-equivalent static server), `?demo=1`, 1440x900, Chromium, 5 runs, median, before ->
+after, on a shared machine (load average ~30 on 4 cores: absolute numbers are noisy; before and after ran back to back).
+
+**First opens of lazy surfaces.** The cold gap was not the chunk fetch (the palette, Settings and the model list were already warmed
+1.5 s after start): a plain `React.lazy` suspends on its first render even when its module is in, and React then holds the revealed
+content until 300 ms after the fallback (its fallback throttle). `readyLazy` (moved to `lib/readyLazy`; a failed fetch is now
+retried) renders without suspending once its chunk is in, and now carries the palette, the project dialog, Settings, the model
+list, the "+" picker and the tool tabs (Files, Terminal, Review, Browser, Processes, Changes; `dock/TabView`'s `warmedTool`).
+`lib/warm` is the registry (each surface registers its loader next to its `readyLazy`); `lib/warmSchedule` (its own chunk, loaded
+after first paint) warms on idle 1.5 s after the shell mounts, one key per idle slot, most likely first (palette, model list,
+Settings, "+" picker, project dialog, tool tabs), none under `navigator.connection.saveData`, and on intent: hover, focus or press of
+a control with `data-warm` (sidebar Search/Review/New project/Settings, the model chip, the "+" button) or a picker row whose
+`data-picker-row` id is a key (`tool:terminal`); holding Ctrl/Cmd warms the palette. Monaco is warmed on idle once a file view
+has been on screen 1 s (`warmMonacoSoon`), and at once when the pointer enters or presses the file view. Entry budget: the new
+code is paid for by moving lazy-only exports out of entry modules (`TOOL_HINT` out of `lib/toolPurpose`, now in `state/workspace/paletteCommands`; the tree's
+`visibleSessions`/`projectSummary`/`isOpen`/`parseOpen`/`treeKey` -> `lib/sessions/treeRows`): 160.92 -> 160.73 kB. After merging
+the tool-tab, QA, approval and composer passes (161.71 kB) more lazy-only code left the entry: `agentActivity`/`teamRoles` ->
+`lib/orchestratorMore`, `railLayout` -> `lib/railLayout`, `sessionTitle` -> `lib/sessions/title` (so `lib/sessions/tree` leaves
+the entry): 160.93 kB. After the shell-polish merge (161.92 kB on its own; 161.32 merged): the after-first-paint
+warm-up moved into its own chunk (`app/warmApp`: the first-paint imports, the intent listeners and the idle queue), and
+`THEME_CHOICES` (`lib/themeChoices`), `usePageVisible` (`lib/hooksMore`), the chips' `useChipMenu` (`chat/chipMenu`), `SkeletonText`
+(`primitives/SkeletonText`), `RunningDot`/`OrchestratorGlyph` (`primitives/statusMore`) and the demo's `titleFromRequest`
+(`lib/sessions/requestTitle`) left entry modules: 160.28 kB (0.72 kB of room). Next candidates, each blocked by a file another
+pass owns: `turnHead`/`turnFailureText`/`turnDurationMs`/`compactionSlots`/`turnWarning` (`lib/transcript`, read only by
+`chat/Transcript`), `formatSeparator`/`needsSeparator` (`lib/format`, Transcript), `useLoginHint` (`chat/agentName`, Transcript),
+`useCopy` (`lib/hooks`, Transcript and Processes), `useRequests` and `projectRowLines` (the palette), `useAllRequests` (needs the
+request store's hook exported), the conversation's scroll spots (`chat/useScrollSpot` + `lib/scrollSpots`, ~0.6 kB, loaded with
+the conversation but only read after a scroll).
+
+| 1x (4x) | before | after |
+| --- | --- | --- |
+| Palette, first open (`more`) | 345 | 49 (warm 41) |
+| Palette, first open (`interact`) | 227 (540) | 61 (128) |
+| Model list, first open | 341 (436) | 33 (138); warm 31 |
+| Settings, first open | 360 (423) | 60 (210) |
+| First file (Monaco), Files on screen ~1 s | 1077 (1791) | 211 (884); warm 43 |
+| Review tab | 360 (523) | 61 (275) |
+| Browser tab | 340 (393) | 53 (220) |
+| Terminal tab | 402 (570) | 295 (495) |
+
+Not reached: Terminal (the chunk is warm; what remains is the tab's own mount, xterm and the PTY session, not measured further).
+`interact.cjs`' `settings:open` (~590 both before and after) is a measuring artefact: its predicate `h1[data-page-title]` is
+already true before the click after the session switches, so it reports the time since the previous click; the numbers above use
+`[data-settings] h1[data-page-title]`. Not verified: WebKit, the Tauri shell, a real harness.
+
+**Load sequence.** What each late piece waited for: the project list and config were asked for only after `/health` answered
+(now in parallel with it, `state/app`); the composer's Mode and Access chips are their own chunks, requested only when the composer
+first rendered and then revealed through the 300 ms fallback throttle (now fetched when `Composer`'s module runs and rendered
+with `readyLazy`, so they appear in the composer's first frame; the same for the top row's commands cluster, `ProjectCommands`);
+the sidebar's session rows waited for the demo's `listAllSessions`, which read every project one after another (~1 s; the
+harness answers it in one request: the demo now reads them in parallel). Milestones (ms from navigation, 1x / 4x): session rows
+1219 -> 1036 / 3557 -> 3125, composer 1219 -> 1136 / 3557 -> 3562, mode and access chips 1630 -> 1136 / 5203 -> 3562 (same frame
+as the composer), first turn 1309 -> 1252 / 4971 -> 3933. Load at 4x: CLS 0.20 -> 0.00 (median of 5; before, every run had one
+0.2027 shift), long tasks 16 -> 11, "interactive" 5410 -> 3803 ms. The 0.2027 shift was the transcript's turn window replacing
+estimated-height shells with mounted turns while pinned to the bottom (`chat/Transcript`, `useTurnWindow`: off limits for this
+pass); it no longer shows in these runs because the chunks the turns wait for are in earlier, but its cause is not fixed there.
+The UI scripts that open a project by its sidebar row (`flicker`, `layout-shift`, `width-stability`, `scroll-on-send`,
+`file-open-stability`) relied on the project rows showing before the session rows; they now also match a session row carrying the
+project's name and take the project's part of its link.
+
+**Motion tokens.** `--motion-fast` 100 / `--motion-base` 150 / `--motion-slow` 220 ms with `--ease-out-quint` (table in "Motion"
+above), `duration-fast|base|slow` utilities, mirrored in `lib/constants` (`MOTION_FAST_MS`, `MOTION_BASE_MS`, `EASE_OUT_QUINT`)
+for the tab settle (Web Animations) and `Presence`'s exit timer; every hand-written duration in styles.css and the components
+outside the excluded files now uses them (the 600 ms change flashes, loops and loading thresholds are not motion and stay). The
+context menu (`primitives/Menu`) enters and leaves like the other overlays (`octo-overlay`, growing from the point it opened at;
+the menus' `Presence` wrappers lost `exitMs={0}`), instant from the keyboard as before; tooltips fade in and out (fast, opacity),
+a neighbour shown while warm appears at once (`data-warm`, no fade on top of the warm-up). Layout properties no longer animate:
+the activity steps' `grid-template-rows`, Monaco's scrollbar thumb geometry (it trailed the scroll), the turn rail's mark width
+(now `scale`) and the drop zone's left/top (now `translate`; its size snaps). Reduced motion, the keyboard rule and instant tab
+swaps are unchanged. A test (`lib/constants.test.ts`) keeps styles.css free of hand-written transition durations and layout
+transitions. Checked in Chromium on the dev server (context menu: `octo-overlay-in` 150 ms from its origin, `octo-overlay-out` on
+close; tooltip: `octo-fade-in` 100 ms, `octo-fade-out` on leave); not checked in WebKit or on the phone layout.

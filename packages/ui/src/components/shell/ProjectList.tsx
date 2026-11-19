@@ -13,6 +13,9 @@ import { Presence } from "../primitives/Presence";
 import { SkeletonList } from "../primitives/Skeleton";
 import { ProjectItem } from "./ProjectItem";
 
+// The sidebar's edge rides in this chunk, which the sidebar asks for at once: no second dynamic import in the entry (budget).
+export { SidebarEdge } from "./SidebarEdge";
+
 const Menu = lazy(() => import("../primitives/Menu").then((m) => ({ default: m.Menu })));
 const DeleteProjectDialog = lazy(() => import("../shared/DeleteProjectDialog").then((m) => ({ default: m.DeleteProjectDialog })));
 
@@ -93,7 +96,7 @@ export function ProjectList(props: { activeProjectId: string | null; unseen: Rea
           />
         ))}
       </ul>
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Suspense fallback={null}>
             <Menu label={`${menu.project.name} actions`} x={menu.x} y={menu.y} items={menuItems(menu.project)} onClose={() => setMenu(null)} />

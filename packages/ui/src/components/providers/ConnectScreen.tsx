@@ -1,7 +1,7 @@
 import { ChevronLeft } from "lucide-react";
 import { useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
-import { defaultProviderId, providerGroups, useProviders } from "../../lib/providers";
+import { connectSubtitle, defaultProviderId, providerGroups, useProviders } from "../../lib/providers";
 import { STREAK_BAND } from "../../lib/streakPresets";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
@@ -36,7 +36,7 @@ export function ConnectScreen() {
             <h1 id="connect-title" className="text-display text-fg">
               <span className="octo-lead">Connect a provider</span> to start.
             </h1>
-            <p className="text-sm text-fg-2">Octo needs one of these: a coding agent on this computer, an API key, or the Octo router.</p>
+            <p className="text-sm text-fg-2">{connectSubtitle(all)}</p>
           </div>
           {providers.status === "loading" && <SkeletonList count={4} size="lg" twoLine />}
           {providers.status === "error" && !list && (

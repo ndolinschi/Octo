@@ -8,12 +8,14 @@ import { useRovingRows } from "../../lib/rovingRows";
 import { readable } from "../../lib/errors/plain";
 import { projectWhen, stateLine, type OrchestratorState } from "../../lib/orchestrator";
 import { agentStack } from "../../lib/orchestratorMore";
+import { sessionAgentName } from "../../lib/sessionAgent";
 import { navigate } from "../../lib/route";
 import { createAndOpenSession } from "../../lib/sessions/createSession";
 import { TRIAGE_LABEL, TRIAGE_ORDER, triageGroups, type Triage } from "../../lib/triage";
 import { useActivity } from "../../state/activity";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
+import { useAcpNames } from "../../state/models";
 import { isPending } from "../../state/orchestrators";
 import type { Reply } from "../../state/requests";
 import { Card } from "../primitives/Card";
@@ -23,7 +25,7 @@ import type { MenuItem } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { Skeleton, SkeletonList } from "../primitives/Skeleton";
-import { OrchestratorGlyph } from "../primitives/Status";
+import { OrchestratorGlyph } from "../primitives/statusMore";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { sessionGlyph, sessionMeta, sessionTitle } from "../../lib/sessions/tree";
 import { sessionStateWord } from "../../lib/sessions/model";
@@ -184,7 +186,7 @@ export function Projects({
           </Button>
         )}
       </div>
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Suspense fallback={null}>
             <Menu label={`${menu.project.name} actions`} x={menu.x} y={menu.y} items={projectMenuItems(menu.project)} onClose={() => setMenu(null)} />
@@ -203,11 +205,13 @@ function SessionRow({ session, now }: { session: GlobalSession; now: number }) {
   const title = sessionTitle(session);
   const state = sessionStateWord(session);
   const when = sessionMeta(session, now);
+  // Who runs the session (the harness this one drives), between where and how it is: "Atlas API · Claude Code · Waiting for you".
+  const agent = sessionAgentName(session.model, useAcpNames());
   return (
     <ListRow
       size="lg"
       title={title}
-      description={`${session.project_name} · ${state}`}
+      description={[session.project_name, agent, state].filter(Boolean).join(" · ")}
       meta={when ?? undefined}
       leading={
         <span className={cn("flex -translate-y-2", session.state !== "working" && STILL)}>

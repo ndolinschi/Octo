@@ -36,17 +36,6 @@ export function Skeleton({
   );
 }
 
-/** Several text lines; the last is shorter. */
-export function SkeletonText({ lines = 3, shimmer = false, className }: { lines?: number; shimmer?: boolean; className?: string }) {
-  return (
-    <div aria-hidden className={cn("flex flex-col gap-2", className)}>
-      {Array.from({ length: lines }, (_, i) => (
-        <Skeleton key={i} shimmer={shimmer} width={i === lines - 1 && lines > 1 ? "60%" : "100%"} />
-      ))}
-    </div>
-  );
-}
-
 const DEFAULT_WIDTHS = [64, 48, 72, 40];
 
 /**

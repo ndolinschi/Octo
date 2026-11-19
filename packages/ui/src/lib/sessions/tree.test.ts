@@ -1,19 +1,8 @@
 import type { ProjectSession } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  sessionsBesideTabs,
-  hasSessionMessages,
-  isOpen,
-  mainSessions,
-  parseOpen,
-  projectSummary,
-  sessionGlyph,
-  sessionMeta,
-  treeKey,
-  visibleSessions,
-  type KeyRow,
-} from "./tree";
+import { hasSessionMessages, mainSessions, sessionGlyph, sessionMeta, sessionsBesideTabs } from "./tree";
+import { isOpen, parseOpen, projectSummary, treeKey, visibleSessions, type KeyRow } from "./treeRows";
 
 const NOW = Date.parse("2026-11-14T12:00:00Z");
 const s = (id: string, minutesAgo: number, over: Partial<ProjectSession> = {}): ProjectSession => ({
@@ -89,6 +78,7 @@ test("a session's glyph and meta", () => {
   assert.equal(sessionGlyph(s("a", 1, { needs_you: true })), "needs");
   assert.equal(sessionMeta(s("a", 1, { state: "working" }), NOW), null);
   assert.equal(sessionMeta(s("a", 1, { state: "queued" }), NOW), "queued");
+  assert.equal(sessionMeta(s("a", 90, { state: "waiting" }), NOW), "1h");
   assert.equal(sessionMeta(s("a", 90), NOW), "1h");
 });
 

@@ -17,8 +17,8 @@ export function DragLayer() {
       {ind && (
         <div
           data-drop-zone
-          className="octo-fade fixed rounded-md border border-drop-edge bg-drop motion-safe:transition-[left,top,width,height] motion-safe:duration-[120ms] motion-safe:ease-(--ease-out-quint)"
-          style={{ left: ind.left, top: ind.top, width: ind.width, height: ind.height }}
+          className="octo-fade fixed top-0 left-0 rounded-md border border-drop-edge bg-drop motion-safe:transition-[translate] motion-safe:duration-fast motion-safe:ease-out-quint"
+          style={{ translate: `${ind.left}px ${ind.top}px`, width: ind.width, height: ind.height }}
         />
       )}
       {chip && (

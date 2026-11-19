@@ -71,7 +71,7 @@ function Composer(props: Extract<ZoneProps, { kind: "composer" }>) {
 
   return (
     <form
-      className={cn(BOX, "border border-field-edge transition-[border-color] duration-100 focus-within:border-fg")}
+      className={cn(BOX, "border border-field-edge transition-[border-color] duration-fast focus-within:border-fg")}
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -108,7 +108,7 @@ function Card(props: Extract<ZoneProps, { kind: "card" }>) {
       <header className="flex h-6 items-center gap-1.5 text-xs text-fg-3">
         <Glyph icon={MessageSquare} size={14} className="shrink-0" />
         <span className="min-w-0 truncate tabular-nums">{label.replace(/^l/, "L")}</span>
-        <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-100 group-focus-within/card:opacity-100 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100">
+        <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-fast group-focus-within/card:opacity-100 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100">
           <Button variant="quiet" size="xs" onClick={props.onEdit}>
             Edit
           </Button>

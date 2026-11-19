@@ -1,36 +1,27 @@
 import type { GlobalSession, ProjectSummary } from "@octo/agent-client";
 import { ChevronRight, Ellipsis, GitBranch, Plus } from "lucide-react";
-import { lazy, Suspense, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { lazy, Suspense, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { usePhone } from "../../lib/phone";
 import { CLOCK_SIDEBAR_MS } from "../../lib/constants";
 import { formatRelative } from "../../lib/format";
 import { useNow, useScrollFade } from "../../lib/hooks";
+import { sessionAgentName } from "../../lib/sessionAgent";
 import { projectRowLines, type OrchestratorState } from "../../lib/orchestrator";
 import { hrefFor, navigate } from "../../lib/route";
 import { useRovingRows } from "../../lib/rovingRows";
 import { createAndOpenSession } from "../../lib/sessions/createSession";
 import { deleteSessionCleanly } from "../../lib/sessions/deleteSession";
 import { canMoveToWorktree, deleteCopy, failureText, sessionWorkspaceLabel } from "../../lib/sessions/model";
-import {
-  isLive,
-  isOpen,
-  mainSessions,
-  parseOpen,
-  projectSummary,
-  sessionGlyph,
-  sessionMeta,
-  sessionTitle,
-  treeKey,
-  TREE_ALL,
-  type KeyRow,
-} from "../../lib/sessions/tree";
-import { flatSessions, treeSessions } from "../../lib/sessions/flat";
+import { isLive, mainSessions, sessionGlyph, sessionMeta, sessionTitle } from "../../lib/sessions/tree";
+import { isOpen, parseOpen, projectSummary, treeKey, TREE_ALL, type KeyRow } from "../../lib/sessions/treeRows";
+import { flatSessions, pinNeedsYou, treeSessions } from "../../lib/sessions/flat";
 import { orchestratorGlyph, type GlyphState } from "../../lib/stateGlyph";
 import { jsonCodec, PREFS, usePersistentState } from "../../lib/storage";
 import { useActivity } from "../../state/activity";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
+import { useAcpNames } from "../../state/models";
 import { useNav } from "../../state/nav";
 import { useOrchestrators } from "../../state/orchestrators";
 import { useSessionIndex } from "../../state/sessionIndex";
@@ -85,6 +76,7 @@ export function SessionTree(props: SessionTreeProps) {
   const now = useNow(true, CLOCK_SIDEBAR_MS);
   const index = useSessionIndex(projects);
   const orchestrators = useOrchestrators(projects);
+  const acp = useAcpNames();
   const [stored, setStored] = usePersistentState(PREFS.sidebarOpen, openCodec);
   const [showAll, setShowAll] = useState<ReadonlySet<string>>(new Set());
   const [menu, setMenu] = useState<MenuAt | null>(null);
@@ -107,14 +99,17 @@ export function SessionTree(props: SessionTreeProps) {
   );
   const defaultOf = (pid: string) => index.byProject.get(pid)?.find((s) => s.default ?? s.current)?.id ?? null;
   const currentSession = props.agentRoute ? null : (props.activeSessionId ?? (props.activeProjectId ? defaultOf(props.activeProjectId) : null));
-  const flat = useMemo(() => flatSessions(index.all, currentSession), [index.all, currentSession]);
+  // Decision F3: what needs the person is pinned on top; both groups keep the stable order by start.
+  const pinned = useMemo(() => pinNeedsYou(flatSessions(index.all, currentSession)), [index.all, currentSession]);
+  const flat = useMemo(() => [...pinned.needs, ...pinned.rest], [pinned]);
   const loading = projects === null && health !== "offline";
-  const sessionsLoading = props.mode === "sessions" && health !== "offline" && projects !== null && projects.length > 0 && !index.loaded && flat.length === 0;
+  // The skeleton stays until the index has loaded: the list takes its final shape once, not empty → partial → whole.
+  const sessionsLoading = props.mode === "sessions" && health !== "offline" && projects !== null && projects.length > 0 && !index.loaded;
   const unrepresented = useMemo(() => {
-    if (props.mode !== "sessions" || loading || sessionsLoading) return [];
+    if (props.mode !== "sessions" || loading || sessionsLoading || !index.loaded) return [];
     const seen = new Set(flat.map((s) => s.project_id));
     return (ordered ?? []).filter((p) => !seen.has(p.id));
-  }, [props.mode, loading, sessionsLoading, flat, ordered]);
+  }, [props.mode, loading, sessionsLoading, index.loaded, flat, ordered]);
 
   const toggle = (pid: string, open: boolean) => setStored((s) => ({ ...s, [pid]: open }));
   const act = async (call: () => Promise<unknown>) => {
@@ -235,11 +230,16 @@ export function SessionTree(props: SessionTreeProps) {
     const selected = s.id === currentSession;
     const meta = sessionMeta(s, now);
     const wsLabel = sessionWorkspaceLabel(s);
+    const tipDetail = [inTree ? "" : s.project_name, sessionAgentName(s.model, acp), wsLabel ? `Worktree: ${wsLabel}` : "", inTree ? "" : meta]
+      .filter(Boolean)
+      .join(" · ");
     return (
       <li key={s.id} role="none" data-tree-row data-tree-level={inTree ? 2 : 1} className="group/r relative" onContextMenu={(e) => openMenu(s, e)}>
         {renaming === s.id ? (
           <RenameRow
             initial={sessionTitle(s)}
+            inTree={inTree}
+            leading={<StateGlyph state={sessionGlyph(s)} size={12} box={16} label />}
             onDone={(title) => {
               setRenaming(null);
               const patch = bridge.patchSession;
@@ -252,7 +252,7 @@ export function SessionTree(props: SessionTreeProps) {
             aria-haspopup="menu"
             level={inTree ? 2 : 1}
             id={rowId("s", s.id)}
-            size="md"
+            size="sm"
             tone={selected ? "default" : "quiet"}
             href={hrefFor(s.project_id, null, s.id)}
             onClick={props.onPick}
@@ -269,13 +269,8 @@ export function SessionTree(props: SessionTreeProps) {
                 )}
               </>
             }
-            tip={
-              inTree
-                ? wsLabel
-                  ? `${sessionTitle(s)} — Worktree: ${wsLabel}`
-                  : sessionTitle(s)
-                : `${sessionTitle(s)} — ${[s.project_name, wsLabel ? `Worktree: ${wsLabel}` : "", meta].filter(Boolean).join(" · ")}`
-            }
+            // 7b: the tooltip names the agent that runs the session (the flat list adds its project and age).
+            tip={[sessionTitle(s), tipDetail].filter(Boolean).join(" — ")}
             meta={
               <span aria-hidden data-tree-meta className="flex min-w-0 items-center gap-1 tabular-nums">
                 {wsLabel && <Glyph icon={GitBranch} size={14} className="shrink-0 text-fg-3" />}
@@ -286,7 +281,7 @@ export function SessionTree(props: SessionTreeProps) {
         )}
         {renaming !== s.id && (
           // The pointer's way to the row's menu; the keyboard's is Shift+F10 on the row (the button is out of the tree's a11y).
-          <span data-tree-actions role="none" className="absolute top-1 right-1 touch:top-2">
+          <span data-tree-actions role="none" className="absolute top-0.5 right-1 touch:top-2">
             <IconButton
               icon={Ellipsis}
               size={phone ? "lg" : "xs"}
@@ -332,10 +327,19 @@ export function SessionTree(props: SessionTreeProps) {
         onKeyDown={onKeyDown}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain fade-y"
       >
-        {(loading || sessionsLoading) && <SkeletonList count={3} size="md" />}
+        {(loading || sessionsLoading) && <SkeletonList count={3} size={sessionsLoading ? "sm" : "md"} />}
         {props.mode === "sessions" ? (
           <>
-            {flat.map((s) => sessionRow(s, false))}
+            {!sessionsLoading && pinned.needs.length > 0 && (
+              <>
+                {/* Decision F3: Home's "Needs you" pinned on top, captioned like the section; no caption when nothing needs you.
+                    The rows' glyphs say "Needs you" / "Failed" to a screen reader, so the captions are for the eye. */}
+                <GroupCaption first>Needs you</GroupCaption>
+                {pinned.needs.map((s) => sessionRow(s, false))}
+                <GroupCaption>Other sessions</GroupCaption>
+              </>
+            )}
+            {!sessionsLoading && (pinned.needs.length > 0 ? pinned.rest : flat).map((s) => sessionRow(s, false))}
             {unrepresented.map((p) => (
               <li key={p.id} role="none" className="flex flex-col">
                 <ProjectRow
@@ -384,7 +388,7 @@ export function SessionTree(props: SessionTreeProps) {
                         role="treeitem"
                         level={2}
                         id={rowId("m", p.id)}
-                        size="md"
+                        size="sm"
                         tone="quiet"
                         leading={<span />}
                         title={showAll.has(p.id) ? "Open Sessions" : `Show all (${shown.length + hidden})`}
@@ -405,7 +409,7 @@ export function SessionTree(props: SessionTreeProps) {
           ))
         )}
       </ul>
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Suspense fallback={null}>
             <Menu
@@ -463,6 +467,15 @@ export function SessionTree(props: SessionTreeProps) {
 /** A row's DOM id: what the keyboard focuses. */
 function rowId(kind: "p" | "s" | "m", id: string): string {
   return `tree-${kind}-${id}`;
+}
+
+/** A group's caption inside the flat list (decision F3): the section caption's look, on the rows' glyph column. */
+function GroupCaption(props: { first?: boolean; children: string }) {
+  return (
+    <li role="none" data-group-caption className={cn("flex h-5 items-center pl-2 text-xs text-fg-3", props.first ? "mb-1" : "mt-3 mb-1")}>
+      <span aria-hidden>{props.children}</span>
+    </li>
+  );
 }
 
 function NewButton(props: { label: string; disabled: boolean; onClick(): void }) {
@@ -558,7 +571,7 @@ function ProjectRow(props: {
 }
 
 /** Rename in place: Enter saves, Esc leaves it as it was (the row comes back). */
-function RenameRow(props: { initial: string; onDone(title: string | null): void }) {
+function RenameRow(props: { initial: string; inTree: boolean; leading: ReactNode; onDone(title: string | null): void }) {
   const [value, setValue] = useState(props.initial);
   const done = useRef(false);
   const finish = (title: string | null) => {
@@ -567,12 +580,16 @@ function RenameRow(props: { initial: string; onDone(title: string | null): void 
     props.onDone(title !== null && title.trim() !== "" && title.trim() !== props.initial ? title.trim() : null);
   };
   return (
-    <div className="flex h-ctl-md items-center px-1 touch:h-ctl-lg">
+    // The row's glyph stays and the text does not move: the field's frame steps 6px left into the gap and its text starts
+    // where the title did (16px glyph + 8px gap; 6px back + 1px border + 5px padding).
+    <div className={cn("flex h-ctl-sm items-center gap-2 pr-1 touch:h-ctl-lg", props.inTree ? "pl-6" : "pl-2")}>
+      {props.leading}
       <TextField
+        className="-ml-1.5 pl-1.25"
         // eslint-disable-next-line jsx-a11y/no-autofocus -- the person just chose Rename: the field is what they asked for
         autoFocus
         aria-label="Session title"
-        size="sm"
+        size="xs"
         value={value}
         maxLength={120}
         onChange={(e) => setValue(e.target.value)}
@@ -585,6 +602,11 @@ function RenameRow(props: { initial: string; onDone(title: string | null): void 
             e.stopPropagation();
             finish(null);
           }
+        }}
+        // All selected, the caret at the start: the field shows the title's beginning, as the row did.
+        onFocus={(e) => {
+          e.currentTarget.setSelectionRange(0, e.currentTarget.value.length, "backward");
+          e.currentTarget.scrollLeft = 0;
         }}
         onBlur={() => finish(value)}
       />

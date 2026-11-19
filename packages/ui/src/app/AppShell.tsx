@@ -1,4 +1,3 @@
-import { warmBridgeClient } from "@octo/agent-client";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "../lib/cn";
 import { loadPref, PREFS, sidebarViewCodec } from "../lib/storage";
@@ -27,18 +26,20 @@ import { TitleBar } from "../components/shell/TitleBar";
 import { StatusBar } from "../components/status/StatusBar";
 import { StatusSlotsContext } from "../state/statusSlots";
 import { ProjectWorkspace } from "./ProjectWorkspace";
-import { warmDrag } from "../components/dock/drag";
-import { transcriptPart } from "../components/chat/transcriptPart";
 import { ActivityProvider } from "../state/activity";
+import { readyLazy } from "../lib/readyLazy";
+import { registerWarm } from "../lib/warm";
 import { DRAWER_QUERY } from "../lib/constants";
 import { usePhone } from "../lib/phone";
 
 /** Home loads on first visit (its own chunk); the app usually opens a project. */
 /** The palette loads after the first paint (idle) or on first use, whichever comes first (its own chunk). */
-const loadPalette = () => import("../components/shell/CommandPalette");
 /** The settings index for the palette's Settings group (loaded with the palette). */
 const loadSettingsIndex = () => import("../components/settings/settingsIndex");
-const CommandPalette = lazy(() => loadPalette().then((m) => ({ default: m.CommandPalette })));
+const palettePart = readyLazy(() => import("../components/shell/CommandPalette").then((m) => m.CommandPalette));
+const CommandPalette = palettePart.Component;
+registerWarm("palette", palettePart.fetch);
+registerWarm("palette", loadSettingsIndex);
 /** The shortcuts sheet: its own chunk, mounted for its "?" key; it renders only while open. */
 const ShortcutsSheet = lazy(() => import("../components/shell/ShortcutsSheet"));
 /** Demo-only `#/p/<id>/memory` (the Memory view on its own); not in a normal start's chunks. */
@@ -50,10 +51,13 @@ const ProjectGone = lazy(() => import("./ProjectWorkspaceStates").then((m) => ({
 const OfflineBanner = lazy(() => import("../components/shell/OfflineState").then((m) => ({ default: m.OfflineBanner })));
 const OfflineState = lazy(() => import("../components/shell/OfflineState").then((m) => ({ default: m.OfflineState })));
 const Home = lazy(() => import("../components/home/Home").then((m) => ({ default: m.Home })));
-/** The project dialog and the settings page load on first use, warmed with the palette (their own chunks; v6.3 bundle). */
-const loadDialogs = () => Promise.all([import("../components/project/ProjectDialog"), import("../components/settings/SettingsPage")]);
-const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
-const SettingsPage = lazy(() => import("../components/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+/** The project dialog and the settings page load on first use, warmed on idle and on intent (their own chunks; v6.3 bundle). */
+const projectDialogPart = readyLazy(() => import("../components/project/ProjectDialog").then((m) => m.ProjectDialog));
+const ProjectDialog = projectDialogPart.Component;
+registerWarm("project-dialog", projectDialogPart.fetch);
+const settingsPart = readyLazy(() => import("../components/settings/SettingsPage").then((m) => m.SettingsPage));
+const SettingsPage = settingsPart.Component;
+registerWarm("settings", settingsPart.fetch);
 /** Decision 53: the connect sheet and the no-provider screen (their own chunks). */
 const ConnectSheet = lazy(() => import("../components/providers/ConnectSheet").then((m) => ({ default: m.ConnectSheet })));
 const ConnectScreen = lazy(() => import("../components/providers/ConnectScreen").then((m) => ({ default: m.ConnectScreen })));
@@ -194,46 +198,22 @@ function Shell() {
   useEffect(() => setDrawerOpen(false), [route.projectId, route.agentId, route.sessionId, drawerMode]);
   useEscape(drawerMode && drawerOpen && !palette, () => setDrawerOpen(false));
 
-  // The first assistant message must not flash as plain text before Markdown arrives: fetch that chunk right after first
-  // paint (idle callback; WebKit has none, so a short timer), still outside the initial bundle.
+  // Warming after the first paint (`app/warmApp`, its own chunk): the chunks the first minutes need (Markdown, the transcript,
+  // tool lines…), then the lazy surfaces on intent and on idle. A failed load of that chunk only means nothing is warmed: every
+  // surface still loads on first open.
   useEffect(() => {
-    const warm = () => {
-      warmBridgeClient();
-      warmDrag();
-      void import("../components/shared/Markdown").catch(() => undefined);
-      void transcriptPart.fetch().catch(() => undefined);
-      void import("../components/chat/ToolGroup").catch(() => undefined);
-      void import("../components/chat/DelegationGroup").catch(() => undefined);
-      void import("../components/chat/TurnBanner").catch(() => undefined);
-      void import("../components/shell/DiscardDialogs").catch(() => undefined);
-      void import("../components/primitives/Menu").catch(() => undefined);
-      void import("../components/chat/ComposerPills").catch(() => undefined);
-      void import("../components/shell/SidebarDrawer").catch(() => undefined);
-      void import("../components/chat/ContextRing").catch(() => undefined);
-      void import("../components/chat/SessionMenu").catch(() => undefined);
+    let stop: () => void = () => undefined;
+    let live = true;
+    void import("./warmApp").then(
+      (m) => {
+        if (live) stop = m.startWarming(document);
+      },
+      () => undefined,
+    );
+    return () => {
+      live = false;
+      stop();
     };
-    if (Reflect.has(window, "requestIdleCallback")) {
-      const id = window.requestIdleCallback(warm, { timeout: 500 });
-      return () => window.cancelIdleCallback(id);
-    }
-    const id = window.setTimeout(warm, 50);
-    return () => window.clearTimeout(id);
-  }, []);
-
-  // Warm the palette's chunk once the app is idle, so Ctrl/Cmd+K opens it without a wait.
-  useEffect(() => {
-    // A failed warm-up is retried by the first Ctrl/Cmd+K (which shows the error if it fails again).
-    const id = window.setTimeout(() => {
-      void loadPalette().catch(() => undefined);
-      void loadDialogs().catch(() => undefined);
-      // The chunks the first minutes most likely need (v6.3 part 2 moved them out of the initial bundle): warmed, so a
-      // file, the "+" picker or the model picker opens without a wait. A failure is retried by the first real open.
-      void import("../components/files/FileView").catch(() => undefined);
-      void import("../components/dock/TabPicker").catch(() => undefined);
-      void import("../components/shared/ModelPickerPanel").catch(() => undefined);
-      void import("../components/chat/RoutingLine").catch(() => undefined);
-    }, 1500);
-    return () => window.clearTimeout(id);
   }, []);
 
   // NEW-6: Back / Forward (or any hash change) closes the transient overlays that are not the new route's own: the palette and

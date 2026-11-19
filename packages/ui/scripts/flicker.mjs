@@ -149,6 +149,9 @@ async function open(query) {
   await ctx.addInitScript(() => {
     try {
       localStorage.setItem("octo.theme", "dark");
+      // The scripts open a project by its sidebar row: the tree view lists every project (the flat Sessions view, the default,
+      // lists a project only while it has no session).
+      localStorage.setItem("octo.sidebarView", "tree");
       for (const k of Object.keys(localStorage)) if (k.startsWith("octo.layout.") || k.startsWith("octo.fileTree.")) localStorage.removeItem(k);
     } catch {
       /* storage unavailable */
@@ -179,7 +182,8 @@ async function open(query) {
 async function openProject(page, projects, name) {
   const href = await page.evaluate((n) => {
     for (const a of document.querySelectorAll('nav[aria-label="Projects"] a[href^="#/p/"]'))
-      if ((a.getAttribute("title") || a.textContent.trim()).startsWith(n)) return a.getAttribute("href");
+      // A project row starts with its name; in the flat Sessions list a session row carries it as its meta (the project's part of the link).
+      if ((a.getAttribute("title") || a.textContent.trim()).startsWith(n) || a.textContent.includes(n)) return a.getAttribute("href").match(/^#\/p\/[^/]+/)[0];
     return null;
   }, name);
   if (!href) fail(`project "${name}" not in the sidebar`);

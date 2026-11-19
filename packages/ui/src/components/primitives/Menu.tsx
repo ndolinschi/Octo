@@ -1,6 +1,6 @@
 import { Check, type LucideIcon } from "lucide-react";
 import { Glyph } from "./Glyph";
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { usePresence } from "./Presence";
@@ -32,8 +32,9 @@ const EDGE = 8;
 const ITEM = '[data-menu-item]:not([aria-disabled="true"])';
 
 /**
- * A small context menu at a point (pointer position or a control's corner), or opening upwards from it with `above`. It appears
- * and leaves instantly (no animation). Keys follow decision 95's one contract (`popupNav`; a menu has no text field): ↑/↓ wrap,
+ * A small context menu at a point (pointer position or a control's corner), or opening upwards from it with `above`. It enters and
+ * leaves like every overlay (`octo-overlay`, growing from the point it opened at; inside a `<Presence>` for the exit), and
+ * instantly when opened from the keyboard. Keys follow decision 95's one contract (`popupNav`; a menu has no text field): ↑/↓ wrap,
  * Home/End jump, Tab / Shift+Tab move to the next / previous item (focus stays in the menu), type-ahead moves; Enter/Space runs;
  * Esc, a click outside, resizing the window or a scroll that moves the opener (`popupScroll`) closes. Rows look like `PopupList`'s: a 16px leading slot (the check of a
  * choice), 28px, 40px under `touch:`. Focus moves into the menu on open and back to the opener when it starts closing (unless the
@@ -161,8 +162,8 @@ export function Menu(props: {
       inert={!open}
       onKeyDown={onKeyDown}
       onContextMenu={(e) => e.preventDefault()}
-      style={{ left: pos.left, top: pos.top }}
-      className="fixed z-[60] max-h-[calc(100dvh-24px)] max-w-[calc(100vw-24px)] min-w-[200px] overflow-y-auto overscroll-contain rounded-xl bg-overlay p-1 text-sm shadow-pop forced-colors:border forced-colors:border-[CanvasText]"
+      style={{ left: pos.left, top: pos.top, "--octo-origin": `${props.x - pos.left}px ${props.y - pos.top}px` } as CSSProperties}
+      className="octo-overlay fixed z-[60] max-h-[calc(100dvh-24px)] max-w-[calc(100vw-24px)] min-w-[200px] overflow-y-auto overscroll-contain rounded-xl bg-overlay p-1 text-sm shadow-pop forced-colors:border forced-colors:border-[CanvasText]"
     >
       {props.items.map((item) =>
         isAction(item) ? (

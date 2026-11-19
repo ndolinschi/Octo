@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { MOTION_FAST_MS } from "../../lib/constants";
 
 export type PresenceState = "open" | "closed";
 
 const PresenceContext = createContext<PresenceState>("open");
 
-/** Longest overlay exit in styles.css (dialog, palette, scrim); menus are shorter. */
-const EXIT_MS = 120;
+/** Every overlay exit in styles.css is `--motion-fast`. */
+const EXIT_MS = MOTION_FAST_MS;
 
 /**
  * Keeps an overlay mounted for its exit animation. While `show` is false the last children stay

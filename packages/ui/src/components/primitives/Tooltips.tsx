@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { MOTION_FAST_MS } from "../../lib/constants";
+import { tipMayShow } from "../../lib/tooltipGate";
 
 /** First tooltip waits this long; while "warm" (another one closed recently) the next shows at once. */
 const DELAY = 600;
@@ -9,7 +11,7 @@ const EDGE = 8;
 /** Focus that follows a navigation key within this time is the person's own; later focus is the app's. */
 const NAV_FOCUS_MS = 500;
 
-type Tip = { text: string; shortcut: string | null; rect: DOMRect; side: "below" | "left" };
+type Tip = { text: string; shortcut: string | null; rect: DOMRect; side: "below" | "left"; warm: boolean };
 
 function disabled(el: Element): boolean {
   return el.matches(":disabled, [aria-disabled='true']");
@@ -27,12 +29,14 @@ function tipOf(el: HTMLElement): string | null {
 
 /**
  * One tooltip layer for the whole app, driven by the `title` attribute every control already has
- * (plus `data-shortcut` for a keyboard hint, `data-tip-side="left"` to sit beside it). Appears after 600ms, instantly for neighbours while
- * warm; never on disabled controls; hides on press, key, scroll or leave. Text alternatives stay
+ * (plus `data-shortcut` for a keyboard hint, `data-tip-side="left"` to sit beside it). Appears after 600ms with a short fade,
+ * instantly (no fade) for neighbours while warm; never on disabled controls; hides on press, key, scroll or leave, fading out. Text alternatives stay
  * in aria-label / visible text; the tooltip is visual only.
  */
 export function Tooltips() {
   const [tip, setTip] = useState<Tip | null>(null);
+  // The last tooltip, kept for its fade out (`data-state="closed"`) while nothing new shows.
+  const [leaving, setLeaving] = useState<Tip | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
@@ -40,6 +44,8 @@ export function Tooltips() {
     let timer = 0;
     let current: HTMLElement | null = null;
     let warmUntil = 0;
+    /** The tooltip on screen (null while one only waits for its delay). */
+    let showing: Tip | null = null;
     const pointer = { x: 0, y: 0 };
     // After a press, nothing shows until the pointer really moves: a click that changes the layout must not
     // pop the tooltip of whatever slid under the pointer.
@@ -64,6 +70,8 @@ export function Tooltips() {
       watch.disconnect();
       if (current) warmUntil = Date.now() + WARM_FOR;
       current = null;
+      if (showing) setLeaving(showing);
+      showing = null;
       setTip(null);
     };
     const over = (e: PointerEvent) => {
@@ -73,7 +81,7 @@ export function Tooltips() {
       if (el === current) return;
       if (!el) return hide();
       if (pressedAt) return;
-      arm(el);
+      arm(el, true);
     };
     // Keyboard focus shows the focused control's tooltip too (same delay and warmth); pointer focus does not. Only focus the
     // person moved (Tab, arrows, Home/End): a tab or dialog that puts focus on a row by itself shows no tooltip (B57).
@@ -95,24 +103,35 @@ export function Tooltips() {
     const focusOut = (e: FocusEvent) => {
       if (current && current === e.target) hide();
     };
-    const arm = (el: HTMLElement) => {
+    const arm = (el: HTMLElement, byPointer = false) => {
       window.clearTimeout(timer);
       watch.disconnect();
       watch.observe(el, { attributes: true, attributeFilter: ["title"] });
       if (current) warmUntil = Date.now() + WARM_FOR;
       current = el;
+      if (showing) setLeaving(showing);
+      showing = null;
       setTip(null);
       const text = tipOf(el);
       if (!text || disabled(el)) return;
-      const show = () => {
-        if (current !== el || !el.isConnected) return;
+      // Item 14: the pointer leaving the control hides its tooltip even when no `pointerover` follows (a row that re-rendered
+      // or moved under a still pointer), and a tooltip the pointer armed shows only while the control is still hovered.
+      if (byPointer) el.addEventListener("pointerleave", () => current === el && hide(), { once: true });
+      const show = (warm = false) => {
+        if (!tipMayShow({ armed: current === el, connected: el.isConnected, byPointer, hovered: el.matches(":hover") })) {
+          if (current === el) hide();
+          return;
+        }
         const now = tipOf(el) ?? text;
         // Tall targets (dividers, rows of text) anchor at the pointer rather than their whole box.
         const box = el.getBoundingClientRect();
         const rect = box.height > 48 ? new DOMRect(pointer.x - 1, pointer.y - 8, 2, 16) : box;
-        setTip({ text: now, shortcut: el.dataset.shortcut ?? null, rect, side: el.dataset.tipSide === "left" ? "left" : "below" });
+        showing = { text: now, shortcut: el.dataset.shortcut ?? null, rect, side: el.dataset.tipSide === "left" ? "left" : "below", warm };
+        setLeaving(null);
+        setTip(showing);
       };
-      if (Date.now() < warmUntil) show();
+      // While warm the next one shows at once and without its fade (`data-warm`): no delay stacks on another.
+      if (Date.now() < warmUntil) show(true);
       else timer = window.setTimeout(show, DELAY);
     };
     const leaveWindow = (e: PointerEvent) => {
@@ -145,9 +164,15 @@ export function Tooltips() {
   // Below the control, centred and kept in the viewport; above it when there is no room below.
   // `data-tip-side="left"` (controls over content, like the editor's comment button): to the left,
   // vertically centred; above when there is no room on the left.
+  useEffect(() => {
+    if (!leaving) return;
+    const id = window.setTimeout(() => setLeaving(null), MOTION_FAST_MS);
+    return () => window.clearTimeout(id);
+  }, [leaving]);
+
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!tip || !el) return setPos(null);
+    if (!tip || !el) return;
     const { width, height } = el.getBoundingClientRect();
     const r = tip.rect;
     if (tip.side === "left") {
@@ -165,17 +190,20 @@ export function Tooltips() {
     });
   }, [tip]);
 
-  if (!tip) return null;
+  const shown = tip ?? leaving;
+  if (!shown) return null;
   return createPortal(
     <div
       ref={ref}
       aria-hidden
       data-tooltip=""
+      data-state={tip ? "open" : "closed"}
+      data-warm={shown.warm || undefined}
       style={pos ?? { left: -9999, top: -9999 }}
-      className="pointer-events-none fixed z-[80] flex max-w-[360px] items-center gap-2 rounded-sm border border-transparent bg-overlay px-2 py-1 text-xs text-fg shadow-pop"
+      className="octo-tooltip pointer-events-none fixed z-[80] flex max-w-[360px] items-center gap-2 rounded-sm border border-transparent bg-overlay px-2 py-1 text-xs text-fg shadow-pop"
     >
-      <span className="min-w-0 wrap-anywhere whitespace-pre-line">{tip.text}</span>
-      {tip.shortcut && <kbd className="shrink-0 rounded-2xs bg-active px-1 font-sans text-xs text-fg-2">{tip.shortcut}</kbd>}
+      <span className="min-w-0 wrap-anywhere whitespace-pre-line">{shown.text}</span>
+      {shown.shortcut && <kbd className="shrink-0 rounded-2xs bg-active px-1 font-sans text-xs text-fg-2">{shown.shortcut}</kbd>}
     </div>,
     document.body,
   );

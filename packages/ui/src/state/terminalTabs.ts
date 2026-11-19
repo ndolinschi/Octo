@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-export type TerminalTabMeta = { shell: string; folder: string; title: string };
+/** `ordinal`: the tab's number among the project's tabs of the same name (item 15; written by the terminal's session store). */
+export type TerminalTabMeta = { shell: string; folder: string; title: string; ordinal?: number };
 
 const EMPTY: TerminalTabMeta = { shell: "", folder: "", title: "" };
 const state = new Map<string, TerminalTabMeta>();
@@ -27,7 +28,7 @@ export function updateTerminalTabState(pid: string, id: string, patch: Partial<T
   const k = `${pid}:${id}`;
   const prev = state.get(k) ?? EMPTY;
   const next = { ...prev, ...patch };
-  if (prev.shell === next.shell && prev.folder === next.folder && prev.title === next.title) return;
+  if (prev.shell === next.shell && prev.folder === next.folder && prev.title === next.title && prev.ordinal === next.ordinal) return;
   state.set(k, next);
   bump(pid);
 }

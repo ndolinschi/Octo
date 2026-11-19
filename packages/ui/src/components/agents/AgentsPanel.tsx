@@ -10,7 +10,7 @@ import { formatDuration } from "../../lib/format";
 import { agentDuration } from "../../lib/duration";
 import { useNow } from "../../lib/hooks";
 import { useRowKeys } from "../../lib/hooksMore";
-import { agentActivity } from "../../lib/orchestrator";
+import { agentActivity } from "../../lib/orchestratorMore";
 import { agentWaiting, WAIT_TEXT } from "../../lib/agentWaiting";
 import { agentGlyph } from "../../lib/stateGlyph";
 import { useProject } from "../../state/project";
