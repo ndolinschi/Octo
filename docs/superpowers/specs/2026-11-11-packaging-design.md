@@ -247,4 +247,8 @@ Details: [`apps/harness/docs/acp-orchestrator.md`](../../../apps/harness/docs/ac
   `CappedLog` creates its directory `0700` and the logs `0600`, also tightening existing ones. Windows: no-op. Verified:
   `projectstore` `TestDataDirIsPrivate` (failed before: projects dirs `0755`, databases, WAL and SHM `0644`),
   `octo-sidecar` `the_log_and_its_directory_are_private_also_when_they_existed` (`cargo test -p octo-sidecar`).
+- **CI actions pinned.** Every `uses:` in `.github/workflows/*.yml` is a commit SHA with the tag in a comment, resolved on
+  2026-11-19 with `git ls-remote` (the `^{}` commit for the annotated tags of `pnpm/action-setup` and `Swatinem/rust-cache`);
+  `dtolnay/rust-toolchain` gets `toolchain:` since it can no longer read the version from its ref. Checked by
+  `scripts/workflows-pinned.test.mjs` (`pnpm test:scripts`; failed before). Not run: the workflows on GitHub.
 
