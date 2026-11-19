@@ -12,6 +12,10 @@ import { fileIcon } from "../primitives/fileIcons";
 import { Highlight } from "../primitives/Highlight";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { Spinner } from "../primitives/Status";
+import { Menu, type MenuItem } from "../primitives/Menu";
+import { Presence } from "../primitives/Presence";
+import { chatMention } from "../../lib/chatMention";
+import { addToChat, canAddToChat } from "../../state/chatInsert";
 
 type NodeRow = { id: string; kind: "dir" | "file"; folder: string; path: string; name: string; level: number; expanded: boolean; title: string };
 type StateRow = { id: string; kind: "loading" | "error"; folder: string; path: string; level: number; error: string | null };
@@ -98,6 +102,7 @@ const TreeNodeRow = memo(function TreeNodeRow({
   onFocusRow,
   onKeyDownRow,
   onActivateRow,
+  onMenuRow,
 }: {
   row: NodeRow;
   selected: boolean;
@@ -109,6 +114,7 @@ const TreeNodeRow = memo(function TreeNodeRow({
   onFocusRow: (id: string) => void;
   onKeyDownRow: (e: KeyboardEvent, row: Row) => void;
   onActivateRow: (row: Row) => void;
+  onMenuRow: (row: NodeRow, at: { x: number; y: number }) => void;
 }) {
   const indent = indentOf(row.level);
   const isRoot = row.kind === "dir" && row.path === "";
@@ -131,6 +137,11 @@ const TreeNodeRow = memo(function TreeNodeRow({
       }}
       onKeyDown={(e) => onKeyDownRow(e, row)}
       onClick={() => onActivateRow(row)}
+      onContextMenu={(e) => {
+        if (row.kind !== "file") return;
+        e.preventDefault();
+        onMenuRow(row, { x: e.clientX, y: e.clientY });
+      }}
       className={cn(
         "flex h-ctl-xs shrink-0 items-center rounded-sm px-1 text-sm press-row focus-inset touch:h-ctl-lg",
         selected ? "bg-active" : "hover:bg-hover",
@@ -201,6 +212,8 @@ export const FileTree = forwardRef<
   const slow = useDelayedLoading(allRows.some((r) => r.kind === "loading"));
   const rows = useMemo(() => (slow ? allRows : allRows.filter((r) => r.kind !== "loading")), [allRows, slow]);
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ row: NodeRow; x: number; y: number } | null>(null);
+  const openMenu = useCallback((row: NodeRow, at: { x: number; y: number }) => setMenu({ row, ...at }), []);
   const refs = useRef(new Map<string, HTMLDivElement>());
   const scrollCtrl = useRef(new TreeScrollController());
 
@@ -338,10 +351,22 @@ export const FileTree = forwardRef<
             onFocusRow={setFocusId}
             onKeyDownRow={onKeyDown}
             onActivateRow={activate}
+            onMenuRow={openMenu}
           />
         );
       })}
       {query && rows.length === 0 && <p className="flex h-row items-center px-2 text-xs text-fg-3">No files match</p>}
+      <Presence show={menu !== null}>
+        {menu && <Menu label={menu.row.name} x={menu.x} y={menu.y} items={fileMenu(menu.row)} onClose={() => setMenu(null)} />}
+      </Presence>
     </div>
   );
 });
+
+/** G4: a file's right-click menu: Add to chat (the file as a mention in the composer), when a composer is there; Copy path. */
+function fileMenu(row: NodeRow): MenuItem[] {
+  const items: MenuItem[] = [];
+  if (canAddToChat()) items.push({ id: "chat", label: "Add to chat", run: () => void addToChat(chatMention(row.path)) });
+  items.push({ id: "path", label: "Copy path", run: () => void navigator.clipboard.writeText(row.path) });
+  return items;
+}

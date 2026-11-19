@@ -4211,4 +4211,13 @@ Owner decisions of 2026-11-18 (the four items held back from the polish list):
   session an ACP worker serves; it now does (`session_id` on `GET …/processes`, kind `agent`, from the orchestrator's existing
   record; `internal/bridge/processes_test.go`), and the demo's worker carries the default session. `processStarter`
   (`lib/processes/model.ts`) is tested; an unknown or missing session says nothing. A long session title gives way (half the line).
+- **G4 (2026-11-18).** The editor's menu starts with "Add to chat": the selected lines (or the caret's line) go into the
+  conversation's composer as a file mention with its range, `@src/auth/refresh.ts:9-14` (the `@path` the "+" menu inserts,
+  appended to the draft with a space either side), and the caret moves to the composer. A file in the tree has a right-click
+  menu (`Menu`, decision 95) with "Add to chat" (the file, no range) and "Copy path". The files feature does not import the
+  chat: the conversation's composer registers how to insert (`state/chatInsert.ts`, tested; the last mounted composer wins)
+  and the item shows only while one is there; the text goes through the composer's shared draft (`appendToDraft`).
+  `lib/chatMention.ts` (tested: lines, a trailing column 1, the composer reading the range as one mention).
+  `editor-context-menu.mjs` now also checks both entries (the composer holds `@src/auth/refresh.ts:2 ` and has focus; then
+  `@src/auth/tokens.ts `). The Changes and Review diffs offer it too (they share `EditorContextMenu`).
 

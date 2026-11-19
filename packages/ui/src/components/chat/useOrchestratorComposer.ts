@@ -10,7 +10,8 @@ import { useOptionalComments } from "../../state/comments";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { ComposerMode, ComposerProps } from "./Composer";
-import { applyCrossProjectDraft, draftOf } from "./composerDraft";
+import { appendToDraft, applyCrossProjectDraft, draftOf } from "./composerDraft";
+import { registerChatInsert } from "../../state/chatInsert";
 import type { QueuedMessage } from "./ComposerPills";
 import { slot, type TabMemory } from "../../state/workspace/tabMemory";
 import type { TabId } from "../../state/workspace/layout";
@@ -105,6 +106,15 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   const queue = useQueue(memory, key);
   const draft = useMemo(() => (memory ? draftOf(memory, key) : undefined), [memory, key]);
   useEffect(() => applyCrossProjectDraft(draft, projectId, activeSessionId), [draft, projectId, activeSessionId]);
+  // G4: "Add to chat" (editor, file tree) appends a file mention to this draft and brings the composer up.
+  const focusChat = ws?.focusChat;
+  useEffect(() => {
+    if (!draft || !focusChat) return;
+    return registerChatInsert((mention) => {
+      appendToDraft(draft, mention);
+      focusChat();
+    });
+  }, [draft, focusChat]);
   const lastRequest = useMemo(() => {
     for (let i = (messages?.length ?? 0) - 1; i >= 0; i--) {
       const m = messages?.[i];
