@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acptrace"
-	"github.com/ndolinschi/Octo/apps/harness/internal/bridge"
+	"github.com/ndolinschi/Octo/apps/harness/internal/buildinfo"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/diag"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
@@ -24,7 +24,7 @@ import (
 func diagnostics(cfg config.Config, reg *plugins.Registry, octo *router.Router, builtinOK bool, builtinWhy string,
 	ring *diag.LogRing, probe func(plugins.Agent) plugins.ProbeReport, tune ...func(*diag.Inputs)) diag.Report {
 	in := diag.Inputs{
-		Version: bridge.Version, DataDir: cfg.DataDir, Agents: reg.Agents(), BuiltinOK: builtinOK, BuiltinWhy: builtinWhy,
+		Version: buildinfo.String(), DataDir: cfg.DataDir, Agents: reg.Agents(), BuiltinOK: builtinOK, BuiltinWhy: builtinWhy,
 		BaseURL: cfg.BaseURL, Log: ring, Probe: probe, Plugins: reg.Plugins(),
 		ModelProbe: func() (string, string) {
 			return providers.ProbeModelAPI(context.Background(), cfg.BaseURL, cfg.APIKey, cfg.OctoKey)

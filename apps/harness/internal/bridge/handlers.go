@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/buildinfo"
 	"github.com/ndolinschi/Octo/apps/harness/internal/features"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
@@ -12,7 +13,15 @@ import (
 )
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": Version})
+	body := map[string]any{"ok": true, "version": Version}
+	if c := buildinfo.CommitOrVCS(); c != "" {
+		body["commit"] = c
+	}
+	// The router's own version when one was detected (its GET /health), for the About page.
+	if v, ok := s.router.(interface{ Version() string }); ok && v.Version() != "" {
+		body["router_version"] = v.Version()
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) config(w http.ResponseWriter, r *http.Request) {

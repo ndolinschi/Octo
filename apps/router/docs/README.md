@@ -14,6 +14,12 @@ Canonical product docs for the Octo proxy (`apps/router`). Operational agent not
 | [prices.md](./prices.md) | Live price table: catalogue refresh, `prices.toml` overrides and fallback, disk cache, `/health`, price source per call |
 | [ladder-cost-check.md](./ladder-cost-check.md) | Ladder prices vs the OpenRouter catalogue (2026-11-10, re-fetched 2026-11-14) |
 
+## Version and help
+
+`octo --version` prints `octo 0.2.0` (`CARGO_PKG_VERSION`) and `octo --help` the usage; both exit 0 without reading the
+config or starting the proxy (an unknown argument exits 2 with the usage). `GET /health` reports the same `version`, which the
+harness passes on as `router_version`. The version is one number with the harness and the desktop app (0.2.0).
+
 ## Archive (evidence & design notes)
 
 Dated investigations kept for provenance; prefer the guides above for day-to-day reading.

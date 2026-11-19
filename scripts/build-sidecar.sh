@@ -52,8 +52,14 @@ case "$TRIPLE" in *windows*) EXT=".exe" ;; esac
 OUT_DIR="$ROOT/apps/desktop/src-tauri/binaries"
 OUT="$OUT_DIR/harness-$TRIPLE$EXT"
 mkdir -p "$OUT_DIR"
-echo "build-sidecar: building the harness for $TRIPLE"
-(cd "$ROOT/apps/harness" && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$OUT" ./cmd/harness)
+# One version for the app, the harness and the router (the router's comes from its Cargo.toml, kept equal by
+# buildinfo's TestOneVersionEverywhere); the harness also gets the git commit (`harness --version`, GET /health).
+VERSION="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$ROOT/apps/desktop/package.json" | head -1)"
+COMMIT="$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || true)"
+BUILDINFO=github.com/ndolinschi/Octo/apps/harness/internal/buildinfo
+echo "build-sidecar: building the harness $VERSION ${COMMIT:+($COMMIT) }for $TRIPLE"
+(cd "$ROOT/apps/harness" && CGO_ENABLED=0 go build -trimpath \
+  -ldflags "-s -w -X $BUILDINFO.Version=$VERSION -X $BUILDINFO.Commit=$COMMIT" -o "$OUT" ./cmd/harness)
 echo "build-sidecar: $OUT"
 
 # --- the router ---------------------------------------------------------------------------------------------------

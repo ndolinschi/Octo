@@ -240,3 +240,15 @@ desktop's process-group stop of the harness and this agree: the group holds the 
 sessions and are stopped by the harness on SIGTERM or by the next start. Verified on Linux with real processes
 (`internal/proctree`, `internal/terminal`, `internal/commands` tests, and the reviewer's reproduction); macOS (`ps`-based
 listing) compiled only; Windows unchanged. Details: `apps/harness/docs/architecture.md`.
+
+## As built — one version, `--version` everywhere (2026-11-19)
+
+One version, **0.2.0** (the highest present; this spec names no other): `apps/harness/internal/buildinfo.DefaultVersion`,
+`apps/router/Cargo.toml`, `apps/desktop/package.json`, `src-tauri/Cargo.toml`, the sidecar crate, `tauri.conf.json` and
+`packages/ui` (`UI_VERSION`); `TestOneVersionEverywhere` fails when one differs. The harness's version is a variable
+(`buildinfo.Version`, default the constant) that `scripts/build-sidecar.sh` (and so `install.sh`) stamps with the desktop
+app's version and the git commit; without a stamp the commit `go build` recorded is used. `harness --version` / `version`
+print it and exit 0 (they used to print usage and exit 2); `octo --version` / `--help` print and exit 0 without starting
+the proxy (they used to start it and fail on the config). `GET /health` of the harness adds `commit` and `router_version`;
+Settings → About shows the harness, router (while one runs) and UI versions. Verified: `TestVersionFlag`,
+`TestVersionFromHealth`, `cli::tests`, the built binaries; the About page was type-checked, not driven in a browser.

@@ -295,6 +295,7 @@ controls its own requests and spend; the harness sees its cost only in `usage_up
 | `harness run --prompt "…"` | New session, tool loop; session id on stderr, final text on stdout |
 | `harness sessions` | JSON list of sessions |
 | `harness show <session-id>` | JSON message rows for one session |
+| `harness version` / `--version` | Prints `harness 0.2.0 (<commit>)` and exits 0 (`internal/buildinfo`: the default version, `-ldflags -X …buildinfo.Version=… -X …buildinfo.Commit=…` as `scripts/build-sidecar.sh` stamps it, else the commit `go build` recorded). `GET /health` returns `version`, `commit` and, while a router is detected, `router_version` |
 
 Common flags: `--workspace` (`run`), `--base-url`, `--model` (`run`), `--data-dir`, `--remote` (repeatable), `--max-turns`, `--octo-key`. `serve` also takes `--addr`.
 
