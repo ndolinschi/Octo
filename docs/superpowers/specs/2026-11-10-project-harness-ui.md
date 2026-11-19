@@ -4448,3 +4448,43 @@ the activity steps' `grid-template-rows`, Monaco's scrollbar thumb geometry (it 
 swaps are unchanged. A test (`lib/constants.test.ts`) keeps styles.css free of hand-written transition durations and layout
 transitions. Checked in Chromium on the dev server (context menu: `octo-overlay-in` 150 ms from its origin, `octo-overlay-out` on
 close; tooltip: `octo-fade-in` 100 ms, `octo-fade-out` on leave); not checked in WebKit or on the phone layout.
+
+## As built — long conversations: send lands at the end, background tabs keep their place, cheaper scroll and drag (2026-11-19)
+
+**Send stops short (scroll-on-send.mjs: 38 px, 38–506 px under load).** Root cause in `useStickToBottom` (`lib/hooks.ts`): the
+smooth glide to the end was aimed at the height at send time; when the new turn grew the content mid-glide, a scroll event of
+the glide usually read the new height first and stored it in `lastHeight`, so the ResizeObserver saw no growth and never
+re-aimed. The glide stopped at the old end with `gliding` stuck (no "Jump to latest" either). The glide now keeps its own target
+(`glideEnd`); a glide longer than a screen jumps to one screen above the end and glides that. The scroll-position restore
+(`scrollSpots`) was not the cause; restore-on-reload still restores a scrolled-up reader to the same turn and offset and opens a
+reader at the end at the end (Playwright, 3 rounds, the same result as before the change).
+
+**Background tabs.** A conversation hidden behind another tab of its group (`display: none`) unmounted every turn: its
+IntersectionObservers reported each turn "not intersecting" with a zero box, so `useTurnWindow` stored 0 as each height. Showing
+the tab remounted ~1200 nodes and moved the reader. Entries seen while the scroller has no size are ignored. Two more hidden-0
+reads moved a scrolled-up reader when the tab came back: the composer anchor (`useComposerAnchor`, 98 px: the row's 0 height read
+as the composer shrinking) and the prompt bubbles turning into pills while hidden. Now the same text is at the top before and
+after (was: 2398 px off). The demo's "+ → Terminal" opens in the side group, so switching to it never hid the conversation (the
+earlier "tab switch" numbers measured the wait since the previous click); measured here by dragging Terminal into Chat's group.
+
+**Scroll (Stress, 60 wheel steps up).** Profile (unminified build, CPU sampling and React commit counts): `scrollAnchor`'s
+`remember` measured every candidate paragraph on every scroll event (~316 ms of JS); the conversation re-rendered the whole
+composer on each turn boundary (65 times); remounted turns re-parsed their Markdown; long tasks were mostly paint and the
+compositor commit of mounting turns. Now: the anchor is found once per frame by bisection over a cached candidate list
+(`lib/scrollAnchorTrack.ts`, `pickAnchor`, its own chunk; ~45 ms); `useOrchestratorComposer` returns one memoised object and
+`Composer` is memoised (0 composer renders while scrolling, also none per project event while streaming unless its inputs change);
+settled Markdown keeps its rendered tree (400 entries). `content-visibility: auto` on mounted turns was tried (injected CSS) and
+showed no measurable gain, so it is not used.
+
+**Divider drag.** Each pointer move changed the layout and rendered the whole dock (61 workspace renders per drag). The shared
+`primitives/ResizeHandle` now coalesces moves (`onDragStart`, `onFrame` once per animation frame, `onDragEnd`); the dock
+divider previews the groups' `flex` on their elements and commits the layout once on release, with the same clamping; the
+sidebar edge uses `onFrame` instead of its own requestAnimationFrame.
+
+**Measured** (production builds, headless Chromium, 1440×900, interleaved runs of the integration tip before and after the
+merge; medians). At 1x on a quiet machine both builds meet every target (scroll 0–1 frames > 50 ms, no long task; drag 0; typing
+p95 20–24 ms; tab switch 30–35 ms; stream 0 long tasks), so 4x CPU is what separates them: drag frames > 50 ms 13/31 → 5/3, drag
+long tasks 28/41 → 9/5; scroll frames > 50 ms 51/49 → 43/45 (long tasks 12/6 → 13/3); typing p95 44.6/39.4 → 36.3/38.3 ms; tab
+switch 196/131 → 149/128 ms. Load at 4x: CLS 0 in all 5 runs before and after; the 0.2027 turn-window shift of the previous
+pass did not show, so whether its cause is gone is not verified. Entry bundle 160.24 kB (integration tip 160.28). Not verified:
+WebKit, the Tauri shell, a real harness, the phone layout.
