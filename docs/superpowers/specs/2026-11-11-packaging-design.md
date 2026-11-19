@@ -294,6 +294,15 @@ with a real `apps/web/dist` (index.html and an asset with CSP, nosniff and refer
 and the doctor line). Not verified: the Tauri shell edit (no WebKitGTK here), that the bundler places the resource where
 `resource_dir()/web-client` finds it, and a packaged install on macOS or Linux.
 
+## As built — the version guard covers the whole workspace (2026-11-19)
+
+`apps/web` and `packages/agent-client` were still 0.1.0; both are 0.2.0 now. `TestEveryManifestHasTheOneVersion`
+(`internal/buildinfo`) walks the tree (skipping dot directories, `node_modules`, `target`, `dist`, `testdata`) and fails
+for any versioned `package.json` (a workspace member must have a version; the unversioned root is skipped) or Cargo
+manifest with a `[package]` that differs from `DefaultVersion`, so a new package or crate is covered without editing the
+test. Verified: it failed on the two stale files before the bump. A bump is still one edit in each of the seven files
+(`TestOneVersionEverywhere` also checks `tauri.conf.json` and `UI_VERSION`).
+
 ## As built — start-up messages (2026-11-19)
 
 Non-loopback `--addr`: a WARN line, the token requirement unchanged (`TestServeWarnsOnNonLoopbackAddr`). Unwritable data
