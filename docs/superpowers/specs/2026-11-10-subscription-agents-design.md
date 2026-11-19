@@ -256,7 +256,11 @@ download). Not documented anywhere I found: `agy update`, a non-interactive sign
   `version:` per agent and a problem line (`AgentReport.version`, `DiagnosticsVersion` in agent-client).
 - ACP client: a permission request still open when the prompt is cancelled is withdrawn (its context ends) and
   answered `cancelled`, so the agent's own `cancelled` reply is read; before, the reader stayed blocked on the approval
-  card and the agent was killed after `CancelGrace` (3 s) — for every agent, not only agy. A banner or escape codes
+  card and the agent was killed after `CancelGrace` (3 s) — for every agent, not only agy.
+  Test-side fix (2026-11-19): the fake agent answered an `outcome: cancelled` permission reply with `end_turn`, so
+  `TestCancelDuringAPermissionRequestEndsCleanly` failed whenever that reply was read before `session/cancel` (the client
+  withdraws the request first, by design). The fake now ends such a prompt `cancelled`, as ACP requires; the client was
+  right. Pinned by `TestPermissionCancelledAnswerEndsPromptCancelled` (a `[deaf]` agent, so only the reply can end it). A banner or escape codes
   before `{"jsonrpc"` on the same stdout line are dropped (lines without a message were already skipped).
 - Orchestrator: in a supervised project an agent whose starting mode approves its own changes (`auto`, `accept…`,
   `bypass…`, `yolo`, …) is switched to its `default` mode for Agent turns; full access keeps the agent's mode.
