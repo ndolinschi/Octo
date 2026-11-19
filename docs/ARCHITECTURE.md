@@ -5,6 +5,8 @@ The single system overview. It describes the code as it is in the working tree, 
 disagreement is listed in [Known contradictions](#known-contradictions). Where something could not be checked it is
 marked **unknown**. The reader who needs depth follows the links: each part has its own docs.
 
+For the person who uses Octo, not builds it: the [user guide](user-guide/README.md).
+
 Contents: [Parts](#the-five-parts) · [Process diagram](#the-running-desktop-app) · [Data](#data-locations) ·
 [Flows](#main-flows) · [Where to look](#where-to-look) · [Environment](#environment-variables-and-settings) ·
 [Status](#status) · [Specs index](#specs-index) · [Gates](#gates-and-scripts) · [Contradictions](#known-contradictions)
@@ -265,8 +267,8 @@ and the tier hint when a router is present.
    set, the built-in loop and router state, and per agent: resolved command or "not found", each `requires` command,
    the login probe (run now: exit status only), the install and login hints.
 2. `GET /v1/diagnostics` returns the same data from the running harness, without running any probe, plus the last 200
-   log records (credentials scrubbed). Settings has a "Copy report" action planned with the UI work; the endpoint is
-   built, the UI use is **not built**.
+   log records (credentials scrubbed). Settings → Privacy and data has "Copy diagnostic report" (built:
+   `packages/ui/src/components/settings/PrivacySection.tsx`; checked in the demo, not against a real harness).
 3. `HARNESS_ACP_TRACE=1` (or the setting of that name) writes an ACP wire trace under `{data-dir}/traces/` for sessions
    that start afterwards. A test asserts that no secret appears in the report.
 
@@ -294,7 +296,7 @@ screen (decision 53).
 | Delegation routing (`tier: auto`) | harness `internal/orchestrator/auto.go`; router `src/auto/delegate/` | same, section I2 | `e2e-router.sh` case 6; `tests/route_api.rs` |
 | Price rule, ladder, autoroute | `apps/router/src/auto/`, `apps/router/config/autoroute.toml`, `prices.toml` | same, sections "price rule", "Decisions after the live run"; `apps/router/docs/autoroute.md` | `tests/price_rule.rs`, `tests/cost_fixes.rs` |
 | Changes, approvals, queue, forms, secrets (v7) | `internal/{changes,diff,approval,inputs,secrets}`, `orchestrator/{approvals,queue,secrets}.go`; `apps/harness/docs/v7.md` | `2026-11-10-v7-changes-queue-approvals.md` | `apps/harness/scripts/e2e-v7.sh` |
-| Project sessions | `projectstore/{project_sessions,migrate_v13_sessions}.go`, `orchestrator/sessions.go`, `project/sessions.go`, `bridge/sessions.go`; `apps/harness/docs/sessions.md` | `2026-11-12-project-sessions-design.md` (harness and agent-client built; the Sessions tab not built) | `go test`; `e2e-parity.sh` (S1) |
+| Project sessions | `projectstore/{project_sessions,migrate_v13_sessions}.go`, `orchestrator/sessions.go`, `project/sessions.go`, `bridge/sessions.go`; `apps/harness/docs/sessions.md` | `2026-11-12-project-sessions-design.md` (harness, agent-client and the Sessions tab built) | `go test`; `e2e-parity.sh` (S1) |
 | Memory (M1, M2, M3) | `internal/memory`, `projectstore/{tasks,search,receipts}.go`, `orchestrator/{memory_tools,window}.go`; `apps/harness/docs/memory.md` | `2026-11-11-orchestrator-memory-design.md` | `go test`; `e2e-v7.sh` |
 | Settings and `harness.env` | `internal/{settings,config}`; `apps/harness/docs/settings.md` | `2026-11-11-packaging-design.md` (P1, P7) | `go test ./cmd/harness`, `internal/settings` |
 | Diagnostics, wire trace, schema versions | `internal/{diag,acptrace}`, `cmd/harness/doctor.go`, `projectstore/migrate.go` | `2026-11-11-packaging-design.md` (R1) | `go test ./cmd/harness ./internal/diag ./internal/projectstore` |
@@ -494,7 +496,7 @@ written in the file, shortened.
 | `2026-11-12-project-sessions-design.md` | Main sessions that can be continued, agent sessions made accessible, the Sessions tab | Harness (schema 13) and UI built; not verified with a real agent |
 | `2026-11-14-parallel-sessions-design.md` | Parallel sessions in a project: every main session addressable and running at once, worktrees, coordination tools between sessions, memory modes, the sidebar tree and its three views | Phases 1 (harness) and 2 (client and UI) built; of phase 3 only "move a session into a new worktree" and the branch picker are built (no apply-back); coordination tools and memory modes (phases 4–5) not built |
 | `2026-11-14-remote-access-mobile-design.md` | Remote access for a phone: Cloudflare quick tunnel run by the harness, second listener with an allow-list, pairing and device tokens, long-poll events, the `apps/web` client, Settings → Remote access | Phase 1 built and verified with a fake `cloudflared`; a real tunnel, phone and WebKit not verified |
-| `2026-11-15-dynamic-forms-mentions-design.md` | Forms built from a JSON schema (one renderer; agent tool, tool servers, a block inside a reply), one mention system in the composer and in messages (files, projects, sessions, agents, notes; Markdown in a request), and requests to another project's agent (`ask_project`, `/ask`) | Draft; not built |
+| `2026-11-15-dynamic-forms-mentions-design.md` | Forms built from a JSON schema (one renderer; agent tool, tool servers, a block inside a reply), one mention system in the composer and in messages (files, projects, sessions, agents, notes; Markdown in a request), and requests to another project's agent (`ask_project`, `/ask`) | Draft in the file. Part A (forms from a JSON schema) is built: `internal/inputs/schema*.go`, `shared/SchemaForm`, UI decision 97. The mention system and `ask_project`: status not recorded |
 
 ### Research (`docs/superpowers/research/`)
 
@@ -555,3 +557,14 @@ Items fixed since 2026-11-11 were removed (the v7 header, the missing live check
    logged-in run; no record of a Codex run exists. The status table above is the current statement.
 5. (Fixed 2026-11-19: this file and the handover said `HARNESS_DEFAULT_ACCESS` defaults to `full`; `v7Env` in
    `apps/harness/cmd/harness/serve.go` defaults to `supervised`, as `apps/harness/docs/v7.md` says.)
+6. (2026-11-19) `apps/harness/docs/sessions.md` said parallel sessions had "no worktrees"; the code has `POST /v1/projects/{pid}/sessions/{sid}/worktree`
+   and `GET /workspaces` (`internal/project/workspaces.go`). Fixed there. The parallel-sessions spec has no "As built" for it.
+7. (2026-11-19) Versions: the harness, router, desktop app, shell and `@octo/ui` are 0.2.0; `apps/web/package.json` and
+   `packages/agent-client/package.json` are still 0.1.0. Which is intended is not recorded.
+8. (2026-11-19) `apps/harness/docs/providers.md` says only `claude-code`, `grok` and `copilot` are verified in the built-in manifest;
+   the owner's run 2 ran only Claude Code for real (Copilot and Grok logged out). The status table above is the current statement.
+9. (2026-11-19) Comments in the code (the branch picker and chip in `packages/ui`, `internal/project/branches.go`,
+   `internal/usererr/catalogue_branches.go`, `internal/bridge/workspaces.go`, the client's branch methods) call the branch picker
+   "decision 98"; the UI spec numbers it 100 (98 is compact folders). Code was not changed in this documentation pass.
+10. (2026-11-19) `pnpm format:check` covers TypeScript, CSS and JSON only. Markdown is not checked or formatted by prettier, and
+    existing pages have long table lines.

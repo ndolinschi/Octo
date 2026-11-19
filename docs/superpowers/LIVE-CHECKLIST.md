@@ -308,8 +308,8 @@ in a worktree and leaves the main checkout as it was. Run a real agent in that w
 screenshot of a refusal; the worktree's path; whether the agent edited the worktree and not the main checkout.
 
 F10 **The router's stored text.** Switch the router on (Settings → Providers → router, with a provider key), send one request,
-then open `<app data>/router/history.sqlite` with `sqlite3` (`.tables`, then the calls table) and look for your request's
-text. *Expect:* the request text is stored (the default `store_payloads = true`).
+then run `sqlite3 <app data>/router/history.sqlite "SELECT count(*) FROM calls WHERE request_payload IS NOT NULL;"`.
+*Expect:* more than 0, the request text is stored (the default `store_payloads = true`).
 *Decide:* keep the default, or ask for `store_payloads = false` in the app's generated `history.toml`. *Send:* your decision.
 
 F11 **A file made outside Octo.** In a terminal outside Octo, create a file in the project folder. *Expect (known gap):* it does

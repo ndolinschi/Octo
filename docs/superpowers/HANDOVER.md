@@ -160,7 +160,7 @@ done here.
     machine); `@octo/web` and `@octo/agent-client` are still version 0.1.0 while the rest is 0.2.0.
 11. **Review findings and library migration.** Rounds 1 and 2 of `research/2026-11-12-ui-review-round-1.md` (27 findings): which
     are still open is not recorded; walk the list against the tour (`node packages/ui/scripts/ui-tour.mjs`). The
-    `octo/no-native-controls` warnings (49 at the last count recorded, per folder in the component audit) are not finished.
+    `octo/no-native-controls` warnings (49 at the last count recorded, per folder in the component audit; `pnpm lint` on 2026-11-19: 0 errors, 198 warnings in `@octo/ui` and 3 in `@octo/agent-client`, not split by rule) are not finished.
 12. **Features designed or half built:** parity B8-B10 (`specs/2026-11-12-parity-backlog.md`); review RV3, the AI pass;
     parallel sessions phases 4-5 (coordination tools, memory modes) and applying a worktree's work back to the main
     checkout (no route or button was found in the code; the user does it with git); Ollama alone

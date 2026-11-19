@@ -214,6 +214,12 @@ export ANTHROPIC_API_KEY="your-key"
 | (env only) | `HARNESS_DEFAULT_ACCESS` | `serve` only: access of projects created without one, `supervised` (default), `accept_edits`, or `full`; see [docs/v7.md](./docs/v7.md) |
 | (env only) | `HARNESS_APPROVAL_TIMEOUT` | `serve` only: an approval request nobody answers is denied after this (Go duration, default `30m`; `0` waits for ever) |
 | (env only) | `HARNESS_ACP_TRACE` | `1` writes a redacted, size-capped wire trace of every ACP session to `{data-dir}/traces/`; also the setting of the same name (`PUT /v1/settings`, applies to sessions started afterwards); see [docs/acp-orchestrator.md](./docs/acp-orchestrator.md#diagnostics-and-the-wire-trace) |
+| (env only) | `HARNESS_MODEL_COMPLETION`, `HARNESS_OLLAMA_BASE_URL` | The Ollama model tag (default `qwen2.5-coder:1.5b`) and server URL (default `http://127.0.0.1:11434`) of the small inline-completion tier; settings, applied at once |
+| (env only) | `HARNESS_FEATURE_AUTO_MEMORY` | Feature flag (default `true`) behind automatic memory writes; a setting, applied at once (`docs/memory.md`) |
+| (env only) | `HARNESS_UI_ORIGINS` | `serve` only: extra browser origins of the UI, comma-separated (`docs/architecture.md`) |
+| (env only) | `HARNESS_IMPORT_HOME` | Home directory that "Import sessions" scans for other tools' session stores (default: the user's home) |
+| (env only) | `HARNESS_MODEL_DISCOVERY=0` | `serve` only: turn off the discovery of agents' models (`docs/providers.md`) |
+| (env only) | `HARNESS_REMOTE_*` | Remote access; see [docs/remote-access.md](./docs/remote-access.md) |
 
 When `--stream` is on, assistant text and `session: <id>` are written to **stderr** during `run`; final assistant text is printed to stdout. Errors go to stderr with exit code 1.
 

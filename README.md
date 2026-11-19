@@ -1,4 +1,4 @@
-# Octo monorepo
+# Octo
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./docs/images/octo-dark.png">
@@ -7,7 +7,26 @@
 
 _The desktop app on demo data (`?demo=1`)._
 
-Apps-directory monorepo with shared frontend packages.
+Octo is a desktop app that runs coding agents inside your project folders: its own agent loop on a model API key, and
+other agent programs such as Claude Code on your subscription, side by side. You see what the agent does, approve or refuse
+its edits and commands, review the changes and revert them, and keep working in several sessions at once. Everything runs on
+your computer; the only traffic that leaves it is the calls to the models or agents you chose.
+
+**Status:** built from source (there are no signed releases yet), and verified with a mock model, scripted agents and
+Chromium on Linux. It has not been run on macOS in a release build, or with most real agent programs; what was and was not
+verified is written down in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md#status). No licence has been chosen yet.
+
+**Using Octo:** the [user guide](./docs/user-guide/README.md) (install, first run, projects, approvals, privacy,
+troubleshooting, shortcuts).
+
+The repository is an apps-directory monorepo with shared frontend packages. There are three parts to know:
+
+- the **harness** (`apps/harness`, Go): the local project server. It holds projects, runs the agents, keeps each project's
+  history in its own SQLite file, and speaks HTTP and server-sent events on `127.0.0.1`.
+- the **desktop app** (`apps/desktop` with `packages/ui` and `packages/agent-client`): the window you use. A Tauri shell starts
+  the harness (and, if you switch it on, the router) and shows the shared React UI. `apps/web` is the same UI for a paired phone.
+- the **router** (`apps/router`, Rust; optional): a proxy that picks cheaper models for easy work and keeps a spend budget.
+  The app works without it.
 
 | App / package | Path | Description |
 | --- | --- | --- |
@@ -22,6 +41,7 @@ Apps-directory monorepo with shared frontend packages.
 
 | Guide | Contents |
 | --- | --- |
+| [docs/user-guide/README.md](./docs/user-guide/README.md) | End-user guide: install, first run, working with an agent, Remote access, privacy and data, troubleshooting, shortcuts |
 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | System overview: parts, process diagram, data locations, flows, environment variables, status, specs index |
 | [docs/superpowers/HANDOVER.md](./docs/superpowers/HANDOVER.md) | Current state, working rules, next steps |
 | [AGENTS.md](./AGENTS.md) | Monorepo map + how agents should work here |
@@ -43,12 +63,26 @@ cd apps/router && cargo run
 
 Default listen address: `127.0.0.1:8080`. Full setup, config, and examples: [`apps/router/README.md`](./apps/router/README.md).
 
-## Run the whole app
+## Try it in two minutes (no API key)
+
+You need Node 22+, pnpm 10+ and Go 1.26+ (`bash scripts/install-go-toolchain.sh` installs the pinned Go on Linux).
 
 ```bash
+git submodule update --init --recursive
 pnpm install
-pnpm dev:all                # harness (no API key needed) + UI at http://localhost:1420 in a browser
-pnpm install:app            # build the harness and router sidecars and the Tauri app, then install it
+pnpm dev:all -- --mock      # harness + a mock model + the UI, in a browser; Ctrl+C stops all three
+```
+
+Open the UI address the script prints (`http://localhost:1420` when the default ports are free). Create a project on any
+folder, send a message, and the mock model answers (the words `quick`, `[write]` and `[acp]` in a message trigger scripted
+behaviour; see `apps/harness/docs/memory.md` and `docs/superpowers/HANDOVER.md`). `?demo=1` on the UI address shows demo data
+without any backend. If a default port (8790, 8791, 8792, 1420) is taken the script moves on to the next free one and prints the
+final addresses; `OCTO_DEV_PORT_BASE=N` moves all four to a range starting at N.
+
+```bash
+pnpm dev:all                # harness without the mock model: add an API key or an agent in Settings
+pnpm dev:all -- --router --mock   # also the Octo router in front of the harness
+pnpm install:app            # build the harness and router sidecars and the Tauri app, then install it (macOS, Linux)
 ```
 
 ### UI tab feature flags (`@octo/ui`)
