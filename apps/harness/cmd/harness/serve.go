@@ -10,10 +10,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -341,7 +343,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		return err
 	}
 	listenPort, _ := strconv.Atoi(portOf(ln.Addr()))
-	browserMgr := browserproxy.NewManager(browserproxy.Options{BlockedLoopbackPorts: []int{listenPort}})
+	browserMgr := browserproxy.NewManager(browserproxy.Options{BlockedLoopbackPorts: proxyBlockedPorts(listenPort, cfg.BaseURL)})
 	orch.SetBridgeURL("http://" + net.JoinHostPort(loopbackHost(ln.Addr()), portOf(ln.Addr())))
 	settingsMgr := settings.New(settings.Options{
 		DataDir: cfg.DataDir, FromFile: cfg.EnvFromFile, ValidateModels: svc.ValidateModels,
@@ -379,7 +381,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	}
 	// Remote access (spec 2026-11-14-remote-access-mobile-design.md): off at every start; its control routes live
 	// on this bridge behind the local token, its own listener opens only when the owner turns it on.
-	remote, err := setupRemote(ctx, cfg, svc, notes, files, hub, bridgeOpts)
+	remote, err := setupRemote(ctx, cfg, svc, notes, files, hub, bridgeOpts, browserMgr.AddBlockedPort)
 	if err != nil {
 		return err
 	}
@@ -459,6 +461,29 @@ func loopbackHost(a net.Addr) string {
 		return t.IP.String()
 	}
 	return "127.0.0.1"
+}
+
+// proxyBlockedPorts are the loopback ports the Browser tab's proxy refuses: the bridge's, and the router's when
+// the model calls go to a router on this computer (ANTHROPIC_BASE_URL). The remote-access listener's port is added
+// when it opens (setupRemote).
+func proxyBlockedPorts(bridgePort int, baseURL string) []int {
+	ports := []int{bridgePort}
+	u, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil || u.Host == "" {
+		return ports
+	}
+	h := u.Hostname()
+	if ip := net.ParseIP(h); !strings.EqualFold(h, "localhost") && (ip == nil || !ip.IsLoopback()) {
+		return ports
+	}
+	port := 80
+	if u.Scheme == "https" {
+		port = 443
+	}
+	if p, err := strconv.Atoi(u.Port()); err == nil {
+		port = p
+	}
+	return append(ports, port)
 }
 
 // isLoopbackAddr is true for a listener bound to a loopback IP; 0.0.0.0 and

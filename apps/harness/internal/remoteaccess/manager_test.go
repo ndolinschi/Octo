@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -222,6 +224,23 @@ func TestParsePermsAndEnv(t *testing.T) {
 	env[EnvIdleOff] = "-3"
 	if err := OptionsFromEnv(&o, func(k string) string { return env[k] }); err == nil {
 		t.Fatal("negative hours accepted")
+	}
+}
+
+// OnListen names the tunnel listener's port each time it opens, so the Browser tab's proxy can refuse it (security
+// review finding 10).
+func TestOnListenNamesTheListenerPort(t *testing.T) {
+	ports := make(chan int, 4)
+	r := newRig(t, "", func(o *Options) { o.OnListen = func(p int) { ports <- p } })
+	st := r.on()
+	_, port, _ := net.SplitHostPort(st.Listen)
+	select {
+	case p := <-ports:
+		if strconv.Itoa(p) != port {
+			t.Fatalf("OnListen(%d), listener %s", p, st.Listen)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("OnListen was not called")
 	}
 }
 

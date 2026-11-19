@@ -56,7 +56,9 @@ type Options struct {
 	Subscribe func(ctx context.Context, pid string) (<-chan events.Event, func(), error)
 	// Publish delivers an event on every project stream (events.Hub.PublishAll).
 	Publish func(typ string, fields map[string]any)
-	Version string
+	// OnListen is told the tunnel listener's port each time it opens (the Browser tab's proxy blocks it).
+	OnListen func(port int)
+	Version  string
 
 	// Test knobs.
 	Now          func() time.Time
@@ -203,6 +205,9 @@ func (m *Manager) Enable(ack bool) (Status, error) {
 		m.mu.Unlock()
 		m.changed()
 		return m.Status(), nil
+	}
+	if t, ok := ln.Addr().(*net.TCPAddr); ok && m.o.OnListen != nil {
+		m.o.OnListen(t.Port)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	m.ln, m.cancel, m.done = ln, cancel, make(chan struct{})

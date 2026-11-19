@@ -299,3 +299,13 @@ seven hooks touch a marker; before: fsmonitor, external diff, textconv, post-che
 post-index-change ran, and the external diff broke carrying changes into a worktree), and the reviewer's proof on a
 built harness (see the review report). Not verified: Windows (`os.DevNull` is `NUL`), git older than 2.31 for the
 environment form (the `-c` form covers every version).
+
+## As built — Browser tab proxy hardening (security review, 2026-11-19)
+
+`AddBlockedPort` was never called and the proxy's cookieless path (an active instance, no Origin or Referer) checked no
+Host. Now `harness serve` blocks the bridge port, the router's loopback port from `ANTHROPIC_BASE_URL`
+(`proxyBlockedPorts`) and the remote-access listener's port each time it opens (`remoteaccess.Options.OnListen`), and
+every proxied request must carry the instance's own loopback Host (DNS rebinding gets `403`). Verified:
+`browserproxy` `TestForeignHostIsRefusedEvenWhenActive`, `remoteaccess` `TestOnListenNamesTheListenerPort`,
+`cmd/harness` `TestProxyBlockedPorts` (each failed or did not compile before). Not verified in the desktop webview.
+

@@ -367,6 +367,59 @@ func TestCrossSiteIframeWithoutCookiesGzipCSPAndOriginRewrite(t *testing.T) {
 	}
 }
 
+// Once an instance is active it accepts cookieless requests with no Origin or Referer (the iframe whose loopback
+// cookie the webview dropped): such a request must at least name the proxy's own loopback host, so a page that
+// rebinds its DNS name to 127.0.0.1 (Host: evil.example) gets nothing (security review finding 10).
+func TestForeignHostIsRefusedEvenWhenActive(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "secret dev data")
+	}))
+	defer upstream.Close()
+	mgr := browserproxy.NewManager(browserproxy.Options{})
+	defer func() { _ = mgr.Shutdown(context.Background()) }()
+	sess, err := mgr.Open(context.Background(), "proj-host", upstream.URL+"/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	boot, err := client.Get(sess.FrameURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boot.Body.Close()
+	var cookie *http.Cookie
+	for _, c := range boot.Cookies() {
+		cookie = c
+	}
+	_, port, _ := net.SplitHostPort(strings.TrimPrefix(sess.ProxyOrigin, "http://"))
+	get := func(host string, withCookie bool) int {
+		req, _ := http.NewRequest(http.MethodGet, sess.ProxyOrigin+"/data", nil)
+		req.Host = host
+		if withCookie && cookie != nil {
+			req.AddCookie(cookie)
+		}
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	for _, h := range []string{"evil.example:" + port, "evil.example", "192.168.1.9:" + port} {
+		if s := get(h, false); s != http.StatusForbidden {
+			t.Errorf("no cookie, Host %s: %d, want 403", h, s)
+		}
+		if s := get(h, true); s != http.StatusForbidden {
+			t.Errorf("with the cookie, Host %s: %d, want 403", h, s)
+		}
+	}
+	for _, h := range []string{"127.0.0.1:" + port, "localhost:" + port} {
+		if s := get(h, false); s != http.StatusOK {
+			t.Errorf("Host %s: %d, want 200", h, s)
+		}
+	}
+}
+
 func TestUnreachableUpstreamPostsAnErrorToTheHost(t *testing.T) {
 	// A port nothing listens on: listen, note the address, close.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
