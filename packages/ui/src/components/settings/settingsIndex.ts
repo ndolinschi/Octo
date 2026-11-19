@@ -118,6 +118,13 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
   },
   {
     section: "editor",
+    id: "compact-folders",
+    title: "Compact folders",
+    description: "Folders that hold only one folder share a row in the file tree",
+    keywords: "file tree compact middle packages java nested directories chain",
+  },
+  {
+    section: "editor",
     id: "completion-model",
     title: "Ollama small-tier model",
     description: "The Ollama model tag used when inline completion runs through the small tier",

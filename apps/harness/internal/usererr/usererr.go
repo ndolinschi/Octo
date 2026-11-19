@@ -26,10 +26,13 @@ const (
 	ActionRetry           Action = "retry"
 	ActionOpenSettings    Action = "open_settings"
 	ActionUpdateAgent     Action = "update_agent"
+	// ActionUseWorktree: offer the safe alternative of a branch switch the main checkout refused, a new session in
+	// a worktree from the chosen branch (UI decision 98).
+	ActionUseWorktree Action = "use_worktree"
 )
 
 // Actions lists every code a client may receive (none is an absent field).
-var Actions = []Action{ActionRecheckProvider, ActionConnectProvider, ActionRetry, ActionOpenSettings, ActionUpdateAgent}
+var Actions = []Action{ActionRecheckProvider, ActionConnectProvider, ActionRetry, ActionOpenSettings, ActionUpdateAgent, ActionUseWorktree}
 
 // MaxDetails caps Details so a long stderr never floods a response.
 const MaxDetails = 600

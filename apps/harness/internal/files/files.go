@@ -37,6 +37,51 @@ type Entry struct {
 	Path string `json:"path"`
 	Type string `json:"type"`
 	Size int64  `json:"size"`
+	// Chain names, for a directory, the directories below it while each is the only entry of its parent
+	// (`.git` aside) and a real directory: ["main", "java", "com"] for src/ when src/main/java/com/ hold
+	// nothing else. It lets a client draw "compact folders" with one listing per visible row. At most
+	// MaxChain names; never set on a file or a symlinked directory, and it never descends through a symlink.
+	Chain []string `json:"chain,omitempty"`
+}
+
+// MaxChain bounds Entry.Chain.
+const MaxChain = 32
+
+// chain follows abs down while it holds exactly one entry (`.git` aside) and that entry is a real directory.
+func chain(abs string) []string {
+	var out []string
+	for len(out) < MaxChain {
+		name, ok := onlyChildDir(abs)
+		if !ok {
+			break
+		}
+		out = append(out, name)
+		abs = filepath.Join(abs, name)
+	}
+	return out
+}
+
+// onlyChildDir reads at most three entries: enough to tell "one besides .git" from "more".
+func onlyChildDir(abs string) (string, bool) {
+	d, err := os.Open(abs)
+	if err != nil {
+		return "", false
+	}
+	defer d.Close()
+	ents, _ := d.ReadDir(3) // an unreadable directory ends the chain; listing it reports the error
+	var only os.DirEntry
+	n := 0
+	for _, e := range ents {
+		if e.Name() == ".git" {
+			continue
+		}
+		n++
+		only = e
+	}
+	if n != 1 || !only.Type().IsDir() {
+		return "", false
+	}
+	return only.Name(), true
 }
 
 // Info describes a file: its folder-relative slash path, size and modification time.
@@ -117,6 +162,7 @@ func List(root, rel string) ([]Entry, error) {
 		e := Entry{Name: d.Name(), Path: path.Join(clean, d.Name()), Type: "file"}
 		if typ.IsDir() {
 			e.Type = "dir"
+			e.Chain = chain(filepath.Join(abs, d.Name()))
 		} else {
 			fi, err := d.Info()
 			if err != nil {

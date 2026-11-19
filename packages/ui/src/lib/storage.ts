@@ -54,6 +54,8 @@ export const PREFS = {
   browserTabs: (projectId: string) => key(`browserTabs.${projectId}`),
   /** Where the reader scrolled each conversation of one project to, restored on reload: `{ [memoryKey]: { top, atBottom } }` (`scrollSpots.ts`). */
   scrollSpots: (projectId: string) => key(`scroll.${projectId}`),
+  /** File tree compact folders (Settings → Editor, decision 98): `"on" | "off"` as plain text. */
+  compactFolders: key("compactFolders"),
 } as const;
 
 /** How a value is stored. `parse` never throws: missing, malformed or foreign text becomes a valid (default) value. */

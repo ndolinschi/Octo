@@ -469,10 +469,13 @@ function rowId(kind: "p" | "s" | "m", id: string): string {
   return `tree-${kind}-${id}`;
 }
 
-/** A group's caption inside the flat list (decision F3): the section caption's look, on the rows' glyph column. */
+/**
+ * A group's caption inside the flat list (decision F3): the section caption's look, on the rows' glyph column. Every caption
+ * sits 12px under what is above it: the first one 8px plus the section caption's own 4px bottom margin (flex margins do not collapse).
+ */
 function GroupCaption(props: { first?: boolean; children: string }) {
   return (
-    <li role="none" data-group-caption className={cn("flex h-5 items-center pl-2 text-xs text-fg-3", props.first ? "mb-1" : "mt-3 mb-1")}>
+    <li role="none" data-group-caption className={cn("flex h-5 items-center pl-2 text-xs text-fg-3", props.first ? "mt-2 mb-1" : "mt-3 mb-1")}>
       <span aria-hidden>{props.children}</span>
     </li>
   );
