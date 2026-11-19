@@ -77,7 +77,8 @@ export const emptyTitlePart = readyLazy(() => import("./EmptyProject").then((m) 
 const EmptyTitle = emptyTitlePart.Component;
 const AgentGone = lazy(() => import("./AgentGone"));
 /** The agy-style inline project selector loads only on empty sessions (kept out of the initial bundle). */
-const ComposerProjectBar = lazy(() => import("./ComposerProjectBar").then((m) => ({ default: m.ComposerProjectBar })));
+export const projectBarPart = readyLazy(() => import("./ComposerProjectBar").then((m) => m.ComposerProjectBar));
+const ComposerProjectBar = projectBarPart.Component;
 
 /** The turn rail appears from the first request (decision 34). */
 

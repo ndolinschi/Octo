@@ -1,7 +1,7 @@
 import { warmBridgeClient } from "@octo/agent-client";
 import { warmDrag } from "../components/dock/drag";
 import { transcriptPart } from "../components/chat/transcriptPart";
-import { emptyTitlePart } from "../components/chat/ConversationView";
+import { emptyTitlePart, projectBarPart } from "../components/chat/ConversationView";
 import { approvalsPart, queuePart } from "./ProjectWorkspace";
 import { browserIdle, installIntentWarming, warmOnIdle } from "../lib/warmSchedule";
 
@@ -42,7 +42,7 @@ function warmFirstPaint() {
   void import("../components/chat/ContextRing").catch(() => undefined);
   void import("../components/chat/SessionMenu").catch(() => undefined);
   // Decision 99: a project shown for the first time (from Home, or switched to) paints with its slots and is read out of sight.
-  for (const part of [approvalsPart, queuePart, emptyTitlePart]) void part.fetch().catch(() => undefined);
+  for (const part of [approvalsPart, queuePart, emptyTitlePart, projectBarPart]) void part.fetch().catch(() => undefined);
   void import("../state/projectPreload").catch(() => undefined);
 }
 
