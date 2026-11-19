@@ -6,9 +6,10 @@
 # It first occupies the default bridge port (8790) with a stand-in listener and asserts that dev.sh moves to another
 # free port (read from its "ready" block), leaves the stand-in alone, refuses an explicitly requested busy port by
 # name, and prints no ERR_PNPM noise on Ctrl+C. Needs python3 for the stand-in listener.
-# Usage: scripts/test-dev-sh.sh [--mock] [--router] [--help]    (the flags are passed to dev.sh)
+# Usage: scripts/test-dev-sh.sh [--] [--mock] [--router] [--help]    (the flags are passed to dev.sh)
 set -euo pipefail
 
+if [[ "${1:-}" == -- ]]; then shift; fi # `pnpm test:dev-sh -- --router` (pnpm 10 hands the `--` on)
 case "${1:-}" in
   -h | --help)
     sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -49,6 +50,13 @@ s.bind(("127.0.0.1", int(sys.argv[1]))); s.listen(5); time.sleep(3600)' "$BUSY_P
 OCCUPIER_PID=$!
 for _ in $(seq 1 50); do port_in_use "$BUSY_PORT" && break; sleep 0.1; done
 port_in_use "$BUSY_PORT" || fail "could not occupy port $BUSY_PORT for the test"
+
+# A leading `--` (what pnpm 10 passes on) is skipped by dev.sh, and an unknown argument is still an error.
+"$ROOT/scripts/dev.sh" -- --help >"$LOG" 2>&1 || fail "dev.sh -- --help failed: a leading -- is not skipped"
+grep -q "^Usage: scripts/dev.sh" "$LOG" || fail "dev.sh -- --help did not print the usage"
+if "$ROOT/scripts/dev.sh" --no-such-flag >"$LOG" 2>&1; then fail "dev.sh accepted an unknown argument"; fi
+grep -q "unknown argument: --no-such-flag" "$LOG" || fail "dev.sh did not name the unknown argument"
+echo "ok: a leading -- is skipped, an unknown argument is refused"
 
 # An explicitly requested busy port is an error that names the port (and the process, where lsof/ss can tell).
 if "$ROOT/scripts/dev.sh" --bridge-port "$BUSY_PORT" "$@" >"$LOG" 2>&1; then fail "dev.sh --bridge-port $BUSY_PORT succeeded although the port is busy"; fi

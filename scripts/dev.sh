@@ -29,6 +29,8 @@ VITE_HARNESS_BRIDGE_URL). A port you ask for explicitly (--bridge-port, or $OCTO
 $OCTO_DEV_ROUTER_PORT, $OCTO_DEV_MOCK_PORT, $OCTO_DEV_UI_PORT) is never replaced: if it is busy, dev.sh stops and
 names the process that holds it.
 
+A leading `--` is ignored, so `pnpm dev:all -- --mock` and `pnpm dev:all --mock` both work.
+
 Ctrl+C stops everything. Runs `pnpm install` first when node_modules is missing.
 
   --mock               also start the mock model server (examples/mockllm, port 8791) and point the
@@ -48,6 +50,8 @@ The harness keeps its data in its default data directory; set HARNESS_DATA_DIR t
 USAGE
 }
 
+# `pnpm dev:all -- --mock` hands the literal `--` on (pnpm 10): skip a leading one.
+if [[ "${1:-}" == -- ]]; then shift; fi
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h | --help) usage; exit 0 ;;
