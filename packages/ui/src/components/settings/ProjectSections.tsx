@@ -12,7 +12,9 @@ import { Button } from "../primitives/Button";
 import { Notice } from "../primitives/Notice";
 import { Select } from "../primitives/Select";
 import { SkeletonList } from "../primitives/Skeleton";
+import { Switch } from "../primitives/Switch";
 import { TextField } from "../primitives/TextField";
+import { setCompactFolders, useCompactFolders } from "../../lib/compactFoldersPref";
 import { settingsHref } from "../../lib/route";
 import { useHarnessSettings } from "./harnessSettings";
 import { limitTitle, resetsIn, spendText } from "./usageText";
@@ -116,6 +118,7 @@ export function EditorSection({ projectId }: { projectId: string | null }) {
   const configuredSmall = (typeof modelSetting?.value === "string" && modelSetting.value.trim()) || ollama?.default_model || "qwen2.5-coder:1.5b";
   return (
     <>
+      <FileTreeGroup />
       <PerProject
         label="Inline completion"
         rowId="completion"
@@ -219,6 +222,37 @@ export function EditorSection({ projectId }: { projectId: string | null }) {
         />
       </SettingsGroup>
     </>
+  );
+}
+
+/** Decision 98: compact folders, for this app (not per project); applies at once to an open tree. */
+function FileTreeGroup() {
+  const on = useCompactFolders();
+  const id = useId();
+  const [saved, run] = useSave();
+  return (
+    <SettingsGroup label="File tree">
+      <SettingsRow
+        rowId="compact-folders"
+        title="Compact folders"
+        htmlFor={id}
+        description="Folders that hold only one folder share a row: src/main/java, and com.acme.app inside a Java source folder."
+        status={<SaveStatus state={saved} />}
+        control={
+          <Switch
+            id={id}
+            label="Compact folders"
+            checked={on}
+            onChange={(next) =>
+              void run(async () => {
+                if (!setCompactFolders(next)) throw new Error("Could not save: the browser's storage is full or blocked");
+                await Promise.resolve();
+              })
+            }
+          />
+        }
+      />
+    </SettingsGroup>
   );
 }
 

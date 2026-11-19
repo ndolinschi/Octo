@@ -93,7 +93,16 @@ export type HttpOnlyMethod =
   | "openTerminal";
 export type BridgeMethod = Exclude<keyof Bridge, "subscribe" | "openLanguageServer" | HttpOnlyMethod>;
 /** `fields`: a refused form answer's messages by property id (dynamic forms, decision 4); absent otherwise. */
-export type WireError = { status: number; code: string; message: string; fields?: Record<string, string> };
+export type WireError = {
+  status: number;
+  code: string;
+  message: string;
+  fields?: Record<string, string>;
+  /** The structured parts of a harness failure (`errors.md`), carried so a refusal keeps its hint and button. */
+  hint?: string;
+  action?: string;
+  details?: string;
+};
 
 export type ClientMessage =
   | { kind: "call"; id: number; method: string; args: unknown[] }
@@ -163,6 +172,9 @@ export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "stopSession",
   "sendSessionMessage",
   "listAllSessions",
+  // Branch choice (UI decision 98): optional on the host; one without them answers `unsupported`.
+  "listBranches",
+  "switchBranch",
 ];
 
 type Rec = Record<string, unknown>;

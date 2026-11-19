@@ -38,6 +38,7 @@ import { orbitLive } from "./orbit";
 import { withDemoCommands } from "./commands";
 import { withDemoTerminals } from "./terminal";
 import { withDemoSessions } from "./sessions";
+import { withDemoBranches } from "./branches";
 import { sideModeFromUrl, withDemoSide } from "./side";
 import { withDemoReview } from "./review";
 import { withDemoParity } from "./parity";
@@ -411,9 +412,18 @@ function seed(): ProjectRecord[] {
     now - 40 * 24 * HOUR,
   );
   startScript(stress, now - 30 * HOUR, stressHistory);
+  // Decision 98: a Maven module whose package directories each hold one directory (the owner's screenshot), for compact folders.
+  const configurator = makeProject(
+    {
+      name: "Product configurator",
+      description: "Java service: product data management subsystem",
+      folders: [{ path: "/Users/maya/code/product-configurator", label: "product-configurator" }],
+    },
+    now - 45 * 24 * HOUR,
+  );
   payments.project.budget_usd = 120;
   payments.project.spent_usd = 38.2;
-  return [orbit, atlas, docs, payments, infra, webhooks, release, copilot, tokens, stress];
+  return [orbit, atlas, docs, payments, infra, webhooks, release, copilot, tokens, stress, configurator];
 }
 
 function seedMany(): ProjectRecord[] {
@@ -922,16 +932,19 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       };
     },
   };
-  const wrapped = withDemoSide(
-    withDemoSlash(
-      withDemoTerminals(
-        withDemoCommands(withDemoReview(withDemoSessions(withDemoParity(withDemoV7(bridge, records), records), records), records), records),
+  const wrapped = withDemoBranches(
+    withDemoSide(
+      withDemoSlash(
+        withDemoTerminals(
+          withDemoCommands(withDemoReview(withDemoSessions(withDemoParity(withDemoV7(bridge, records), records), records), records), records),
+          records,
+        ),
         records,
       ),
       records,
+      sideModeFromUrl(),
     ),
     records,
-    sideModeFromUrl(),
   );
   // The optional byte read (`fileBytesReader` in @octo/agent-client): image previews in Files.
   const readFileBytes: FileBytesReader["readFileBytes"] = async (id, folder, path) => {

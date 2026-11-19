@@ -116,6 +116,15 @@ func samples() map[string]*Error {
 		"CoordinationOff":          CoordinationOff(),
 		"SessionSlotsFull":         SessionSlotsFull(3),
 
+		"UncommittedChanges": UncommittedChanges("a.txt, src/b.go"),
+		"CheckoutInUse":      CheckoutInUse(2),
+		"BranchNotFound":     BranchNotFound("feature/x"),
+		"BranchExists":       BranchExists("feature/x"),
+		"InvalidBranchName":  InvalidBranchName("a..b"),
+		"InvalidPage":        InvalidPage(),
+		"NotAGitRepository":  NotAGitRepository("/home/u/notes"),
+		"BranchSwitchFailed": BranchSwitchFailed("error: The following untracked working tree files would be overwritten by checkout"),
+
 		"FormAnswerRefused":    FormAnswerRefused(2, "email: Enter an email address like name@example.com; password: Required"),
 		"FormAnswerRefusedOne": FormAnswerRefused(1, "email: Required"),
 	}

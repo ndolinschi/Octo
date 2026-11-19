@@ -20,6 +20,10 @@ test("searchSettings: every word must match, across sections and keywords", () =
     ["providers", "editor"],
   );
   assert.ok(searchSettings("dark").some((r) => r.id === "theme"));
+  assert.deepEqual(
+    searchSettings("compact packages").map((r) => r.id),
+    ["compact-folders"],
+  );
   assert.deepEqual(searchSettings("   "), []);
   assert.deepEqual(searchSettings("zzz"), []);
 });
