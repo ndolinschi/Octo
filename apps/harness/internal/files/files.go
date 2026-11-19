@@ -28,6 +28,8 @@ var (
 	ErrTooLarge    = errors.New("files: file too large")
 	ErrBinary      = errors.New("files: not UTF-8 text")
 	ErrChanged     = errors.New("files: changed on disk")
+	// ErrGitPath: a write names a path inside .git (local.ErrGitPath).
+	ErrGitPath = local.ErrGitPath
 )
 
 type Entry struct {
@@ -49,10 +51,22 @@ func FormatTime(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
 
 // resolve confines rel under root; the empty path names the root itself.
 func resolve(root, rel string) (abs, clean string, err error) {
+	return resolveWith(local.Resolve, root, rel)
+}
+
+// resolveWrite is resolve for a write: a path inside .git is ErrGitPath.
+func resolveWrite(root, rel string) (abs, clean string, err error) {
+	return resolveWith(local.ResolveWritable, root, rel)
+}
+
+func resolveWith(confine func(root, rel string) (string, error), root, rel string) (abs, clean string, err error) {
 	if rel == "" {
 		rel = "."
 	}
-	abs, err = local.Resolve(root, rel)
+	abs, err = confine(root, rel)
+	if errors.Is(err, local.ErrGitPath) {
+		return "", "", ErrGitPath
+	}
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return "", "", ErrNotFound

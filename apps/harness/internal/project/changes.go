@@ -14,6 +14,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/files"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/local"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // ChangeRetention is how long a change keeps its diff (its blobs).
@@ -85,7 +86,10 @@ func (s *Service) RevertChange(ctx context.Context, pid string, id int64) (Rever
 	if root == "" {
 		return RevertResult{}, notFound("folder")
 	}
-	abs, err := local.Resolve(root, c.Path)
+	abs, err := local.ResolveWritable(root, c.Path)
+	if errors.Is(err, local.ErrGitPath) {
+		return RevertResult{}, of(KindInvalid, usererr.GitPathRefused(c.Path))
+	}
 	if err != nil {
 		return RevertResult{}, invalid("path %q is outside the project folder", c.Path)
 	}

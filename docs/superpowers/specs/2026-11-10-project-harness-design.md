@@ -280,3 +280,22 @@ settings (folders, instructions, models, notes).
 
 **Verified.** `gofmt -l .` in `apps/harness` (clean).
 **Not verified.** `go vet ./...`, `go test ./...`, and live `go run ./cmd/harness serve` in this VM (cannot fetch uncached `modernc.org/sqlite@v1.62.0` zip because `proxy.golang.org` redirects to `storage.googleapis.com`, which is blocked with HTTP 403 in the sandbox).
+
+---
+
+## As built — `.git` is read-only to the harness; git runs no repository programs (security review, 2026-11-19)
+
+The reviewer wrote `.git/config` with `core.fsmonitor = <command>` through `PUT /files/content`; a later worktree
+creation ran it. Now (a) every write path (file API, `write_file`, `edit`, ACP `fs/write_text_file`, revert, rewind)
+resolves through `local.ResolveWritable`, which refuses a path with a `.git` segment, case-insensitively, as named and
+after symlinks (`400 invalid_request`, catalogue `usererr.GitPathRefused`); reads are unchanged. (b) `gitx.Run`, the
+one git runner (now also used by the `glob` and change-tracking file listings), sets `core.fsmonitor=false`,
+`core.hooksPath=/dev/null`, `core.pager=cat`, `core.askPass=`, `protocol.ext.allow=never` and `--no-ext-diff
+--no-textconv` for `diff`/`log`/`show`; hooks never run for harness git, including a checkout the person asked for.
+`core.sshCommand` and `credential.helper` stay as configured (global auth). Verified: `tools/local`
+`TestResolveWritableRefusesGitPaths`, bridge `TestFileWriteRefusesGitDir` (failed before: 200), `gitx`
+`TestRunIgnoresRepositoryProgramsAndHooks` (a real repository whose fsmonitor, diff.external, textconv, pager and
+seven hooks touch a marker; before: fsmonitor, external diff, textconv, post-checkout, reference-transaction and
+post-index-change ran, and the external diff broke carrying changes into a worktree), and the reviewer's proof on a
+built harness (see the review report). Not verified: Windows (`os.DevNull` is `NUL`), git older than 2.31 for the
+environment form (the `-c` form covers every version).

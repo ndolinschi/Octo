@@ -159,7 +159,7 @@ func (o *Orchestrator) RewindSession(ctx context.Context, pid, sid string, messa
 			conflict(ConflictFolder)
 			continue
 		}
-		abs, err := local.Resolve(root, k.path)
+		abs, err := local.ResolveWritable(root, k.path) // never restores a file inside .git
 		if err != nil {
 			conflict(ConflictFolder)
 			continue

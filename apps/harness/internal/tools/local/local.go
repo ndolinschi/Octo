@@ -168,3 +168,13 @@ func (s *rootSet) resolve(folder, rel string) (root, abs string, err error) {
 	abs, err = resolveUnderWorkspace(root, rel)
 	return root, abs, err
 }
+
+// resolveWrite is resolve for a path a tool writes: never inside .git (ResolveWritable).
+func (s *rootSet) resolveWrite(folder, rel string) (root, abs string, err error) {
+	root, err = s.pick(folder)
+	if err != nil {
+		return "", "", err
+	}
+	abs, err = ResolveWritable(root, rel)
+	return root, abs, err
+}

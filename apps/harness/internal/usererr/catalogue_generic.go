@@ -148,6 +148,15 @@ func FolderInvalid(path, why string) *Error {
 	}
 }
 
+// GitPathRefused: a write, delete or revert names a file inside .git. Git runs
+// programs its config and hooks name, so Octo never changes them (reads work).
+func GitPathRefused(path string) *Error {
+	return &Error{
+		Code: "invalid_request", Message: "Octo does not change files inside .git.",
+		Hint: "Change the repository's settings or hooks with Git in a terminal.", Details: clip(path),
+	}
+}
+
 // NoteTitleTaken: another note has the title already.
 func NoteTitleTaken(title, id string) *Error {
 	return &Error{

@@ -1,17 +1,15 @@
 package changes
 
 import (
-	"bytes"
 	"context"
 	"io/fs"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
+	"github.com/ndolinschi/Octo/apps/harness/internal/gitx"
 )
 
 // skipDirs are not walked in a folder that is not a git work tree (a git work
@@ -67,15 +65,13 @@ func list(ctx context.Context, root string) (map[string]stamp, bool) {
 func gitList(ctx context.Context, root string) ([]string, bool) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-	cmd.Env = append(childenv.Build(os.Environ(), nil), "GIT_OPTIONAL_LOCKS=0")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
+	// gitx.Run: the repository's own config and hooks never run a program (core.fsmonitor runs on ls-files).
+	out, err := gitx.Run(ctx, root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	if err != nil {
 		return nil, false
 	}
 	var paths []string
-	for _, p := range strings.Split(out.String(), "\x00") {
+	for _, p := range strings.Split(string(out), "\x00") {
 		if p != "" && p != ".git" && !strings.HasPrefix(p, ".git/") {
 			paths = append(paths, p)
 		}
