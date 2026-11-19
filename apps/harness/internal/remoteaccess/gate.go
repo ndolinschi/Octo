@@ -1,11 +1,14 @@
 package remoteaccess
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -120,6 +123,9 @@ func (m *Manager) apiGate() http.Handler {
 			writeProblem(w, http.StatusForbidden, usererr.Remote("remote_forbidden"))
 			return
 		}
+		if class == ClassAnswer && isApprovalAnswer(r) && !onceOnly(w, r) {
+			return
+		}
 		m.devices.Touch(d.ID)
 		m.mu.Lock()
 		m.activity = m.o.Now()
@@ -135,6 +141,34 @@ func (m *Manager) apiGate() http.Handler {
 		}
 		m.o.API.ServeHTTP(w, r)
 	})
+}
+
+func isApprovalAnswer(r *http.Request) bool {
+	segs := split(r.URL.Path)
+	return r.Method == http.MethodPost && len(segs) == 5 && segs[0] == "v1" && segs[1] == "projects" && segs[3] == "approvals"
+}
+
+// onceOnly lets a device answer an approval for this one request only: "allow" or "deny", with a note. A rule
+// (allow_always, match), a grant for the rest of the turn (allow_for_turn, allow_all_for_turn) or anything else is
+// refused; the body the bridge gets is rebuilt from the two fields, so an ACP option id (which could name an
+// agent's own "always" option) is dropped and the harness picks the agent's allow-once or reject-once option.
+// It writes the refusal itself and returns false.
+func onceOnly(w http.ResponseWriter, r *http.Request) bool {
+	var in struct {
+		Decision string `json:"decision"`
+		Note     string `json:"note"`
+		Match    string `json:"match"`
+	}
+	data, err := io.ReadAll(io.LimitReader(r.Body, maxBody))
+	if err != nil || json.Unmarshal(data, &in) != nil || (in.Decision != "allow" && in.Decision != "deny") || in.Match != "" {
+		writeProblem(w, http.StatusForbidden, usererr.Remote("remote_decision_forbidden"))
+		return false
+	}
+	body, _ := json.Marshal(map[string]string{"decision": in.Decision, "note": in.Note})
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	r.ContentLength = int64(len(body))
+	r.Header.Set("Content-Length", strconv.Itoa(len(body)))
+	return true
 }
 
 func isPoll(r *http.Request) bool {

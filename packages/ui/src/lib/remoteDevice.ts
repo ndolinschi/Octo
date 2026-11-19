@@ -38,3 +38,12 @@ export function deviceMay(device: RemoteDevice | undefined, what: "send" | "answ
 export function mayChangeProject(device: RemoteDevice | undefined): boolean {
   return device === undefined;
 }
+
+/**
+ * Whether this device may answer an approval beyond the one request: "Always allow" (a saved rule), "Allow … for this
+ * request", "Allow all for this request", or an ACP agent's own "always" option. A paired device may not (the harness
+ * refuses it, `403 remote_decision_forbidden`): it allows or denies once. No device: always.
+ */
+export function mayGrantBeyondOnce(device: RemoteDevice | undefined): boolean {
+  return device === undefined;
+}

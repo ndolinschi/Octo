@@ -337,3 +337,14 @@ Reed-Solomon example, the format and version tables and an independent reader in
 
 Not verified: a real `cloudflared`, a real quick tunnel (SSE refusal, 100 s limit, latency), a real phone, Safari/WebKit,
 "Add to Home Screen", Windows.
+
+### Security review (2026-11-19)
+
+- **Approvals from a device are once-only.** The `answer` class let `POST …/approvals/{id}` through without reading the
+  body, so a paired phone could save a permanent rule (`allow_always` with any `match`) or allow everything for the turn.
+  The gate now admits only `allow`/`deny` (+ `note`), refuses the rest with `403 remote_decision_forbidden`, and forwards a
+  body rebuilt from those two fields (an ACP `option_id` is dropped: allow-once / reject-once). The UI hides "for this
+  request", "Always allow", "Allow all for this request" and an agent's `*_always` options when `remoteDevice` is set.
+  Verified: `remoteaccess` `TestRemoteApprovalAnswersAreOnceOnly` (failed before: 200 for each), `lib/remoteDevice.test.ts`,
+  and the reviewer's proof against a built harness (see the review report). Not verified on a real phone.
+

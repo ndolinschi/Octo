@@ -4,7 +4,9 @@ import type { Approval, ApprovalAnswer, ApprovalOption, AutoMemoryMode } from "@
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
+import { mayGrantBeyondOnce } from "../../lib/remoteDevice";
 import { settingsHref } from "../../lib/route";
+import { useHost } from "../../state/host";
 import {
   APPROVAL_TIMEOUT_MS,
   APPROVAL_URGENT_MS,
@@ -97,9 +99,11 @@ function Asks({ approval, onOpenAgent }: { approval: Approval; onOpenAgent: ((id
 function useAnswers(approval: Approval, c: ReturnType<typeof useApprovalCard>, compact = false) {
   // While the "Always allow" panel is open its "Save rule and allow" is the primary; the plain allow steps back.
   const quiet = compact || c.alwaysOpen;
-  const options = approval.detail.options ?? [];
+  // A paired phone answers once (the harness refuses more): no "for this request", no agent "always" option.
+  const once = !mayGrantBeyondOnce(useHost().remoteDevice);
+  const options = (approval.detail.options ?? []).filter((o) => !once || !o.kind.endsWith("_always"));
   const disabled = c.busy !== null;
-  const scope = turnScopeLabel(approval);
+  const scope = once ? null : turnScopeLabel(approval);
   if (options.length > 0) {
     const allows = options.filter(isAllowOption);
     const others = options.filter((o) => !isAllowOption(o));
@@ -147,7 +151,7 @@ function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
     onResolved: (r) => props.onResolved(approval.id, r),
   });
   const disabled = c.busy !== null;
-  const rule = canAlwaysAllow(approval) ? approval.suggested_rule : undefined;
+  const rule = canAlwaysAllow(approval) && mayGrantBeyondOnce(useHost().remoteDevice) ? approval.suggested_rule : undefined;
   const noteId = `v7-note-${approval.id}`;
   const answers = useAnswers(approval, c);
   return (
@@ -377,7 +381,7 @@ function CompactApproval(props: ApprovalCardProps) {
     onResolved: (r) => props.onResolved(approval.id, r),
   });
   const answers = useAnswers(approval, c, true);
-  const rule = canAlwaysAllow(approval) ? approval.suggested_rule : undefined;
+  const rule = canAlwaysAllow(approval) && mayGrantBeyondOnce(useHost().remoteDevice) ? approval.suggested_rule : undefined;
   const [open, setOpen] = useState(false);
   const detailsId = `v7-details-${approval.id}`;
   const { patch, diff } = approval.detail;

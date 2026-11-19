@@ -126,6 +126,35 @@ func TestTunnelListenerGate(t *testing.T) {
 	}
 }
 
+// A paired phone answers an approval once: "allow" or "deny". Saving a rule (allow_always), allowing for the rest of
+// the request (allow_for_turn, allow_all_for_turn) or anything unreadable is refused at the gate, before the bridge
+// (security review finding 5).
+func TestRemoteApprovalAnswersAreOnceOnly(t *testing.T) {
+	r := newRig(t, "", nil)
+	r.on()
+	tok, _ := r.pair(true)
+	for _, d := range []string{"allow", "deny"} {
+		res := r.do("POST", "/v1/projects/p1/approvals/a1", tok, map[string]string{"decision": d, "note": "ok"})
+		if res.status != 200 || res.body["path"] != "/v1/projects/p1/approvals/a1" {
+			t.Errorf("%s: %d %s", d, res.status, res.raw)
+		}
+	}
+	for _, body := range []any{
+		map[string]string{"decision": "allow_always", "match": "curl"},
+		map[string]string{"decision": "allow_always"},
+		map[string]string{"decision": "allow_for_turn"},
+		map[string]string{"decision": "allow_all_for_turn"},
+		map[string]string{"decision": "allow", "match": "*"},
+		map[string]any{"decision": []string{"allow"}},
+		"not json",
+		nil,
+	} {
+		if res := r.do("POST", "/v1/projects/p1/approvals/a1", tok, body); res.status != 403 || res.code() != "remote_decision_forbidden" || res.body["error"].(map[string]any)["hint"] == nil {
+			t.Errorf("%v: %d %s", body, res.status, res.raw)
+		}
+	}
+}
+
 func TestPermissionSettingAppliesToEveryDevice(t *testing.T) {
 	r := newRig(t, "", func(o *Options) { o.Allow = Perms{ClassSend: true} })
 	r.on()

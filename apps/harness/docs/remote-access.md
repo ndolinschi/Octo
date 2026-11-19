@@ -42,7 +42,7 @@ bridge's route table and fails for a `/v1` route that no rule names, so a new ro
 | stop | `POST …/cancel`, `…/sessions/{sid}/stop` | `stop` and not read-only |
 | deny | settings, diagnostics, `fs/*`, `remote/*`, provider writes, project create/patch/delete, secrets, `lsp`, commands and run stops, `complete`, file writes, change revert, rewind, compact, clear, facts, memory and notes writes, approval-rule deletes, session patch/delete, every review write, `/mcp` | never |
 
-A read-only device (`403 remote_read_only`) gets the read class only. `HARNESS_REMOTE_ALLOW` removes a class for every
+An approval answer from a device is for that one request only: the gate reads the body of `POST …/approvals/{id}` and lets through `decision` `allow` or `deny` (with `note`); `allow_always` (a saved rule, `match`), `allow_for_turn`, `allow_all_for_turn` or an unreadable body is `403 remote_decision_forbidden` before the bridge, and the forwarded body is rebuilt from `decision` and `note`, so an ACP `option_id` (which could be the agent's own "always" option) is dropped and the harness picks the agent's allow-once or reject-once option. The UI on a device offers only those answers (`mayGrantBeyondOnce`). A read-only device (`403 remote_read_only`) gets the read class only. `HARNESS_REMOTE_ALLOW` removes a class for every
 device.
 
 ### Events without SSE

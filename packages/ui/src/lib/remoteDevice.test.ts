@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deviceMay, mayChangeProject, sectionLocked, type RemoteDevice } from "./remoteDevice";
+import { deviceMay, mayChangeProject, mayGrantBeyondOnce, sectionLocked, type RemoteDevice } from "./remoteDevice";
 
 const full: RemoteDevice = { readOnly: false, permissions: ["send", "answer", "stop"] };
 const readOnly: RemoteDevice = { readOnly: true, permissions: ["send", "answer", "stop"] };
@@ -30,4 +30,10 @@ test("send, answer and stop follow the device's permissions and its read-only sw
 test("a device never changes a project", () => {
   assert.equal(mayChangeProject(full), false);
   assert.equal(mayChangeProject(readOnly), false);
+});
+
+test("a device answers an approval once only: no rules, no per-request grants", () => {
+  assert.equal(mayGrantBeyondOnce(undefined), true);
+  assert.equal(mayGrantBeyondOnce(full), false);
+  assert.equal(mayGrantBeyondOnce(noSend), false);
 });

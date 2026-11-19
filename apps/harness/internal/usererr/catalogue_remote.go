@@ -30,6 +30,8 @@ func Remote(code string) *Error {
 		e.Message, e.Hint = "Remote access is off.", "Turn it on first."
 	case "remote_forbidden":
 		e.Message, e.Hint = "A paired phone cannot do this.", "Do it on the computer."
+	case "remote_decision_forbidden":
+		e.Message, e.Hint = "A paired phone can only allow or deny one request at a time.", "Save a rule or allow more on the computer."
 	case "remote_read_only":
 		e.Message, e.Hint = "This phone can only read.", "Allow more for it in Remote access on the computer."
 	case "device_not_paired":
@@ -59,7 +61,7 @@ func Remote(code string) *Error {
 // RemoteCodes lists the codes Remote knows (for the catalogue tests and the docs).
 func RemoteCodes() []string {
 	return []string{
-		"remote_ack_required", "remote_off", "remote_forbidden", "remote_read_only", "device_not_paired", "device_pending",
+		"remote_ack_required", "remote_off", "remote_forbidden", "remote_decision_forbidden", "remote_read_only", "device_not_paired", "device_pending",
 		"device_expired", "pairing_code_invalid", "pairing_code_expired", "pairing_locked", "pairing_rate_limited",
 		"stream_gone", "query_token_refused",
 	}
