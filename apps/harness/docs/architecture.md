@@ -403,3 +403,14 @@ own sessions, outside that group, so they are stopped by the harness's shutdown 
 first, by the next start's reap. Tests: `internal/proctree` (session after the leader exited, descendants that called
 `setsid`, the ledger reaping only matching pids), `internal/terminal/leftovers_test.go` (close and shutdown with `&` and
 `nohup` jobs in an interactive bash), `internal/commands/session_unix_test.go`.
+
+## Added 2026-11-19: start-up messages
+
+- A non-loopback `--addr` (`0.0.0.0`, a LAN address) starts as before, with every `/v1` route still behind the API token,
+  and logs `WARN listening on a non-loopback address: other computers on the network can reach the harness; /v1 routes
+  still require the API token`.
+- A data folder that cannot be written (read-only disk, wrong owner) stops the start with the catalogue case
+  `data_dir_unwritable`: "Octo cannot write to its data folder. Give your user write access to the folder in details, or
+  start Octo with another data folder. (<dir>: <error>)" instead of only `lock …: permission denied`.
+- `.pre-m6` / `.pre-v15` migration backups beside `project.sqlite` are kept; nothing removes them (docs/ARCHITECTURE.md,
+  data locations).

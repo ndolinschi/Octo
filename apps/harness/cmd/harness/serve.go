@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"log/slog"
 	"net"
@@ -201,6 +202,10 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 			u := usererr.DataDirInUse(cfg.DataDir, err.Error()).Caused(err)
 			return fmt.Errorf("%w %s (%s)", u, u.Hint, cfg.DataDir)
 		}
+		if errors.Is(err, fs.ErrPermission) || errors.Is(err, syscall.EROFS) {
+			u := usererr.DataDirUnwritable(cfg.DataDir, err.Error()).Caused(err)
+			return fmt.Errorf("%w %s (%s)", u, u.Hint, u.Details)
+		}
 		return err
 	}
 	defer func() {
@@ -351,6 +356,11 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
+	}
+	if !isLoopbackAddr(ln.Addr()) {
+		// Other computers can reach this address; every /v1 route still needs the API token.
+		slog.Warn("listening on a non-loopback address: other computers on the network can reach the harness; "+
+			"/v1 routes still require the API token", "addr", ln.Addr().String(), "token_required", !cfg.NoAPIToken)
 	}
 	listenPort, _ := strconv.Atoi(portOf(ln.Addr()))
 	browserMgr := browserproxy.NewManager(browserproxy.Options{BlockedLoopbackPorts: []int{listenPort}})

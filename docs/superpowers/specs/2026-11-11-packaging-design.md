@@ -252,3 +252,9 @@ print it and exit 0 (they used to print usage and exit 2); `octo --version` / `-
 the proxy (they used to start it and fail on the config). `GET /health` of the harness adds `commit` and `router_version`;
 Settings → About shows the harness, router (while one runs) and UI versions. Verified: `TestVersionFlag`,
 `TestVersionFromHealth`, `cli::tests`, the built binaries; the About page was type-checked, not driven in a browser.
+
+## As built — start-up messages (2026-11-19)
+
+Non-loopback `--addr`: a WARN line, the token requirement unchanged (`TestServeWarnsOnNonLoopbackAddr`). Unwritable data
+folder: `data_dir_unwritable` with the path and hint (`TestServeOnUnwritableDataDir`, on sysfs, which refuses root;
+skipped where no such place exists). Migration backups: documented as kept, never deleted automatically.
