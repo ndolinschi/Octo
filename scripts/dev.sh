@@ -6,10 +6,14 @@ set -euo pipefail
 
 # Default ports. A default that is busy is replaced by the next free port; a port asked for explicitly (flag or
 # environment variable) that is busy is an error.
-BRIDGE_PORT="${OCTO_DEV_BRIDGE_PORT:-8790}"; BRIDGE_EXPLICIT=0; [[ -n "${OCTO_DEV_BRIDGE_PORT:-}" ]] && BRIDGE_EXPLICIT=1
-MOCK_PORT="${OCTO_DEV_MOCK_PORT:-8791}"; MOCK_EXPLICIT=0; [[ -n "${OCTO_DEV_MOCK_PORT:-}" ]] && MOCK_EXPLICIT=1
-ROUTER_PORT="${OCTO_DEV_ROUTER_PORT:-8792}"; ROUTER_EXPLICIT=0; [[ -n "${OCTO_DEV_ROUTER_PORT:-}" ]] && ROUTER_EXPLICIT=1
-UI_PORT="${OCTO_DEV_UI_PORT:-1420}"; UI_EXPLICIT=0; [[ -n "${OCTO_DEV_UI_PORT:-}" ]] && UI_EXPLICIT=1 # read by apps/desktop/vite.config.ts
+# OCTO_DEV_PORT_BASE=N moves the four defaults to N (bridge), N+1 (mock), N+2 (router), N+3 (UI); they stay defaults
+# (a busy one is replaced), which scripts/test-dev-sh.sh uses to keep clear of a running stack.
+BASE="${OCTO_DEV_PORT_BASE:-}"
+if [[ -n "$BASE" && ! "$BASE" =~ ^[0-9]+$ ]]; then echo "dev.sh: OCTO_DEV_PORT_BASE needs a number (got '$BASE')" >&2; exit 2; fi
+BRIDGE_PORT="${OCTO_DEV_BRIDGE_PORT:-${BASE:-8790}}"; BRIDGE_EXPLICIT=0; [[ -n "${OCTO_DEV_BRIDGE_PORT:-}" ]] && BRIDGE_EXPLICIT=1
+MOCK_PORT="${OCTO_DEV_MOCK_PORT:-${BASE:+$((BASE + 1))}}"; MOCK_PORT="${MOCK_PORT:-8791}"; MOCK_EXPLICIT=0; [[ -n "${OCTO_DEV_MOCK_PORT:-}" ]] && MOCK_EXPLICIT=1
+ROUTER_PORT="${OCTO_DEV_ROUTER_PORT:-${BASE:+$((BASE + 2))}}"; ROUTER_PORT="${ROUTER_PORT:-8792}"; ROUTER_EXPLICIT=0; [[ -n "${OCTO_DEV_ROUTER_PORT:-}" ]] && ROUTER_EXPLICIT=1
+UI_PORT="${OCTO_DEV_UI_PORT:-${BASE:+$((BASE + 3))}}"; UI_PORT="${UI_PORT:-1420}"; UI_EXPLICIT=0; [[ -n "${OCTO_DEV_UI_PORT:-}" ]] && UI_EXPLICIT=1 # read by apps/desktop/vite.config.ts
 ROUTER=0
 MOCK=0
 
@@ -28,6 +32,9 @@ final "ready" block lists the addresses actually chosen (the UI is pointed at th
 VITE_HARNESS_BRIDGE_URL). A port you ask for explicitly (--bridge-port, or $OCTO_DEV_BRIDGE_PORT,
 $OCTO_DEV_ROUTER_PORT, $OCTO_DEV_MOCK_PORT, $OCTO_DEV_UI_PORT) is never replaced: if it is busy, dev.sh stops and
 names the process that holds it.
+
+$OCTO_DEV_PORT_BASE=N moves all four defaults to N, N+1 (mock), N+2 (router), N+3 (UI); they are still defaults.
+A leading `--` is ignored, so `pnpm dev:all -- --mock` and `pnpm dev:all --mock` both work.
 
 Ctrl+C stops everything. Runs `pnpm install` first when node_modules is missing.
 
@@ -48,6 +55,8 @@ The harness keeps its data in its default data directory; set HARNESS_DATA_DIR t
 USAGE
 }
 
+# `pnpm dev:all -- --mock` hands the literal `--` on (pnpm 10): skip a leading one.
+if [[ "${1:-}" == -- ]]; then shift; fi
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h | --help) usage; exit 0 ;;

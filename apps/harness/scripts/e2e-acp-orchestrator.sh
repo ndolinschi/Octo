@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # End-to-end check of an ACP-run orchestrator: a real `harness serve` with the scripted ACP agent
 # (examples/fakeacp) as a project's orchestrator, driven only through the bridge with curl.
+# Ports: E2E_MOCK_PORT (8820), E2E_PORT_STDIO (8821), E2E_PORT_HTTP (8822), E2E_PORT_NOKEY (8823), E2E_PORT_AGY (8824); a busy
+# default moves to the next free port, a busy port you set is an error. E2E_WAIT_SECS (default 60) bounds start-up waits.
 #   scenario 1 (:8821): agent without HTTP MCP  -> the harness binary itself is the stdio relay (`harness mcp-relay`)
 #   scenario 2 (:8822): agent with HTTP MCP and loadSession -> HTTP entry, session/load after a crash
 #   scenario 3 (:8823): no API key at all (see `nokey` below)
@@ -13,21 +15,21 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; sleep 0.3; rm -rf "$TMP"; }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+source "$ROOT/scripts/lib-ports.sh"
+pick_port E2E_MOCK_PORT 8820; pick_port E2E_PORT_STDIO 8821; pick_port E2E_PORT_HTTP 8822; pick_port E2E_PORT_NOKEY 8823; pick_port E2E_PORT_AGY 8824
+WAIT=${E2E_WAIT_SECS:-60}
 
 # The harness requires a bridge API token on /v1: every harness started below gets this one, every curl sends it
 # (except to the router, which would forward it upstream). The check itself is exercised by the 401 test further down.
 export HARNESS_API_TOKEN="e2e-token-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 curl() {
-  case "$*" in
-    *127.0.0.1:8811*|*127.0.0.1:8812*) command curl "$@" ;;
-    *) command curl -H "Authorization: Bearer $HARNESS_API_TOKEN" "$@" ;;
-  esac
+  command curl --max-time 30 -H "Authorization: Bearer $HARNESS_API_TOKEN" "$@"
 }
 jget() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 
 (cd "$ROOT/apps/harness" && go build -o "$TMP/harness" ./cmd/harness && go build -o "$TMP/fakeacp" ./examples/fakeacp \
   && go build -o "$TMP/mockllm" ./examples/mockllm)
-"$TMP/mockllm" --addr 127.0.0.1:8820 --delay 1ms >"$TMP/mock.log" 2>&1 & PIDS+=($!)
+"$TMP/mockllm" --addr 127.0.0.1:$E2E_MOCK_PORT --delay 1ms >"$TMP/mock.log" 2>&1 & PIDS+=($!)
 
 plugin() { # $1 dir, $2 extra env json members (may be empty)
   mkdir -p "$1/fake"
@@ -37,19 +39,22 @@ plugin() { # $1 dir, $2 extra env json members (may be empty)
 JSON
 }
 serve() { # $1 port, $2 data dir, $3 plugins dir; env HARNESS_ACP_IDLE optional
-  HARNESS_DEFAULT_ACCESS=full HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr "127.0.0.1:$1" --data-dir "$2" --base-url http://127.0.0.1:8820 \
+  HARNESS_DEFAULT_ACCESS=full HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr "127.0.0.1:$1" --data-dir "$2" --base-url http://127.0.0.1:$E2E_MOCK_PORT \
     --plugins-dir "$3" >"$2.log" 2>&1 & PIDS+=($!)
   SERVE_PID=$!
-  for _ in $(seq 60); do curl -fsS "http://127.0.0.1:$1/health" >/dev/null 2>&1 && return; sleep 0.2; done
+  wait_http "http://127.0.0.1:$1/health" "$WAIT" "$SERVE_PID" && return
   fail "harness on :$1 did not start: $(cat "$2.log")"
 }
 ask() { # $1 bridge, $2 project, $3 text -> waits for the turn to end, prints the orchestrator's text of that turn
   curl -fsS -X POST "$1/v1/projects/$2/messages" -H 'content-type: application/json' -d "{\"text\":\"$3\"}" >/dev/null
   sleep 0.3
-  for _ in $(seq 100); do
-    [ "$(curl -fsS "$1/v1/projects/$2" | jget 'd["status"]')" = idle ] && break
+  local end=$((SECONDS + WAIT)) st=""
+  while [ $SECONDS -lt $end ]; do
+    st=$(curl -fsS "$1/v1/projects/$2" | jget 'd["status"]')
+    [ "$st" = idle ] && break
     sleep 0.2
   done
+  [ "$st" = idle ] || fail "project $2 on $1 did not go idle within ${WAIT}s (status: $st)"
   curl -fsS "$1/v1/projects/$2/agents/$ORCH/messages" | jget '
 " ".join(c.get("text","") for m in d["messages"][max(i for i,m in enumerate(d["messages"]) if m["role"]=="user" and m["content"] and m["content"][0]["type"]=="text"):] if m["role"]=="assistant" for c in m["content"] if c["type"]=="text")'
 }
@@ -135,7 +140,7 @@ assert orch["model"] == "acp:scripted" and orch["error"] is None, orch
 # supplies a setting. `harness serve` must start, list the built-in agents, report the built-in loop unavailable, run
 # the ACP orchestrator (chosen as the default, nobody named it) and fail built-in work with the one message.
 nokey() {
-  local name=nokey port=8823 base=http://127.0.0.1:8823 msg
+  local name=nokey port=$E2E_PORT_NOKEY base=http://127.0.0.1:$E2E_PORT_NOKEY msg
   msg="No API key is configured for the built-in agent loop. Set ANTHROPIC_API_KEY (or a router), or choose an ACP agent for this project."
   echo "== scenario $name"
   mkdir -p "$TMP/$name-ws" "$TMP/$name-data" "$TMP/$name-bin" && printf '# E2E workspace\n' >"$TMP/$name-ws/README.md"
@@ -146,8 +151,7 @@ nokey() {
     PATH="$TMP/$name-bin" HARNESS_DEFAULT_ACCESS=full HARNESS_MODEL_BALANCED=from-process \
     "$TMP/harness" serve --addr "127.0.0.1:$port" --data-dir "$TMP/$name-data" --plugins-dir "$TMP/$name-plugins" >"$TMP/$name-data.log" 2>&1 & PIDS+=($!)
   local serve_pid=$!
-  for _ in $(seq 60); do curl -fsS "$base/health" >/dev/null 2>&1 && break; sleep 0.2; done
-  curl -fsS "$base/health" >/dev/null 2>&1 || fail "harness without a key did not start: $(cat "$TMP/$name-data.log")"
+  wait_http "$base/health" "$WAIT" "$serve_pid" || fail "harness without a key did not start: $(cat "$TMP/$name-data.log")"
 
   cfg=$(curl -fsS "$base/v1/config")
   [ "$(jget 'd["builtin_loop"]["available"]' <<<"$cfg")" = False ] || fail "builtin_loop.available is not false: $cfg"
@@ -228,7 +232,7 @@ PY
 # `agy acp --login`; `agy acp --login` -> the next request works, with the tool server over the stdio relay although
 # agy advertises HTTP MCP; an agy older than 1.5.0 -> after "Check again" the provider says it is too old, with the installer line.
 agy() {
-  local name=agy port=8824 base=http://127.0.0.1:8824
+  local name=agy port=$E2E_PORT_AGY base=http://127.0.0.1:$E2E_PORT_AGY
   echo "== scenario $name"
   mkdir -p "$TMP/$name-ws" "$TMP/$name-data" "$TMP/$name-bin" && printf '# E2E workspace\n' >"$TMP/$name-ws/README.md"
   mkfake() { # $1 version
@@ -239,10 +243,9 @@ agy() {
   mkfake 1.5.9
   env -u HARNESS_NO_BUILTIN_PLUGINS -u HARNESS_PLUGINS_DIR -u GEMINI_API_KEY PATH="$TMP/$name-bin" HOME="$TMP/$name-data" \
     HARNESS_DEFAULT_ACCESS=full HARNESS_MODEL_DISCOVERY=0 ANTHROPIC_API_KEY=mock \
-    "$TMP/harness" serve --addr "127.0.0.1:$port" --data-dir "$TMP/$name-data" --base-url http://127.0.0.1:8820 >"$TMP/$name-data.log" 2>&1 & PIDS+=($!)
+    "$TMP/harness" serve --addr "127.0.0.1:$port" --data-dir "$TMP/$name-data" --base-url http://127.0.0.1:$E2E_MOCK_PORT >"$TMP/$name-data.log" 2>&1 & PIDS+=($!)
   local serve_pid=$!
-  for _ in $(seq 60); do curl -fsS "$base/health" >/dev/null 2>&1 && break; sleep 0.2; done
-  curl -fsS "$base/health" >/dev/null 2>&1 || fail "harness with fake agy did not start: $(cat "$TMP/$name-data.log")"
+  wait_http "$base/health" "$WAIT" "$serve_pid" || fail "harness with fake agy did not start: $(cat "$TMP/$name-data.log")"
   curl -fsS "$base/v1/providers" | python3 -c '
 import json, sys
 p = [x for x in json.load(sys.stdin)["providers"] if x["id"] == "antigravity"][0]
@@ -282,8 +285,8 @@ assert p["state"] == "not_installed" and pr["message"] == "Antigravity 1.4.12 is
   ! pgrep -f "$TMP/fakeacp" >/dev/null || fail "fakeacp processes remain"
 }
 
-scenario stdio 8821 "" stdio no
-scenario http 8822 ',"OCTO_FAKEACP_MCP_HTTP":"1","OCTO_FAKEACP_LOAD_SESSION":"1"' http yes
+scenario stdio "$E2E_PORT_STDIO" "" stdio no
+scenario http "$E2E_PORT_HTTP" ',"OCTO_FAKEACP_MCP_HTTP":"1","OCTO_FAKEACP_LOAD_SESSION":"1"' http yes
 nokey
 agy
 echo "OK: ACP orchestrator e2e passed"

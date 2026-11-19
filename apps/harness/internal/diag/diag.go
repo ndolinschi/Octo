@@ -237,9 +237,9 @@ func Build(in Inputs) Report {
 		case a.Unsupported != "":
 			// Not a problem to fix: the agent is listed as not supported.
 		case ar.Version != nil && ar.Version.TooOld:
-			r.Problems = append(r.Problems, fmt.Sprintf("%s: too old (%s). Update it: %s", a.ID, ar.Version.Reason, a.InstallHint))
+			r.Problems = append(r.Problems, withHint(fmt.Sprintf("%s: too old (%s).", a.ID, ar.Version.Reason), "Update it: ", a.InstallHint))
 		case !a.Available:
-			r.Problems = append(r.Problems, fmt.Sprintf("%s: not available (%s). %s", a.ID, a.UnavailableReason, a.InstallHint))
+			r.Problems = append(r.Problems, withHint(fmt.Sprintf("%s: not available (%s).", a.ID, a.UnavailableReason), "", a.InstallHint))
 		case ar.Probe.LoggedIn != nil && !*ar.Probe.LoggedIn:
 			r.Problems = append(r.Problems, fmt.Sprintf("%s: not logged in. %s", a.ID, a.Hint))
 		}
@@ -374,4 +374,12 @@ func (r Report) Text() string {
 		fmt.Fprintf(&b, "\nLast %d log lines\n%s\n", len(r.LogTail), strings.Join(r.LogTail, "\n"))
 	}
 	return b.String()
+}
+
+// withHint appends " prefix+hint" to a sentence, or nothing when the agent has no hint (not a dangling ". ").
+func withHint(sentence, prefix, hint string) string {
+	if strings.TrimSpace(hint) == "" {
+		return sentence
+	}
+	return sentence + " " + prefix + hint
 }

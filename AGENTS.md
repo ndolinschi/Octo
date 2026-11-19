@@ -59,7 +59,10 @@ bash scripts/install-go-toolchain.sh
 cd apps/harness
 gofmt -l .
 go vet ./...
-go test -race ./...                # CI runs go vet, go test, go build
+go test ./...                      # what CI runs (with gofmt -l, go vet, go build)
+go test -race -timeout 30m ./...   # NOT in CI: -race is 5-10x slower and on a loaded runner exceeded the default 10-minute
+                                   # test timeout; its duration was not measured on a quiet machine, so no CI job is added.
+                                   # Run it locally (with an explicit -timeout) before touching concurrency code.
 
 # Diagnostics: versions, data dir, PATH children get, each ACP agent's command and login probe, router state
 go run ./cmd/harness doctor [--json] [--data-dir PATH]
@@ -70,7 +73,10 @@ ANTHROPIC_API_KEY=mock go run ./cmd/harness serve --base-url http://127.0.0.1:87
 pnpm --filter @octo/desktop dev   # from repo root, then open http://localhost:1420
 
 # Scripted end-to-end checks (curl against a real `harness serve`; mock model, scripted ACP agent, no third-party CLI).
-# Not part of CI. Every harness they start sets HARNESS_NO_BUILTIN_PLUGINS=1.
+# Run by the `e2e` job of .github/workflows/harness.yml (Linux, after build-sidecar.sh) together with `pnpm test:dev-sh`.
+# Every harness they start sets HARNESS_NO_BUILTIN_PLUGINS=1. Ports (the defaults are 88xx) are taken from E2E_* variables
+# (E2E_MOCK_PORT, E2E_HARNESS_PORT, E2E_ROUTER_PORT, E2E_PORT_STDIO ...; see each script's header), a busy default moves
+# to the next free port, a busy port you set is an error; E2E_WAIT_SECS bounds every wait (v7: 120).
 bash apps/harness/scripts/e2e-acp-orchestrator.sh    # ACP orchestrator over MCP, resume after a crash, no-key start
 bash apps/harness/scripts/e2e-router.sh              # harness behind a real router (run `cargo build -p octo` first)
 bash apps/harness/scripts/e2e-v7.sh                  # changes, approvals, queue, forms and secrets
@@ -97,9 +103,9 @@ pnpm --filter @octo/desktop build
 node scripts/check-bundle-size.mjs         # after the build: initial JS (gzip) within its budget
 cd apps/desktop/src-tauri && cargo check   # needs binaries/harness-<triple> and binaries/octo-<triple> (bash scripts/build-sidecar.sh [--no-router]) and WebKitGTK on Linux
 cd apps/desktop/src-tauri && cargo test -p octo-sidecar   # port, login-shell PATH, health, log cap, process-group stop, harness.env parsing, harness + router start order with fake binaries (no WebKit needed)
-pnpm dev:all                               # scripts/dev.sh: harness (no key needed) + UI dev server; Ctrl+C stops both; `-- --mock` adds the mock model, `-- --router` runs the Octo router in front of the harness (needs `OCTO_ROUTER_UPSTREAM_KEY` or `--mock`)
+pnpm dev:all                               # scripts/dev.sh: harness (no key needed) + UI dev server; Ctrl+C stops both; `pnpm dev:all -- --mock` and `pnpm dev:all --mock` both work; `--mock` adds the mock model, `-- --router` runs the Octo router in front of the harness (needs `OCTO_ROUTER_UPSTREAM_KEY` or `--mock`)
 pnpm install:app                           # scripts/install.sh: build harness + router sidecars and the Tauri app, install (macOS /Applications, Linux ~/.local/bin/octo); `-- --user`, `-- --no-install`
-pnpm test:dev-sh                           # scripts/test-dev-sh.sh: dev.sh comes up, answers, leaves no process after SIGINT (Linux/macOS); `-- --router --mock` also checks the router
+pnpm test:dev-sh                           # scripts/test-dev-sh.sh: dev.sh comes up, answers, leaves no process after SIGINT (Linux/macOS); `-- --router --mock` also checks the router. It moves clear of a running stack (8790 busy -> a free range); OCTO_TEST_PORT_BASE=N picks the range
 pnpm test:scripts                          # the layer-imports ESLint rule tests (`pnpm test` runs package tests and these)
 node packages/ui/scripts/spacing-audit.mjs --url http://localhost:1420   # needs a dev server and Playwright; must print total=0
 ```
