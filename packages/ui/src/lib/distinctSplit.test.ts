@@ -24,6 +24,7 @@ test("siblings that differ early, or a name with no siblings, cut as before", ()
 test("a compact folder chain keeps its last folder whole; a spaced label with a slash cuts as before", () => {
   assert.deepEqual(distinctSplit("com/wsgc/ecommerce/product/configurator"), { head: "com/wsgc/ecommerce/product", tail: "/configurator" });
   assert.equal(distinctSplit("a/b"), null);
+  assert.deepEqual(distinctSplit("com.wsgc.ecommerce.product.configurator.management.data.subsystem")?.tail, ".subsystem", "a Java package chain");
   assert.equal(distinctSplit(`com/${"x".repeat(30)}`)?.tail, "x".repeat(8), "a very long last folder: the plain cut");
   assert.equal(distinctSplit("Claude Code · Opus 5.5 · 58k in / 2.8k out")?.tail.trim(), "2.8k out");
 });

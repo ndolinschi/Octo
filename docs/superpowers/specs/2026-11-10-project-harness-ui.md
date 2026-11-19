@@ -4585,7 +4585,7 @@ a. **One middle-cut for names, and siblings keep what tells them apart.** `lib/t
    sidebar's project meta, and (already) chips and list rows; ordinary titles and prose keep the CSS end-ellipsis. Full name:
    always in the tooltip. Tests: `lib/truncate.test.ts`, `lib/distinctSplit.test.ts` (shared-prefix siblings, the owner's
    `…-management-data-subsystem` pair, short names, non-ASCII and emoji).
-   A path without spaces (a compact folder chain of decision 98, "com/wsgc/…/configurator") keeps its last folder whole (up to
+   A path without spaces (a compact folder chain of decision 98: "src/main/java", "com.wsgc.….subsystem") keeps its last folder whole (up to
    24 characters); its tooltip is the chain's full path.
    Measured, Files tree roots at 1440×900: "product-configuration-ma…" twice → "product-co…management-system" /
    "product-configur…facade-service" (tails 123/88 px, whole).

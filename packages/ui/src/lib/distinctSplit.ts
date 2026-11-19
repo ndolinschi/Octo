@@ -10,13 +10,14 @@ const PATH_TAIL_MAX = 24;
  * project's folders) the tail is everything after the longest head it shares with one of them, from the word break before
  * the difference: "product-configuration-management-system" beside "product-configuration-facade-service" reads
  * "product-con…management-system" / "product-con…facade-service", not "product-configuration-ma…" twice. A path without
- * spaces (a compact folder chain "com/wsgc/…/configurator") keeps its last segment whole. Otherwise the plain middle cut.
+ * spaces (a compact folder chain: "src/main/java", or a Java package "com.wsgc.….subsystem") keeps its last segment whole.
+ * Otherwise the plain middle cut.
  */
 export function distinctSplit(text: string, siblings: readonly string[] = []): MiddleSplit | null {
   const chars = Array.from(text);
   const shared = sharedHead(chars, siblings);
   if (shared >= SHARED_MIN && shared < chars.length) return { ...cutAt(chars, shared), distinct: true };
-  const slash = chars.lastIndexOf("/");
+  const slash = Math.max(chars.lastIndexOf("/"), chars.lastIndexOf("."));
   if (chars.length > 14 && slash > 0 && !chars.some((c) => /\s/.test(c)) && chars.length - slash <= PATH_TAIL_MAX) return cutAt(chars, slash);
   return middleSplit(text);
 }
