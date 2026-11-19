@@ -2,7 +2,8 @@ import type { CommandFinishedEvent, CommandOutputEvent, CommandStartedEvent, Pro
 import type { ReviewListUpdatedEvent, ReviewUpdatedEvent, ReviewWorkspace, ReviewWorkspaceEvent } from "./review";
 
 /** A button the UI can offer for a failure (decision 94b); an absent `action` means none. */
-export type ErrorAction = "recheck_provider" | "connect_provider" | "retry" | "open_settings" | "update_agent";
+/** `use_worktree`: a refused branch switch of the main checkout; the UI offers "Start in a worktree from <branch>" (UI decision 98). */
+export type ErrorAction = "recheck_provider" | "connect_provider" | "retry" | "open_settings" | "update_agent" | "use_worktree";
 
 /** The optional parts of a failure beside its plain one-sentence message. `details` is technical text (a fold). */
 export type ErrorFields = {
@@ -1576,6 +1577,39 @@ export type Workspace = {
   removed_at?: string;
   folders: WorkspaceFolder[];
 };
+/** A local branch (`GET /branches`; the same shape as the review's branch list). `ahead`/`behind` are against HEAD. */
+export type GitBranch = {
+  name: string;
+  current: boolean;
+  ahead: number;
+  behind: number;
+  commit: { sha: string; subject: string; author?: string; date: string };
+};
+/** One repository of a workspace's folders (`GET /branches`, UI decision 98). */
+export type RepoBranches = {
+  /** The first project folder in this repository (its id and label); `folders`: the labels of every one. */
+  folder_id: string;
+  folder: string;
+  folders: string[];
+  repo_root: string;
+  repo_name: string;
+  /** The checked-out branch; "" on a detached HEAD (`detached`, `head` = the short commit). */
+  branch: string;
+  detached: boolean;
+  head: string;
+  /** Tracked files with uncommitted changes (a switch is refused while > 0). */
+  dirty_files: number;
+  /** A chunk: current first (when it matches `q`), then by last commit; `total` counts every match. */
+  branches: GitBranch[];
+  total: number;
+  next_offset?: number;
+  truncated?: boolean;
+};
+/** `GET /v1/projects/{pid}/branches`. Non-git folders are left out; `repos: []` when none is in git. */
+export type BranchesResult = { workspace: string; running_sessions: number; repos: RepoBranches[] };
+export type BranchesParams = { folder?: string; workspace?: string; q?: string; offset?: number; limit?: number };
+/** `POST /v1/projects/{pid}/branches/switch`: the main checkout only; `create` makes the branch from the current one. */
+export type SwitchBranchInput = { branch: string; folder?: string; create?: boolean };
 export type MoveToWorktreeInput = { branch?: string; base_ref?: string; carry_changes?: boolean };
 export type MoveToWorktreeResult = { session: ProjectSession; workspace: Workspace };
 /** `GET /v1/sessions` (parallel sessions): a main session of any project, with its project. */

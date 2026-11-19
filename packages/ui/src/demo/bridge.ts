@@ -38,6 +38,7 @@ import { orbitLive } from "./orbit";
 import { withDemoCommands } from "./commands";
 import { withDemoTerminals } from "./terminal";
 import { withDemoSessions } from "./sessions";
+import { withDemoBranches } from "./branches";
 import { sideModeFromUrl, withDemoSide } from "./side";
 import { withDemoReview } from "./review";
 import { withDemoParity } from "./parity";
@@ -931,16 +932,19 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       };
     },
   };
-  const wrapped = withDemoSide(
-    withDemoSlash(
-      withDemoTerminals(
-        withDemoCommands(withDemoReview(withDemoSessions(withDemoParity(withDemoV7(bridge, records), records), records), records), records),
+  const wrapped = withDemoBranches(
+    withDemoSide(
+      withDemoSlash(
+        withDemoTerminals(
+          withDemoCommands(withDemoReview(withDemoSessions(withDemoParity(withDemoV7(bridge, records), records), records), records), records),
+          records,
+        ),
         records,
       ),
       records,
+      sideModeFromUrl(),
     ),
     records,
-    sideModeFromUrl(),
   );
   // The optional byte read (`fileBytesReader` in @octo/agent-client): image previews in Files.
   const readFileBytes: FileBytesReader["readFileBytes"] = async (id, folder, path) => {

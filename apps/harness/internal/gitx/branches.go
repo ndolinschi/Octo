@@ -60,6 +60,14 @@ func LocalBranches(ctx context.Context, dir, base string) (list []Branch, trunca
 // limit branches; limit <= 0 returns all remaining up to MaxBranches), computing
 // ahead/behind counts against base only for the returned chunk.
 func LocalBranchesChunk(ctx context.Context, dir, base string, offset, limit int) (list []Branch, total int, truncated bool, err error) {
+	return LocalBranchesMatching(ctx, dir, base, "", offset, limit)
+}
+
+// LocalBranchesMatching is LocalBranchesChunk over the branches whose name contains
+// query (case-insensitive; "" matches all). The filter runs before the
+// MaxBranches cap, so a branch of a repository with thousands is still found.
+func LocalBranchesMatching(ctx context.Context, dir, base, query string, offset, limit int) (list []Branch, total int, truncated bool, err error) {
+	query = strings.ToLower(strings.TrimSpace(query))
 	out, err := Run(ctx, dir, "for-each-ref", "--sort=-committerdate",
 		"--format=%(refname:short)%1f%(objectname)%1f%(subject)%1f%(committerdate:iso-strict)", "refs/heads")
 	if err != nil {
@@ -75,6 +83,9 @@ func LocalBranchesChunk(ctx context.Context, dir, base string, offset, limit int
 		}
 		p := strings.Split(rec, "\x1f")
 		if len(p) < 4 {
+			continue
+		}
+		if query != "" && !strings.Contains(strings.ToLower(p[0]), query) {
 			continue
 		}
 		b := Branch{Name: p[0], Current: p[0] == cur, Commit: Commit{SHA: p[1], Subject: p[2], Date: p[3]}}

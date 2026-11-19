@@ -20,7 +20,15 @@ export type BridgeServer = { setTheme(theme: Theme): void; dispose(): void };
 
 function toWireError(err: unknown): WireError {
   if (err instanceof BridgeError) {
-    return { status: err.status, code: err.code, message: err.message, ...(err.fields ? { fields: { ...err.fields } } : {}) };
+    return {
+      status: err.status,
+      code: err.code,
+      message: err.message,
+      ...(err.fields ? { fields: { ...err.fields } } : {}),
+      ...(err.hint !== undefined ? { hint: err.hint } : {}),
+      ...(err.action !== undefined ? { action: err.action } : {}),
+      ...(err.details !== undefined ? { details: err.details } : {}),
+    };
   }
   const message = err instanceof Error ? err.message : String(err);
   return { status: 0, code: "internal", message };
@@ -39,7 +47,9 @@ async function settle(id: number, run: () => unknown): Promise<ResultMessage> {
 }
 
 function invoke(bridge: Bridge, method: BridgeMethod, args: unknown[]): unknown {
-  const fn = bridge[method] as (...a: unknown[]) => unknown;
+  const fn = bridge[method] as ((...a: unknown[]) => unknown) | undefined;
+  // An optional member the host bridge lacks (an older harness client): a plain refusal, not a TypeError.
+  if (typeof fn !== "function") throw new BridgeError(0, "unsupported", `the host does not support ${method}`);
   return fn.apply(bridge, args);
 }
 
