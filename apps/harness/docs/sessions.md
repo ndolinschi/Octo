@@ -81,6 +81,24 @@ published then. `GET /agents` lists every root; `GET /agents/{aid}/messages` wor
 session the request belongs to), `GET /context`, `GET /plans/latest` and `GET /export` act on the **default** session.
 `POST /cancel?all=true` stops every session of the project. The UI of before schema 15 keeps working through them.
 
+## Branches of the main checkout (UI decision 97, 2026-11-19)
+
+The composer's branch chip and picker. Code: `internal/project/branches.go`, `internal/gitx/{switch,branches}.go`,
+`internal/bridge/workspaces.go`; tests `internal/bridge/branches_test.go` (real temporary repositories), `internal/gitx/switch_test.go`.
+
+| Route | Result |
+| --- | --- |
+| `GET /branches?workspace=&folder=&q=&offset=&limit=` | `{"workspace", "running_sessions", "repos": [RepoBranch]}`. One entry per git repository of the workspace's folders (absent `workspace`: `shared`, the main checkout; a worktree's id reads its own folders), in folder order; folders of one repository share an entry; folders outside git are left out (`repos: []` when none is in git). `folder` (id or label) narrows to that repository. Each entry's `branches` is a chunk (`limit` default 30, at most 100, from `offset`) of the local branches whose name contains `q` (case-insensitive; the filter runs before the 200-branch cap), the current one first, then by last commit; `total` counts the matches and `next_offset` is set while more remain. `running_sessions`: main sessions of that workspace that work or wait. Read only. 400 `invalid_request` (bad `offset`/`limit`), 404 `workspace_not_found`, 409 `not_a_git_repository` (`folder` outside git). |
+| `POST /branches/switch` | Body `{branch, folder?, create?}` → 200 `{"repo": RepoBranch}` (after the switch). The main checkout's repository of `folder` (absent: the first git folder): `git switch --no-guess <branch>`, or with `create` `git switch -c <branch>` from the current commit. Refused with nothing changed, in this order: 400 `invalid_branch_name`, 409 `branch_exists` (create), 404 `branch_not_found`, 409 `checkout_in_use` (a main session of the shared workspace works or waits), 409 `uncommitted_changes` (staged or unstaged changes to tracked files; untracked files do not count), 409 `branch_switch_failed` (git refused; its text in `details`), 409 `not_a_git_repository`. The three 409s about the checkout carry `action: "use_worktree"`: the alternative is `POST /sessions {workspace: {kind: "worktree", base_ref: <branch>}}` (or `POST /sessions/{sid}/worktree {base_ref}`), which never touches the main checkout. Never forces, stashes, discards or commits. |
+
+RepoBranch: `{folder_id, folder, folders, repo_root, repo_name, branch ("" when detached), detached, head (short commit),
+dirty_files, branches: [{name, current, ahead, behind, commit: {sha, subject, date}}], total, next_offset?, truncated?}`
+(`ahead`/`behind` against HEAD). No event is published: a client reads the branch again on focus, after a turn and when
+its picker opens. Remote devices may read the list; the switch is denied to them (`remoteaccess/rules.go`).
+
+`GET /workspaces` no longer hangs once a worktree workspace exists (the list queried each worktree's folders while its own
+rows were still open on the store's single connection).
+
 ## Running caps and queues
 
 - A turn starts only while the project runs fewer than `session_settings.max_running` turns (project setting, 1–8, default 3;

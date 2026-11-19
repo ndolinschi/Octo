@@ -8,7 +8,7 @@ structured form, built by one catalogue: `internal/usererr`.
 | `message` | One plain sentence of what happened ("GitHub Copilot is not logged in."). No protocol words, no exit status. |
 | `hint` | The next step in plain words ("Log in to it in a terminal, then check again."). |
 | `command` | A copyable terminal command when there is one (`copilot login`). |
-| `action` | A machine code the UI turns into a button: `recheck_provider`, `connect_provider`, `retry`, `open_settings`, `update_agent`. Absent means none. |
+| `action` | A machine code the UI turns into a button: `recheck_provider`, `connect_provider`, `retry`, `open_settings`, `update_agent`, `use_worktree` (a refused branch switch: the UI offers "Start in a worktree from <branch>"). Absent means none. |
 | `details` | The technical text (protocol names, exit status, the stderr line, method names), for a "Details" fold and the diagnostic report. |
 
 All five are additive: existing fields stay. Where a route used to return technical text in `message`, the text is now `details` and
@@ -105,6 +105,22 @@ contains "ACP"). No real agent CLI was run: every case was produced by the scrip
 
 `current_session`, `session_running`, `not_main_session`, `queue_full` and `turn_in_progress` keep their wording; `queue_full`
 is now per session (20 waiting messages of one session).
+
+## Added 2026-11-19 (branch choice in the composer, UI decision 97)
+
+`catalogue_branches.go`, with samples in `TestCatalogueWording`. Used by `GET /branches` and `POST /branches/switch`
+(`sessions.md`, "Branches of the main checkout"); every refusal leaves the checkout as it was.
+
+| Code | Constructor | Message | Used |
+| --- | --- | --- | --- |
+| `uncommitted_changes` (409) | `UncommittedChanges` | "The main checkout has uncommitted changes, so it stays on its branch." (`use_worktree`, the files as `details`) | a switch while tracked files have staged or unstaged changes |
+| `checkout_in_use` (409) | `CheckoutInUse` | "A session is working in the main checkout, so it stays on its branch." (`use_worktree`) | a switch while a main session of the shared workspace works or waits |
+| `branch_switch_failed` (409) | `BranchSwitchFailed` | "Git did not switch the branch, so nothing was changed." (`use_worktree`, git's text as `details`) | git refused (an untracked file it would overwrite, a branch checked out in another worktree) |
+| `branch_not_found` (404) | `BranchNotFound` | "There is no branch of that name in this repository." | a switch to a name that is no local branch |
+| `branch_exists` (409) | `BranchExists` | "A branch of that name exists already." | create-and-switch with a taken name |
+| `invalid_branch_name` (400) | `InvalidBranchName` | "That is not a valid branch name." | create-and-switch with a name `git check-ref-format --branch` refuses; an empty `branch` |
+| `not_a_git_repository` (409) | `NotAGitRepository` | "This folder is not in a git repository." | `folder` names a folder outside git, or no folder of the project is in git |
+| `invalid_request` (400) | `InvalidPage` | "That part of the list cannot be shown." | `offset` or `limit` is not a whole number of zero or more |
 
 ## Added 2026-11-14 (owner's fourth re-test)
 
