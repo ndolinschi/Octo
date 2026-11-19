@@ -10,6 +10,7 @@ import { useOptionalComments } from "../../state/comments";
 import { CommentCount, commentsDescription } from "./CommentCount";
 import { fileIcon } from "../primitives/fileIcons";
 import { Highlight } from "../primitives/Highlight";
+import { MiddleText } from "../primitives/MiddleText";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { Spinner } from "../primitives/Status";
 import { Menu, type MenuItem } from "../primitives/Menu";
@@ -96,6 +97,7 @@ const TreeNodeRow = memo(function TreeNodeRow({
   selected,
   tabbable,
   isFirstRoot,
+  roots,
   comments,
   query,
   setRowRef,
@@ -108,6 +110,8 @@ const TreeNodeRow = memo(function TreeNodeRow({
   selected: boolean;
   tabbable: boolean;
   isFirstRoot: boolean;
+  /** Every root's label: a root keeps the part that tells it from the others ("product-con…facade-service"). */
+  roots: readonly string[];
   comments: number;
   query: string;
   setRowRef: (id: string, el: HTMLDivElement | null) => void;
@@ -159,7 +163,7 @@ const TreeNodeRow = memo(function TreeNodeRow({
         )}
       </span>
       <span data-label className={cn("ml-1 min-w-0 truncate", isRoot ? "text-xs font-medium text-fg-3" : "text-fg")} title={row.name}>
-        {query && row.kind === "file" ? <Highlight text={row.name} query={query} /> : row.name}
+        {isRoot ? <MiddleText text={row.name} siblings={roots} /> : query && row.kind === "file" ? <Highlight text={row.name} query={query} /> : row.name}
       </span>
       {comments > 0 && (
         <span className="ml-auto pr-1 pl-2">
@@ -302,6 +306,7 @@ export const FileTree = forwardRef<
   );
 
   const firstRoot = rows.find((r) => r.kind === "dir" && r.path === "");
+  const roots = useMemo(() => folders.map((f) => f.label), [folders]);
   return (
     <div role="tree" aria-label={label} className="flex flex-col">
       {rows.map((row) => {
@@ -345,6 +350,7 @@ export const FileTree = forwardRef<
             selected={row.id === selectedKey}
             tabbable={row.id === tabId}
             isFirstRoot={row === firstRoot}
+            roots={roots}
             comments={row.kind === "file" ? (counts?.get(row.id) ?? 0) : 0}
             query={query}
             setRowRef={setRowRef}
