@@ -6,6 +6,7 @@ import { markSteered } from "../../lib/v7/steer";
 import { lazy, memo, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { cn } from "../../lib/cn";
 import { formatSeparator, needsSeparator, timeAgo } from "../../lib/format";
+import { guessOneLine, promptShape, rememberPromptShape } from "../../lib/promptShape";
 import { useCopy } from "../../lib/hooks";
 import { splitComments } from "../../lib/comments";
 import { splitDesignNotes } from "../../lib/browser/designNotes";
@@ -246,6 +247,9 @@ export const Transcript = memo(function Transcript(props: {
                       ? "cancelled"
                       : null;
           const liveEnter = initialTurnKeys !== null && !initialTurnKeys.has(turn.key);
+          // Layout containment: a turn mounting above this one moves it, and a contained turn moves with its painted content
+          // (only its offset changes) instead of being painted again; scrolling a long conversation repainted every mounted
+          // turn below each mount. No turn content is fixed, overflows its section vertically or stacks over the pinned prompt.
           return (
             <section
               key={turn.key}
@@ -254,7 +258,7 @@ export const Transcript = memo(function Transcript(props: {
               data-turn-key={turn.key}
               data-turn-mounted
               data-live-enter={liveEnter || undefined}
-              className="flex flex-col gap-4"
+              className="flex flex-col gap-4 contain-layout contain-style"
             >
               {slots.get(i)?.map((m) => (
                 <Suspense key={`c${m.upto_message_id}`} fallback={null}>
@@ -428,9 +432,12 @@ const UserPrompt = memo(function UserPrompt({
   const compact = useTranscript().density === "compact";
   const box = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
-  const [overflows, setOverflows] = useState(false);
+  // The measured shape is the starting guess when the turn mounts again (the turn window remounts turns as the reader
+  // scrolls); a first mount guesses from the text. A right guess makes the measuring below a no-op; a wrong one is corrected
+  // before the first paint as before, so the guess changes the cost of a mount (one layout instead of two), never what shows.
+  const [overflows, setOverflows] = useState(() => promptShape(text)?.overflows ?? false);
   // The bubble's shape: one line of prose and nothing else is a pill; anything taller keeps the large radius.
-  const [oneLine, setOneLine] = useState(false);
+  const [oneLine, setOneLine] = useState(() => promptShape(text)?.oneLine ?? guessOneLine(text));
   const id = useId();
 
   useLayoutEffect(() => {
@@ -439,8 +446,10 @@ const UserPrompt = memo(function UserPrompt({
     const check = () => {
       // Hidden (a background tab): no box to measure; keep the shape it had.
       if (el.clientHeight === 0) return;
-      setOverflows(el.scrollHeight > el.clientHeight + 1);
-      setOneLine(el.clientHeight <= parseFloat(getComputedStyle(el).lineHeight) * 1.5);
+      const shape = { overflows: el.scrollHeight > el.clientHeight + 1, oneLine: el.clientHeight <= parseFloat(getComputedStyle(el).lineHeight) * 1.5 };
+      rememberPromptShape(text, shape);
+      setOverflows(shape.overflows);
+      setOneLine(shape.oneLine);
     };
     check();
     const ro = new ResizeObserver(check);
