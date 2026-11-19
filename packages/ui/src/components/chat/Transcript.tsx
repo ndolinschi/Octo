@@ -191,7 +191,8 @@ export const Transcript = memo(function Transcript(props: {
   // Finished turns only show minutes-old times; a coarse clock lets them skip the per-second tick.
   const minute = Math.floor(now / 60_000) * 60_000;
   // P1-6: only the turns near the viewport are mounted (and none before the Markdown chunk is in, so each lays out once).
-  const { root: turnsRoot, observe, isMounted, heightAt } = useTurnWindow(agent.id, turns, usePartsReady(TURN_PARTS));
+  const partsReady = usePartsReady(TURN_PARTS);
+  const { root: turnsRoot, observe, isMounted, heightAt } = useTurnWindow(agent.id, turns, partsReady);
   // An unmounted turn's element is reused while its height holds: the transcript re-renders on every streamed delta, and
   // creating hundreds of placeholder elements each time was most of that render.
   const [shellKey] = useState(() => ({}));
@@ -201,13 +202,23 @@ export const Transcript = memo(function Transcript(props: {
     let mine = shells.get(shellKey);
     if (!mine) shells.set(shellKey, (mine = new Map<string, Shell>()));
     const hit = mine.get(turn.key);
-    if (hit?.height === height && hit.sig === sig) return hit.el;
+    if (hit?.height === height && hit.sig === sig && hit.shown === partsReady) return hit.el;
+    // Until the turn parts are in, every turn is a placeholder of estimated height (empty to the eye) pinned to the end; the
+    // turns then mount at their real heights. Shown, those empty boxes counted as moving content (a 0.16 layout shift at 4x
+    // CPU with the Markdown chunk late); hidden, the turns appear where they are.
     const el = (
-      <section key={turn.key} ref={observe} data-turn-id={turn.prompt?.id} data-turn-key={turn.key} style={{ height }}>
+      <section
+        key={turn.key}
+        ref={observe}
+        data-turn-id={turn.prompt?.id}
+        data-turn-key={turn.key}
+        style={{ height }}
+        className={partsReady ? undefined : "invisible"}
+      >
         <FindText turn={turn} />
       </section>
     );
-    mine.set(turn.key, { height, sig, el });
+    mine.set(turn.key, { height, sig, shown: partsReady, el });
     return el;
   };
 
@@ -645,7 +656,7 @@ const AssistantTurn = memo(function AssistantTurn(props: {
 });
 
 /** Placeholder elements of each transcript (by an object it holds), by turn key and content signature. */
-type Shell = { height: number; sig: string; el: ReactElement };
+type Shell = { height: number; sig: string; shown: boolean; el: ReactElement };
 const shells = new WeakMap<object, Map<string, Shell>>();
 
 const NO_ENDINGS: StoredEndingLookup = () => undefined;
