@@ -425,3 +425,22 @@ Closes the "ask for the router side" of live run 2, item 2.
   runs with `NoSpentAfter` to keep covering the older-router path.
 - **Not verified:** against a real router process end to end beyond `scripts/e2e-router.sh` (see the run notes); no real upstream.
 
+## As built — a cut-off stream is an error, not an answer (2026-11-19)
+
+Router (`providers/utils.rs`, `Tee`): a 2xx `text/event-stream` Messages or chat response that ends without its terminator
+(`message_stop` / `[DONE]` / an error event from the upstream itself, looked for in the last 1 KiB) or breaks off with a
+transport error used to end as a plain 200 (or abort the connection). The client now gets, after a blank line that closes a
+half-written event, `event: error` with `{"type":"error","error":{"type":"api_error","message":"The connection to the model
+broke off before the response was complete. Try again."}}` (chat: a `data: {"error":...}` chunk), the body closes cleanly, and
+history records the call as 502 (tokens and cost as before). A non-SSE body that fails after headers is unchanged (header
+status kept). Verified: `tests/stream_cut.rs` (six tests on a raw-socket fake upstream, `support::spawn_sse_server`, that
+really cuts the stream: transport cut, clean stop, cut mid-event, complete stream untouched, upstream's own error event not
+doubled, chat with and without `[DONE]`); the four cut-off cases failed before the change (the other two are controls). `SSE_OK` in `harness_integration.rs` gained the
+`message_stop` a real stream ends with.
+
+Harness side: it already handles the event. The Anthropic SDK turns `event: error` into an `*anthropic.Error` on
+`stream.Err()` (checked with a throw-away test against an `httptest` server sending the router's event), so the turn fails
+and keeps the text it had. But `describe` files it under `model_call_failed` ("The model did not answer.", the router's
+sentence in the details), not `model_unreachable` ("The connection to the model broke off."): a follow-up could map an
+`api_error` stream event to `ModelUnreachable`/`RouterUnreachable`. Not changed (out of scope). Not verified: a full turn
+through a real router with a cut upstream.

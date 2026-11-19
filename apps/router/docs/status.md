@@ -66,7 +66,7 @@ pie showData
 | --- | --- | --- | --- |
 | Soft-fail history | DB fail → proxy continues without DB | Silent loss of FinOps | `proxy/mod.rs` |
 | Insert backpressure | 32 slots, 5s, then **drop** | Missing rows under burst (warn includes `session_id`) | verification F3 |
-| Stream fail after headers | Client may see truncated body; history keeps header status | Warn logs session; recon by status alone can miss truncation | AGENTS.md |
+| Stream fail after headers | SSE: error event to the client, row 502. Other bodies: client may see truncated body; history keeps header status | Non-SSE truncation: warn logs session; recon by status alone can miss it | AGENTS.md |
 | `session_budget_usd` | **0 (disabled)** | **No spend limit of any kind until set**: nothing is downgraded or refused, so cost is bounded only by the client. Set it (and pick `session_budget_action`) to enable | `autoroute.toml` |
 | Ladder price order | **Inverted by the published prices** (re-checked 2026-11-14: 1,622 / 4,800 / 1,390 micro-USD per 30k/500) | At the catalogue prices `high` is the cheapest model and `low`/`mid` dearer; the ladder order is by capability and was not changed. `never_pay_more_for_less` (default on) serves the cheapest tier at or above the decided one, so low and mid requests are served by `high` for a typical shape; the start-up warning says so | [ladder-cost-check.md](./ladder-cost-check.md), `tests/price_rule.rs` |
 | Budget key state | Spend per `x-octo-budget-key` is persisted (`budget_spend`) and restored on the key's first request after a restart; pruned after 90 idle days by default | A kill within milliseconds of a call finishing loses that call's record and spend increment | `ledger.rs`, `tests/call_persistence.rs` |

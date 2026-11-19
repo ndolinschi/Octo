@@ -92,7 +92,7 @@ Rows in `prices.toml` that are all `0.0` skip the estimate (`!any_nonzero()`). T
 | --- | --- |
 | Soft-fail open | Proxy up, no history |
 | Burst drop | Missing rows under load; warn includes `session_id` |
-| Stream fail after headers | Client may see a truncated body; history keeps header status (warn logs session) |
+| Stream fail after headers | SSE (Messages, chat) cut off or ended without its terminator: the client gets the provider's error event and the row is 502. Other bodies: client may see a truncated body; history keeps header status (warn logs session) |
 | `generation_id` | Prefers OpenRouter `x-generation-id` `gen-*`; body `msg_*` is fallback |
 | Compact accounting | Compact rows store `session_id` and add session spend when cost is present |
 
