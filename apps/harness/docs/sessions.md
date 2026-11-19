@@ -81,7 +81,7 @@ published then. `GET /agents` lists every root; `GET /agents/{aid}/messages` wor
 session the request belongs to), `GET /context`, `GET /plans/latest` and `GET /export` act on the **default** session.
 `POST /cancel?all=true` stops every session of the project. The UI of before schema 15 keeps working through them.
 
-## Branches of the main checkout (UI decision 98, 2026-11-19)
+## Branches of the main checkout (UI decision 100, 2026-11-19)
 
 The composer's branch chip and picker. Code: `internal/project/branches.go`, `internal/gitx/{switch,branches}.go`,
 `internal/bridge/workspaces.go`; tests `internal/bridge/branches_test.go` (real temporary repositories), `internal/gitx/switch_test.go`.

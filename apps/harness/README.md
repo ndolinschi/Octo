@@ -97,7 +97,7 @@ Manifest format and more examples (gopls, TypeScript, Gemini CLI, the subscripti
 
 For Claude Code, Copilot, Grok, Codex and seven more agent CLIs on a subscription, see [Running on subscriptions](#running-on-subscriptions).
 
-**Trust:** an ACP agent is a separate program that runs with your user's privileges. In a project with `access: "full"` (the default of `harness serve` for now, see `HARNESS_DEFAULT_ACCESS`) the harness **auto-approves** its permission requests; with `access: "supervised"` each one becomes an approval the user answers ([docs/v7.md](./docs/v7.md)). It serves the agent's file requests only inside the project's folders; the agent process itself is not sandboxed, and a plugin manifest is a list of commands the harness will run. Only install plugins you trust.
+**Trust:** an ACP agent is a separate program that runs with your user's privileges. In a project with `access: "full"` (shown as "Allow all"; not the default: `harness serve` gives new projects `supervised` unless `HARNESS_DEFAULT_ACCESS` says otherwise) the harness **auto-approves** its permission requests; with `access: "supervised"` each one becomes an approval the user answers ([docs/v7.md](./docs/v7.md)). It serves the agent's file requests only inside the project's folders; the agent process itself is not sandboxed, and a plugin manifest is a list of commands the harness will run. Only install plugins you trust.
 
 ## Running on subscriptions
 
@@ -314,7 +314,7 @@ Under `--data-dir` (default `./data/harness`):
 
 - `harness.sqlite` — legacy CLI sessions and message JSON
 - `registry.sqlite` — project index (`serve`)
-- `projects/{id}/project.sqlite` — everything for one project: folders, agents, messages, notes, usage, tasks, memory files, search indexes, changes, queue (schema version 8 via `PRAGMA user_version`: 5 added error hints, stopped messages and the stemmed index, 6 the review tables, 7 saved approval rules and the network columns, 8 review threads, project settings and command runs; an older database migrates forward, a newer one is refused with a message)
+- `projects/{id}/project.sqlite` — everything for one project: folders, agents, messages, notes, usage, tasks, memory files, search indexes, changes, queue (schema version 15 via `PRAGMA user_version`, `projectstore.SchemaVersion`, numbering in `internal/projectstore/migrate.go`; an older database migrates forward and keeps a `.pre-m6` / `.pre-v15` backup beside it, a newer one is refused untouched)
 - `projects/{id}/secrets.json` — the project's secret store (mode 0600; see [docs/v7.md](./docs/v7.md))
 - `projects/{id}/shadow/` — pre-image copies for change tracking (rebuilt at every start)
 - `traces/` — ACP wire traces when `HARNESS_ACP_TRACE` is on

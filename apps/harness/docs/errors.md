@@ -106,7 +106,7 @@ contains "ACP"). No real agent CLI was run: every case was produced by the scrip
 `current_session`, `session_running`, `not_main_session`, `queue_full` and `turn_in_progress` keep their wording; `queue_full`
 is now per session (20 waiting messages of one session).
 
-## Added 2026-11-19 (branch choice in the composer, UI decision 98)
+## Added 2026-11-19 (branch choice in the composer, UI decision 100)
 
 `catalogue_branches.go`, with samples in `TestCatalogueWording`. Used by `GET /branches` and `POST /branches/switch`
 (`sessions.md`, "Branches of the main checkout"); every refusal leaves the checkout as it was.

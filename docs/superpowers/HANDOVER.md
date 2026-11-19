@@ -1,23 +1,33 @@
-# Handover — status on 2026-11-12 (after batch 5 and the sessions merge)
+# Handover — status on 2026-11-19 (after the polish, performance, security and robustness pass)
 
-> **2026-11-15, the premium pass** (branch `claude/octo-ui-polish-r1k9zi`, five commits on top of `main` 7d68ccd; not merged).
-> What changed, what was measured and what was not verified is in the UI spec's last five "As built" sections
-> ("the premium pass, wave 1" to "wave 5"). In short: one name per thing in the interface copy; even edges in the sidebar,
-> Settings and every tool panel; the phone's Back; `/new <text>`; the request bubble; "Restore to here"; whole tabs; the
-> first WebKit run and its fixes; every browser script takes `--browser chromium|webkit`. Still for the owner: the top
-> bar's command buttons, the text field's hairline, "Compact" and Memory's tab names, Shift+Tab in the composer; and a
-> run in real Safari and in the Tauri window on macOS (only Playwright's Linux WebKit ran here).
+**What the last pass did (2026-11-18 and 2026-11-19, `git log --oneline c29ae1e..HEAD`).** A review-driven pass over the
+whole product, built and checked in this environment only: the dock tool tabs share one anatomy, the sidebar and the file-tree
+column resize, folders compact (decision 98), the composer's chip is the real branch and picks another (decision 100), "Add to
+chat" from the editor and the tree, "Ask first" is the one name of the permission level, first opens of every lazy surface are
+instant, long conversations scroll and drag cheaper, changing project no longer blinks (decision 99), the macOS traffic lights
+are aligned from the owner's screenshots, remote Markdown images wait for the person, the webview has a CSP, the file API
+refuses writes into `.git`, `git` runs hardened, a remote phone may only allow or deny one request at a time, the data
+directory has private modes and a lock, a damaged or missing project is listed as unavailable instead of stopping the start,
+terminals and runs left by a killed harness are stopped at the next start, `harness --version` exists, and CI gained an
+end-to-end job and the web client's tests. The detail, with what was measured and what was not, is in the "As built" sections
+of the UI spec from "work-surface polish (2026-11-18)" to "last performance gaps (2026-11-19)", and in
+[`../ARCHITECTURE.md`](../ARCHITECTURE.md#status). **All of it was verified here (the mock model, scripted agents, Chromium on
+Linux) and nothing on macOS, in WebKit or Safari, in the Tauri runtime, or with a real agent CLI or a real Ollama.** The
+documentation was brought in line with the code on 2026-11-19, and the first end-user guide is
+[`../user-guide/README.md`](../user-guide/README.md).
+
+**Last counts, 2026-11-19 (this is the one place counts are kept; run the suites for today's):** `@octo/ui` 1016 tests,
+`@octo/agent-client` 189, `@octo/web` 17, `@octo/desktop` 44, all passing; Go: 58 packages, all passing (`go test ./...`,
+without `-race`); `cargo test -p octo` 351 tests in 31 test binaries, all passing (built with `CARGO_PROFILE_DEV_DEBUG=0`, the disk was nearly full). Entry bundle 160.39 kB gzip against a budget of 161.00
+(`node scripts/check-bundle-size.mjs`).
 
 For whoever continues the work: what exists and how far it is verified, what is open, how work runs, what comes next.
 The specs hold the detail; the system overview is [`../ARCHITECTURE.md`](../ARCHITECTURE.md), the monorepo map and
 commands are [`../../AGENTS.md`](../../AGENTS.md). The owner's next step is [`LIVE-CHECKLIST.md`](LIVE-CHECKLIST.md)
-(checklist 4).
+(checklist 4, with the checks of the 2026-11-19 pass added as section F).
 
-**Branch:** `claude/harness-ui-v6-completion-8ynrkq`. Last commit before this pass: `ec4bc05` (batch 4). On top of it,
-uncommitted when this was written: batch 5 (error catalogue `internal/usererr`, file tree column, review fixes of the shell
-and the conversation, slash menu, images, structured errors in the UI, the window report from the context popover, export
-through a Blob), the Sessions tab (`docs/superpowers/specs/2026-11-12-project-sessions-design.md`), a fix to the context
-window scaling (`scaleTo`), and the integration pass below. Not merged to `main`; PR status not recorded.
+**Branch:** `claude/clever-pascal-s2lr5b` is the integration branch of the pass (the work branches are merged into it);
+nothing is pushed or merged to `main` from here. PR status not recorded.
 
 ## 1. What exists
 
@@ -34,11 +44,11 @@ a fork, posting a review, images with any real agent.
   is checklist 0.2. A low-tier price against a billed call: **built**.
 - Spend restored after a restart, tier hints and their 400s, call records, embedded default configuration: **here**
   (`cargo test -p octo`, `e2e-router.sh`). Compaction for the client (`x-octo-trigger: compact`): **built**.
-- 326 tests at the last count recorded (not re-run in this pass: no Rust change).
+- Tests: `cargo test -p octo` (count in the line at the top). No router behaviour changed in this pass except readable upstream errors (`apps/router/docs/README.md`).
 
 ### Harness (`apps/harness`)
 
-- Bridge, projects, per-project SQLite (**schema 14**; a newer database is refused), file API, events with `seq`, plugins,
+- Bridge, projects, per-project SQLite (**schema 15**; a newer database is refused untouched), file API, events with `seq`, plugins,
   LSP relay: **owner** for what the app used in both runs; routes **here** (Go tests, `e2e-acp-orchestrator.sh`).
 - ACP orchestrator with Claude Code, sub-agents, stop, logged-out error: **owner**. Copilot and Grok logged out: **owner**.
   Logged in, and Codex, Cursor, OpenCode, Antigravity, Devin, Droid, omp, pi: **built**.
@@ -69,18 +79,22 @@ a fork, posting a review, images with any real agent.
   settings page (Providers as list and detail, Models in two scopes, Commands), connect screen, Memory (Sessions,
   Knowledge, Files, one search), Notes, side question, review workspace, modes, plans, rewind, queue, approvals, forms,
   slash menu, images, Sessions tab (list, main and agent detail, sidebar rows), structured error notices: **here**
-  (599 UI unit tests, Playwright scripts on `?demo=1`). Against a live harness or real agents: **built**.
+  (UI unit tests, Playwright scripts on `?demo=1`). Against a live harness or real agents: **built**.
 - Component library (decision 90): primitives and a gallery at `?gallery=1`; 49 `octo/no-native-controls` warnings left
   (per folder in `research/2026-11-12-ui-component-audit.md`): migration **built**, not finished.
-- Entry bundle 157.9 kB gzip, budget 158.9, target 158 met (2026-11-13; cuts in the note in `scripts/check-bundle-size.mjs`). Still open there: the composer's slash and image hooks behind a first-use import, the `WorkspaceProvider` split.
+- Entry bundle 160.39 kB gzip, budget 161.00 (2026-11-19). The budget was raised by hand as features landed (history in the header of `scripts/check-bundle-size.mjs`); lazy-only exports are kept out of modules the entry imports. Still open there: the `WorkspaceProvider` split.
+- The 2026-11-18/19 pass (list at the top): **here**, Chromium on Linux only, on demo data and, for the file tree, the branch chip, the Markdown images and the CSP, against a real `harness serve` on the mock model. Not verified: macOS, WebKit, the Tauri window, a phone by eye, a real agent.
 
 ### Desktop (`apps/desktop`)
 
 - Sidecars (free ports, login-shell `PATH`, health waits, stop order), installer on Linux: **owner**. Crate tests: **here**.
-- macOS title bar (inset 86, traffic lights, drag, zoom, full screen): **built**, Rust not compiled here. Tauri system
-  folder dialog: **designed**. `scripts/install.sh` on macOS: **built**.
+- macOS title bar (traffic lights at `{24, 22}`, inset 86, drag, zoom, full screen): **built**; the geometry is asserted on the
+  dev server (`apps/desktop/scripts/traffic-lights.mjs`), the real window was not seen after the 2026-11-19 change; Rust not
+  compiled here. The CSP in `tauri.conf.json`: **built**, not run in the Tauri runtime. The folder dialog behind "Browse…"
+  is the harness's (`POST /v1/fs/pick-folder`: `osascript`, PowerShell, `zenity` or `kdialog`): **built**, not run on
+  macOS or Windows here. `scripts/install.sh` on macOS: **built**.
 
-## 2. UI decisions 79 to 94 (one line each; the full text is in `specs/2026-11-10-project-harness-ui.md`)
+## 2. UI decisions 79 to 100 (one line each; the full text is in `specs/2026-11-10-project-harness-ui.md`)
 
 79. A pane's width comes from the layout state only, never from what it shows.
 80. A folder has no label anywhere.
@@ -99,39 +113,75 @@ a fork, posting a review, images with any real agent.
 93. Memory is Sessions, Knowledge and Files under one search, read in compact prose.
 94. UI review round 2: a to g (the tree stays a column, errors in the person's words, pinned commands look like buttons, one
     Requests group in the palette, an agent's label never its id, narrow chat, ...).
+95. Every popup list takes the keys at once (`popupNav`); a session can be deleted (what goes, what stays).
+96. Parallel sessions: the sidebar is a tree of projects and sessions; every main session is open and runs at once.
+97. Forms are built from a JSON schema (one renderer).
+98. Compact folders in the file tree (a chain of single-child directories is one row; `chain` on `GET /files`).
+99. Changing project never blinks (a project is shown only when it can be painted complete in one frame).
+100. The composer's chip is the real branch and picks another; a refused switch offers a worktree. (Written as a second
+    "98"; renumbered 2026-11-19.)
 
 ## 3. In progress
 
-Nothing. The tree holds finished work only; the integration pass left it staged and uncommitted for the coordinator.
+Nothing. The tree holds finished work only. The branches of the pass are merged into the integration branch; the
+documentation commits of 2026-11-19 sit on top of it.
 
 ## 4. Next, in order
 
-1. **Review fixes not done.** Rounds 1 and 2 of `research/2026-11-12-ui-review-round-1.md` list 27 findings; batch 5 closed
-   the ones named in its commit; which are still open: status not recorded. Walk the list against the screens (the tour,
-   `node packages/ui/scripts/ui-tour.mjs`) and close the rest.
-2. **Library migration batches left.** 49 native-control warnings (folders and counts in the component audit); then lower the
-   lint rule to an error.
-3. **Entry bundle.** Target met (157.9 kB). Further: slash and image hooks behind a first-use import, `WorkspaceProvider` split (Q5 of
-   `plans/2026-11-10-frontend-code-quality.md`); keep lazy-only exports out of modules the entry imports.
-4. **Parity B8 to B10** (`specs/2026-11-12-parity-backlog.md`).
-5. **Review RV3**, the AI pass (`specs/2026-11-11-pr-review-design.md`).
-6. The Tauri system folder dialog and the macOS title bar fix (uncompiled Rust; the owner runs `OCTO_DEBUG_CHROME=1`).
-7. Whatever checklist 4 sends back.
+The first block needs the owner; the second needs a machine this environment does not have; the third is work that can be
+done here.
+
+1. **Licence and third-party notices.** There is no `LICENSE` file and no notices file. The owner must choose a licence; then
+   add `LICENSE`, a third-party notices file (the dependency licences of the pnpm, Cargo and Go trees, and the bundled
+   Monaco, xterm and fonts), and the licence field in `package.json`, `Cargo.toml` and the installer metadata.
+2. **Release engineering.** Signing and notarisation on macOS, a signing story on Windows (not supported by `install.sh`
+   today), the updater, a release workflow that builds the bundles. Until then the app is built from source
+   (`pnpm install:app`).
+3. **A Tauri bundle build on a machine with the system libraries.** Nothing here has compiled the shell (no WebKitGTK, no
+   macOS): CI runs `cargo check` and the sidecar crate's tests; no job builds the bundle.
+4. **Run [`LIVE-CHECKLIST.md`](LIVE-CHECKLIST.md)** (checklist 4, sections A to F): the real-Mac check of the traffic lights
+   (`OCTO_DEBUG_CHROME=1`) and of the CSP in the Tauri window; a run in real Safari / WebKit; real agents (Copilot, Grok,
+   Antigravity logged in; images, `session/load`, approvals in a supervised project); a real Ollama; a real `gh` on a fork;
+   the macOS process clean-up (compiled for macOS, never run there).
+5. **Owner decision: the router's `store_payloads` default.** The router stores request and response text in its history
+   database unless `[history] store_payloads = false` (`apps/router/config/history.toml`, `default_history_store_payloads`
+   in `src/config.rs`); the desktop shell's generated `history.toml` does not set it, so the app's router stores them
+   (locally, 30 days of call records). Decide the default, and whether the app should say so in Settings.
+6. **Router: a truncated upstream SSE stream ends as 200 with no error event** (`apps/router/docs/README.md`; the stream
+   relay has no hook for it).
+7. **Scroll at 4x CPU.** Frames over 50 ms in the Stress conversation went from 49-51 to 43-45 of 60; the target of 15 is
+   not met (UI spec, "last performance gaps"). A variant that never unmounts turns cut CPU by only 17 %; the next lever is
+   less work per mounted turn.
+8. **No file-system watcher.** A file created outside the harness (a terminal, another editor) does not appear in the tree
+   until its folder is listed again; there is no `file.changed` for it.
+9. **No rename, delete or new file or folder in the tree**, and no harness route for them.
+10. **Scripts and CI.** `e2e-parity.sh`, `e2e-remote.sh` and `e2e-sessions.sh` still hardcode their ports (8840-8843, 18842)
+    and are not in CI; `go test -race` is not in CI (too slow on a loaded runner; its duration was not measured on a quiet
+    machine); `@octo/web` and `@octo/agent-client` are still version 0.1.0 while the rest is 0.2.0.
+11. **Review findings and library migration.** Rounds 1 and 2 of `research/2026-11-12-ui-review-round-1.md` (27 findings): which
+    are still open is not recorded; walk the list against the tour (`node packages/ui/scripts/ui-tour.mjs`). The
+    `octo/no-native-controls` warnings (49 at the last count recorded, per folder in the component audit) are not finished.
+12. **Features designed or half built:** parity B8-B10 (`specs/2026-11-12-parity-backlog.md`); review RV3, the AI pass;
+    parallel sessions phases 4-5 (coordination tools, memory modes) and applying a worktree's work back to the main
+    checkout (no route or button was found in the code; the user does it with git); Ollama alone
+    cannot leave the connect screen (needs a tool-capable flag per Ollama model, UI spec owner decision F5).
+13. Whatever checklist 4 sends back.
 
 ## 5. What is open
 
 - **The owner's run:** [`LIVE-CHECKLIST.md`](LIVE-CHECKLIST.md) (checklist 4) is written and not run.
-- **Default access.** `HARNESS_DEFAULT_ACCESS` is still `full` (`apps/harness/cmd/harness/serve.go`), though the UI shows
-  approval cards. Flipping to `supervised` is an owner decision.
+- **Default access.** New projects are `supervised` ("Ask first"): `HARNESS_DEFAULT_ACCESS` defaults to `supervised`
+  (`v7Env` in `apps/harness/cmd/harness/serve.go`). Earlier versions of this file and of `docs/ARCHITECTURE.md` said `full`;
+  that was wrong. Projects made before v7 are `full` and keep it.
 - **Owner decisions.** S3: a or b (default a). Bots questions 1 and 2. Grok in automated tests: an API key in CI, the
-  subscription on a developer machine (default).
+  subscription on a developer machine (default). The router's `store_payloads` default (above). The licence (above).
 - **Gaps in the specs.** A router that dies after start is not watched. An ACP `session/load` may count a continued
   agent's counters twice. A note edited mid-turn is not announced to an ACP agent.
 - **Security.** `bash` is not sandboxed and can read the bridge token file as the harness's user; a supervised project
-  stops the command at an approval card.
-- **Known quirks.** `Settings → Commands` still has a "Settings for" project row. The harness test suites passed with
-  `-race` here; two earlier load-dependent flakes (`TestContextEndpoint`, a digest wait in `memory_life_test.go`) were
-  fixed in this pass and need a full `go test -race ./...` on a quiet machine to confirm.
+  stops the command at an approval card. A paired phone cannot grant "always" or "for this request"; it can allow or deny one
+  request. The webview CSP allows `https:` images (only after "Load image") and loopback `http`/`ws` on any port.
+- **Known quirks.** `Settings → Commands` still has a "Settings for" project row. Comments in the code still call the
+  branch picker "decision 98" (it is 100).
 - **Doc debt.** Spec and code differences: [`../ARCHITECTURE.md`](../ARCHITECTURE.md#known-contradictions).
 
 ### Later (owner, 2026-11-14: "remember this, we will do it later") — Octo on iOS
@@ -188,21 +238,22 @@ finished piece → read-only review → tell the owner what is still wrong or un
 | Area | Commands |
 | --- | --- |
 | Router | `cargo fmt --check` · `cargo clippy -p octo --all-targets -- -D warnings` · `cargo test -p octo` (proxy variables removed) |
-| Harness | `cd apps/harness && gofmt -l . && go vet ./... && go test -race ./...` (CI also runs `go build`) |
+| Harness | `cd apps/harness && gofmt -l . && go vet ./... && go test ./...` (what CI runs, with `go build`); `go test -race -timeout 30m ./...` before touching concurrency code, not in CI |
 | Harness end to end | `bash apps/harness/scripts/e2e-acp-orchestrator.sh` · `cargo build -p octo && bash apps/harness/scripts/e2e-router.sh` · `bash apps/harness/scripts/e2e-v7.sh` |
 | agent-client | `pnpm --filter @octo/agent-client lint` · `... test` · `... format:check` |
-| ui | `pnpm --filter @octo/ui lint` · `... test` · `... format:check`; with a dev server up, `pnpm --filter @octo/ui audit:spacing` prints `total=0`; `packages/ui/scripts/layout-shift.mjs` for layout shift |
+| ui | `pnpm --filter @octo/ui lint` · `... test` · `... format:check`; with a dev server up, `pnpm --filter @octo/ui audit:spacing` prints `total=0`; `packages/ui/scripts/layout-shift.mjs` for layout shift, `project-switch.mjs` for changing project |
+| web | `pnpm --filter @octo/web test` · `... build` |
 | desktop | `pnpm --filter @octo/desktop lint` · `... test` · `... build`, then `pnpm check:bundle` |
 | whole frontend | `pnpm lint` (includes `scripts/check-cycles.mjs`) · `pnpm format:check` · `pnpm test:scripts` (`scripts/eslint/`) |
 | Shell | `cd apps/desktop/src-tauri && cargo test -p octo-sidecar`; `cargo check` needs `bash scripts/build-sidecar.sh --no-router` and WebKitGTK |
-| Dev stack and installer | `pnpm test:dev-sh` · `pnpm test:dev-sh -- --router --mock` · `bash scripts/install.sh --no-install` |
+| Dev stack and installer | `pnpm test:dev-sh` · `pnpm test:dev-sh -- --router --mock` (both in CI) · `bash scripts/install.sh --no-install` |
 | Live (owner) | `bash apps/harness/scripts/test-subscriptions.sh [agent ...]` (or `all`); `harness doctor` for the report |
 
 ## 7. How to run
 
 ```bash
 git submodule update --init --recursive && pnpm install
-pnpm dev:all                    # harness (no key) + UI at :1420; `-- --mock` adds the mock model; `-- --router` adds the router
+pnpm dev:all -- --mock          # harness + the mock model + UI at :1420 (no key; OCTO_DEV_PORT_BASE=N moves every port); `-- --router` adds the router
 pnpm --filter @octo/desktop dev # UI only; ?demo=1 for demo data (also ?providers=none, ?review=...)
 pnpm install:app                # build both sidecars and the Tauri app, install it (owner's machine)
 cd apps/harness && go run ./cmd/harness doctor     # what the harness sees on this machine

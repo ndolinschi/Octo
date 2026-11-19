@@ -1,7 +1,7 @@
 # Octo architecture
 
 The single system overview. It describes the code as it is in the working tree, checked by reading the code on
-2026-11-11, not copied from older documents. Where a spec and the code disagree, the code is described and the
+2026-11-11 and again on 2026-11-19 (schema, data locations, environment variables, status), not copied from older documents. Where a spec and the code disagree, the code is described and the
 disagreement is listed in [Known contradictions](#known-contradictions). Where something could not be checked it is
 marked **unknown**. The reader who needs depth follows the links: each part has its own docs.
 
@@ -19,8 +19,8 @@ Contents: [Parts](#the-five-parts) · [Process diagram](#the-running-desktop-app
 | **ui** (`@octo/ui`) | `packages/ui/` | React 19, Tailwind 4, Monaco | Shell-agnostic UI: sidebar, tab workspace, orchestrator conversation, agent transcripts, file view with code comments and LSP, usage, settings. Talks only through `Bridge`. Has an in-memory demo bridge (`@octo/ui/demo`) |
 | **desktop** (`@octo/desktop`) | `apps/desktop/` | Vite + React host, Tauri 2 shell (`src-tauri/`), crate `octo-sidecar` (`src-tauri/sidecar/`) | Hosts the UI. Inside Tauri the Rust shell starts, watches and stops the bundled harness and (optionally) router as sidecars. `octo-sidecar` has no Tauri dependency, so it is unit-tested anywhere |
 
-Also present: `apps/web/` (README only, a future static host), `scripts/` (dev, install, sidecar build, checks),
-`.github/workflows/` (CI: `ci.yml` router, `harness.yml` Go, `desktop.yml` frontend and `cargo check` / `cargo test -p
+Also present: `apps/web/` (`@octo/web`, the mobile web client: the same UI, built with Vite and served by the harness through Remote access), `scripts/` (dev, install, sidecar build, checks),
+`.github/workflows/` (CI: `ci.yml` router; `harness.yml` Go plus an `e2e` job; `desktop.yml` frontend with the web client's test and build, and `cargo check` / `cargo test -p
 octo-sidecar` of the shell), `.cursor/rules/` and `.claude/rules/typescript.md` (coding rules).
 
 Dependency direction: `desktop` → `ui` → `agent-client` → (HTTP) → `harness` → (HTTP, optional) → `router` →
@@ -90,7 +90,7 @@ Package map of `apps/harness/internal/` (one line each; deeper: `apps/harness/do
 | Package | Role |
 | --- | --- |
 | `bridge` | HTTP routes (`/v1/...`, `/health`, `/mcp/...`), SSE, CORS and loopback rules; `Version` |
-| `project`, `projectstore` | Project service (create, send, budget, files, notes, memory API); SQLite stores (registry, per project), migrations, `PRAGMA user_version` stamp (`SchemaVersion`, **14**: 9 slash commands and /clear, 10 notes, 11 attachments, 12 sessions and exchanges, 13 project sessions, 14 memory M6 task fields and the clean-up of request-only tasks; the next free one is 15) |
+| `project`, `projectstore` | Project service (create, send, budget, files, notes, memory API); SQLite stores (registry, per project), migrations, `PRAGMA user_version` stamp (`SchemaVersion`, **15**: 9 slash commands and /clear, 10 notes, 11 attachments, 12 sessions and exchanges, 13 project sessions, 14 memory M6 task fields and the clean-up of request-only tasks, 15 parallel sessions: a root agent per main session, a queue and a workspace per session; the next free one is 16) |
 | `orchestrator` | One turn at a time per project; orchestrator and sub-agent runs; `spawn_agent` (tiers, `auto`, ACP agents); queue; approvals glue; compaction; memory tools, digest and window assembly; ACP orchestrator session (`acp_*.go`) |
 | `agent` | The Messages-API tool loop (`agent.Loop`), tool-result clearing |
 | `anthropicclient`, `router`, `budget`, `fakerouter` | Messages client (prompt caching, response observer); the router integration (detection, hints, result headers, route call); project spend meter; a stand-in router for tests |
@@ -111,7 +111,7 @@ Nothing below is shared between harness, router and shell.
 | Harness data dir | `--data-dir` / `HARNESS_DATA_DIR`, default `./data/harness`. In the desktop app: `<Tauri app data dir>/harness` (the identifier is `com.ndolinschi.octo.desktop`; the per-OS base path was not checked here) | harness | Private: directories `0700`, files `0600` (databases with their WAL/SHM, `.pre-*` backups, attachments, worktree directories, traces). At every start `projectstore.Open` removes group/other bits from the data dir and everything up to three levels below it (deeper entries, such as a worktree's checked-out files, sit under a `0700` directory); a no-op on Windows. `HARNESS_DATA_DIR` cannot come from `harness.env` |
 | `harness.env` | `{data-dir}/harness.env`, mode `0600` (a group-readable file is refused) | harness (settings API writes it atomically); the shell reads the three `OCTO_ROUTER_*` keys | `KEY=VALUE` lines. Precedence: flags > process environment > file |
 | `registry.sqlite` | `{data-dir}/registry.sqlite` | harness | Project registry. Stamped with `user_version`; a newer database is refused untouched |
-| `project.sqlite` | `{data-dir}/projects/{pid}/project.sqlite` | harness | Messages, agents, usage rows, notes, tasks and facts, memory sessions and exchanges, project sessions, memory files, search index (FTS5), queue, changes, approvals, compactions, ACP session ids, context receipts. Same version stamp: **schema 14** (`projectstore.SchemaVersion`); the memory M6 clean-up migration leaves `project.sqlite.pre-m6` and the schema 15 migration `project.sqlite.pre-v15` (numbered names when one exists) beside it. **These backups are kept for good**: nothing deletes them; once the migrated project works they can be deleted by hand while the harness is stopped. A project whose database cannot be opened is listed as unavailable and names them in its error |
+| `project.sqlite` | `{data-dir}/projects/{pid}/project.sqlite` | harness | Messages, agents, usage rows, notes, tasks and facts, memory sessions and exchanges, project sessions, memory files, search index (FTS5), queue, changes, approvals, compactions, ACP session ids, context receipts. Same version stamp: **schema 15** (`projectstore.SchemaVersion`); the memory M6 clean-up migration leaves `project.sqlite.pre-m6` and the schema 15 migration `project.sqlite.pre-v15` (numbered names when one exists) beside it. **These backups are kept for good**: nothing deletes them; once the migrated project works they can be deleted by hand while the harness is stopped. A project whose database cannot be opened is listed as unavailable and names them in its error |
 | `children.json` | `{data-dir}/children.json` | harness | Terminal shells and Processes runs now running (pid, start time); the next start stops what a killed instance left (2026-11-19) |
 | Project side files | `{data-dir}/projects/{pid}/shadow/` (pre-images, 256 MiB cap), `{data-dir}/projects/{pid}/secrets.json` (`0600`, never in SQLite) | harness | |
 | ACP wire traces | `{data-dir}/traces/` | harness | Only when `HARNESS_ACP_TRACE` is on; per process, 5 MB cap per file, 20 files, redacted |
@@ -215,12 +215,15 @@ and the tier hint when a router is present.
 
 ### 6. Approvals, queue and forms (v7)
 
-1. **Access** is a project field: `supervised`, `accept_edits`, or `full`. New projects get `HARNESS_DEFAULT_ACCESS` (**`full`**
-   unless set otherwise; the UI shows approval cards; existing projects keep their value).
+1. **Access** is a project field: `supervised`, `accept_edits`, or `full`. New projects get `HARNESS_DEFAULT_ACCESS` (**`supervised`**,
+   shown as "Ask first", unless set otherwise; `v7Env` in `cmd/harness/serve.go`; projects made before v7 are `full` and every
+   project keeps its own value).
 2. In a `supervised` project `write_file`, `bash` (any depth), ACP `session/request_permission` (not read/search) and
    ACP `fs/write_text_file` create an `Approval` card (`GET/POST /v1/projects/{pid}/approvals`); under `accept_edits`,
    file edits/writes/deletes/moves are auto-approved while shell commands and other ACP actions still ask. Only the agent
-   that asked blocks. Decisions `allow`, `allow_for_turn` (same kind, same agent, rest of the turn), `allow_all_for_turn` (everything, rest of the turn), `allow_always`, `deny`. Cancelling the turn denies what is pending; an
+   that asked blocks. Decisions `allow`, `allow_for_turn` (same kind, same agent, rest of the turn; for a command only the same program, and only
+   for a simple command: a compound one such as `ls; curl ... | sh` is never remembered), `allow_all_for_turn` (everything, rest of the turn),
+   `allow_always`, `deny`. Cancelling the turn denies what is pending; an
    unanswered request is denied after `HARNESS_APPROVAL_TIMEOUT` (30 min). Events `approval.requested`,
    `approval.resolved`, `project.attention`.
 3. **Changes**: every file change in the project folders is recorded per turn (`write_file`, ACP `fs/*`, plus
@@ -305,93 +308,118 @@ screen (decision 53).
 
 ## Environment variables and settings
 
-Collected by grepping `HARNESS_`, `OCTO_`, `VITE_` and the credential names in code and scripts on 2026-11-11, and
-checked again on 2026-11-12: `HARNESS_API_TOKEN`, `HARNESS_NO_API_TOKEN`, `VITE_HARNESS_API_TOKEN`, `OCTO_BRIDGE_TOKEN`
-and `HARNESS_ACP_TRACE` are in the code and in the tables below. `OCTO_DEBUG_CHROME` is not in the code and is not listed.
-"Settings" = editable through `GET/PUT /v1/settings` (stored in `harness.env`). Process environment beats the file;
-flags beat both. Test-only variables (`OCTO_FAKEACP_*`) are left out.
+Rebuilt on 2026-11-19 from the code: `os.Getenv` / `os.LookupEnv` and the setting ids in `apps/harness`, `env::var` in
+`apps/router` and `apps/desktop/src-tauri`, `import.meta.env` and `process.env` in the TypeScript packages, and the
+variables the scripts in `scripts/` and `apps/*/scripts/` read. A name no code reads is not listed. "Settings" =
+editable through `GET/PUT /v1/settings` (stored in `harness.env`; `apps/harness/docs/settings.md`). Process environment
+beats the file; flags beat both. Test-only variables (`OCTO_FAKEACP_*`, `OCTO_FAKELSP_CHILD`, `OCTO_TEST_VAR`,
+`OCTO_STUB_APP_DIR`) are left out.
 
 **Desktop shell (`octo-sidecar`)** forwards, from the user's login shell to the harness, `PATH` and these names when the shell has them: `LANG`, `LC_*`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `SSH_AUTH_SOCK`, `NVM_DIR`, `BUN_INSTALL`, `PNPM_HOME`, `VOLTA_HOME`, `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` (both cases), `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `TMPDIR`, `SHELL`, `USER`, `LOGNAME`, `TERM`. Never a name containing KEY, TOKEN, SECRET, PASSWORD, PASSWD or CREDENTIAL; never a name set in `harness.env`. Not verified on macOS. `harness doctor` lists the names child processes get (`shell_env_set`).
 
-**Harness (`apps/harness`, read in `internal/config`, `cmd/harness`)**
+### Harness (`apps/harness`)
 
-| Name | Read by | Default | Notes |
+| Name | Default | Read in | What it does |
 | --- | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | harness (setting, secret, restart) | empty | Bearer / key the Messages client sends. Empty with no Octo key and no custom base URL: the built-in loop is unavailable (ACP agents still work) |
-| `ANTHROPIC_BASE_URL` (flag `--base-url`) | harness | the Anthropic API host | A router must be given as `.../autoroute`; hints and result headers exist only there |
-| `HARNESS_OCTO_KEY` (flag `--octo-key`) | harness | empty | Sent as `x-octo-key` |
-| `HARNESS_DATA_DIR` (flag `--data-dir`) | harness | `./data/harness` | Not settable from `harness.env` |
-| `--addr` | `harness serve` | `127.0.0.1:8790` | Flag only |
-| `HARNESS_REMOTE_CLOUDFLARED`, `HARNESS_REMOTE_ADDR`, `HARNESS_REMOTE_WEB_DIR` (flag `--remote-web-dir`), `HARNESS_REMOTE_WEB_PROXY`, `HARNESS_REMOTE_ALLOW`, `HARNESS_REMOTE_DEVICE_IDLE_DAYS`, `HARNESS_REMOTE_IDLE_OFF_HOURS` | harness (remote access) | `cloudflared` on PATH, `127.0.0.1:0`, none, none, `send,answer,stop`, `30`, `8` | Not settings (no API changes them); see `apps/harness/docs/remote-access.md` |
-| `HARNESS_MODEL_ORCHESTRATOR`, `_FAST`, `_BALANCED`, `_DEEP` | harness (settings, apply at once) | the built-in tier table `BuiltinModels` in `internal/config/config.go` | A model id, or `acp:<agent>[/<model>]` |
-| `HARNESS_MAX_TURNS` (flag `--max-turns`) | harness | `25` | Loop iterations per agent |
-| `HARNESS_STREAM` | harness | `true` | |
-| `HARNESS_PROMPT_CACHING` (flag `--prompt-caching`) | harness | `true` | Turn off for a gateway that rejects `cache_control` |
-| `HARNESS_MAX_TOOL_RESULT_BYTES`, `HARNESS_MAX_REPORT_BYTES`, `HARNESS_READ_FILE_LINES` | harness | 48 KiB, 32 KiB, 2000 | What goes back into model context |
-| `HARNESS_CONTEXT_WINDOWS` | harness | built-in table | `model=tokens,...` |
-| `HARNESS_PLUGINS_DIR` (flag `--plugins-dir`, repeatable) | harness | none | Path list |
-| `HARNESS_NO_BUILTIN_PLUGINS` (flag `--no-builtin-plugins`) | harness | `false` | **Every harness started by a test sets `1`** |
-| `HARNESS_MAX_RUNNING_SESSIONS` | harness | `6` | Sessions that may run a turn at once across all projects (1–32); a project's own cap is `session_settings.max_running` (default 3) |
-| `OCTO_PRICES_REFRESH` | router | unset | `off` or `catalogue`; beats `[prices] refresh` in `prices.toml`. Unset: the router refreshes prices from the OpenRouter catalogue only when its upstream URLs point at openrouter.ai (every 6 h, cache in `prices-catalogue.json` beside the history database). See `apps/router/docs/prices.md` |
-| `HARNESS_ACP_IDLE` | harness | `30m` | Idle ACP orchestrator session shutdown |
-| `HARNESS_ROUTE_TIMEOUT` | harness | `2500ms` | The route call of `tier: auto` |
-| `HARNESS_DEFAULT_ACCESS` | harness | `full` | `supervised`, `accept_edits`, or `full`; the UI shows approval cards, the default is still `full` |
-| `HARNESS_FEATURE_AUTO_MEMORY` | harness (setting, applies at once) | `true` | Feature flag exposing automatic memory writes and the interactive `"Enable auto memory?"` prompt via `GET /v1/config` `features.auto_memory` |
-| `HARNESS_APPROVAL_TIMEOUT` | harness | `30m` | `0` or negative: wait for ever |
-| `HARNESS_API_TOKEN` | harness (env only, not a setting) | generated per start into `{data-dir}/api-token` | Bearer token required on `/v1/**` (16+ printable ASCII characters); never passed to children. The Tauri shell, `scripts/dev.sh` and the e2e scripts set it |
-| `HARNESS_NO_API_TOKEN` (flag `--no-api-token`) | harness | off | `1` turns the token check off (tests and scripts only; logs a warning) |
-| `VITE_HARNESS_API_TOKEN` | desktop dev server | none | The token a browser dev UI sends (`scripts/dev.sh` sets it); do not set it for a production build |
-| `HARNESS_UI_ORIGINS` | harness (env only, not a setting) | none | Extra browser origins of the UI, comma-separated, beside `tauri://localhost`, `http://tauri.localhost`, `http://localhost:1420`, `http://127.0.0.1:1420` (`bridge.DefaultUIOrigins`). Only these get CORS answers and reach the settings routes; any other localhost port (the Browser tab's proxy, another dev server) does not. `scripts/dev.sh` sets it to the dev server's port |
-| `OCTO_BRIDGE_TOKEN` | Tauri shell | none | The API token of the harness at `OCTO_BRIDGE_URL` (an externally started harness) |
-| `HARNESS_EXIT_ON_STDIN_CLOSE` (flag `--exit-on-stdin-close`) | harness | off | The shell sets `1` |
-| `HARNESS_ACP_TRACE` | harness (setting, applies at once) | off | Wire trace under `{data-dir}/traces/` |
-| `HARNESS_MODEL_DISCOVERY` | harness | on | `0` turns off the discovery of agents' models (throw-away session / manifest models command when an agent becomes ready; `POST /v1/providers/{id}/refresh-models`); see `apps/harness/docs/providers.md` |
-| `HARNESS_CHILD_ENV_ALLOW` | harness (setting, applies at once) | empty | Extra names or `PREFIX_*` passed to every child process. Without it children get only the allow-list of `internal/childenv`; names containing KEY, TOKEN, SECRET, PASSWORD, CREDENTIAL and `*_BASE_URL` are dropped unless named here or passed by a manifest's `env` |
-| `OCTO_ROUTER_ENABLED`, `OCTO_ROUTER_UPSTREAM_KEY`, `OCTO_ROUTER_BASE_URL` | stored by the harness (settings, restart), **read by the desktop shell** | off, empty, empty | Never passed to child processes |
-| `OCTO_MCP_TOKEN` | `harness mcp-relay` (set by the harness for the relay child) | internal | Not for users |
+| `ANTHROPIC_API_KEY` (setting; applies at once through the settings API) | empty | `internal/config` | Bearer / key the Messages client sends. Empty with no Octo key and no custom base URL: the built-in loop is unavailable (ACP agents still work) |
+| `ANTHROPIC_BASE_URL` (flag `--base-url`) | the Anthropic API host | `internal/config` | A router must be given as `.../autoroute`; hints and result headers exist only there. A loopback URL is probed for reachability (`apps/harness/docs/providers.md`) |
+| `HARNESS_OCTO_KEY` (flag `--octo-key`) | empty | `internal/config` | Sent as `x-octo-key` |
+| `HARNESS_DATA_DIR` (flag `--data-dir`) | `./data/harness` | `internal/config`, `cmd/harness/doctor_datadir.go` | The data directory. Not settable from `harness.env`. `harness doctor` prefers the desktop app's directory when it exists and neither is given |
+| `--addr` (flag only) | `127.0.0.1:8790` | `cmd/harness/serve.go` | Listen address of `harness serve` |
+| `HARNESS_API_TOKEN` | generated per start into `{data-dir}/api-token` (`0600`) | `internal/apitoken` | Bearer token required on `/v1/**` (16+ printable ASCII characters); env only, never passed to children. The Tauri shell, `scripts/dev.sh` and the e2e scripts set it |
+| `HARNESS_NO_API_TOKEN` (flag `--no-api-token`) | off | `internal/apitoken`, `internal/config` | `1` turns the token check off (tests and scripts only; logs a warning) |
+| `HARNESS_UI_ORIGINS` | none | `cmd/harness/serve.go`, `internal/bridge` | Extra browser origins of the UI, comma-separated, beside `tauri://localhost`, `http://tauri.localhost`, `http://localhost:1420`, `http://127.0.0.1:1420` (`bridge.DefaultUIOrigins`). Only these get CORS answers and reach the settings routes. `scripts/dev.sh` sets it to the dev server's port |
+| `HARNESS_EXIT_ON_STDIN_CLOSE` (flag `--exit-on-stdin-close`) | off | `cmd/harness/serve.go` | Exit on EOF of stdin. The shell sets `1` |
+| `HARNESS_MODEL_ORCHESTRATOR`, `_FAST`, `_BALANCED`, `_DEEP` (settings, apply at once) | `BuiltinModels` in `internal/config/config.go` | `internal/config`, `internal/settings` | A model id, or `acp:<agent>[/<model>]` |
+| `HARNESS_MODEL_COMPLETION` (setting, at once) | empty = `qwen2.5-coder:1.5b` (`DefaultOllamaSmallModel`) | `internal/config` | The Ollama model tag of the small inline-completion tier |
+| `HARNESS_OLLAMA_BASE_URL` (setting, at once) | `http://127.0.0.1:11434` | `internal/config` | The Ollama server of that tier; its reachability is probed (`apps/harness/docs/providers.md`) |
+| `HARNESS_MAX_TURNS` (flag `--max-turns`) | `25` | `internal/config` | Loop iterations per agent |
+| `HARNESS_STREAM` | `true` | `internal/config` | Stream model answers |
+| `HARNESS_PROMPT_CACHING` (flag `--prompt-caching`) | `true` | `internal/config` | Turn off for a gateway that rejects `cache_control` |
+| `HARNESS_MAX_TOOL_RESULT_BYTES`, `HARNESS_MAX_REPORT_BYTES`, `HARNESS_READ_FILE_LINES` | 48 KiB, 32 KiB, 2000 | `internal/config`, `internal/tools` | What goes back into model context |
+| `HARNESS_CONTEXT_WINDOWS` | built-in table | `internal/config` | `model=tokens,...` |
+| `HARNESS_PLUGINS_DIR` (flag `--plugins-dir`, repeatable) | none | `internal/config`, `cmd/harness/serve.go` | Extra plugin directories |
+| `HARNESS_NO_BUILTIN_PLUGINS` (flag `--no-builtin-plugins`) | `false` | `internal/config` | **Every harness started by a test or script sets `1`** |
+| `HARNESS_MAX_RUNNING_SESSIONS` | `6` | `internal/config`, `internal/orchestrator` | Sessions that may run a turn at once across all projects (1-32); a project's own cap is `session_settings.max_running` (default 3) |
+| `HARNESS_ACP_IDLE` | `30m` | `internal/config` | Idle ACP orchestrator session shutdown |
+| `HARNESS_ROUTE_TIMEOUT` | `2500ms` | `internal/config` | The route call of `tier: auto` |
+| `HARNESS_DEFAULT_ACCESS` | `supervised` | `cmd/harness/serve.go` (`v7Env`) | Access of projects created without one: `supervised` ("Ask first"), `accept_edits`, `full` |
+| `HARNESS_APPROVAL_TIMEOUT` | `30m` | `cmd/harness/serve.go` | An unanswered approval is denied after this; `0` or negative: wait for ever |
+| `HARNESS_FEATURE_AUTO_MEMORY` (setting, at once) | `true` | `internal/features` | Feature flag behind automatic memory writes and the "Enable auto memory?" prompt (`GET /v1/config` `features.auto_memory`) |
+| `HARNESS_ACP_TRACE` (setting, at once) | off | `cmd/harness`, `internal/acptrace` | Wire trace under `{data-dir}/traces/` for sessions that start afterwards |
+| `HARNESS_MODEL_DISCOVERY` | on | `cmd/harness/serve.go`, `internal/bridge/providers.go` | `0` turns off the discovery of agents' models (`apps/harness/docs/providers.md`) |
+| `HARNESS_CHILD_ENV_ALLOW` (setting, at once) | empty | `internal/childenv` | Extra names or `PREFIX_*` passed to every child process. Without it children get only the allow-list of `internal/childenv`; names containing KEY, TOKEN, SECRET, PASSWORD, CREDENTIAL and `*_BASE_URL` are dropped unless named here or passed by a manifest's `env` |
+| `HARNESS_IMPORT_HOME` | the user's home directory | `internal/sessionimport` | Where "Import sessions" looks for other tools' session stores (`~/.claude/projects`, `~/.codex/sessions`, ...); for tests and unusual homes |
+| `HARNESS_REMOTE_CLOUDFLARED`, `HARNESS_REMOTE_ADDR`, `HARNESS_REMOTE_WEB_DIR` (flag `--remote-web-dir`), `HARNESS_REMOTE_WEB_PROXY`, `HARNESS_REMOTE_ALLOW`, `HARNESS_REMOTE_DEVICE_IDLE_DAYS`, `HARNESS_REMOTE_IDLE_OFF_HOURS` | `cloudflared` on PATH, `127.0.0.1:0`, none, none, `send,answer,stop`, `30`, `8` | `internal/remoteaccess` | Remote access. Not settings; see `apps/harness/docs/remote-access.md` |
+| `OCTO_CODEX_HOME`, `OCTO_OMP_DIR` | none | `plugins-examples/subscription-agents/plugin.json`, `internal/orchestrator/skills.go` | Become `CODEX_HOME` and `PI_CODING_AGENT_DIR` for those agents |
+| `OCTO_ROUTER_ENABLED`, `OCTO_ROUTER_UPSTREAM_KEY`, `OCTO_ROUTER_BASE_URL` | off, empty, empty | stored by the harness (settings, restart); **read by the desktop shell** | Never passed to child processes |
+| `OCTO_MCP_TOKEN`, `OCTO_PICK_START` | internal | `internal/orchestrator`, `internal/bridge/pickfolder.go` | Set by the harness for its own children (the MCP relay; the Windows folder dialog). Not for users |
+
+Read only to find a display, a shell or a home: `DISPLAY`, `WAYLAND_DISPLAY` (folder dialog), `SHELL`, `COMSPEC` (terminal), `XDG_DATA_HOME`, `APPDATA` (`doctor`).
 
 **Agent manifests** (`plugins-examples/subscription-agents/plugin.json`): the harness forwards `COPILOT_GITHUB_TOKEN`,
 `XAI_API_KEY`, `CURSOR_API_KEY`, `WINDSURF_API_KEY`, `FACTORY_API_KEY` from its own environment to the matching agent
-only; `OCTO_CODEX_HOME` and `OCTO_OMP_DIR` become `CODEX_HOME` and `PI_CODING_AGENT_DIR`. A vendor key forwarded this
-way can switch an agent from the subscription to per-token billing.
+only. A vendor key forwarded this way can switch an agent from the subscription to per-token billing.
 
-**Router (`apps/router`)**
+### Router (`apps/router`)
 
-| Name | Read by | Default | Notes |
+| Name | Default | Read in | What it does |
 | --- | --- | --- | --- |
-| `OCTO_CONFIG` | router (`src/config.rs`) | `./config/` | A config directory of TOML fragments, or one legacy `config.toml`. The only way the shell configures it |
-| `OCTO_HISTORY_TOKEN_KEY` | router (`src/history`) | `history.token_key`, else an auto-generated `.key` beside the database | HMAC key for caller identity |
-| `OCTO_EXIT_ON_STDIN_CLOSE` | router (`src/proxy/stdin_watch.rs`) | off | The shell sets `1` |
-| `RUST_LOG` | router (`tracing`) | `info` | |
-| `config/*.toml` | router | shipped files in `apps/router/config/` | Bind address, upstream URLs, ladder, `never_pay_more_for_less` (default true), budgets, `[autoroute.route]`, prices, history. Not environment variables |
+| `OCTO_CONFIG` | `./config/` | `src/config.rs` | A config directory of TOML fragments, or one legacy `config.toml`. The only way the shell configures it |
+| `OCTO_HISTORY_TOKEN_KEY` | `history.token_key`, else an auto-generated `.key` beside the database | `src/history/mod.rs` | HMAC key for caller identity |
+| `OCTO_EXIT_ON_STDIN_CLOSE` | off | `src/proxy/stdin_watch.rs` | The shell sets `1` |
+| `OCTO_PRICES_REFRESH` | unset | `src/prices/mod.rs` | `off` or `catalogue`; beats `[prices] refresh` in `prices.toml`. Unset: prices are refreshed from the OpenRouter catalogue only when the upstream URLs point at openrouter.ai (every 6 h, cache `prices-catalogue.json` beside the history database); `apps/router/docs/prices.md` |
+| `RUST_LOG` | `info` | `src/main.rs` (`tracing`) | Log filter |
+| `config/*.toml` | shipped files in `apps/router/config/` | router | Bind address, upstream URLs, ladder, `never_pay_more_for_less` (default true), budgets, `[autoroute.route]`, prices, history. Not environment variables |
 
-**Desktop shell, UI host, scripts**
+The helper scripts in `apps/router/scripts/` (`claude-code-env.sh`, `claude-code-experiment.sh`, `statusline.sh`) read `OCTO_BIND`, `OCTO_ROOT`, `OCTO_EXPERIMENTS_DIR`, `OCTO_URL`, `OCTO_SESSION`, `OCTO_CLIENT_AUTH_KEY`, `OCTO_CC_REQUIRE_LOCAL`, `OCTO_CC_SKIP_PERMISSIONS`; see `apps/router/README.md`.
 
-| Name | Read by | Default | Notes |
+### Desktop shell and UI host
+
+| Name | Default | Read in | What it does |
 | --- | --- | --- | --- |
-| `OCTO_BRIDGE_URL` | Tauri shell | unset | `http(s)://host:port`: start nothing, use that harness |
-| `OCTO_HARNESS_BIN`, `OCTO_ROUTER_BIN` | Tauri shell | the `harness` / `octo` file next to the executable | For experiments |
-| `VITE_HARNESS_BRIDGE_URL` | UI (`resolveBridgeUrl`, `apps/desktop/src/bridgeChoice.ts`), build time | `http://127.0.0.1:8790` | `HARNESS_BRIDGE_URL` is the fallback name in `resolveBridgeUrl` |
-| `OCTO_DEV_UI_PORT` | `apps/desktop/vite.config.ts`, `scripts/dev.sh` | `1420` | `tauri dev` always uses 1420 |
-| `OCTO_DEV_BRIDGE_PORT`, `OCTO_DEV_MOCK_PORT`, `OCTO_DEV_ROUTER_PORT` | `scripts/dev.sh` | `8790`, `8791`, `8792` | A busy default moves to the next free port; an explicit busy port is an error |
-| `OCTO_DEV_ROUTER_DIR` | `scripts/dev.sh` | `~/.local/share/octo-dev/router` | Router history for `--router` |
-| `OCTO_ROUTER_UPSTREAM_KEY`, `OPENROUTER_API_KEY` | `scripts/dev.sh --router` | none | Upstream key when not `--mock` |
-| `OCTO_NO_ROUTER` | `scripts/build-sidecar.sh`, `scripts/install.sh` | `0` | `1`: placeholder instead of a router build |
-| `TAURI_DEV_HOST` | `apps/desktop/vite.config.ts` | unset | Tauri mobile dev |
-| `OCTO_TEST_<ID>` | `go test -tags subscription` (`apps/harness/scripts/test-subscriptions.sh`) | unset | Opt in to a live agent run |
+| `OCTO_BRIDGE_URL` | unset | `apps/desktop/src-tauri/src/lib.rs`, `sidecar/src/bridge.rs` | `http(s)://host:port`: start nothing, use that harness |
+| `OCTO_BRIDGE_TOKEN` | none | same | The API token of the harness at `OCTO_BRIDGE_URL` |
+| `OCTO_HARNESS_BIN`, `OCTO_ROUTER_BIN` | the `harness` / `octo` file next to the executable | same | For experiments |
+| `OCTO_DEBUG_CHROME` | unset | `src-tauri/src/lib.rs` (`chrome_debug`); `apps/desktop/src/windowChrome.ts`, `useWindowChrome.ts` | Any value but empty or `0`: draw the traffic-light alignment guide and log the configured position (`octo chrome: trafficLightPosition ...` on stderr and the console). The owner's macOS check, `apps/desktop/README.md` |
+| `VITE_HARNESS_BRIDGE_URL` | `http://127.0.0.1:8790` | `apps/desktop/src/bridgeChoice.ts`, `packages/agent-client/src/bridge.ts` (fallback name `HARNESS_BRIDGE_URL`), build time | Bridge the browser UI connects to |
+| `VITE_HARNESS_API_TOKEN` | none | same | The token a browser dev UI sends (`scripts/dev.sh` sets it); do not set it for a production build, Vite would bake it in |
+| `OCTO_DEV_UI_PORT` | `1420` | `apps/desktop/vite.config.ts`, `scripts/dev.sh` | Dev server port. `tauri dev` always uses 1420 |
+| `OCTO_WEB_PORT` | `1430` | `apps/web/vite.config.ts` | Dev server port of the web client |
+| `TAURI_DEV_HOST` | unset | `apps/desktop/vite.config.ts` | Tauri mobile dev |
+| `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`, `NODE_PATH` | unset | `packages/ui/scripts/browser.mjs` | The browser scripts: which Chromium to launch; where to find Playwright |
+
+### Scripts
+
+| Name | Default | Read in | What it does |
+| --- | --- | --- | --- |
+| `OCTO_DEV_PORT_BASE` | unset | `scripts/dev.sh`, `scripts/test-dev-sh.sh` | `N`: the four defaults move to N (bridge), N+1 (mock), N+2 (router), N+3 (UI); they stay defaults, so a busy one moves on |
+| `OCTO_DEV_BRIDGE_PORT`, `OCTO_DEV_MOCK_PORT`, `OCTO_DEV_ROUTER_PORT` | `8790`, `8791`, `8792` | `scripts/dev.sh` | A busy default moves to the next free port; an explicit busy port is an error naming the process |
+| `OCTO_DEV_ROUTER_DIR` | `~/.local/share/octo-dev/router` | `scripts/dev.sh` | Router history for `--router` |
+| `OCTO_ROUTER_UPSTREAM_KEY`, `OPENROUTER_API_KEY` | none | `scripts/dev.sh --router` | Upstream key when not `--mock` |
+| `OCTO_TEST_PORT_BASE` | unset | `scripts/test-dev-sh.sh` | `N`: the test uses N..N+3, which must be free |
+| `OCTO_NO_ROUTER` | `0` | `scripts/build-sidecar.sh`, `scripts/install.sh` | `1`: placeholder instead of a router build |
+| `E2E_MOCK_PORT`, `E2E_HARNESS_PORT`, `E2E_ROUTER_PORT`, `E2E_DIRECT_PORT`, `E2E_PORT_STDIO`, `E2E_PORT_HTTP`, `E2E_PORT_NOKEY`, `E2E_PORT_AGY`, `E2E_WAIT_SECS` | 88xx (each script's header lists them); waits 60 s (v7: 120) | `apps/harness/scripts/e2e-acp-orchestrator.sh`, `e2e-router.sh`, `e2e-v7.sh` | Ports and the bound of every wait. A busy default moves on; a busy port you set is an error. `e2e-parity.sh`, `e2e-remote.sh` and `e2e-sessions.sh` still use fixed ports (8840-8843, 18842) |
+| `OCTO_TEST_<ID>` | unset | `go test -tags subscription` (`apps/harness/scripts/test-subscriptions.sh`) | Opt in to a live agent run |
+| `BRIDGE`, `PHONE`, `LOCAL_TOKEN`, `PROJECT_DIR` | none | `apps/web/scripts/phone-flow.mjs` | The phone-flow check against a running harness |
 
 ## Status
 
 Taken from the "As built" and "Not verified" notes of the specs, the live checklist and the owner's two live runs of
-2026-11-11 (run 1, and run 2 at `a375955`), checked against the code on 2026-11-12. "Verified here" is the build
-environment: scripted agents, the mock model, the fake router, a real router with a mock upstream, a fake `gh`, and demo
-data. "Owner" is the owner's Linux runs. "status not recorded" where no note says.
+2026-11-11 (run 1, and run 2 at `a375955`), checked against the code on 2026-11-12 and, for the 2026-11-13 to 2026-11-19
+work, on 2026-11-19. "Verified here" is the build environment: scripted agents, the mock model, the fake router, a real
+router with a mock upstream, a fake `gh`, demo data, Chromium (Playwright) on Linux. **Everything from the 2026-11-18/19
+polish, performance, security and robustness pass was verified here and nowhere else**: not on macOS, not in WebKit, not in
+the Tauri runtime (the shell is not compiled in this environment), not with a real agent CLI or a real Ollama. "Owner" is
+the owner's Linux runs. "status not recorded" where no note says. Test counts are not kept in this file (they go stale):
+run the suites (commands under [Gates](#gates-and-scripts)); the last counts are one dated line in
+[`HANDOVER.md`](superpowers/HANDOVER.md).
 
 | Area | State | Verified here | Not verified |
 | --- | --- | --- | --- |
 | Harness project server, bridge, orchestrator loop, sub-agents, files, plugins, LSP relay | Built | Go gates; `gopls` test when installed | Built-in loop with a real key (the owner's billed calls went through the router) |
 | Usage, cost, limits | Built; run 1 defects found by the owner | Go gates | Fixes of run 1 wait for checklist 1.1; subscription limits (not read by design) |
-| Router: ladder, price rule, hints, headers, route endpoint, call records, persisted spend, stdin exit | Built; verified live (run 2) | `cargo test -p octo` (302 tests at the last count in the specs) | Low-tier price against a billed call; compaction on a real upstream |
+| Router: ladder, price rule, hints, headers, route endpoint, call records, persisted spend, stdin exit | Built; verified live (run 2) | `cargo test -p octo` | Low-tier price against a billed call; compaction on a real upstream |
 | Harness router integration (I1, I2): hints, one spend number, budget gate, `tier: auto` | Built; verified live (runs 1 and 2) | `e2e-router.sh` | Equal spend after the last call (checklist 1.2); compaction with `ceiling` or `fixed` on a real router |
 | Router decision quality | Verified live (run 1): classifier answered in 49–93 ms | | Bands beyond that run |
 | ACP orchestrator (S2), MCP server, relay | Built; verified live with Claude Code (runs 1 and 2) | `e2e-acp-orchestrator.sh` | Copilot and Grok logged in; each CLI's handling of `mcpServers`, `session/load`, tool titles |
@@ -409,22 +437,29 @@ data. "Owner" is the owner's Linux runs. "status not recorded" where no note say
 | Bridge API token | Built | Go and sidecar tests; e2e scripts | Tauri shell not compiled here; browser `EventSource` with `?token=` |
 | Desktop sidecars: ports, PATH, health, stop order, stdin exit, router sidecar | Built; verified live (run 2: sidecars exit with the app) | `cargo test -p octo-sidecar`; `pnpm test:dev-sh`, incl. `--router --mock` | The Tauri glue compiled in CI only; the installed app on macOS |
 | Installer (`scripts/install.sh`) | Verified live on Linux (run 2) | Prerequisite output with a stub `PATH` (P8b) | macOS |
-| Desktop title bar (decision 54) | Built | Desktop unit tests | macOS: traffic lights, drag, zoom, full screen; Rust not compiled here; fix pending (handover, item 5) |
+| Desktop title bar (decision 54); macOS traffic-light alignment (2026-11-19: `trafficLightPosition` `{24, 22}`, measured on the owner's screenshots) | Built | Desktop unit tests; `apps/desktop/scripts/traffic-lights.mjs` on the dev server (`?demo=1&titlebar=mac`, drawn from the same constants) | **The real macOS window** (traffic lights, drag, zoom, full screen; `OCTO_DEBUG_CHROME=1` draws the guide); macOS 15 and older (lights 20 apart); the Rust is not compiled here |
 | UI: workspace, tabs, files, comments, LSP, usage, palette, demo | Built (up to v6.3 part 1) | Frontend gates; Playwright on demo data; screenshots | Touch, screen readers, forced colours; WebKit |
-| UI: shell pass, settings page, providers, connect screen (decisions 51–60) | Built | Playwright on demo data; 383 UI unit tests (2026-11-12) | A live harness's `/v1/providers`; WebKit |
+| UI: shell pass, settings page, providers, connect screen (decisions 51–60) | Built | Playwright on demo data; UI unit tests | A live harness's `/v1/providers`; WebKit |
 | UI: usability pass (2026-11-12) | Built | Playwright on demo data; unit tests | WebKit; light theme for the new controls |
 | UI: v7 (changes, queue, approvals, forms) | Built (mounted in `cedc10c`) | status not recorded | Live use in a supervised project (checklist 2.9) |
 | UI part 2 (decisions 24, 26–28, 30, 31, 37–40) | Partly built; per decision not recorded | status not recorded | The rest |
 | UI decisions 64–78 | Built in batches 1 to 4 (frame, status bar, settings scopes, review workspace, provider list, skeletons); per decision "As built" notes in the UI spec | Playwright scripts on demo data | WebKit; a live harness |
-| UI decisions 79–94 (widths, no coloured frames, view tabs, tab width, field rows, file opening, usage per model, `/context`, Providers list, component library, review rounds 1 and 2, no boxed shortcuts, Memory redesign) | Built (batch 5 closes part of rounds 1 and 2; which findings remain open: status not recorded) | 599 UI unit tests; `width-stability`, `flicker`, `file-open-stability`, `frame-colours`, `scroll-on-send`, `spacing-audit` on demo data | WebKit and macOS; the open findings |
+| UI decisions 79–94 (widths, no coloured frames, view tabs, tab width, field rows, file opening, usage per model, `/context`, Providers list, component library, review rounds 1 and 2, no boxed shortcuts, Memory redesign) | Built (batch 5 closes part of rounds 1 and 2; which findings remain open: status not recorded) | UI unit tests; `width-stability`, `flicker`, `file-open-stability`, `frame-colours`, `scroll-on-send`, `spacing-audit` on demo data | WebKit and macOS; the open findings |
 | UI: Sessions tab, sidebar session rows, "Open session" from delegation rows (`specs/2026-11-12-project-sessions-design.md`) | Built | Unit tests (`lib/sessions`, reducer); Playwright tour group `sessions` on demo data | A real agent's sessions: resume with `session/load`, messaging a finished agent |
 | Harness project sessions (schema 13) and error catalogue `internal/usererr` (structured `message`, `hint`, `command`, `action`, `details`) | Built | Go gates (catalogue and sweep tests) | Real agents' failures; an older UI against the new bodies |
-| Memory M4 (sessions as exchanges), M5 (notes with descriptions), M6 (a task exists only when a turn did work; `project.sqlite.pre-m6`), schema 14 | Built | Go gates | A real project's migration on the owner's data |
+| Memory M4 (sessions as exchanges), M5 (notes with descriptions), M6 (a task exists only when a turn did work; `project.sqlite.pre-m6`; the schema 14 migration) | Built | Go gates | A real project's migration on the owner's data |
 | Slash commands and `/clear`, `remember`, images, side question on the project's agent, itemised context | Built | Go gates; Playwright on demo data | Real agents (does each accept images; which commands each advertises) |
 | Component library (decision 90) | Primitives built; 49 `octo/no-native-controls` warnings left (`research/2026-11-12-ui-component-audit.md`) | `pnpm lint` (0 errors) | The remaining batches B3–B10 |
-| Entry bundle | 158.75 kB gzip, budget 158.90 | `node scripts/check-bundle-size.mjs` | |
+| Entry bundle | 160.39 kB gzip, budget 161.00 (2026-11-19; the budget has been raised by hand in `scripts/check-bundle-size.mjs` as features landed, the history is in that file's header) | `pnpm --filter @octo/desktop build && node scripts/check-bundle-size.mjs`; CI runs it | A cold start over a slow disk |
 | Browser tab and Design Mode (`browserproxy` + `@octo/ui`, `apps/harness/docs/browser.md`) | Built | `go test -race ./internal/browserproxy/...`, `remoteaccess` rules test, `@octo/agent-client` and `@octo/ui` unit tests, `pnpm lint`, `check-bundle-size.mjs`, Chromium Playwright E2E + `spacing-audit` / `frame-colours` across dark/light + desktop/phone on demo data | Full `apps/harness` `go build` here (proxy 403 on `modernc.org/sqlite@v1.62.0`); live `harness serve` against real external sites / Vite HMR in Tauri/WebKit |
 | Parity backlog | B1–B7, B11–B13 built in batches 1 to 4 (slash commands, `/clear`, images, side question, always-allow, modes, plans, rewind, steer); B8–B10 not built | Go gates; Playwright on demo data | B8–B10; every item against a real agent |
+| UI polish and performance pass, 2026-11-18/19 (decisions 98 and 99 and the "As built" sections of the UI spec from "work-surface polish" on): dock tool tabs share one anatomy (a 40 px bar with no title, one hairline), resizable sidebar (200-480) and file-tree column, compact folders (decision 98: `chain` on `GET /files`, Settings → Editor), "Add to chat" in the editor and tree menus, "Ask first" as the one name of the permission level, Processes say who started a process, instant first opens (`readyLazy`, warm-up), motion tokens, long conversations (send lands at the end, background tabs keep their place, cheaper scroll and drag), changing project without a blink (decision 99, `project-switch.mjs`) | Built | Playwright Chromium on demo data and, for the file tree, the branch chip and the Markdown images, against a real `harness serve` on the mock model; `spacing-audit`, `frame-colours`, `flicker`, `layout-shift`, `project-switch`, `scroll-*`, `file-open-stability`; UI unit tests | WebKit, macOS, the Tauri window, a real agent, a phone by eye; 4x CPU scroll is **not shown to meet its target** (43-45 frames over 50 ms of 60, before 49-51) |
+| Branch chip and picker (decision 100, was a second "98"): `GET /v1/projects/{pid}/branches`, `POST .../branches/switch`, switch only when tracked files are clean and no session works in the checkout, else "Start in a worktree from <branch>"; `POST .../sessions/{sid}/worktree` | Built | Go tests with real temporary repositories; real `harness serve` + Chromium (switch, create, both refusals, move to a worktree) | Windows paths, submodules, a repository with thousands of branches, a real agent working in a worktree; no route applies a worktree's work back to the main checkout |
+| Approval scopes (`allow`, `allow_for_turn`, `allow_all_for_turn`, `allow_always`, `deny`), the simple-command rule (a compound command is never remembered), a group of waiting requests answered at once | Built | Go tests; `e2e-v7.sh`; UI tests | An ACP agent asking for permission in a supervised project (checklist 2.9) |
+| Provider reachability (`not_running` for Ollama and for a loopback base URL; `POST /v1/providers/{id}/recheck`) | Built | Go tests (fake probe, real HTTP probe against a closed port) | A real Ollama |
+| Robustness: unavailable projects (`status: "unavailable"`, `project_unavailable`, `folder_missing`), a lock on the data directory (`data_dir_in_use`), `children.json` clean-up of terminals and runs left by a killed harness, `harness --version`, versions of the harness, router, desktop, UI and shell aligned to 0.2.0 (`@octo/web` and `@octo/agent-client` are still 0.1.0) | Built | Go and Rust tests; the clean-up on Linux | The macOS process clean-up (compiled for macOS, never run there) |
+| Security pass, 2026-11-19: a CSP for the Tauri webview (`tauri.conf.json`), remote Markdown images load only after "Load image", writes into `.git` refused by the file API, hardened `git` (no hooks, no fsmonitor), a remote device may only allow or deny one request at a time (`remote_decision_forbidden`), private file modes (`0700` / `0600`), Cloudflare's signed apt repository in the Linux install line | Built | Go tests (`TestWebBuildCSPIsTheHeader`, the allow-list test), UI and desktop tests (`tauriCsp.test.ts`), the production build in Chromium with the policy as a header: 0 violations, 0 off-machine requests | The CSP in the Tauri runtime and in WebKit; "Load image" against a real remote host; a real tunnel and phone |
+| CI additions (2026-11-18/19): the `e2e` job of `harness.yml` (three e2e scripts and `pnpm test:dev-sh`, with and without `--router --mock`), the web client's test and build in `desktop.yml`, `pnpm test:scripts` (actions pinned to commit SHAs), `check-cycles`, clippy of the shell | Built | The same commands run here | `go test -race` is not in CI (it was too slow on a loaded runner; run it locally before touching concurrency code) |
 | Live checklist 4 (`docs/superpowers/LIVE-CHECKLIST.md`) | Written; the owner's run is pending | | Every item |
 | Bots | Draft; not built | | Owner questions 1–2 |
 | Subscription routing through the router (S3b) | Not built; not recommended | | Owner decision |
@@ -442,7 +477,7 @@ written in the file, shortened.
 | --- | --- | --- |
 | `2026-11-09-desktop-ui-design.md` | Tauri desktop shell and shared UI, future web host | Approved for Phase 1; built |
 | `2026-11-10-project-harness-design.md` | Projects, orchestrator, sub-agents, bridge API contract | Approved; built |
-| `2026-11-10-project-harness-ui.md` | UI design, decisions 1–94, tokens, workspace | No status line; "As built" sections up to batch 4; decisions 79–94 follow the numbering of the file (85 sits after 89). Batch 5 and the sessions merge: notes in the commit, spec "As built" not yet extended — status not recorded |
+| `2026-11-10-project-harness-ui.md` | UI design, decisions 1–100, tokens, workspace | No status line; "As built" sections up to the performance pass of 2026-11-19. Decisions 79–94 follow the numbering of the file (85 sits after 89). Numbering fixed 2026-11-19: 98 compact folders, 99 changing project without a blink, 100 the branch picker (it and the compact folders were both "98"). Code comments about the branch picker still say "decision 98" |
 | `2026-11-10-code-pane-design.md` | Own app with a built-in Monaco code pane, file API | Approved; built |
 | `2026-11-10-workspace-plugins-acp-design.md` | Workspace tabs, code comments, plugins (LSP), ACP sub-agents | Approved; built |
 | `2026-11-10-usage-design.md` | Tokens, cost and limits (Usage panel) | Phase A approved and built; subscriptions option B1; open: real ACP traffic, default prices |
@@ -457,7 +492,7 @@ written in the file, shortened.
 | `2026-11-11-bots-design.md` | Standing autonomous agents with permissions | Draft for the owner; not built |
 | `2026-11-12-parity-backlog.md` | Features to add after the OpenCode and Cursor comparison (B1–B13) | B1–B7 and B11–B13 built; B8–B10 not built |
 | `2026-11-12-project-sessions-design.md` | Main sessions that can be continued, agent sessions made accessible, the Sessions tab | Harness (schema 13) and UI built; not verified with a real agent |
-| `2026-11-14-parallel-sessions-design.md` | Parallel sessions in a project: every main session addressable and running at once, worktrees, coordination tools between sessions, memory modes, the sidebar tree and its three views | Phases 1 (harness) and 2 (client and UI) built; phases 3–5 (worktrees, coordination, memory modes) not built |
+| `2026-11-14-parallel-sessions-design.md` | Parallel sessions in a project: every main session addressable and running at once, worktrees, coordination tools between sessions, memory modes, the sidebar tree and its three views | Phases 1 (harness) and 2 (client and UI) built; of phase 3 only "move a session into a new worktree" and the branch picker are built (no apply-back); coordination tools and memory modes (phases 4–5) not built |
 | `2026-11-14-remote-access-mobile-design.md` | Remote access for a phone: Cloudflare quick tunnel run by the harness, second listener with an allow-list, pairing and device tokens, long-poll events, the `apps/web` client, Settings → Remote access | Phase 1 built and verified with a fake `cloudflared`; a real tunnel, phone and WebKit not verified |
 | `2026-11-15-dynamic-forms-mentions-design.md` | Forms built from a JSON schema (one renderer; agent tool, tool servers, a block inside a reply), one mention system in the composer and in messages (files, projects, sessions, agents, notes; Markdown in a request), and requests to another project's agent (`ask_project`, `/ask`) | Draft; not built |
 
@@ -490,11 +525,13 @@ written in the file, shortened.
 | Area | Gate (from the repo root unless stated) |
 | --- | --- |
 | Router | `cargo fmt --check`, `cargo clippy -p octo --all-targets -- -D warnings`, `cargo test -p octo` |
-| Harness | `cd apps/harness && gofmt -l . && go vet ./... && go test -race ./...` (CI runs `go vet`, `go test`, `go build`) |
+| Harness | `cd apps/harness && gofmt -l . && go vet ./... && go test ./...` (CI runs `gofmt`, `go vet`, `go test`, `go build`); `go test -race -timeout 30m ./...` locally before touching concurrency code, not in CI |
 | agent-client | `pnpm --filter @octo/agent-client lint`, `... test`, `... format:check` |
 | ui | `pnpm --filter @octo/ui lint`, `... test`, `... format:check`; `node packages/ui/scripts/spacing-audit.mjs --url http://localhost:1420` against a dev server must print `total=0` |
 | desktop | `pnpm --filter @octo/desktop lint`, `... test`, `... build`; `node scripts/check-bundle-size.mjs` after the build |
+| web | `pnpm --filter @octo/web test`, `... build` (CI runs both) |
 | whole frontend | `pnpm lint` (tsc, eslint, `scripts/check-cycles.mjs`), `pnpm format:check`, `pnpm test:scripts` (also `scripts/workflows-pinned.test.mjs`: every action in `.github/workflows` is pinned to a commit SHA with its tag in a comment; `dtolnay/rust-toolchain` then names its `toolchain` explicitly) |
+| Browser scripts (not in CI; need a dev server and Playwright) | `node packages/ui/scripts/<name>.mjs --url http://localhost:1420` for `spacing-audit`, `flicker`, `layout-shift`, `project-switch` (changing project), `scroll-on-send`, `file-open-stability`, `frame-colours`, ...; `node apps/desktop/scripts/traffic-lights.mjs` (the macOS title bar geometry, on `?demo=1&titlebar=mac`) |
 | Shell | `cd apps/desktop/src-tauri && cargo test -p octo-sidecar`; `cargo check` needs the sidecar binaries and WebKitGTK |
 | End to end (`e2e` job of harness.yml) | `bash apps/harness/scripts/e2e-acp-orchestrator.sh`, `e2e-router.sh` (needs `cargo build -p octo` first), `e2e-v7.sh`; `pnpm test:dev-sh` |
 | Live (needs accounts) | `bash apps/harness/scripts/test-subscriptions.sh [agent ...]` (or `all`) |
@@ -510,12 +547,11 @@ Items fixed since 2026-11-11 were removed (the v7 header, the missing live check
 1. `specs/2026-11-11-orchestrator-memory-design.md`, "As built — M1", says "M2 and M3 are not built". The sections "As
    built — M2" and "As built — M3" below it say they are, and the code has both. The M1 sentence is stale.
 2. `specs/2026-11-11-packaging-design.md`, "As built — R1", says `projectstore.SchemaVersion` is **3** "now". The code has
-   `SchemaVersion = 14` in `apps/harness/internal/projectstore/migrate.go`.
+   `SchemaVersion = 15` in `apps/harness/internal/projectstore/migrate.go`; the spec's "now" is stale.
 3. `specs/2026-11-11-router-harness-integration.md`, section I2, says the route call times out after 300 ms. The code
    (`DefaultRouteTimeout` in `apps/harness/internal/config/config.go`) and the spec's own "As built" note say 2500 ms.
 4. `apps/harness/README.md` says nobody has run Copilot or Grok, nor Codex. `apps/harness/scripts/test-subscriptions.sh`
    says copilot, grok and codex were run by a person. The owner's run 2 records logged-out Copilot and Grok failures and no
    logged-in run; no record of a Codex run exists. The status table above is the current statement.
-5. (Fixed 2026-11-12: "Main flows" and "Where to look" no longer call M2, approval cards, inline completion or the first-run
-   screen unbuilt.) `HARNESS_DEFAULT_ACCESS` still defaults to `full` in
-   `apps/harness/cmd/harness/serve.go`.
+5. (Fixed 2026-11-19: this file and the handover said `HARNESS_DEFAULT_ACCESS` defaults to `full`; `v7Env` in
+   `apps/harness/cmd/harness/serve.go` defaults to `supervised`, as `apps/harness/docs/v7.md` says.)

@@ -4782,7 +4782,9 @@ written with `PUT …/files/content` into `ecommerce` split the row in place wit
 file-system watcher, so no `file.changed` arrives and the tree (any tree, compact or not) shows it only after the folder is listed
 again; a chain re-forming after a delete (unit-tested only: no delete route); WebKit, the Tauri shell, the phone layout.
 
-## Decision 98 — the composer's branch chip shows the real branch and picks another (2026-11-19)
+## Decision 100 — the composer's branch chip shows the real branch and picks another (2026-11-19)
+
+_Numbering: this decision was written as a second "98" (compact folders, above, keep 98) and the project-switch fix is 99, so it is 100 since 2026-11-19. Comments in the code (the branch picker and chip in `packages/ui`, the harness's `internal/project/branches.go`, `internal/usererr/catalogue_branches.go`, `internal/bridge/workspaces.go`, the client's branch methods) still say "decision 98"._
 
 Owner (screenshot of the new-session screen, a chip that always read "Main checkout" and offered only "Move to worktree…"):
 "I should be able to select branch in input." Aim: Cursor's composer, where the chip is the branch and opens a branch list.
@@ -4806,7 +4808,7 @@ d. **Parallel work is one step.** An "In a new worktree" section lists the same 
    worktree…" (the dialog with branch name and carry-over) stays in a "Session" section.
 e. **Several repositories:** one section per repository titled "name · current branch"; a switch acts on that repository.
 
-### As built — decision 98 (2026-11-19)
+### As built — decision 100 (2026-11-19)
 
 - `lib/branches.ts` (tested: label, tooltip, sections, create row, paging merge, branch-name rules); `chat/useBranchHead.ts`
   (the chip's data, a per-project cache so a remount shows the branch at once); `chat/BranchPicker.tsx` (lazy chunk);
