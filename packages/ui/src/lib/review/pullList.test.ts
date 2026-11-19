@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { PullRequestList, PullRequestRow } from "@octo/agent-client";
-import { mergePages, pullRowLine } from "./pullList";
+import { closesSearch, mergePages, PULL_FILTERS, pullRowLine } from "./pullList";
 
 function row(extra: Partial<PullRequestRow> = {}): PullRequestRow {
   return {
@@ -69,4 +69,18 @@ test("mergePages deduplicates rows and preserves latest paging metadata", () => 
   assert.equal(merged.next_page, null);
   assert.equal(merged.page, 2);
   assert.equal(merged.truncated, true);
+});
+
+test("the picker's four chips, the review-requested one named 'To review'", () => {
+  assert.deepEqual(
+    PULL_FILTERS.map((f) => f.label),
+    ["All", "To review", "Mine", "Drafts"],
+  );
+});
+
+test("closesSearch: Esc closes the opened narrow search only when it is empty", () => {
+  assert.equal(closesSearch("Escape", "", true), true);
+  assert.equal(closesSearch("Escape", "retry", true), false);
+  assert.equal(closesSearch("Escape", "", false), false);
+  assert.equal(closesSearch("Enter", "", true), false);
 });

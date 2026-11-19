@@ -49,6 +49,9 @@ export function BrowserToolbar(props: {
     if (props.onSubmitUrl(shownUrl)) {
       setDraftUrl(null);
       setInvalid(false);
+      // Navigation has started: the field lets go of focus, so its ring does not stay on a finished entry.
+      const field = document.activeElement;
+      if (field instanceof HTMLElement && e.currentTarget.contains(field)) field.blur();
     } else {
       setInvalid(true);
     }

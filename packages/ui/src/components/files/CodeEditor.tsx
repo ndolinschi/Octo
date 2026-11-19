@@ -4,6 +4,7 @@ import type { FilePosition } from "../../lib/files";
 import type { OpenFile } from "../../state/code";
 import type { Theme } from "../../lib/theme";
 import { useLatest } from "../../lib/hooks";
+import { monoFont } from "../../lib/monoFont";
 import { browserIdle, saveData } from "../../lib/warmSchedule";
 import { EditorContextMenu } from "../shared/EditorContextMenu";
 import { EditorSkeleton } from "./EditorSkeleton";
@@ -73,9 +74,6 @@ function reveal(editor: Monaco.editor.IStandaloneCodeEditor, at: FilePosition | 
   });
 }
 
-/** Same stack as the `--font-mono` token. */
-const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
-
 /**
  * Thin Monaco wrapper: one editor instance per file view (it outlives every file the view shows; decision 85), swapping
  * the file's model in (kept in `buffers` so edits outlive this component); view state is saved on a swap and on unmount and restored.
@@ -135,7 +133,7 @@ export const CodeEditor = memo(function CodeEditor(props: {
       model: null,
       theme: mod.themeName(props.theme),
       automaticLayout: true,
-      fontFamily: MONO,
+      fontFamily: monoFont(),
       fontSize: 13,
       lineHeight: 20,
       minimap: { enabled: false },

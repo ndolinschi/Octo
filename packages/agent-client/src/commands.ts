@@ -90,6 +90,8 @@ export type WorkerProcess = {
   started_at: string;
   detail?: string;
   output?: string;
+  /** Kind `agent`: the project session this worker serves (who started it). */
+  session_id?: string;
 };
 
 /** A run tied to a review (`Review.meta.runs`, newest first). */

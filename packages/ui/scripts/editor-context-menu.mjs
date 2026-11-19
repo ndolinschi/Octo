@@ -89,7 +89,40 @@ if (MAC) {
   await page.waitForTimeout(800);
   const ctrl = await menus();
   notes.push(`Ctrl+click: ${ctrl} menu(s)`);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
 }
+
+// G4: "Add to chat" puts the caret's line (here: line 2) into the conversation's composer as a mention, and the caret goes there.
+const composerText = () => page.evaluate(() => /** @type {HTMLTextAreaElement | null} */ (document.getElementById("octo-composer"))?.value ?? null);
+const addToChat = async () => {
+  const item = page.getByRole("menuitem", { name: "Add to chat" }).filter({ visible: true }).first();
+  if (!(await item.count())) return false;
+  await item.click();
+  await page.waitForTimeout(800);
+  return true;
+};
+await page.mouse.click(at.x, at.y);
+await page.mouse.click(at.x, at.y, { button: "right" });
+await page.waitForTimeout(800);
+if (!(await addToChat())) problems.push('editor menu: no "Add to chat"');
+else {
+  const text = await composerText();
+  const focused = await page.evaluate(() => document.activeElement?.id ?? "");
+  if (!text || !/@src\/auth\/refresh\.ts:2 $/.test(text)) problems.push(`editor "Add to chat": composer holds ${JSON.stringify(text)} (want "@src/auth/refresh.ts:2 ")`);
+  if (focused !== "octo-composer") problems.push(`editor "Add to chat": focus on #${focused}, not the composer`);
+}
+// The same for a file in the tree's own menu (the file, no range).
+const fileRow = page.locator('[role="tree"] [role="treeitem"][data-path="atlas-api/src/auth/tokens.ts"]').filter({ visible: true }).first();
+if (await fileRow.count()) {
+  await fileRow.click({ button: "right" });
+  await page.waitForTimeout(800);
+  if (!(await addToChat())) problems.push('file tree menu: no "Add to chat"');
+  else {
+    const text = await composerText();
+    if (!text || !/@src\/auth\/tokens\.ts $/.test(text)) problems.push(`tree "Add to chat": composer holds ${JSON.stringify(text)}`);
+  }
+} else notes.push("tree menu: the tree was not on screen after the composer took focus");
 
 await browser.close();
 problems.push(...errors.map((e) => `page error: ${e}`));

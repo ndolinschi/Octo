@@ -91,6 +91,25 @@ export function processStatusText(item: ProcessItem): string {
   }
 }
 
+/**
+ * G3 (2026-11-18): who started a process, for its second line. Runs and terminals are only ever the person's (no agent can
+ * start one: apps/harness/docs/commands.md), a language server is the editor's, an agent worker its session's (by title, when
+ * the session is known). Null when nothing can be said.
+ */
+export function processStarter(item: ProcessItem, sessionTitle: (id: string) => string | undefined): string | null {
+  if (item.kind === "command") return item.run.review_id ? "by you, from a review" : "by you";
+  switch (item.worker.kind) {
+    case "terminal":
+      return "by you";
+    case "lsp":
+      return "by the editor";
+    case "agent": {
+      const title = item.worker.session_id ? sessionTitle(item.worker.session_id)?.trim() : undefined;
+      return title ? `by ${title}` : null;
+    }
+  }
+}
+
 export function canRestartProcess(_item: ProcessItem): boolean {
   return true;
 }

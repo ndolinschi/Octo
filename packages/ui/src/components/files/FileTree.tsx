@@ -12,6 +12,10 @@ import { fileIcon } from "../primitives/fileIcons";
 import { Highlight } from "../primitives/Highlight";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { Spinner } from "../primitives/Status";
+import { Menu, type MenuItem } from "../primitives/Menu";
+import { Presence } from "../primitives/Presence";
+import { chatMention } from "../../lib/chatMention";
+import { addToChat, canAddToChat } from "../../state/chatInsert";
 
 type NodeRow = { id: string; kind: "dir" | "file"; folder: string; path: string; name: string; level: number; expanded: boolean; title: string };
 type StateRow = { id: string; kind: "loading" | "error"; folder: string; path: string; level: number; error: string | null };
@@ -78,9 +82,13 @@ function updateRowTip(row: HTMLDivElement) {
   }
 }
 
-/** Nesting depth as a spacer (a width, not padding: indents are structure, not spacing). */
+/**
+ * Nesting depth as a spacer (a width, not padding: indents are structure, not spacing). G2 (2026-11-18): it carries the
+ * indent guides, a 1px `line` under each ancestor's glyph, drawn only while the tree is hovered or focused (styles.css,
+ * `.octo-tree-indent`; a background, so nothing moves).
+ */
 function Indent({ px }: { px: number }) {
-  return px > 0 ? <span aria-hidden className="shrink-0" style={{ width: px }} /> : null;
+  return px > 0 ? <span aria-hidden className="octo-tree-indent shrink-0 self-stretch" style={{ width: px }} /> : null;
 }
 
 const TreeNodeRow = memo(function TreeNodeRow({
@@ -94,6 +102,7 @@ const TreeNodeRow = memo(function TreeNodeRow({
   onFocusRow,
   onKeyDownRow,
   onActivateRow,
+  onMenuRow,
 }: {
   row: NodeRow;
   selected: boolean;
@@ -105,6 +114,7 @@ const TreeNodeRow = memo(function TreeNodeRow({
   onFocusRow: (id: string) => void;
   onKeyDownRow: (e: KeyboardEvent, row: Row) => void;
   onActivateRow: (row: Row) => void;
+  onMenuRow: (row: NodeRow, at: { x: number; y: number }) => void;
 }) {
   const indent = indentOf(row.level);
   const isRoot = row.kind === "dir" && row.path === "";
@@ -127,8 +137,13 @@ const TreeNodeRow = memo(function TreeNodeRow({
       }}
       onKeyDown={(e) => onKeyDownRow(e, row)}
       onClick={() => onActivateRow(row)}
+      onContextMenu={(e) => {
+        if (row.kind !== "file") return;
+        e.preventDefault();
+        onMenuRow(row, { x: e.clientX, y: e.clientY });
+      }}
       className={cn(
-        "flex h-row shrink-0 items-center rounded-sm px-1 text-sm press-row focus-inset touch:h-ctl-lg",
+        "flex h-ctl-xs shrink-0 items-center rounded-sm px-1 text-sm press-row focus-inset touch:h-ctl-lg",
         selected ? "bg-active" : "hover:bg-hover",
         isRoot && !isFirstRoot && "mt-2",
       )}
@@ -160,7 +175,7 @@ export type FileTreeHandle = { focusFirst(): void };
 /**
  * ARIA tree of the project's folders; directories load when expanded. With `filter`, only files whose
  * folder-relative path contains it (case-insensitive) are shown, with their ancestors expanded; the
- * caller loads the folders first (`indexFiles`). Rows: 28px (40 under touch), radius 6, 12px per level,
+ * caller loads the folders first (`indexFiles`). Rows: 24px (G2; 40 under touch, 44 on a phone), radius 6, 12px per level,
  * [24px glyph box: chevron for folders, type glyph for files] 4 [name] … — one anatomy for folders and files, so siblings
  * share one label edge. A root folder is a section head on the same edges: a meta caption (12px, `fg-3`, medium) with its chevron, 8px above every root but the first.
  */
@@ -197,6 +212,8 @@ export const FileTree = forwardRef<
   const slow = useDelayedLoading(allRows.some((r) => r.kind === "loading"));
   const rows = useMemo(() => (slow ? allRows : allRows.filter((r) => r.kind !== "loading")), [allRows, slow]);
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ row: NodeRow; x: number; y: number } | null>(null);
+  const openMenu = useCallback((row: NodeRow, at: { x: number; y: number }) => setMenu({ row, ...at }), []);
   const refs = useRef(new Map<string, HTMLDivElement>());
   const scrollCtrl = useRef(new TreeScrollController());
 
@@ -302,7 +319,7 @@ export const FileTree = forwardRef<
               onKeyDown={(e) => onKeyDown(e, row)}
               aria-disabled={row.kind === "loading" || undefined}
               aria-busy={row.kind === "loading" || undefined}
-              className="flex h-row shrink-0 items-center gap-1 rounded-sm px-1 text-xs text-fg-3 focus-inset touch:h-ctl-lg"
+              className="flex h-ctl-xs shrink-0 items-center gap-1 rounded-sm px-1 text-xs text-fg-3 focus-inset touch:h-ctl-lg"
             >
               <Indent px={indent} />
               <span className="grid size-6 shrink-0 place-items-center">{row.kind === "loading" && <Spinner size={10} />}</span>
@@ -334,10 +351,22 @@ export const FileTree = forwardRef<
             onFocusRow={setFocusId}
             onKeyDownRow={onKeyDown}
             onActivateRow={activate}
+            onMenuRow={openMenu}
           />
         );
       })}
       {query && rows.length === 0 && <p className="flex h-row items-center px-2 text-xs text-fg-3">No files match</p>}
+      <Presence show={menu !== null}>
+        {menu && <Menu label={menu.row.name} x={menu.x} y={menu.y} items={fileMenu(menu.row)} onClose={() => setMenu(null)} />}
+      </Presence>
     </div>
   );
 });
+
+/** G4: a file's right-click menu: Add to chat (the file as a mention in the composer), when a composer is there; Copy path. */
+function fileMenu(row: NodeRow): MenuItem[] {
+  const items: MenuItem[] = [];
+  if (canAddToChat()) items.push({ id: "chat", label: "Add to chat", run: () => void addToChat(chatMention(row.path)) });
+  items.push({ id: "path", label: "Copy path", run: () => void navigator.clipboard.writeText(row.path) });
+  return items;
+}

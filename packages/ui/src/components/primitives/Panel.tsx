@@ -54,15 +54,16 @@ export function Panel(props: {
       {/* The bar's hairline runs the tab's full width (like the Files and Browser bars), also when the header is capped. */}
       <div data-panel-bar className="shrink-0 shadow-[inset_0_-1px_0_var(--octo-line)]">
         <header data-panel-header className={cn("flex h-ctl-lg shrink-0 items-center gap-2 px-pane", measure)}>
-          <h2 data-panel-title className={cn("flex min-w-0 items-baseline gap-2 px-2 text-heading text-fg", props.lead === undefined ? "flex-1" : "shrink-0")}>
-            <span className="truncate">{props.title}</span>
-            {props.meta !== undefined && <span className="shrink-0 text-xs font-normal text-fg-3 tabular-nums">{props.meta}</span>}
-          </h2>
+          {/* G1 (2026-11-18): a dock tab's label already names the panel, so the bar shows no title (the section keeps it as
+              its name); the lead (the purpose button, the review's repository menu) starts at the 8px inset, as Files and Browser. */}
           {props.lead !== undefined && (
-            <div data-panel-lead className="flex min-w-0 flex-1 items-center gap-1">
+            <div data-panel-lead className="flex min-w-0 items-center gap-1">
               {props.lead}
             </div>
           )}
+          <span className="flex min-w-0 flex-1 items-baseline">
+            {props.meta !== undefined && <span className="shrink-0 px-1 text-xs text-fg-3 tabular-nums">{props.meta}</span>}
+          </span>
           {props.actions !== undefined && (
             <div data-panel-actions className="flex shrink-0 items-center gap-1">
               {props.actions}

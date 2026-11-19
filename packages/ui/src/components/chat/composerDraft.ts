@@ -1,5 +1,6 @@
 import { slot, type TabMemory } from "../../state/workspace/tabMemory";
 import type { TabId } from "../../state/workspace/layout";
+import { appendMention } from "../../lib/chatMention";
 import { DraftBus } from "./draftBus";
 
 /* The composers' shared drafts, apart from `useOrchestratorComposer` so the agent header and the delegation cards can fill
@@ -25,6 +26,11 @@ function writeDraft(bus: DraftBus, text: string): void {
 /** Puts `text` into the conversation's composer (an unsent draft: the person reads it and sends it); round 3: words, B7. */
 export function prefillComposer(memory: TabMemory, tab: TabId, text: string): void {
   writeDraft(draftOf(memory, tab), text);
+}
+
+/** G4: "Add to chat" puts a file mention at the end of the draft (`lib/chatMention`), every composer on `bus` hears it. */
+export function appendToDraft(bus: DraftBus, mention: string): void {
+  writeDraft(bus, appendMention(bus.value, mention));
 }
 
 /** Clears `bus` directly without retaining a listener (used when carrying a draft away to another project). */

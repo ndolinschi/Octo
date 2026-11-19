@@ -49,7 +49,7 @@ export function PrivacySection() {
   const [diag, retry] = useDiagnostics();
   return (
     <>
-      <SettingsGroup label="Feature flags" footer="Process-wide switches stored in harness.env and applied live.">
+      <SettingsGroup label="Memory" footer="Applies to every project right away.">
         <FeatureFlagRow />
       </SettingsGroup>
       <SettingsGroup label="Report a problem">

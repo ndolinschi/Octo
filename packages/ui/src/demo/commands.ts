@@ -190,7 +190,7 @@ export function withDemoCommands(base: Bridge, records: Map<string, ProjectRecor
         output: `[tsserver] Loaded ${cwd}/tsconfig.json (42 files)\n`,
       },
       {
-        id: "acp:s_atlas",
+        id: `acp:ses_${pid}_1`,
         kind: "agent",
         name: "claude-code",
         command: "claude --acp --stdio",
@@ -200,6 +200,8 @@ export function withDemoCommands(base: Bridge, records: Map<string, ProjectRecor
         started_at: new Date(now - 29 * 60_000).toISOString(),
         detail: "claude-sonnet-4-5",
         output: "[acp] Session ready on stdio transport\n",
+        // G3: the project's default session (demo/sessions.ts) is the one this worker serves.
+        session_id: `ses_${pid}_1`,
       },
     ]);
   };

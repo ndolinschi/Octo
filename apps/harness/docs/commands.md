@@ -45,8 +45,12 @@ Run            { id, name, command, cwd (absolute), review_id?, pid? (OS PID whi
                  status: "running"|"finished"|"stopped"|"error", exit_code: number|null,
                  started_at, finished_at?, duration_ms, output_bytes, truncated, tail? }
 WorkerProcess  { id, kind: "lsp"|"agent"|"terminal", name, command, cwd?, pid, status: "running"|"busy"|"idle",
-                 started_at, detail?, output? }
+                 started_at, detail?, output?, session_id? }
 ```
+
+`session_id` (kind `agent` only, 2026-11-18): the project session the ACP worker serves, so the Processes tab can say who
+started it; runs and terminals are always the user's, a language server is the editor's. Test:
+`internal/bridge/processes_test.go`.
 
 `exit_code` is null while running and -1 when a signal ended the process. `pid` is populated only while `status == "running"` and cleared once finished. `finished`: the process ended by itself (any exit code); `stopped`: the user's Stop or Kill; `error`: it could not run, or the harness stopped while it ran (settled at start by `Recover`, or when read). The last 50 finished runs are kept per project.
 

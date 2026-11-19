@@ -18,7 +18,7 @@ import { SkeletonText } from "../primitives/SkeletonText";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { Prose } from "../shared/Prose";
 import { ExchangeRow } from "./ExchangeRow";
-import { DETAIL_MAX, MemoryError, PaneEmpty, ROW_TAIL, RowLine } from "./parts";
+import { DETAIL_MAX, MemoryError, PaneEmpty, RowLine } from "./parts";
 import { useSession, useSessions } from "./useMemory";
 
 /**
@@ -77,7 +77,6 @@ export function SessionsView(props: {
                   description={<RowLine {...(r.current ? { end: "current" } : {})}>{r.description}</RowLine>}
                   tip={r.title}
                   onClick={() => select(s.id)}
-                  trailing={ROW_TAIL}
                 />
               </li>
             );

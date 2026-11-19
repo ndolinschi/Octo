@@ -18,8 +18,8 @@ import { PR_TEXT } from "./ExternalText";
 export type ThreadActions = { reply(thread: ReviewThread, body: string): Promise<string | null>; deleteReply(c: ReviewComment): void; readOnly: boolean };
 
 /**
- * An existing review thread (decision 78): author, time and the text of each comment as Markdown marked as other
- * people's text; replies fold after two; a resolved thread is one line until opened; "Reply" makes a pending comment the
+ * An existing review thread (decision 78): author, time and the text of each comment as Markdown (images as words,
+ * links only to the web: `PR_TEXT`; the header no longer says "Others' text, shown as text", which read as noise); replies fold after two; a resolved thread is one line until opened; "Reply" makes a pending comment the
  * submit sheet counts. Used inline in the diff and in the list of threads that have no line.
  */
 export function ThreadCard(props: {
@@ -92,7 +92,7 @@ export function ThreadCard(props: {
         )}
         <span className="shrink-0">{t.outdated ? "Outdated: the code changed since this comment was written" : t.resolved ? "Resolved" : "Unresolved"}</span>
         {t.side === "old" && !t.outdated && <span className="shrink-0">removed side</span>}
-        <span className="min-w-0 flex-1 truncate text-right">Others' text, shown as text</span>
+        <span aria-hidden className="min-w-0 flex-1" />
         {t.resolved && fold && <IconButton icon={ChevronDown} label="Collapse the thread" onClick={() => setOpen(false)} />}
       </header>
       {shown.map((c, i) => (

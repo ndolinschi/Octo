@@ -10,8 +10,9 @@ import { MiddleText } from "./MiddleText";
  *
  * Anatomy, left to right: `control` (a checkbox or other real control, outside the row's button), `leading` (a 16px slot:
  * glyph, state ring), the text (`title`, and under it a dim `description`), `meta` (right-aligned dim text: a time, a count,
- * a shortcut), `trailing` (row actions: quiet `IconButton`s that appear on hover or focus-within and on touch; they always
- * occupy their width, so the row never reflows).
+ * a shortcut), `trailing` (row actions: quiet `IconButton`s that appear on hover or focus-within and on touch). Hidden
+ * actions take no width: they overlay the row's end on the row's fill (the list's surface, `--row-surface`, under the row's
+ * tint) and the meta hides while they show, so a meta column lines up across rows; on touch they always show, in the flow.
  *
  * - `size`: sm 28 (default), md 32, lg 40. A `description` makes the row two lines (at least 40px). Touch: at least 40px.
  * - Interactive when it has `onClick` (a button) or `href` (a link); otherwise a static row. Roving focus: the main element
@@ -66,6 +67,8 @@ export function ListRow(props: {
   const ids = useId();
   // 6c: a meta that draws nothing takes no room (the title then runs to the row's edge).
   const hasMeta = !emptyNode(props.meta);
+  // Work-surface polish item 5: actions that show on hover or focus overlay the row's end instead of reserving their width.
+  const overlay = props.trailing !== undefined && !props.trailingShown;
   const metaText = hasMeta ? nodeText(props.meta) : "";
   // 6a: the name is the title, then the leading slot's label (a state glyph's "Failed"), the description, the meta ("50m"),
   // in reading order, so a screen reader hears the state and the time the eye sees. The leading slot is no longer hidden
@@ -111,6 +114,7 @@ export function ListRow(props: {
           {hasMeta && (
             <span
               aria-hidden={metaText !== "" || undefined}
+              data-row-tail
               className={cn("ml-auto max-w-[40%] shrink-0 truncate pl-1 text-xs", selected || active ? "text-fg-2" : "text-fg-3")}
             >
               {props.meta}
@@ -136,6 +140,8 @@ export function ListRow(props: {
       className={cn(
         "group flex min-w-0 items-center rounded-sm",
         rowHeight(props.size ?? "sm", twoLine),
+        // styles.css, "row actions": the overlay, its fill and the tails (meta, `data-row-tail`) that give way to it.
+        overlay && "octo-row-host",
         selected || active
           ? // 6d: forced colours drop the fill; the selection keeps a system-coloured edge there.
             "bg-active text-fg forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight] forced-colors:outline-solid"
@@ -171,14 +177,7 @@ export function ListRow(props: {
         </div>
       )}
       {props.trailing !== undefined && (
-        <span
-          className={cn(
-            "flex shrink-0 items-center gap-0.5 pr-1",
-            !props.trailingShown && "opacity-0 transition-opacity duration-fast group-focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100",
-          )}
-        >
-          {props.trailing}
-        </span>
+        <span className={cn("flex shrink-0 items-center gap-0.5 pr-1", !props.trailingShown && "octo-row-actions")}>{props.trailing}</span>
       )}
     </div>
   );

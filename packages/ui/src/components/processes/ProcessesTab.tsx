@@ -1,6 +1,7 @@
 import type { AdhocCommandInput, WorkerProcess } from "@octo/agent-client";
 import { Check, OctagonX, Plus, RefreshCw, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "../../lib/cn";
 import { durationText } from "../../lib/commands/format";
 import { runsReducer } from "../../lib/commands/runs";
 import { errorMessage } from "../../lib/format";
@@ -19,6 +20,7 @@ import {
   processGlyph,
   processName,
   processPid,
+  processStarter,
   processStatusText,
   processTone,
   workerKey,
@@ -84,6 +86,8 @@ export default function ProcessesTab() {
   }, [bridge, projectId]);
 
   const agentCount = projectState.agentOrder.length;
+  const sessionList = projectState.sessions.list;
+  const sessionTitle = (id: string) => sessionList.find((s) => s.id === id)?.title;
   useEffect(() => {
     void refreshWorkers();
   }, [refreshWorkers, agentCount]);
@@ -265,6 +269,7 @@ export default function ProcessesTab() {
                     <li key={item.key}>
                       <ProcessRow
                         item={item}
+                        starter={processStarter(item, sessionTitle)}
                         selected={current?.key === item.key}
                         canManage={canManage}
                         busy={busy === item.key}
@@ -297,6 +302,7 @@ export default function ProcessesTab() {
 
 function ProcessRow(props: {
   item: ProcessItem;
+  starter: string | null;
   selected: boolean;
   canManage: boolean;
   busy: boolean;
@@ -351,21 +357,26 @@ function ProcessRow(props: {
       description={
         <span className="flex min-w-0 items-baseline gap-2">
           <span className="shrink-0">{processStatusText(item)}</span>
+          {/* G3: who started it, after the state ("Running · by you · pnpm dev"); a long session title gives way. */}
+          {props.starter && (
+            <>
+              <span>·</span>
+              <span className="max-w-1/2 min-w-0 shrink truncate">{props.starter}</span>
+            </>
+          )}
           <span>·</span>
           <span className="min-w-0 flex-1 truncate font-mono">{cmd}</span>
         </span>
       }
       onClick={props.onSelect}
+      // Work-surface polish item 5: hidden actions overlay the row's end (ListRow), so the PID / duration column ends on one
+      // edge; on a phone they show in a slot as wide as the widest set (two lg buttons), so the column lines up there too.
       trailing={
-        canStop || canKill || (menuItems.length > 0 && !busy) ? (
-          <span className="flex shrink-0 items-center gap-0.5">
-            {canStop && <IconButton icon={Square} size={actionSize} label={`Stop ${name}`} onClick={props.onStop} />}
-            {(!phone || !canStop) && canKill && <IconButton icon={OctagonX} size={actionSize} label={`Kill ${name}`} onClick={props.onKill} />}
-            {menuItems.length > 0 && !busy && <IconMenu label={`Actions for ${name}`} size={actionSize} items={menuItems} />}
-          </span>
-        ) : (
-          <span aria-hidden className={phone ? "size-ctl-lg shrink-0" : "size-6 shrink-0"} />
-        )
+        <span className={cn("flex shrink-0 items-center justify-end gap-0.5", phone && "w-21")}>
+          {canStop && <IconButton icon={Square} size={actionSize} label={`Stop ${name}`} onClick={props.onStop} />}
+          {(!phone || !canStop) && canKill && <IconButton icon={OctagonX} size={actionSize} label={`Kill ${name}`} onClick={props.onKill} />}
+          {menuItems.length > 0 && !busy && <IconMenu label={`Actions for ${name}`} size={actionSize} items={menuItems} />}
+        </span>
       }
     />
   );

@@ -1,5 +1,7 @@
 import type * as Monaco from "monaco-editor";
 import { useEffect, useState } from "react";
+import { chatMention, selectedLines } from "../../lib/chatMention";
+import { addToChat, canAddToChat } from "../../state/chatInsert";
 import { Menu, type MenuItem } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 
@@ -12,7 +14,8 @@ type At = { x: number; y: number };
 /**
  * The code editor's right-click menu, drawn by the app's own `Menu` instead of Monaco's (which lives in a shadow root the
  * theme cannot reach, paints no surface and carries a second command palette). The editor is created with `contextmenu: false`;
- * this listens for its context-menu event, offers Add comment, Go to definition and Find references where they apply, then
+ * this listens for its context-menu event, offers Add to chat (G4: the selected lines as a mention in the composer), Add
+ * comment, Go to definition and Find references where they apply, then
  * Cut / Copy / Paste (Cut and Paste only when editable) and Copy path. `path` is the file's project-relative path, when known.
  */
 export function EditorContextMenu({ editor, path }: { editor: Monaco.editor.ICodeEditor; path?: string | undefined }) {
@@ -47,6 +50,11 @@ function build(editor: Monaco.editor.ICodeEditor, path: string | undefined): Men
   if (comment) nav.push({ id: "comment", label: "Add comment", shortcut: MAC ? "⌘⌥C" : "Ctrl+Alt+C", run: () => void comment.run() });
   if (define) nav.push({ id: "definition", label: "Go to definition", shortcut: "F12", run: () => void define.run() });
   if (refs) nav.push({ id: "references", label: "Find references", shortcut: "Shift+F12", run: () => void refs.run() });
+  // G4: the selection's lines (or the caret's line) as a file mention in the conversation's composer.
+  if (path && sel && canAddToChat()) {
+    const lines = selectedLines({ startLine: sel.startLineNumber, startColumn: sel.startColumn, endLine: sel.endLineNumber, endColumn: sel.endColumn });
+    nav.unshift({ id: "chat", label: "Add to chat", run: () => void addToChat(chatMention(path, lines)) });
+  }
 
   const clip: MenuItem[] = [];
   if (editable) clip.push({ id: "cut", label: "Cut", disabled: !text, run: () => void cut(editor, text) });

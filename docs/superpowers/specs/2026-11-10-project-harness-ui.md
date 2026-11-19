@@ -4172,6 +4172,87 @@ tab runtime layout with live command output; WebKit/Tauri desktop binary.
 **Verified.** `gofmt -l apps/harness/internal/bridge/v7_approvals_test.go`, `pnpm format:check`, `pnpm lint` (`0` errors, `0` cycles across `849` files), `pnpm test` (`184/184` `@octo/agent-client`, `902/902` `@octo/ui` including `phone.test.ts`, `41/41` `@octo/desktop`, `10/10` `test:scripts`), `pnpm --filter @octo/desktop build`, `pnpm --filter @octo/web build`, `node scripts/check-bundle-size.mjs` (`160.92 kB` gzip vs `161.00 kB` budget), `slash-commands.mjs --phone` (`slash-commands: ok`), Playwright Chromium verification across `1440×900`, `844×390` & `740×360` landscape phones (`data-phone=true`, `overflowX=false`, `mainPaddingLeft=0px`), and `390×844` / `360×740` portrait phones (`0` control target issues across Chat, Processes, Sessions, Terminal, Browser, Side question, Agents, Notes, Usage, Review, and Changes; `DiffPanel` `retry.ts` `0` overlap/overflow) with screenshot inspection, plus `spacing-audit.mjs --query "demo=1&tabs=all" --strict` (`total=0`, `skipped=0` across `chat-idle`, `delegation`, `tool-processes`, `tool-browser`, `tool-terminal`, `v7-gallery`, `phone-home`, `phone-nav`, `phone-plus`, `phone-files`, `phone-changes`, `phone-browser`, `phone-processes`, `phone-terminal`, `phone-settings`, and phone panel runs).
 **Not verified.** `go test -race` on `apps/harness/internal/bridge` (`TestAcceptEditsAutoApprovesWritesAndAsksForBash`) could not run in this offline/proxy-blocked VM (`modernc.org/sqlite@v1.62.0` absent from `GOMODCACHE` and `proxy.golang.org` returns HTTP `403`); WebKit Playwright engine and native Tauri desktop binary.
 
+## As built — work-surface polish (2026-11-18)
+
+A reviewed list of small fixes to the editor, Review, terminal, browser, Processes, side question, Settings and Details. No
+new dependency, no primitive variant, behaviour unchanged except where stated.
+
+- **Editor.** (1) Ghost text: `editorGhostText.border: #00000000` made Monaco draw a transparent 1px border on each side of every
+  ghost token ("." 9.8px against 7.8px of real code); the key is gone and a ghost glyph now advances 7.8px, as code does.
+  (2) Ghost text takes the line-number tone (`editorGhostText.foreground` and `.ghost-text` read `--vscode-editorLineNumber-foreground`):
+  dark `#888` 5.06:1, light `#707070` 4.95:1 (it was `fg-3`, as loud as a comment). Cursor's palette gives 4.36:1, the same as its
+  line numbers. (6) One mono stack: the editor, both diff editors and the terminal read `--font-mono` (`lib/monoFont.ts`, tested);
+  xterm cells measure 7.86px against the canvas's 7.83 and the cursor sits in the cell. (7) Diff tints: a changed line is the ok /
+  err token at 14 % / 12 % (was 9 % / 8 %; 1.28 / 1.21:1 against the editor in dark, 1.23 / 1.22 in light, was 1.15 / 1.14). A
+  changed word stays one more 14 % / 12 % layer on its line (Monaco stacks the two, about 26 % / 23 %): 28 % on top, as asked,
+  took comments and keywords down to 3.4:1 on a changed word, so it was not done; code text is at least 7:1 on every tint, syntax
+  colours about 4.4:1 on a changed word (as before). The conversation's `.octo-diff` lines match (14 % / 12 %), its opaque gutter
+  cell goes 18 % / 15 % → 22 % / 20 % (line numbers `fg-3` stay ≥ 4.6:1). Changes and Review share `diffColors()`. (11) The file
+  bar no longer shows a second unsaved mark: under 640px a ready language server shows nothing (its lone dot beside "Unsaved"
+  read as one), under 440px "Unsaved" is for screen readers only (the tab's dot says it).
+- **Review.** (3) The chip "Review requested" is "To review" (`lib/review/pullList.ts`, tested; the pull-request row still says
+  "Review requested" as its state). Under 420px the search is an `IconButton` that opens the field in place of the chips (focus
+  moves into it; Esc with no text, or leaving it empty, closes it and focus returns to the button; `closesSearch`, tested). At a
+  363px dock the four chips end at 270px in one 40px row (they were partly under the fade). (4) A review diff stays behind its
+  spinner until Monaco reports the first computed diff of the new models (`lib/review/diffWait.ts`, tested), with a 6 s fallback:
+  in the demo the text appeared after about 3 s already aligned and tinted. (9) The thread header's "Others' text, shown as text"
+  is gone (the comments are Markdown; the words added nothing).
+- **Rows and dock.** (5) `ListRow`: actions that show on hover or focus take no width; with a fine pointer in a wide window they
+  overlay the row's end on the row's own fill (`.octo-row-host` / `.octo-row-actions` in `styles.css`; the list surface is
+  `--row-surface`, default panel), and the meta and any `data-row-tail` (the dates of Sessions and Memory rows) give way while they
+  show. Touch keeps them in the flow and always visible. The `ROW_TAIL` spacers of Sessions and Memory and the empty slot of Notes
+  are gone, so their dates end on the row's edge. Processes keeps Stop and Kill in view (QA pass 4) in a slot as wide as the widest
+  set (76px, 84px on a phone; a row with only "⋯" shows it on hover): its PID / duration column ends at one x (1335 on all four
+  demo rows, was 538/564/564/590 in the reviewer's dock), with no change on hover. (8) The side question's starters are secondary
+  buttons sized to their text. (10) The terminal's PID is in the status dot's tooltip ("Running · PID 51423"). (13) The browser's
+  address field lets go of focus once a navigation starts. (14) Memory: not reproduced — the second line under the view tabs is
+  the bottom edge of the bordered search field (y105), not a hairline; nothing changed.
+- **Settings and Details.** (12) Privacy: the group "Feature flags" is "Memory", its footer "Applies to every project right away."
+  (`apps/harness/docs/memory.md` names the new path). (15) A tier model whose provider is not connected says "provider not
+  connected" under it, not only amber. (16) Oh My Pi's fallback mark is the hexagon (it hashed to the triangle, as Factory Droid).
+
+**Verified.** Playwright Chromium on `?demo=1&tabs=all` (dark and light, 1440×900 with a 363px dock, maximised review, 900×700 and
+390×760 for the touch path), screenshots in the session's `work-after/`; `pnpm format:check`, `pnpm lint` (0 errors, no cycles),
+`@octo/ui` tests, `pnpm --filter @octo/desktop build`, `check-bundle-size.mjs` (160.94 kB of 161.00), `spacing-audit.mjs`
+(`total=0`). **Not verified.** WebKit, a real touch device, the live harness, a real completion model.
+
+Owner decisions of 2026-11-18 (the four items held back from the polish list):
+
+- **G1 (2026-11-18).** A dock tab's bar repeats no title: `Panel` keeps `title` as the section's accessible name only, and the
+  bar is the lead (the (i) purpose button, now `sm` with no negative margin, so its box starts at 8px as the first buttons of
+  Files and Browser; the review's repository menu), the meta ("4 running"), then the actions at the right. A bar with only the
+  (i) stays, so all tabs share one 40px anatomy. Every `Panel` user is a dock tab (no dialog or page uses it). Tested
+  (`Panel.test.ts`); `spacing-audit.mjs` measures the bar's first element instead of the title. Checked all 13 tool tabs in
+  dark and light (`?demo=1&tabs=all`, the Atlas project and Design system tokens): no `h2` in any bar, header 40px.
+- **G2 (2026-11-18).** File-tree rows are 24px (`h-ctl-xs`; touch keeps `touch:h-ctl-lg`, 40, 44 on a phone; every other list
+  stays 28). Indent guides: the indent spacer draws a 1px `line` per 12px level under each ancestor's glyph, only while the
+  tree is hovered or holds focus (`.octo-tree-indent`, a background: nothing moves). Checked dark and light: every tree row
+  24px, rows 24px apart, the same tops at rest and on hover; ArrowDown moves focus; the filter ("token") leaves 4 rows;
+  `file-open-stability.mjs` ok. Not measured: a real phone (the touch height is the unchanged `touch:` rule).
+- **G3 (2026-11-18).** Processes says who started each process, after the state: "Running · by you · pnpm dev". Runs and
+  terminals are always the person's (no agent can start one, `apps/harness/docs/commands.md`), a run from a review says "by you,
+  from a review", a language server "by the editor", an agent worker "by <its session's title>". The harness did not send the
+  session an ACP worker serves; it now does (`session_id` on `GET …/processes`, kind `agent`, from the orchestrator's existing
+  record; `internal/bridge/processes_test.go`), and the demo's worker carries the default session. `processStarter`
+  (`lib/processes/model.ts`) is tested; an unknown or missing session says nothing. A long session title gives way (half the line).
+- **G4 (2026-11-18).** The editor's menu starts with "Add to chat": the selected lines (or the caret's line) go into the
+  conversation's composer as a file mention with its range, `@src/auth/refresh.ts:9-14` (the `@path` the "+" menu inserts,
+  appended to the draft with a space either side), and the caret moves to the composer. A file in the tree has a right-click
+  menu (`Menu`, decision 95) with "Add to chat" (the file, no range) and "Copy path". The files feature does not import the
+  chat: the conversation's composer registers how to insert (`state/chatInsert.ts`, tested; the last mounted composer wins)
+  and the item shows only while one is there; the text goes through the composer's shared draft (`appendToDraft`).
+  `lib/chatMention.ts` (tested: lines, a trailing column 1, the composer reading the range as one mention).
+  `editor-context-menu.mjs` now also checks both entries (the composer holds `@src/auth/refresh.ts:2 ` and has focus; then
+  `@src/auth/tokens.ts `). The Changes and Review diffs offer it too (they share `EditorContextMenu`).
+
+Merged with the tool-tab consistency pass (2026-11-19): Processes follows that pass (E: actions on hover and focus, always on
+touch and the phone), and with this pass's `ListRow` overlay the hidden actions take no width, so the PID / duration column
+lines up; the fixed 76px slot above is gone, the phone keeps an 84px slot. The review picker keeps that pass's single
+`PanelFilters` row (B) and adds the search button below 420px. The side question's starters stay `secondary` (item 8; that
+pass made them quiet text-sized buttons, and calls `secondary` the other tabs' empty-state action). `Panel` keeps that pass's
+full-width bar hairline (A) around G1's title-less header.
+
+
 
 ## As built — shell polish pass (2026-11-18)
 

@@ -22,7 +22,10 @@ const OUTLINES: readonly string[] = [
   "M8 1.8l6.4 11.4H1.6Z",
 ];
 const DIAMOND = 2;
+const HEXAGON = 3;
 const TRIANGLE = 4;
+/** Ids whose letters give the same shape as a neighbour in the providers list: Oh My Pi and Factory Droid were both triangles. */
+const PINNED: Readonly<Record<string, number>> = { "oh-my-pi": HEXAGON };
 
 /** What to draw for an id: the vendor's SVG file, or the neutral shape (outline path, baseline of the initial, the initial). */
 export function markOf(id: string, label: string): { url: string } | { d: string; y: number; initial: string } {
@@ -31,7 +34,7 @@ export function markOf(id: string, label: string): { url: string } | { d: string
   if (url) return { url };
   let h = 0;
   for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 997;
-  const shape = id === "router" ? DIAMOND : h % OUTLINES.length;
+  const shape = id === "router" ? DIAMOND : (PINNED[id] ?? h % OUTLINES.length);
   return {
     d: OUTLINES[shape] ?? "",
     y: shape === TRIANGLE ? 11.6 : 10.6,
