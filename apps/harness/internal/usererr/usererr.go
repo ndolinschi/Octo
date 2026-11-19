@@ -27,7 +27,7 @@ const (
 	ActionOpenSettings    Action = "open_settings"
 	ActionUpdateAgent     Action = "update_agent"
 	// ActionUseWorktree: offer the safe alternative of a branch switch the main checkout refused, a new session in
-	// a worktree from the chosen branch (UI decision 97).
+	// a worktree from the chosen branch (UI decision 98).
 	ActionUseWorktree Action = "use_worktree"
 )
 

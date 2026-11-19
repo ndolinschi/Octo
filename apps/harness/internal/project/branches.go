@@ -12,7 +12,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
-// Branch choice in the composer (UI decision 97): the branches of each repository a workspace's folders are in,
+// Branch choice in the composer (UI decision 98): the branches of each repository a workspace's folders are in,
 // and switching the main checkout when nothing can be lost or disturbed.
 
 // DefaultBranchLimit and MaxBranchLimit bound one chunk of GET /branches.

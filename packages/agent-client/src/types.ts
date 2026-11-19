@@ -2,7 +2,7 @@ import type { CommandFinishedEvent, CommandOutputEvent, CommandStartedEvent, Pro
 import type { ReviewListUpdatedEvent, ReviewUpdatedEvent, ReviewWorkspace, ReviewWorkspaceEvent } from "./review";
 
 /** A button the UI can offer for a failure (decision 94b); an absent `action` means none. */
-/** `use_worktree`: a refused branch switch of the main checkout; the UI offers "Start in a worktree from <branch>" (UI decision 97). */
+/** `use_worktree`: a refused branch switch of the main checkout; the UI offers "Start in a worktree from <branch>" (UI decision 98). */
 export type ErrorAction = "recheck_provider" | "connect_provider" | "retry" | "open_settings" | "update_agent" | "use_worktree";
 
 /** The optional parts of a failure beside its plain one-sentence message. `details` is technical text (a fold). */
@@ -1575,7 +1575,7 @@ export type GitBranch = {
   behind: number;
   commit: { sha: string; subject: string; author?: string; date: string };
 };
-/** One repository of a workspace's folders (`GET /branches`, UI decision 97). */
+/** One repository of a workspace's folders (`GET /branches`, UI decision 98). */
 export type RepoBranches = {
   /** The first project folder in this repository (its id and label); `folders`: the labels of every one. */
   folder_id: string;

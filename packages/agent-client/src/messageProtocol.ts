@@ -172,7 +172,7 @@ export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "stopSession",
   "sendSessionMessage",
   "listAllSessions",
-  // Branch choice (UI decision 97): optional on the host; one without them answers `unsupported`.
+  // Branch choice (UI decision 98): optional on the host; one without them answers `unsupported`.
   "listBranches",
   "switchBranch",
 ];

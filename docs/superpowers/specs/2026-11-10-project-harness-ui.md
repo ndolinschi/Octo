@@ -4569,3 +4569,56 @@ long tasks 28/41 → 9/5; scroll frames > 50 ms 51/49 → 43/45 (long tasks 12/6
 switch 196/131 → 149/128 ms. Load at 4x: CLS 0 in all 5 runs before and after; the 0.2027 turn-window shift of the previous
 pass did not show, so whether its cause is gone is not verified. Entry bundle 160.24 kB (integration tip 160.28). Not verified:
 WebKit, the Tauri shell, a real harness, the phone layout.
+
+## Decision 98 — the composer's branch chip shows the real branch and picks another (2026-11-19)
+
+Owner (screenshot of the new-session screen, a chip that always read "Main checkout" and offered only "Move to worktree…"):
+"I should be able to select branch in input." Aim: Cursor's composer, where the chip is the branch and opens a branch list.
+Decided:
+
+a. **The chip is the branch.** Shared workspace: the branch the project's main checkout is on (first git folder's
+   repository), with the git-branch glyph; a detached HEAD shows its short commit; no chip when no folder is in git. A
+   worktree session shows its worktree's branch (read from disk). Tooltip: "main — main checkout" / "fix-login — worktree".
+   Read again on focus, on becoming visible, after any turn of the project ends, and when the picker opens — no polling.
+b. **One picker.** The shared `Picker` (search field, keys, as the project chip): per repository its local branches, current
+   first and checked, then by last commit; a "Create branch “x” from <current>" row when the query names no branch;
+   "Show more (N)" pages with the harness's chunks (30); searching asks the harness (`q`), so thousands are never loaded.
+c. **Switching never risks work.** Choosing a branch runs `git switch` in the main checkout only when its tracked files are
+   clean and no session of the main checkout is working; otherwise the harness refuses (`uncommitted_changes`,
+   `checkout_in_use`, `branch_switch_failed`, action `use_worktree`) and the picker shows the refusal in the error style
+   (`shared/ErrorNotice`: message, hint, Details) with the primary button "Start in a worktree from <branch>". Never force,
+   stash, discard or commit.
+d. **Parallel work is one step.** An "In a new worktree" section lists the same branches (5 until a query narrows it):
+   the empty session moves into a new worktree started at that branch (`moveSessionToWorktree {base_ref, carry_changes:
+   false}`), else a new session is made in one (`createSession {workspace: {kind: "worktree", base_ref}}`). "Move to
+   worktree…" (the dialog with branch name and carry-over) stays in a "Session" section.
+e. **Several repositories:** one section per repository titled "name · current branch"; a switch acts on that repository.
+
+### As built — decision 98 (2026-11-19)
+
+- `lib/branches.ts` (tested: label, tooltip, sections, create row, paging merge, branch-name rules); `chat/useBranchHead.ts`
+  (the chip's data, a per-project cache so a remount shows the branch at once); `chat/BranchPicker.tsx` (lazy chunk);
+  `chat/ComposerProjectBar.tsx` renders the chip as the `Chip` primitive (below 360px it is icon-only like the composer's
+  chips). With a harness without the branch route the old "Main checkout" menu remains. Demo (`demo/branches.ts`): Atlas API
+  has two repositories, Docs site uncommitted changes (refusal), infra 140 branches (paging), Design system tokens no git.
+  Harness and client: `apps/harness/docs/sessions.md` ("Branches of the main checkout"), `@octo/agent-client`
+  `listBranches?` / `switchBranch?` (HTTP and message port; the wire error now keeps hint, action and details).
+- **Deviations.** The bar is still shown only on the new-session screen (empty session), as before: putting it above every
+  conversation's composer changes the chrome of all conversations (and the composer-fit and flicker measurements), which the
+  owner did not ask for; in a conversation with messages "Move to worktree…" stays in the "+" menu's Session entry. The
+  worktree rows are offered only for the first repository, because a worktree workspace takes one start point for every
+  repository and another repository may not have that branch. Untracked files do not block a switch (git keeps them and
+  refuses by itself when one would be overwritten: `branch_switch_failed`).
+- **Status bar vs. project chip (owner's screenshot).** Not a mismatch: the status bar shows the open project's first
+  *folder* name (`ProjectStatus`), the chip the project's *name*. Reproduced with a project "PCFS" whose folder is
+  `product-configuration-management`: after choosing PCFS in the composer's project chip from another project, the status
+  bar reads "product-configuration-management" (truncated at 192px as in the screenshot). Nothing changed.
+- **Verified** against a real `harness serve` (mock model, throwaway repository with main, fix-login, feature/export;
+  Chromium): chip "main — main checkout"; switch to fix-login (`git branch --show-current` = fix-login); create and switch
+  spike/one; refusal while another session's turn was held by the mock (`checkout_in_use`), branch unchanged; refusal on a
+  dirty tree, then "Start in a worktree from main" moved the session to `octo/…` with the main checkout still on spike/one
+  and the edit untouched; no chip for a non-git project; status bar after switching projects. Keys: open, ArrowDown on the
+  second row, Esc returns focus to the chip. Demo: multi-repository and dirty refusal in dark and light; screenshots dark and
+  light at 1440×900 and 390×700. `spacing-audit` total=0, `composer-fit`, `picker-keys`, `dropdown-scroll` ok; entry bundle 160.57 kB (budget 161).
+  **Not verified:** WebKit, Tauri, Windows paths, real agents, a repository with thousands of branches (only 140 in the demo
+  and the harness test's paging), touch on a device.

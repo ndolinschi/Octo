@@ -501,7 +501,7 @@ export interface Bridge {
   listWorkspaces?(projectId: string): Promise<Workspace[]>;
   /** `POST /v1/projects/{pid}/sessions/{sid}/worktree`: moves a main session into an isolated git worktree. */
   moveSessionToWorktree?(projectId: string, sessionId: string, input?: MoveToWorktreeInput): Promise<MoveToWorktreeResult>;
-  /** `GET /v1/projects/{pid}/branches`: per repository, the checked-out branch and a chunk of local branches (UI decision 97). */
+  /** `GET /v1/projects/{pid}/branches`: per repository, the checked-out branch and a chunk of local branches (UI decision 98). */
   listBranches?(projectId: string, params?: BranchesParams): Promise<BranchesResult>;
   /**
    * `POST /v1/projects/{pid}/branches/switch`: `git switch` (or `-c` with `create`) in the main checkout; the repository after.

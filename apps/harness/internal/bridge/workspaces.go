@@ -29,7 +29,7 @@ func (s *Server) moveSessionToWorktree(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
-// listBranches is GET /branches?folder=&workspace=&q=&offset=&limit= (UI decision 97).
+// listBranches is GET /branches?folder=&workspace=&q=&offset=&limit= (UI decision 98).
 func (s *Server) listBranches(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	in := project.BranchesQuery{Folder: q.Get("folder"), Workspace: q.Get("workspace"), Query: q.Get("q")}

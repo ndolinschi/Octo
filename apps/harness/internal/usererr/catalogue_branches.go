@@ -2,7 +2,7 @@ package usererr
 
 import "strconv"
 
-// Branch choice in the composer (UI decision 97; parallel-sessions spec, "As built" 2026-11-19): the main
+// Branch choice in the composer (UI decision 98; parallel-sessions spec, "As built" 2026-11-19): the main
 // checkout's branch is switched only when nothing can be lost or disturbed; every refusal changes nothing.
 const (
 	CodeUncommittedChanges = "uncommitted_changes"
