@@ -3,7 +3,8 @@
 # and symlinks binaries into /usr/local/bin so login shells see them.
 set -euo pipefail
 
-GO_VERSION="${GO_VERSION:-1.26.0}"
+# Keep in step with the `toolchain` line of apps/harness/go.mod.
+GO_VERSION="${GO_VERSION:-1.26.11}"
 ARCH="$(uname -m)"
 case "$ARCH" in
   x86_64) GOARCH=amd64 ;;
@@ -23,6 +24,21 @@ if [[ "$need_install" -eq 1 ]]; then
   tmp="$(mktemp -d)"
   url="https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz"
   curl -fsSL "$url" -o "$tmp/go.tgz"
+  # Verify the tarball against the checksum Go publishes next to it before
+  # anything is extracted as root.
+  # (go.dev/dl answers *.sha256 with an HTML page; the file itself is on dl.google.com.)
+  want="$(curl -fsSL "https://dl.google.com/go/go${GO_VERSION}.linux-${GOARCH}.tar.gz.sha256" | tr -d '[:space:]')"
+  if [[ ! "$want" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "could not fetch the published SHA-256 for go${GO_VERSION}" >&2
+    rm -rf "$tmp"
+    exit 1
+  fi
+  got="$(sha256sum "$tmp/go.tgz" | cut -d' ' -f1)"
+  if [[ "$got" != "$want" ]]; then
+    echo "SHA-256 mismatch for $url: got $got, want $want" >&2
+    rm -rf "$tmp"
+    exit 1
+  fi
   sudo rm -rf /usr/local/go
   sudo tar -C /usr/local -xzf "$tmp/go.tgz"
   rm -rf "$tmp"
