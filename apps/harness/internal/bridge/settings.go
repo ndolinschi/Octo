@@ -53,7 +53,7 @@ func (s *Server) loopbackGuard(w http.ResponseWriter, r *http.Request, what stri
 	case !loopbackHost(r.Host):
 		return deny(what + " are available only through a loopback host name")
 	}
-	if o := r.Header.Get("Origin"); o != "" && !allowedOrigin.MatchString(o) {
+	if o := r.Header.Get("Origin"); o != "" && !s.originAllowed(o) {
 		return deny("origin not allowed")
 	}
 	return true

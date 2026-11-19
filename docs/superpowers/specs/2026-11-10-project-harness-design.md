@@ -309,3 +309,13 @@ every proxied request must carry the instance's own loopback Host (DNS rebinding
 `browserproxy` `TestForeignHostIsRefusedEvenWhenActive`, `remoteaccess` `TestOnListenNamesTheListenerPort`,
 `cmd/harness` `TestProxyBlockedPorts` (each failed or did not compile before). Not verified in the desktop webview.
 
+## As built — CORS for the UI's origins only (security review, 2026-11-19)
+
+The bridge answered CORS for any `http(s)://localhost|127.0.0.1:<port>`, including the Browser tab's proxy origin,
+while `scripts/dev.sh` bakes `VITE_HARNESS_API_TOKEN` into the dev bundle (which Vite serves with
+`Access-Control-Allow-Origin: *`): a previewed page could read the token and call the bridge. Now only
+`bridge.DefaultUIOrigins` (the Tauri origins and the dev server on 1420) and `HARNESS_UI_ORIGINS` are allowed, for CORS
+and for the settings guard; `dev.sh` exports `HARNESS_UI_ORIGINS` for the port it picked. Verified: bridge
+`TestHealthConfigAndCORS` (`127.0.0.1:5173` and an ephemeral port now refused; failed before) and
+`TestConfiguredUIOrigins`. Not run here: `pnpm test:dev-sh`.
+

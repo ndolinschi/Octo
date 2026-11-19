@@ -246,6 +246,8 @@ API_TOKEN="${HARNESS_API_TOKEN:-$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')}"
 export HARNESS_API_TOKEN="$API_TOKEN"
 
 HARNESS_ARGS=(serve --addr "127.0.0.1:$BRIDGE_PORT")
+# The bridge answers CORS for the UI's own origin only (bridge.DefaultUIOrigins); the dev server may have moved port.
+export HARNESS_UI_ORIGINS="http://localhost:$UI_PORT,http://127.0.0.1:$UI_PORT"
 if [[ "$ROUTER" -eq 1 ]]; then
   # The router first, then the harness behind it. Like the app, the router needs only OCTO_CONFIG; it forwards the
   # caller's credential upstream, so the harness's API key IS the upstream key, and the router's own gate is the client key.

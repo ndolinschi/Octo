@@ -2,7 +2,8 @@ package bridge
 
 import (
 	"net/http"
-	"regexp"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/commands"
@@ -45,9 +46,10 @@ type Server struct {
 	builtinFn   func() (bool, string)
 	providers   ProviderSource
 	picker      picker
-	defaultOrch func() string // the orchestrator a project without a choice runs now
-	apiToken    string        // required on /v1 routes when set (WithAPIToken)
-	mounts      []mount       // extra handlers behind the token and CORS (WithMount)
+	defaultOrch func() string   // the orchestrator a project without a choice runs now
+	apiToken    string          // required on /v1 routes when set (WithAPIToken)
+	mounts      []mount         // extra handlers behind the token and CORS (WithMount)
+	uiOrigins   map[string]bool // extra browser origins of the UI (WithUIOrigins), beside DefaultUIOrigins
 }
 
 // PluginSource is the read-only plugin view GET /v1/plugins serves.
@@ -110,7 +112,7 @@ func New(svc *project.Service, notes *project.Notes, files *project.Files, opts 
 	for _, o := range opts {
 		o(s)
 	}
-	return cors(s.requireToken(s.routes()))
+	return s.cors(s.requireToken(s.routes()))
 }
 
 func (s *Server) routes() *http.ServeMux {
@@ -258,11 +260,44 @@ func (s *Server) routes() *http.ServeMux {
 	return mux
 }
 
-var allowedOrigin = regexp.MustCompile(`^(https?://(localhost|127\.0\.0\.1)(:\d+)?|tauri://localhost|http://tauri\.localhost)$`)
+// DefaultUIOrigins are the browser origins of the UI that may call the bridge: the desktop shell's webview
+// (tauri://localhost on macOS and Linux, http://tauri.localhost on Windows) and the UI dev server on its default
+// port. Any other localhost origin (the Browser tab's proxy on an ephemeral port, another dev server) is not the UI:
+// it gets no CORS answer, and the settings routes refuse it. A dev server on another port is added with
+// HARNESS_UI_ORIGINS (WithUIOrigins); scripts/dev.sh sets it.
+var DefaultUIOrigins = []string{"tauri://localhost", "http://tauri.localhost", "http://localhost:1420", "http://127.0.0.1:1420"}
 
-func cors(next http.Handler) http.Handler {
+// ParseUIOrigins reads HARNESS_UI_ORIGINS: comma-separated origins (scheme://host[:port]); a trailing slash is dropped.
+func ParseUIOrigins(v string) []string {
+	var out []string
+	for _, o := range strings.Split(v, ",") {
+		if o = strings.TrimRight(strings.TrimSpace(o), "/"); o != "" {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
+// WithUIOrigins allows these browser origins besides DefaultUIOrigins.
+func WithUIOrigins(origins []string) Option {
+	return func(s *Server) {
+		if s.uiOrigins == nil {
+			s.uiOrigins = map[string]bool{}
+		}
+		for _, o := range origins {
+			s.uiOrigins[o] = true
+		}
+	}
+}
+
+// originAllowed says origin is the UI's.
+func (s *Server) originAllowed(origin string) bool {
+	return slices.Contains(DefaultUIOrigins, origin) || s.uiOrigins[origin]
+}
+
+func (s *Server) cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); origin != "" && allowedOrigin.MatchString(origin) {
+		if origin := r.Header.Get("Origin"); origin != "" && s.originAllowed(origin) {
 			h := w.Header()
 			h.Set("Access-Control-Allow-Origin", origin)
 			h.Add("Vary", "Origin")

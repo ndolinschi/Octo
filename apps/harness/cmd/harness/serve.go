@@ -389,6 +389,8 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	srv := &http.Server{
 		Handler: bridge.New(svc, notes, files, append(bridgeOpts,
 			bridge.WithAPIToken(apiToken), bridge.WithMCP(orch.MCPHandler(bridge.Version)),
+			// The UI dev server on another port than the default (scripts/dev.sh sets it); see bridge.DefaultUIOrigins.
+			bridge.WithUIOrigins(bridge.ParseUIOrigins(os.Getenv("HARNESS_UI_ORIGINS"))),
 			bridge.WithMount("/v1/remote", remote.ControlHandler()), bridge.WithMount("/v1/remote/", remote.ControlHandler()))...),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return baseCtx },
