@@ -4569,3 +4569,122 @@ long tasks 28/41 → 9/5; scroll frames > 50 ms 51/49 → 43/45 (long tasks 12/6
 switch 196/131 → 149/128 ms. Load at 4x: CLS 0 in all 5 runs before and after; the 0.2027 turn-window shift of the previous
 pass did not show, so whether its cause is gone is not verified. Entry bundle 160.24 kB (integration tip 160.28). Not verified:
 WebKit, the Tauri shell, a real harness, the phone layout.
+
+## As built — macOS traffic-light alignment (2026-11-19)
+
+Owner, on the real macOS app: "traffic light is not aligned with buttons in left sidebar". Measured on the owner's screenshots
+(`images/1.webp`, `3.webp`, `4.webp`, 2000 px wide, same window): scale **1.086 px per CSS px**, from the 260 px sidebar + 8 px
+gutter (panel edge 291 px from the window edge) and the 32 px toggle-to-forward pitch (70 px for 64), checked by the 40 px bar
+(43.5 px). Found: lights' left edge 16.5 px (`trafficLightPosition.x` 16 = the Home row box's edge; the Home / Search / Review glyphs
+start at 24, the status-bar glyph too), so the red light's centre sat 9 px left of the glyph centres; lights' centre 0.9 px below the bar buttons'
+(`y: 23` gave 21, not 20: the offset is -2, the old note said -3); green light to toggle 11.4 px against 4 px between the bar's buttons.
+The lights measure 12 px discs 23 px apart (macOS 26 drawing; macOS 15 and older: 20 apart), not 20.
+
+Changed: `trafficLightPosition` `{16, 23}` -> `{24, 22}` (`tauri.macos.conf.json`; `MAC_LIGHTS_X` is now `SIDEBAR_GLYPH_X`, `MAC_LIGHTS_Y` 22,
+new `MAC_LIGHTS_CENTER_OFFSET` -2); `MAC_INSET_START` stays 86 but is now derived (x + 2 pitches + disc + the bar's 4 px gap), so the
+gap is 4 px. Unchanged: Linux / Windows / browser (no overlay, no inset) and full screen (`useWindowChrome` sets `insetStart` 0 on
+`onResized` when `isFullscreen()`; the toggle then sits on the glyph column like in a browser; `?titlebar=mac-fullscreen` shows it).
+Preview: dev server only, `?titlebar=mac` (`useWindowChrome` + `MacLightsPreview.tsx`, `import.meta.env.DEV`, no production code) pretends
+to be the macOS shell and draws the three lights from the same constants; `apps/desktop/scripts/traffic-lights.mjs` measures and asserts
+(dark/light, sidebar shown/hidden, default/380 wide, full screen, plain browser): before 34 failures (centre 21 vs 20, red left 16 vs 24, gap 12 vs 4), after all hold.
+**Not verified:** the real window (this environment is not macOS and cannot build the Tauri shell); on macOS 15 and older (lights 20 apart) the green-to-toggle
+gap would be 10 px, not 4 (the UA cannot tell the versions apart).
+
+## Decision 98 — compact folders in the file tree (2026-11-19)
+
+Owner (a Java project's screenshot, `management-system-application > src > main > java > com > wsgc > … > subsystem > config`,
+one row and one indent level per directory): "java subpackages is too long, should be like in IDEA com.package1.package2 if no
+child files".
+a. **A chain is one row.** Directories that each hold exactly one entry, a directory, form one row with one chevron and one
+   indent level; its children are the last directory's. A directory holding a file, two or more entries, or nothing ends the
+   chain (it is the last segment). IntelliJ's "compact middle packages", VS Code's "compact folders".
+b. **Separator.** Inside a JVM source root (`…/src/<set>/<java|kotlin|scala|groovy>`) the row is a package and reads
+   `com.wsgc.ecommerce`; elsewhere it reads `src/main/java`. A source root ends a `/` row, so the screenshot's module reads
+   `management-system-application`, `src/main/java`, `com.wsgc.ecommerce.product.configurator.management.data.subsystem`, then
+   `config`, `mdm`, `model`. A row with a dot in a name uses `/` (a dot would read as a package separator). Rule:
+   `lib/compactFolders.ts` (`compactChain`, `isSourceRoot`), unit-tested.
+c. **The row acts on its last directory.** Open/close, the context menu (Add to chat, Copy path), ← (to the first directory's
+   parent row), reveal and selection; the row's tooltip is the last directory's full path and its label truncates with an
+   ellipsis. Opening or closing a chain opens or closes every directory in it (expanded state stays per real path), so a chain
+   that splits keeps its open subtree. Type-ahead matches any segment.
+d. **One listing per visible row.** `GET …/files` gives a directory entry an optional `chain` (the names below it while each is
+   the only entry, at most 32, never through a symlink, `.git` ignored); the tree takes a directory's own listing when it has one
+   and the hint otherwise. A `file.changed` in a directory that is not listed, or that holds (or held) one entry, lists the nearest
+   listed ancestor again, so the row splits or re-forms.
+e. **Setting.** Settings → Editor → File tree → "Compact folders", on by default, stored in `octo.compactFolders`; off is the tree
+   as before (one row per directory).
+
+### As built — decision 98 (2026-11-19)
+
+Built as described. Harness: `files.List` fills `Entry.Chain` (`internal/files`, tests `TestListChain`, `TestListChainCap`;
+`internal/bridge` `TestFileListChain`), documented in `apps/harness/docs/architecture.md`; `FileEntry.chain?` in
+`@octo/agent-client`. UI: rows come from `components/files/treeRows.ts` (`treeRows`, `typeAhead`; tests beside it); the
+preference is `lib/compactFoldersPref.ts`, imported only by the lazy file view and the lazy settings page. The demo has a
+"Product configurator" project shaped like the screenshot; its bridge returns `chain` (`demoChain`, tested). The tree had no
+type-ahead before; it has one now (700 ms, like `Select`). There is no rename, delete or new file/folder in the tree (nor a harness
+route for them), so those were not built; the directory context menu is new (it was files-only).
+Run: Go `gofmt -l .` (empty), `go vet ./...`, `go test ./...` in `apps/harness`; `pnpm lint` (0 errors), `pnpm format:check`,
+agent-client and UI tests (the UI suite's wall-clock `streak.test.ts` budget case failed once under the machine's parallel load and
+passes alone); build: initial JS 160.71 kB gzip (budget 161.00; the preference module and the tree code are in lazy chunks, the
+entry gains the `PREFS` key and `state/code`'s refresh rule). Scripts (Chromium, 1440×900): `spacing-audit` total=0,
+`file-open-stability` ok, `editor-context-menu` ok, `layout-shift` ok. Playwright on `?demo=1` and against a real `harness serve`
+with the screenshot's tree on disk: the three rows, one indent level each, 24px rows, indent guides, ellipsis and full-path
+tooltip, ←/→/↓/Home/End, type-ahead on a later segment, filter (rows shown, highlight), reveal of a file opened deep in the chain,
+the directory menu (Copy path gives the last directory), the setting off (one row per directory) and on, dark and light; a file
+written with `PUT …/files/content` into `ecommerce` split the row in place within 0.4 s (`com.wsgc.ecommerce` and
+`product.configurator.management.data.subsystem`, both still open). Not verified: a file created from a terminal — the harness has no
+file-system watcher, so no `file.changed` arrives and the tree (any tree, compact or not) shows it only after the folder is listed
+again; a chain re-forming after a delete (unit-tested only: no delete route); WebKit, the Tauri shell, the phone layout.
+
+## Decision 98 — the composer's branch chip shows the real branch and picks another (2026-11-19)
+
+Owner (screenshot of the new-session screen, a chip that always read "Main checkout" and offered only "Move to worktree…"):
+"I should be able to select branch in input." Aim: Cursor's composer, where the chip is the branch and opens a branch list.
+Decided:
+
+a. **The chip is the branch.** Shared workspace: the branch the project's main checkout is on (first git folder's
+   repository), with the git-branch glyph; a detached HEAD shows its short commit; no chip when no folder is in git. A
+   worktree session shows its worktree's branch (read from disk). Tooltip: "main — main checkout" / "fix-login — worktree".
+   Read again on focus, on becoming visible, after any turn of the project ends, and when the picker opens — no polling.
+b. **One picker.** The shared `Picker` (search field, keys, as the project chip): per repository its local branches, current
+   first and checked, then by last commit; a "Create branch “x” from <current>" row when the query names no branch;
+   "Show more (N)" pages with the harness's chunks (30); searching asks the harness (`q`), so thousands are never loaded.
+c. **Switching never risks work.** Choosing a branch runs `git switch` in the main checkout only when its tracked files are
+   clean and no session of the main checkout is working; otherwise the harness refuses (`uncommitted_changes`,
+   `checkout_in_use`, `branch_switch_failed`, action `use_worktree`) and the picker shows the refusal in the error style
+   (`shared/ErrorNotice`: message, hint, Details) with the primary button "Start in a worktree from <branch>". Never force,
+   stash, discard or commit.
+d. **Parallel work is one step.** An "In a new worktree" section lists the same branches (5 until a query narrows it):
+   the empty session moves into a new worktree started at that branch (`moveSessionToWorktree {base_ref, carry_changes:
+   false}`), else a new session is made in one (`createSession {workspace: {kind: "worktree", base_ref}}`). "Move to
+   worktree…" (the dialog with branch name and carry-over) stays in a "Session" section.
+e. **Several repositories:** one section per repository titled "name · current branch"; a switch acts on that repository.
+
+### As built — decision 98 (2026-11-19)
+
+- `lib/branches.ts` (tested: label, tooltip, sections, create row, paging merge, branch-name rules); `chat/useBranchHead.ts`
+  (the chip's data, a per-project cache so a remount shows the branch at once); `chat/BranchPicker.tsx` (lazy chunk);
+  `chat/ComposerProjectBar.tsx` renders the chip as the `Chip` primitive (below 360px it is icon-only like the composer's
+  chips). With a harness without the branch route the old "Main checkout" menu remains. Demo (`demo/branches.ts`): Atlas API
+  has two repositories, Docs site uncommitted changes (refusal), infra 140 branches (paging), Design system tokens no git.
+  Harness and client: `apps/harness/docs/sessions.md` ("Branches of the main checkout"), `@octo/agent-client`
+  `listBranches?` / `switchBranch?` (HTTP and message port; the wire error now keeps hint, action and details).
+- **Deviations.** The bar is still shown only on the new-session screen (empty session), as before: putting it above every
+  conversation's composer changes the chrome of all conversations (and the composer-fit and flicker measurements), which the
+  owner did not ask for; in a conversation with messages "Move to worktree…" stays in the "+" menu's Session entry. The
+  worktree rows are offered only for the first repository, because a worktree workspace takes one start point for every
+  repository and another repository may not have that branch. Untracked files do not block a switch (git keeps them and
+  refuses by itself when one would be overwritten: `branch_switch_failed`).
+- **Status bar vs. project chip (owner's screenshot).** Not a mismatch: the status bar shows the open project's first
+  *folder* name (`ProjectStatus`), the chip the project's *name*. Reproduced with a project "PCFS" whose folder is
+  `product-configuration-management`: after choosing PCFS in the composer's project chip from another project, the status
+  bar reads "product-configuration-management" (truncated at 192px as in the screenshot). Nothing changed.
+- **Verified** against a real `harness serve` (mock model, throwaway repository with main, fix-login, feature/export;
+  Chromium): chip "main — main checkout"; switch to fix-login (`git branch --show-current` = fix-login); create and switch
+  spike/one; refusal while another session's turn was held by the mock (`checkout_in_use`), branch unchanged; refusal on a
+  dirty tree, then "Start in a worktree from main" moved the session to `octo/…` with the main checkout still on spike/one
+  and the edit untouched; no chip for a non-git project; status bar after switching projects. Keys: open, ArrowDown on the
+  second row, Esc returns focus to the chip. Demo: multi-repository and dirty refusal in dark and light; screenshots dark and
+  light at 1440×900 and 390×700. `spacing-audit` total=0, `composer-fit`, `picker-keys`, `dropdown-scroll` ok; entry bundle 160.57 kB (budget 161).
+  **Not verified:** WebKit, Tauri, Windows paths, real agents, a repository with thousands of branches (only 140 in the demo
+  and the harness test's paging), touch on a device.

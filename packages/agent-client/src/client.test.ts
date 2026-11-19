@@ -103,6 +103,13 @@ test("request shapes and envelope unwrapping", async () => {
     },
     { run: (b) => b.listFiles("p", "src", ""), reply: '{"entries":[]}', method: "GET", path: "/v1/projects/p/files?folder=src&path=", result: [] },
     {
+      run: (b) => b.listFiles("p", "app", ""),
+      reply: '{"entries":[{"name":"src","path":"src","type":"dir","size":0,"chain":["main","java"]}]}',
+      method: "GET",
+      path: "/v1/projects/p/files?folder=app&path=",
+      result: [{ name: "src", path: "src", type: "dir", size: 0, chain: ["main", "java"] }],
+    },
+    {
       run: (b) => b.readFile("p", "src", "x/y z.ts"),
       reply: '{"content":"hi","mtime":"t"}',
       method: "GET",

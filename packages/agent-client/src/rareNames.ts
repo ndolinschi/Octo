@@ -118,6 +118,8 @@ export const RARE_METHODS = [
   "importSessions",
   "listWorkspaces",
   "moveSessionToWorktree",
+  "listBranches",
+  "switchBranch",
   "openBrowserProxy",
   "closeBrowserProxy",
   "startCommandRun",

@@ -51,6 +51,10 @@ import type {
   ImportSessionRef,
   ImportSessionsResult,
   MoveToWorktreeInput,
+  BranchesParams,
+  BranchesResult,
+  RepoBranches,
+  SwitchBranchInput,
   MoveToWorktreeResult,
   NewSessionInput,
   SessionMessageResult,
@@ -498,6 +502,14 @@ export interface Bridge {
   listWorkspaces?(projectId: string): Promise<Workspace[]>;
   /** `POST /v1/projects/{pid}/sessions/{sid}/worktree`: moves a main session into an isolated git worktree. */
   moveSessionToWorktree?(projectId: string, sessionId: string, input?: MoveToWorktreeInput): Promise<MoveToWorktreeResult>;
+  /** `GET /v1/projects/{pid}/branches`: per repository, the checked-out branch and a chunk of local branches (UI decision 98). */
+  listBranches?(projectId: string, params?: BranchesParams): Promise<BranchesResult>;
+  /**
+   * `POST /v1/projects/{pid}/branches/switch`: `git switch` (or `-c` with `create`) in the main checkout; the repository after.
+   * Refused with nothing changed: 409 `uncommitted_changes`, `checkout_in_use`, `branch_exists`, `not_a_git_repository`,
+   * `branch_switch_failed` (action `use_worktree` on the first two and the last), 404 `branch_not_found`, 400 `invalid_branch_name`.
+   */
+  switchBranch?(projectId: string, input: SwitchBranchInput): Promise<RepoBranches>;
   /** Stops a main session's running turn (pausing its queue) or one sub-agent; 409 `not_running`. */
   stopSession(projectId: string, sessionId: string): Promise<ProjectSession>;
   /**
@@ -710,9 +722,10 @@ function asProvider(body: unknown, id: string): Provider | null {
   return typeof body.id === "string" && Array.isArray(body.models) ? (body as Provider) : null;
 }
 
-const ERROR_ACTIONS: readonly string[] = ["recheck_provider", "connect_provider", "retry", "open_settings", "update_agent"];
+const ERROR_ACTIONS: readonly string[] = ["recheck_provider", "connect_provider", "retry", "open_settings", "update_agent", "use_worktree"];
 
-function isErrorAction(v: unknown): v is ErrorAction {
+/** Whether a wire value is an action this client knows (others are dropped). */
+export function isErrorAction(v: unknown): v is ErrorAction {
   return typeof v === "string" && ERROR_ACTIONS.includes(v);
 }
 

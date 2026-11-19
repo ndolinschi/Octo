@@ -16,6 +16,10 @@ screens live in [`packages/ui`](../../packages/ui/AGENTS.md), the bridge client 
   passed to the UI as `HostCapabilities`. It never goes into `packages/ui`.
 - `src/styles.css` imports Tailwind and then `@octo/ui/styles.css`.
 - `src-tauri/` is Rust and Tauri configuration only.
+- macOS traffic lights: the numbers live in `src/windowChrome.ts` (`MAC_LIGHTS_X` = the sidebar's glyph column 24, `MAC_LIGHTS_Y` 22 with `MAC_LIGHTS_CENTER_OFFSET` -2 so the
+  lights' centre is the 40px row's centre line, `MAC_INSET_START` derived = 86) and in `src-tauri/tauri.macos.conf.json` (a test keeps them equal). Preview in a browser:
+  `?demo=1&titlebar=mac` (dev server only; `mac-fullscreen` for the collapsed inset), then `node apps/desktop/scripts/traffic-lights.mjs` (Playwright, dev server on `--url`) asserts the centre
+  line, the glyph column and the 4px gap. Change a number in both places and run both.
 
 - Inside Tauri the shell runs the harness (design P5). `src/hostBridge.ts` (`useHostBridge`) calls the Rust commands
   `bridge_url` / `bridge_restart` / `bridge_log_tail` (the Tauri API is `import()`ed on demand), `src/HostStatus.tsx` is the

@@ -175,15 +175,26 @@ func (d *DB) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []Workspace{shared}
+	// The rows are read to the end before the folders are queried: with the store's one connection a query
+	// inside the loop would wait for this one forever (GET /workspaces hung once a worktree existed).
+	var list []Workspace
 	for rows.Next() {
 		var w Workspace
 		var carry int
 		if err := rows.Scan(&w.ID, &w.Kind, &w.Title, &w.State, &carry, &w.CreatedAt, &w.RemovedAt); err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
 		w.CarryChanges = carry != 0
+		list = append(list, w)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	_ = rows.Close()
+	out := []Workspace{shared}
+	for _, w := range list {
 		wf, err := d.loadWorkspaceFolders(ctx, w.ID)
 		if err != nil {
 			return nil, err
@@ -199,7 +210,7 @@ func (d *DB) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
 		}
 		out = append(out, w)
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // SetSessionWorkspace points a main session at wid.
