@@ -88,7 +88,9 @@ type Report struct {
 	Router      RouterReport  `json:"router"`
 	// Cloudflared is the tunnel program remote access runs (nil when not looked for).
 	Cloudflared *CloudflaredReport `json:"cloudflared,omitempty"`
-	Agents      []AgentReport      `json:"agents"`
+	// WebClient is whether the phone web app can be served to paired devices (nil when not looked for).
+	WebClient *WebClientReport `json:"web_client,omitempty"`
+	Agents    []AgentReport    `json:"agents"`
 	// ACPTrace says whether the wire trace is on and lists its files.
 	ACPTrace TraceReport `json:"acp_trace"`
 	LogTail  []string    `json:"log_tail"`
@@ -143,6 +145,8 @@ type Inputs struct {
 	RouterPending bool
 	// Cloudflared: see Report.Cloudflared.
 	Cloudflared *CloudflaredReport
+	// WebClient: see Report.WebClient.
+	WebClient *WebClientReport
 	// Plugins are the loaded plugins; each one's errors (a manifest that does not parse, an agent without an id or a
 	// command) is a problem of the report.
 	Plugins []plugins.Plugin
@@ -170,6 +174,12 @@ type CloudflaredReport struct {
 	Path    string `json:"path,omitempty"`
 	Version string `json:"version,omitempty"`
 	Install string `json:"install,omitempty"`
+}
+
+// WebClientReport is whether the phone web app is available to remote access, and if not, why.
+type WebClientReport struct {
+	Available bool   `json:"available"`
+	Detail    string `json:"detail"`
 }
 
 // secretNamed marks environment names whose presence is worth reporting.
@@ -201,7 +211,7 @@ func Build(in Inputs) Report {
 		BuiltinLoop: BuiltinReport{Available: in.BuiltinOK, Reason: in.BuiltinWhy},
 		Router:      RouterReport{BaseURL: StripURL(in.BaseURL), Detected: in.RouterOn, Capabilities: append([]string{}, in.RouterCaps...)},
 		Agents:      []AgentReport{}, LogTail: []string{}, ShowProbeOutput: in.ShowProbeOutput,
-		Cloudflared: in.Cloudflared,
+		Cloudflared: in.Cloudflared, WebClient: in.WebClient,
 	}
 	r.ShellEnvSet = []string{}
 	for _, kv := range childenv.Build(env, nil) {
@@ -353,6 +363,13 @@ func (r Report) Text() string {
 			fmt.Fprintf(&b, "cloudflared: found %s (%s)\n", c.Path, c.Version)
 		} else {
 			fmt.Fprintf(&b, "cloudflared: not found (remote access needs it: %s)\n", c.Install)
+		}
+	}
+	if w := r.WebClient; w != nil {
+		if w.Available {
+			fmt.Fprintf(&b, "phone web client: available (%s)\n", w.Detail)
+		} else {
+			fmt.Fprintf(&b, "phone web client: not available (%s)\n", w.Detail)
 		}
 	}
 	fmt.Fprintf(&b, "\nAgents\n")

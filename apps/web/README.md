@@ -21,7 +21,7 @@ pairing screen says so). A named tunnel (later) keeps one address.
 
 ```bash
 pnpm --filter @octo/web dev       # http://127.0.0.1:1430; with HARNESS_REMOTE_WEB_PROXY=http://127.0.0.1:1430 the harness proxies to it
-pnpm --filter @octo/web build     # dist/: serve with HARNESS_REMOTE_WEB_DIR=apps/web/dist (or harness serve --remote-web-dir)
+pnpm --filter @octo/web build     # dist/: the app bundles it (scripts/build-sidecar.sh); a bare harness: HARNESS_REMOTE_WEB_DIR=apps/web/dist (or --remote-web-dir)
 pnpm --filter @octo/web test      # pairing and the poller
 pnpm --filter @octo/web lint
 bash apps/web/scripts/phone-flow.sh --out /tmp/phone --theme dark   # Playwright at 390x700 against a real harness + mock model + fake cloudflared

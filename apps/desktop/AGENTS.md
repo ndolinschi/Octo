@@ -44,6 +44,9 @@ screens live in [`packages/ui`](../../packages/ui/AGENTS.md), the bridge client 
   `ANTHROPIC_API_KEY=<upstream key>` in its environment (the router forwards the caller's credential upstream; keys never go on a command line). A non-empty
   `OCTO_ROUTER_BASE_URL` means an external router: nothing is started, the URL is passed on. A router that fails leaves the harness running without it; the failure
   is `bridge_notices()` -> `[{ kind: "router_failed", message, log_tail }]` and `src/HostNotice.tsx` shows it as one quiet line (Details = log tail, Retry = `bridge_restart`).
+  The phone web client: `scripts/build-sidecar.sh` builds `@octo/web` (`--no-web` skips it) and `tauri.conf.json` bundles `apps/web/dist` as the resource `web-client`;
+  `sidecar/src/web.rs` (`resolve_web_dir`) picks the first of the bundled copy / the source tree's `apps/web/dist` that has an `index.html` and `bridge` passes it as
+  `HARNESS_REMOTE_WEB_DIR`, unless `harness.env` or the app's environment sets that name (the person's value is never replaced). Not compiled here: `src/lib.rs` `web_dirs`.
   Stop order is harness, then router. Tests use fake binaries (`sidecar/src/bridge_router_tests.rs`, needs `python3`; skipped without it).
 
 Keep logic out of components: selection logic (query parameters → bridge options) is the pure `chooseBridge`; extend it with a test.

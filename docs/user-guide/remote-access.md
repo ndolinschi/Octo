@@ -20,10 +20,10 @@ computer. Do not turn it on for work you may not send through a third party.
 
 1. Install `cloudflared`. Octo never downloads it. Octo shows the install line when it is missing (`brew install cloudflared` on
    macOS, `winget install --id Cloudflare.cloudflared` on Windows, Cloudflare's signed apt repository on Linux).
-2. The phone needs Octo's web app. **A build installed with `pnpm install:app` does not carry it**; without it the phone sees a
-   short "not installed" page. Build it (`pnpm --filter @octo/web build`) and set `HARNESS_REMOTE_WEB_DIR` to the `apps/web/dist`
-   folder in the harness's `harness.env` (in the [data folder](privacy-and-data.md#where-your-data-lives)), then restart Octo.
-   Settings → Remote access says so when the web app is not installed ("The phone's web app is not installed with this Octo").
+2. The phone needs Octo's web app. A build installed with `pnpm install:app` carries it and Octo serves it with no setup. If you
+   set `HARNESS_REMOTE_WEB_DIR` in the harness's `harness.env` (in the [data folder](privacy-and-data.md#where-your-data-lives)),
+   Octo serves that folder instead. Without a web app the phone sees a short "not installed" page; Settings → Remote access says
+   so ("The phone's web app is not installed with this Octo") and `harness doctor` gives the reason.
 3. **Settings → Remote access → turn on.** The first time you must read and confirm a warning.
 4. **Pair.** Octo shows a QR code and a code like `ABCD-EFGH`. Scan the QR code, or open the address and type the code. The code is
    valid for 5 minutes and works once.

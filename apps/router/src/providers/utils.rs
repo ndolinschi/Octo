@@ -60,6 +60,15 @@ async fn upstream_to_response(
         }
     }
 
+    let is_sse = upstream
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| {
+            v.trim_start()
+                .to_ascii_lowercase()
+                .starts_with("text/event-stream")
+        });
     let stream = upstream
         .bytes_stream()
         .map(|chunk| chunk.map_err(std::io::Error::other));
@@ -67,7 +76,12 @@ async fn upstream_to_response(
         Some(mut capture) => {
             capture.header_generation_id = header_generation_id;
             capture.initial_status = status.as_u16();
-            Body::from_stream(Tee::new(stream, status.as_u16(), capture))
+            let terminator = if status.is_success() && is_sse {
+                Terminator::for_kind(capture.observe.kind)
+            } else {
+                None
+            };
+            Body::from_stream(Tee::new(stream, status.as_u16(), capture, terminator))
         }
         None => Body::from_stream(stream),
     };
@@ -344,6 +358,62 @@ enum Completion {
 
 const USAGE_TAIL: usize = 64 * 1024;
 
+/// What the end of a complete SSE response looks like, per wire format. A 2xx stream that ends (or breaks) without it
+/// was cut off: the client gets the provider's own error event so it can tell a truncated answer from a whole one.
+#[derive(Clone, Copy)]
+enum Terminator {
+    /// Anthropic Messages: the last event is `message_stop` (or an `error` event the upstream sent itself).
+    Messages,
+    /// OpenAI-style chat: the last data line is `[DONE]` (or an error object the upstream sent itself).
+    Chat,
+}
+
+/// How far back from the end of the stream the terminator is looked for.
+const TERMINATOR_WINDOW: usize = 1024;
+
+const BROKE_OFF: &str =
+    "The connection to the model broke off before the response was complete. Try again.";
+
+impl Terminator {
+    fn for_kind(kind: crate::history::CallKind) -> Option<Self> {
+        match kind {
+            crate::history::CallKind::Messages => Some(Self::Messages),
+            crate::history::CallKind::Llm => Some(Self::Chat),
+            crate::history::CallKind::Decision => None,
+        }
+    }
+
+    fn is_complete(self, tail: &[u8]) -> bool {
+        let recent = String::from_utf8_lossy(&tail[tail.len().saturating_sub(TERMINATOR_WINDOW)..]);
+        match self {
+            Self::Messages => {
+                recent.contains("event: message_stop")
+                    || recent.contains("\"type\":\"message_stop\"")
+                    || recent.contains("event: error")
+            }
+            Self::Chat => recent.contains("[DONE]") || recent.contains("\"error\":"),
+        }
+    }
+
+    /// The error event in the provider's own format, preceded by whatever ends a half-written event.
+    fn error_event(self, tail: &[u8]) -> Bytes {
+        let message = serde_json::to_string(BROKE_OFF).unwrap_or_else(|_| "\"error\"".into());
+        let mut out = String::new();
+        if !tail.is_empty() && !tail.ends_with(b"\n\n") && !tail.ends_with(b"\r\n\r\n") {
+            out.push_str("\n\n");
+        }
+        match self {
+            Self::Messages => out.push_str(&format!(
+                "event: error\ndata: {{\"type\":\"error\",\"error\":{{\"type\":\"api_error\",\"message\":{message}}}}}\n\n"
+            )),
+            Self::Chat => out.push_str(&format!(
+                "data: {{\"error\":{{\"message\":{message},\"type\":\"api_error\"}}}}\n\n"
+            )),
+        }
+        Bytes::from(out)
+    }
+}
+
 struct Tee<S> {
     inner: S,
     status: u16,
@@ -353,10 +423,14 @@ struct Tee<S> {
     capture_limit: usize,
     capture: Option<Capture>,
     stream_failed: bool,
+    /// Set for a 2xx SSE response whose end can be checked.
+    terminator: Option<Terminator>,
+    /// The closing error event was sent: the next poll ends the body without touching `inner`.
+    ended: bool,
 }
 
 impl<S> Tee<S> {
-    fn new(inner: S, status: u16, capture: Capture) -> Self {
+    fn new(inner: S, status: u16, capture: Capture, terminator: Option<Terminator>) -> Self {
         let capture_limit = capture.capture_limit;
         Self {
             inner,
@@ -367,6 +441,22 @@ impl<S> Tee<S> {
             capture_limit,
             capture: Some(capture),
             stream_failed: false,
+            terminator,
+            ended: false,
+        }
+    }
+
+    /// Records a cut-off SSE call (once): a failed one (502), whatever status the client saw, because the client was
+    /// told with an error event.
+    fn finish_truncated(&mut self) {
+        if let Some(capture) = self.capture.take() {
+            capture.finish(
+                502,
+                std::mem::take(&mut self.buf),
+                std::mem::take(&mut self.tail),
+                self.response_bytes,
+                Completion::Failed,
+            );
         }
     }
 }
@@ -379,6 +469,9 @@ where
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
+        if this.ended {
+            return Poll::Ready(None);
+        }
         match Pin::new(&mut this.inner).poll_next(cx) {
             Poll::Ready(Some(Ok(chunk))) => {
                 this.response_bytes = this.response_bytes.saturating_add(chunk.len());
@@ -397,12 +490,32 @@ where
             Poll::Ready(Some(Err(err))) => {
                 if this.status >= 200 && this.status < 300 {
                     this.stream_failed = true;
+                    if let Some(t) = this.terminator {
+                        // Tell the client in its own format, then close cleanly instead of aborting the connection.
+                        tracing::warn!(%err, "upstream stream broke off; sending an error event");
+                        let event = t.error_event(&this.tail);
+                        this.ended = true;
+                        this.finish_truncated();
+                        return Poll::Ready(Some(Ok(event)));
+                    }
                 } else {
                     this.status = 502;
                 }
                 Poll::Ready(Some(Err(err)))
             }
             Poll::Ready(None) => {
+                if let Some(t) = this.terminator {
+                    if !this.stream_failed && !t.is_complete(&this.tail) {
+                        tracing::warn!(
+                            "upstream stream ended without its terminator; sending an error event"
+                        );
+                        this.stream_failed = true;
+                        let event = t.error_event(&this.tail);
+                        this.ended = true;
+                        this.finish_truncated();
+                        return Poll::Ready(Some(Ok(event)));
+                    }
+                }
                 if let Some(capture) = this.capture.take() {
                     capture.finish(
                         this.status,

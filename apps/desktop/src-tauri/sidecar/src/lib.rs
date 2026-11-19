@@ -11,6 +11,7 @@ pub mod process;
 pub mod router;
 pub mod settings;
 pub mod shellenv;
+pub mod web;
 
 pub use bridge::{Bridge, BridgeConfig, Connection, Notice, Running};
 
