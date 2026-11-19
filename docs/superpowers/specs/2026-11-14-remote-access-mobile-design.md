@@ -358,4 +358,7 @@ Not verified: a real `cloudflared`, a real quick tunnel (SSE refusal, 100 s limi
   Verified: `TestWrongCodesBackOffPerSource`, `TestManyWrongSourcesBurnTheCode`, `TestPairingThroughTheListener`
   (another address pairs after the first is backed off; failed before). Not verified: that a real quick tunnel sets
   `Cf-Connecting-Ip` (Cloudflare documents it for proxied traffic).
+- **Loopback listener only.** `HARNESS_REMOTE_ADDR` accepted any address, so `0.0.0.0:…` exposed the device API (no
+  desktop token) to the LAN. `remoteaccess.CheckAddr` (in `OptionsFromEnv` and `New`) now refuses anything but a
+  loopback IP or `localhost` with a port. Verified: `TestRemoteAddrMustBeLoopback` (failed before).
 

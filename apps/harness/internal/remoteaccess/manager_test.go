@@ -224,3 +224,25 @@ func TestParsePermsAndEnv(t *testing.T) {
 		t.Fatal("negative hours accepted")
 	}
 }
+
+// The tunnel listener serves the paired-device API without the desktop token: cloudflared reaches it on loopback, and
+// nothing else may (security review finding 9). A non-loopback HARNESS_REMOTE_ADDR is refused with a clear error, in
+// the settings and in New.
+func TestRemoteAddrMustBeLoopback(t *testing.T) {
+	for _, a := range []string{"", "127.0.0.1:0", "127.0.0.1:8799", "[::1]:0", "localhost:0", "127.1.2.3:9"} {
+		o := Options{}
+		if err := OptionsFromEnv(&o, func(k string) string { return map[string]string{EnvAddr: a}[k] }); err != nil {
+			t.Errorf("%q refused: %v", a, err)
+		}
+	}
+	for _, a := range []string{"0.0.0.0:8799", ":8799", "[::]:0", "192.168.1.5:8799", "10.0.0.1:0", "example.com:80", "127.0.0.1", "nonsense"} {
+		o := Options{}
+		err := OptionsFromEnv(&o, func(k string) string { return map[string]string{EnvAddr: a}[k] })
+		if err == nil || !strings.Contains(err.Error(), EnvAddr) || !strings.Contains(err.Error(), "loopback") {
+			t.Errorf("%q: err = %v", a, err)
+		}
+		if _, err := New(Options{Addr: a, DataDir: t.TempDir()}); err == nil {
+			t.Errorf("New accepted %q", a)
+		}
+	}
+}

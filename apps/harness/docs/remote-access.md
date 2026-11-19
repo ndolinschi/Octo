@@ -121,7 +121,7 @@ group, 3 s, `SIGKILL`. Auto-off: no device request for `HARNESS_REMOTE_IDLE_OFF_
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `HARNESS_REMOTE_CLOUDFLARED` | `cloudflared` on PATH | the tunnel program |
-| `HARNESS_REMOTE_ADDR` | `127.0.0.1:0` | the tunnel listener |
+| `HARNESS_REMOTE_ADDR` | `127.0.0.1:0` | the tunnel listener; loopback only (`127.0.0.0/8`, `::1` or `localhost`, with a port): another address (`0.0.0.0`, a LAN IP, no port) stops `harness serve` with an error naming the variable |
 | `HARNESS_REMOTE_WEB_DIR` (`serve --remote-web-dir`) | none | the built web app (`apps/web/dist`) |
 | `HARNESS_REMOTE_WEB_PROXY` | none | development: proxy the web app to a Vite dev server |
 | `HARNESS_REMOTE_ALLOW` | `send,answer,stop` | what devices may do beyond reading (`none` = read only) |

@@ -101,6 +101,9 @@ func New(o Options) (*Manager, error) {
 	if o.Addr == "" {
 		o.Addr = "127.0.0.1:0"
 	}
+	if err := CheckAddr(o.Addr); err != nil {
+		return nil, err
+	}
 	if o.Allow == nil {
 		o.Allow = DefaultPerms()
 	}
