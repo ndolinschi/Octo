@@ -4200,4 +4200,9 @@ Owner decisions of 2026-11-18 (the four items held back from the polish list):
   (i) stays, so all tabs share one 40px anatomy. Every `Panel` user is a dock tab (no dialog or page uses it). Tested
   (`Panel.test.ts`); `spacing-audit.mjs` measures the bar's first element instead of the title. Checked all 13 tool tabs in
   dark and light (`?demo=1&tabs=all`, the Atlas project and Design system tokens): no `h2` in any bar, header 40px.
+- **G2 (2026-11-18).** File-tree rows are 24px (`h-ctl-xs`; touch keeps `touch:h-ctl-lg`, 40, 44 on a phone; every other list
+  stays 28). Indent guides: the indent spacer draws a 1px `line` per 12px level under each ancestor's glyph, only while the
+  tree is hovered or holds focus (`.octo-tree-indent`, a background: nothing moves). Checked dark and light: every tree row
+  24px, rows 24px apart, the same tops at rest and on hover; ArrowDown moves focus; the filter ("token") leaves 4 rows;
+  `file-open-stability.mjs` ok. Not measured: a real phone (the touch height is the unchanged `touch:` rule).
 

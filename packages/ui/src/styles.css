@@ -2681,3 +2681,11 @@ article:not(:has([data-turn-changes])):is(:hover, :focus-within) [data-restore] 
     }
   }
 }
+
+/* G2 (2026-11-18): the file tree's indent guides. A 1px `line` under each ancestor's 24px glyph box (the indent is 12px a
+   level, so one per 12px tile, at its right edge), shown only while the tree is hovered or holds focus. A background on the
+   indent spacer: no layout change. */
+[role="tree"]:is(:hover, :focus-within) .octo-tree-indent {
+  background-image: linear-gradient(to right, transparent 11px, var(--octo-line) 11px, var(--octo-line) 12px, transparent 12px);
+  background-size: 12px 100%;
+}

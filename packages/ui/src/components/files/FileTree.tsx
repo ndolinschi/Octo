@@ -78,9 +78,13 @@ function updateRowTip(row: HTMLDivElement) {
   }
 }
 
-/** Nesting depth as a spacer (a width, not padding: indents are structure, not spacing). */
+/**
+ * Nesting depth as a spacer (a width, not padding: indents are structure, not spacing). G2 (2026-11-18): it carries the
+ * indent guides, a 1px `line` under each ancestor's glyph, drawn only while the tree is hovered or focused (styles.css,
+ * `.octo-tree-indent`; a background, so nothing moves).
+ */
 function Indent({ px }: { px: number }) {
-  return px > 0 ? <span aria-hidden className="shrink-0" style={{ width: px }} /> : null;
+  return px > 0 ? <span aria-hidden className="octo-tree-indent shrink-0 self-stretch" style={{ width: px }} /> : null;
 }
 
 const TreeNodeRow = memo(function TreeNodeRow({
@@ -128,7 +132,7 @@ const TreeNodeRow = memo(function TreeNodeRow({
       onKeyDown={(e) => onKeyDownRow(e, row)}
       onClick={() => onActivateRow(row)}
       className={cn(
-        "flex h-row shrink-0 items-center rounded-sm px-1 text-sm press-row focus-inset touch:h-ctl-lg",
+        "flex h-ctl-xs shrink-0 items-center rounded-sm px-1 text-sm press-row focus-inset touch:h-ctl-lg",
         selected ? "bg-active" : "hover:bg-hover",
         isRoot && !isFirstRoot && "mt-2",
       )}
@@ -160,7 +164,7 @@ export type FileTreeHandle = { focusFirst(): void };
 /**
  * ARIA tree of the project's folders; directories load when expanded. With `filter`, only files whose
  * folder-relative path contains it (case-insensitive) are shown, with their ancestors expanded; the
- * caller loads the folders first (`indexFiles`). Rows: 28px (40 under touch), radius 6, 12px per level,
+ * caller loads the folders first (`indexFiles`). Rows: 24px (G2; 40 under touch, 44 on a phone), radius 6, 12px per level,
  * [24px glyph box: chevron for folders, type glyph for files] 4 [name] … — one anatomy for folders and files, so siblings
  * share one label edge. A root folder is a section head on the same edges: a meta caption (12px, `fg-3`, medium) with its chevron, 8px above every root but the first.
  */
@@ -302,7 +306,7 @@ export const FileTree = forwardRef<
               onKeyDown={(e) => onKeyDown(e, row)}
               aria-disabled={row.kind === "loading" || undefined}
               aria-busy={row.kind === "loading" || undefined}
-              className="flex h-row shrink-0 items-center gap-1 rounded-sm px-1 text-xs text-fg-3 focus-inset touch:h-ctl-lg"
+              className="flex h-ctl-xs shrink-0 items-center gap-1 rounded-sm px-1 text-xs text-fg-3 focus-inset touch:h-ctl-lg"
             >
               <Indent px={indent} />
               <span className="grid size-6 shrink-0 place-items-center">{row.kind === "loading" && <Spinner size={10} />}</span>
