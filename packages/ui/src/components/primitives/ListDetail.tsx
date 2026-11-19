@@ -49,6 +49,8 @@ export function ListDetail(props: {
   listSkeleton?: ReactNode;
   detailSkeleton?: ReactNode;
   detailClassName?: string;
+  /** The detail lays itself out to the height it is given and scrolls where it chooses (a form with its actions pinned below its fields): no scroll area around it. */
+  detailFills?: boolean;
   /**
    * What the rows `list()` returns are: `"rows"` (default) is flat `ListRow`s, each given `role="listitem"` by the owner, inside the
    * `role="list"` the list's name goes on; `"own"` is a list the owner builds itself (a `<ul>` of `<li>`, a tree) and names.
@@ -126,6 +128,10 @@ export function ListDetail(props: {
           </div>
           {props.loading ? (
             <div className={cn("px-4 pt-4", !open && "hidden @min-[640px]/ld:block")}>{props.detailSkeleton ?? <SkeletonText lines={5} />}</div>
+          ) : hasDetail && props.detailFills ? (
+            <div className="flex min-h-0 flex-1 flex-col px-pane">
+              <DetailBackContext value={{ back: goBack, label: props.listLabel }}>{props.detail}</DetailBackContext>
+            </div>
           ) : hasDetail ? (
             <ScrollArea className={cn("min-h-0 flex-1", props.detailClassName ?? "px-pane pb-4")}>
               <DetailBackContext value={{ back: goBack, label: props.listLabel }}>{props.detail}</DetailBackContext>

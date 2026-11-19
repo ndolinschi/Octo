@@ -10,6 +10,7 @@ import { Checkbox } from "../primitives/Checkbox";
 import { Field } from "../primitives/Field";
 import { Notice } from "../primitives/Notice";
 import { DetailHeader, FormActions } from "../primitives/Panel";
+import { ScrollArea } from "../primitives/ScrollArea";
 import { Segmented } from "../primitives/Segmented";
 import { TextArea, TextField } from "../primitives/TextField";
 import { Markdown } from "../shared/Markdown";
@@ -86,7 +87,7 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
     <form
       noValidate
       aria-label={note ? `Edit ${note.title}` : "New note"}
-      className={cn("flex flex-col gap-4", DETAIL_COLUMN)}
+      className={cn("flex min-h-0 flex-1 flex-col", DETAIL_COLUMN)}
       onSubmit={(e) => {
         e.preventDefault();
         void save();
@@ -104,7 +105,7 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
       }}
     >
       <DetailHeader title={note ? note.title : "New note"} {...(note ? { meta: "Editing" } : {})} />
-      <div className="flex flex-col gap-4 px-2">
+      <ScrollArea className="flex min-h-0 flex-1 flex-col gap-4 px-2 pt-2 pb-3">
         <Field label="Title" htmlFor={`${id}-title`} error={titleError} errorId={`${id}-title-error`}>
           <TextField
             id={`${id}-title`}
@@ -146,7 +147,7 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
         <Field label="Tags" htmlFor={`${id}-tags`} optional>
           <TextField id={`${id}-tags`} value={tags} onChange={(e) => setTags(e.target.value)} placeholder="deploy, rules" />
         </Field>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-h-48 flex-1 flex-col gap-1.5">
           <div className="flex min-h-ctl-xs items-center justify-between gap-2">
             <label htmlFor={`${id}-body`} className="text-sm text-fg-2">
               Note (Markdown)
@@ -165,16 +166,15 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
             <TextArea
               id={`${id}-body`}
               ref={bodyRef}
-              rows={12}
               value={body}
               onChange={(e) => setBody(e.target.value)}
               spellCheck={false}
-              className="font-mono text-xs"
+              className="min-h-0 flex-1 resize-none font-mono text-xs"
               aria-invalid={bodyError ? true : undefined}
               aria-describedby={bodyError ? `${id}-body-error` : undefined}
             />
           ) : (
-            <div className="min-h-[12rem] rounded-md border border-field-edge bg-panel px-3 py-2">
+            <div className="min-h-0 flex-1 rounded-md border border-field-edge bg-panel px-3 py-2">
               {body.trim() ? <Markdown text={body} className="octo-prose octo-prose-sm" /> : <p className="text-sm text-fg-3">Nothing to preview yet.</p>}
             </div>
           )}
@@ -195,6 +195,8 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
           )}
         </div>
         {error && <Notice tone="error">{error}</Notice>}
+      </ScrollArea>
+      <div className="shrink-0 border-t border-line px-2 py-2">
         {discarding ? (
           <FormActions key="discard" note="Discard changes?" label="Discard changes">
             <Button size="sm" variant="quiet" ref={keepRef} onClick={keepEditing}>

@@ -61,11 +61,13 @@ export function Panel(props: {
               {props.lead}
             </div>
           )}
-          <span className="flex min-w-0 flex-1 items-baseline">
-            {props.meta !== undefined && <span className="shrink-0 px-1 text-xs text-fg-3 tabular-nums">{props.meta}</span>}
-          </span>
+          {props.meta !== undefined && (
+            <span className="flex min-w-0 flex-1 items-baseline">
+              <span className="shrink-0 px-1 text-xs text-fg-3 tabular-nums">{props.meta}</span>
+            </span>
+          )}
           {props.actions !== undefined && (
-            <div data-panel-actions className="flex shrink-0 items-center gap-1">
+            <div data-panel-actions className="ml-auto flex shrink-0 items-center gap-1">
               {props.actions}
             </div>
           )}

@@ -58,16 +58,15 @@ export function Notice(props: { title: string; children?: ReactNode; actions?: R
   );
 }
 
-/** "owner/name" gives way from the owner ("atl…/atlas-api"); any other text from its middle. */
-function CutText({ text, className, siblings }: { text: string; className: string; siblings?: readonly string[] | undefined }) {
+/**
+ * "owner/name" gives way from the owner ("atl…/atlas-api") through the shared middle cut (`MiddleText`, a `distinct` tail:
+ * the repository name keeps the line, the owner shrinks to its first letter before the name is cut); any other text from
+ * its middle, the folder names beside their siblings. One cut, never an ellipsis on top of an ellipsis.
+ */
+export function CutText({ text, className, siblings }: { text: string; className?: string; siblings?: readonly string[] | undefined }) {
   const slash = text.lastIndexOf("/");
-  if (slash <= 0) return <MiddleText text={text} split={distinctSplit(text, siblings)} {...(className ? { className } : {})} />;
-  return (
-    <span className={cn("flex min-w-0 items-baseline", className)}>
-      <span className="min-w-0 truncate">{text.slice(0, slash)}</span>
-      <span className="shrink-0">{text.slice(slash)}</span>
-    </span>
-  );
+  const split = slash > 0 ? { head: text.slice(0, slash), tail: text.slice(slash), distinct: true as const } : distinctSplit(text, siblings);
+  return <MiddleText text={text} split={split} {...(className ? { className } : {})} />;
 }
 
 /**
@@ -79,7 +78,6 @@ export function TextMenu(props: {
   label: string;
   text: string;
   items: MenuItem[];
-  mono?: boolean;
   alignEnd?: boolean;
   /** The other choices: a name sharing a long head with them keeps the part that tells it apart. */
   siblings?: readonly string[];
@@ -101,9 +99,9 @@ export function TextMenu(props: {
           const r = button.current?.getBoundingClientRect();
           if (r) setMenu(menu ? null : { x: props.alignEnd ? r.right : r.left, y: r.bottom + 4 });
         }}
-        className={cn("min-w-0 shrink! gap-1!", menu && "bg-active text-fg", props.className)}
+        className={cn("min-w-0 shrink! gap-1! px-1.5!", menu && "bg-active text-fg", props.className)}
       >
-        <CutText text={props.text} siblings={props.siblings} className={props.mono ? "font-mono text-xs" : ""} />
+        <CutText text={props.text} siblings={props.siblings} />
         <Glyph icon={ChevronDown} size={14} className="shrink-0 text-fg-3" />
       </Button>
       <Presence show={menu !== null} exitMs={0}>

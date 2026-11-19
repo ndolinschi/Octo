@@ -35,6 +35,14 @@ async function project(page, env, name) {
   await page.waitForTimeout(1200);
 }
 
+/** Opens a session by the start of its title from the sidebar's tree (a project opens its most recent session, not a given one). */
+async function session(page, env, title) {
+  const row = page.locator("a", { hasText: title }).first();
+  if (!(await row.isVisible().catch(() => false))) await menuButton(page);
+  await row.click({ timeout: 8000 });
+  await page.waitForTimeout(1200);
+}
+
 async function home(page) {
   const b = page.getByRole("button", { name: "Home" }).first();
   if (!(await b.isVisible().catch(() => false))) await menuButton(page);
@@ -316,7 +324,7 @@ export const GROUPS = {
       sizes: "one",
       run: async (page, env) => {
         await boot(page, env);
-        await project(page, env, "Orbit mobile");
+        await session(page, env, "Upgrade us to React Native");
         await page.waitForTimeout(2500);
         await need(page, page.getByText(/Dependency auditor/), "delegation");
       },
@@ -1060,9 +1068,9 @@ export const GROUPS = {
       run: async (page, env) => {
         await reviewOpen(page, env);
         // The demo's thread that sits at no line belongs to retry.ts (the strip is per file).
-        await page.getByText("retry.ts", { exact: true }).first().click();
+        await page.getByText("retry.ts", { exact: true }).filter({ visible: true }).first().click();
         await page.waitForTimeout(900);
-        await clickText(page, /outdated threads?|threads? not at a line/);
+        await clickText(page, /threads?, \d+ not at a line/);
         await page.waitForTimeout(500);
       },
     },
@@ -1296,8 +1304,10 @@ export const GROUPS = {
       run: async (page, env) => {
         await boot(page, env);
         await project(page, env, "Atlas API");
-        await click(page, /^Project actions$/);
-        await need(page, page.getByRole("menu"), "project actions menu");
+        // On a phone the same button is named "More".
+        await click(page, /^(Project actions|More)$/);
+        // A phone opens it as a bottom sheet (a dialog titled "More").
+        await need(page, page.getByRole("menu").or(page.getByRole("dialog", { name: "More" })), "project actions menu");
       },
     },
     {
@@ -1341,10 +1351,10 @@ export const GROUPS = {
       sizes: "all",
       run: async (page, env) => {
         await reviewPicker(page, env);
-        const field = page
-          .getByRole("searchbox")
-          .or(page.getByLabel(/Search pull requests/))
-          .first();
+        // Below 420px the search is a button that opens the field.
+        const opener = page.getByRole("button", { name: "Search pull requests" }).filter({ visible: true });
+        if (await opener.count()) await opener.first().click();
+        const field = page.getByRole("searchbox", { name: /Search pull requests/ }).filter({ visible: true }).first();
         await field.fill("482");
         await field.press("Enter");
         await need(page, page.getByText(/Which repository is it in|Pick the repository/), "the refusal", 12000);
@@ -1463,6 +1473,9 @@ export const GROUPS = {
           .filter({ visible: true })
           .first()
           .click();
+        // Providers that are not set up sit under one disclosure ("3 more providers can be added").
+        const more = page.getByText(/more providers? can be added/).filter({ visible: true });
+        if (await more.count()) await more.first().click();
         const row = page
           .getByText(/Copilot/)
           .filter({ visible: true })
@@ -1650,13 +1663,11 @@ export const GROUPS = {
       run: async (page, env) => {
         await boot(page, env);
         await project(page, env, "Atlas API");
-        await page
-          .getByRole("treeitem", { name: /Plan the release/ })
-          .filter({ visible: true })
-          .first()
-          .click({ timeout: 8000 });
+        // On a phone the tree is in the sidebar drawer: `session` opens it first.
+        await session(page, env, "Plan the release");
         await need(page, page.getByText(/Three things block Friday/), "the session's conversation", 15000);
-        await need(page, page.locator('[role="tab"][data-tab-id^="session:"]'), "a session tab in the strip");
+        // A phone shows one view and no tab strip.
+        if (env.width > 500) await need(page, page.locator('[role="tab"][data-tab-id^="session:"]'), "a session tab in the strip");
         await page.waitForTimeout(600);
       },
     },
