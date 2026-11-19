@@ -69,7 +69,7 @@ function Start() {
         // names each folder with its path.
         <StatusButton
           className="max-w-48 min-w-0 shrink"
-          title={`${folders.map((f) => (folders.length > 1 ? `${f.label}: ${f.path}` : f.path)).join("\n")}\nOpen the project's files`}
+          title={`${folders.map((f) => f.path).join("\n")}\nOpen the project's files`}
           onClick={() => ws?.openTool("files")}
         >
           <Glyph icon={GLYPH.files} size={14} />

@@ -13,10 +13,11 @@ import { middleSplit, type MiddleSplit } from "../../lib/truncate";
 export function MiddleText({ text, split = middleSplit(text), className }: { text: string; split?: MiddleSplit | null; className?: string }) {
   if (!split) return <span className={className ? `min-w-0 truncate ${className}` : "min-w-0 truncate"}>{text}</span>;
   return (
-    <span className={className ? `flex min-w-0 items-baseline ${className}` : "flex min-w-0 items-baseline"}>
-      <span className={split.distinct ? "min-w-4 truncate" : "min-w-0 truncate"}>{split.head}</span>
-      {/* The distinguishing tail never shrinks while the head can; it is cut only past the head's first letter (min-w-4). */}
-      <span className={split.distinct ? "max-w-[calc(100%-var(--spacing)*4)] shrink-0 truncate" : "shrink-0"}>{split.tail}</span>
+    // `data-distinct` (styles.css, `.octo-mid`): the tail never shrinks while the head can; it is cut only past the head's
+    // first letter. In CSS, not class strings, to keep the entry chunk small.
+    <span data-distinct={split.distinct} className={className ? `octo-mid flex min-w-0 items-baseline ${className}` : "octo-mid flex min-w-0 items-baseline"}>
+      <span className="min-w-0 truncate">{split.head}</span>
+      <span className="shrink-0">{split.tail}</span>
     </span>
   );
 }

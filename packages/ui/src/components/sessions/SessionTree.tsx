@@ -282,11 +282,9 @@ export function SessionTree(props: SessionTreeProps) {
                   {wsLabel && <Glyph icon={GitBranch} size={14} className="shrink-0 text-fg-3" />}
                   {inTree ? (
                     <span className="min-w-0 truncate">{meta}</span>
-                  ) : oneProject ? null : /\s/.test(s.project_name) ? (
-                    // A name of words reads from its start ("Billing w…"); one long identifier keeps its end ("pro…system").
-                    <span className="min-w-0 truncate">{s.project_name}</span>
                   ) : (
-                    <MiddleText text={s.project_name} />
+                    // A name of words reads from its start ("Billing w…"); one long identifier keeps its end ("pro…system").
+                    !oneProject && <MiddleText text={s.project_name} {...(/\s/.test(s.project_name) ? { split: null } : {})} />
                   )}
                 </span>
               ) : undefined

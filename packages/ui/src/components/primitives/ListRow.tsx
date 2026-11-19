@@ -102,9 +102,7 @@ export function ListRow(props: {
         <MiddleText text={props.title} />
       </span>
     ) : (
-      // `metaYields`: the title keeps its whole width up to what leaves the meta its 64px floor and the 8px gap (no shrink
-      // weight, which would shave a subpixel off a title that fits and draw a false ellipsis).
-      <span id={`${ids}t`} className={cn("truncate", props.metaYields && hasMeta ? "max-w-[calc(100%-var(--spacing)*18)] shrink-0" : "min-w-0")}>
+      <span id={`${ids}t`} className="min-w-0 truncate">
         {props.title}
       </span>
     );
@@ -116,18 +114,15 @@ export function ListRow(props: {
         </span>
       )}
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex min-w-0 items-center gap-2">
+        {/* `metaYields` (styles.css, `[data-meta-yields]`): the title keeps its width up to what leaves the meta 64px and the
+            gap, the meta takes the rest and ends on the row's edge. In CSS to keep the entry chunk small. */}
+        <span data-meta-yields={(props.metaYields && hasMeta) || undefined} className="flex min-w-0 items-center gap-2">
           {title}
           {hasMeta && (
             <span
               aria-hidden={metaText !== "" || undefined}
               data-row-tail
-              className={cn(
-                "ml-auto truncate pl-1 text-xs",
-                // A yielding meta takes the rest of the row (at least 64px, the title's cap leaves it) and ends on its edge.
-                props.metaYields ? "min-w-0 text-right" : "max-w-[40%] shrink-0",
-                selected || active ? "text-fg-2" : "text-fg-3",
-              )}
+              className={cn("ml-auto truncate pl-1 text-xs", !props.metaYields && "max-w-[40%] shrink-0", selected || active ? "text-fg-2" : "text-fg-3")}
             >
               {props.meta}
             </span>
