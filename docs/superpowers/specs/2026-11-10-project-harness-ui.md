@@ -4205,4 +4205,10 @@ Owner decisions of 2026-11-18 (the four items held back from the polish list):
   tree is hovered or holds focus (`.octo-tree-indent`, a background: nothing moves). Checked dark and light: every tree row
   24px, rows 24px apart, the same tops at rest and on hover; ArrowDown moves focus; the filter ("token") leaves 4 rows;
   `file-open-stability.mjs` ok. Not measured: a real phone (the touch height is the unchanged `touch:` rule).
+- **G3 (2026-11-18).** Processes says who started each process, after the state: "Running · by you · pnpm dev". Runs and
+  terminals are always the person's (no agent can start one, `apps/harness/docs/commands.md`), a run from a review says "by you,
+  from a review", a language server "by the editor", an agent worker "by <its session's title>". The harness did not send the
+  session an ACP worker serves; it now does (`session_id` on `GET …/processes`, kind `agent`, from the orchestrator's existing
+  record; `internal/bridge/processes_test.go`), and the demo's worker carries the default session. `processStarter`
+  (`lib/processes/model.ts`) is tested; an unknown or missing session says nothing. A long session title gives way (half the line).
 

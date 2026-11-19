@@ -45,6 +45,8 @@ type workerProcessDTO struct {
 	StartedAt string `json:"started_at"`
 	Detail    string `json:"detail,omitempty"`
 	Output    string `json:"output,omitempty"`
+	// SessionID is the project session an agent worker serves (kind "agent" only): the UI names who started it.
+	SessionID string `json:"session_id,omitempty"`
 }
 
 func (s *Server) processRoutes(mux *http.ServeMux) {
@@ -91,6 +93,7 @@ func (s *Server) listProcesses(w http.ResponseWriter, r *http.Request) {
 				StartedAt: started,
 				Detail:    wp.Model,
 				Output:    wp.Stderr,
+				SessionID: wp.SessionID,
 			})
 		}
 	}

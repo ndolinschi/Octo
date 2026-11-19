@@ -20,6 +20,7 @@ import {
   processGlyph,
   processName,
   processPid,
+  processStarter,
   processStatusText,
   processTone,
   workerKey,
@@ -85,6 +86,8 @@ export default function ProcessesTab() {
   }, [bridge, projectId]);
 
   const agentCount = projectState.agentOrder.length;
+  const sessionList = projectState.sessions.list;
+  const sessionTitle = (id: string) => sessionList.find((s) => s.id === id)?.title;
   useEffect(() => {
     void refreshWorkers();
   }, [refreshWorkers, agentCount]);
@@ -266,6 +269,7 @@ export default function ProcessesTab() {
                     <li key={item.key}>
                       <ProcessRow
                         item={item}
+                        starter={processStarter(item, sessionTitle)}
                         selected={current?.key === item.key}
                         canManage={canManage}
                         busy={busy === item.key}
@@ -298,6 +302,7 @@ export default function ProcessesTab() {
 
 function ProcessRow(props: {
   item: ProcessItem;
+  starter: string | null;
   selected: boolean;
   canManage: boolean;
   busy: boolean;
@@ -350,6 +355,13 @@ function ProcessRow(props: {
       description={
         <span className="flex min-w-0 items-baseline gap-2">
           <span className="shrink-0">{processStatusText(item)}</span>
+          {/* G3: who started it, after the state ("Running · by you · pnpm dev"); a long session title gives way. */}
+          {props.starter && (
+            <>
+              <span>·</span>
+              <span className="max-w-1/2 min-w-0 shrink truncate">{props.starter}</span>
+            </>
+          )}
           <span>·</span>
           <span className="min-w-0 flex-1 truncate font-mono">{cmd}</span>
         </span>
