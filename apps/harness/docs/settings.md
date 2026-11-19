@@ -8,7 +8,7 @@ The **id** of a setting is the variable name in `harness.env`, so the file stays
 
 | Id | Kind | Group | Applies | Meaning |
 | --- | --- | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | secret | keys | restart | Key the built-in loop sends (Anthropic, or the bearer token an OpenAI/OpenRouter-style router expects). When the shell starts the bundled router it passes the router's upstream key here, see below. |
+| `ANTHROPIC_API_KEY` | secret | keys | restart (now in `harness serve`, which swaps the key live: `appliesOf`) | Key the built-in loop sends (Anthropic, or the bearer token an OpenAI/OpenRouter-style router expects). When the shell starts the bundled router it passes the router's upstream key here, see below. |
 | `OCTO_ROUTER_UPSTREAM_KEY` | secret | router | restart | The provider key behind the Octo router (OpenRouter, for example). **Read by the desktop shell, not by the harness.** |
 | `HARNESS_MODEL_ORCHESTRATOR` | model | models | now | Default orchestrator: a model id or `acp:<agent-id>[/<model>]`. Built-in default `claude-sonnet-5-5`. |
 | `HARNESS_MODEL_FAST` | model | models | now | Fast tier. Default `claude-haiku-5-5`. |
@@ -16,8 +16,11 @@ The **id** of a setting is the variable name in `harness.env`, so the file stays
 | `HARNESS_MODEL_DEEP` | model | models | now | Deep tier. Default `claude-opus-5-5`. |
 | `OCTO_ROUTER_ENABLED` | bool | router | restart | `1` / `0`: the shell starts the bundled router and points the harness at it. **Read by the shell.** Default off. |
 | `OCTO_ROUTER_BASE_URL` | text | router | restart | Base URL of an **external** router. Empty or unset means the router bundled with the app. **Read by the shell.** |
+| `HARNESS_MODEL_COMPLETION` | model | models | now | Ollama model tag of the small inline-completion tier. Empty: `qwen2.5-coder:1.5b`. |
+| `HARNESS_OLLAMA_BASE_URL` | text | models | now | Base URL of the Ollama server of that tier. Default `http://127.0.0.1:11434`. |
 | `HARNESS_ACP_TRACE` | bool | advanced | now | Record an ACP wire trace: one JSON-lines file per agent session under `{data-dir}/traces/`, secrets removed, capped (see [acp-orchestrator.md](./acp-orchestrator.md#diagnostics-and-the-wire-trace)). Takes effect for sessions that start afterwards. |
 | `HARNESS_CHILD_ENV_ALLOW` | list | advanced | now | Extra variable names / `PREFIX_*` patterns passed to every child process (see README "Child environment"). Stored comma separated. |
+| `HARNESS_FEATURE_AUTO_MEMORY` | bool | advanced | now | Prompt before saving remembered items when a project's auto-memory is off, and digest completed turns when it is allowed. Default `true`. |
 
 The harness stores and reports the three `OCTO_ROUTER_*` settings and otherwise ignores them. They are never passed to child processes (`OCTO_ROUTER_` is on the child-environment deny list, which even `HARNESS_CHILD_ENV_ALLOW` cannot override).
 

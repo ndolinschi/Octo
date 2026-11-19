@@ -1,8 +1,9 @@
 # Live checklist 4 — owner's run
 
-Branch `claude/harness-ui-v6-completion-8ynrkq`, the commit after batch 5 (error catalogue, file tree column, slash menu,
-images, the Sessions tab) — `git log -1` on the machine says which. Everything below was checked here against a scripted
-agent, a mock model, a fake router and a fake `gh`, in Chromium on demo data. None of it has run in a macOS window, with a
+The integration branch after the 2026-11-18/19 pass (`git log -1` on the machine says which commit). Sections 0 to E were
+written after batch 5 (error catalogue, file tree column, slash menu, images, the Sessions tab); **section F is new
+(2026-11-19) and holds what the polish, performance, security and robustness pass could not check.** Everything was
+checked here against a scripted agent, a mock model, a fake router and a fake `gh`, in Chromium on Linux on demo data. None of it has run in a macOS window, with a
 real `gh` on your fork, or with Copilot, Grok or Antigravity logged in. **(first time live)** marks what has never run
 against the real thing.
 
@@ -20,9 +21,10 @@ diagnostic report" in Settings is the short version of the same.
 0.2 Packaged app with the router switched on. *Expect:* `router.log` has no "no usable price entry"; an easy request
 shows `x-octo-price-swap` as in dev. *Send:* `router.log`.
 
-0.3 Existing data directory from an older build (schema before 14). *Expect:* the app starts; each project's database
-migrates; a project that had tasks keeps `project.sqlite.pre-m6` next to `project.sqlite` (M6 clean-up backup, a numbered
-name if one exists). *Send:* `ls` of the project folder and the harness log's migration lines.
+0.3 Existing data directory from an older build (schema before 15). *Expect:* the app starts; each project's database
+migrates to 15 and keeps `project.sqlite.pre-v15` next to `project.sqlite`; a project that came from before 14 and had tasks
+also keeps `project.sqlite.pre-m6` (a numbered name if one exists). *Send:* `ls` of the project folder and the harness log's
+migration lines.
 
 ## A. The macOS / WebKit window (only your machine can show this)
 
@@ -31,10 +33,10 @@ toggle, no overlap; no "Octo" title strip; dragging by an empty part of the top 
 zooms; full screen moves the sidebar toggle to the edge. *Send:* a screenshot of the top-left 400 × 60 px at normal and
 full screen. **(first time on macOS)**
 
-A2 **System folder dialog.** New project → "Browse…". *Expect:* if the dialog plugin is not in this build, "Browse…" is
-absent and the folder is chosen from the list (Recent, path completion); if present, the system dialog opens and the
-chosen folder is added without a label field. *Send:* which of the two you saw. **(first time on macOS; the Tauri dialog
-plugin is designed, not built)**
+A2 **System folder dialog.** New project → "Browse…". *Expect:* the system's folder dialog opens (the harness runs
+`osascript` on macOS) and the chosen folder is added without a label field; cancelling changes nothing. If "Browse…" is
+absent, the folder is chosen from the list (Recent, path completion). *Send:* which you saw. **(first time on macOS; the
+dialog is the harness's `POST /v1/fs/pick-folder`, tested with fake choosers only)**
 
 A3 **A long prompt.** Paste about 60 lines into the composer, then type at the end. *Expect:* the box grows up to its
 cap and then scrolls; nothing in the window jerks, flickers or changes width while you type; the caret never jumps.
@@ -232,10 +234,88 @@ harness's message appears under the top row.
   tree, sessions, memory); Windows; touch; screen readers; a real `gh` on a fork; posting a review; Copilot, Grok and
   Antigravity logged in; images with any real agent; `session/load` with a real agent; completion latency with a real
   model; the entry bundle on a cold start over a slow disk.
-- **Entry bundle** is 163.6 kB gzip against the 158 target (budget 164.6 in `scripts/check-bundle-size.mjs`).
-- **Not built:** the Tauri folder dialog, review RV3 (the AI pass), parity B8–B10, the savings view, bots, subscription
-  routing through the router, embeddings for Memory search.
+- **Entry bundle** is 160.39 kB gzip against a budget of 161.00 (`scripts/check-bundle-size.mjs`, 2026-11-19).
+- **Not built:** review RV3 (the AI pass), parity B8–B10, the savings view, bots, subscription routing through the router,
+  embeddings for Memory search, applying a worktree's work back to the main checkout, a file-system watcher, rename / delete /
+  new file in the file tree, a licence file, signed builds and an updater.
 - **Known debt:** 49 native controls outside `primitives` (lint warning `octo/no-native-controls`; per-folder counts in
   `research/2026-11-12-ui-component-audit.md`); review findings of rounds 1 and 2 that batch 5 did not close.
 - **Known quirks:** `Settings → Commands` still has the "Settings for" project row (Models no longer does); Copilot has
   no login probe beyond the advisory one.
+
+## F. What the 2026-11-19 pass could not check (polish, performance, security, robustness)
+
+Everything in this pass was verified on Linux in Chromium on demo data, and against a real `harness serve` on the mock
+model for the file tree, the branch chip, the Markdown images and the CSP. These are the checks that need your machine.
+Send back what the other sections ask: the step number, one sentence, a screenshot.
+
+F1 **Traffic lights, with the guide.** On the Mac: the app's binary inside `Octo.app/Contents/MacOS/` started from a terminal with `OCTO_DEBUG_CHROME=1` set (or
+`OCTO_DEBUG_CHROME=1 pnpm --filter @octo/desktop tauri dev`). *Expect:* a 1 px magenta line across the top row at its
+control centre; the three lights' centres, the sidebar toggle, back and forward all sit on it; the red light's left edge is on
+the glyph column of the sidebar's Home / Search / Review rows (24 pt); the green light is 4 pt from the toggle. The configured position
+is logged (a line starting `octo chrome:`, on stderr and in the web inspector's console). *Send:* a screenshot of
+the top-left 400 x 60 px, and the logged line. If the lights are off by n points, change `y` in `tauri.macos.conf.json` and
+`MAC_LIGHTS_Y` in `src/windowChrome.ts` by n. Also say your macOS version: on 15 and older the lights are 20 pt apart, not
+23, and the gap to the toggle would be 10 pt. **(first time after the 2026-11-19 change; macOS 26 drawing measured from your screenshots)**
+
+F2 **The CSP in the Tauri window.** Open the web inspector of the app and its console. Use chat, Files (open a file: Monaco),
+Terminal (type a command), Browser (a local dev site), Review, Settings. *Expect:* no "Content Security Policy" violation in the
+console and nothing blocked in the UI. Then ask an agent to answer with `![x](https://example.com/a.png)`. *Expect:* a chip
+with the host and "Load image", and no request until you press it. *Send:* the console's violation lines, if any, with what you
+were doing. **(first time: the CSP ran in Chromium only, as a response header)**
+
+F3 **Safari / WebKit.** `pnpm dev:all -- --mock`, open `http://localhost:1420` in Safari. Walk: a long prompt (A3), opening
+files (A4), changing project from the sidebar (no blink), a long conversation's scroll, the branch picker, the file tree's
+compact folders, the Terminal and Browser tabs. With Playwright's WebKit: `node packages/ui/scripts/project-switch.mjs --url
+http://localhost:1420 --browser webkit`. *Send:* what flickers, jumps or looks different from Chromium. **(only Playwright's
+Linux WebKit ran, for the premium pass; nothing since)**
+
+F4 **A Tauri bundle build on a machine with the system libraries.** macOS: `bash scripts/install.sh` (Xcode command-line
+tools, Go, Rust, Node, pnpm needed). Linux: the WebKitGTK development packages, then `pnpm install:app -- --no-install`
+(prints the AppImage path). *Expect:* the bundle builds and starts; Octo appears; the harness and router sidecars start and stop
+with it (`pgrep harness` and `pgrep octo` are empty after closing the window). *Send:* the last 20 lines of a failing build.
+**(the shell has never been compiled in the build environment; CI only runs `cargo check`)**
+
+F5 **Process clean-up on macOS.** Open a terminal tab and start a run (Processes tab, a command that sleeps). Find the
+`harness` process of the app (`pgrep -f 'harness serve'`) and `kill -9` it; the app shows its failure screen; press Retry or
+reopen the app. *Expect:* the shell and the run you started are gone (`ps`), and the new harness is up. Then quit the app
+normally: no `harness`, `octo`, shell or agent process is left. *Send:* `ps` output after each step. **(compiled for macOS,
+never run there; Linux was run)**
+
+F6 **Real agents: approvals.** In a project with access "Ask first" and Claude Code (then Copilot or Grok) as the agent, ask
+for a change that edits a file and runs two commands, one of them compound (`ls; echo hi`). *Expect:* an approval card per
+request; "Allow once", "Allow for this request" (offered for a simple command, not for the compound one), "Always", "Deny"; with
+several waiting, one card with "Allow all for this request"; the scope's wording names what it covers (the program, or the
+host). *Send:* a screenshot of each card and which scopes the agent's own permission request offered. **(only the scripted agent
+asked for permission)**
+
+F7 **A real Ollama.** Install Ollama, `ollama pull qwen2.5-coder:1.5b`, leave it stopped. Settings → Providers → Ollama.
+*Expect:* "Not running" with `ollama serve` to copy and "Check again". Run `ollama serve`, press "Check again". *Expect:* Ready.
+Then type in an editor with inline completion on. *Send:* the completion's latency (feel: under half a second or not) and what
+it suggested. **(the probe was tested with a closed port and a listener, not with Ollama)**
+
+F8 **Remote access with a real tunnel and phone.** Install `cloudflared`, Settings → Remote access → turn on (read the
+warning), scan the QR code or type the code on the phone, allow the phone on the computer. *Expect:* the phone shows your
+projects; it can send, answer an approval with Allow or Deny, and stop; "Always" and "for this request" are not offered, and a
+direct `POST` of them is refused (`remote_decision_forbidden`); settings, file writes and the Browser tab are not
+available. Turn it off: the phone loses access at once. *Send:* a screenshot of the phone's approval card and any refusal text.
+**(only a fake `cloudflared` ran)**
+
+F9 **The branch picker on your repository, with a worktree.** Click the branch chip on the new-session screen of a project in
+a git repository (macOS paths). *Expect:* the branch you are on; switching to a clean branch works and the chip follows; with
+uncommitted tracked changes the picker refuses and offers "Start in a worktree from <branch>"; choosing it makes a new session
+in a worktree and leaves the main checkout as it was. Run a real agent in that worktree and ask for an edit. *Send:* a
+screenshot of a refusal; the worktree's path; whether the agent edited the worktree and not the main checkout.
+
+F10 **The router's stored text.** Switch the router on (Settings → Providers → router, with a provider key), send one request,
+then run `sqlite3 <app data>/router/history.sqlite "SELECT count(*) FROM calls WHERE request_payload IS NOT NULL;"`.
+*Expect:* more than 0, the request text is stored (the default `store_payloads = true`).
+*Decide:* keep the default, or ask for `store_payloads = false` in the app's generated `history.toml`. *Send:* your decision.
+
+F11 **A file made outside Octo.** In a terminal outside Octo, create a file in the project folder. *Expect (known gap):* it does
+not appear in the Files tree until you collapse and open its folder again. *Send:* nothing, unless it appears by itself
+(then the note in HANDOVER item 8 is stale).
+
+F12 **Scroll feel.** Open `?demo=1` Stress conversation in the app's window (or a real conversation of 100 turns) and scroll
+up fast, then press Send. *Expect:* no judder you can see; the sent message lands at the end. *Send:* a screen recording if it
+stutters. **(at 4x CPU in Chromium the target was not met; this is the real-machine answer)**

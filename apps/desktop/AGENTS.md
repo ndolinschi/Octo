@@ -65,6 +65,6 @@ pnpm test:dev-sh                       # from the repo root: dev.sh comes up, an
 ```
 
 The Tauri glue (`src-tauri/src/lib.rs`), `install.sh` on macOS and the installed app have not been run in the build environment (no WebKitGTK, no macOS): CI compiles the glue, the owner tries the app. Say so if you rely on them.
-Host UI still to do (spec: packaging P9): the first-run screen and Settings "Models and keys" on `getSettings` / `putSettings`; the diagnostics "Copy report" on `getDiagnostics`. The sidecar side (settings file, router switch, restart) is built.
+The first-run screen is the connect screen and Settings has the provider key and "Copy diagnostic report" (packaging P9, built in the UI; see `docs/ARCHITECTURE.md` status). The Tauri webview has a CSP (`tauri.conf.json`; `src/tauriCsp.test.ts`) that is not verified in the Tauri runtime. The sidecar side (settings file, router switch, restart) is built.
 In a browser the app does not start the harness: run `harness serve` yourself (see `apps/harness/README.md`); inside Tauri the shell does.
 Do not share SQLite or config files with the harness or the router.

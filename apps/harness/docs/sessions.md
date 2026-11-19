@@ -7,8 +7,8 @@ several main sessions of one project can run turns at the same time, within the 
 **default**: it takes what is sent to the project without a session (`POST /messages` and the other project routes below).
 
 Specs: `docs/superpowers/specs/2026-11-12-project-sessions-design.md` (sessions as records) and
-`docs/superpowers/specs/2026-11-14-parallel-sessions-design.md` (parallel sessions; phase 1 is built: shared workspace only, no
-worktrees, no coordination tools, every session's memory mode is `on`). Code: `internal/projectstore/{project_sessions,
+`docs/superpowers/specs/2026-11-14-parallel-sessions-design.md` (parallel sessions; phase 1 is built, and a session can be moved into a new git worktree (`POST /sessions/{sid}/worktree`; its body is `{base_ref, carry_changes}`); no
+coordination tools, every session's memory mode is `on`). Code: `internal/projectstore/{project_sessions,
 migrate_v13_sessions,migrate_v15_parallel_sessions,queue,session_settings}.go`, `internal/orchestrator/{orchestrator,queue,slots,
 sessions,clear,recover}.go`, `internal/project/{sessions,parallel}.go`, `internal/bridge/sessions.go`.
 
@@ -81,7 +81,7 @@ published then. `GET /agents` lists every root; `GET /agents/{aid}/messages` wor
 session the request belongs to), `GET /context`, `GET /plans/latest` and `GET /export` act on the **default** session.
 `POST /cancel?all=true` stops every session of the project. The UI of before schema 15 keeps working through them.
 
-## Branches of the main checkout (UI decision 98, 2026-11-19)
+## Branches of the main checkout (UI decision 100, 2026-11-19)
 
 The composer's branch chip and picker. Code: `internal/project/branches.go`, `internal/gitx/{switch,branches}.go`,
 `internal/bridge/workspaces.go`; tests `internal/bridge/branches_test.go` (real temporary repositories), `internal/gitx/switch_test.go`.

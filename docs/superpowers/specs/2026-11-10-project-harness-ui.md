@@ -4167,7 +4167,7 @@ tab runtime layout with live command output; WebKit/Tauri desktop binary.
   - Enlarged `[data-phone]` `touch-hit` `IconButton`/`Button` (`xs`/`sm`/`md`) and `[data-composer-row] > button` boxes to `44×44` (`--spacing-ctl-lg`) and matched `[data-phone] [data-jump-room]` to `--spacing-ctl-lg` (`44px`) in `styles.css` so the `Jump to latest` button fits inside its room without overlapping compacted-history markers.
   - Updated `FilterTabs` (`phone:h-ctl-lg phone:min-w-ctl-lg` on wrapper and `radio` buttons), `Segmented` (`phone:h-ctl-lg phone:p-0`, `phone:min-w-ctl-lg`), `MenuButton` (`touch-hit phone:h-ctl-lg phone:min-w-ctl-lg`), `DetailHeader` back/actions slots (`phone:h-ctl-lg`, `phone:min-h-ctl-lg`), `ComposerPills` (`phone:min-h-ctl-lg`), `ComposerProjectBar` (`phone:min-h-ctl-lg`), `UsageTable` footer (`phone:min-h-ctl-lg`), `PendingNotesPopover` row (`touch:min-h-ctl-lg`), and `ModelPicker` field trigger (`touch:h-ctl-lg`).
 - **Harness `TestAcceptEditsAutoApprovesWritesAndAsksForBash` flake (`v7_approvals_test.go`).**
-  - Replaced `waitApprovals(t, pid, 1)` + manual turn polling in [`v7_approvals_test.go`](apps/harness/internal/bridge/v7_approvals_test.go) with `e.turnWithApprovals(t, pid, "Go [bash:echo ok > cmd.txt]", allow)` asserting every seen approval has `Kind == "command"`.
+  - Replaced `waitApprovals(t, pid, 1)` + manual turn polling in [`v7_approvals_test.go`](../../../apps/harness/internal/bridge/v7_approvals_test.go) with `e.turnWithApprovals(t, pid, "Go [bash:echo ok > cmd.txt]", allow)` asserting every seen approval has `Kind == "command"`.
 
 **Verified.** `gofmt -l apps/harness/internal/bridge/v7_approvals_test.go`, `pnpm format:check`, `pnpm lint` (`0` errors, `0` cycles across `849` files), `pnpm test` (`184/184` `@octo/agent-client`, `902/902` `@octo/ui` including `phone.test.ts`, `41/41` `@octo/desktop`, `10/10` `test:scripts`), `pnpm --filter @octo/desktop build`, `pnpm --filter @octo/web build`, `node scripts/check-bundle-size.mjs` (`160.92 kB` gzip vs `161.00 kB` budget), `slash-commands.mjs --phone` (`slash-commands: ok`), Playwright Chromium verification across `1440×900`, `844×390` & `740×360` landscape phones (`data-phone=true`, `overflowX=false`, `mainPaddingLeft=0px`), and `390×844` / `360×740` portrait phones (`0` control target issues across Chat, Processes, Sessions, Terminal, Browser, Side question, Agents, Notes, Usage, Review, and Changes; `DiffPanel` `retry.ts` `0` overlap/overflow) with screenshot inspection, plus `spacing-audit.mjs --query "demo=1&tabs=all" --strict` (`total=0`, `skipped=0` across `chat-idle`, `delegation`, `tool-processes`, `tool-browser`, `tool-terminal`, `v7-gallery`, `phone-home`, `phone-nav`, `phone-plus`, `phone-files`, `phone-changes`, `phone-browser`, `phone-processes`, `phone-terminal`, `phone-settings`, and phone panel runs).
 **Not verified.** `go test -race` on `apps/harness/internal/bridge` (`TestAcceptEditsAutoApprovesWritesAndAsksForBash`) could not run in this offline/proxy-blocked VM (`modernc.org/sqlite@v1.62.0` absent from `GOMODCACHE` and `proxy.golang.org` returns HTTP `403`); WebKit Playwright engine and native Tauri desktop binary.
@@ -4782,7 +4782,9 @@ written with `PUT …/files/content` into `ecommerce` split the row in place wit
 file-system watcher, so no `file.changed` arrives and the tree (any tree, compact or not) shows it only after the folder is listed
 again; a chain re-forming after a delete (unit-tested only: no delete route); WebKit, the Tauri shell, the phone layout.
 
-## Decision 98 — the composer's branch chip shows the real branch and picks another (2026-11-19)
+## Decision 100 — the composer's branch chip shows the real branch and picks another (2026-11-19)
+
+_Numbering: this decision was written as a second "98" (compact folders, above, keep 98) and the project-switch fix is 99, so it is 100 since 2026-11-19. Comments in the code (the branch picker and chip in `packages/ui`, the harness's `internal/project/branches.go`, `internal/usererr/catalogue_branches.go`, `internal/bridge/workspaces.go`, the client's branch methods) still say "decision 98"._
 
 Owner (screenshot of the new-session screen, a chip that always read "Main checkout" and offered only "Move to worktree…"):
 "I should be able to select branch in input." Aim: Cursor's composer, where the chip is the branch and opens a branch list.
@@ -4806,7 +4808,7 @@ d. **Parallel work is one step.** An "In a new worktree" section lists the same 
    worktree…" (the dialog with branch name and carry-over) stays in a "Session" section.
 e. **Several repositories:** one section per repository titled "name · current branch"; a switch acts on that repository.
 
-### As built — decision 98 (2026-11-19)
+### As built — decision 100 (2026-11-19)
 
 - `lib/branches.ts` (tested: label, tooltip, sections, create row, paging merge, branch-name rules); `chat/useBranchHead.ts`
   (the chip's data, a per-project cache so a remount shows the branch at once); `chat/BranchPicker.tsx` (lazy chunk);

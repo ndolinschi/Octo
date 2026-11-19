@@ -312,7 +312,7 @@ unless the built-in loop it needs is unavailable (`builtin_loop_unavailable`); `
 | `POST /side {text, session_id?}` | the side question reads that session's conversation (absent: the default). |
 | `GET /workspaces`, `POST /workspaces`, `GET /workspaces/{wid}`, `POST /workspaces/{wid}/apply {dry_run?}`, `DELETE /workspaces/{wid}?force=&delete_branch=` | section 3; 409 `apply_conflict`, `workspace_dirty`, `workspace_in_use`; 410 `workspace_missing` for a vanished directory. |
 | `GET /v1/sessions?kind=main&state=&archived=&limit=&before=` | across projects, newest activity first, each with `project_id`, `project_name`; limit 1–200 (default 100). |
-| `GET /branches?workspace=&folder=&q=&offset=&limit=`, `POST /branches/switch {branch, folder?, create?}` | (2026-11-19, UI decision 98) per git repository of a workspace's folders the checked-out branch and a searchable chunk of local branches; switch the **main checkout** only. 409 `uncommitted_changes`, `checkout_in_use`, `branch_switch_failed` (action `use_worktree`), `branch_exists`, `not_a_git_repository`; 404 `branch_not_found`; 400 `invalid_branch_name`. Exact shapes: `apps/harness/docs/sessions.md`. |
+| `GET /branches?workspace=&folder=&q=&offset=&limit=`, `POST /branches/switch {branch, folder?, create?}` | (2026-11-19, UI decision 100) per git repository of a workspace's folders the checked-out branch and a searchable chunk of local branches; switch the **main checkout** only. 409 `uncommitted_changes`, `checkout_in_use`, `branch_switch_failed` (action `use_worktree`), `branch_exists`, `not_a_git_repository`; 404 `branch_not_found`; 400 `invalid_branch_name`. Exact shapes: `apps/harness/docs/sessions.md`. |
 
 **Compatibility aliases (kept):** `POST /messages`, `/cancel`, `/queue*`, `/clear`, `/compact`, `/rewind`, `/context`,
 `/plans/latest` and `/export` act on the **default** session; `POST /cancel?all=true` stops every session.
@@ -608,7 +608,7 @@ Update (2026-11-17): the Details tool tab (`ScopedDetailsPanel` in `TabView.tsx`
 
 Phases 3–5 (criteria 14–31, 37): not built.
 
-### Branch choice in the composer (2026-11-19, UI decision 98)
+### Branch choice in the composer (2026-11-19, UI decision 100)
 
 Decided with the owner's request "I should be able to select branch in input": the composer's chip shows the branch of the
 session's checkout and switches the **main checkout's** branch only when nothing can be lost or disturbed — tracked files
@@ -617,7 +617,7 @@ worktree alternative of section 3: a worktree workspace started at the chosen br
 "worktree", base_ref}}`, or `POST /sessions/{sid}/worktree {base_ref, carry_changes: false}` for the empty session), which
 never touches the main checkout. Never force, stash, discard or commit. Built: `GET /branches`, `POST /branches/switch`
 (`internal/project/branches.go`, `internal/gitx/switch.go`, catalogue `catalogue_branches.go`, action `use_worktree`),
-client `listBranches?` / `switchBranch?`, the UI chip and picker (UI spec, decision 98). Tests with real temporary
+client `listBranches?` / `switchBranch?`, the UI chip and picker (UI spec, decision 100). Tests with real temporary
 repositories: `internal/bridge/branches_test.go` (list, paging, search, switch, create, unknown, invalid, detached, dirty
 refusal with the worktree alternative, refusal while a turn runs, non-git folder, two repositories), `internal/gitx/switch_test.go`.
 Also fixed: `GET /workspaces` hung once a worktree workspace existed (a nested query on the store's single connection while
