@@ -4570,6 +4570,26 @@ switch 196/131 → 149/128 ms. Load at 4x: CLS 0 in all 5 runs before and after;
 pass did not show, so whether its cause is gone is not verified. Entry bundle 160.24 kB (integration tip 160.28). Not verified:
 WebKit, the Tauri shell, a real harness, the phone layout.
 
+## As built — macOS traffic-light alignment (2026-11-19)
+
+Owner, on the real macOS app: "traffic light is not aligned with buttons in left sidebar". Measured on the owner's screenshots
+(`images/1.webp`, `3.webp`, `4.webp`, 2000 px wide, same window): scale **1.086 px per CSS px**, from the 260 px sidebar + 8 px
+gutter (panel edge 291 px from the window edge) and the 32 px toggle-to-forward pitch (70 px for 64), checked by the 40 px bar
+(43.5 px). Found: lights' left edge 16.5 px (`trafficLightPosition.x` 16 = the Home row box's edge; the Home / Search / Review glyphs
+start at 24, the status-bar glyph too), so the red light's centre sat 9 px left of the glyph centres; lights' centre 0.9 px below the bar buttons'
+(`y: 23` gave 21, not 20: the offset is -2, the old note said -3); green light to toggle 11.4 px against 4 px between the bar's buttons.
+The lights measure 12 px discs 23 px apart (macOS 26 drawing; macOS 15 and older: 20 apart), not 20.
+
+Changed: `trafficLightPosition` `{16, 23}` -> `{24, 22}` (`tauri.macos.conf.json`; `MAC_LIGHTS_X` is now `SIDEBAR_GLYPH_X`, `MAC_LIGHTS_Y` 22,
+new `MAC_LIGHTS_CENTER_OFFSET` -2); `MAC_INSET_START` stays 86 but is now derived (x + 2 pitches + disc + the bar's 4 px gap), so the
+gap is 4 px. Unchanged: Linux / Windows / browser (no overlay, no inset) and full screen (`useWindowChrome` sets `insetStart` 0 on
+`onResized` when `isFullscreen()`; the toggle then sits on the glyph column like in a browser; `?titlebar=mac-fullscreen` shows it).
+Preview: dev server only, `?titlebar=mac` (`useWindowChrome` + `MacLightsPreview.tsx`, `import.meta.env.DEV`, no production code) pretends
+to be the macOS shell and draws the three lights from the same constants; `apps/desktop/scripts/traffic-lights.mjs` measures and asserts
+(dark/light, sidebar shown/hidden, default/380 wide, full screen, plain browser): before 34 failures (centre 21 vs 20, red left 16 vs 24, gap 12 vs 4), after all hold.
+**Not verified:** the real window (this environment is not macOS and cannot build the Tauri shell); on macOS 15 and older (lights 20 apart) the green-to-toggle
+gap would be 10 px, not 4 (the UA cannot tell the versions apart).
+
 ## Decision 98 — compact folders in the file tree (2026-11-19)
 
 Owner (a Java project's screenshot, `management-system-application > src > main > java > com > wsgc > … > subsystem > config`,
