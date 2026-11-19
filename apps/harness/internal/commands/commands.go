@@ -25,6 +25,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/proctree"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projcfg"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
@@ -95,6 +96,8 @@ type Options struct {
 	Environ func() []string
 	// Shell is the bash to run (default: the bash found on PATH when a run starts).
 	Shell string
+	// Children records each run's process so a later start can stop what a crashed harness left (nil: not recorded).
+	Children *proctree.Ledger
 }
 
 // Service starts and tracks the command runs of every project.
@@ -105,6 +108,7 @@ type Service struct {
 	now     func() time.Time
 	environ func() []string
 	shell   string
+	ledger  *proctree.Ledger
 
 	mu     sync.Mutex
 	active map[string]*run
@@ -112,7 +116,7 @@ type Service struct {
 
 // New returns the service.
 func New(store *projectstore.Store, hub *events.Hub, o Options) *Service {
-	s := &Service{store: store, hub: hub, grace: o.StopGrace, now: o.Now, environ: o.Environ, shell: o.Shell, active: map[string]*run{}}
+	s := &Service{store: store, hub: hub, grace: o.StopGrace, now: o.Now, environ: o.Environ, shell: o.Shell, ledger: o.Children, active: map[string]*run{}}
 	if s.environ == nil {
 		s.environ = os.Environ
 	}
@@ -295,6 +299,7 @@ func (s *Service) spawn(ctx context.Context, db *projectstore.DB, pid string, cm
 	if cmd.Process != nil {
 		osPID = cmd.Process.Pid
 	}
+	s.ledger.Add(osPID, "process", cmdDef.Name)
 	id := projectstore.NewID("run")
 	r := &run{svc: s, pid: pid, id: id, cmd: cmd, done: make(chan struct{})}
 	r.row = projectstore.CommandRun{ID: id, Name: cmdDef.Name, Command: cmdDef.Command, PID: osPID, Cwd: dir,
@@ -305,6 +310,7 @@ func (s *Service) spawn(ctx context.Context, db *projectstore.DB, pid string, cm
 	if err := db.AddRun(ctx, r.row); err != nil {
 		signalGroup(cmd, true)
 		_ = cmd.Wait()
+		s.ledger.Remove(osPID)
 		s.mu.Lock()
 		delete(s.active, r.row.ID)
 		s.mu.Unlock()
@@ -324,6 +330,7 @@ func (s *Service) spawn(ctx context.Context, db *projectstore.DB, pid string, cm
 	go func() {
 		readers.Wait()
 		waitErr := cmd.Wait()
+		s.ledger.Remove(osPID)
 		close(stopFlush)
 		r.finish(db, waitErr)
 	}()

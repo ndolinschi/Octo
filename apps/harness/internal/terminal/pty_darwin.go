@@ -13,6 +13,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/ndolinschi/Octo/apps/harness/internal/proctree"
 )
 
 func openPTY(cols, rows uint16) (master *os.File, slave *os.File, err error) {
@@ -73,10 +75,10 @@ func killProcessGroup(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	pid := cmd.Process.Pid
-	if pid > 0 {
-		_ = syscall.Kill(-pid, syscall.SIGHUP)
-		_ = syscall.Kill(-pid, syscall.SIGKILL)
+	// The shell is a session leader; its background jobs have process groups of their own but stay in its
+	// session (or are its descendants): all of them get SIGHUP and SIGTERM, then SIGKILL after the grace.
+	if pid := cmd.Process.Pid; pid > 0 {
+		proctree.KillSession(pid, proctree.DefaultGrace)
 	}
 	_ = cmd.Process.Kill()
 }

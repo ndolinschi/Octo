@@ -229,3 +229,14 @@ Details: [`apps/harness/docs/acp-orchestrator.md`](../../../apps/harness/docs/ac
 - **R1.5.** `harness doctor [--json]` and `GET /v1/diagnostics` (`internal/diag`): see the doc; the log tail is a ring of the last 200 records scrubbed of credentials. The ACP wire trace (`internal/acptrace`, `HARNESS_ACP_TRACE`, also the setting `HARNESS_ACP_TRACE`, applied at once): per-process files under `{data-dir}/traces/`, 5 MB cap per file (oldest half dropped), 20 files, redaction of secret-named values, env/header pairs, bearer tokens, manifest env values, the MCP token and project secrets. Doctor runs each agent's login probe (exit status only); the endpoint does not run anything. Not in the report: environment values, file contents of the project.
 - **R1.6.** `PRAGMA user_version` stamps `registry.sqlite` and every `project.sqlite` (`projectstore.SchemaVersion` was 1 when this was written; it is **3** now, after memory M1 and M2 — each bump is a forward migration with a test; databases without a stamp are older and migrate forward as before). A database stamped higher is refused before anything is changed: `... was written by a newer version of the app (database schema N, this version understands M up to): update the app; the database was left untouched` (`NewerSchemaError`; `harness serve` fails to start on a newer registry, a newer project fails to open with this message). Tests: migration from the schema of commit 20d4d6b (embedded as `testdata/project_schema_20d4d6b.sql`, with rows kept and the new tables usable), refusal of a newer project database (and that it was not touched) and of a newer registry.
 - Related: the server default access of new projects is `full` until the UI ships approval cards (`HARNESS_DEFAULT_ACCESS=supervised` still works).
+
+## As built — child processes do not outlive the harness (2026-11-19)
+
+Terminal shells and Processes runs are session leaders; closing, stopping and shutting down signal the whole session and
+every descendant (SIGHUP/SIGTERM, SIGKILL after the grace), so `sleep 777 &` and `python3 -m http.server 9790 &` started in a
+terminal end with it. Children are recorded in `{data-dir}/children.json`; the next start stops the ones a SIGKILLed
+instance left (only when pid and start time match). Decision: stop, not re-adopt (nothing could show their output). The
+desktop's process-group stop of the harness and this agree: the group holds the harness, its children are in their own
+sessions and are stopped by the harness on SIGTERM or by the next start. Verified on Linux with real processes
+(`internal/proctree`, `internal/terminal`, `internal/commands` tests, and the reviewer's reproduction); macOS (`ps`-based
+listing) compiled only; Windows unchanged. Details: `apps/harness/docs/architecture.md`.

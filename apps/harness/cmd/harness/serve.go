@@ -35,6 +35,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/lsp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
+	"github.com/ndolinschi/Octo/apps/harness/internal/proctree"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/providers"
@@ -207,6 +208,10 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 			slog.Error("release data folder lock", "err", err)
 		}
 	}()
+	// Terminal shells and Processes runs a previous instance left running (it was killed) are stopped, matched by
+	// pid and start time; this one records its own in the same file.
+	children := proctree.OpenLedger(cfg.DataDir)
+	children.Reap(proctree.DefaultGrace)
 	store, err := projectstore.Open(cfg.DataDir)
 	if err != nil {
 		// The list of projects cannot be worked around: stop, naming the file and what to do; it is left untouched.
@@ -336,12 +341,12 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	}
 
 	lspMgr := lsp.NewManager(lsp.Options{})
-	termMgr := terminal.NewManager(terminal.Options{})
+	termMgr := terminal.NewManager(terminal.Options{Children: children})
 	// PR review (RV1): the `gh` adapter; worktrees of finished reviews are swept at start and every 6 hours.
 	reviews := review.New(store, hub, review.Options{Host: codehost.NewGH()})
 	go reviews.Run(ctx, 6*time.Hour)
 	// Project commands (decision 68): started only by the user's own HTTP call, never by an agent.
-	cmds := commands.New(store, hub, commands.Options{})
+	cmds := commands.New(store, hub, commands.Options{Children: children})
 	cmds.Recover(ctx)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
