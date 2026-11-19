@@ -1,12 +1,13 @@
 import { usePhone } from "../../lib/phone";
 import { quietFocus } from "../../lib/quietFocus";
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { useCode } from "../../state/code";
 import { TREE_DEFAULT, TREE_MAX, TREE_MIN, useFileView } from "../../state/fileView";
 import type { TabId } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { PanelFilters } from "../primitives/Panel";
+import { ResizeHandle } from "../primitives/ResizeHandle";
 import { SearchField } from "../primitives/SearchField";
 import { FileTree, type FileTreeHandle } from "./FileTree";
 
@@ -16,7 +17,7 @@ import { FileTree, type FileTreeHandle } from "./FileTree";
  * selection stay). The filter is the panels' filter row (`PanelFilters`: 36px, 40 under touch, the 8px pane inset), then the
  * tree with the same 8px side inset, so the field and the rows share both edges.
  * The column resizes from its right edge (pointer, or ←/→ by 16 and Shift by 64 on the focused handle; double-click resets
- * to 220); width and shown/hidden are kept per group (`state/fileView`). Filtering walks the folders breadth-first (`indexFiles`).
+ * to the default, 40% of the view: `lib/treeLayout`); width and shown/hidden are kept per group (`state/fileView`). Filtering walks the folders breadth-first (`indexFiles`).
  */
 export function TreeColumn(props: {
   id: string;
@@ -66,7 +67,7 @@ export function TreeColumn(props: {
       inert={!shown}
       className={cn("flex flex-col bg-panel", page ? cn("absolute inset-0", !shown && "invisible") : "relative shrink-0 border-r border-line")}
     >
-      {!page && <ResizeHandle groupId={props.groupId} width={width} max={props.maxWidth} />}
+      {!page && <ColumnHandle groupId={props.groupId} width={width} max={props.maxWidth} />}
       <PanelFilters>
         <SearchField
           ref={input}
@@ -94,52 +95,33 @@ export function TreeColumn(props: {
   );
 }
 
-/** 8px-wide handle centred on the column's right hairline (keyboard: ←/→ 16, Shift 64; Home/End; double-click resets). */
-function ResizeHandle({ groupId, width, max }: { groupId: string; width: number; max: number }) {
+/**
+ * 8px-wide handle centred on the column's right hairline: the shared `ResizeHandle` (drag, ←/→ 16, Shift 64). Double-click
+ * goes back to the default, which follows the view's width (`lib/treeLayout`).
+ */
+function ColumnHandle({ groupId, width, max }: { groupId: string; width: number; max: number }) {
   const fv = useFileView();
-  const start = useRef<{ x: number; w: number } | null>(null);
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    start.current = { x: e.clientX, w: width };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!start.current) return;
-    fv.setColumnWidth(groupId, Math.min(max, start.current.w + (e.clientX - start.current.x)));
-  };
-  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    const step = e.shiftKey ? 64 : 16;
-    const next =
-      e.key === "ArrowRight"
-        ? width + step
-        : e.key === "ArrowLeft"
-          ? width - step
-          : e.key === "Home"
-            ? TREE_MIN
-            : e.key === "End"
-              ? Math.min(max, TREE_MAX)
-              : null;
-    if (next === null) return;
-    e.preventDefault();
-    fv.setColumnWidth(groupId, Math.min(max, next));
-  };
+  const start = useRef(width);
+  const next = useRef(width);
+  const set = (w: number) => fv.setColumnWidth(groupId, Math.min(max, w));
   return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize file tree"
-      aria-valuenow={width}
-      aria-valuemin={TREE_MIN}
-      aria-valuemax={Math.min(max, TREE_MAX)}
-      tabIndex={0}
+    <ResizeHandle
+      label="Resize file tree"
       title="Drag to resize; double-click to reset"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={() => (start.current = null)}
-      onPointerCancel={() => (start.current = null)}
-      onDoubleClick={() => fv.setColumnWidth(groupId, Math.min(max, TREE_DEFAULT))}
-      onKeyDown={onKeyDown}
+      value={width}
+      min={TREE_MIN}
+      max={Math.min(max, TREE_MAX)}
+      onDragStart={() => {
+        start.current = width;
+        next.current = width;
+      }}
+      onDrag={(_dx, total) => {
+        next.current = start.current + total;
+      }}
+      onFrame={() => set(next.current)}
+      onDragEnd={() => set(next.current)}
+      onKey={(dx) => set(width + dx)}
+      onReset={() => fv.setColumnWidth(groupId, TREE_DEFAULT)}
       className="group/handle absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none focus-visible:shadow-none"
     >
       <span
@@ -148,6 +130,6 @@ function ResizeHandle({ groupId, width, max }: { groupId: string; width: number;
         // `fg-3` while dragged or focused: visible, never louder than the text.
         className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 transition-[background-color] duration-fast group-hover/handle:bg-line-strong group-focus-visible/handle:bg-fg-3 group-active/handle:bg-fg-3"
       />
-    </div>
+    </ResizeHandle>
   );
 }
