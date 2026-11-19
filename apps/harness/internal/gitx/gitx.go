@@ -330,7 +330,7 @@ func Remotes(ctx context.Context, dir string) (map[string]string, error) {
 
 // WorktreeAdd checks commit out detached into path (which must not exist).
 func WorktreeAdd(ctx context.Context, repo, path, commit string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	_, err := Run(ctx, repo, "worktree", "add", "--detach", "--force", "--end-of-options", path, commit)
@@ -389,7 +389,7 @@ func WorktreeAddBranch(ctx context.Context, repo, path, branch, startPoint strin
 	} else if !ValidRefName(startPoint) {
 		return fmt.Errorf("invalid base revision %q", startPoint)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	_, err := Run(ctx, repo, "worktree", "add", "-b", branch, "--end-of-options", path, startPoint)

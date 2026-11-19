@@ -108,7 +108,7 @@ Nothing below is shared between harness, router and shell.
 
 | What | Where | Owner | Notes |
 | --- | --- | --- | --- |
-| Harness data dir | `--data-dir` / `HARNESS_DATA_DIR`, default `./data/harness`. In the desktop app: `<Tauri app data dir>/harness` (the identifier is `com.ndolinschi.octo.desktop`; the per-OS base path was not checked here) | harness | Created `0700`. `HARNESS_DATA_DIR` cannot come from `harness.env` |
+| Harness data dir | `--data-dir` / `HARNESS_DATA_DIR`, default `./data/harness`. In the desktop app: `<Tauri app data dir>/harness` (the identifier is `com.ndolinschi.octo.desktop`; the per-OS base path was not checked here) | harness | Private: directories `0700`, files `0600` (databases with their WAL/SHM, `.pre-*` backups, attachments, worktree directories, traces). At every start `projectstore.Open` removes group/other bits from the data dir and everything up to three levels below it (deeper entries, such as a worktree's checked-out files, sit under a `0700` directory); a no-op on Windows. `HARNESS_DATA_DIR` cannot come from `harness.env` |
 | `harness.env` | `{data-dir}/harness.env`, mode `0600` (a group-readable file is refused) | harness (settings API writes it atomically); the shell reads the three `OCTO_ROUTER_*` keys | `KEY=VALUE` lines. Precedence: flags > process environment > file |
 | `registry.sqlite` | `{data-dir}/registry.sqlite` | harness | Project registry. Stamped with `user_version`; a newer database is refused untouched |
 | `project.sqlite` | `{data-dir}/projects/{pid}/project.sqlite` | harness | Messages, agents, usage rows, notes, tasks and facts, memory sessions and exchanges, project sessions, memory files, search index (FTS5), queue, changes, approvals, compactions, ACP session ids, context receipts. Same version stamp: **schema 14** (`projectstore.SchemaVersion`); the memory M6 clean-up migration leaves `project.sqlite.pre-m6` (a numbered name when one exists) beside it |
@@ -119,7 +119,7 @@ Nothing below is shared between harness, router and shell.
 | `harness.pid` | `{data-dir}/harness.pid` | desktop shell | Leftover cleanup after a crash |
 | Router config | Directory named by `OCTO_CONFIG`; standalone default `./config/` (cwd). In the desktop app `<app data>/router/config/` (`server.toml` `0600`, `limits.toml`, `history.toml`, rewritten at every start) | router (shell writes it) | `[server]` and `[limits]` are required |
 | Router store | `history.toml` `database_path`, standalone default `data/history.sqlite`; in the app `<app data>/router/history.sqlite` (+ `.key` for the token HMAC unless `OCTO_HISTORY_TOKEN_KEY`) | router | Calls, decisions, session outcomes, `autoroute_calls` records, `budget_spend`. Soft-fail: if it cannot open, the proxy runs without history |
-| Logs | Tauri app log dir: `harness.log`, `router.log` (2 MiB cap, one `.1` kept) | desktop shell | `harness doctor` and `GET /v1/diagnostics` also carry the last 200 harness log records, scrubbed |
+| Logs | Tauri app log dir: `harness.log`, `router.log` (2 MiB cap, one `.1` kept; directory `0700`, files `0600`, also when they existed) | desktop shell | `harness doctor` and `GET /v1/diagnostics` also carry the last 200 harness log records, scrubbed |
 | UI preferences | Browser `localStorage` (theme `octo.theme`, layout, tab memory) | ui | Per webview, not shared |
 
 ## Main flows

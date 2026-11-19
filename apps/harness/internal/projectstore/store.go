@@ -34,9 +34,11 @@ func Open(dataDir string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Join(absDir, "projects"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(absDir, "projects"), privateDir); err != nil {
 		return nil, err
 	}
+	// Data written by an older version, or under a wide umask, is closed to other users at every start.
+	tightenTree(absDir, 3)
 	regPath := filepath.Join(absDir, "registry.sqlite")
 	reg, err := openSQLite(regPath)
 	if err != nil {
@@ -82,6 +84,7 @@ func openSQLite(path string) (*sql.DB, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	makeSQLitePrivate(abs)
 	return db, nil
 }
 
@@ -111,7 +114,7 @@ func (s *Store) projectDir(id string) string {
 // Create makes the project directory, database, orchestrator agent and registry row.
 func (s *Store) Create(ctx context.Context, in NewProject) (*DB, error) {
 	id := NewID("prj")
-	if err := os.MkdirAll(s.projectDir(id), 0o755); err != nil {
+	if err := os.MkdirAll(s.projectDir(id), privateDir); err != nil {
 		return nil, err
 	}
 	db, err := s.open(ctx, id)

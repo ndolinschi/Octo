@@ -240,3 +240,11 @@ Details: [`apps/harness/docs/acp-orchestrator.md`](../../../apps/harness/docs/ac
   with `go-version-file`. Verified: `govulncheck ./...` reported 31 reachable standard-library vulnerabilities on go1.26.0
   and none on go1.26.11; the checksum step was run against the real 1.26.11 linux-amd64 tarball (match). Not run: the
   install script end to end (it installs into `/usr/local` with sudo), the CI workflow.
+- **Private data directory.** Project databases were `0644` in `0755` directories. `projectstore` now creates the
+  `projects` and project directories `0700`, makes each SQLite file and its `-wal`/`-shm` `0600` when it opens it, makes
+  the `.pre-*` backups `0600`, and at every start removes group/other bits from the data dir and three levels below
+  (registry, traces, project files, `worktrees/`, `attachments/`); `gitx` creates worktree parents `0700`; the shell's
+  `CappedLog` creates its directory `0700` and the logs `0600`, also tightening existing ones. Windows: no-op. Verified:
+  `projectstore` `TestDataDirIsPrivate` (failed before: projects dirs `0755`, databases, WAL and SHM `0644`),
+  `octo-sidecar` `the_log_and_its_directory_are_private_also_when_they_existed` (`cargo test -p octo-sidecar`).
+
