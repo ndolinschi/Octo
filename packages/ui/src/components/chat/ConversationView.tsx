@@ -32,7 +32,7 @@ const AgentHeader = lazy(() => import("./AgentHeader").then((m) => ({ default: m
 import { requestTitle } from "../../lib/comments";
 import { buildTurns, promptText, requestSummaries } from "../../lib/transcript";
 import { CommentsControl } from "./CommentsControlLazy";
-import { Composer, type ComposerHandle } from "./Composer";
+import { Composer, type ComposerHandle, type ComposerProps } from "./Composer";
 const InlineNotes = lazy(() => import("./InlineNotes").then((m) => ({ default: m.InlineNotes })));
 const TurnRail = lazy(() => import("./TurnRail").then((m) => ({ default: m.TurnRail })));
 import { useOrchestratorComposer } from "./useOrchestratorComposer";
@@ -51,7 +51,7 @@ import { Presence } from "../primitives/Presence";
 const RewindDialog = lazy(() => import("./RewindDialog").then((m) => ({ default: m.RewindDialog })));
 import { useStuckTurn, useTurnRequests, useViewTurn } from "./turnTracking";
 import { slot } from "../../state/workspace/tabMemory";
-import { restoreScrollWhenReachable, useScrollSpot } from "./useScrollSpot";
+import { restoreScroll, useScrollSpot } from "./useScrollSpot";
 
 type ScrollMemory = { top: number; atBottom: boolean };
 const SCROLL_MEMORY = slot(
@@ -59,6 +59,16 @@ const SCROLL_MEMORY = slot(
   (v): v is ScrollMemory =>
     typeof v === "object" && v !== null && "top" in v && typeof v.top === "number" && "atBottom" in v && typeof v.atBottom === "boolean",
 );
+
+/** The composer's notes control for `count` pending notes: one object per count, so the memoised composer keeps its props. */
+const renderNotes = (open: boolean, setOpen: (open: boolean) => void) => <CommentsControl open={open} onOpenChange={setOpen} />;
+const notesSlots = new Map<number, NonNullable<ComposerProps["comments"]>>();
+function notesSlot(count: number): ComposerProps["comments"] {
+  if (!count) return undefined;
+  let s = notesSlots.get(count);
+  if (!s) notesSlots.set(count, (s = { count, render: renderNotes }));
+  return s;
+}
 
 /** A row outside the scroll area with the scroll area's gutters and side padding (see the doc comment). */
 export const EDGES = "scroll-quiet overflow-hidden px-(--pad)";
@@ -221,7 +231,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
     if (at && !at.atBottom) {
       scroll.release();
       // After a reload the transcript is still short: wait until the saved offset exists, or the clamp reads as "at the end".
-      cancelRestore.current = restoreScrollWhenReachable(el, at.top, scroll.release);
+      cancelRestore.current = restoreScroll(el, at.top, scroll.release);
     }
   }, [messages, memory, spot, scroll, spotStore.stored]);
   // Opening a file narrows the conversation and the text re-wraps: keep the reader's place (decision 60). The scroller only
@@ -276,10 +286,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
 
   const empty = showStarters;
   const showProjectBar = empty && !!projects?.length;
-  const totalNotes = composerProps.commentCount + composerProps.designNoteCount;
-  const commentsSlot = totalNotes
-    ? { count: totalNotes, render: (open: boolean, setOpen: (open: boolean) => void) => <CommentsControl open={open} onOpenChange={setOpen} /> }
-    : undefined;
+  const commentsSlot = notesSlot(composerProps.commentCount + composerProps.designNoteCount);
 
   // One tree for both layouts (contract v6 decision 13, v6.2 race fix): the header, the middle (the empty
   // project's title or the transcript), the composer row and the empty project's facts keep their positions, so

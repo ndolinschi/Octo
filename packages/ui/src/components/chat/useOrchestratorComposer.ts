@@ -186,6 +186,15 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   const loop = config?.builtin_loop;
   const acp = (current ?? "").startsWith("acp:");
   const noKey = loop?.available === false && !acp;
+  // Plain values for the memoised result below (the objects they come from are new on every project event).
+  const loopReason = loop?.reason;
+  const servedTitle = served?.asked ? `${served.name} (asked for ${served.asked})` : undefined;
+  const commentCount = comments?.comments.length ?? 0;
+  const contextUsed = orchestrator?.context_used;
+  const contextSize = orchestrator?.context_size;
+  const serverQueue = bridge.sendOrQueueMessage !== undefined;
+  const routed = !!config?.router;
+  const { add: queueAdd, remove: queueRemove, items: queuedItems } = queue;
   const currentDefaultId = state.sessions.currentId ?? "";
   const sessionProp = useMemo<ComposerProps["session"]>(() => {
     if (!activeSession || !ws) return undefined;
@@ -215,94 +224,129 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
         : {}),
     };
   }, [activeSession, ws, bridge, projectId, applySession, currentDefaultId]);
-  return {
-    running,
-    // P2-3: the conversation stays on screen while the service is away; the composer says why it is off.
-    // Remote access: a device that may not send (read-only, or sends not allowed); the composer says where that changes.
-    disabledReason: !deviceMay(device, "send")
-      ? device?.readOnly
-        ? "Read-only"
-        : "Sending is off"
-      : health === "offline"
-        ? // B3: the banner says what is wrong and what to do; the field only says why it is off.
-          "Offline"
-        : loadFailed
-          ? // B3: the service answers but the session did not load ("Couldn't load the session · Retry" above): not "Reconnecting…".
-            "Waiting for the session to load…"
-          : live === "reconnecting"
-            ? "Reconnecting…"
-            : null,
-    folders: project?.folders ?? [],
-    notice: noKey
-      ? {
-          text: "No API key yet. Pick a coding agent in the model chip, or add a key in Settings.",
-          ...(loop?.reason ? { title: loop.reason } : {}),
-        }
-      : null,
-    // Decision 49: a chosen folder joins the project (kept if it is already there).
-    onAddFolder: project
-      ? (path: string) => {
-          if (project.folders.some((f) => f.path === path)) return;
-          // A failed update leaves the project's folders as they were: the chip keeps showing the unchanged list.
-          void update({ folders: [...project.folders.map((f) => ({ path: f.path, label: f.label })), { path }] }).catch(() => undefined);
-        }
-      : undefined,
-    commentCount: comments?.comments.length ?? 0,
-    designNoteCount,
-    lastRequest,
-    context: { used: orchestrator?.context_used, size: orchestrator?.context_size },
-    serverQueue: bridge.sendOrQueueMessage !== undefined,
-    queue: { items: queue.items, add: queue.add, remove: queue.remove },
-    model: current
-      ? {
-          value: current,
-          title: served?.asked ? `${served.name} (asked for ${served.asked})` : undefined,
-          unavailable: project?.models_unavailable?.some((i) => i.field === "orchestrator") === true,
-          choose: async (model, force) => {
-            if (!project || model === project.models.orchestrator) return;
-            setPending(model);
-            try {
-              await update({ models: modelsPatchForSessionChoice(model, project.models), ...(force ? { force_unverified: true } : {}) });
-            } finally {
-              setPending(null);
-            }
-          },
-        }
-      : null,
-    tier:
-      // Routing applies to Messages API models behind the router, not to an orchestrator that runs as an ACP agent.
-      config?.router && !acp
+  // One object while nothing it holds changes: the composer is memoised, and the conversation re-renders on every scroll past a
+  // turn (the pinned prompt, the rail) and every project event, which re-rendered the whole composer with it.
+  return useMemo(
+    () => ({
+      running,
+      // P2-3: the conversation stays on screen while the service is away; the composer says why it is off.
+      // Remote access: a device that may not send (read-only, or sends not allowed); the composer says where that changes.
+      disabledReason: !deviceMay(device, "send")
+        ? device?.readOnly
+          ? "Read-only"
+          : "Sending is off"
+        : health === "offline"
+          ? // B3: the banner says what is wrong and what to do; the field only says why it is off.
+            "Offline"
+          : loadFailed
+            ? // B3: the service answers but the session did not load ("Couldn't load the session · Retry" above): not "Reconnecting…".
+              "Waiting for the session to load…"
+            : live === "reconnecting"
+              ? "Reconnecting…"
+              : null,
+      folders: project?.folders ?? [],
+      notice: noKey
         ? {
-            value: policy,
-            choose: async (next) => {
-              setPendingTier(next);
+            text: "No API key yet. Pick a coding agent in the model chip, or add a key in Settings.",
+            ...(loopReason ? { title: loopReason } : {}),
+          }
+        : null,
+      // Decision 49: a chosen folder joins the project (kept if it is already there).
+      onAddFolder: project
+        ? (path: string) => {
+            if (project.folders.some((f) => f.path === path)) return;
+            // A failed update leaves the project's folders as they were: the chip keeps showing the unchanged list.
+            void update({ folders: [...project.folders.map((f) => ({ path: f.path, label: f.label })), { path }] }).catch(() => undefined);
+          }
+        : undefined,
+      commentCount,
+      designNoteCount,
+      lastRequest,
+      context: { used: contextUsed, size: contextSize },
+      serverQueue,
+      queue: { items: queuedItems, add: queueAdd, remove: queueRemove },
+      model: current
+        ? {
+            value: current,
+            title: servedTitle,
+            unavailable: project?.models_unavailable?.some((i) => i.field === "orchestrator") === true,
+            choose: async (model, force) => {
+              if (!project || model === project.models.orchestrator) return;
+              setPending(model);
               try {
-                await update({ models: { tier_policy: next } });
+                await update({ models: modelsPatchForSessionChoice(model, project.models), ...(force ? { force_unverified: true } : {}) });
               } finally {
-                setPendingTier(null);
+                setPending(null);
               }
             },
           }
         : null,
-    mode: modeApi,
-    access: project
-      ? {
-          value: pendingAccess ?? project.access ?? "supervised",
-          choose: async (next) => {
-            if (next === (project.access ?? "supervised")) return;
-            setPendingAccess(next);
-            try {
-              await update({ access: next });
-            } finally {
-              setPendingAccess(null);
+      tier:
+        // Routing applies to Messages API models behind the router, not to an orchestrator that runs as an ACP agent.
+        routed && !acp
+          ? {
+              value: policy,
+              choose: async (next) => {
+                setPendingTier(next);
+                try {
+                  await update({ models: { tier_policy: next } });
+                } finally {
+                  setPendingTier(null);
+                }
+              },
             }
-          },
-        }
-      : null,
-    session: sessionProp,
-    onSend,
-    acceptsImages: project?.accepts_images,
-    onCancel: cancel,
-    draft,
-  };
+          : null,
+      mode: modeApi,
+      access: project
+        ? {
+            value: pendingAccess ?? project.access ?? "supervised",
+            choose: async (next) => {
+              if (next === (project.access ?? "supervised")) return;
+              setPendingAccess(next);
+              try {
+                await update({ access: next });
+              } finally {
+                setPendingAccess(null);
+              }
+            },
+          }
+        : null,
+      session: sessionProp,
+      onSend,
+      acceptsImages: project?.accepts_images,
+      onCancel: cancel,
+      draft,
+    }),
+    [
+      acp,
+      cancel,
+      commentCount,
+      current,
+      designNoteCount,
+      device,
+      draft,
+      health,
+      lastRequest,
+      live,
+      loadFailed,
+      loopReason,
+      modeApi,
+      noKey,
+      onSend,
+      contextSize,
+      contextUsed,
+      pendingAccess,
+      policy,
+      project,
+      queueAdd,
+      queueRemove,
+      queuedItems,
+      routed,
+      running,
+      servedTitle,
+      serverQueue,
+      sessionProp,
+      update,
+    ],
+  );
 }

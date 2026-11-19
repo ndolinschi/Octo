@@ -1,6 +1,6 @@
 import { Check, Copy } from "lucide-react";
 import { Button } from "../primitives/Button";
-import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useCopy, useScrollFade } from "../../lib/hooks";
@@ -177,7 +177,33 @@ const WITH_FILE_LINKS: Components = { ...COMPONENTS, code: ({ children }) => <In
 
 import { splitStableMarkdown } from "../../lib/markdownSplit";
 
-const MarkdownChunk = memo(function MarkdownChunk({ text, components }: { text: string; components: Components }) {
+/** Settled texts whose rendering is kept, most recently used last. */
+const KEPT_MAX = 400;
+const kept = new WeakMap<Components, Map<string, ReactElement>>();
+
+/**
+ * The rendered Markdown of a settled text, kept across remounts: a long conversation unmounts the turns far from the
+ * viewport and mounts them again as the reader scrolls back, and parsing their Markdown again was most of each remount.
+ * `react-markdown`'s `Markdown` is synchronous and uses no hooks, so its element tree can be made once and reused.
+ */
+function renderKept(text: string, components: Components): ReactElement {
+  let byText = kept.get(components);
+  if (!byText) kept.set(components, (byText = new Map<string, ReactElement>()));
+  const hit = byText.get(text);
+  if (hit) {
+    byText.delete(text);
+    byText.set(text, hit);
+    return hit;
+  }
+  const el = ReactMarkdown({ children: text, remarkPlugins: REMARK, rehypePlugins: REHYPE, components });
+  byText.set(text, el);
+  if (byText.size > KEPT_MAX) byText.delete(byText.keys().next().value ?? "");
+  return el;
+}
+
+/** `keep`: the text is settled (not a streaming tail, which changes with every token). */
+const MarkdownChunk = memo(function MarkdownChunk({ text, components, keep = true }: { text: string; components: Components; keep?: boolean }) {
+  if (keep) return renderKept(text, components);
   return (
     <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={REHYPE} components={components}>
       {text}
@@ -206,10 +232,10 @@ export const Markdown = memo(function Markdown(props: {
           {parts.stable.map((chunk, i) => (
             <MarkdownChunk key={i} text={chunk} components={resolved} />
           ))}
-          {parts.tail && <MarkdownChunk text={parts.tail} components={resolved} />}
+          {parts.tail && <MarkdownChunk text={parts.tail} components={resolved} keep={false} />}
         </>
       ) : (
-        <MarkdownChunk text={text} components={resolved} />
+        <MarkdownChunk text={text} components={resolved} keep={!streaming} />
       )}
     </div>
   );
