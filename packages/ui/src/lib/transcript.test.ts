@@ -19,8 +19,8 @@ import {
   RESTART_INTERRUPTION,
   spawnStatus,
   turnFailureText,
-  railLayout,
 } from "./transcript";
+import { railLayout } from "./railLayout";
 
 let nextId = 1;
 const msg = (role: "user" | "assistant", content: ContentBlock[], at: string): Message => ({ id: nextId++, agent_id: "a", role, content, created_at: at });

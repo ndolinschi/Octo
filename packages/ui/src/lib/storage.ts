@@ -50,6 +50,8 @@ export const PREFS = {
   lastSession: (projectId: string) => key(`lastSession.${projectId}`),
   /** Per-tab URL, title, viewport and batch-edits toggle of Browser tabs in one project. */
   browserTabs: (projectId: string) => key(`browserTabs.${projectId}`),
+  /** Where the reader scrolled each conversation of one project to, restored on reload: `{ [memoryKey]: { top, atBottom } }` (`scrollSpots.ts`). */
+  scrollSpots: (projectId: string) => key(`scroll.${projectId}`),
 } as const;
 
 /** How a value is stored. `parse` never throws: missing, malformed or foreign text becomes a valid (default) value. */

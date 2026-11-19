@@ -17,6 +17,8 @@
  *
  *   node packages/ui/scripts/width-stability.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--width 1440] [--height 900] [--project "Atlas API"]
  */
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { launchBrowser, newContext, isAbortedImport } from "./browser.mjs";
 
 const argv = process.argv.slice(2);
@@ -81,7 +83,7 @@ const fail = (why) => {
   process.exit(2);
 };
 
-await page.goto(`${BASE}/?demo=1`, { waitUntil: "domcontentloaded" });
+await page.goto(`${BASE}/?demo=1&tabs=memory`, { waitUntil: "domcontentloaded" });
 const projects = page.locator('nav[aria-label="Projects"] a');
 // Below the sidebar's breakpoint the project list is a drawer that is not mounted until it is opened.
 if (
@@ -147,7 +149,7 @@ async function openFile(name) {
   try {
     await page.locator('[data-testid="code-editor"] .monaco-editor:visible').first().waitFor({ timeout: 8000 });
   } catch (e) {
-    await page.screenshot({ path: "/tmp/claude-0/-home-user-Octo/7c5bf6ed-bfbb-5e95-9ca2-f0157268907d/scratchpad/ws-fail.png" });
+    await page.screenshot({ path: join(tmpdir(), "ws-fail.png") });
     throw e;
   }
   await page.waitForTimeout(900);
@@ -186,7 +188,7 @@ await page
   .first()
   .waitFor({ timeout: 8000 })
   .catch(async () => {
-    await page.screenshot({ path: "/tmp/claude-0/-home-user-Octo/7c5bf6ed-bfbb-5e95-9ca2-f0157268907d/scratchpad/ws-fail.png" });
+    await page.screenshot({ path: join(tmpdir(), "ws-fail.png") });
     fail("the diff of width/wide.txt did not open");
   });
 await page.waitForTimeout(900);

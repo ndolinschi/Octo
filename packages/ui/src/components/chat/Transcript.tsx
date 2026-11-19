@@ -458,7 +458,7 @@ const UserPrompt = memo(function UserPrompt({
       <div
         data-bubble
         data-one-line={(oneLine && !external && !steered && images.length === 0 && comments.length === 0 && designNotes.length === 0) || undefined}
-        // R2 (owner's addition 10): the shape, padding and fill are the request bubble's block in styles.css (`--octo-bubble`).
+        // R2 (owner's addition 10): the shape, padding and fill are the request bubble's block in styles.css (the raised tone, E1).
         className={cn("transition-[box-shadow] duration-300 forced-colors:border", compact ? "text-sm" : "text-base")}
       >
         {text && (

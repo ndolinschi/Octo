@@ -6,7 +6,7 @@ import { errorMessage } from "../../lib/format";
 import type { ReviewCommandsKit } from "../../lib/commands/kit";
 import type { ReviewApi } from "../../lib/review/api";
 import { blockAt, changeBlocks, hunksToTexts, stepChange, type ChangeBlock } from "../../lib/review/changes";
-import { groupFiles, navigableFiles, readingOrder, sinceReview, stepFile } from "../../lib/review/files";
+import { groupFiles, navigableFiles, plural, readingOrder, sinceReview, stepFile } from "../../lib/review/files";
 import type { ReviewKeyAction } from "../../lib/review/keys";
 import { anchorProblem, commentWhere, fileCommentInput, generalCommentInput, lineCommentInput, linesOf, type Anchor } from "../../lib/review/position";
 import { reviewDiffLayout } from "../../lib/review/diffLayout";
@@ -394,7 +394,6 @@ function Ready(props: {
         behind={behind}
         overviewOpen={overview}
         refreshing={refreshing}
-        compact={narrow}
         runs={kit ? <kit.Bar /> : null}
         checkout={<CheckoutMenu checkout={checkout} review={review} />}
         checkoutItems={checkoutItems(checkout, review)}
@@ -404,7 +403,14 @@ function Ready(props: {
         onRefresh={() => void refresh()}
         onBack={props.onBack}
       />
-      {overview && <Overview review={review} {...(narrow ? { facts: `${data.files.viewed_count} of ${review.totals.files} viewed` } : {})} />}
+      {overview && (
+        <Overview
+          review={review}
+          facts={[`${data.files.viewed_count} of ${review.totals.files} viewed`, ...(unresolved > 0 ? [plural(unresolved, "unresolved thread")] : [])].join(
+            " · ",
+          )}
+        />
+      )}
       <CheckoutBanner checkout={checkout} />
       {threads.load.status === "error" && (
         <div role="status" className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line px-4 py-1.5 text-sm">

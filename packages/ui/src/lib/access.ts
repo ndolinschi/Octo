@@ -3,7 +3,7 @@ import type { AccessMode } from "@octo/agent-client";
 export const ACCESS_MODES: readonly AccessMode[] = ["supervised", "accept_edits", "full"];
 
 export const ACCESS_LABEL: Record<AccessMode, string> = {
-  supervised: "Ask",
+  supervised: "Ask first",
   accept_edits: "Accept edits",
   full: "Allow all",
 };

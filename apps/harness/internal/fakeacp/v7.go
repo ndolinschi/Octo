@@ -28,7 +28,8 @@ const (
 	// MarkerMode reports the session mode the client set (EnvModes).
 	MarkerMode = "[mode]"
 	// MarkerWrite asks the client to write WriteFile through fs/write_text_file
-	// and reports whether it was refused.
+	// and reports whether it was refused. With MarkerPerm the write follows the
+	// permission request (two prompts of different kinds in one turn).
 	MarkerWrite = "[fswrite]"
 )
 
@@ -179,5 +180,19 @@ func (a *agent) cumCost() string {
 	a.mu.Unlock()
 	a.say("counting. ")
 	a.usageUpdate(1000+100*n, 0.01*float64(n), "USD")
+	return "end_turn"
+}
+
+// fsWrite writes WriteFile through fs/write_text_file and says whether the client refused.
+func (a *agent) fsWrite(ctx context.Context, cwd string) string {
+	_, rpcErr, err := a.call(ctx, "fs/write_text_file", map[string]any{"sessionId": a.sid(), "path": filepath.Join(cwd, WriteFile), "content": "written\n"})
+	switch {
+	case err != nil:
+		return "cancelled"
+	case rpcErr != nil:
+		a.say("fswrite refused: " + rpcErr.Message)
+	default:
+		a.say("fswrite ok")
+	}
 	return "end_turn"
 }

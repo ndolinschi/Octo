@@ -1,7 +1,7 @@
 import { agentBySpawnToolUse, descendantCount, type Agent } from "@octo/agent-client";
 import { usePhone } from "../../lib/phone";
 import { roleText } from "../../lib/orchestrator";
-import { agentActivity } from "../../lib/orchestrator";
+import { agentActivity } from "../../lib/orchestratorMore";
 import { agentDuration } from "../../lib/duration";
 import { useNow } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";

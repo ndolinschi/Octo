@@ -2,7 +2,8 @@ import { memo, useCallback, useLayoutEffect, useRef, useState, type KeyboardEven
 import { cn } from "../../lib/cn";
 import { requestTitle } from "../../lib/comments";
 import { formatDuration, timeAgo } from "../../lib/format";
-import { railLayout, type RequestSummary } from "../../lib/transcript";
+import type { RequestSummary } from "../../lib/transcript";
+import { railLayout } from "../../lib/railLayout";
 import { useNav, useNavState } from "../../state/nav";
 
 const STATE_TEXT = { done: "Done", working: "Working…", failed: "Failed", stopped: "Stopped" } as const;

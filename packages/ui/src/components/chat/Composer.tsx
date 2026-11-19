@@ -52,6 +52,7 @@ import { mayNearLimit, plainShaping, triggerAt } from "../../lib/composerInput";
 import type * as SizeModule from "../../lib/messageSize";
 import { usePhone } from "../../lib/phone";
 import { useNewSession, type StartedSession } from "./useNewSession";
+import { useContextShortcut } from "./useContextShortcut";
 import { deviceMay, ON_YOUR_COMPUTER } from "../../lib/remoteDevice";
 
 const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
@@ -109,7 +110,7 @@ export type ComposerProps = {
   tier: { value: TierPolicy; choose(policy: TierPolicy): Promise<void> } | null;
   /** Null when the harness has no modes. */
   mode?: ComposerMode | null;
-  /** v7 permissions mode (Ask / Accept edits / Allow all); null when not connected to a project. */
+  /** v7 permissions mode (Ask first / Accept edits / Allow all); null when not connected to a project. */
   access?: { value: AccessMode; choose(next: AccessMode): Promise<void> } | null;
   /** The session this composer sends to, shown in the "+" menu (with "Move to worktree…" when supported). */
   session?:
@@ -177,6 +178,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     onMoved?(result: MoveToWorktreeResult): void;
   } | null>(null);
   const box = useRef<HTMLFormElement>(null);
+  useContextShortcut(box, Boolean(props.context.used && props.context.size));
   const plus = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<ComposerMenuHandle>(null);
   const slashRef = useRef<SlashMenuHandle>(null);

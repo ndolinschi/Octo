@@ -13,6 +13,7 @@ const STATE_TEXT: Record<ProviderState, string> = {
   not_logged_in: "Not logged in",
   not_installed: "Not installed",
   not_supported: "Not supported",
+  not_running: "Not running",
   error: "Not working",
 };
 

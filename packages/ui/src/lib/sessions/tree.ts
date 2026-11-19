@@ -1,6 +1,7 @@
 import type { ProjectSession, ProjectSessionState } from "@octo/agent-client";
 import type { GlyphState } from "../stateGlyph";
 import { formatRelative } from "../format";
+import { sessionTitle } from "./title";
 
 /**
  * The sidebar's "Projects and sessions" tree (UI decision 96): which sessions a tree lists, a session's glyph, title and meta
@@ -53,5 +54,25 @@ export function sessionMeta(s: Pick<ProjectSession, "state" | "last_activity_at"
   return formatRelative(s.last_activity_at || s.started_at, now);
 }
 
-/** A session's title as a row shows it. */
-export const sessionTitle = (s: Pick<ProjectSession, "title">): string => (s.title.trim() === "" ? "New session" : s.title.trim());
+// The title lives in `title` (the tab strip, in the entry, reads it; this module stays in the lazy chunks that list sessions).
+export { sessionTitle };
+
+/**
+ * The sessions the palette lists as rows of their own: those an open tab does not already show. A tab counts only when its
+ * label carries the session's title (a tab still called "New session" while the sidebar says "Alpha session" must not hide
+ * the session: typing its name has to find it).
+ */
+export function sessionsBesideTabs<T extends Pick<ProjectSession, "id" | "title"> & { project_name: string }>(
+  sessions: readonly T[],
+  tabs: readonly { id: string; label: string }[],
+  tabIdOf: (sessionId: string) => string,
+): T[] {
+  const labels = new Map(tabs.map((t) => [t.id, t.label]));
+  return sessions.filter((s) => {
+    const title = sessionTitle(s);
+    const own = labels.get(tabIdOf(s.id));
+    if (own !== undefined && own.includes(title)) return false;
+    // The conversation tab (Chat) is named "Project / Session title".
+    return !tabs.some((t) => t.label === `${s.project_name} / ${title}`);
+  });
+}

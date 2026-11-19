@@ -2,9 +2,57 @@ package main
 
 import (
 	"encoding/json"
+	"net"
+	"net/http"
 	"strings"
 	"testing"
 )
+
+// The QA finding: Ollama read "Ready · 4 models" while nothing listened on its port. Its state follows a probe of the
+// server; "Check again" (POST /recheck) probes now.
+func TestServeOllamaStateFollowsItsServer(t *testing.T) {
+	emptyEnv(t)
+	t.Setenv("HARNESS_NO_BUILTIN_PLUGINS", "1")
+	addr := freeAddr(t) // nothing listens here (yet)
+	t.Setenv("HARNESS_OLLAMA_BASE_URL", "http://"+addr)
+	base := startServe(t, t.TempDir(), "127.0.0.1")
+
+	type ollama struct {
+		ID, State, Reach string
+		Problem          *struct{ Message, Command, Action string }
+	}
+	var list struct{ Providers []ollama }
+	_, raw := request(t, "GET", base+"/v1/providers", nil)
+	if err := json.Unmarshal(raw, &list); err != nil {
+		t.Fatal(err)
+	}
+	var o ollama
+	for _, p := range list.Providers {
+		if p.ID == "ollama" {
+			o = p
+		}
+	}
+	if o.State != "not_running" || o.Reach != "not_running" || o.Problem == nil ||
+		o.Problem.Message != "Ollama is not running." || o.Problem.Command != "ollama serve" || o.Problem.Action != "recheck_provider" {
+		t.Fatalf("ollama with nothing listening = %+v %s", o, raw)
+	}
+
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Skipf("port taken meanwhile: %v", err)
+	}
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("Ollama is running")) })}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+	status, raw := request(t, "POST", base+"/v1/providers/ollama/recheck", nil)
+	var after ollama
+	if err := json.Unmarshal(raw, &after); err != nil {
+		t.Fatal(err)
+	}
+	if status != 200 || after.State != "ready" || after.Reach != "ok" || after.Problem != nil {
+		t.Fatalf("recheck after start = %d %+v", status, after)
+	}
+}
 
 // The whole serve stack with no agent installed and no key: nothing can run, a
 // project cannot be created; a key written through the settings screen makes

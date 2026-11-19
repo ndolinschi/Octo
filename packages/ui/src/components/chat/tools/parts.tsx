@@ -20,7 +20,7 @@ import { Button } from "../../primitives/Button";
  */
 
 /** One radius and one inset for every tool body. */
-const FRAME = "min-w-0 overflow-hidden rounded-md bg-code-bg text-xs";
+const FRAME = "octo-code-surface min-w-0 overflow-hidden text-xs";
 export const INSET = "px-3 py-2";
 
 /** What "Raw" shows: the call as the agent sent it and the result as it came back. */

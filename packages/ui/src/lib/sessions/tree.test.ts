@@ -1,7 +1,7 @@
 import type { ProjectSession } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hasSessionMessages, mainSessions, sessionGlyph, sessionMeta } from "./tree";
+import { hasSessionMessages, mainSessions, sessionGlyph, sessionMeta, sessionsBesideTabs } from "./tree";
 import { isOpen, parseOpen, projectSummary, treeKey, visibleSessions, type KeyRow } from "./treeRows";
 
 const NOW = Date.parse("2026-11-14T12:00:00Z");
@@ -113,4 +113,21 @@ test("the tree's keys: up/down, right opens then enters, left closes then goes t
   assert.deepEqual(treeKey("o", rows, 0), { focus: 3 });
   assert.deepEqual(treeKey("p", rows, 2), { focus: 2 }, "wraps around to the row itself when it is the only match");
   assert.equal(treeKey("Enter", rows, 0), null);
+});
+
+test("the palette lists a session its tab does not name, and hides one the tab already shows", () => {
+  const withProject = (id: string, title: string) => ({ ...s(id, 1, { title }), project_name: "QA Demo" });
+  const alpha = withProject("a", "Alpha session");
+  const beta = withProject("b", "Beta");
+  const gamma = withProject("c", "Gamma");
+  const tabs = [
+    { id: "tab:session:a", label: "New session" },
+    { id: "tab:session:b", label: "Beta" },
+    { id: "tab:chat", label: "QA Demo / Gamma" },
+  ];
+  const left = sessionsBesideTabs([alpha, beta, gamma], tabs, (id) => `tab:session:${id}`);
+  assert.deepEqual(
+    left.map((x) => x.id),
+    ["a"],
+  );
 });

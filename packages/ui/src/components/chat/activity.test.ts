@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Message } from "@octo/agent-client";
-import { activityLine, labelParts, QUIET_MS, runningToolOf, toolActivity, type ActivityInput } from "./activity";
+import { activityLine, labelParts, QUIET_MS, runningToolOf, showsActivityLine, toolActivity, type ActivityInput } from "./activity";
 
 const base: ActivityInput = { activity: undefined, runningTool: null, writing: false, thinking: false, waitingOn: [], quietMs: 0, agentName: "Claude Code" };
 
@@ -45,4 +45,14 @@ test("labelParts marks backticked commands as code", () => {
     { text: "Running ", code: false },
     { text: "pnpm test", code: true },
   ]);
+});
+
+test("no Writing… line while streamed text (with its caret) is on screen; other steps still show", () => {
+  const writing = { kind: "text", label: "Writing…" } as const;
+  assert.equal(showsActivityLine(writing, null, true), false);
+  // The harness says "text" before the first characters arrive: nothing on screen yet, so the line still says it.
+  assert.equal(showsActivityLine(writing, null, false), true);
+  assert.equal(showsActivityLine({ kind: "tool", label: "Running `pnpm test`" }, null, true), true);
+  assert.equal(showsActivityLine({ kind: "thinking", label: "Thinking…" }, "thinking", false), false);
+  assert.equal(showsActivityLine({ kind: "waiting", label: "Waiting on Researcher" }, "thinking", false), true);
 });

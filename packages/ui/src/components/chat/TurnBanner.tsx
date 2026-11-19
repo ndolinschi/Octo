@@ -1,5 +1,6 @@
 import type { ErrorFields } from "@octo/agent-client";
 import { useEffect, useState } from "react";
+import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
 import { loginSteps, withLoginSteps, type LoginSteps } from "../../lib/errors/login";
 import { isStructured, plainError } from "../../lib/errors/plain";
@@ -46,6 +47,9 @@ export function TurnBanner(props: {
   fields?: ErrorFields | undefined;
   agent?: string | undefined;
   providerId?: string | undefined;
+  /** Already on the composer's edge (the empty project's start failure): no outset. In the transcript the banner spans the
+   *  column's whole edge, like the user bubble and the composer (7b). */
+  flush?: boolean;
   /** Re-reads the agent's login; true when it is ready now (the failed request is then sent again). */
   onCheck?: (() => Promise<boolean>) | undefined;
 }) {
@@ -76,7 +80,7 @@ export function TurnBanner(props: {
 
   if (!failed) {
     return (
-      <div data-turn-outcome="cancelled" className="octo-fade">
+      <div data-turn-outcome="cancelled" className={cn("octo-fade", !props.flush && "-mx-3")}>
         <Notice tone="info">{retryText !== null ? "Stopped. Send a message to continue." : "Stopped."}</Notice>
       </div>
     );
@@ -90,7 +94,7 @@ export function TurnBanner(props: {
       }
     : undefined;
   return (
-    <div data-turn-outcome="failed" className="octo-fade">
+    <div data-turn-outcome="failed" className={cn("octo-fade", !props.flush && "-mx-3")}>
       <ErrorNotice
         fields={!props.fromStep && isStructured(structured) ? structured : undefined}
         raw={legacy.error || null}

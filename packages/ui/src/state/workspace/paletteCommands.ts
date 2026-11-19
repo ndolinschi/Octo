@@ -9,13 +9,13 @@ import type { TabId, ToolTab } from "./layout";
 /* The open workspace's rows of the palette (its tab actions and its tabs): built only when the palette opens, so this module
  * loads with the palette's chunk and not with the app. */
 
-const label = (tab: TabId) => tabButton(document, tab)?.dataset.label ?? tab;
+const label = (ws: PaletteWorkspace, tab: TabId) => tabButton(document, tab)?.dataset.label ?? ws.tabName?.(tab) ?? tab;
 
 /** The tool tabs and the actions on the focused tab that apply now (move, split, close…). */
 export function workspaceActions(ws: PaletteWorkspace): WorkspaceCommand[] {
   const layout = ws.layout;
   const active = L.focusedGroup(layout).active;
-  const name = label(active);
+  const name = label(ws, active);
   // Item 9: a tool row's detail and search text are the tool's purpose (`lib/toolPurpose`, the panels' (i) says the same).
   const tool = (t: PurposeTool & ToolTab, text: string): WorkspaceCommand => ({
     id: `tool-${t}`,
@@ -59,6 +59,6 @@ export function workspaceTabs(ws: PaletteWorkspace): WorkspaceCommand[] {
   const side = (i: number) => (groups.length === 1 ? undefined : i === 0 ? "left" : i === groups.length - 1 ? "right" : "middle");
   return groups.flatMap((g, i) => {
     const where = side(i);
-    return g.tabs.map((t) => ({ id: `tab:${t}`, label: label(t), ...(where === undefined ? {} : { detail: where }), run: () => ws.activate(t) }));
+    return g.tabs.map((t) => ({ id: `tab:${t}`, label: label(ws, t), ...(where === undefined ? {} : { detail: where }), run: () => ws.activate(t) }));
   });
 }

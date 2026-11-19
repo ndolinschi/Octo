@@ -8,8 +8,14 @@
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Opens the demo; `q` is the whole query string (default `demo=1`), `hash` the route. */
+/**
+ * Opens the demo; `q` is the whole query string (default `demo=1`), `hash` the route. The tour shows every screen, so a demo
+ * query without a `tabs` knob gets `tabs=all`: the default flags (`lib/tabFlags.ts`) hide the Sessions, Agents, Notes,
+ * Details, Usage and Memory tabs, and the states that open them would never be reached. A state about the default experience
+ * passes its own `tabs=` (an empty `tabs=` keeps the defaults) and is left alone.
+ */
 async function boot(page, env, q = "demo=1", hash = "") {
+  if (/^demo=/.test(q) && !/(^|&)tabs=/.test(q)) q += "&tabs=all";
   await page.goto(`${env.base}/?${q}${hash}`);
   await page.locator("body").waitFor();
   await page.waitForTimeout(1200);
@@ -129,6 +135,14 @@ async function reviewOpen(page, env) {
   await page.waitForTimeout(600);
 }
 
+/** Runs a project command from the review's header: its pinned button when there is one, else the "Run" menu that lists every command. */
+async function runReviewCommand(page, name) {
+  const pinned = page.getByRole("button", { name, exact: true }).filter({ visible: true }).first();
+  if (await pinned.count()) return pinned.click({ timeout: 8000 });
+  await page.getByRole("button", { name: /^Run\b/ }).filter({ visible: true }).first().click({ timeout: 8000 });
+  await page.getByRole("menuitem", { name }).first().click({ timeout: 8000 });
+}
+
 /** Opens the project settings dialog from the project's "⋯" menu. */
 async function projectSettings(page) {
   await click(page, /^Project actions$/);
@@ -136,6 +150,9 @@ async function projectSettings(page) {
   await need(page, page.getByRole("dialog"), "project settings dialog");
   await page.waitForTimeout(800);
 }
+
+/** The sessions list of an open tool tab (Sessions, Memory): not the sidebar's own `role="tree"` named "Sessions", which comes first. */
+const tabSessions = (page) => page.locator("[role='tabpanel'] ul[aria-label='Sessions']").filter({ visible: true }).first();
 
 const need = async (page, locator, what, timeout = 8000) => {
   try {
@@ -326,7 +343,7 @@ export const GROUPS = {
         await send(page, "approvals demo please");
         await need(page, page.locator("[data-v7-approval-group], [data-v7-approval]").first(), "approvals");
         await page.waitForTimeout(500);
-        await page.getByRole("button", { name: "Details" }).first().click();
+        await page.locator("[data-approval-details]").first().click();
         await need(page, page.locator("[data-patch]"), "patch");
         await page.locator("[data-patch]").first().scrollIntoViewIfNeeded();
       },
@@ -341,7 +358,7 @@ export const GROUPS = {
         await send(page, "approvals demo please");
         await need(page, page.locator("[data-v7-approval-group], [data-v7-approval]").first(), "network approval");
         await page.waitForTimeout(500);
-        await page.getByRole("button", { name: "Details" }).nth(1).click();
+        await page.locator("[data-approval-details]").nth(1).click();
         await need(page, page.locator("[data-network]"), "network details");
         await page.locator("[data-network]").first().scrollIntoViewIfNeeded();
       },
@@ -386,6 +403,9 @@ export const GROUPS = {
         await need(page, page.getByRole("button", { name: /^Stop( the turn| \(|$)/ }), "running turn");
         await page.waitForTimeout(800);
         await send(page, "Then summarise the result in one line");
+        // The queue is one collapsed band ("1 queued · …") above the box: open it to reach the row's buttons.
+        await page.getByText(/^1 queued/).filter({ visible: true }).first().click({ timeout: 8000 });
+        await page.waitForTimeout(400);
         await need(page, page.getByRole("button", { name: /Send now/ }), "queue row with Send now");
       },
     },
@@ -675,6 +695,28 @@ export const GROUPS = {
         await need(page, page.getByRole("dialog").or(page.getByRole("meter")), "context popover");
       },
     },
+    {
+      name: "project-selector-closed",
+      text: "Design system tokens (an empty session): the project selector above the composer, closed.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Design system tokens");
+        await need(page, page.locator("[data-project-selector]"), "project selector");
+      },
+    },
+    {
+      name: "project-selector-open",
+      text: "The composer's project selector open: every project with its state and when it last changed, the current one checked.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Design system tokens");
+        await page.locator("[data-project-selector]").filter({ visible: true }).first().click({ timeout: 8000 });
+        await need(page, page.getByPlaceholder("Switch project…"), "the project list");
+        await page.waitForTimeout(400);
+      },
+    },
   ],
 
   files: [
@@ -868,6 +910,91 @@ export const GROUPS = {
     })),
   ],
 
+  "dock-tools": [
+    {
+      name: "terminal",
+      text: "Atlas API, Terminal tab: the interactive shell with its prompt (zsh, PID, working folder).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Open terminal");
+        await need(page, page.locator("[data-terminal-tab] [data-terminal-screen]"), "terminal screen", 15000);
+        await need(page, page.getByText(/maya@octo/), "the shell prompt", 15000);
+        await page.waitForTimeout(600);
+      },
+    },
+    {
+      name: "terminal-second",
+      text: "Atlas API: a second terminal tab opened beside the first (Ctrl+Shift+`), both tabs in the strip.",
+      sizes: "one",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Open terminal");
+        await need(page, page.locator("[data-terminal-tab] [data-terminal-screen]"), "terminal screen", 15000);
+        await page.keyboard.press("Control+Shift+`");
+        await page.waitForTimeout(1200);
+        const terminals = await page.locator('[role="tab"][data-tab-id*="terminal"]').count();
+        if (terminals < 2) throw new Error(`not reached: a second terminal tab (${terminals} terminal tabs)`);
+        await need(page, page.getByText(/maya@octo/), "the second shell prompt", 15000);
+        await page.waitForTimeout(600);
+      },
+    },
+    {
+      name: "browser-empty",
+      text: "Atlas API, Browser tab before any page: the address field and the hint to enter a localhost port or URL.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Show browser");
+        await need(page, page.locator("[data-browser-tab]"), "browser tab", 15000);
+        await need(page, page.getByText(/Open a local preview or web page/), "the empty browser hint");
+      },
+    },
+    {
+      name: "browser-loaded",
+      text: "Atlas API, Browser tab with http://localhost:5173 loaded (the demo's local preview page).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Show browser");
+        await need(page, page.locator("[data-browser-tab]"), "browser tab", 15000);
+        await page.getByLabel("Page URL").filter({ visible: true }).first().fill("http://localhost:5173");
+        await page.keyboard.press("Enter");
+        await need(page, page.locator("[data-browser-tab] iframe"), "the loaded page", 15000);
+        await page.waitForTimeout(1500);
+      },
+    },
+    {
+      name: "processes-populated",
+      text: "Atlas API, Processes tab: the seeded dev server, test run and workers, the first one's live output on the right.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Show processes");
+        await need(page, page.locator("[data-processes] [data-row]"), "a process row", 15000);
+        await page.waitForTimeout(800);
+      },
+    },
+    {
+      name: "processes-empty",
+      text: "Design system tokens, Processes tab: no command has run (the empty state with its way to start one).",
+      sizes: "one",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Design system tokens");
+        await tool(page, "Show processes");
+        await need(page, page.locator("[data-processes]"), "processes tab", 15000);
+        if (await page.locator("[data-processes] [data-row]").filter({ visible: true }).count()) throw new Error("not reached: the empty state (the project lists processes)");
+        await page.waitForTimeout(600);
+      },
+    },
+  ],
+
   review: [
     {
       name: "picker-skeleton",
@@ -970,7 +1097,7 @@ export const GROUPS = {
       sizes: "one",
       run: async (page, env) => {
         await reviewOpen(page, env);
-        await page.getByRole("button", { name: "Tests", exact: true }).filter({ visible: true }).first().click();
+        await runReviewCommand(page, "Tests");
         await page.waitForTimeout(1100);
       },
     },
@@ -980,7 +1107,7 @@ export const GROUPS = {
       sizes: "one",
       run: async (page, env) => {
         await reviewOpen(page, env);
-        await page.getByRole("button", { name: "Typecheck", exact: true }).filter({ visible: true }).first().click();
+        await runReviewCommand(page, "Typecheck");
         await page.waitForTimeout(2800);
       },
     },
@@ -1089,10 +1216,14 @@ export const GROUPS = {
         await click(page, /Save rule and allow/);
         await page.waitForTimeout(1500);
         await projectSettings(page);
-        const h = page.getByText("Always-allowed requests").first();
-        await need(page, h, "rules list");
-        await h.click();
+        // "Always allowed" is a collapsed row of the dialog now: open it, then its list names the rules.
+        const toggle = page.getByRole("button", { name: /^Always allowed/ }).filter({ visible: true }).first();
+        await need(page, toggle, "the Always allowed row");
+        await toggle.scrollIntoViewIfNeeded();
+        await toggle.click({ timeout: 8000 });
         await page.waitForTimeout(700);
+        const h = page.getByText(/Always.allowed/).filter({ visible: true }).first();
+        await need(page, h, "rules list");
         await h.scrollIntoViewIfNeeded();
         await page.waitForTimeout(500);
       },
@@ -1384,7 +1515,7 @@ export const GROUPS = {
         await tool(page, "Show memory");
         await need(page, page.getByRole("tab", { name: "Sessions" }), "Sessions view", 10000);
         await page.getByRole("tab", { name: "Sessions" }).click();
-        await need(page, page.locator("[aria-label='Sessions']").first(), "sessions list", 10000);
+        await need(page, tabSessions(page), "sessions list", 10000);
       },
     },
     {
@@ -1396,7 +1527,7 @@ export const GROUPS = {
         await project(page, env, "Atlas API");
         await tool(page, "Show memory");
         await page.getByRole("tab", { name: "Sessions" }).click();
-        const list = page.locator("[aria-label='Sessions']").first();
+        const list = tabSessions(page);
         await list.waitFor({ timeout: 10000 });
         await list.locator("button[data-row]").first().click();
         await need(page, page.locator("[aria-label='Requests'], [aria-label='Exchanges']").first(), "exchanges", 10000);
@@ -1412,7 +1543,7 @@ export const GROUPS = {
         await project(page, env, "Atlas API");
         await tool(page, "Show memory");
         await page.getByRole("tab", { name: "Sessions" }).click();
-        const list = page.locator("[aria-label='Sessions']").first();
+        const list = tabSessions(page);
         await list.waitFor({ timeout: 10000 });
         await list.locator("button[data-row]").first().click();
         await page
@@ -1439,7 +1570,7 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Atlas API");
         await tool(page, "Show sessions");
-        await need(page, page.locator("[aria-label='Sessions']").first(), "sessions list", 10000);
+        await need(page, tabSessions(page), "sessions list", 10000);
         await page.waitForTimeout(500);
       },
     },
@@ -1451,7 +1582,7 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Atlas API");
         await tool(page, "Show sessions");
-        const list = page.locator("[aria-label='Sessions']").first();
+        const list = tabSessions(page);
         await list.waitFor({ timeout: 10000 });
         await page.waitForTimeout(800);
         await list.locator("button[data-row]").first().click();
@@ -1474,7 +1605,7 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Atlas API");
         await tool(page, "Show sessions");
-        const list = page.locator("[aria-label='Sessions']").first();
+        const list = tabSessions(page);
         await list.waitFor({ timeout: 10000 });
         await page
           .getByRole("radio", { name: /^Agents/ })
@@ -1496,12 +1627,37 @@ export const GROUPS = {
     },
     {
       name: "sidebar-expanded",
-      text: "The sidebar's tree (decision 96): a project open to its sessions (its five latest and any at work, then 'Show all (N)').",
+      text: "The sidebar's tree view (Settings, General, Sidebar: Projects with sessions; decision 96): a project open to its sessions (its five latest and any at work, then 'Show all (N)'). The default sidebar is the flat Sessions list, which the other screens show.",
       sizes: "one",
       run: async (page, env) => {
+        // The sidebar opens as the flat Sessions list; the tree is the "tree" view of that preference.
+        await page.addInitScript(() => {
+          try {
+            localStorage.setItem("octo.sidebarView", "tree");
+          } catch {
+            /* storage unavailable */
+          }
+        });
         await boot(page, env);
         await need(page, page.getByRole("tree").getByRole("group").first(), "sessions under an open project");
         await page.waitForTimeout(400);
+      },
+    },
+    {
+      name: "conversation-tab",
+      text: "Atlas API: a project session opened from the sidebar tree as its own conversation tab (Plan the release).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await page
+          .getByRole("treeitem", { name: /Plan the release/ })
+          .filter({ visible: true })
+          .first()
+          .click({ timeout: 8000 });
+        await need(page, page.getByText(/Three things block Friday/), "the session's conversation", 15000);
+        await need(page, page.locator('[role="tab"][data-tab-id^="session:"]'), "a session tab in the strip");
+        await page.waitForTimeout(600);
       },
     },
   ],
@@ -1760,7 +1916,7 @@ export const GROUPS = {
         await project(page, env, "Atlas API");
         await tool(page, "Show memory");
         await page.getByRole("tab", { name: "Sessions" }).click();
-        await need(page, page.locator("[aria-label='Sessions']").first(), "sessions list", 10000);
+        await need(page, tabSessions(page), "sessions list", 10000);
       },
     },
     {

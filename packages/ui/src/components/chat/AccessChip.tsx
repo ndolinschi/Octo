@@ -13,7 +13,7 @@ const ACCESS_ICON: Record<AccessMode, LucideIcon> = {
 };
 
 /**
- * Permissions mode chip in the composer control row (Ask / Accept edits / Allow all).
+ * Permissions mode chip in the composer control row (Ask first / Accept edits / Allow all).
  * Loaded lazily alongside ModeChip to keep the entry bundle within budget.
  */
 export function AccessChip(props: ChipProps & { value: AccessMode; onChoose(next: AccessMode): void }) {

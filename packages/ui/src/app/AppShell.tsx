@@ -408,7 +408,7 @@ function Shell() {
   return (
     <ShellContext.Provider value={{ sidebarOpen, toggleSidebar, openConnect }}>
       <StatusSlotsContext.Provider value={{ start: statusStart, end: statusEnd }}>
-        <div data-app-root className="relative flex h-full flex-col overflow-clip bg-window text-fg">
+        <div data-app-root data-offline={health === "offline" || undefined} className="relative flex h-full flex-col overflow-clip bg-window text-fg">
           {/* Decision 67: the top row is the window's, 40px across it: the controls float over its left corner and, with a project
             open, the tab strips of the dock groups are the row. Home and Settings have the bare row (and Settings its title). */}
           <TitleBar {...(settings !== null ? { title: "Settings" } : {})} />

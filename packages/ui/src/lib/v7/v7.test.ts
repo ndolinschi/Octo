@@ -12,6 +12,7 @@ import {
   optionAnswer,
   resolutionCause,
   resolutionLabel,
+  turnScopeLabel,
 } from "./approval";
 import { answeredLine, SECRET_MIN_BYTES, utf8Length } from "./form";
 import { queueLine, queueSummary, queueView, withoutQueued } from "./queue";
@@ -54,6 +55,7 @@ test("answers: a note only with a denial; ACP options map to allow / deny with t
   assert.deepEqual(answerFor("deny", "  use pnpm  "), { decision: "deny", note: "use pnpm" });
   assert.deepEqual(answerFor("deny", "   "), { decision: "deny" });
   assert.deepEqual(answerFor("allow_for_turn"), { decision: "allow_for_turn" });
+  assert.deepEqual(answerFor("allow_all_for_turn"), { decision: "allow_all_for_turn" });
   assert.deepEqual(optionAnswer({ id: "o1", label: "Always", kind: "allow_always" }), { decision: "allow", option_id: "o1" });
   assert.deepEqual(optionAnswer({ id: "o2", label: "No", kind: "reject_once" }, "why"), { decision: "deny", option_id: "o2", note: "why" });
 });
@@ -64,7 +66,8 @@ test("resolution: ours wins, deny at the deadline is the timer, deny while stopp
   assert.equal(resolutionCause("deny", { local: undefined, now: 100_000, deadline: 100_500, turnStopped: false }).by, "timeout");
   assert.equal(resolutionCause("deny", { local: undefined, now: 0, deadline: 100_000, turnStopped: true }).by, "cancelled");
   assert.equal(resolutionCause("allow", { local: undefined, now: 0, deadline: null, turnStopped: true }).by, "elsewhere");
-  assert.equal(resolutionLabel({ decision: "allow_for_turn", by: "you" }), "Allowed for this request");
+  assert.equal(resolutionLabel({ decision: "allow_for_turn", by: "you" }, approval("w", "2026-11-11T10:00:00Z")), "Allowed edits for this request");
+  assert.equal(resolutionLabel({ decision: "allow_all_for_turn", by: "you" }), "Allowed all for this request");
   assert.equal(resolutionLabel({ decision: "allow_always", by: "you", rule: "git status" }), "Always allowed");
   assert.deepEqual(answerFor("allow_always", "ignored"), { decision: "allow_always" });
   assert.equal(resolutionLabel({ decision: "deny", by: "timeout" }), "Denied automatically");
@@ -181,4 +184,23 @@ test("approvalCaption: memory approval falls back cleanly and preserves title", 
   const base = approval("m1", "2026-11-16T00:00:00Z");
   assert.equal(approvalCaption({ ...base, kind: "memory", title: "", detail: {} }), "Enable auto memory?");
   assert.equal(approvalCaption({ ...base, kind: "memory", title: "Remember fact?", detail: { memory_text: "Use pnpm" } }), "Remember fact?");
+});
+
+test("allow for this request: the label names exactly what the harness remembers for the turn (v7.md: kind, program, host, ACP tool kind)", () => {
+  const a = (kind: Approval["kind"], detail: Approval["detail"], tool?: string): Approval => ({
+    ...approval("x", "2026-11-11T10:00:00Z"),
+    kind,
+    detail,
+    ...(tool ? { tool } : {}),
+  });
+  assert.equal(turnScopeLabel(a("write", { path: "a.md" }, "write_file")), "edits");
+  assert.equal(turnScopeLabel(a("command", { command: "echo hi-from-bash" }, "bash")), "echo commands");
+  assert.equal(turnScopeLabel(a("command", { command: "  /usr/bin/git status\nls" }, "bash")), "git commands");
+  assert.equal(turnScopeLabel(a("command", { command: "" }, "bash")), "commands");
+  assert.equal(turnScopeLabel(a("network", { url: "https://Docs.Example.com/x?y" }, "web_fetch")), "fetches from docs.example.com");
+  assert.equal(turnScopeLabel(a("acp", {}, "acp:edit")), "edits");
+  assert.equal(turnScopeLabel(a("acp", {}, "acp:execute")), "commands");
+  assert.equal(turnScopeLabel(a("acp", {}, "acp:other")), "other actions");
+  // A memory prompt is never remembered for the turn: no such button.
+  assert.equal(turnScopeLabel(a("memory", {})), null);
 });

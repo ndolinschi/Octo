@@ -65,6 +65,7 @@ the bridge writes them (`writeProblem`, `writeError`, `errorBody`). `writeError(
 | `AgentModelRejected` | "<Agent> does not offer the model <model>." (`open_settings`) |
 | `AgentSilent`, `AgentNoAnswer`, `AgentStopped`, `AgentCrashed`, `AgentFailed`, `AgentUnavailable` | see `catalogue_agent.go` |
 | `NoProvider`, `ProviderNotConnected`, `ProviderNotSupported`, `ProviderNotWorking` | provider states (`connect_provider` / `recheck_provider`) |
+| `ProviderNotRunning` | "<Provider> is not running." (a local URL; hint "Start it, then check again.", command `ollama serve` for Ollama) or "<Provider> does not answer." (a remote URL; hint: check the server and its URL). Code `provider_not_running` (`recheck_provider`); details: "Nothing answered at <url>: <cause>." State `not_running` of Ollama and of the API on a local base URL (providers.md, 2026-11-18). |
 | `BudgetReached` | "This project's budget is used up ($X of $Y)." (`open_settings`) |
 | `BudgetCut` | "This project's budget ran out during this request ($X of $Y); the answer was stopped mid-request." Hint: what it had written is kept. Code `budget_reached` (`open_settings`) |
 | `TurnInProgress`, `SideInProgress`, `QueueFull`, `ImagesUnsupported`, `SteerUnsupported`, `NothingToCompact`, `CompactUnsupported`, `BuiltinLoopOff`, `NewerSchema`, `PlanNotPending`, `FileChanged`, … | `catalogue_service.go` |

@@ -1,7 +1,8 @@
 import { Users } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
-import { agentActivity, runningAgents, teamRoles, type OrchestratorState } from "../../lib/orchestrator";
+import { runningAgents, type OrchestratorState } from "../../lib/orchestrator";
+import { agentActivity, teamRoles } from "../../lib/orchestratorMore";
 import { useProject } from "../../state/project";
 import { useTabFlags } from "../../state/tabFlags";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";

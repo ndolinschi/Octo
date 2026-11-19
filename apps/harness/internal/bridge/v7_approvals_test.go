@@ -157,6 +157,79 @@ loop:
 	e.waitApprovals(t, pid, 0)
 }
 
+// answerEvery answers each approval.requested of one turn with decision and returns the turn's events.
+func (e *env) answerEvery(t *testing.T, pid, text, decision string) []sseEvent {
+	t.Helper()
+	stream := e.subscribe(t, pid)
+	e.into(t, "POST", "/v1/projects/"+pid+"/messages", map[string]string{"text": text}, http.StatusAccepted, nil)
+	var evs []sseEvent
+	deadline := time.After(30 * time.Second)
+	for {
+		select {
+		case ev := <-stream:
+			evs = append(evs, ev)
+			switch ev.Type {
+			case "approval.requested":
+				id := ev.Data["approval"].(map[string]any)["id"].(string)
+				e.answer(t, pid, id, map[string]string{"decision": decision})
+			case "turn.finished":
+				return evs
+			}
+		case <-deadline:
+			t.Fatal("timed out")
+		}
+	}
+}
+
+func requestedKinds(evs []sseEvent) map[string]int {
+	kinds := map[string]int{}
+	for _, ev := range evs {
+		if ev.Type == "approval.requested" {
+			kinds[ev.Data["approval"].(map[string]any)["kind"].(string)]++
+		}
+	}
+	return kinds
+}
+
+// "Allow for this request" covers one kind (and, for commands, one program) of one agent: the write is allowed for
+// the rest of the turn, the same agent's command still asks.
+func TestAllowForTurnIsPerKind(t *testing.T) {
+	e := newEnv(t, nil)
+	pid, _ := e.v7Project(t, "supervised")
+	kinds := requestedKinds(e.answerEvery(t, pid, "Go [write:{role}.md] [bash:echo hi-from-bash]", "allow_for_turn"))
+	if kinds["write"] != 3 || kinds["command"] != 3 {
+		t.Fatalf("requested = %v, want 3 writes and 3 commands", kinds)
+	}
+}
+
+// "Allow all for this request" (allow_all_for_turn) allows every further prompt of the turn, whatever the kind or
+// agent, and nothing past it.
+func TestAllowAllForTurnCoversEveryFurtherPrompt(t *testing.T) {
+	e := newEnv(t, nil)
+	pid, folder := e.v7Project(t, "supervised")
+	evs := e.answerEvery(t, pid, "Go [write:{role}.md] [bash:echo ran >> bash.out]", "allow_all_for_turn")
+	kinds := requestedKinds(evs)
+	if kinds["command"] != 0 || kinds["write"] == 0 || kinds["write"] > 3 {
+		t.Fatalf("requested = %v, want only the writes raised before the first answer and no command", kinds)
+	}
+	for _, ev := range evs {
+		if ev.Type == "approval.resolved" && ev.Data["decision"] != "allow_all_for_turn" {
+			t.Errorf("resolved as %v", ev.Data["decision"])
+		}
+	}
+	out, _ := os.ReadFile(filepath.Join(folder, "bash.out"))
+	if n := strings.Count(string(out), "ran\n"); n != 3 {
+		t.Fatalf("commands ran = %d, want 3", n)
+	}
+	// The next turn asks again.
+	stream := e.subscribe(t, pid)
+	e.into(t, "POST", "/v1/projects/"+pid+"/messages", map[string]string{"text": "Again [bash:echo again]"}, http.StatusAccepted, nil)
+	e.waitApprovals(t, pid, 1)
+	e.into(t, "POST", "/v1/projects/"+pid+"/cancel", nil, http.StatusAccepted, nil)
+	collectUntilTurnFinished(t, stream)
+	e.waitApprovals(t, pid, 0)
+}
+
 func TestSupervisedBashAndFullAccess(t *testing.T) {
 	e := newEnv(t, nil)
 	pid, folder := e.v7Project(t, "supervised")

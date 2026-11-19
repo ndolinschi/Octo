@@ -34,8 +34,8 @@ func (s *Service) ResolveApproval(ctx context.Context, pid, id string, a Approva
 	if _, err := s.db(ctx, pid); err != nil {
 		return err
 	}
-	if !slices.Contains([]string{approval.Allow, approval.AllowForTurn, approval.AllowAlways, approval.Deny}, a.Decision) {
-		return invalid("decision must be allow, allow_for_turn, allow_always or deny")
+	if !slices.Contains(approval.Decisions, a.Decision) {
+		return invalid("decision must be allow, allow_for_turn, allow_all_for_turn, allow_always or deny")
 	}
 	if len(a.Note) > 4000 || len(a.Match) > 1000 {
 		return invalid("note or match is too long")

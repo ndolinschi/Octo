@@ -232,7 +232,7 @@ export default function ProcessesTab() {
             selected={picked?.key ?? null}
             onSelect={setSelected}
             listHeader={
-              <PanelFilters className="flex-wrap gap-y-2 py-1">
+              <PanelFilters>
                 <FilterTabs<ProcessFilter> label="Filter processes" bare options={filterOptions} value={filter} onChange={(v) => setFilter(v)} />
                 <SearchField
                   label="Filter by name, command or PID"
@@ -240,7 +240,7 @@ export default function ProcessesTab() {
                   size="sm"
                   value={query}
                   onChange={setQuery}
-                  className="min-w-44 flex-1"
+                  className="ml-auto max-w-56 min-w-28 flex-1"
                 />
               </PanelFilters>
             }
@@ -260,7 +260,7 @@ export default function ProcessesTab() {
               shown.length === 0 ? (
                 <PanelEmpty>{query.trim() ? `No process matches "${query.trim()}".` : "No processes in this state."}</PanelEmpty>
               ) : (
-                <ul ref={listRef} aria-label="Processes" className="flex flex-col gap-1">
+                <ul ref={listRef} aria-label="Processes" className="flex flex-col gap-1.5">
                   {shown.map((item) => (
                     <li key={item.key}>
                       <ProcessRow
@@ -326,7 +326,8 @@ function ProcessRow(props: {
     <ListRow
       size="md"
       selected={props.selected}
-      trailingShown={canStop || canKill}
+      // Revealed on hover and keyboard focus like every other list (ListRow; always on touch); on a phone always shown.
+      trailingShown={phone}
       data-process-row={item.key}
       leading={
         tone === "ok" && item.kind === "command" ? (

@@ -10,6 +10,7 @@ import { useApp } from "../../state/app";
 import { Chip } from "../primitives/Chip";
 import { Glyph } from "../primitives/Glyph";
 import { Presence } from "../primitives/Presence";
+import { StateGlyph } from "../primitives/StateGlyph";
 import { readyLazy } from "../../lib/readyLazy";
 import { registerWarm } from "../../lib/warm";
 import type { ModelPickerProps } from "./modelPickerProps";
@@ -100,9 +101,15 @@ export function ModelPicker(props: ModelPickerProps) {
       <Chip
         ref={button}
         lead={
-          <Suspense fallback={<span className="size-3.5 shrink-0" />}>
-            <ProviderMark id={ref ? ref.id : props.value} label={text} size={14} />
-          </Suspense>
+          // A model that cannot run says so by shape and name too, not by the amber colour alone: the circled "!" of the
+          // "needs you" glyph (the same shape as lucide's CircleAlert, already in the entry chunk; the icon was over budget).
+          toned ? (
+            <StateGlyph state="needs" size={14} />
+          ) : (
+            <Suspense fallback={<span className="size-3.5 shrink-0" />}>
+              <ProviderMark id={ref ? ref.id : props.value} label={text} size={14} />
+            </Suspense>
+          )
         }
         name={props.label}
         label={shown}
@@ -111,6 +118,7 @@ export function ModelPicker(props: ModelPickerProps) {
         open={open}
         disabled={props.disabled ?? false}
         warn={toned}
+        aria-label={`${props.label}: ${shown}${toned ? ", provider not connected" : ""}`}
         aria-haspopup="dialog"
         data-model-picker
         data-warm="model"

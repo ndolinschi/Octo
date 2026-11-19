@@ -73,7 +73,7 @@ export const ComposerMenu = forwardRef<
   ComposerMenuHandle,
   {
     anchor: RefObject<HTMLElement | null>;
-    /** The composer box: the menu is as wide as it (up to 480px); when it is the anchor too, the menu sits above it. */
+    /** The composer box: the menu is as wide as it; when it is the anchor too, the menu sits above it. */
     box: RefObject<HTMLElement | null>;
     /** Query typed in the composer after the trigger; null when opened by the button (own search field). */
     query: string | null;
@@ -206,14 +206,14 @@ export const ComposerMenu = forwardRef<
   useEffect(() => onActive(currentId === null ? null : optionId(currentId)));
   useEffect(() => () => onActive(null), [onActive]);
 
-  // Above its anchor, on the anchor's left edge, as wide as the composer box (up to 480px) and never past the window. A window
+  // Above its anchor, on the anchor's left edge, as wide as the composer box (as the / menu) and never past the window. A window
   // resize closes it, as it closes `Menu` and `Popover` (B9): the anchor moves after the resize, so a measure on `resize` was stale.
   const close = useLatest(onClose);
   useLayoutEffect(() => {
     const r = props.anchor.current?.getBoundingClientRect();
     const b = props.box.current?.getBoundingClientRect();
     if (r && b) {
-      const width = Math.min(b.width, 480, window.innerWidth - 16);
+      const width = Math.min(b.width, window.innerWidth - 16);
       const gap = props.anchor.current === props.box.current ? GAP : CHIP_GAP;
       const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
       const below = r.top < 140 && window.innerHeight - r.bottom > r.top;

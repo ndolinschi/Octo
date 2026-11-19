@@ -6,7 +6,7 @@
  * system. Exit code 1 when there are violations (or skipped states with --strict), 0 otherwise.
  *
  *   node packages/ui/scripts/spacing-audit.mjs [--url http://localhost:1420] [--browser chromium|webkit] [--only <state>] [--json <path>]
- *                                              [--strict] [--selftest] [--query "demo=1"] [--list] [--help]
+ *                                              [--strict] [--timeout 4000] [--selftest] [--query "demo=1&tabs=all"] [--list] [--help]
  *
  * Rules: scale, row-height, gutter, edges, icon-gap, overlap, inset-balance, dialog-bounds, field-row, key-hint, panel-frame (see RULES below).
  * States that cannot be reached are reported as `skipped` with a reason, never as a crash.
@@ -73,15 +73,17 @@ const ONLY = opt("--only", null);
 const JSON_OUT = opt("--json", null);
 const STRICT = flag("--strict");
 const SELFTEST = flag("--selftest");
-const QUERY = opt("--query", "demo=1");
+// Every tab on: the audit covers the tools the default flags hide (Agents, Notes, Details, Usage, Memory, Sessions) too.
+const QUERY = opt("--query", "demo=1&tabs=all");
 const HELP = `Spacing audit — drives the running UI (demo data) and reports spacing violations.
 
 Usage: node packages/ui/scripts/spacing-audit.mjs [options]
 
   --url <base>      dev server to audit (default http://localhost:1420); demo data is required
-  --query <q>       query string for the app (default "demo=1")
+  --query <q>       query string for the app (default "demo=1&tabs=all")
   --only <state>    audit one state, or several separated by commas (see --list)
   --json <path>     also write the full report as JSON
+  --timeout <ms>    how long a step waits for the UI (default 4000; a busy machine needs 10000 or more)
   --strict          exit 1 when a state is skipped (unreachable), not only on violations
   --selftest        run the in-page rules against a synthetic page first
   --list            print the states and their viewports, then exit
@@ -112,8 +114,20 @@ const WIDE = [
 ];
 const CHAT_VPS = [...WIDE, { width: 960, height: 800 }, { width: 390, height: 800 }];
 
-const T = 4000;
+// How long a step waits for the UI (ms). A loaded machine needs more: `--timeout 15000`.
+const T = Number(opt("--timeout", "4000"));
 const settle = (page, ms = 250) => page.waitForTimeout(ms);
+
+/**
+ * Home is `#/`. A page opened with no route first moves into the most recently active project once the project list has loaded
+ * (AppShell `opened`); a `#/` set before that move is overridden by it. So wait for the move, then go Home.
+ */
+async function goHome(page) {
+  await page.waitForFunction(() => window.location.hash.startsWith("#/p/"), null, { timeout: T }).catch(() => undefined);
+  await page.evaluate(() => {
+    window.location.hash = "#/";
+  });
+}
 
 async function openProject(page, ctx, name) {
   const href = ctx.hrefs[name];
@@ -281,9 +295,7 @@ const STATES = [
     id: "home",
     viewports: HOME_VPS,
     async run(page) {
-      await page.evaluate(() => {
-        window.location.hash = "#/";
-      });
+      await goHome(page);
       try {
         await page.locator("[data-home]").first().waitFor({ timeout: T });
       } catch {
@@ -322,6 +334,12 @@ const STATES = [
       const rows = [];
       for (const tool of TABS) {
         await openTool(page, tool);
+        // A lazy tab's frame arrives after its chunk: wait for it, so a slow machine does not read as "not in a Panel".
+        await page
+          .locator(`[data-panel="${tool}"]:visible`)
+          .first()
+          .waitFor({ timeout: T })
+          .catch(() => undefined);
         rows.push(
           (await page.evaluate((name) => {
             const p = [...document.querySelectorAll(`[data-panel="${name}"]`)].find((e) => e.offsetParent !== null && e.getBoundingClientRect().width > 0);
@@ -748,12 +766,20 @@ const STATES = [
     async run(page, ctx) {
       await openProject(page, ctx, "Atlas API");
       await waitChat(page);
-      await page.keyboard.press("Control+;");
-      try {
-        await page.locator("[data-side-exchange]").first().waitFor({ timeout: T });
-      } catch {
-        skip("the side question did not open");
+      // The shortcut is dropped while the app's key handler is still being set up (a lazy chunk): press it again if nothing opened.
+      let opened = false;
+      for (let attempt = 0; attempt < 3 && !opened; attempt++) {
+        await page.keyboard.press("Control+;");
+        opened = await page
+          .locator("[data-side-exchange]")
+          .first()
+          .waitFor({ timeout: T })
+          .then(
+            () => true,
+            () => false,
+          );
       }
+      if (!opened) skip("the side question did not open");
       await settle(page, 400);
     },
   },
@@ -761,9 +787,7 @@ const STATES = [
     id: "home-filtered",
     viewports: HOME_VPS,
     async run(page) {
-      await page.evaluate(() => {
-        window.location.hash = "#/";
-      });
+      await goHome(page);
       try {
         await page.locator("[data-triage=working]").first().waitFor({ timeout: T });
       } catch {
@@ -1126,7 +1150,7 @@ function PHONE_STATES() {
       id: "phone-home",
       viewports: vps,
       async run(page) {
-        await page.evaluate(() => (window.location.hash = "#/"));
+        await goHome(page);
         await page.locator("[data-home]").first().waitFor({ timeout: T });
         await settle(page, 1500);
       },
@@ -1786,7 +1810,8 @@ async function main() {
       printEntry(entry);
     }
   }
-  await browser.close();
+  // `browser.close()` can wait for ever on a page that is mid-navigation: give it ten seconds, then go on (the process exits below).
+  await Promise.race([browser.close().catch(() => undefined), new Promise((r) => setTimeout(r, 10000))]);
 
   const all = report.results.flatMap((r) => r.violations);
   for (const r of RULES) report.totals[r] = all.filter((v) => v.rule === r).reduce((a, v) => a + v.count, 0);

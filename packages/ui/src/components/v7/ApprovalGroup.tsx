@@ -6,10 +6,17 @@ import { Button } from "../primitives/Button";
 import { ApprovalCard, Countdown, useApprovalLeft, type ApprovalCardProps } from "./ApprovalCard";
 import { RequestCard } from "../shared/RequestCard";
 
-/** "3 approvals from Atlas API": several approvals waiting at once are one card with one "Allow all for this request". */
+/** The agents that ask, by label, each once and in the order they first asked. */
+export function askingAgents(approvals: readonly Approval[]): string[] {
+  return [...new Set(approvals.map((a) => a.agent_label))];
+}
+
+/**
+ * "3 approvals" · "Researcher, Tester": several approvals waiting at once are one card with one "Allow all for this request".
+ * The dim line says who asks (by label, never id); each row names its agent too when more than one asks.
+ */
 export function ApprovalGroup(props: {
   approvals: Approval[];
-  source: string;
   timeoutMs?: number | undefined;
   memoryMode?: ApprovalCardProps["memoryMode"];
   onSetAutoMemory?: ApprovalCardProps["onSetAutoMemory"];
@@ -18,6 +25,7 @@ export function ApprovalGroup(props: {
   onOpenAgent?: ApprovalCardProps["onOpenAgent"];
 }) {
   const { approvals } = props;
+  const agents = askingAgents(approvals);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Rows whose "Always allow" panel is open: while one is, its save is the one primary button and "Allow all" is secondary.
@@ -42,8 +50,9 @@ export function ApprovalGroup(props: {
   const allowAll = async () => {
     setBusy(true);
     setError(null);
-    const answer: ApprovalAnswer = answerFor("allow_for_turn");
-    const resolution: Resolution = { decision: "allow_for_turn", by: "you" };
+    // Every request waiting here, and every further one of the same turn (any agent, any kind): what the label says.
+    const answer: ApprovalAnswer = answerFor("allow_all_for_turn");
+    const resolution: Resolution = { decision: "allow_all_for_turn", by: "you" };
     const failed: string[] = [];
     for (const a of approvals) {
       try {
@@ -60,10 +69,18 @@ export function ApprovalGroup(props: {
   return (
     <RequestCard
       data-v7-approval-group=""
-      title={`${approvals.length} approvals from ${props.source}`}
+      title={`${approvals.length} approvals`}
+      asks={agents.join(", ")}
       meta={left !== null ? <Countdown left={left} /> : undefined}
       primary={
-        <Button variant={alwaysOpen.size > 0 ? "secondary" : "primary"} size="sm" loading={busy} disabled={busy} onClick={() => void allowAll()}>
+        <Button
+          variant={alwaysOpen.size > 0 ? "secondary" : "primary"}
+          size="sm"
+          loading={busy}
+          disabled={busy}
+          title="Allows these and every further request until this request finishes, from any agent; the next request asks again."
+          onClick={() => void allowAll()}
+        >
           Allow all for this request
         </Button>
       }
@@ -74,6 +91,7 @@ export function ApprovalGroup(props: {
           <ApprovalCard
             key={a.id}
             compact
+            showAgent={agents.length > 1}
             approval={a}
             resolution={null}
             {...(props.timeoutMs !== undefined ? { timeoutMs: props.timeoutMs } : {})}

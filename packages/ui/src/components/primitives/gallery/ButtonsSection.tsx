@@ -4,6 +4,7 @@ import { CONTROL_PX, CONTROL_SIZES } from "../../../lib/controls";
 import { Button } from "../Button";
 import { Chip } from "../Chip";
 import { IconButton } from "../IconButton";
+import { InlineButton } from "../InlineButton";
 import { Spinner } from "../Status";
 import { Section, Variants } from "./parts";
 
@@ -67,6 +68,15 @@ export function ButtonsSection() {
         <Chip icon={Settings} name="Model" label="Sonnet 5.5" open />
         <Chip icon={Settings} name="Folder" label="product-configuration-manager" warn />
         <Chip icon={Settings} name="Model" label="Sonnet 5.5" bare />
+      </Variants>
+      <Variants label="InlineButton: a button that wraps with its sentence (file chips in prose); Enter or Space presses it">
+        <span className="max-w-60 text-sm text-fg-2">
+          Requests time out after 10 s (
+          <InlineButton onPress={() => undefined} className="text-link">
+            src/http/client.ts
+          </InlineButton>
+          ).
+        </span>
       </Variants>
       <Variants label="Spinner: one ring per control size (running, so it turns)">
         {CONTROL_SIZES.map((s) => (
