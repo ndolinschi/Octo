@@ -162,6 +162,7 @@ export function NotesPanel() {
               </PanelFilters>
             }
             detail={detail}
+            detailFills={mode.kind === "new" || (mode.kind === "edit" && doc.status === "ok")}
             listSemantics="own"
             list={(select) =>
               shown.length === 0 ? (
