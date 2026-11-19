@@ -28,7 +28,7 @@ tunnel; the main bridge port never is.
 - Headers on every answer: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`,
   `Permissions-Policy`; API, pairing and poll answers `Cache-Control: no-store`; the web app's HTML carries the CSP
   (`remoteaccess.CSP`; `img-src` allows `https:` only for an image the person loads with "Load image"; the web build
-  carries the same policy as a `<meta>`, without `frame-ancestors`, which `apps/web/src/csp.test.ts` keeps equal), `/assets/*` is cached as immutable. **No CORS header at all**; a preflight gets 405.
+  carries the same policy as a `<meta>`, without `frame-ancestors`, which the harness test `TestWebBuildCSPIsTheHeader` keeps equal), `/assets/*` is cached as immutable. **No CORS header at all**; a preflight gets 405.
 
 ### Allow-list for devices
 

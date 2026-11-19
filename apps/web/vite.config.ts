@@ -10,7 +10,7 @@ const port = Number(process.env.OCTO_WEB_PORT) || 1430;
 
 /**
  * The Content-Security-Policy the harness sends with this app's pages (apps/harness/internal/remoteaccess/static.go,
- * `CSP`; `src/csp.test.ts` keeps the two equal), also written into the built page as a <meta>, so the files keep it when
+ * `CSP`; the harness test `TestWebBuildCSPIsTheHeader` keeps the two equal), also written into the built page as a <meta>, so the files keep it when
  * something else serves them. `frame-ancestors` works only as a header, so the <meta> leaves it out. Not in development:
  * Vite's dev page runs an inline script.
  */

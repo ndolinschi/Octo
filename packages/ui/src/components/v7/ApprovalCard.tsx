@@ -151,7 +151,8 @@ function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
     onResolved: (r) => props.onResolved(approval.id, r),
   });
   const disabled = c.busy !== null;
-  const rule = canAlwaysAllow(approval) && mayGrantBeyondOnce(useHost().remoteDevice) ? approval.suggested_rule : undefined;
+  const device = useHost().remoteDevice;
+  const rule = canAlwaysAllow(approval) && mayGrantBeyondOnce(device) ? approval.suggested_rule : undefined;
   const noteId = `v7-note-${approval.id}`;
   const answers = useAnswers(approval, c);
   return (
@@ -381,7 +382,8 @@ function CompactApproval(props: ApprovalCardProps) {
     onResolved: (r) => props.onResolved(approval.id, r),
   });
   const answers = useAnswers(approval, c, true);
-  const rule = canAlwaysAllow(approval) && mayGrantBeyondOnce(useHost().remoteDevice) ? approval.suggested_rule : undefined;
+  const device = useHost().remoteDevice;
+  const rule = canAlwaysAllow(approval) && mayGrantBeyondOnce(device) ? approval.suggested_rule : undefined;
   const [open, setOpen] = useState(false);
   const detailsId = `v7-details-${approval.id}`;
   const { patch, diff } = approval.detail;

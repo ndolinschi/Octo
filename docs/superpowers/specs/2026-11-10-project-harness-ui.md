@@ -4588,7 +4588,7 @@ WebKit, the Tauri shell, a real harness, the phone layout.
   harness port is chosen at start; the Browser tab's proxy port is ephemeral). The first-paint theme script moved from
   inline to `public/theme.js` (as in `apps/web`).
 - Verified: `shared/Markdown.test.ts` (failed before: `<img src="https://evil…">`), `lib/markdownImage.test.ts`,
-  `apps/desktop` `tauriCsp.test.ts` and `firstPaintTheme.test.ts`, `apps/web` `csp.test.ts`; the production build loaded in
+  `apps/desktop` `tauriCsp.test.ts` and `firstPaintTheme.test.ts`, `remoteaccess` `TestWebBuildCSPIsTheHeader`; the production build loaded in
   Chromium (Playwright) with the policy as a response header against a real harness on the mock model: chat (the remote
   image showed as the chip, no request left the machine), Files with Monaco and the Markdown preview, Terminal (xterm,
   typed command echoed), Browser tab (a local dev site in the proxy iframe), Review: **0 CSP violations, 0 console

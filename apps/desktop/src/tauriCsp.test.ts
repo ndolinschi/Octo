@@ -29,7 +29,8 @@ test("the webview has a strict Content-Security-Policy", () => {
   assert.deepEqual(d.get("script-src"), ["'self'"]);
   assert.deepEqual(d.get("object-src"), ["'none'"]);
   // Data reaches out only to this computer: the harness bridge on loopback and Tauri's IPC.
-  for (const v of d.get("connect-src") ?? []) assert.equal(/^('self'|ipc:|http:\/\/ipc\.localhost|(http|ws):\/\/(127\.0\.0\.1|localhost):\*)$/.test(v), true, v);
+  for (const v of d.get("connect-src") ?? [])
+    assert.equal(/^('self'|ipc:|http:\/\/ipc\.localhost|(http|ws):\/\/(127\.0\.0\.1|localhost):\*)$/.test(v), true, v);
   for (const v of d.get("frame-src") ?? []) assert.equal(/^http:\/\/(127\.0\.0\.1|localhost):\*$/.test(v), true, v);
   for (const name of ["default-src", "script-src", "connect-src", "img-src", "frame-src", "worker-src"]) {
     assert.equal((d.get(name) ?? []).includes("*"), false, `${name} allows any host`);
