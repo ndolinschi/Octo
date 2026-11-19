@@ -3,7 +3,7 @@ import { cn } from "../lib/cn";
 import { loadPref, PREFS, sidebarViewCodec } from "../lib/storage";
 import { useEscape, useMediaQuery } from "../lib/hooks";
 import { palette as paletteGate } from "../lib/typeahead";
-import { focusSoon, visibleComposer } from "../lib/focus";
+import { visibleComposer } from "../lib/focus";
 import { navigate, resolveProjectRoute, settingsHref, useGuardedRoute, useSettingsSection } from "../lib/route";
 import { useRouteFocus } from "./routeFocus";
 import { useProviders } from "../lib/providers/useProviders";
@@ -53,8 +53,8 @@ const OfflineBanner = lazy(() => import("../components/shell/OfflineState").then
 const OfflineState = lazy(() => import("../components/shell/OfflineState").then((m) => ({ default: m.OfflineState })));
 const Home = lazy(() => import("../components/home/Home").then((m) => ({ default: m.Home })));
 /** The project dialog and the settings page load on first use, warmed on idle and on intent (their own chunks; v6.3 bundle). */
-const projectDialogPart = readyLazy(() => import("../components/project/ProjectDialog").then((m) => m.ProjectDialog));
-const ProjectDialog = projectDialogPart.Component;
+const projectDialogPart = readyLazy(() => import("./NewProjectDialog").then((m) => m.NewProjectDialog));
+const NewProjectDialog = projectDialogPart.Component;
 registerWarm("project-dialog", projectDialogPart.fetch);
 const settingsPart = readyLazy(() => import("../components/settings/SettingsPage").then((m) => m.SettingsPage));
 const SettingsPage = settingsPart.Component;
@@ -434,17 +434,7 @@ function Shell() {
           </Presence>
           <Presence show={creating}>
             <Suspense fallback={null}>
-              <ProjectDialog
-                onClose={() => setCreating(false)}
-                onSubmit={async (input) => {
-                  const project = await bridge.createProject(input);
-                  await refreshProjects();
-                  setCreating(false);
-                  navigate(project.id);
-                  // The new project's composer takes focus once the dialog is gone and the project is in.
-                  focusSoon(() => document.getElementById("octo-composer"), { delay: 160, timeout: 3000 });
-                }}
-              />
+              <NewProjectDialog onClose={() => setCreating(false)} />
             </Suspense>
           </Presence>
           <Presence show={connectTarget !== null}>

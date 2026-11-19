@@ -4603,14 +4603,19 @@ in `c29ae1e` (the commit before the polish pass) and back to 423cf23 (2026-11-11
   approvals/queue slots, `EmptyTitle`, `TurnChanges`, `TurnBanner`, `CompactedMarker` (in `TURN_PARTS`), Markdown's table
   frame. The slots seed from the project state / `kept`; `TurnChanges`' cache is keyed by the bridge's `listChanges`, so a
   session's bridge shares it. `Dock` measures its width in a layout effect (before the first paint).
-- The project settings dialog moved to its own chunk (`app/ProjectSettingsDialog`) to keep the entry within budget.
+- To keep the entry within budget (not raised): the project settings dialog (`app/ProjectSettingsDialog`), the New project
+  dialog's submit (`app/NewProjectDialog`) and the "Agent not found" view (`chat/AgentGone`) are their own chunks; entry
+  160.97 kB after the merge with the integration tip (its own 160.74).
 
 **Check.** `packages/ui/scripts/project-switch.mjs` (flicker.mjs's sibling): every path above, cold (first visit) and warm,
 classified frame by frame; fails on a blank frame, a frame of the next conversation that differs from its final one
 (scroll, heights, held-invisible turns, composer, tab strips), a replayed `octo-msg-in`, or a loading state shown early or for
-under ~150 ms. Before (`c29ae1e`, production): every project path fails (blank 2–9 frames, then 3–600 px fill-in). After
-(production, 1x): `project-switch: ok` on all paths; light, and 4x CPU in both themes: ok before the last two fixes (file
-walk, table frame), the 1x dark run after them ok. Measured on a heavily loaded build machine (load 30). Not verified: WebKit,
+under ~150 ms, and when the next screen is not shown 1.5 s after the click. Before (`c29ae1e`, production): every project
+path fails (blank 2–9 frames, then 3–600 px fill-in). After, on the merged tree (production build): `project-switch: ok` on
+all paths in dark at 1x, and on sidebar, composer selector and Home in light; light and 4x CPU (both themes) were ok on all
+paths before the last fixes (file walk, table frame, the merge) and were not run again. flicker, layout-shift, scroll-anchor,
+scroll-on-send, stick-on-open: ok, once each. Dev server: sidebar, tree, composer selector, new session and Home ok (before
+the merge). Measured on a heavily loaded build machine (load 30). Not verified: WebKit,
 the phone layout, a real harness (cold reads there are ~10 ms, so the hold rarely shows the loading state), the composer and
 tab strip staying the same DOM nodes (they are replaced in the same frame, as when switching sessions of one project).
 
