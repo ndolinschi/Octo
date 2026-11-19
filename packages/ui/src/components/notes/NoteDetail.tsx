@@ -8,7 +8,7 @@ import { Button } from "../primitives/Button";
 import { IconMenu } from "../primitives/IconMenu";
 import { Notice } from "../primitives/Notice";
 import { DetailHeader, FormActions } from "../primitives/Panel";
-import { SkeletonText } from "../primitives/Skeleton";
+import { SkeletonText } from "../primitives/SkeletonText";
 import { Markdown } from "../shared/Markdown";
 import type { DocLoad } from "./useNoteDoc";
 

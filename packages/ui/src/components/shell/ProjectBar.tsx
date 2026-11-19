@@ -57,7 +57,7 @@ export function ProjectActions() {
           }}
         />
       </span>
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Suspense fallback={null}>
             <ProjectActionsMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} onFailure={setFailure} />

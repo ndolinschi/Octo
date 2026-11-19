@@ -73,8 +73,8 @@ export function Tab(props: {
       className={cn(
         "group/tab relative flex h-row w-max shrink items-center rounded-sm press-row",
         selected ? (props.focusedGroup ? "bg-tab-active text-fg shadow-tab" : "bg-hover text-fg") : "text-fg-3 hover:bg-hover hover:text-fg-2",
-        // Neighbours slide out of the way (150ms); open/close changes widths (120ms); the dragged tab follows the pointer.
-        props.dragging === "other" && "motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-(--ease-out-quint)",
+        // Neighbours slide out of the way (`--motion-base`); the dragged tab follows the pointer.
+        props.dragging === "other" && "motion-safe:transition-transform motion-safe:duration-base motion-safe:ease-(--ease-out-quint)",
         props.dragging === "self-attached" && "z-10 bg-tab-active text-fg shadow-pop",
         props.dragging === "self-detached" && "opacity-40",
       )}

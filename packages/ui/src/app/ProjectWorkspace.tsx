@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { navigate } from "../lib/route";
-import { sessionTitle } from "../lib/sessions/tree";
+import { sessionTitle } from "../lib/sessions/title";
 import { usePhone } from "../lib/phone";
 import { useApp } from "../state/app";
 import { CodeProvider, useCode } from "../state/code";

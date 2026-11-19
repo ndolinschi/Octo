@@ -19,7 +19,7 @@ const FRAME: Record<Variant, string> = {
 // `align="rows"`: the frame's edge is an overlay (`after`) that takes no room, so the field's own 8px padding is the rows' 8: the
 // glyph box is on x+8 and the text on x+32, the rows' label edge. The edge is a real border, so forced-colors keeps it.
 const ROWS_FRAME =
-  "relative rounded-md bg-panel px-2 text-sm text-fg after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-field-edge after:transition-[border-color] after:duration-100 focus-within:after:border-fg touch:text-input-touch";
+  "relative rounded-md bg-panel px-2 text-sm text-fg after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-field-edge after:transition-[border-color] after:duration-fast focus-within:after:border-fg touch:text-input-touch";
 
 /**
  * The one search input (decision 90): a 14px search glyph, the text, a clear button while there is text, and a `shortcut`

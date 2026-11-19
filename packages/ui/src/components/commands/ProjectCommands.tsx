@@ -172,7 +172,7 @@ export default function ProjectCommands({
           onClick={toggleRun}
         />
       </span>
-      <Presence show={runMenu !== null} exitMs={0}>
+      <Presence show={runMenu !== null}>
         {runMenu && <Menu label="Run a project command" x={runMenu.x} y={runMenu.y} alignEnd items={items} onClose={() => setRunMenu(null)} />}
       </Presence>
       <Presence show={problem !== null}>

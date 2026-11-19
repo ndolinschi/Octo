@@ -13,7 +13,7 @@ import { useNav } from "../../state/nav";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Button } from "../primitives/Button";
 import { Notice } from "../primitives/Notice";
-import { SkeletonText } from "../primitives/Skeleton";
+import { SkeletonText } from "../primitives/SkeletonText";
 import { Prose } from "../shared/Prose";
 import { BoundaryMarker, QuietLine, type TranscriptSlot } from "./parts";
 import { DeleteSessionDialog } from "./DeleteSessionDialog";

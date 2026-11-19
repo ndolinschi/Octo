@@ -66,6 +66,11 @@ export const PERSIST_TREE_MS = 150;
 export const COPY_FEEDBACK_MS = 1400;
 /** A loading indicator waits this long before showing, then stays at least `LOADING_MIN_SHOWN_MS`. */
 export const LOADING_SHOW_AFTER_MS = 200;
+/** The motion tokens of styles.css (`--motion-fast` / `--motion-base`) for the Web Animations API and exit timers. */
+export const MOTION_FAST_MS = 100;
+export const MOTION_BASE_MS = 150;
+/** `--ease-out-quint`: every enter. */
+export const EASE_OUT_QUINT = "cubic-bezier(0.2, 0, 0, 1)";
 export const LOADING_MIN_SHOWN_MS = 300;
 /** A request to focus the tree column is honoured by a column that mounts within this time. */
 export const FOCUS_REQUEST_TTL_MS = 1000;

@@ -6,7 +6,7 @@ import { blockColor, countText, receiptView } from "../../lib/memory/receipt";
 import { useApp } from "../../state/app";
 import { ListRow } from "../primitives/ListRow";
 import { Popover } from "../primitives/Popover";
-import { SkeletonText } from "../primitives/Skeleton";
+import { SkeletonText } from "../primitives/SkeletonText";
 
 /** `none` is a turn without a receipt (it ran before receipts existed): an empty state, not an error. */
 type ReceiptLoad = Load<ContextReceipt> | { status: "none" };

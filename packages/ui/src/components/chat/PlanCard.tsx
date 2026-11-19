@@ -52,7 +52,7 @@ function PlanCard(props: { plan: Plan; onPlan(plan: Plan): void; onRefresh(): Pr
           <Button variant="quiet" size="md" fullWidth aria-expanded={open} onClick={() => setOpen((o) => !o)} className="justify-start px-3">
             <Glyph icon={Check} size={14} className="shrink-0 text-ok" />
             <span className="text-left">Plan approved</span>
-            <Glyph icon={ChevronRight} size={14} className={cn("text-fg-3 transition-transform duration-150", open && "rotate-90")} />
+            <Glyph icon={ChevronRight} size={14} className={cn("text-fg-3 transition-transform duration-base", open && "rotate-90")} />
           </Button>
           {open && (
             <div className="border-t border-line px-3 py-2">

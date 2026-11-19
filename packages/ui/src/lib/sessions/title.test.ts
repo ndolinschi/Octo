@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { titleFromRequest } from "./title";
+import { titleFromRequest } from "./requestTitle";
 
 test("titleFromRequest cuts at a word with an ellipsis, as the harness does", () => {
   const long = "Run the API tests and lint, then raise the HTTP retry limit to 5 and log each retry with its delay";

@@ -35,7 +35,7 @@ export function MenuButton(props: { label: string; text: string; items: MenuItem
         {props.text}
         <Glyph icon={ChevronDown} size={14} className="shrink-0 text-fg-3" />
       </button>
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Menu
             label={props.label}

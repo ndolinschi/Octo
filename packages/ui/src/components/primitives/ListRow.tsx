@@ -174,7 +174,7 @@ export function ListRow(props: {
         <span
           className={cn(
             "flex shrink-0 items-center gap-0.5 pr-1",
-            !props.trailingShown && "opacity-0 transition-opacity duration-100 group-focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100",
+            !props.trailingShown && "opacity-0 transition-opacity duration-fast group-focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100",
           )}
         >
           {props.trailing}

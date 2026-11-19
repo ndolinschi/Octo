@@ -1,19 +1,8 @@
 import type { ProjectSession } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  sessionsBesideTabs,
-  hasSessionMessages,
-  isOpen,
-  mainSessions,
-  parseOpen,
-  projectSummary,
-  sessionGlyph,
-  sessionMeta,
-  treeKey,
-  visibleSessions,
-  type KeyRow,
-} from "./tree";
+import { hasSessionMessages, mainSessions, sessionGlyph, sessionMeta, sessionsBesideTabs } from "./tree";
+import { isOpen, parseOpen, projectSummary, treeKey, visibleSessions, type KeyRow } from "./treeRows";
 
 const NOW = Date.parse("2026-11-14T12:00:00Z");
 const s = (id: string, minutesAgo: number, over: Partial<ProjectSession> = {}): ProjectSession => ({

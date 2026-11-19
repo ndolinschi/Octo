@@ -210,7 +210,7 @@ export function ComposerProjectBar(props: {
           />
         )}
       </Presence>
-      <Presence show={wsMenu !== null} exitMs={0}>
+      <Presence show={wsMenu !== null}>
         {wsMenu && (
           <Suspense fallback={null}>
             <Menu

@@ -36,7 +36,7 @@ export function SidebarEdge({ nav }: { nav: RefObject<HTMLElement | null> }) {
     >
       <span
         aria-hidden
-        className="absolute inset-y-2 left-1/2 w-0.5 -translate-x-1/2 rounded-full transition-[background-color] duration-100 group-hover/divider:bg-line-strong group-focus-visible/divider:bg-focus group-data-[dragging]/divider:bg-focus"
+        className="absolute inset-y-2 left-1/2 w-0.5 -translate-x-1/2 rounded-full transition-[background-color] duration-fast group-hover/divider:bg-line-strong group-focus-visible/divider:bg-focus group-data-[dragging]/divider:bg-focus"
       />
     </ResizeHandle>
   );

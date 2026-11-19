@@ -143,7 +143,7 @@ export function ActivityRow(props: {
               <Glyph
                 icon={ChevronRight}
                 size={14}
-                className={cn("shrink-0 text-fg-3 transition-[rotate,color] duration-150 group-hover:text-fg-2", open && "rotate-90")}
+                className={cn("shrink-0 text-fg-3 transition-[rotate,color] duration-base group-hover:text-fg-2", open && "rotate-90")}
               />
             )}
           </span>

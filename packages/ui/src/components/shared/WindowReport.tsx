@@ -11,7 +11,7 @@ import { Dialog } from "../primitives/Dialog";
 import { ListRow } from "../primitives/ListRow";
 import { Notice } from "../primitives/Notice";
 import { SectionHeader } from "../primitives/SectionHeader";
-import { SkeletonText } from "../primitives/Skeleton";
+import { SkeletonText } from "../primitives/SkeletonText";
 
 /** Every row reserves the width of its "Open" button, so the numbers of all rows end on one edge. */
 const TAIL = <span aria-hidden className="w-12" />;

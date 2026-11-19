@@ -1,25 +1,8 @@
 import type { Folder } from "@octo/agent-client";
-import { useRef, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ModelPicker } from "../shared/ModelPicker";
 
-/** Gap between a chip and the menu it opens (decision 56). */
-const MENU_GAP = 4;
-
 export type ChipProps = { bare: boolean; disabled: boolean; onOpenChange(open: boolean): void };
-
-export function useChipMenu(onOpenChange: (open: boolean) => void) {
-  const ref = useRef<HTMLButtonElement>(null);
-  const [open, setOpenState] = useState(false);
-  const setOpen = (next: boolean) => {
-    setOpenState(next);
-    onOpenChange(next);
-  };
-  const at = () => {
-    const r = ref.current?.getBoundingClientRect();
-    return r ? { x: r.left, y: r.top - MENU_GAP } : { x: 0, y: 0 };
-  };
-  return { ref, open, setOpen, at };
-}
 
 /** The project's model or agent (decision 58): the shared model control, the same one the title bar shows. */
 export function ModelChip(

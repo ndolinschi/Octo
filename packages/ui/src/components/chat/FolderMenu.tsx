@@ -32,7 +32,7 @@ export function FolderMenu(props: {
   const canOpenFiles = Boolean(ws?.toolEnabled("files"));
   return (
     <>
-      <Presence show={menuOpen} exitMs={0}>
+      <Presence show={menuOpen}>
         {menuOpen && (
           <Suspense fallback={null}>
             <Menu

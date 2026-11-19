@@ -78,7 +78,7 @@ export function TableFrame({ children, tone = "panel", note }: { children: React
           {copied ? "Copied" : "Copy"}
         </Button>
       </div>
-      <Presence show={menu !== null} exitMs={0}>
+      <Presence show={menu !== null}>
         {menu && (
           <Menu
             label="Copy table"

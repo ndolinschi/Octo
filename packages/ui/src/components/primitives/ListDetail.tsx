@@ -8,7 +8,8 @@ import { DetailBackContext } from "./Panel";
 import { EmptyState } from "./EmptyState";
 import { FloatRoom } from "./floatRoom";
 import { ScrollArea } from "./ScrollArea";
-import { SkeletonList, SkeletonText } from "./Skeleton";
+import { SkeletonList } from "./Skeleton";
+import { SkeletonText } from "./SkeletonText";
 
 /**
  * "List on the left, detail on the right" (decision 66): Memory, Notes and, later, Review, Changes, Sessions and

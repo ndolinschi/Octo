@@ -1,27 +1,7 @@
-/** Longest automatic title, in characters, before the ellipsis (the harness's `projectstore.SessionTitle`). */
-const MAX = 80;
+import type { ProjectSession } from "@octo/agent-client";
 
 /**
- * A session's title from its first request, as the harness makes it (`projectstore.SessionTitle`): the first line; a longer
- * one is cut at the last space at or before 80 characters (at 80 when the first word is longer) and ends with "…"; an empty
- * one is "New session".
+ * A session's title as a row shows it. (The title the harness gives a new session from its first request, which only the demo
+ * needs, is `requestTitle`: apart, so the entry, which shows titles, does not carry it.)
  */
-export function titleFromRequest(request: string): string {
-  let line = (request.trim().split(/\r|\n/)[0] ?? "").trim();
-  // Characters as the harness counts them (runes: code points), so a cut never splits a surrogate pair.
-  const chars = Array.from(line);
-  if (chars.length > MAX) {
-    let cut = MAX;
-    for (let i = MAX; i > 0; i--) {
-      if (/\s/u.test(chars[i] ?? "")) {
-        cut = i;
-        break;
-      }
-    }
-    line = `${chars
-      .slice(0, cut)
-      .join("")
-      .replace(/[\s\p{P}]+$/u, "")}…`;
-  }
-  return line === "" ? "New session" : line;
-}
+export const sessionTitle = (s: Pick<ProjectSession, "title">): string => (s.title.trim() === "" ? "New session" : s.title.trim());
