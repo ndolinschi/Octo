@@ -14,7 +14,8 @@ import {
   viewState,
   type CallRow,
 } from "../../lib/toolView";
-import { stepState, type StepState, type ToolUse, type TurnEnd } from "../../lib/transcript";
+import { type ToolUse, type TurnEnd } from "../../lib/transcript";
+import { stepState, type StepState } from "../../lib/turnEnding";
 import { useOptionalCode } from "../../state/code";
 import { ActivityRow, type ActivityState } from "./ActivityRow";
 import { useTranscript } from "./transcriptContext";

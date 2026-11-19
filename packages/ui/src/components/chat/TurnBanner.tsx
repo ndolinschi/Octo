@@ -4,7 +4,7 @@ import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
 import { loginSteps, withLoginSteps, type LoginSteps } from "../../lib/errors/login";
 import { isStructured, plainError } from "../../lib/errors/plain";
-import { isRestartInterruption } from "../../lib/transcript";
+import { isRestartInterruption } from "../../lib/turnEnding";
 import { useActivity } from "../../state/activity";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";

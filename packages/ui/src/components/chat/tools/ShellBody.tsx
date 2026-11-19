@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { cn } from "../../../lib/cn";
 import { formatDuration } from "../../../lib/format";
 import { exitLabel, spanMs, splitLines, tailLines } from "../../../lib/toolView";
-import type { StepState } from "../../../lib/transcript";
+import type { StepState } from "../../../lib/turnEnding";
 import { BodyFrame, CopyAction, Disclosure, TextAction, type RawCall } from "./parts";
 
 /** Lines of output shown under a command before "Show all"; then at most this many at a time ("Show more"). */

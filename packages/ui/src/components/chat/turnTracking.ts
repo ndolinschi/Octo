@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useNav } from "../../state/nav";
 import { PROMPT_FLASH_MS } from "../../lib/constants";
+import { firstTrue } from "../../lib/bisect";
 import { useLatest } from "../../lib/hooks";
 import { revealTurn } from "./turnReveal";
 
@@ -30,15 +31,20 @@ export function useViewTurn(root: RefObject<HTMLElement | null>, projectId: stri
       const box = el.getBoundingClientRect();
       if (box.height === 0) return;
       const turns = turnsIn(el);
+      const rect = (i: number) => turns[i]?.getBoundingClientRect();
+      // Turns are stacked in order, so only those whose box reaches the viewport can hold a prompt that is fully in it:
+      // found by bisection instead of measuring every turn from the newest one on each frame of a scroll.
+      const below = firstTrue(turns.length, (i) => (rect(i)?.top ?? Infinity) > box.bottom);
       let chosen: HTMLElement | undefined;
-      for (let i = turns.length - 1; i >= 0; i--) {
+      for (let i = below - 1; i >= 0; i--) {
+        if ((rect(i)?.bottom ?? -Infinity) < box.top) break;
         const prompt = turns[i]?.querySelector(PROMPT)?.getBoundingClientRect();
         if (prompt && prompt.top >= box.top && prompt.bottom <= box.bottom) {
           chosen = turns[i];
           break;
         }
       }
-      chosen ??= turns.find((s) => s.getBoundingClientRect().bottom > box.top + STICK_TOP);
+      chosen ??= turns[firstTrue(turns.length, (i) => (rect(i)?.bottom ?? Infinity) > box.top + STICK_TOP)];
       if (chosen) nav.setViewTurn({ projectId, messageId: Number(chosen.dataset.turnId) });
     };
     const schedule = () => {

@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { createRequiredContext } from "../lib/context";
 import type { Layout, TabId, ToolTab } from "./workspace/layout";
 
@@ -63,6 +63,9 @@ type NavActions = {
   onTurnRequest(listener: Listener): () => void;
   clearPendingTurn(): void;
   setViewTurn(turn: TurnRef | null): void;
+  /** The request at the top of the open conversation now (for a handler; `useNavState` to render it). */
+  viewTurn(): TurnRef | null;
+  onViewTurn(listener: () => void): () => void;
   /** Ask the next workspace of this project to open a tool tab; kept until that workspace takes it. */
   requestTool(request: ToolRequest): void;
   takePendingTool(projectId: string): ToolRequest | null;
@@ -80,10 +83,15 @@ type NavState = {
 };
 
 export const { Provider: NavContextProvider, useRequired: useNav, useOptional: useOptionalNav } = createRequiredContext<NavActions>("useNav");
-const StateContext = createContext<NavState>({ viewTurn: null });
 
+/**
+ * The request in view changes at every turn boundary while the reader scrolls. It is a store, not context state: a context
+ * change re-rendered the provider and made React search the whole tree for its readers on each boundary; a store tells only
+ * its subscribers (the turn rail).
+ */
 export function NavProvider({ children }: { children: ReactNode }) {
-  const [viewTurn, setViewTurnState] = useState<TurnRef | null>(null);
+  const view = useRef<TurnRef | null>(null);
+  const viewListeners = useRef(new Set<() => void>());
   const pending = useRef<TurnRef | null>(null);
   const pendingTool = useRef<ToolRequest | null>(null);
   const listeners = useRef(new Set<Listener>());
@@ -111,7 +119,19 @@ export function NavProvider({ children }: { children: ReactNode }) {
       clearPendingTurn: () => {
         pending.current = null;
       },
-      setViewTurn: (turn) => setViewTurnState((prev) => (prev?.projectId === turn?.projectId && prev?.messageId === turn?.messageId ? prev : turn)),
+      setViewTurn: (turn) => {
+        const prev = view.current;
+        if (prev?.projectId === turn?.projectId && prev?.messageId === turn?.messageId) return;
+        view.current = turn;
+        for (const l of viewListeners.current) l();
+      },
+      viewTurn: () => view.current,
+      onViewTurn: (listener) => {
+        viewListeners.current.add(listener);
+        return () => {
+          viewListeners.current.delete(listener);
+        };
+      },
       requestTool: (request) => {
         pendingTool.current = request;
       },
@@ -132,15 +152,14 @@ export function NavProvider({ children }: { children: ReactNode }) {
     }),
     [],
   );
-  const state = useMemo(() => ({ viewTurn }), [viewTurn]);
-
-  return (
-    <NavContextProvider value={actions}>
-      <StateContext.Provider value={state}>{children}</StateContext.Provider>
-    </NavContextProvider>
-  );
+  return <NavContextProvider value={actions}>{children}</NavContextProvider>;
 }
 
+const noViewTurn = () => null;
+const noSubscription = () => () => undefined;
+
 export function useNavState(): NavState {
-  return useContext(StateContext);
+  const nav = useOptionalNav();
+  const viewTurn = useSyncExternalStore(nav?.onViewTurn ?? noSubscription, nav?.viewTurn ?? noViewTurn);
+  return { viewTurn };
 }

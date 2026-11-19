@@ -40,6 +40,9 @@ type InternalEntry = {
   bytes: number;
   listeners: Set<() => void>;
   outputListeners: Set<(chunk: Uint8Array) => void>;
+  /** The last size the view asked for: the tab starts the shell from an estimate before xterm is built, and the fit that
+   * follows may land while the session is still connecting. */
+  size: { cols: number; rows: number };
   api: ManagedTerminal;
 };
 
@@ -102,6 +105,7 @@ export function getManagedTerminal(projectId: string, terminalId: string, defaul
     bytes: 0,
     listeners: new Set(),
     outputListeners: new Set(),
+    size: { cols: 80, rows: 24 },
     api: null as unknown as ManagedTerminal,
   };
 
@@ -157,6 +161,7 @@ export function getManagedTerminal(projectId: string, terminalId: string, defaul
       updateTerminalTabState(projectId, terminalId, { folder });
       renumber(projectId);
       notify();
+      entry.size = { cols, rows };
 
       bridge
         .openTerminal(projectId, { folder, cols: Math.max(20, cols), rows: Math.max(5, rows) })
@@ -180,6 +185,8 @@ export function getManagedTerminal(projectId: string, terminalId: string, defaul
             folder: session.folder || folder,
           });
           renumber(projectId);
+          const { size } = entry;
+          if (size.cols !== cols || size.rows !== rows) entry.api.resize(size.cols, size.rows);
           entry.unsubOutput = session.onOutput((chunk) => {
             if (entry.gen !== myGen) return;
             appendChunk(chunk);
@@ -213,7 +220,9 @@ export function getManagedTerminal(projectId: string, terminalId: string, defaul
       void entry.session.write(data).catch(() => undefined);
     },
     resize: (cols, rows) => {
-      if (!entry.session || cols < 2 || rows < 1) return;
+      if (cols < 2 || rows < 1) return;
+      entry.size = { cols, rows };
+      if (!entry.session) return;
       void entry.session.resize(cols, rows).catch(() => undefined);
     },
     clearHistory: () => {

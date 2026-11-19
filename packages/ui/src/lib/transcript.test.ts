@@ -3,15 +3,11 @@ import type { ContentBlock, Message } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SPAWN_TOOL } from "./tools";
+import { buildTurns, latestReply, promptText, requestSummaries, showRail } from "./transcript";
 import {
-  buildTurns,
   turnDurationMs,
-  latestReply,
-  promptText,
-  requestSummaries,
   compactionSlots,
   turnWarning,
-  showRail,
   isInterruption,
   stepState,
   turnHead,
@@ -19,7 +15,7 @@ import {
   RESTART_INTERRUPTION,
   spawnStatus,
   turnFailureText,
-} from "./transcript";
+} from "./turnEnding";
 import { railLayout } from "./railLayout";
 
 let nextId = 1;

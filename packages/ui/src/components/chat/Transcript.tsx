@@ -5,23 +5,14 @@ import { RESTORE_LABEL, restoreName } from "../../lib/rewind";
 import { markSteered } from "../../lib/v7/steer";
 import { lazy, memo, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { cn } from "../../lib/cn";
-import { formatSeparator, needsSeparator, timeAgo } from "../../lib/format";
+import { timeAgo } from "../../lib/format";
+import { formatSeparator, needsSeparator } from "../../lib/timeSeparator";
+import { guessOneLine, promptShape, rememberPromptShape } from "../../lib/promptShape";
 import { useCopy } from "../../lib/hooks";
 import { splitComments } from "../../lib/comments";
 import { splitDesignNotes } from "../../lib/browser/designNotes";
-import {
-  buildTurns,
-  compactionSlots,
-  promptText,
-  stepState,
-  turnDurationMs,
-  turnFailureText,
-  turnHead,
-  turnWarning,
-  type StoredEnding,
-  type Turn,
-  type TurnEnd,
-} from "../../lib/transcript";
+import { buildTurns, promptText, type Turn, type TurnEnd } from "../../lib/transcript";
+import { compactionSlots, stepState, turnDurationMs, turnFailureText, turnHead, turnWarning, type StoredEnding } from "../../lib/turnEnding";
 import type { StoredEndingLookup } from "../../lib/storedEndings";
 import { useStopping } from "../../lib/stopping";
 import { hasLongWord } from "../../lib/composerInput";
@@ -196,7 +187,8 @@ export const Transcript = memo(function Transcript(props: {
   // Finished turns only show minutes-old times; a coarse clock lets them skip the per-second tick.
   const minute = Math.floor(now / 60_000) * 60_000;
   // P1-6: only the turns near the viewport are mounted (and none before the Markdown chunk is in, so each lays out once).
-  const { root: turnsRoot, observe, isMounted, heightAt } = useTurnWindow(agent.id, turns, usePartsReady(TURN_PARTS));
+  const partsReady = usePartsReady(TURN_PARTS);
+  const { root: turnsRoot, observe, isMounted, heightAt } = useTurnWindow(agent.id, turns, partsReady);
   // An unmounted turn's element is reused while its height holds: the transcript re-renders on every streamed delta, and
   // creating hundreds of placeholder elements each time was most of that render.
   const [shellKey] = useState(() => ({}));
@@ -206,13 +198,23 @@ export const Transcript = memo(function Transcript(props: {
     let mine = shells.get(shellKey);
     if (!mine) shells.set(shellKey, (mine = new Map<string, Shell>()));
     const hit = mine.get(turn.key);
-    if (hit?.height === height && hit.sig === sig) return hit.el;
+    if (hit?.height === height && hit.sig === sig && hit.shown === partsReady) return hit.el;
+    // Until the turn parts are in, every turn is a placeholder of estimated height (empty to the eye) pinned to the end; the
+    // turns then mount at their real heights. Shown, those empty boxes counted as moving content (a 0.16 layout shift at 4x
+    // CPU with the Markdown chunk late); hidden, the turns appear where they are.
     const el = (
-      <section key={turn.key} ref={observe} data-turn-id={turn.prompt?.id} data-turn-key={turn.key} style={{ height }}>
+      <section
+        key={turn.key}
+        ref={observe}
+        data-turn-id={turn.prompt?.id}
+        data-turn-key={turn.key}
+        style={{ height }}
+        className={partsReady ? undefined : "invisible"}
+      >
         <FindText turn={turn} />
       </section>
     );
-    mine.set(turn.key, { height, sig, el });
+    mine.set(turn.key, { height, sig, shown: partsReady, el });
     return el;
   };
 
@@ -252,6 +254,9 @@ export const Transcript = memo(function Transcript(props: {
                       ? "cancelled"
                       : null;
           const liveEnter = initialTurnKeys !== null && !initialTurnKeys.has(turn.key);
+          // Layout containment: a turn mounting above this one moves it, and a contained turn moves with its painted content
+          // (only its offset changes) instead of being painted again; scrolling a long conversation repainted every mounted
+          // turn below each mount. No turn content is fixed, overflows its section vertically or stacks over the pinned prompt.
           return (
             <section
               key={turn.key}
@@ -260,7 +265,7 @@ export const Transcript = memo(function Transcript(props: {
               data-turn-key={turn.key}
               data-turn-mounted
               data-live-enter={liveEnter || undefined}
-              className="flex flex-col gap-4"
+              className="flex flex-col gap-4 contain-layout contain-style"
             >
               {slots.get(i)?.map((m) => (
                 <Suspense key={`c${m.upto_message_id}`} fallback={null}>
@@ -434,9 +439,12 @@ const UserPrompt = memo(function UserPrompt({
   const compact = useTranscript().density === "compact";
   const box = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
-  const [overflows, setOverflows] = useState(false);
+  // The measured shape is the starting guess when the turn mounts again (the turn window remounts turns as the reader
+  // scrolls); a first mount guesses from the text. A right guess makes the measuring below a no-op; a wrong one is corrected
+  // before the first paint as before, so the guess changes the cost of a mount (one layout instead of two), never what shows.
+  const [overflows, setOverflows] = useState(() => promptShape(text)?.overflows ?? false);
   // The bubble's shape: one line of prose and nothing else is a pill; anything taller keeps the large radius.
-  const [oneLine, setOneLine] = useState(false);
+  const [oneLine, setOneLine] = useState(() => promptShape(text)?.oneLine ?? guessOneLine(text));
   const id = useId();
 
   useLayoutEffect(() => {
@@ -445,8 +453,10 @@ const UserPrompt = memo(function UserPrompt({
     const check = () => {
       // Hidden (a background tab): no box to measure; keep the shape it had.
       if (el.clientHeight === 0) return;
-      setOverflows(el.scrollHeight > el.clientHeight + 1);
-      setOneLine(el.clientHeight <= parseFloat(getComputedStyle(el).lineHeight) * 1.5);
+      const shape = { overflows: el.scrollHeight > el.clientHeight + 1, oneLine: el.clientHeight <= parseFloat(getComputedStyle(el).lineHeight) * 1.5 };
+      rememberPromptShape(text, shape);
+      setOverflows(shape.overflows);
+      setOneLine(shape.oneLine);
     };
     check();
     const ro = new ResizeObserver(check);
@@ -642,7 +652,7 @@ const AssistantTurn = memo(function AssistantTurn(props: {
 });
 
 /** Placeholder elements of each transcript (by an object it holds), by turn key and content signature. */
-type Shell = { height: number; sig: string; el: ReactElement };
+type Shell = { height: number; sig: string; shown: boolean; el: ReactElement };
 const shells = new WeakMap<object, Map<string, Shell>>();
 
 const NO_ENDINGS: StoredEndingLookup = () => undefined;
