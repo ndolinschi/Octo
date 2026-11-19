@@ -255,3 +255,31 @@ Details: [`apps/harness/docs/acp-orchestrator.md`](../../../apps/harness/docs/ac
 - **dompurify.** `monaco-editor` 0.57.0 pins `dompurify` 3.4.15 (5 low advisories, fixed in 3.4.17); `pnpm-workspace.yaml`
   overrides it to 3.4.18 (same minor). `pnpm audit --prod`: 5 low before, none after; the desktop build and its bundle
   budget unchanged (160.57 of 161.00 kB).
+## As built — child processes do not outlive the harness (2026-11-19)
+
+Terminal shells and Processes runs are session leaders; closing, stopping and shutting down signal the whole session and
+every descendant (SIGHUP/SIGTERM, SIGKILL after the grace), so `sleep 777 &` and `python3 -m http.server 9790 &` started in a
+terminal end with it. Children are recorded in `{data-dir}/children.json`; the next start stops the ones a SIGKILLed
+instance left (only when pid and start time match). Decision: stop, not re-adopt (nothing could show their output). The
+desktop's process-group stop of the harness and this agree: the group holds the harness, its children are in their own
+sessions and are stopped by the harness on SIGTERM or by the next start. Verified on Linux with real processes
+(`internal/proctree`, `internal/terminal`, `internal/commands` tests, and the reviewer's reproduction); macOS (`ps`-based
+listing) compiled only; Windows unchanged. Details: `apps/harness/docs/architecture.md`.
+
+## As built — one version, `--version` everywhere (2026-11-19)
+
+One version, **0.2.0** (the highest present; this spec names no other): `apps/harness/internal/buildinfo.DefaultVersion`,
+`apps/router/Cargo.toml`, `apps/desktop/package.json`, `src-tauri/Cargo.toml`, the sidecar crate, `tauri.conf.json` and
+`packages/ui` (`UI_VERSION`); `TestOneVersionEverywhere` fails when one differs. The harness's version is a variable
+(`buildinfo.Version`, default the constant) that `scripts/build-sidecar.sh` (and so `install.sh`) stamps with the desktop
+app's version and the git commit; without a stamp the commit `go build` recorded is used. `harness --version` / `version`
+print it and exit 0 (they used to print usage and exit 2); `octo --version` / `--help` print and exit 0 without starting
+the proxy (they used to start it and fail on the config). `GET /health` of the harness adds `commit` and `router_version`;
+Settings → About shows the harness, router (while one runs) and UI versions. Verified: `TestVersionFlag`,
+`TestVersionFromHealth`, `cli::tests`, the built binaries; the About page was type-checked, not driven in a browser.
+
+## As built — start-up messages (2026-11-19)
+
+Non-loopback `--addr`: a WARN line, the token requirement unchanged (`TestServeWarnsOnNonLoopbackAddr`). Unwritable data
+folder: `data_dir_unwritable` with the path and hint (`TestServeOnUnwritableDataDir`, on sysfs, which refuses root;
+skipped where no such place exists). Migration backups: documented as kept, never deleted automatically.

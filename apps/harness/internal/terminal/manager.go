@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/ndolinschi/Octo/apps/harness/internal/proctree"
 )
 
 const (
@@ -22,6 +24,8 @@ type Options struct {
 	IdleTimeout   time.Duration
 	Buffer        int
 	After         AfterFunc
+	// Children records each shell so a later start can stop what a crashed harness left (nil: not recorded).
+	Children *proctree.Ledger
 }
 
 func (o Options) withDefaults() Options {
@@ -103,6 +107,7 @@ func (m *Manager) Start(ctx context.Context, project string, spec Spec) (*Sessio
 	m.sessions[id] = s
 	m.mu.Unlock()
 
+	m.opts.Children.Add(s.PID(), "terminal", s.Shell())
 	s.start()
 	slog.Info("terminal session started", "project", project, "session", id, "shell", s.Shell(), "pid", s.PID())
 	return s, nil
@@ -241,6 +246,7 @@ func (m *Manager) remove(s *Session) {
 	m.mu.Lock()
 	delete(m.sessions, s.ID)
 	m.mu.Unlock()
+	m.opts.Children.Remove(s.PID())
 	slog.Info("terminal session ended", "project", s.Project, "session", s.ID)
 }
 

@@ -243,7 +243,8 @@ export type SubscribeHandlers = {
   onError?(err: unknown): void;
 };
 
-export type HealthResponse = { ok: boolean; version: string };
+/** `commit`: the build's git commit; `router_version`: the Octo router's version while one is detected (both absent on older harnesses). */
+export type HealthResponse = { ok: boolean; version: string; commit?: string; router_version?: string };
 
 /** Timers and a clock, passed in like `fetch` (this package builds without DOM or Node types); default: the global ones. */
 export type TimersLike = { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(id: unknown): void; now(): number };

@@ -179,3 +179,15 @@ is now per session (20 waiting messages of one session).
 | `terminal_closed` (410) | `Generic("terminal_closed", …)` | "That terminal session has ended." (hint "Start a new terminal, or restart it.", action `retry`) | `POST …/input` or `POST …/resize` after the shell process or session has closed |
 | `terminal_already_subscribed` (409) | `Generic("terminal_already_subscribed", …)` | "That terminal is already open elsewhere." (hint "Close the other tab, then try again.") | Second concurrent `GET …/terminals/{sid}/events` SSE subscriber on the same session |
 
+
+## Added 2026-11-19 (operational robustness)
+
+`catalogue_ops.go`, with samples in `TestCatalogueWording`:
+
+| Code (status) | Constructor | Message | When |
+| --- | --- | --- | --- |
+| `project_unavailable` (409; also the `error` of a `status: "unavailable"` entry of `GET /v1/projects`) | `ProjectDamaged(backup, details)` | "This project's saved data is damaged, so Octo cannot open it." Hint: Octo left the file untouched; restore it (when a `.pre-*` copy exists: "A copy made before an update is beside it (see details)"), or remove the project. | `project.sqlite` is not a database, truncated or malformed. `details`: the file, the SQLite text, the backups. |
+| `project_unavailable` | `ProjectUnreadable(details)` | "Octo cannot read this project's saved data." | permission or I/O errors opening the file |
+| `newer_schema` | `NewerSchema` (existing) | "This project was saved by a newer version of Octo." Hint "Update Octo to open it." | `user_version` above this build's; now also listed instead of stopping the start |
+| `registry_unavailable` (stops `harness serve`) | `RegistryUnavailable(path, details)` | "Octo cannot open its list of projects." Hint: left untouched; restore it, or move it away to start with an empty list. | `registry.sqlite` damaged |
+| `folder_missing` (409; also the `error` of a project in `GET /v1/projects` and `GET /v1/projects/{pid}`) | `FolderMissing(label, path, details)` | "The project folder <label> is missing." Hint "Put the folder back where it was, or remove it from the project in its settings." (`open_settings`; `details`: the path and the stat error) | a project folder that is gone, not a folder or unreadable: sending a message, starting a terminal, a Processes run (`POST …/runs`, `…/commands/{name}/run`), the file routes of that folder. These used to say `internal` "fork/exec /bin/bash: no such file or directory". |

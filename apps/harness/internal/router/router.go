@@ -59,6 +59,7 @@ type Router struct {
 	mu        sync.Mutex
 	on        bool
 	caps      []string
+	version   string
 	nextProbe time.Time
 	probing   bool
 	spent     map[string]float64
@@ -88,39 +89,40 @@ func New(ctx context.Context, baseURL, octoKey string, opts ...Option) *Router {
 
 type healthBody struct {
 	Service      string   `json:"service"`
+	Version      string   `json:"version"`
 	Capabilities []string `json:"capabilities"`
 }
 
 // runProbe performs one health probe and records the outcome.
 func (r *Router) runProbe() {
-	on, caps := r.probe()
+	on, caps, version := r.probe()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.probing = false
-	r.on, r.caps = on, caps
+	r.on, r.caps, r.version = on, caps, version
 	r.nextProbe = r.now().Add(r.reprobe)
 }
 
-func (r *Router) probe() (bool, []string) {
+func (r *Router) probe() (bool, []string, string) {
 	ctx, cancel := context.WithTimeout(r.life, probeTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.origin+"/health", nil)
 	if err != nil {
-		return false, nil
+		return false, nil, ""
 	}
 	resp, err := r.http.Do(req)
 	if err != nil {
-		return false, nil
+		return false, nil, ""
 	}
 	defer resp.Body.Close()
 	var h healthBody
 	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&h) != nil {
-		return false, nil
+		return false, nil, ""
 	}
 	if h.Service != "octo" {
-		return false, nil
+		return false, nil, ""
 	}
-	return true, h.Capabilities
+	return true, h.Capabilities, h.Version
 }
 
 // Enabled reports whether an Octo router was detected. While it is off and the
@@ -146,6 +148,19 @@ func (r *Router) Capabilities() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]string{}, r.caps...)
+}
+
+// Version is the version the detected router announced ("" when none is detected).
+func (r *Router) Version() string {
+	if r == nil {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.on {
+		return ""
+	}
+	return r.version
 }
 
 // Has reports whether the router announced capability c.

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"log/slog"
 	"net"
@@ -37,6 +38,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/lsp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
+	"github.com/ndolinschi/Octo/apps/harness/internal/proctree"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/providers"
@@ -202,6 +204,10 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 			u := usererr.DataDirInUse(cfg.DataDir, err.Error()).Caused(err)
 			return fmt.Errorf("%w %s (%s)", u, u.Hint, cfg.DataDir)
 		}
+		if errors.Is(err, fs.ErrPermission) || errors.Is(err, syscall.EROFS) {
+			u := usererr.DataDirUnwritable(cfg.DataDir, err.Error()).Caused(err)
+			return fmt.Errorf("%w %s (%s)", u, u.Hint, u.Details)
+		}
 		return err
 	}
 	defer func() {
@@ -209,8 +215,16 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 			slog.Error("release data folder lock", "err", err)
 		}
 	}()
+	// Terminal shells and Processes runs a previous instance left running (it was killed) are stopped, matched by
+	// pid and start time; this one records its own in the same file.
+	children := proctree.OpenLedger(cfg.DataDir)
+	children.Reap(proctree.DefaultGrace)
 	store, err := projectstore.Open(cfg.DataDir)
 	if err != nil {
+		// The list of projects cannot be worked around: stop, naming the file and what to do; it is left untouched.
+		if u := usererr.As(err); u != nil {
+			return fmt.Errorf("%w %s (%s)", u, u.Hint, u.Details)
+		}
 		return err
 	}
 	defer func() {
@@ -218,6 +232,9 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 			slog.Error("close store", "err", err)
 		}
 	}()
+	// Cancelled before the store closes (defers run in reverse), so background work started below stops quietly.
+	ctx, cancelStore := context.WithCancel(ctx)
+	defer cancelStore()
 
 	apiToken, err := setupAPIToken(cfg)
 	if err != nil {
@@ -331,16 +348,21 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	}
 
 	lspMgr := lsp.NewManager(lsp.Options{})
-	termMgr := terminal.NewManager(terminal.Options{})
+	termMgr := terminal.NewManager(terminal.Options{Children: children})
 	// PR review (RV1): the `gh` adapter; worktrees of finished reviews are swept at start and every 6 hours.
 	reviews := review.New(store, hub, review.Options{Host: codehost.NewGH()})
 	go reviews.Run(ctx, 6*time.Hour)
 	// Project commands (decision 68): started only by the user's own HTTP call, never by an agent.
-	cmds := commands.New(store, hub, commands.Options{})
+	cmds := commands.New(store, hub, commands.Options{Children: children})
 	cmds.Recover(ctx)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
+	}
+	if !isLoopbackAddr(ln.Addr()) {
+		// Other computers can reach this address; every /v1 route still needs the API token.
+		slog.Warn("listening on a non-loopback address: other computers on the network can reach the harness; "+
+			"/v1 routes still require the API token", "addr", ln.Addr().String(), "token_required", !cfg.NoAPIToken)
 	}
 	listenPort, _ := strconv.Atoi(portOf(ln.Addr()))
 	browserMgr := browserproxy.NewManager(browserproxy.Options{BlockedLoopbackPorts: proxyBlockedPorts(listenPort, cfg.BaseURL)})
@@ -376,7 +398,9 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
 		bridge.WithDiagnostics(func() any {
 			ok, why := builtin()
-			return diagnostics(cfg, pluginReg, octo, ok, why, logRing, nil)
+			c := cfg
+			c.APIKey = keys.Get() // the key the settings screen may have changed, for the model probe
+			return diagnostics(c, pluginReg, octo, ok, why, logRing, nil)
 		}),
 	}
 	// Remote access (spec 2026-11-14-remote-access-mobile-design.md): off at every start; its control routes live

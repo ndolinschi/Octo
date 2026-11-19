@@ -37,6 +37,8 @@ type AppValue = {
    */
   probe(back?: boolean): void;
   version: string | null;
+  /** The Octo router's version while the harness detects one. */
+  routerVersion: string | null;
   projects: ProjectSummary[] | null;
   config: BridgeConfig | null;
   retry(): void;
@@ -67,6 +69,7 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
   const [health, setHealth] = useState<Health>("checking");
   const [cause, setCause] = useState<OfflineCause>(null);
   const [version, setVersion] = useState<string | null>(null);
+  const [routerVersion, setRouterVersion] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [config, setConfig] = useState<BridgeConfig | null>(null);
   const host = useHost();
@@ -133,7 +136,8 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
         const h = await withDeadline(bridge.health());
         if (cancelled) return;
         setClockOffset(bridge.clockOffset?.() ?? 0);
-        setVersion(h.version);
+        setVersion(h.commit ? `${h.version} (${h.commit})` : h.version);
+        setRouterVersion(h.router_version ?? null);
         if (first) {
           const [list, cfg] = await first;
           if (cancelled) return;
@@ -187,6 +191,7 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
       cause,
       probe,
       version,
+      routerVersion,
       projects,
       config,
       retry: () => {
@@ -212,6 +217,7 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
       health,
       cause,
       version,
+      routerVersion,
       projects,
       config,
       refreshProjects,

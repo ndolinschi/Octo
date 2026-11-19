@@ -68,6 +68,10 @@ func (s *Server) createTerminalSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if u := chosen.Missing(); u != nil {
+		writeProblem(w, http.StatusConflict, u)
+		return
+	}
 	sess, err := s.terminals.Start(r.Context(), pid, terminal.Spec{
 		Folder: chosen.Label,
 		Dir:    chosen.Path,

@@ -27,6 +27,8 @@ type Store struct {
 
 	mu  sync.Mutex
 	dbs map[string]*DB
+	// bad holds the projects whose database cannot be opened (unavailable.go).
+	bad map[string]*UnavailableError
 }
 
 func Open(dataDir string) (*Store, error) {
@@ -42,21 +44,27 @@ func Open(dataDir string) (*Store, error) {
 	regPath := filepath.Join(absDir, "registry.sqlite")
 	reg, err := openSQLite(regPath)
 	if err != nil {
-		return nil, err
+		return nil, registryErr(regPath, err)
 	}
 	if err := checkVersion(context.Background(), reg, regPath); err != nil {
 		_ = reg.Close()
-		return nil, err
+		return nil, registryErr(regPath, err)
 	}
 	if _, err := reg.Exec(registrySchema); err != nil {
 		_ = reg.Close()
-		return nil, err
+		return nil, registryErr(regPath, err)
+	}
+	// Read the whole list once, so a damaged registry is found here and not by the first request.
+	var n int
+	if err := reg.QueryRow(`SELECT count(*) FROM projects`).Scan(&n); err != nil {
+		_ = reg.Close()
+		return nil, registryErr(regPath, err)
 	}
 	if err := stampVersion(context.Background(), reg); err != nil {
 		_ = reg.Close()
-		return nil, err
+		return nil, registryErr(regPath, err)
 	}
-	return &Store{dir: absDir, reg: reg, dbs: make(map[string]*DB)}, nil
+	return &Store{dir: absDir, reg: reg, dbs: make(map[string]*DB), bad: make(map[string]*UnavailableError)}, nil
 }
 
 // openSQLite opens one serialized connection: WAL, busy timeout, and a single
@@ -154,14 +162,18 @@ func (s *Store) open(ctx context.Context, id string) (*DB, error) {
 	if db, ok := s.dbs[id]; ok {
 		return db, nil
 	}
-	sdb, err := openSQLite(filepath.Join(s.projectDir(id), "project.sqlite"))
+	if ue := s.bad[id]; ue != nil {
+		return nil, ue
+	}
+	path := filepath.Join(s.projectDir(id), "project.sqlite")
+	sdb, err := openSQLite(path)
 	if err != nil {
-		return nil, err
+		return nil, s.markBad(id, path, err)
 	}
 	db := &DB{id: id, sql: sdb, dir: s.projectDir(id)}
 	if err := db.migrate(ctx); err != nil {
 		_ = sdb.Close()
-		return nil, err
+		return nil, s.markBad(id, path, err)
 	}
 	s.dbs[id] = db
 	return db, nil
@@ -224,6 +236,9 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	s.drop(id)
+	s.mu.Lock()
+	delete(s.bad, id)
+	s.mu.Unlock()
 	dir := s.projectDir(id)
 	makeWritableTree(dir)
 	return os.RemoveAll(dir)

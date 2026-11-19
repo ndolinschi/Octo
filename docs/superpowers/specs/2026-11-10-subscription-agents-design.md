@@ -302,3 +302,12 @@ Root causes found from OpenCode failures showing `"OpenCode answered with nothin
 Verified: `go test -race` in `internal/acp` (`compaction_test.go`, `incoming_test.go`) and `internal/usererr` (`catalogue_test.go`), `gofmt -l .`, `pnpm format:check`, `pnpm lint`, `@octo/ui` and `@octo/agent-client` tests (`outcome.test.ts`), `@octo/desktop` production build and gzip bundle-size budget check.
 Not verified: Go packages importing `modernc.org/sqlite@v1.62.0` (`internal/orchestrator` including `opencode_failures_test.go` / `acp_recap_internal_test.go`, `internal/bridge`) because `modernc.org/sqlite@v1.62.0` zip is uncached and blocked (`proxy.golang.org` 403) in this sandbox; real `opencode` CLI end-to-end run on the owner's machine.
 
+
+## As built — doctor lists every plugin problem and probes the model API (2026-11-19)
+
+`harness doctor` and `GET /v1/diagnostics` now list each plugin error with its manifest path in `problems` (and
+`plugin_problems`), including a `plugin.json` that does not parse, which used to be only a stderr warning; with a key for
+the built-in loop they probe the model API (`providers.ProbeModelAPI`: reachable / unreachable / unauthorized, the same
+1.5 s timeout as the Ollama probe) instead of printing `available=true` for a base URL nothing answers at. Verified:
+`TestDoctorReportsPluginProblemsAndModelReachability` (a dead port, a 401 server, a 200 server; real doctor process) and
+the reviewer's reproduction. Not verified against the real Anthropic API.

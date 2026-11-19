@@ -32,6 +32,7 @@ import { SettingsGroup, SettingsRow } from "./parts";
 import { SettingsNav } from "./SettingsNav";
 import { markFromList } from "./sectionBack";
 import { searchSettings, SECTIONS, sectionLabel, sectionOf, type IndexedRow, type SectionId } from "./settingsIndex";
+import { UI_VERSION } from "../../lib/version";
 
 const IntegrationsView = lazy(() => import("./IntegrationsView").then((m) => ({ default: m.IntegrationsView })));
 
@@ -224,10 +225,10 @@ export function SettingsPage(props: {
 
 /**
  * About: two groups named for what is in them (the page title already says "About"): the versions, and the help a person
- * can ask for. The app shows no version of its own: the host does not provide one (`HostCapabilities` has none).
+ * can ask for. Harness, router (when one runs) and this UI's own version (`UI_VERSION`, one number with the harness and the router).
  */
 function AboutPage() {
-  const { version, demo, bridgeUrl, shell } = useApp();
+  const { version, routerVersion, demo, bridgeUrl, shell } = useApp();
   const phone = usePhone();
   return (
     <>
@@ -237,6 +238,18 @@ function AboutPage() {
           title="Harness version"
           description={demo ? "Demo data: no local service runs." : "The version of Octo's local service (the harness) this window uses."}
           control={<span className="text-sm text-fg-2 tabular-nums">{version ?? "Unknown"}</span>}
+        />
+        {routerVersion && (
+          <SettingsRow
+            title="Router version"
+            description="The Octo router in front of the model API."
+            control={<span className="text-sm text-fg-2 tabular-nums">{routerVersion}</span>}
+          />
+        )}
+        <SettingsRow
+          title="UI version"
+          description="The version of this window's interface."
+          control={<span className="text-sm text-fg-2 tabular-nums">{UI_VERSION}</span>}
         />
         {/* S6: a sentence a person would write. */}
         <SettingsRow

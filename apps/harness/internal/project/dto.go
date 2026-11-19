@@ -9,6 +9,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projcfg"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 type Summary struct {
@@ -32,6 +33,10 @@ type Summary struct {
 	Attention string `json:"attention"`
 	// Sessions counts the project's main sessions (not archived) by live state (schema 15).
 	Sessions SessionsSummary `json:"sessions"`
+	// Error is set, with Status "unavailable", when the project's database cannot be opened (damaged, unreadable,
+	// written by a newer version): the catalogue case, the file path in details. Nothing else about it is known.
+	// With another status it is a project folder that is missing (folder_missing).
+	Error *usererr.Info `json:"error,omitempty"`
 }
 
 type Project struct {
@@ -106,6 +111,9 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 		Instructions: info.Instructions, Folders: folders, Models: models, MaxDepth: info.MaxDepth,
 		BudgetUSD: info.BudgetUSD, Access: info.Access, Memory: memory.ParseSettings(info.MemoryJSON),
 		Network: info.Network, NetworkPrivate: info.NetworkPrivate, Mode: info.Mode,
+	}
+	if u := projectstore.MissingFolder(folders); u != nil {
+		p.Error = u.Info() // the project stays usable to fix it; turns, terminals and runs answer this case
 	}
 	p.Commands = loadCommands(ctx, db)
 	p.Review = loadReviewConfig(ctx, db)

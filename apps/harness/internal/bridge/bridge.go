@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/buildinfo"
 	"github.com/ndolinschi/Octo/apps/harness/internal/commands"
 	"github.com/ndolinschi/Octo/apps/harness/internal/mcp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
@@ -13,8 +14,10 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/review"
 )
 
+// Version is the harness version (internal/buildinfo, stamped by the build).
+var Version = buildinfo.Version
+
 const (
-	Version      = "0.2.0"
 	pingInterval = 15 * time.Second
 	maxBody      = 1 << 20
 )

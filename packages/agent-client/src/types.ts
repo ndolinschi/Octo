@@ -108,7 +108,8 @@ export type ProjectSummary = {
   id: string;
   name: string;
   description: string;
-  status: "idle" | "running";
+  /** "unavailable": the project's saved data cannot be opened (damaged, unreadable, newer schema); `error` says why. */
+  status: "idle" | "running" | "unavailable";
   folder_count: number;
   agent_count: number;
   created_at: string;
@@ -121,6 +122,8 @@ export type ProjectSummary = {
   attention?: ProjectAttentionKind;
   /** Parallel sessions (schema 15): the project's main sessions (not archived) by live state. */
   sessions?: ProjectSessionsSummary;
+  /** With status "unavailable": why the saved data cannot be opened (the file in `details`); otherwise a missing project folder (`folder_missing`). */
+  error?: ErrorInfo;
 };
 
 /** Parallel sessions: counts of a project's main sessions (absent on an older harness). */

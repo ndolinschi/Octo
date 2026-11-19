@@ -241,24 +241,34 @@ func (s *Service) Recover(ctx context.Context) error {
 		return err
 	}
 	for _, id := range ids {
-		db, err := s.store.Get(ctx, id)
-		if err != nil {
-			return err
-		}
-		if r, ok := s.turns.(TurnRecoverer); ok {
-			// A project whose turn cannot be closed still starts: its rows are settled below as before.
-			if err := r.RecoverInterrupted(ctx, db); err != nil {
-				slog.Error("close the interrupted turn", "project", id, "err", err)
+		// One project whose database cannot be opened or read is listed as unavailable; the others start.
+		if err := s.recoverOne(ctx, id); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
-		}
-		if err := db.RecoverInterrupted(ctx); err != nil {
-			return err
-		}
-		if _, err := db.PruneBlobs(ctx, projectstore.Stamp(s.now().Add(-ChangeRetention))); err != nil {
-			return err
+			err = s.store.Classify(id, err)
+			slog.Error("project unavailable: restart recovery skipped it; its files were left untouched", "project", id, "err", err)
 		}
 	}
 	return nil
+}
+
+func (s *Service) recoverOne(ctx context.Context, id string) error {
+	db, err := s.store.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if r, ok := s.turns.(TurnRecoverer); ok {
+		// A project whose turn cannot be closed still starts: its rows are settled below as before.
+		if err := r.RecoverInterrupted(ctx, db); err != nil {
+			slog.Error("close the interrupted turn", "project", id, "err", err)
+		}
+	}
+	if err := db.RecoverInterrupted(ctx); err != nil {
+		return err
+	}
+	_, err = db.PruneBlobs(ctx, projectstore.Stamp(s.now().Add(-ChangeRetention)))
+	return err
 }
 
 func (s *Service) db(ctx context.Context, pid string) (*projectstore.DB, error) {
@@ -278,7 +288,12 @@ func (s *Service) List(ctx context.Context) ([]Summary, error) {
 	for _, id := range ids {
 		p, err := s.Get(ctx, id)
 		if err != nil {
-			return nil, err
+			ue := s.store.Unavailable(id)
+			if ue == nil {
+				return nil, err
+			}
+			out = append(out, s.unavailable(ctx, id, ue))
+			continue
 		}
 		out = append(out, p.Summary)
 	}
@@ -291,7 +306,18 @@ func (s *Service) Get(ctx context.Context, pid string) (Project, error) {
 	if err != nil {
 		return Project{}, err
 	}
-	return s.load(ctx, db)
+	p, err := s.load(ctx, db)
+	if err != nil {
+		// Damaged pages found only when read: the project becomes unavailable like one that does not open.
+		return Project{}, storeErr(s.store.Classify(pid, err))
+	}
+	return p, nil
+}
+
+// unavailable is the list entry of a project whose database cannot be opened: its registry row and the error.
+func (s *Service) unavailable(ctx context.Context, id string, ue *projectstore.UnavailableError) Summary {
+	name, created, _ := s.store.Entry(ctx, id)
+	return Summary{ID: id, Name: name, Status: "unavailable", CreatedAt: created, UpdatedAt: created, Attention: "failed", Error: ue.User.Info()}
 }
 
 func (s *Service) Create(ctx context.Context, in Input) (Project, error) {

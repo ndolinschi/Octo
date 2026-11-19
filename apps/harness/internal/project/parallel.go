@@ -139,6 +139,11 @@ func (s *Service) PostSessionMessage(ctx context.Context, pid, sid, text string,
 	if sid, err = s.mainSessionID(ctx, db, sid); err != nil {
 		return msg, nil, err
 	}
+	if folders, err := db.Folders(ctx); err == nil {
+		if u := projectstore.MissingFolder(folders); u != nil {
+			return msg, nil, folderMissing(u)
+		}
+	}
 	if len(attach) > 0 {
 		if err := s.checkAttachments(ctx, db, pid, attach); err != nil {
 			return msg, nil, err

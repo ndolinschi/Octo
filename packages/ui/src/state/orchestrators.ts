@@ -25,6 +25,7 @@ export function useOrchestrators(projects: readonly ProjectSummary[] | null): Ma
   const stamp = (projects ?? []).map((p) => `${p.id}:${p.updated_at}`).join(",");
   useEffect(() => {
     for (const p of projects ?? []) {
+      if (p.status === "unavailable") continue; // its agents cannot be read; the row says why (below)
       // A list that cannot be read keeps the summary's state (the next refresh tries again).
       if (!store.liveAgents(p.id)) store.agentsOf(p).catch(() => setFailed((f) => (f.has(p.id) ? f : new Set(f).add(p.id))));
     }
@@ -35,6 +36,11 @@ export function useOrchestrators(projects: readonly ProjectSummary[] | null): Ma
     void version;
     const out = new Map<string, OrchestratorState>();
     for (const p of projects ?? []) {
+      // A project whose saved data cannot be opened, or whose folder is missing, needs the user, with the harness's sentence.
+      if (p.status === "unavailable" || (p.error && p.status === "idle")) {
+        out.set(p.id, { kind: "needs", error: p.error?.message ?? null, at: null });
+        continue;
+      }
       // The open project's live agents are newer than the polled summary: their root's status decides alone.
       const live = store.liveAgents(p.id);
       const agents = live ?? store.peekAgents(p);

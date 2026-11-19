@@ -319,3 +319,27 @@ and for the settings guard; `dev.sh` exports `HARNESS_UI_ORIGINS` for the port i
 `TestHealthConfigAndCORS` (`127.0.0.1:5173` and an ephemeral port now refused; failed before) and
 `TestConfiguredUIOrigins`. Not run here: `pnpm test:dev-sh`.
 
+## As built — an unavailable project does not stop the harness (2026-11-19)
+
+A project whose `project.sqlite` cannot be opened or read (random bytes, truncated, `user_version` above this build's,
+unreadable) no longer stops `harness serve`: restart recovery skips it (one `ERROR project unavailable` log line with the
+path), every other project starts. `GET /v1/projects` lists it with `status: "unavailable"` and `error`
+(`{message, hint, details}`; `details` names the file and any `.pre-*` backup beside it), its name from the registry.
+`GET /v1/projects/{pid}`, sending a message and every other route of it answer 409 with that case (`project_unavailable`, or
+`newer_schema` for a newer schema). Nothing is deleted, moved or rewritten; `DELETE /v1/projects/{pid}` still removes
+Octo's copy when the person asks. The state lasts until the next start (restore the file, restart). A damaged
+`registry.sqlite` still stops the harness, now with the catalogue sentence, its hint and the file
+(`registry_unavailable`), and without the spurious `prune attachments … database is closed` line. UI: the sidebar row shows
+the project as needing the user with the message as its tooltip, and opening it shows the structured notice (with Retry
+and Delete project). Verified: `TestServeStartsWithUnavailableProjects`, `TestServeStopsOnDamagedRegistry` (real data
+folders, real `serve`) and the reviewer's reproduction; the UI was type-checked, not driven in a browser.
+
+## As built — a missing project folder (2026-11-19)
+
+`projectstore.Folder.Missing()` stats the folder (exists, is a folder, can be opened). A project whose folder is gone carries
+`error` (the `folder_missing` case: which folder, its path in `details`) in `GET /v1/projects` and `GET /v1/projects/{pid}`
+while its status stays as it is, so it can still be opened and its settings fixed; the sidebar row shows it as needing the
+user with the message. Sending a message, starting a terminal, starting a Processes run and the file routes of that folder
+answer 409 `folder_missing` instead of `internal` / `start_failed: fork/exec …`. The deleted-project screen
+(`ProjectGone`, data-project-gone) stays for a 404 only. Verified: `TestServeMissingProjectFolder` (real serve, the folder
+renamed away) and the reviewer's reproduction; the UI hunk was type-checked only.

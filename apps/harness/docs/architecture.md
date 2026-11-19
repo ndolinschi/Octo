@@ -295,6 +295,7 @@ controls its own requests and spend; the harness sees its cost only in `usage_up
 | `harness run --prompt "…"` | New session, tool loop; session id on stderr, final text on stdout |
 | `harness sessions` | JSON list of sessions |
 | `harness show <session-id>` | JSON message rows for one session |
+| `harness version` / `--version` | Prints `harness 0.2.0 (<commit>)` and exits 0 (`internal/buildinfo`: the default version, `-ldflags -X …buildinfo.Version=… -X …buildinfo.Commit=…` as `scripts/build-sidecar.sh` stamps it, else the commit `go build` recorded). `GET /health` returns `version`, `commit` and, while a router is detected, `router_version` |
 
 Common flags: `--workspace` (`run`), `--base-url`, `--model` (`run`), `--data-dir`, `--remote` (repeatable), `--max-turns`, `--octo-key`. `serve` also takes `--addr`.
 
@@ -377,3 +378,39 @@ the tunnel listener, which authenticates device tokens itself and lets requests 
 default; `bridge.WithMount` puts the `/v1/remote` control routes on the main bridge behind the local token. The local
 token never works on the tunnel listener, and no loopback check counts there (every request comes from `cloudflared` on
 `127.0.0.1`). `harness doctor` and `GET /v1/diagnostics` report `cloudflared`. Event `remote.changed`.
+
+## Added 2026-11-19: child processes end with their terminal and with the harness
+
+`internal/proctree`. Every terminal shell (PTY, `setsid` + controlling tty) and every Processes run (`bash -c`, now `setsid`
+instead of `setpgid`) is a session leader. A shell's background jobs (`sleep 777 &`, `python3 -m http.server &`) get process
+groups of their own under job control but keep the shell's session id, also after the shell exits and they are re-parented.
+Closing a terminal (`DELETE …/terminals/{tid}`, the idle timeout, the shell's own exit), stopping a run and shutting the
+harness down (SIGTERM, SIGINT, stdin closed) signal every process of the session plus every descendant of the leader (one that
+called `setsid` itself): SIGHUP, SIGTERM and SIGCONT, then SIGKILL after 2 s (`proctree.KillSession`; runs keep their own
+3 s grace between SIGTERM and SIGKILL). The list is read from `/proc` on Linux and from `ps` + `getsid` on macOS.
+
+A SIGKILLed harness runs no code, so its children are recorded in `{data-dir}/children.json` (pid, start time, kind) while
+they run. At the next start, before the store opens, every recorded pid whose start time still matches is stopped the same
+way (log `WARN stopped a process left running by a previous harness`); a pid now owned by another process (start time
+differs) is never touched. Leftovers are stopped, not re-adopted: a terminal's PTY and a run's output pipes died with the old
+process, so nothing could show them; the run's row is marked interrupted by `commands.Recover` as before.
+`PR_SET_PDEATHSIG` is not used: it fires when the forking OS thread exits, which Go does not pin, and it would reach only the
+leader, not its jobs. macOS has no equivalent at all, so there the start-up reap is the only net. Windows is unchanged (the
+leader alone is killed; nothing is recorded).
+
+The desktop shell stops the harness's process group (SIGTERM, then SIGKILL after 3 s). Terminal shells and runs are in their
+own sessions, outside that group, so they are stopped by the harness's shutdown on SIGTERM, or, when the 3 s SIGKILL comes
+first, by the next start's reap. Tests: `internal/proctree` (session after the leader exited, descendants that called
+`setsid`, the ledger reaping only matching pids), `internal/terminal/leftovers_test.go` (close and shutdown with `&` and
+`nohup` jobs in an interactive bash), `internal/commands/session_unix_test.go`.
+
+## Added 2026-11-19: start-up messages
+
+- A non-loopback `--addr` (`0.0.0.0`, a LAN address) starts as before, with every `/v1` route still behind the API token,
+  and logs `WARN listening on a non-loopback address: other computers on the network can reach the harness; /v1 routes
+  still require the API token`.
+- A data folder that cannot be written (read-only disk, wrong owner) stops the start with the catalogue case
+  `data_dir_unwritable`: "Octo cannot write to its data folder. Give your user write access to the folder in details, or
+  start Octo with another data folder. (<dir>: <error>)" instead of only `lock …: permission denied`.
+- `.pre-m6` / `.pre-v15` migration backups beside `project.sqlite` are kept; nothing removes them (docs/ARCHITECTURE.md,
+  data locations).

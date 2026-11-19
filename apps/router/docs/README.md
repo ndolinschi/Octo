@@ -14,6 +14,23 @@ Canonical product docs for the Octo proxy (`apps/router`). Operational agent not
 | [prices.md](./prices.md) | Live price table: catalogue refresh, `prices.toml` overrides and fallback, disk cache, `/health`, price source per call |
 | [ladder-cost-check.md](./ladder-cost-check.md) | Ladder prices vs the OpenRouter catalogue (2026-11-10, re-fetched 2026-11-14) |
 
+## Version and help
+
+`octo --version` prints `octo 0.2.0` (`CARGO_PKG_VERSION`) and `octo --help` the usage; both exit 0 without reading the
+config or starting the proxy (an unknown argument exits 2 with the usage). `GET /health` reports the same `version`, which the
+harness passes on as `router_version`. The version is one number with the harness and the desktop app (0.2.0).
+
+## Readable errors (2026-11-19)
+
+- An upstream that fails answers 502 in the existing shape with a sentence that says what happened: `upstream request
+  failed: <host> did not answer in time (after the router's retries); try again later, or raise
+  upstream.request_timeout_secs`, `… could not connect to <host>; check that the provider is reachable and its base URL is
+  right`, or `… the connection to <host> broke; try again` (the host only, never credentials).
+- A budget reached through the request's `x-octo-budget-usd` header names that header ("raise it or start a new budget
+  key") instead of the config keys; a configured budget still names `autoroute.session_budget_usd`.
+- Not done: a truncated upstream SSE stream still ends as 200 without an error event (the stream relay has no hook for it
+  yet; reported to the owner).
+
 ## Archive (evidence & design notes)
 
 Dated investigations kept for provenance; prefer the guides above for day-to-day reading.

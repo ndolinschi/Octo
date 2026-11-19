@@ -96,6 +96,9 @@ func (f *Files) rootForWorkspace(ctx context.Context, pid, folder, workspaceID s
 	}
 	for _, fo := range folders {
 		if fo.Label == folder {
+			if u := fo.Missing(); u != nil {
+				return "", false, folderMissing(u)
+			}
 			return fo.Path, false, nil
 		}
 	}

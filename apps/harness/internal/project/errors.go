@@ -101,12 +101,19 @@ func revertUnavailable(note string) *Error {
 	return &Error{Kind: KindConflict, Code: "revert_unavailable", Message: msg}
 }
 
+// folderMissing: a project folder is gone (409 folder_missing, which folder in the message, its path in details).
+func folderMissing(u *usererr.Error) *Error { return of(KindConflict, u) }
+
 func queueFull() *Error { return of(KindConflict, usererr.QueueFull(projectstore.MaxQueue)) }
 
 // storeErr maps a store failure that has a clear meaning for the caller: a
 // database written by a newer version of the app answers 409 newer_schema with
 // what to do about it, not a bare 500.
 func storeErr(err error) error {
+	var ue *projectstore.UnavailableError
+	if errors.As(err, &ue) {
+		return &Error{Kind: KindConflict, Code: ue.User.Code, Message: ue.User.Message, User: ue.User}
+	}
 	var ne *projectstore.NewerSchemaError
 	if errors.As(err, &ne) {
 		return of(KindConflict, usererr.NewerSchema(ne.Error()))

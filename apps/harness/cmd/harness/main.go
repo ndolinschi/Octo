@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/buildinfo"
 	"github.com/ndolinschi/Octo/apps/harness/internal/mcprelay"
 )
 
@@ -28,6 +29,12 @@ func main() {
 		err = cmdDoctor(os.Args[2:])
 	case "mcp-relay":
 		os.Exit(mcprelay.Main(os.Args[2:]))
+	case "version", "--version", "-version", "-v":
+		fmt.Println("harness " + buildinfo.String())
+		return
+	case "help", "--help", "-help", "-h":
+		usage()
+		return
 	default:
 		usage()
 		os.Exit(2)
@@ -43,6 +50,7 @@ func main() {
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "usage:\n")
+	fmt.Fprintf(os.Stderr, "  harness version | --version   (prints the version and the git commit, then exits)\n")
 	fmt.Fprintf(os.Stderr, "  harness serve [--addr HOST:PORT] [--data-dir PATH] [--base-url URL] [flags]\n")
 	fmt.Fprintf(os.Stderr, "  harness doctor [--data-dir PATH] [--json] [--show-probe-output]   (what agents are installed and logged in, PATH, router; paste it into a bug report)\n")
 	fmt.Fprintf(os.Stderr, "  harness mcp-relay --url URL --token-env NAME   (stdio-to-HTTP MCP relay; started by ACP agents, not by hand)\n")
