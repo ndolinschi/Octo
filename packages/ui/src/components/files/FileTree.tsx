@@ -13,6 +13,7 @@ import { CommentCount, commentsDescription } from "./CommentCount";
 import { fileIcon } from "../primitives/fileIcons";
 import { Highlight } from "../primitives/Highlight";
 import { MiddleText } from "../primitives/MiddleText";
+import { distinctSplit } from "../../lib/distinctSplit";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { Spinner } from "../primitives/Status";
 import { Menu, type MenuItem } from "../primitives/Menu";
@@ -130,9 +131,9 @@ const TreeNodeRow = memo(function TreeNodeRow({
       <span data-label className={cn("ml-1 min-w-0 truncate", isRoot ? "text-xs font-medium text-fg-3" : "text-fg")} title={chain ? row.title : row.name}>
         {/* A root keeps what tells it from the other roots; a compact chain ("com/wsgc/…/config") keeps its last folder. */}
         {isRoot ? (
-          <MiddleText text={row.name} siblings={roots} />
+          <MiddleText text={row.name} split={distinctSplit(row.name, roots)} />
         ) : chain ? (
-          <MiddleText text={row.name} />
+          <MiddleText text={row.name} split={distinctSplit(row.name)} />
         ) : query && row.kind === "file" ? (
           <Highlight text={row.name} query={query} />
         ) : (

@@ -4577,13 +4577,13 @@ projects looks not correct and not balanced". Reproduced in `?demo=1` with a dem
 `product-configuration-management-system` + `product-configuration-facade-service`; and "PCFS", one of them), Chromium,
 1440×900 and 1100×700 dark and light, 390×700 phone. Decisions:
 
-a. **One middle-cut for names, and siblings keep what tells them apart.** `lib/truncate.middleSplit(text, siblings?)` /
+a. **One middle-cut for names, and siblings keep what tells them apart.** `lib/truncate.middleSplit` / `lib/distinctSplit` (kept out of the entry chunk) /
    `primitives/MiddleText` are the one helper: a name is cut by CSS only when its box is too narrow, its end stays; with
    `siblings` (the other names shown beside it) the tail is everything after the longest head it shares with one of them, from
    the word break before the difference, and the head gives way first (down to its first letter, `min-w-4`) before the tail is
    cut. Lengths count code points (no split surrogate pairs). Used by the file tree's roots, the status bar's folder, the
    sidebar's project meta, and (already) chips and list rows; ordinary titles and prose keep the CSS end-ellipsis. Full name:
-   always in the tooltip. Tests: `lib/truncate.test.ts`, `lib/truncateSiblings.test.ts` (shared-prefix siblings, the owner's
+   always in the tooltip. Tests: `lib/truncate.test.ts`, `lib/distinctSplit.test.ts` (shared-prefix siblings, the owner's
    `…-management-data-subsystem` pair, short names, non-ASCII and emoji).
    A path without spaces (a compact folder chain of decision 98, "com/wsgc/…/configurator") keeps its last folder whole (up to
    24 characters); its tooltip is the chain's full path.

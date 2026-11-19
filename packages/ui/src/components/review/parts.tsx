@@ -8,6 +8,7 @@ import { Button } from "../primitives/Button";
 import { EmptyState } from "../primitives/EmptyState";
 import { Glyph } from "../primitives/Glyph";
 import { Menu, type MenuItem } from "../primitives/Menu";
+import { distinctSplit } from "../../lib/distinctSplit";
 import { MiddleText } from "../primitives/MiddleText";
 import { Presence } from "../primitives/Presence";
 
@@ -60,7 +61,7 @@ export function Notice(props: { title: string; children?: ReactNode; actions?: R
 /** "owner/name" gives way from the owner ("atl…/atlas-api"); any other text from its middle. */
 function CutText({ text, className, siblings }: { text: string; className: string; siblings?: readonly string[] | undefined }) {
   const slash = text.lastIndexOf("/");
-  if (slash <= 0) return <MiddleText text={text} {...(siblings ? { siblings } : {})} {...(className ? { className } : {})} />;
+  if (slash <= 0) return <MiddleText text={text} split={distinctSplit(text, siblings)} {...(className ? { className } : {})} />;
   return (
     <span className={cn("flex min-w-0 items-baseline", className)}>
       <span className="min-w-0 truncate">{text.slice(0, slash)}</span>
