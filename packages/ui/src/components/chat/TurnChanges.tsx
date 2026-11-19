@@ -1,4 +1,4 @@
-import type { Bridge, FileChangeSummary, TurnChanges as TurnChangeList } from "@octo/agent-client";
+import type { FileChangeSummary, TurnChanges as TurnChangeList } from "@octo/agent-client";
 import { FileDiff } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { chipKeyTarget } from "../../lib/chipKeys";
@@ -9,6 +9,7 @@ import { filesChanged, kindLabel, netDiff, netIds, rowKey } from "../../lib/v7/c
 import { useApp } from "../../state/app";
 import { useOptionalCode } from "../../state/code";
 import { useProject } from "../../state/project";
+import { loadTurnChanges, turnChangesEntry } from "../../state/turnChanges";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
 import { ActivityRow } from "./ActivityRow";
@@ -19,41 +20,14 @@ import { BodyFrame, Counts, Disclosure, TextAction, useOpenAt, useOpenChanges } 
  * retest3 G2 (toolpolish): a turn that changed files says so under its reply, as the turn's summary — "2 files changed +5 −2 ·
  * retry.ts · client.ts" (up to three names, then "+N more"; a name shows that file's diff), "Expand all" (a row per file, the
  * same row and body as an edit call) and "Review changes" (the Changes tab on this turn, where a file or the turn is reverted). The project's
- * changes are read once and shared by every turn (again when a change is recorded).
+ * changes are read once and shared by every turn (again when a change is recorded): `state/turnChanges`.
  */
-
-type Entry = { data: TurnChangeList[] | null; loading: boolean; stale: boolean; listeners: Set<() => void> };
-const entries = new WeakMap<Bridge, Map<string, Entry>>();
-
-function entryFor(bridge: Bridge, projectId: string): Entry {
-  let byProject = entries.get(bridge);
-  if (!byProject) {
-    byProject = new Map<string, Entry>();
-    entries.set(bridge, byProject);
-  }
-  let e = byProject.get(projectId);
-  if (!e) byProject.set(projectId, (e = { data: null, loading: false, stale: true, listeners: new Set() }));
-  return e;
-}
-
-function load(bridge: Bridge, projectId: string, e: Entry): void {
-  if (e.loading || !e.stale || !bridge.listChanges) return;
-  e.loading = true;
-  e.stale = false;
-  const done = (data: TurnChangeList[] | null) => {
-    e.loading = false;
-    if (data) e.data = data;
-    for (const l of e.listeners) l();
-    // A change recorded while reading: read again.
-    if (e.stale) load(bridge, projectId, e);
-  };
-  bridge.listChanges(projectId).then(done, () => done(null));
-}
 
 function useTurnChanges(turnId: number): TurnChangeList | null {
   const { bridge } = useApp();
-  const { projectId, onEvent } = useProject();
-  const e = entryFor(bridge, projectId);
+  // `reload`: one per project view (a project shown again reads its changes again, painting what it had meanwhile).
+  const { projectId, onEvent, reload } = useProject();
+  const e = turnChangesEntry(bridge, projectId);
   const data = useSyncExternalStore(
     (l) => {
       e.listeners.add(l);
@@ -61,13 +35,13 @@ function useTurnChanges(turnId: number): TurnChangeList | null {
     },
     () => e.data,
   );
-  useEffect(() => load(bridge, projectId, e), [bridge, projectId, e]);
+  useEffect(() => void loadTurnChanges(bridge, projectId, e, reload), [bridge, projectId, e, reload]);
   useEffect(
     () =>
       onEvent((ev) => {
         if (ev.type !== "change.recorded") return;
         e.stale = true;
-        load(bridge, projectId, e);
+        void loadTurnChanges(bridge, projectId, e);
       }),
     [onEvent, bridge, projectId, e],
   );

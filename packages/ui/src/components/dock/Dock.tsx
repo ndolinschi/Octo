@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../state/app";
 import { BackdropProvider, type Backdrop } from "../primitives/backdrop";
 import { StreakLayer } from "../primitives/StreakLayer";
@@ -41,9 +41,12 @@ export function Dock() {
   const ref = useRef<HTMLDivElement>(null);
   const { setDockWidth } = ws;
 
-  useEffect(() => {
+  // Measured before the first paint (decision 98): a project shown for the first time is laid out at its width at once, not
+  // first as a zero-wide dock (no fitting groups) and then again when the observer reports.
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
+    setDockWidth(el.clientWidth);
     const ro = new ResizeObserver(([entry]) => {
       if (entry) setDockWidth(Math.round(entry.contentRect.width));
     });

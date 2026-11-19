@@ -32,16 +32,19 @@ function segments(items: readonly ApprovalItem[]): Segment[] {
   return out;
 }
 
-/** `synced`: bumped by every re-read after a reconnect; the lists load again (what the stream missed). */
-type Ids = { projectId: string; bridge: Bridge; synced: number };
+/**
+ * `synced`: bumped by every re-read after a reconnect; the lists load again (what the stream missed). `initial`: what the
+ * project state already holds (its last read and events), so the cards paint with the transcript (decision 98).
+ */
+type Ids<T> = { projectId: string; bridge: Bridge; synced: number; initial: readonly T[] };
 
 function upsert<T extends { id: string }>(list: readonly T[], item: T): T[] {
   return list.some((x) => x.id === item.id) ? [...list] : [...list, item];
 }
 
 /** Approvals seen this session and how each ended; the cards collapse to one line instead of vanishing. */
-function useApprovals({ projectId, bridge, synced }: Ids) {
-  const [seen, setSeen] = useState<Approval[]>([]);
+function useApprovals({ projectId, bridge, synced, initial }: Ids<Approval>) {
+  const [seen, setSeen] = useState<Approval[]>(() => [...initial]);
   const [resolved, setResolved] = useState<Record<string, Resolution>>({});
   const seenRef = useLatest(seen);
   const local = useRef<Record<string, Resolution>>({});
@@ -81,8 +84,8 @@ function useApprovals({ projectId, bridge, synced }: Ids) {
 }
 
 /** Forms (`request_input`) seen this session and their answers (names only; secret values never pass through here). */
-function useForms({ projectId, bridge, synced }: Ids) {
-  const [seen, setSeen] = useState<InputRequest[]>([]);
+function useForms({ projectId, bridge, synced, initial }: Ids<InputRequest>) {
+  const [seen, setSeen] = useState<InputRequest[]>(() => [...initial]);
   const [answered, setAnswered] = useState<Record<string, AnsweredInput>>({});
 
   useEffect(() => {
@@ -124,10 +127,10 @@ export function ApprovalsSlot(props: ApprovalsSlotProps) {
 
 function Live({ onOpenAgent }: ApprovalsSlotProps) {
   const { bridge } = useApp();
-  const { projectId, project, synced, update } = useProject();
+  const { projectId, project, synced, update, state } = useProject();
   const name = (label: string) => agentDisplayName(label, project?.name);
-  const approvals = useApprovals({ projectId, bridge, synced });
-  const forms = useForms({ projectId, bridge, synced });
+  const approvals = useApprovals({ projectId, bridge, synced, initial: state.approvals });
+  const forms = useForms({ projectId, bridge, synced, initial: state.inputs });
   const resolve = useCallback(
     (id: string, answer: ApprovalAnswer) => bridge.resolveApproval?.(projectId, id, answer) ?? Promise.resolve(),
     [bridge, projectId],

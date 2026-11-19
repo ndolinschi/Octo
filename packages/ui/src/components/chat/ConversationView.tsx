@@ -7,6 +7,7 @@ import { EmptyState } from "../primitives/EmptyState";
 import { InlineNotesProvider } from "./notesContext";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
+import { readyLazy } from "../../lib/readyLazy";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { useNow, useStickToBottom } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
@@ -74,7 +75,9 @@ function notesSlot(count: number): ComposerProps["comments"] {
 export const EDGES = "scroll-quiet overflow-hidden px-(--pad)";
 
 /** The empty project's title loads when an empty project shows (its own chunk; the composer is not in it). */
-const EmptyTitle = lazy(() => import("./EmptyProject").then((m) => ({ default: m.EmptyTitle })));
+/** Decision 98: renders without suspending once in (the shell warms it after first paint), so a new session paints whole. */
+export const emptyTitlePart = readyLazy(() => import("./EmptyProject").then((m) => m.EmptyTitle));
+const EmptyTitle = emptyTitlePart.Component;
 /** The agy-style inline project selector loads only on empty sessions (kept out of the initial bundle). */
 const ComposerProjectBar = lazy(() => import("./ComposerProjectBar").then((m) => ({ default: m.ComposerProjectBar })));
 

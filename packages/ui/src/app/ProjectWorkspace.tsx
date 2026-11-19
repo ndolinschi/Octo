@@ -1,8 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { navigate } from "../lib/route";
 import { sessionTitle } from "../lib/sessions/title";
 import { usePhone } from "../lib/phone";
-import { useApp } from "../state/app";
 import { CodeProvider, useCode } from "../state/code";
 import { CommentsProvider } from "../state/comments";
 import { FileViewProvider } from "../state/fileView";
@@ -11,10 +9,10 @@ import { useProject } from "../state/project";
 import { allTabs, fileTab, focusedGroup, parseTab } from "../state/workspace/layout";
 import { useWorkspace, WorkspaceProvider } from "../state/workspace/WorkspaceProvider";
 import { Dock } from "../components/dock/Dock";
-import { Presence } from "../components/primitives/Presence";
 import { ChatSlotsProvider, type ChatSlots } from "../state/chatSlots";
 import { Panel } from "../components/shell/Panel";
 import { MainSkeleton } from "../components/shell/MainSkeleton";
+import { readyLazy } from "../lib/readyLazy";
 
 /** The status bar's project items load after first paint (its own chunk; the row itself is always there, so nothing shifts). */
 const ProjectStatus = lazy(() => import("../components/status/ProjectStatus").then((m) => ({ default: m.ProjectStatus })));
@@ -27,12 +25,15 @@ const ProjectRunsFeed = lazy(() => import("../components/commands/ProjectRunsFee
 
 /** The project dialog and error screen load on first use (their own chunks). */
 const CloseDialog = lazy(() => import("../components/shell/DiscardDialogs").then((m) => ({ default: m.CloseDialog })));
-const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
+const SettingsDialog = lazy(() => import("./ProjectSettingsDialog"));
 const LoadError = lazy(() => import("./ProjectWorkspaceStates").then((m) => ({ default: m.LoadError })));
 
 /** The v7 pieces the conversation and the composer show (approvals, forms, the harness queue); each renders nothing when the bridge lacks its methods. */
-const ApprovalsSlot = lazy(() => import("../components/v7/ApprovalsSlot").then((m) => ({ default: m.ApprovalsSlot })));
-const QueueSlot = lazy(() => import("../components/v7/QueueSlot").then((m) => ({ default: m.QueueSlot })));
+/** Decision 98: they render without suspending once in (`warmApp` fetches them), so a project shown first paints with them. */
+export const approvalsPart = readyLazy(() => import("../components/v7/ApprovalsSlot").then((m) => m.ApprovalsSlot));
+export const queuePart = readyLazy(() => import("../components/v7/QueueSlot").then((m) => m.QueueSlot));
+const ApprovalsSlot = approvalsPart.Component;
+const QueueSlot = queuePart.Component;
 const QueueBadge = lazy(() => import("../components/v7/QueueList").then((m) => ({ default: m.QueueBadge })));
 const CHAT_SLOTS: ChatSlots = {
   approvals: ({ onOpenAgent }) => (
@@ -55,7 +56,8 @@ const CHAT_SLOTS: ChatSlots = {
 
 /** One project: header row, then the dock of tab groups. */
 export function ProjectWorkspace(props: { agentId: string | null; sessionId?: string | null; onLost(): void }) {
-  const [settings, setSettings] = useState(false);
+  // Null until first opened: the dialog's chunk loads then (and stays for its exit).
+  const [settings, setSettings] = useState<boolean | null>(null);
   const phone = usePhone();
   const openSettings = useCallback(() => setSettings(true), []);
   const { projectId, live, loadError, project } = useProject();
@@ -83,7 +85,11 @@ export function ProjectWorkspace(props: { agentId: string | null; sessionId?: st
             <WorkspaceTitle phone={phone} />
             <Body />
           </ChatSlotsProvider>
-          <SettingsDialog show={settings} onClose={() => setSettings(false)} />
+          {settings !== null && (
+            <Suspense fallback={null}>
+              <SettingsDialog show={settings} onClose={() => setSettings(false)} />
+            </Suspense>
+          )}
           <Suspense fallback={null}>
             <CloseDialog />
           </Suspense>
@@ -181,34 +187,5 @@ function Body() {
         </Panel>
       )}
     </div>
-  );
-}
-
-function SettingsDialog({ show, onClose }: { show: boolean; onClose(): void }) {
-  const { bridge, refreshProjects, projects } = useApp();
-  const { project, update, projectId } = useProject();
-  return (
-    <Presence show={show && project !== null}>
-      {project && (
-        <Suspense fallback={null}>
-          <ProjectDialog
-            project={project}
-            onClose={onClose}
-            onSubmit={async (input) => {
-              await update(input);
-              onClose();
-            }}
-            onDelete={async () => {
-              const { deleteProjectCleanly } = await import("../lib/deleteProject");
-              await deleteProjectCleanly(bridge, projectId);
-              onClose();
-              const next = projects?.find((p) => p.id !== projectId);
-              navigate(next?.id ?? null);
-              await refreshProjects();
-            }}
-          />
-        </Suspense>
-      )}
-    </Presence>
   );
 }

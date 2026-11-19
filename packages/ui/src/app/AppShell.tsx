@@ -31,6 +31,7 @@ import { readyLazy } from "../lib/readyLazy";
 import { registerWarm } from "../lib/warm";
 import { DRAWER_QUERY } from "../lib/constants";
 import { usePhone } from "../lib/phone";
+import { useProjectSwitch } from "./useProjectSwitch";
 
 /** Home loads on first visit (its own chunk); the app usually opens a project. */
 /** The palette loads after the first paint (idle) or on first use, whichever comes first (its own chunk). */
@@ -75,6 +76,8 @@ const SidebarDrawer = lazy(() => import("../components/shell/SidebarDrawer").the
 const loadTree = () => import("../components/sessions/SessionTree");
 const treeChunk = loadTree().catch(() => undefined);
 const SessionTree = lazy(() => treeChunk.then((m) => m ?? loadTree()).then((m) => ({ default: m.SessionTree })));
+/** Decision 98: reads a project switched to out of sight (its own chunk, warmed after the first paint). */
+const ProjectPreload = lazy(() => import("../state/projectPreload"));
 /** Direction 7: the phone layout's frame (the top bar off a project, keyboard and touch helpers); its own chunk, only in that mode. */
 const PhoneChrome = lazy(() => import("./phone/PhoneChrome"));
 
@@ -148,6 +151,8 @@ function Shell() {
   const [missing, setMissing] = useState<ReadonlySet<string>>(() => new Set());
   const routeState = resolveProjectRoute(route.projectId, projects, missing);
   const known = routeState === "show";
+  // Decision 98: what the main area shows lags the route while a project switched to is read out of sight.
+  const { shown, preload, loading, onLate, onShow } = useProjectSwitch(route, bridge, known);
   const lookingUp = useRef<string | null>(null);
   const lookUp = useCallback(
     async (id: string) => {
@@ -176,8 +181,8 @@ function Shell() {
   }, [health, routeState, route.projectId, lookUp]);
   // The open project's stream or load failed: it may have been deleted elsewhere (its events answer 404).
   const onProjectLost = useCallback(() => {
-    if (route.projectId !== null) void lookUp(route.projectId);
-  }, [route.projectId, lookUp]);
+    if (shown.projectId !== null) void lookUp(shown.projectId);
+  }, [shown.projectId, lookUp]);
   // Tracked here, not in the sidebar, so it runs while the sidebar drawer is closed too.
   const unseen = useUnseen(projects, known ? route.projectId : null);
   const firstId = projects?.[0]?.id ?? null;
@@ -272,7 +277,8 @@ function Shell() {
 
   // P2-3: unreachable before anything loaded takes the panel; after that a banner sits over the workspace, which stays.
   const offlineFull = health === "offline" && projects === null;
-  const workspace = !offlineFull && known && route.projectId !== null;
+  // While a switch holds, `known` is the next project's (the hold needs it) and the previous one is shown.
+  const workspace = !offlineFull && !loading && known && shown.projectId !== null;
   let main: React.ReactNode = null;
   if (offlineFull)
     main = (
@@ -298,7 +304,7 @@ function Shell() {
         <NoProjectsHero onCreate={newProject} />
       </Suspense>
     );
-  else if (route.projectId === null && projects)
+  else if (shown.projectId === null && projects && !loading)
     main = (
       <Suspense fallback={null}>
         <Home unseen={unseen} onNewProject={newProject} onSearch={openPalette} />
@@ -380,23 +386,28 @@ function Shell() {
                 "relative flex min-w-0 flex-1 flex-col p-gutter pt-0 pb-0 max-sm:p-0 phone:px-0",
                 // Direction 7: the phone's window header lies over the panel's top (Home, the connect screen, the no-projects hero):
                 // their content and the streak band start under it, as Settings' do (decision 91a: nothing sits on the band).
-                !(workspace && route.projectId) && "pt-bar phone:pt-bar",
+                !(workspace && shown.projectId) && "pt-bar phone:pt-bar",
                 !workspace && main === null && startsInProject && "max-sm:pt-bar phone:pt-bar",
               )}
               inert={drawerShown}
             >
-              {workspace && route.projectId ? (
-                <ProjectProvider key={route.projectId} projectId={route.projectId}>
+              {preload && (
+                <Suspense fallback={null}>
+                  <ProjectPreload key={preload.projectId} target={preload} onLate={onLate} onShow={onShow} />
+                </Suspense>
+              )}
+              {workspace && shown.projectId ? (
+                <ProjectProvider key={shown.projectId} projectId={shown.projectId}>
                   {demo && tabFlags.memory && window.location.hash.endsWith("/memory") ? (
                     <Suspense fallback={null}>
                       <MemoryRoute />
                     </Suspense>
                   ) : (
-                    <ProjectWorkspace agentId={route.agentId} sessionId={route.sessionId} onLost={onProjectLost} />
+                    <ProjectWorkspace agentId={shown.agentId} sessionId={shown.sessionId} onLost={onProjectLost} />
                   )}
                 </ProjectProvider>
               ) : (
-                <Panel className="flex-1">
+                <Panel className="flex-1" data-switching={loading}>
                   {/* Until the projects are in (or the route's project is found), lines instead of an empty card. */}
                   <div className="min-h-0 flex-1">{main ?? (!offlineFull && <MainSkeleton />)}</div>
                 </Panel>
@@ -408,10 +419,10 @@ function Shell() {
               )}
             </main>
           </div>
-          <StatusBar home={route.projectId === null && settings === null} startRef={setStatusStart} endRef={setStatusEnd} />
+          <StatusBar home={shown.projectId === null && settings === null} startRef={setStatusStart} endRef={setStatusEnd} />
           {phone && (
             <Suspense fallback={null}>
-              <PhoneChrome projectShown={workspace && route.projectId !== null} />
+              <PhoneChrome projectShown={workspace && shown.projectId !== null} />
             </Suspense>
           )}
           <Presence show={drawerShown}>

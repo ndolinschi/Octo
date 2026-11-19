@@ -3,6 +3,7 @@ import type { QueueState } from "@octo/agent-client";
 import { steerUnsupportedFor } from "../../lib/v7/steerQueue";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
+import { useSessionScope } from "../../state/session";
 import { QueueList } from "./QueueList";
 import { useV7Events } from "./useV7Events";
 
@@ -24,12 +25,17 @@ export function QueueSlot(props: QueueSlotProps) {
 
 function Live({ onCount }: QueueSlotProps) {
   const { bridge } = useApp();
-  const { projectId, project, synced, state } = useProject();
-  const [queue, setQueue] = useState<QueueState>({ paused: false, messages: [] });
+  const { projectId, project, synced, state, kept } = useProject();
+  // Decision 98: the queue as last read (this project shown before) paints with the conversation; the read updates it.
+  const key = useSessionScope()?.sessionId ?? "";
+  const [queue, setQueue] = useState<QueueState>(() => kept.queues.get(key) ?? { paused: false, messages: [] });
   useEffect(() => {
     let alive = true;
     void bridge.getQueue?.(projectId).then(
-      (q) => alive && setQueue(q),
+      (q) => {
+        kept.queues.set(key, q);
+        if (alive) setQueue(q);
+      },
       // Not loaded: `queue.updated` events still arrive.
       () => undefined,
     );
@@ -37,9 +43,12 @@ function Live({ onCount }: QueueSlotProps) {
       alive = false;
     };
     // `synced`: loaded again after a reconnect (a `queue.updated` may have been missed).
-  }, [bridge, projectId, synced]);
+  }, [bridge, projectId, synced, kept, key]);
   useV7Events((e) => {
-    if (e.type === "queue.updated") setQueue({ paused: e.paused, messages: e.messages });
+    if (e.type !== "queue.updated") return;
+    const q = { paused: e.paused, messages: e.messages };
+    kept.queues.set(key, q);
+    setQueue(q);
   });
   const count = queue.messages.length;
   // Decision 96: a message waiting for a slot says so, with how many of the project's sessions run now.

@@ -715,6 +715,10 @@ li[data-tree-level="1"] :has(> [data-tree-meta]) {
 }
 /* A loading placeholder (MainSkeleton): the same fade, after 300ms, so a fast load (switching projects takes about 240ms
    in the demo) never shows it. */
+/* Decision 98: a project switch already held the previous screen for SWITCH_HOLD_MS; its loading state shows at once. */
+[data-switching="true"] .octo-fade-late {
+  animation: none;
+}
 .octo-fade-late {
   animation: octo-fade-in var(--motion-fast) ease-out 300ms both;
 }
