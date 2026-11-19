@@ -108,6 +108,13 @@ func (a *agent) permScript(ctx context.Context, cwd string) string {
 	if out.Outcome.Outcome != "selected" {
 		a.toolUpdate("call-perm", "failed", textContent("cancelled"))
 		a.say("permission outcome=" + out.Outcome.Outcome)
+		// ACP: a client that cancels a prompt answers its open permission
+		// requests "cancelled", and the agent then ends the prompt with
+		// stopReason "cancelled" (not end_turn), whether or not the
+		// session/cancel notification has been read yet.
+		if out.Outcome.Outcome == "cancelled" {
+			return "cancelled"
+		}
 		return "end_turn"
 	}
 	chosen := out.Outcome.OptionID

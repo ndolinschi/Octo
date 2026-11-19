@@ -205,7 +205,7 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		a.toolCall("call-crash", "Read README.md", "read", "pending", filepath.Join(cwd, "README.md"))
 		a.exit(3)
 		return "end_turn"
-	case has(MarkerHang) || has(MarkerDeaf):
+	case has(MarkerHang) || (has(MarkerDeaf) && !has(MarkerPerm)):
 		a.update(map[string]any{
 			"sessionUpdate": "tool_call", "toolCallId": "call-hang", "title": "Waiting forever", "kind": "other",
 			"status": "in_progress", "rawInput": map[string]int{"pid": os.Getpid()},

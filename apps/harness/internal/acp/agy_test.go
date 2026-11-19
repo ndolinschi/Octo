@@ -235,3 +235,31 @@ func TestCancelDuringAPermissionRequestEndsCleanly(t *testing.T) {
 		t.Fatalf("next prompt = %q, %v", stop, err)
 	}
 }
+
+// The client answers an open permission request "cancelled" on Stop, and that
+// answer alone ends the prompt as cancelled: with an agent that never reads
+// session/cancel ([deaf]) there is no other signal, so the stop reason cannot
+// depend on which message the agent reads first.
+func TestPermissionCancelledAnswerEndsPromptCancelled(t *testing.T) {
+	dir := t.TempDir()
+	login := filepath.Join(t.TempDir(), "login")
+	if err := os.WriteFile(login, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := acp.Start(context.Background(), agySpec(t, dir, map[string]string{fakeacp.EnvLoginFile: login}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	sess, err := c.NewSession(context.Background(), dir, nil, acp.RunOptions{Auth: agyPolicy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &blockingPerm{recHandler: newRec(), asked: make(chan struct{}), ended: make(chan error, 1)}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { <-h.asked; cancel() }()
+	stop, err := c.Prompt(ctx, sess.ID, fakeacp.MarkerPerm+fakeacp.MarkerDeaf, h)
+	if err != nil || stop != acp.StopCancelled {
+		t.Fatalf("Prompt = %q, %v", stop, err)
+	}
+}
