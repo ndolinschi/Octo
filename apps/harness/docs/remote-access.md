@@ -65,8 +65,12 @@ carries SSE); browsers cannot send that header with `EventSource`, so the web cl
 - `POST /v1/remote/pairing` (computer) issues a code: 8 characters of Crockford's base32 shown `ABCD-EFGH`, valid 5
   minutes, single use; a new code replaces the old. The QR link is `<url>/#pair=<code>` (the fragment never reaches a
   server). Typed codes ignore case, spaces and dashes; `O`, `I`, `L` read as `0`, `1`, `1`.
-- Claims are spaced at least 1 s apart across the listener (`429 pairing_rate_limited`, `Retry-After: 1`); 5 wrong
-  codes burn the code (`423 pairing_locked`, even for the right code) until the computer issues a new one.
+- Claims are counted per source: the address Cloudflare's edge saw (`Cf-Connecting-Ip`, set by the edge), else the peer
+  address. A source's claims are spaced at least 1 s apart (`429 pairing_rate_limited`, `Retry-After: 1`); after 5 wrong
+  codes that source waits 30 s, doubled by each further wrong code up to 15 min (`429 pairing_backoff`, `Retry-After`
+  in seconds), and the code stays good for every other source, so a stranger with the URL cannot burn it. 200 wrong
+  codes from all sources together (or more than 4096 sources) burn it (`423 pairing_locked`, even for the right code)
+  until the computer issues a new one.
 - A claimed device is **pending** (`403 device_pending` on `/v1`) until the computer allows it
   (`POST /v1/remote/devices/{id}/confirm`). A pending device not allowed within 5 minutes disappears; pending devices
   never survive a restart or turning remote access off.

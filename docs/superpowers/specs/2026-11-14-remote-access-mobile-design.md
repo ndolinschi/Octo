@@ -351,4 +351,11 @@ Not verified: a real `cloudflared`, a real quick tunnel (SSE refusal, 100 s limi
   Cloudflare's signed apt repository (apt verifies the packages); other distributions get the vendor's downloads page in
   `details`. Verified: `TestInstallLines` (failed before), the repository's `Packages` index answered (2026.11.1) on
   2026-11-19. Not run: the install command itself (needs sudo on a Debian/Ubuntu host).
+- **Pairing guesses per source.** Five unauthenticated wrong guesses burned the code for everyone (criterion 14). Now wrong
+  guesses are counted per source (`Cf-Connecting-Ip`, else the peer): 5 wrong ones make that source wait 30 s, doubling
+  to 15 min (`429 pairing_backoff`), while the phone pairs with the same code; spacing (1 s) is per source too; only 200
+  wrong guesses in all, or more than 4096 sources, burn the code (`423 pairing_locked`). Criterion 14 is replaced by this.
+  Verified: `TestWrongCodesBackOffPerSource`, `TestManyWrongSourcesBurnTheCode`, `TestPairingThroughTheListener`
+  (another address pairs after the first is backed off; failed before). Not verified: that a real quick tunnel sets
+  `Cf-Connecting-Ip` (Cloudflare documents it for proxied traffic).
 

@@ -1,6 +1,7 @@
 package remoteaccess
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -55,10 +56,10 @@ func TestClaimSingleUseAndNormalised(t *testing.T) {
 	code, _ := p.Issue()
 	typed := strings.ToLower(code[:4] + " - " + code[4:])
 	typed = strings.NewReplacer("0", "o", "1", "l").Replace(typed)
-	if got := p.Claim(typed); got != "" {
+	if got := p.Claim(typed, "a"); got != "" {
 		t.Fatalf("right code typed loosely = %q", got)
 	}
-	if got := p.Claim(code); got != "pairing_code_invalid" {
+	if got := p.Claim(code, "a"); got != "pairing_code_invalid" {
 		t.Fatalf("second use = %q, want pairing_code_invalid", got)
 	}
 }
@@ -74,7 +75,7 @@ func TestClaimExpires(t *testing.T) {
 	if c, _ := p.Code(); c != "" {
 		t.Fatal("an expired code is still shown")
 	}
-	if got := p.Claim(code); got != "pairing_code_expired" {
+	if got := p.Claim(code, "a"); got != "pairing_code_expired" {
 		t.Fatalf("expired = %q", got)
 	}
 }
@@ -86,31 +87,63 @@ func TestNewCodeReplacesOld(t *testing.T) {
 	if old == fresh {
 		t.Skip("two equal random codes")
 	}
-	if got := p.Claim(old); got != "pairing_code_invalid" {
+	if got := p.Claim(old, "a"); got != "pairing_code_invalid" {
 		t.Fatalf("old code = %q", got)
 	}
-	if got := p.Claim(fresh); got != "" {
+	if got := p.Claim(fresh, "a"); got != "" {
 		t.Fatalf("new code = %q", got)
 	}
 }
 
-func TestWrongCodesLock(t *testing.T) {
-	p := newPairing(CodeTTL, 0, newClock().now)
+// Wrong guesses count per source: the source that guessed wrong waits, longer each time, and the code stays good for
+// everyone else, so nobody can burn a code by guessing (security review finding 8). Only a flood of wrong guesses
+// from many sources burns it.
+func TestWrongCodesBackOffPerSource(t *testing.T) {
+	clk := newClock()
+	p := newPairing(CodeTTL, 0, clk.now)
 	code, _ := p.Issue()
 	for i := 1; i < MaxWrongTry; i++ {
-		if got := p.Claim("ZZZZZZZZ"); got != "pairing_code_invalid" {
+		if got := p.Claim("ZZZZZZZZ", "evil"); got != "pairing_code_invalid" {
 			t.Fatalf("wrong try %d = %q", i, got)
 		}
 	}
-	if got := p.Claim("ZZZZZZZZ"); got != "pairing_locked" {
+	if got := p.Claim("ZZZZZZZZ", "evil"); got != "pairing_backoff" {
 		t.Fatalf("5th wrong try = %q", got)
 	}
-	if got := p.Claim(code); got != "pairing_locked" {
-		t.Fatalf("right code after the lock = %q", got)
+	if got := p.Claim(code, "evil"); got != "pairing_backoff" {
+		t.Fatalf("the right code from the source that is waiting = %q", got)
+	}
+	if wait := p.Wait("evil"); wait != firstBackoff {
+		t.Fatalf("wait = %v", wait)
+	}
+	clk.add(firstBackoff)
+	if got := p.Claim("ZZZZZZZZ", "evil"); got != "pairing_backoff" {
+		t.Fatalf("a wrong try after the wait = %q", got)
+	}
+	if wait := p.Wait("evil"); wait != 2*firstBackoff {
+		t.Fatalf("second wait = %v, want it doubled", wait)
+	}
+	if got := p.Claim(code, "phone"); got != "" {
+		t.Fatalf("the right code from another source = %q", got)
+	}
+}
+
+func TestManyWrongSourcesBurnTheCode(t *testing.T) {
+	p := newPairing(CodeTTL, 0, newClock().now)
+	code, _ := p.Issue()
+	got := ""
+	for i := 0; i < MaxWrongTotal; i++ {
+		got = p.Claim("ZZZZZZZZ", fmt.Sprintf("bot-%d", i))
+	}
+	if got != "pairing_locked" {
+		t.Fatalf("wrong try %d = %q", MaxWrongTotal, got)
+	}
+	if got := p.Claim(code, "phone"); got != "pairing_locked" {
+		t.Fatalf("right code after the burn = %q", got)
 	}
 	code2, _ := p.Issue()
-	if got := p.Claim(code2); got != "" {
-		t.Fatalf("a new code after the lock = %q", got)
+	if got := p.Claim(code2, "phone"); got != "" {
+		t.Fatalf("a new code after the burn = %q", got)
 	}
 }
 
@@ -118,14 +151,14 @@ func TestClaimsAreSpaced(t *testing.T) {
 	clk := newClock()
 	p := newPairing(CodeTTL, time.Second, clk.now)
 	code, _ := p.Issue()
-	if got := p.Claim("ZZZZZZZZ"); got != "pairing_code_invalid" {
+	if got := p.Claim("ZZZZZZZZ", "a"); got != "pairing_code_invalid" {
 		t.Fatal(got)
 	}
-	if got := p.Claim(code); got != "pairing_rate_limited" {
+	if got := p.Claim(code, "a"); got != "pairing_rate_limited" {
 		t.Fatalf("second claim in the same second = %q", got)
 	}
 	clk.add(time.Second)
-	if got := p.Claim(code); got != "" {
+	if got := p.Claim(code, "a"); got != "" {
 		t.Fatalf("after a second = %q", got)
 	}
 }

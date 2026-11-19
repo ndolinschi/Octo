@@ -48,6 +48,8 @@ func Remote(code string) *Error {
 		e.Message, e.Hint = "That pairing code has expired.", "Ask the computer for a new code."
 	case "pairing_locked":
 		e.Message, e.Hint = "Too many wrong codes were tried.", "Ask the computer for a new code."
+	case "pairing_backoff":
+		e.Message, e.Hint = "Too many wrong codes were typed here.", "Wait a few minutes, then type the code again."
 	case "pairing_rate_limited":
 		e.Message, e.Hint = "Too many tries at once.", "Wait a second, then try again."
 	case "stream_gone":
@@ -64,7 +66,7 @@ func Remote(code string) *Error {
 func RemoteCodes() []string {
 	return []string{
 		"remote_ack_required", "remote_off", "remote_forbidden", "remote_decision_forbidden", "remote_read_only", "device_not_paired", "device_pending",
-		"device_expired", "pairing_code_invalid", "pairing_code_expired", "pairing_locked", "pairing_rate_limited",
+		"device_expired", "pairing_code_invalid", "pairing_code_expired", "pairing_locked", "pairing_backoff", "pairing_rate_limited",
 		"stream_gone", "query_token_refused",
 	}
 }
