@@ -294,11 +294,176 @@ one at the break-even size needs about 800–2 000 per model, more with a noisy 
 replay 50–100 of the owner's own tasks on each candidate model offline — the held-out-half baseline, the best policy
 measured in five stages.
 
-# What five stages support, in one place
+# Stage 6: across tasks from one-line edits to hard problems, does the brief's text predict the tier? (2026-11-20)
+
+Full text: `results/stage6_report.txt`; numbers: `results/stage6_{labels,eval,eval_B,eval_equal_tokens,m2,probe,sources}.json`;
+figures: `figures/stage6_{gains,leaks,probe}.png`. Protocol, gate and the 60 probe briefs were committed before any stage-6
+data was fetched (`fixtures/stage6_protocol.md`, `fixtures/stage6_probe.json`). One debugging run of the M1' pipeline (50
+bootstraps, no M2') was seen before the final run; nothing in the protocol changed after it. Earlier stages untouched.
+76 tests: 62 pass, 14 skip (stage 1–5 tests whose `data/` is absent in this checkout). No paid API.
+
+**Headline: not supported.** Pooled over four benchmarks the text model looks useful (+0.027 curve area over the
+fixed-tier mixture), but a lookup of the benchmark's identity does better (+0.034), and with the benchmark held out the
+gain falls to +0.0003 (M1') / +0.004 (M2'), below a one-feature length model (+0.013). Inside each benchmark the gain is
+positive but 0.0002–0.009 — 0.4–7 % of the oracle headroom. The wide range of difficulty is there in the labels; the text
+does not carry it across benchmarks.
+
+## Sources (pinned in `config.py`; `results/stage6_sources.json`)
+
+| Source | Tasks | What a task is | Models priced (low / mid / high, scheme A) | Licence |
+| --- | --- | --- | --- | --- |
+| CanItEdit (HF `nuprl/CanItEdit` 3c07f38, predictions `WhyDoYouCare/CanItEditPredictions` 9481967, 13 MB) | 105 | one instructed edit of a Python file; 3 runs × 9 models, tested | 6 / 1 / 2 | MIT / MIT |
+| BigCodeBench Instruct (`bigcode/bigcodebench` b74c0d0 v0.1.4, `bigcode/bigcodebench-perf` 249b305, 3 MB) | 1 140 | NL → library-using function; greedy 0/1 | 29 / 17 / 10 (70 of 126 unpriced, excluded) | Apache-2.0 / none stated |
+| LiveCodeBench (site repo f186ab5 `performances_generation.json` 7 MB; statements `livecodebench/code_generation_lite` 0fe84c3, 4.5 GB streamed, 1.9 MB kept) | 1 055 | LeetCode / AtCoder / Codeforces problem; pass@1 | 5 / 9 / 10 (4 unpriced) | none stated (code MIT) / "cc" |
+| SWE-bench Verified (stage 1's 39 mini-SWE-agent submissions; statements at HF c104f84) | 500 | repository issue, agentic | 12 / 11 / 16 | none stated |
+
+Prices: LiteLLM 46716fa (first-party key where present, else one named host; open-weights models at a host's list price,
+noted per model in `stage6_data.PRICE_KEYS`). Tiers: stage 1's scheme A (0.80 / 3.4375 $/M blended), scheme B (1 / 5)
+as sensitivity. Cost = tier mean price × tokens per task: 2 000 (CanItEdit, BigCodeBench) and 10 000 (LiveCodeBench)
+are assumed; SWE-bench's 108 591 is implied by mini-SWE-agent's measured cost.
+
+**Rejected:** RouterBench (pickle files — unsafe to load —, no licence, 2023 models, MBPP prompts embed the tests);
+EvalPlus HumanEval+/MBPP+ (no public per-task × per-model table found; saturated by frontier models); HumanEvalPack,
+CodeEditorBench (no per-model outcomes published; CodeEditorBench is 2.1 GB); LiveCodeBench self-repair (the input is
+each model's own broken code, so tasks differ per model); Aider polyglot (aggregates only); Terminal-Bench 2 (89 tasks
+would add a fifth source at the hard end; not done for time — a gap).
+
+## Labels: the range is wide, the tier contrast is not reliable
+
+| Source | Mean solved low / mid / high | Cheapest sufficient low / mid / high / none | Split-half: soft label | high − low | cheapest-tier kappa |
+| --- | --- | --- | --- | --- | --- |
+| CanItEdit | 0.34 / 0.24 / 0.69 | 0.31 / 0.07 / 0.38 / 0.24 | 0.83 (low) | 0.36 [0.19, 0.48] | n/a (one mid model) |
+| BigCodeBench | 0.34 / 0.42 / 0.44 | 0.34 / 0.12 / 0.06 / 0.49 | 0.93–0.96 | 0.50 [0.33, 0.60] | 0.69 [0.62, 0.73] |
+| LiveCodeBench | 0.53 / **0.79** / 0.64 | 0.54 / 0.28 / 0.01 / 0.17 | 0.80–0.93 | −0.04 [−0.92, 0.32] | 0.34 [0.18, 0.46] |
+| SWE-bench Verified | 0.49 / 0.61 / 0.69 | 0.57 / 0.10 / 0.06 / 0.27 | 0.90–0.96 | 0.53 [0.38, 0.63] | 0.57 [0.43, 0.64] |
+
+- Task difficulty spans the full range in every source (the task mean runs from 0.0–0.1 at the 10th percentile to
+  0.9–1.0 at the 90th). How hard a task is, is reliable (0.80–0.96). **Which tier is enough** is much less so
+  (advantage reliability −0.04 to 0.53; cheapest-tier kappa 0.34–0.69): stage 2's finding holds on the wide range.
+- Price tiers are not ordered by ability everywhere: on LiveCodeBench the mid tier (o3-mini, o4-mini, R1 — reasoning
+  models) solves 0.79 and the high tier (GPT-4-Turbo, GPT-4o, Claude 3.5/4) 0.64; on CanItEdit the single mid model
+  (gemini-2.5-flash) is below the low tier.
+- The source explains 7 % / 20 % / 8 % of the low / mid / high label variance (eta²).
+
+## Results (scheme A, 1 000 group bootstraps stratified by source)
+
+| Policy (curve area minus the fixed-tier mixture) | (a) Pooled 5-fold | (c) Leave one source out |
+| --- | --- | --- |
+| M1' (LightGBM, MiniLM embeddings + text statistics, isotonic) | +0.0271 [+0.0233, +0.0307] | +0.0003 [+0.0002, +0.0005] |
+| M2' (MiniLM-L6 fine-tuned, temperature-scaled) | +0.0235 [+0.0211, +0.0276] | +0.0042 [+0.0024, +0.0062] |
+| **source-id prior** (benchmark identity only) | **+0.0344 [+0.0294, +0.0384]** | not available |
+| source id + length (fitted) | +0.0321 [+0.0277, +0.0356] | not available |
+| length only (fitted logistic, one feature) | +0.0225 [+0.0185, +0.0267] | **+0.0131 [+0.0092, +0.0165]** |
+| length rank (unfitted) | +0.0024 [+0.0005, +0.0053] | +0.0024 [+0.0005, +0.0053] |
+| the router's text rule (`band::fallback`) | +0.0000 | +0.0000 |
+| oracle (true soft labels; optimistic) | +0.0621 | +0.0621 |
+
+Mixture area 0.5761 [0.5589, 0.5923]. **(b) Within each source** (pooled-CV predictions; gain over that source's mixture;
+oracle headroom in brackets):
+
+| | CanItEdit (0.123) | BigCodeBench (0.048) | LiveCodeBench (0.021) | SWE-V (0.047) |
+| --- | --- | --- | --- | --- |
+| M1' | +0.0064 [+0.0034, +0.0203] | +0.0018 [+0.0006, +0.0043] | +0.0011 [+0.0007, +0.0017] | +0.0006 [+0.0001, +0.0053] |
+| M2' | +0.0088 [+0.0032, +0.0198] | +0.0002 [+0.0001, +0.0021] | +0.0013 [+0.0010, +0.0018] | +0.0003 [+0.0001, +0.0020] |
+| M1' trained inside the source only | +0.0098 | +0.0015 | +0.0013 | +0.0027 |
+| length rank (unfitted) | +0.0025 | +0.0048 | +0.0008 | +0.0021 |
+| human difficulty tag (not available at routing time) | – | – | +0.0025 | +0.0018 |
+
+- **How much of the pooled gain is source identity: all of it.** The source-id prior beats both text models pooled;
+  without the source (leave-one-out) M1' keeps 1 % of its pooled gain and M2' 18 %, both below the fitted length model.
+- With the source held out, the predicted probabilities rank tasks **worse than chance** across sources (AUROC of the
+  low tier against the majority label 0.41 M1', 0.44 M2'; Brier skill −0.10, −0.08), and near chance inside the held-out
+  source (0.52–0.58).
+- Inside a source, the text does rank difficulty where the benchmark has a real difficulty gradient in its wording:
+  LiveCodeBench AUROC 0.76 (M1') / 0.78 (M2') for the low tier, BigCodeBench 0.62 / 0.64, CanItEdit 0.52 / 0.57,
+  SWE-bench 0.50 / 0.51 (stage 1 again). It does not turn into routing gain because the tiers agree on which tasks are
+  hard: the gain is 0.4–7 % of the oracle headroom.
+- Calibration: ECE pooled 0.012–0.034 (M1', isotonic; 0.025–0.029 raw), 0.015–0.030 (M2', temperature; 0.056–0.067 raw);
+  ECE leave-one-source-out 0.12–0.24.
+
+**Gate (declared in advance): not supported** for M1' (LOSO gain over the best non-learned baseline, the unfitted length
+rank, −0.0021 [−0.0049, −0.0001]; within-source positive 4 of 4) and for M2' (+0.0018 [−0.0019, +0.0044]; 4 of 4).
+Condition 2 passes, condition 1 fails for both.
+
+**Sensitivity.** Equal tokens per task in every source: both fail (−0.0037 [−0.0065, −0.0019] and −0.0037
+[−0.0064, −0.0014]). **Scheme B (1 / 5 $/M) — M1' passes the gate as written**: +0.0036 [+0.0025, +0.0041] over the best
+non-learned baseline (here the mixture), 4 of 4 within. That pass must travel with two facts: a constant prior with no text
+at all (the training mean per tier, with each source's own price ratios) gets +0.0048 under the same split, and the
+fitted length model +0.0048; held out per source, M1' gains 0.0000–0.0013. The pass is a pooled-curve effect of
+per-source price ratios, not text. M2' was trained on scheme-A labels only and is not evaluated under B.
+
+## Leak ablation (M1' + one leaky field as its own feature block; 300 bootstraps)
+
+| Field added | Pooled gain | LOSO gain | Low-tier AUROC inside the source (pooled CV) |
+| --- | --- | --- | --- |
+| none (final model) | +0.0271 | +0.0003 | CIE 0.52, BCB 0.62, LCB 0.76, SWE 0.50 |
+| human difficulty tag (LCB, SWE) | +0.0277 | +0.0001 | LCB **0.87**, SWE **0.65** |
+| constraints / follow-up section (LCB) | +0.0282 | +0.0003 | LCB 0.78 |
+| starter code / the file to edit | +0.0276 | +0.0004 | CIE 0.66 |
+| platform (LCB) | +0.0280 | +0.0005 | LCB 0.75 |
+| reference solution | +0.0277 | +0.0009 | CIE **0.71**, BCB 0.68, SWE **0.65** |
+| test code | +0.0269 | +0.0010 | CIE 0.59, BCB 0.65, SWE 0.58 |
+| source id | +0.0271 | +0.0005 | – |
+| all of the above | +0.0274 | +0.0048 [+0.0005, +0.0095] | CIE 0.65, BCB 0.70, LCB 0.87, SWE 0.72 |
+
+The owner's worry is right for **accuracy**: a difficulty tag lifts LiveCodeBench's AUROC from 0.76 to 0.87 and the gold
+patch lifts SWE-bench's from 0.50 to 0.65 — a model trained with them would report "difficulty prediction" that a router
+cannot have. Even so the leaks buy almost no routing gain (≤ 0.001 pooled), for the same reason as the clean text: tiers
+agree on hardness. The source-id feature adds nothing pooled because the text already identifies the source. The
+final model's features are `title`, `brief`, `tools`, `depth` (`stage6_features.FEATURE_FIELDS`; a test asserts the list
+and that scrambling every leak column changes no feature); constraints and BigCodeBench starter code are stripped.
+
+## Probe: 60 hand-written delegation briefs (sanity probe, not evidence of solved rate)
+
+| Scorer | Spearman(predicted difficulty, a-priori band) | Tier at τ = 0.5 equals band | Mean p(low) easy / medium / hard |
+| --- | --- | --- | --- |
+| M2' (int8 ONNX) | **0.59** | 34 of 60 (easy → low 11/20; hard → high 20/20; medium → high 17/20) | 0.48 / 0.33 / 0.28 |
+| M1' | 0.30 | 22 of 60 (everything → high) | 0.39 / 0.37 / 0.36 |
+| length only (fitted) | **−0.93** (longer brief → predicted easier) | 20 of 60 | 0.39 / 0.41 / 0.41 |
+| router text rule | 0.40 (band vs band) | 29 of 60 (easy 19/20 right; hard → low 10/20) | – |
+
+M2' orders realistic briefs in the right direction; its "hard → high" is partly the rule's fallback (no tier reaches
+0.5 on most hard briefs). The fitted length model is inverted on briefs: across benchmarks long statements (LiveCodeBench,
+SWE-bench) were solved more often than short ones (BigCodeBench, CanItEdit), so on briefs it calls the long hard ones easy —
+the between-source confound in its plainest form. Worst misses of M2': "Add a constant MAX_RETRIES = 3 …" scored hardest
+of the easy briefs (p_low 0.20); "Move the monorepo build from webpack to vite …" easiest of the hard (0.38).
+
+## M2' artefacts
+
+`models/m2_delegation.onnx` (int8, per-channel dynamic quantisation, 23.0 MB; fp32 would be 90.4 MB and is not
+committed), `models/m2_delegation_tokenizer/`, `models/m2_delegation.json`, reference scorer `src/routerml/stage6_score.py`
+(onnxruntime + tokenizers only). 22.7 M parameters; final training 1 116 s on 4 CPUs (each CV fold 9–19 min). Parity
+against PyTorch on 100 texts: fp32 max |Δp| 3e-7; int8 max 0.051, mean 0.010, same tier at τ = 0.5 for 96 of 100
+(a first per-tensor int8 export moved p by up to 0.25 and was replaced). CPU latency, one thread, tokenisation included:
+short brief p50 2.7 ms / p99 4.6 ms (int8), 5.6 / 6.4 ms (fp32); a 256-token brief 52 / 68 ms (int8), 74 / 90 ms (fp32) —
+above the design's 20 ms for long briefs. Exported as an artefact; **not proposed for the router** (the gate failed).
+
+## What the thesis can and cannot claim after stage 6
+
+- **Cannot:** that a text model trained on public benchmarks predicts the cheapest sufficient tier of a delegated task.
+  Pooled numbers that look like it are benchmark identity; leave-one-benchmark-out they vanish or reverse.
+- **Can:** (1) the decomposition — pooled gain = source identity, with the source-id-only and length-only baselines that
+  expose it; (2) the leak result, with numbers: difficulty tags and gold patches inflate accuracy (AUROC +0.11 to +0.19)
+  while adding no routing value; (3) inside a benchmark with a real difficulty gradient in its wording (LiveCodeBench)
+  the text ranks difficulty (AUROC 0.76–0.78), yet routing gains only 5–6 % of the oracle headroom because tiers agree
+  on what is hard; (4) price tiers are not ability tiers (reasoning mid-price models beat the high tier on
+  LiveCodeBench); (5) the probe shows M2' orders hand-written briefs sensibly (Spearman 0.59) — a hint that own-run labels
+  on real briefs are worth collecting, not evidence.
+- **Qualifications that travel with every number:** one public outcome table per source (several samples only for
+  LiveCodeBench and CanItEdit); models of different years per source; open-weights prices are one host's; tokens per task
+  for three sources are assumed (equal tokens tested: same verdict); scheme B flips the formal gate for M1' by a margin
+  a text-free prior beats; Terminal-Bench 2 not included; public problems are not delegation briefs.
+- **What would be needed:** own-run data — delegation briefs as the harness writes them, with the tier or model that ran
+  each and an outcome. With the tier contrast this unreliable, a test of the text needs hundreds of briefs per tier, each
+  run on at least two tiers.
+
+# What six stages support, in one place
 
 | Claim | Verdict |
 | --- | --- |
 | A model predicts the tier from the task's text | not supported (gain +0.000; ceiling about +0.017) |
+| Across a wide range (edits to hard problems), the brief's text predicts the cheapest sufficient tier | not supported: pooled +0.027 is benchmark identity (source id alone +0.034); held out +0.0003 / +0.004, below a length model; within a benchmark 0.4–7 % of the oracle headroom |
+| Leaky fields (difficulty tags, solutions, tests) explain "difficulty prediction" accuracy | supported for accuracy (AUROC +0.11 to +0.19); they add no routing gain |
 | A learned cascade on the cheap model's early steps beats fixed tiers | not supported |
 | Choosing the tier per step of a coding session saves cost | not supported under prompt caching (oracle 0.8 %) |
 | A ladder filled by list price is a poor ladder | supported, large (0.310 against 0.686 reward per task at $1 per solved task) |
