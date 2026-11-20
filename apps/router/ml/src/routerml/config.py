@@ -59,3 +59,35 @@ TB2_REVISION = "572b2614be2c0cb2527e14f5b1e4026f1072e6c1"
 ML_DATASET = "SWE-bench/SWE-bench_Multilingual"
 ML_REVISION = "846e647b9f33c0b51b739d005d13d85493c9af09"
 ML_FILE = "data/test-00000-of-00001.parquet"
+
+# ---- stage 6 (delegation briefs: does the text predict the cheapest sufficient tier across a wide range?).
+# Revisions read on 2026-11-20. Labels are model outcomes only; human difficulty tags are leak-test material.
+S6_DATA = DATA / "stage6"
+# LiveCodeBench per-problem pass@1 of 28 models (the leaderboard site's repository, build/performances_generation.json).
+LCB_SITE_RAW = "https://raw.githubusercontent.com/LiveCodeBench/livecodebench.github.io"
+LCB_SITE_COMMIT = "f186ab5041d6b768733b8ae8145151c867942134"
+LCB_PERF_FILE = "build/performances_generation.json"
+# LiveCodeBench problem statements (HF, licence field "cc"); the jsonl files carry the hidden tests (4.5 GB in all),
+# so they are streamed and only the statement fields are kept.
+LCB_HF = "livecodebench/code_generation_lite"
+LCB_HF_REVISION = "0fe84c3912ea0c4d4a78037083943e8f0c4dd505"
+LCB_HF_FILES = ("test.jsonl", "test2.jsonl", "test3.jsonl", "test4.jsonl", "test5.jsonl", "test6.jsonl")
+# BigCodeBench (Apache-2.0) tasks and the per-task x per-model 0/1 table of the Instruct split (no licence stated).
+BCB_HF = "bigcode/bigcodebench"
+BCB_HF_REVISION = "b74c0d0bf70d2c0bc459be537895cca163007f1a"
+BCB_HF_FILE = "data/v0.1.4-00000-of-00001.parquet"
+BCB_PERF_HF = "bigcode/bigcodebench-perf"
+BCB_PERF_REVISION = "249b3054d25ae61746e8fbe014782ebe4526f844"
+BCB_PERF_FILE = "data/instruct-00000-of-00001.parquet"
+# CanItEdit (MIT): instructional code edits; 2 834 tested predictions of 9 models x 3 runs (MIT).
+CIE_HF = "nuprl/CanItEdit"
+CIE_HF_REVISION = "3c07f38b1f9385f3214fcea94d4664c79df0d36a"
+CIE_HF_FILE = "data/test-00000-of-00001.parquet"
+CIE_PRED_HF = "WhyDoYouCare/CanItEditPredictions"
+CIE_PRED_REVISION = "948196786bf52d272e4b0a4b3b09bf338a317940"
+CIE_PRED_FILE = "canitedit.jsonl"
+# Sentence encoder for M1' and the encoder fine-tuned as M2' (Apache-2.0), pinned by commit.
+S6_ENCODER = "sentence-transformers/all-MiniLM-L6-v2"
+S6_ENCODER_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
+S6_SOURCES = ("canitedit", "bigcodebench", "livecodebench", "swebench_verified")
+S6_CUTS = {"A": (0.8, 3.4375), "B": (1.0, 5.0)}  # stage 1's scheme A (headline) and B, $/M blended 3:1

@@ -2,7 +2,7 @@
 PY := .venv/bin/python
 RUN := PYTHONPATH=src $(PY) -m
 
-.PHONY: all venv fetch build features evaluate quick onnx figures test stage2 ceiling cascade traj-fetch trajectories steps bandit stage3 audit steps3 gencost triples stage4 ladder workload controller stage5 xbench-fetch xbench
+.PHONY: all venv fetch build features evaluate quick onnx figures test stage2 ceiling cascade traj-fetch trajectories steps bandit stage3 audit steps3 gencost triples stage4 ladder workload controller stage5 xbench-fetch xbench stage6 stage6-fetch stage6-labels stage6-m2 stage6-eval stage6-probe stage6-report
 
 all: fetch build features test evaluate onnx figures
 
@@ -75,3 +75,23 @@ xbench-fetch: ## Terminal-Bench 2 leaderboard summaries + per-trial cost of matc
 	$(RUN) routerml.xbench_fetch trials
 xbench:     ## transfer of rankings Verified -> TB2 / Multilingual, leaderboard ladder vs learners on the target, reverse control, break-even
 	$(RUN) routerml.stage5
+
+# ---- stage 6: does a delegation brief's text predict the cheapest sufficient tier across a wide range of tasks?
+# (results/stage6_*.json, results/stage6_report.txt, figures/stage6_*.png, models/m2_delegation.onnx)
+# Needs torch (CPU) + transformers + sentence-transformers on top of requirements.txt (see requirements-stage6.txt).
+stage6: stage6-fetch stage6-labels stage6-m2 stage6-eval stage6-probe stage6-report
+
+stage6-fetch:  ## LiveCodeBench (streams 4.5 GB, keeps ~2 MB), BigCodeBench, CanItEdit, SWE-bench Verified text, LiteLLM, MiniLM (~10 min)
+	$(RUN) routerml.stage6_fetch
+stage6-labels: ## label table, split-half reliability per source, schemes A and B (~3 min)
+	$(RUN) routerml.stage6_labels
+stage6-m2:     ## M2': MiniLM fine-tuned on CPU, 5 pooled + 4 LOSO folds + final model, ONNX int8 export, parity, latency (~2-3 h)
+	$(RUN) routerml.stage6_m2 --folds pooled,loso --final
+stage6-eval:   ## M1', baselines, gate, leak ablation (scheme A); sensitivity: scheme B, equal tokens (~40 min)
+	$(RUN) routerml.stage6_eval
+	$(RUN) routerml.stage6_eval --scheme B --no-leak --n-boot 300
+	$(RUN) routerml.stage6_eval --tokens equal --no-leak --n-boot 300
+stage6-probe:  ## the 60 hand-written briefs scored by M1', M2', length, the router's rule
+	$(RUN) routerml.stage6_probe
+stage6-report:
+	$(RUN) routerml.stage6_report

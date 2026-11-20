@@ -50,6 +50,21 @@ Stage 5 (cross-benchmark transfer; report: `results/stage5_report.txt`; `make st
 - `make xbench-fetch`: Terminal-Bench 2 leaderboard (HF `harborframework/terminal-bench-2-leaderboard` at the revision in `config.py`, Apache-2.0): job summaries of all 75 systems and per-trial `result.json` (cost) of the systems whose model matches the Verified core; SWE-bench Multilingual per-instance lists from the pinned experiments clone.
 - `make xbench`: does the Verified ranking of models transfer to Terminal-Bench 2 (Terminus 2 scaffold; all scaffolds pooled) and to Multilingual; the leaderboard ladder read off Verified against bandits (flat, and with a Verified prior of strength n0 = 5 / 20 / 50) on the target's tasks; a held-out-half target leaderboard; the reverse control; a break-even simulation with a perturbed leaderboard (`src/routerml/{xbench_fetch,xbench_data,stage5}.py`, `tests/test_stage5.py`).
 
+Stage 6 (does a delegation brief's text predict the cheapest sufficient tier across a wide range of tasks?; report:
+`results/stage6_report.txt`; `make stage6` runs all six steps; protocol, gate and probe set committed before any run:
+`fixtures/stage6_protocol.md`, `fixtures/stage6_probe.json`). Needs `requirements-stage6.txt` (torch CPU, transformers).
+
+- `make stage6-fetch`: LiveCodeBench per-problem results (leaderboard site repo, pinned commit) and statements (HF; the
+  4.5 GB of test files are streamed, only the statements kept), BigCodeBench Instruct tasks and its per-task × per-model
+  table, CanItEdit and 2 834 tested predictions, SWE-bench Verified statements (outcomes from stage 1), LiteLLM, MiniLM.
+- `make stage6-labels`: model → price → tier, soft labels, cheapest sufficient tier, split-half reliability per source.
+- `make stage6-m2`: M2', MiniLM-L6 fine-tuned on CPU (5 pooled + 4 leave-one-source-out folds, final model),
+  `models/m2_delegation.onnx` (int8) + tokenizer, parity against PyTorch on 100 texts, CPU latency.
+- `make stage6-eval`: M1' and baselines pooled / within source / leave-one-source-out, the gate, the leak ablation;
+  sensitivity to tier scheme B and to equal tokens per task.
+- `make stage6-probe`, `make stage6-report`: the 60 hand-written briefs; the text report and `figures/stage6_*.png`.
+- `python src/routerml/stage6_score.py "brief"`: the reference scorer (onnxruntime + tokenizers only).
+
 Note: the OpenRouter catalogue has no revision. `fetch` keeps the first snapshot it downloads
 (2026-11-13 for the numbers in REPORT.md); a fresh clone gets today's catalogue, which can change the
 prices of the 9 models sourced from it (`results/models.csv`, column `source`).
@@ -67,6 +82,7 @@ prices of the 9 models sourced from it (`results/models.csv`, column `source`).
 | `tests/test_pipeline.py` | pytest suite |
 | `src/routerml/{stage2,ceiling,cascade,traj_fetch,trajectories,steps,bandit}.py`, `tests/test_stage2.py` | stage 2 |
 | `src/routerml/stage4_{common,ladder,controller,workload}.py`, `tests/test_stage4.py` | stage 4 (L1-L3) |
+| `src/routerml/stage6_{fetch,data,features,labels,m2,eval,probe,score,report}.py`, `tests/test_stage6.py` | stage 6 |
 | `results/` | small derived tables and every number in REPORT.md (`build.json`, `metrics.json`, `onnx_check.json`) |
 | `figures/` | cost–quality curve, reliability diagrams, per-repository bars |
 | `models/` | `m1_joint.onnx` (27 KB) and the LightGBM text dump |

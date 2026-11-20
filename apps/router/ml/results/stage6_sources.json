@@ -1,0 +1,80 @@
+{
+ "fetched": "2026-11-20",
+ "livecodebench": [
+  {
+   "repo": "github:LiveCodeBench/livecodebench.github.io",
+   "revision": "f186ab5041d6b768733b8ae8145151c867942134",
+   "path": "build/performances_generation.json",
+   "bytes": 6950346,
+   "licence": "none stated in the site repository (LiveCodeBench code is MIT)"
+  },
+  {
+   "repo": "hf:livecodebench/code_generation_lite",
+   "revision": "0fe84c3912ea0c4d4a78037083943e8f0c4dd505",
+   "path": "test.jsonl,test2.jsonl,test3.jsonl,test4.jsonl,test5.jsonl,test6.jsonl",
+   "bytes_streamed_not_stored": 4485993766,
+   "bytes": 1931076,
+   "licence": "cc"
+  }
+ ],
+ "bigcodebench": [
+  {
+   "repo": "hf:bigcode/bigcodebench",
+   "revision": "b74c0d0bf70d2c0bc459be537895cca163007f1a",
+   "path": "data/v0.1.4-00000-of-00001.parquet",
+   "bytes": 2362110,
+   "licence": "apache-2.0"
+  },
+  {
+   "repo": "hf:bigcode/bigcodebench-perf",
+   "revision": "249b3054d25ae61746e8fbe014782ebe4526f844",
+   "path": "data/instruct-00000-of-00001.parquet",
+   "bytes": 542166,
+   "licence": "none stated"
+  }
+ ],
+ "canitedit": [
+  {
+   "repo": "hf:nuprl/CanItEdit",
+   "revision": "3c07f38b1f9385f3214fcea94d4664c79df0d36a",
+   "path": "data/test-00000-of-00001.parquet",
+   "bytes": 250477,
+   "licence": "mit"
+  },
+  {
+   "repo": "hf:WhyDoYouCare/CanItEditPredictions",
+   "revision": "948196786bf52d272e4b0a4b3b09bf338a317940",
+   "path": "canitedit.jsonl",
+   "bytes": 13298206,
+   "licence": "mit"
+  }
+ ],
+ "swebench_verified": [
+  {
+   "repo": "hf:princeton-nlp/SWE-bench_Verified",
+   "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+   "path": "data/test-00000-of-00001.parquet",
+   "bytes": 2096679,
+   "licence": "none stated"
+  },
+  {
+   "repo": "this repository (stage 1, from SWE-bench/experiments)",
+   "revision": "40f164d5b8f1d249bf95a6df8b74b577fd8e519d",
+   "path": "apps/router/ml/results/outcomes_core.csv.gz + results/models.csv",
+   "bytes": 231738,
+   "licence": "none stated (derived 0/1 table)"
+  }
+ ],
+ "prices": {
+  "repo": "github:BerriAI/litellm",
+  "revision": "46716fad56505ae5a0dc118a64da7a1bd6061ea3",
+  "bytes": 4072196,
+  "licence": "MIT"
+ },
+ "encoder": {
+  "repo": "hf:sentence-transformers/all-MiniLM-L6-v2",
+  "revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+  "bytes": 91567797,
+  "licence": "apache-2.0"
+ }
+}
