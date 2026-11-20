@@ -444,3 +444,31 @@ and keeps the text it had. But `describe` files it under `model_call_failed` ("T
 sentence in the details), not `model_unreachable` ("The connection to the model broke off."): a follow-up could map an
 `api_error` stream event to `ModelUnreachable`/`RouterUnreachable`. Not changed (out of scope). Not verified: a full turn
 through a real router with a cut upstream.
+
+## As built — delegation records, outcomes and escalation (2026-11-20)
+
+For the learned-router thesis (`2026-11-13-learned-router-design.md`): every I2 decision now leaves a labelled record.
+
+- Router: `POST /autoroute/v1/route` writes a `delegations` row (task as seen, candidates, decision, classifier, estimate;
+  the brief text only with `store_payloads`, else lengths, a salted HMAC hash and derived text features). New
+  `POST|GET /autoroute/v1/route/{id}/outcome` (capability `route_outcome`) stores append-only, idempotent reports
+  (`finished`, `redelegated`, `escalated`, `rewound`, `reverted`) and derives `solved` = yes / no / unknown by one written
+  rule (`apps/router/docs/history.md`, "The `solved` label", with its known noise). The route request takes `exclude`,
+  `min_tier`, `attempt`, `escalated_from`, `session_id`, `task.parent_tier`. `[autoroute.delegation] classifier = "jev" |
+  "heuristic" | "learned"` (default `jev`, today's behaviour; `learned` is declared only and falls back to the heuristic,
+  reason recorded; no ONNX or tokenizer dependency). `octo export-delegations --out f.jsonl [--redact]` writes schema
+  `octo.delegation.v1`.
+- Harness: reports `finished` (status, the sub-agent's could-not signal, usage from its rows and messages, duration, its
+  router session), re-delegations, rewinds and reverts, fire-and-forget with a bounded retry, only to a router announcing
+  `route_outcome`. Escalation on failure (`HARNESS_DELEGATION_ESCALATE_ON_FAILURE`, default off): one retry of the same
+  brief on a fresh sub-agent, the failed choice excluded and the next tier as the floor; never for a stop or a budget
+  failure, never twice. The retry's `route_reason` begins "Retried on … after …", which the existing activity row shows; no
+  UI change.
+
+Verified here: `cargo test -p octo` (new `tests/delegations.rs`, 16 tests), clippy, fmt; `go test ./...` (new
+`internal/orchestrator/delegation_test.go`, `delegation_internal_test.go`, `internal/router/outcome_test.go`); and
+`scripts/e2e-router.sh` cases 7 (record, outcome, label, export with and without `--redact`) and 8 (a sub-agent served by
+the mid model answers "Could not do it", the harness escalates once to `deep`, the two records are linked) against the real
+router, the mock model and the router's text rule (the mock cannot classify). Not verified: a real model or agent CLI,
+the JEV classifier deciding a delegation for real, test summaries parsed from a real sub-agent's run feeding the label, an
+ACP sub-agent's outcome against the real router (covered by the fake router only), and how noisy the label is in practice.
