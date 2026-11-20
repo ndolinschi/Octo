@@ -58,6 +58,15 @@ pub struct RouteRecord {
     pub classifier: &'static str,
     pub depth: u32,
     pub budget_key: String,
+    /// The classifier that decided the band (`jev`, `heuristic`, `learned`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decided_by: Option<&'static str>,
+    /// Why the configured classifier did not decide, when it did not.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_reason: Option<String>,
+    /// 2 for the retry of an escalation (absent for a first delegation).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attempt: Option<u32>,
 }
 
 #[derive(Debug, Default)]

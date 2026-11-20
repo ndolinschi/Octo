@@ -70,6 +70,7 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         autoroute_session_budget_action: "downgrade".to_string(),
         autoroute_never_pay_more_for_less: true,
         autoroute_route: octo::auto::RoutePolicy::default(),
+        autoroute_delegation: octo::auto::DelegationSettings::default(),
         prices: octo::history::PriceTable::default(),
         price_refresh: octo::prices::RefreshSettings::default(),
     }

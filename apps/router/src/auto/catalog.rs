@@ -114,6 +114,7 @@ pub struct Tiers {
     /// The live price table: a catalogue refresh is seen by the next decision (each decision reads one snapshot).
     pub prices: LivePrices,
     pub route: super::delegate::RoutePolicy,
+    pub delegation: super::delegate::DelegationClassifier,
 }
 
 impl Tiers {
@@ -146,6 +147,7 @@ impl Tiers {
             never_pay_more_for_less: true,
             prices: LivePrices::default(),
             route: super::delegate::RoutePolicy::default(),
+            delegation: super::delegate::DelegationClassifier::Jev,
         }
     }
 

@@ -30,7 +30,7 @@ pub struct PruneStats {
 
 type Work = Pin<Box<dyn Future<Output = ()> + Send>>;
 
-fn now_millis() -> i64 {
+pub(super) fn now_millis() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
@@ -51,7 +51,7 @@ impl History {
         self.retention
     }
 
-    fn spawn_write(
+    pub(super) fn spawn_write(
         &self,
         what: &'static str,
         work: impl FnOnce(SqlitePool) -> Work + Send + 'static,

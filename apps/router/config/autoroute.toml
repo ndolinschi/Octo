@@ -75,3 +75,13 @@ prefer_flat_rate_for_hard = false
 # Token assumption for the cost estimate of an API candidate (default: the budget-routing shape).
 nominal_input_tokens = 30000
 nominal_output_tokens = 500
+
+# Which classifier decides the band of a delegated task on POST /autoroute/v1/route
+# (see docs/autoroute.md, "Classifier seam"):
+#   "jev"       one Decisions (LLM) call; the heuristic when it cannot run (default, the behaviour so far)
+#   "heuristic" no model call: the deterministic rule on brief length, tools, depth and keywords
+#   "learned"   a trained model; declared, not built: falls back to the heuristic and records why
+[autoroute.delegation]
+classifier = "jev"
+# Model file of the learned classifier. No model runtime is built in yet: a path only changes the recorded reason.
+model_path = ""

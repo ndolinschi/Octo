@@ -200,7 +200,8 @@ async fn health_reports_service_and_capabilities() {
             "route_hints",
             "result_headers",
             "budget_key",
-            "route_api"
+            "route_api",
+            "route_outcome"
         ])
     );
     assert_eq!(value["status"], "ok");

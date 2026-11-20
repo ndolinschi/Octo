@@ -199,12 +199,13 @@ pub async fn decisions(
         .await
 }
 
-pub const CAPABILITIES: [&str; 5] = [
+pub const CAPABILITIES: [&str; 6] = [
     "autoroute",
     "route_hints",
     "result_headers",
     "budget_key",
     "route_api",
+    "route_outcome",
 ];
 
 pub async fn health(State(state): State<AppState>) -> impl IntoResponse {

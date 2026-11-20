@@ -1,5 +1,8 @@
 #[tokio::main]
 async fn main() {
+    if std::env::args().nth(1).as_deref() == Some("export-delegations") {
+        std::process::exit(octo::export::run(std::env::args().skip(2)).await);
+    }
     // `--version` and `--help` print and exit before anything reads the config or binds a port.
     if let Some(out) = octo::cli::action(std::env::args().skip(1)) {
         match out {

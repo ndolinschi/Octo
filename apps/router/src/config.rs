@@ -84,6 +84,7 @@ pub struct Config {
     pub autoroute_session_budget_action: String,
     pub autoroute_never_pay_more_for_less: bool,
     pub autoroute_route: crate::auto::RoutePolicy,
+    pub autoroute_delegation: crate::auto::DelegationSettings,
     /// `prices.toml` rows: `source = "manual"` rows are overrides, the rest are fallback values.
     pub prices: crate::history::PriceTable,
     /// `[prices]` scalar keys: catalogue refresh settings.
@@ -467,6 +468,8 @@ struct AutorouteSection {
     never_pay_more_for_less: bool,
     #[serde(default)]
     route: crate::auto::RoutePolicy,
+    #[serde(default)]
+    delegation: crate::auto::DelegationSettings,
 }
 
 impl Default for AutorouteSection {
@@ -498,6 +501,7 @@ impl Default for AutorouteSection {
             session_budget_action: default_autoroute_session_budget_action(),
             never_pay_more_for_less: default_autoroute_never_pay_more_for_less(),
             route: crate::auto::RoutePolicy::default(),
+            delegation: crate::auto::DelegationSettings::default(),
         }
     }
 }
@@ -782,6 +786,11 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
     if file.autoroute.default_max_tokens == 0 {
         return Err(ConfigError::InvalidAutorouteDefaultMaxTokens);
     }
+    if file.autoroute.delegation.kind().is_none() {
+        return Err(ConfigError::InvalidDelegationClassifier {
+            value: file.autoroute.delegation.classifier,
+        });
+    }
     let (prices, price_refresh) = prices_from_section(file.prices)?;
     for key in &file.autoroute.strip_fields {
         if crate::auto::PROTECTED_STRIP_FIELDS
@@ -850,6 +859,7 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
         autoroute_session_budget_action: file.autoroute.session_budget_action,
         autoroute_never_pay_more_for_less: file.autoroute.never_pay_more_for_less,
         autoroute_route: file.autoroute.route,
+        autoroute_delegation: file.autoroute.delegation,
         prices,
         price_refresh,
     })
@@ -959,6 +969,10 @@ pub enum ConfigError {
     InvalidAutorouteBudgetAction { value: String },
     #[error("autoroute.default_max_tokens must be greater than zero")]
     InvalidAutorouteDefaultMaxTokens,
+    #[error(
+        "invalid autoroute.delegation.classifier {value:?}; expected jev, heuristic, or learned"
+    )]
+    InvalidDelegationClassifier { value: String },
     #[error("invalid bind_addr {addr}")]
     InvalidBindAddr {
         addr: String,

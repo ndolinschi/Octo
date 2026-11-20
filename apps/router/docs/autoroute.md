@@ -11,6 +11,7 @@ Autoroute is the session-aware model ladder for Claude Code → OpenRouter. It l
 | `GET` | `/autoroute/status` | JSON for statusline (`?session=` optional) |
 | `GET` | `/autoroute/v1/calls/{request-id}` | Final tokens and cost of one finished call (see [Harness integration](#harness-integration)) |
 | `POST` | `/autoroute/v1/route` | Routing decision for a delegated task: which candidate (API tier or subscription agent) should do it (see [Routing decision for delegation](#routing-decision-for-delegation)) |
+| `POST`, `GET` | `/autoroute/v1/route/{request-id}/outcome` | What became of a delegation (the harness reports it); the derived `solved` label (see [Delegation record and outcome](#delegation-record-and-outcome)) |
 
 Ladder slugs and policy: `config/autoroute.toml` (default: `deepseek/deepseek-v4.1-flash` → `minimax/minimax-m3.1-flash` → `deepseek/deepseek-v4.1-flash-1017`; no `provider_order` pin; `allow_fallbacks = true`).
 
@@ -192,10 +193,10 @@ Integration I1 of [`docs/superpowers/specs/2026-11-11-router-harness-integration
 `GET /health` (no auth, even with `client_auth_key`) returns HTTP 200 and JSON:
 
 ```json
-{"status":"ok","service":"octo","version":"0.1.0","capabilities":["autoroute","route_hints","result_headers","budget_key","route_api"]}
+{"status":"ok","service":"octo","version":"0.1.0","capabilities":["autoroute","route_hints","result_headers","budget_key","route_api","route_outcome"]}
 ```
 
-`route_api` means `POST /autoroute/v1/route` exists.
+`route_api` means `POST /autoroute/v1/route` exists; `route_outcome` means the outcome endpoint and the delegation records exist.
 
 ### Request headers (harness to router)
 
@@ -338,15 +339,78 @@ A failing classifier is never an error (see below). Errors are Anthropic-shaped 
 
 ### Classification
 
+The band comes from the classifier chosen by `[autoroute.delegation].classifier` (see [Classifier seam](#classifier-seam)); the default, `jev`, is the behaviour described here.
+
 One JEV call on `title` + blank line + `brief` (capped to 2000 characters, head and tail kept, like the proxy path). `task.tools` are sent as the tool names; `depth` and `budget_key` are recorded on the call record. The result maps `Low`, `Mid`, `High` to the band `easy`, `medium`, `hard`; as on the proxy path, an `easy` verdict on a task that asks to inspect files or the repo while tools are available is raised to `medium`.
 
-The call has its own timeout, `[autoroute.route].classifier_timeout_ms` (default 2000; `0` = never call it). When the classifier cannot run (no API key, timeout, connection or HTTP failure, unparsable answer) the band comes from a **deterministic text rule** and `reason` says `classifier not used: <why>` (`no API key`, `timed out`, `call failed`, `disabled`). The rule uses the facts `jev::inspect` already computes on the text:
+The call has its own timeout, `[autoroute.route].classifier_timeout_ms` (default 2000; `0` = never call it). When the classifier cannot run (no API key, timeout, connection or HTTP failure, unparsable answer) the band comes from the **heuristic** (a deterministic rule) and `reason` says `classifier not used: <why>` (`no API key`, `timed out`, `call failed`, `disabled`). The rule (`heuristic-v1`, `src/auto/delegate/band.rs`) uses the facts `jev::inspect` already computes on the text, the tool list and the depth:
 
 1. If the offered candidates are only API candidates of one single tier (plus agents that are unusable), the band is that tier's band (nothing to decide).
-2. Signals: the text mentions several files (the phrase, or two or more paths), mentions tests, or is longer than 1500 characters.
+2. Signals: the text mentions several files (the phrase, or two or more paths), mentions tests, is longer than 1500 characters, or contains a hard-work keyword (`race condition`, `deadlock`, `concurrency`, `architecture`, `security`, `vulnerab…`, `memory leak`, `performance`, `migration`; case-insensitive).
 3. `hard` when the text mentions a stack trace / traceback / exception, or two or more signals hold. `easy` when no signal holds, the text is at most 280 characters and does not ask to inspect files or the repo. Otherwise `medium`.
+4. Caps: a `hard` from rule 3's signal count (not from a stack trace) becomes `medium` when the tool list is non-empty and read-only (no tool name contains `write`, `edit`, `bash`, `shell`, `exec` or `patch`), or when `depth` is 2 or more (a delegation by a sub-agent, usually a narrow piece).
+
+The rule is transparent, not tuned: it is the fallback and the baseline, not a claim about accuracy. Tests: `tests/delegations.rs` (`the_heuristic_rule_reads_keywords_tools_and_depth`), `tests/route_api.rs` (`the_fallback_band_follows_the_documented_text_rule`).
 
 Classifier spend (reported cost, else the price estimate) is added to the `budget_key`'s spend like any classifier call.
+
+### Classifier seam
+
+`[autoroute.delegation]` in `config/autoroute.toml` chooses who decides the band (`DelegationClassifier`, `src/auto/delegate/classifier.rs`):
+
+| `classifier` | What decides | Model call |
+| --- | --- | --- |
+| `jev` (default) | One JEV (Decisions) call, as before; the heuristic when it cannot run | one |
+| `heuristic` | The rule above; `reason` says `(heuristic classifier)` | none |
+| `learned` | A trained model, **declared, not built**: it always falls back to the heuristic and records why (`learned model not available: no autoroute.delegation.model_path configured` / `model file not found` / `this build has no model runtime`) | none |
+
+`model_path` (default empty) names the learned model's file. No model runtime (ONNX, tokenizer) is compiled in: the seam, the setting, the fallback and the record fields exist so a model can be plugged in once the thesis experiment shows it earns its place. Any other `classifier` value fails config load. A decision with a budget reached never runs a classifier (heuristic, status `skipped`).
+
+What the decision says about it: the response carries `classifier` (who decided: `jev`, `heuristic`) and `attempt`; the call record's `route` object adds `decided_by` and `fallback_reason` (beside the existing `classifier`: `used`, `fallback`, `skipped`); the delegation record stores the requested classifier, the one that decided, its version (`jev-v1`, `heuristic-v1`), the status, the fallback reason and nullable per-tier probabilities (`p_low`, `p_mid`, `p_high`, filled only by a learned model). Tests: `tests/delegations.rs`.
+
+### Retry on a stronger candidate (`exclude`, `min_tier`, `attempt`)
+
+The harness escalates a failed delegation by asking again with optional fields:
+
+| Field | Meaning |
+| --- | --- |
+| `exclude` | Candidate ids that are removed before anything is decided (the one that failed) |
+| `min_tier` | `fast`, `balanced`, `deep` (or `low`, `mid`, `high`): API candidates below it are removed, and the band is raised to at least its band, so an agent must be able for that band too |
+| `attempt` | `1` (default) or `2` for the retry; recorded and echoed |
+| `escalated_from` | The `request_id` of the decision being retried; recorded, links the two delegation records |
+| `session_id` | The caller's session (recorded only) |
+| `task.parent_tier` | The tier the delegating agent runs at (recorded only) |
+
+Nothing usable left after `exclude` and `min_tier` is a 422 (`no usable candidate left after exclude and min_tier`). The reason of a retry ends with `Retry of a failed delegation: at least the <band> band.` The router never retries by itself; the harness decides (its policy: `apps/harness/docs/v7.md`, "Escalation on failure").
+
+### Delegation record and outcome
+
+Every decision also writes a **delegation record** (table `delegations`, history database): the task as seen at decision time, the candidates, the decision, the classifier, the estimate. The harness reports what happened afterwards to `POST /autoroute/v1/route/{request_id}/outcome`, and the router derives one label, `solved` = `yes` / `no` / `unknown`. Schema, privacy, the label's rule and its noise, and the export: [history.md](./history.md#delegation-records).
+
+`POST /autoroute/v1/route/{request_id}/outcome` (auth like every autoroute endpoint):
+
+```json
+{"report_id": "agent-7f3:finished", "event": "finished", "status": "completed", "agent_signal": "done",
+ "session_id": "agent-7f3", "duration_ms": 41200,
+ "usage": {"turns": 6, "tool_calls": 9, "failed_tool_calls": 1, "input_tokens": 51000, "output_tokens": 2100,
+           "cache_read_tokens": 30000, "cache_write_tokens": 0, "cost_usd": 0.0123, "cost_estimated": false}}
+```
+
+`event` is `finished`, `redelegated`, `escalated`, `rewound` or `reverted`; `status` (required for `finished`) is `completed`, `failed`, `stopped`, `timed_out` or `agent_error`; `agent_signal` is `done`, `could_not` or `none`; `by` names the request id that followed (`redelegated`, `escalated`), `after_failure` and `reason` qualify it; `tests` (`{"status": "pass"|"fail"|"unknown", "passed", "failed"}`) is the harness's own test result when it has one; `error_kind` is a short code. Unknown fields are ignored. Reports are append-only: the same `report_id` twice is stored once (`"stored": false, "duplicate": true`), so a retried report is safe. Answer (200):
+
+```json
+{"request_id": "octo_…", "stored": true, "duplicate": false, "reports": 1,
+ "solved": "yes", "rule": "completed", "confidence": "low", "note": "Completed with no negative signal and no test run."}
+```
+
+| Status | When |
+| --- | --- |
+| 400 | Not JSON of that shape (unknown `event`, ...) |
+| 422 | Invalid: empty or over-long `report_id`, `finished` without `status`, bad `tests.status`, over-long codes |
+| 404 | No delegation record with that id (unknown, or written to a different database) |
+| 503 | History disabled (nothing can be stored) or a storage error |
+
+`GET` on the same path returns the decision summary, every report (event, receive time, body) and the current label. `GET /health` lists the capability `route_outcome`. Tests: `tests/delegations.rs`.
 
 **Latency.** The decision is one classifier round trip plus in-memory work. Expect the latency of one Decisions call (typically a few hundred milliseconds to about a second; not measured against the real classifier here) when it runs, and well under 10 ms when it does not (no key, `0`, a reached budget, or after a timeout). The harness waits 300 ms by default, so against a real classifier it will often fall back on its own choice; raise the harness wait or lower `classifier_timeout_ms`, whichever fits. The router's worst case is `classifier_timeout_ms`.
 
@@ -370,7 +434,7 @@ Band to tier: `easy` -> `fast`, `medium` -> `balanced`, `hard` -> `deep`.
 
 ### Call record
 
-The decision is stored as a call record (same read-through store as the proxy calls) and readable through `GET /autoroute/v1/calls/{request_id}`: `trigger: "route"`, `model` is the ladder slug (API choice) or the agent id, `tier` is the served `low`/`mid`/`high` or `agent` (`decided_tier` is added when the price rule swapped it), token counts and `cost_usd` are those of the classifier call (zero when it did not run), and an extra `route` object carries `choice`, `band`, `reason`, `classifier` (`used`, `fallback`, `skipped`), `depth` and `budget_key`. The classifier call is also written to the SQLite history as a decision row with purpose `route`.
+The decision is stored as a call record (same read-through store as the proxy calls) and readable through `GET /autoroute/v1/calls/{request_id}`: `trigger: "route"`, `model` is the ladder slug (API choice) or the agent id, `tier` is the served `low`/`mid`/`high` or `agent` (`decided_tier` is added when the price rule swapped it), token counts and `cost_usd` are those of the classifier call (zero when it did not run), and an extra `route` object carries `choice`, `band`, `reason`, `classifier` (`used`, `fallback`, `skipped`), `depth`, `budget_key`, `decided_by` (`jev`, `heuristic`), `fallback_reason` (when the configured classifier did not decide) and `attempt` (only for a retry). The classifier call is also written to the SQLite history as a decision row with purpose `route`.
 
 ### Config (`[autoroute.route]`, `config/autoroute.toml`)
 
@@ -381,4 +445,11 @@ The decision is stored as a call record (same read-through store as the proxy ca
 | `nominal_input_tokens` | `30000` | Token assumption for API cost estimates |
 | `nominal_output_tokens` | `500` | Token assumption for API cost estimates |
 
-Tests: `tests/route_api.rs`.
+`[autoroute.delegation]`:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `classifier` | `jev` | `jev`, `heuristic` or `learned` ([Classifier seam](#classifier-seam)) |
+| `model_path` | `""` | Model file of `learned` (no runtime is built in; only the recorded fallback reason changes) |
+
+Tests: `tests/route_api.rs`, `tests/delegations.rs`.

@@ -1,6 +1,7 @@
 pub mod auto;
 pub mod cli;
 pub mod config;
+pub mod export;
 pub mod history;
 pub mod prices;
 pub mod providers;

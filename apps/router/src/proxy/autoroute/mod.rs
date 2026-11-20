@@ -1,10 +1,12 @@
 mod calls;
 mod compact;
+mod outcome;
 pub mod retry;
 mod route;
 mod status;
 
 pub use calls::call;
+pub use outcome::{read_outcome, report_outcome};
 pub use route::route;
 pub use status::status;
 
