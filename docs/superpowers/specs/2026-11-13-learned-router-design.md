@@ -179,3 +179,45 @@ The thesis's "adaptive routing based on machine learning" means three learned pa
 
 The defence date; whether the department accepts this framing of the topic; own runs for a measured (not simulated)
 end-to-end comparison (criterion 8) — the router must first log a solved / not-solved outcome per session.
+
+---
+
+# Revision 3 (2026-11-20, after stage 6: delegation briefs across a wide range)
+
+Evidence: `apps/router/ml/REPORT.md` section "Stage 6"; `make stage6` in `apps/router/ml` reproduces it from pinned
+sources. The protocol and gate were committed before any data was fetched (`apps/router/ml/fixtures/stage6_protocol.md`).
+
+## What stage 6 tested and decided
+
+The owner's idea: a trained transformer reads a delegated task's brief and picks the tier, so trivial work goes to a
+cheap sub-agent. Hypothesis: SWE-bench is homogeneous, so its text carried no signal (stage 1); across a wide range
+(one-line edits to hard problems) the text would. Tested on four public sources with real per-model outcomes
+(CanItEdit, BigCodeBench Instruct, LiveCodeBench, SWE-bench Verified; 2 800 tasks), labels from model outcomes only,
+features only what `POST /autoroute/v1/route` receives (`title`, `brief`, `tools`, `depth`).
+
+**Not supported.** Pooled, the text models gain +0.027 (M1') / +0.024 (M2') curve area over the fixed-tier mixture,
+but the benchmark's identity alone gains +0.034. Leave-one-benchmark-out they gain +0.0003 / +0.004, below a one-feature
+length model (+0.013) and, against the declared gate, not above the best non-learned baseline (M1' −0.0021
+[−0.0049, −0.0001], M2' +0.0018 [−0.0019, +0.0044]). Within a benchmark the gain is positive but 0.4–7 % of the oracle
+headroom. Under tier scheme B M1' passes the gate formally (+0.0036 [+0.0025, +0.0041]), but a text-free prior gains
++0.0048 on the same split. Leaky fields (difficulty tags, gold solutions, tests) raise "difficulty accuracy" (AUROC +0.11
+to +0.19) and add no routing gain. Which tier is enough is itself unreliable (split-half of the high − low advantage
+−0.04 to 0.53; cheapest-tier kappa 0.34–0.69), and price tiers are not ability tiers (on LiveCodeBench the mid-price
+reasoning models beat the high tier).
+
+## What gets built for delegation routing as a result
+
+1. **No learned text classifier in the router.** `POST /autoroute/v1/route` keeps its classifier call (JEV) and the
+   deterministic text rule as the fallback; `models/m2_delegation.onnx` stays an artefact of the study (23 MB int8,
+   p50 2.7 ms for a short brief), not a router dependency. Acceptance criterion 6 is not pursued for a text model.
+2. **Own-run data first.** The harness logs, per delegation: the brief (title, brief, tools, depth), the candidate and
+   concrete model that ran it, cost, and an outcome (the sub-agent's result accepted / rejected / rewound, tests passing
+   where the task had tests). Another agent is adding this logging. Only with that data can the text question be asked
+   of real briefs; with the measured tier contrast, it needs hundreds of briefs and a subset run on two tiers.
+3. **What delegation routing uses meanwhile** is what earlier stages supported: the kind of work (an edit vs a design
+   task is visible in the brief, but the tier policy per kind is a lookup, L2), a ladder filled by measured cost per
+   solved task rather than list price (L1), and a quality controller over the mixture (L3). The hand-written probe briefs
+   (`fixtures/stage6_probe.json`) become the first regression set for any future brief scorer: M2' orders them with
+   Spearman 0.59 against the a-priori bands, the router's rule 0.40 — a sanity check, not evidence of solved rate.
+4. **For the thesis**, stage 6 is a reported negative result with its decomposition (pooled gain = source identity) and
+   the leak ablation, alongside the noise ceiling of stages 1–3.

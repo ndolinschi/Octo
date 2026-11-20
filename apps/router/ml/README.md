@@ -85,7 +85,7 @@ prices of the 9 models sourced from it (`results/models.csv`, column `source`).
 | `src/routerml/stage6_{fetch,data,features,labels,m2,eval,probe,score,report}.py`, `tests/test_stage6.py` | stage 6 |
 | `results/` | small derived tables and every number in REPORT.md (`build.json`, `metrics.json`, `onnx_check.json`) |
 | `figures/` | cost–quality curve, reliability diagrams, per-repository bars |
-| `models/` | `m1_joint.onnx` (27 KB) and the LightGBM text dump |
+| `models/` | `m1_joint.onnx` (27 KB) and the LightGBM text dump; stage 6: `m2_delegation.onnx` (int8, 23 MB), its tokenizer and `m2_delegation.json` |
 
 Licences: SWE-bench/experiments states none (only derived 0/1 tables are kept here, with attribution);
 SWE-bench Verified's card states none; LiteLLM's price table is MIT; all-MiniLM-L6-v2 is Apache-2.0;
