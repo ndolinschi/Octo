@@ -1,6 +1,7 @@
 package mockllm
 
 import (
+	"regexp"
 	"strings"
 )
 
@@ -95,7 +96,19 @@ func orchestratorReply(r *request) reply {
 	return reply{Text: finalAnswer(r, anchor)}
 }
 
+// failModelMarker makes a sub-agent served by exactly that model answer at once
+// with the could-not signal ("[fail-model:<model>]" in its task): a cheap
+// candidate that fails, for escalation tests.
+var failModelMarker = regexp.MustCompile(`\[fail-model:([^\]\s]+)\]`)
+
 func subAgentReply(r *request) reply {
+	if len(r.Messages) > 0 {
+		for _, m := range failModelMarker.FindAllStringSubmatch(r.Messages[0].text(), -1) {
+			if m[1] == r.Model {
+				return reply{Text: "Could not do it: the mock model " + r.Model + " is scripted to fail this task."}
+			}
+		}
+	}
 	role := r.role()
 	var steps []func() reply
 	if r.hasTool("list_dir") {

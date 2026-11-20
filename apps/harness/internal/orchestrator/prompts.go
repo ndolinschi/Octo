@@ -115,7 +115,8 @@ func (rt *runtime) subAgentPrompt(a projectstore.Agent) string {
 	b.WriteString(rt.brief())
 	b.WriteString(rt.instructionSection(a))
 	b.WriteString("\nYour final message is the only thing your parent sees. Make it a complete, compact report: " +
-		"findings, relevant file paths, what you changed, and open questions. Do not ask for clarification; state your assumptions.\n")
+		"findings, relevant file paths, what you changed, and open questions. Do not ask for clarification; state your assumptions. " +
+		"If you could not do the task, start the report with \"Could not do it:\" and say why.\n")
 	b.WriteString("\nWhen you learn something that will matter in later sessions (a constraint, a decision, where something lives, what failed and why), keep it with remember; never what the instruction files already say.\n")
 	if a.Depth < rt.info.MaxDepth {
 		b.WriteString("You may delegate self-contained sub-tasks with spawn_agent (parallel when issued in one message), " +

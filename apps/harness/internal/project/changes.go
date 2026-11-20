@@ -13,6 +13,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/files"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/local"
 	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
@@ -134,6 +135,22 @@ func (s *Service) RevertChange(ctx context.Context, pid string, id int64) (Rever
 	return RevertResult{FileStat: stat(c.Folder, info)}, nil
 }
 
+// reportRevert tells the Octo router that a change of a sub-agent it chose (tier
+// auto) was reverted: a late "not solved" signal for that delegation's record. In
+// the background; nothing about the revert depends on it.
+func (s *Service) reportRevert(ctx context.Context, db *projectstore.DB, c projectstore.Change) {
+	if c.AgentID == "" || !s.router.Has(router.CapRouteOutcome) {
+		return
+	}
+	a, err := db.Agent(ctx, c.AgentID)
+	if err != nil || a.RouteRequestID == nil || *a.RouteRequestID == "" {
+		return
+	}
+	s.router.SendOutcome(*a.RouteRequestID, router.Outcome{
+		ReportID: "reverted:" + strconv.FormatInt(c.ID, 10), Event: router.EventReverted,
+	})
+}
+
 // recordRevert stores a revert as the inverse of change c in c's turn (c's after back to its before) and announces it
 // with change.recorded. Summarize then nets the file out of GET /changes once it is back to what it was before the
 // turn, the way it does for a file an agent created and deleted again; a partial revert leaves the rest listed. It
@@ -152,6 +169,7 @@ func (s *Service) recordRevert(ctx context.Context, db *projectstore.DB, pid str
 	case projectstore.ChangeDeleted:
 		inv.Kind, inv.BeforeHash = projectstore.ChangeCreated, nil
 	}
+	s.reportRevert(ctx, db, c)
 	rec, err := db.AddChange(ctx, projectstore.NewChange{Change: inv})
 	if err != nil {
 		slog.Error("record revert", "project", pid, "change", c.ID, "err", err)

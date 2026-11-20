@@ -230,10 +230,12 @@ func (o *Orchestrator) RewindSession(ctx context.Context, pid, sid string, messa
 		}
 		o.hub.Publish(pid, events.FileChanged, map[string]any{"folder": a.f.Folder, "path": a.f.Path, "source": events.SourceUser})
 	}
+	routed, _ := db.RoutedCutIn(ctx, sid, messageID)
 	res, err := db.RewindIn(ctx, sid, messageID)
 	if err != nil {
 		return rep, err
 	}
+	o.delegationsRewound(routed, messageID)
 	rep.MessagesCut, rep.AgentsCut = res.MessagesCut, res.AgentsCut
 	o.rewindBoundary(ctx, db, orch.ID)
 	if rep.ACPSessionReset {

@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
@@ -122,15 +124,52 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 			}()
 		}
 	}
-	var ext *acpTarget
-	model := rt.models.ForTier(in.Tier)
+	requestID := ""
+	if route != nil {
+		requestID = route.RequestID
+	}
+	// The same work delegated again under this parent: the earlier delegation's
+	// result was not enough (a "not solved" signal for its record).
+	rt.noteRedelegation(parent, in, requestID)
 	if in.Agent == "" && strings.TrimSpace(in.Model) != "" {
 		return "spawn_agent: model only applies together with agent; built-in sub-agents use tier", true, nil
 	}
+	model, ext, msg := rt.spawnTarget(in)
+	if msg != "" {
+		return msg, true, nil
+	}
+	run := rt.runSpawned(ctx, parent, in, tier, model, ext, route, budgetErr)
+	if requestID == "" {
+		rt.o.dlog.add(parent.ID, &delegated{title: in.Title, task: in.Task, ended: true, failed: run.failed() != ""})
+		return run.out, run.isErr, run.err
+	}
+	entry := &delegated{requestID: requestID, title: in.Title, task: in.Task}
+	rt.o.dlog.add(parent.ID, entry)
+	escalate := rt.escalationEnabled() && rt.routerOutcomes()
+	why := run.failed()
+	// When a retry is possible, wait for the router's label: it knows whether
+	// the tests in the sub-agent failed at the end.
+	ack := rt.reportFinished(ctx, requestID, run, escalate && why == "" && run.status == router.StatusCompleted)
+	if why == "" && ack.Rule == "tests_failed" {
+		why = "tests_failed"
+	}
+	rt.o.dlog.finish(entry, why != "")
+	if escalate && why != "" && route.Choice != "" {
+		if second, ok := rt.escalate(ctx, parent, in, route, run, why); ok {
+			return second.out, second.isErr, second.err
+		}
+	}
+	return run.out, run.isErr, run.err
+}
+
+// spawnTarget resolves who runs a sub-agent: the model recorded on its row and,
+// for an ACP agent, the target to start. msg is a tool error when it cannot start.
+func (rt *runtime) spawnTarget(in spawnInput) (model string, ext *acpTarget, msg string) {
+	model = rt.models.ForTier(in.Tier)
 	if in.Agent != "" {
 		target, msg := rt.pickACPAgent(in.Agent, strings.TrimSpace(in.Model))
 		if msg != "" {
-			return msg, true, nil
+			return "", nil, msg
 		}
 		ext, model = &target, target.recorded()
 	} else if plugins.IsACPRef(model) {
@@ -143,7 +182,7 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		}
 		target, msg := rt.pickACPAgent(id, m)
 		if msg != "" {
-			return fmt.Sprintf("tier %q is mapped to %q: %s", in.Tier, model, msg), true, nil
+			return "", nil, fmt.Sprintf("tier %q is mapped to %q: %s", in.Tier, model, msg)
 		}
 		ext, model = &target, target.recorded()
 	} else if model == "" && rt.isACPOrchestrator() {
@@ -152,21 +191,30 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 			m := rt.roleModel(id, in.Tier)
 			target, msg := rt.pickACPAgent(id, m)
 			if msg != "" {
-				return fmt.Sprintf("tier %q on session agent %q: %s", in.Tier, rt.models.Orchestrator, msg), true, nil
+				return "", nil, fmt.Sprintf("tier %q on session agent %q: %s", in.Tier, rt.models.Orchestrator, msg)
 			}
 			ext, model = &target, target.recorded()
 		}
 	}
 	if len(in.Env) > 0 {
 		if ext == nil {
-			return "spawn_agent: env only applies together with agent; a built-in sub-agent passes env on its own bash calls", true, nil
+			return "", nil, "spawn_agent: env only applies together with agent; a built-in sub-agent passes env on its own bash calls"
 		}
 		env, err := rt.o.secrets.Resolve(rt.pid(), in.Env)
 		if err != nil {
-			return "spawn_agent: " + err.Error(), true, nil
+			return "", nil, "spawn_agent: " + err.Error()
 		}
 		ext.env = env
 	}
+	return model, ext, ""
+}
+
+// runSpawned creates the sub-agent row, runs it to completion, settles it and
+// returns spawn_agent's tool result with how the run ended.
+func (rt *runtime) runSpawned(ctx context.Context, parent projectstore.Agent, in spawnInput, tier projectstore.Tier,
+	model string, ext *acpTarget, route *projectstore.RouteInfo, budgetErr error) (run spawnRun) {
+	run.tier, run.started = tier, time.Now()
+	defer func() { run.finished = time.Now() }()
 	toolUseID := tools.ToolUseID(ctx)
 	c, cancel := dbCtx(ctx)
 	child, err := rt.db.CreateAgent(c, projectstore.NewAgent{
@@ -176,21 +224,25 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 	})
 	cancel()
 	if err != nil {
-		return "", false, fmt.Errorf("create agent: %w", err)
+		run.err, run.status, run.errKind = fmt.Errorf("create agent: %w", err), router.StatusFailed, "harness"
+		return run
 	}
+	run.child = child
 	rt.publishAgent(events.AgentCreated, child)
 	rt.registerAgentSession(ctx, child)
 	if budgetErr != nil {
 		// The router's 402: the same failure as a budget stop mid-run.
 		rt.settleProblem(ctx, child.ID, describe(budgetErr))
-		return "", false, budgetErr
+		run.err, run.status, run.errKind = budgetErr, router.StatusFailed, "budget"
+		return run
 	}
 
 	task := anthropic.NewUserMessage(anthropic.NewTextBlock(in.Task))
 	sink := &agentSink{rt: rt, agentID: child.ID}
 	if err := sink.Message(ctx, "user", task); err != nil {
 		rt.settleProblem(ctx, child.ID, describe(err))
-		return rt.redact("sub-agent failed: " + modelText(describe(err))), true, nil
+		run.out, run.isErr, run.status, run.errKind = rt.redact("sub-agent failed: "+modelText(describe(err))), true, router.StatusAgentError, "harness"
+		return run
 	}
 	childCtx, stopChild := context.WithCancel(ctx)
 	endRun := rt.o.registerRun(child.ID, stopChild, ext == nil, false)
@@ -209,25 +261,34 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 	switch {
 	case stoppedByUser:
 		rt.settle(ctx, child.ID, projectstore.StatusCancelled, "", "")
-		return "sub-agent stopped by the user", true, nil
+		run.out, run.isErr, run.status = "sub-agent stopped by the user", true, router.StatusStopped
 	case err == nil:
 		rt.settle(ctx, child.ID, projectstore.StatusCompleted, text, "")
-		if text == "" {
-			return "(sub-agent returned no report)", false, nil
+		run.status, run.signal = router.StatusCompleted, router.SignalDone
+		switch {
+		case strings.TrimSpace(text) == "":
+			run.out, run.signal = "(sub-agent returned no report)", router.SignalNone
+		case couldNot(text):
+			run.out, run.signal = rt.o.opts.Limits.CapReport(rt.redact(text)), router.SignalCouldNot
+		default:
+			run.out = rt.o.opts.Limits.CapReport(rt.redact(text))
 		}
-		return rt.o.opts.Limits.CapReport(rt.redact(text)), false, nil
 	case router.IsBudget(err):
 		// Not a recoverable tool error: stop the whole turn, no more upstream calls.
 		rt.settleProblem(ctx, child.ID, describe(err))
-		return "", false, err
+		run.err, run.status, run.errKind = err, router.StatusFailed, "budget"
 	case ctx.Err() != nil || errors.Is(err, errAgentCancelled):
 		rt.settle(ctx, child.ID, projectstore.StatusCancelled, "", "")
-		return "sub-agent cancelled", true, nil
+		run.out, run.isErr, run.status = "sub-agent cancelled", true, router.StatusStopped
 	default:
 		u := describe(err)
 		rt.settleProblem(ctx, child.ID, u)
-		return rt.redact("sub-agent failed: " + modelText(u)), true, nil
+		run.out, run.isErr, run.status, run.errKind = rt.redact("sub-agent failed: "+modelText(u)), true, router.StatusAgentError, u.Code
+		if errors.Is(err, agent.ErrMaxTurns) || errors.Is(err, context.DeadlineExceeded) {
+			run.status = router.StatusTimedOut
+		}
 	}
+	return run
 }
 
 // runChild runs the child through the built-in loop, or through ext when set.

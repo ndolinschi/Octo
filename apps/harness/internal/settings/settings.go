@@ -62,6 +62,7 @@ const (
 	IDChildEnvAllow     = childenv.AllowEnvVar // HARNESS_CHILD_ENV_ALLOW
 	IDACPTrace          = "HARNESS_ACP_TRACE"
 	IDFeatureAutoMemory = "HARNESS_FEATURE_AUTO_MEMORY"
+	IDEscalateOnFailure = "HARNESS_DELEGATION_ESCALATE_ON_FAILURE"
 )
 
 const (
@@ -150,6 +151,8 @@ var defs = []def{
 		hint: "One file per agent session under the data folder's traces directory, secrets removed, size-capped. Turn on to diagnose a failing agent, then send the file with the diagnostics report."},
 	{id: IDFeatureAutoMemory, kind: KindBool, label: "Auto-memory prompt & digest", group: GroupAdvanced, applies: AppliesNow,
 		hint: "Prompt before saving remembered items when project auto-memory is off and digest completed turns when allowed.", builtin: func() string { return "true" }},
+	{id: IDEscalateOnFailure, kind: KindBool, label: "Retry a failed delegation once on a stronger candidate", group: GroupRouter, applies: AppliesNow,
+		hint: "Policy delegation.escalate_on_failure: on = once, off = off. Only for sub-agents the router chose (tier auto); never for a stopped run, never twice, within the project budget."},
 }
 
 // IDs returns every setting id, in display order.
@@ -585,7 +588,7 @@ func (m *Manager) applyNow(changed []string, file map[string]string) {
 			key = true
 		case IDACPTrace:
 			trace = true
-		case IDFeatureAutoMemory:
+		case IDFeatureAutoMemory, IDEscalateOnFailure:
 			feat = true
 		case IDModelOrch, IDModelFast, IDModelBalanced, IDModelDeep:
 			models = true
@@ -620,12 +623,14 @@ func (m *Manager) applyNow(changed []string, file map[string]string) {
 		m.opts.Apply.ACPTrace(routerOn(m.effective(IDACPTrace, file)))
 	}
 	if feat && m.opts.Apply.Features != nil {
-		v := strings.TrimSpace(m.effective(IDFeatureAutoMemory, file))
-		on := true
-		if v != "" {
-			on = routerOn(v)
+		for _, d := range features.Defs() {
+			v := strings.TrimSpace(m.effective(d.Env, file))
+			on := d.Default
+			if v != "" {
+				on = routerOn(v)
+			}
+			m.opts.Apply.Features(d.ID, on)
 		}
-		m.opts.Apply.Features(features.AutoMemory, on)
 	}
 	if allow && m.opts.Apply.ChildEnvAllow != nil {
 		m.opts.Apply.ChildEnvAllow(m.effective(IDChildEnvAllow, file))

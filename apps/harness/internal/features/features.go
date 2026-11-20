@@ -14,6 +14,9 @@ import (
 // HARNESS_FEATURE_* settings.
 const (
 	AutoMemory = "auto_memory"
+	// EscalateOnFailure: a delegation the router chose that fails is retried once
+	// on the next stronger candidate (policy "once"); off means "off".
+	EscalateOnFailure = "escalate_on_failure"
 )
 
 // Def describes one built-in feature flag.
@@ -32,6 +35,13 @@ var defs = []Def{
 		Label:       "Auto-memory prompt & digest",
 		Description: "Prompt to save remembered items when project auto-memory is off and digest completed turns when allowed.",
 		Default:     true,
+	},
+	{
+		ID:          EscalateOnFailure,
+		Env:         "HARNESS_DELEGATION_ESCALATE_ON_FAILURE",
+		Label:       "Retry a failed delegation once on a stronger candidate",
+		Description: "When a sub-agent the router chose fails (agent error, timeout, its own could-not, failing tests), start a fresh sub-agent with the same brief on the next stronger candidate, once, within the budget.",
+		Default:     false,
 	},
 }
 

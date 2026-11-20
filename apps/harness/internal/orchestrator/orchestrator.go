@@ -140,6 +140,8 @@ type Orchestrator struct {
 	imgCaps imageCaps
 	// adv holds what ACP agents advertised (AdvertisedModels).
 	adv advertisedStore
+	// dlog remembers recent delegations per parent, to recognise a re-delegation (delegation.go).
+	dlog delegationLog
 
 	trackers  map[string]*changes.Tracker // guarded by mu
 	memories  map[string]*memory.Service  // guarded by mu

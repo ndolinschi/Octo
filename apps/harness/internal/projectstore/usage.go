@@ -258,6 +258,39 @@ func (d *DB) UsageLog(ctx context.Context) ([]UsageEntry, error) {
 	return out, rows.Err()
 }
 
+// UsageTotals is the sum of an agent's own usage rows (role empty): what its
+// thread used, for a delegation's outcome report.
+type UsageTotals struct {
+	InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens int64
+	// CostUSD sums the rows that carry a cost; nil when none does.
+	CostUSD *float64
+	// CostEstimated: some summed cost is an estimate (the router's table, or
+	// tokens the harness estimated). FlatRate: some row is a subscription
+	// agent's per-token estimate, not money.
+	CostEstimated, FlatRate bool
+}
+
+// AgentUsageTotals sums the agent's own usage rows.
+func (d *DB) AgentUsageTotals(ctx context.Context, agentID string) (UsageTotals, error) {
+	var t UsageTotals
+	var cost sql.NullFloat64
+	var est, flat, tokEst int64
+	err := d.sql.QueryRowContext(ctx, `SELECT COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+		COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(cache_write_tokens), 0), SUM(cost_usd),
+		COALESCE(MAX(cost_estimated), 0), COALESCE(MAX(flat_rate), 0), COALESCE(MAX(tokens_estimated), 0)
+		FROM usage WHERE agent_id = ? AND role IS NULL`, agentID).
+		Scan(&t.InputTokens, &t.OutputTokens, &t.CacheReadTokens, &t.CacheWriteTokens, &cost, &est, &flat, &tokEst)
+	if err != nil {
+		return UsageTotals{}, err
+	}
+	if cost.Valid {
+		v := cost.Float64
+		t.CostUSD = &v
+	}
+	t.CostEstimated, t.FlatRate = est != 0 || tokEst != 0, flat != 0
+	return t, nil
+}
+
 // ACPUsageSince sums the cost and input tokens of the agent's ACP usage rows
 // recorded at or after since: what an ACP session has reported so far, so a
 // process that resumes it can continue the session's cumulative counters.

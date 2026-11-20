@@ -53,6 +53,8 @@ type RouteTask struct {
 	Brief string   `json:"brief"`
 	Tools []string `json:"tools"`
 	Depth int      `json:"depth"`
+	// ParentTier is the tier the delegating agent runs at (recorded by the router).
+	ParentTier string `json:"parent_tier,omitempty"`
 }
 
 // Candidate is one who-can-do-it option offered to the router: an API tier
@@ -75,6 +77,16 @@ type RouteRequest struct {
 	BudgetKey  string      `json:"budget_key"`
 	Task       RouteTask   `json:"task"`
 	Candidates []Candidate `json:"candidates"`
+	// SessionID is the main session the delegation belongs to (recorded only).
+	SessionID string `json:"session_id,omitempty"`
+	// Attempt is 2 for the retry of an escalation (0 or 1: a first delegation).
+	Attempt int `json:"attempt,omitempty"`
+	// EscalatedFrom is the request id of the failed delegation a retry repeats.
+	EscalatedFrom string `json:"escalated_from,omitempty"`
+	// Exclude lists candidate ids the router must not choose.
+	Exclude []string `json:"exclude,omitempty"`
+	// MinTier is the lowest API tier (and band) the choice may have.
+	MinTier string `json:"min_tier,omitempty"`
 }
 
 // RouteDecision is the router's answer.
@@ -90,6 +102,8 @@ type RouteDecision struct {
 	EstimatedCostUSD *float64      `json:"estimated_cost_usd"`
 	RequestID        string        `json:"request_id"`
 	Alternatives     []Alternative `json:"alternatives"`
+	// Classifier is who decided the band (jev, heuristic); empty from an older router.
+	Classifier string `json:"classifier"`
 }
 
 // Alternative is a candidate the router considered but did not choose.

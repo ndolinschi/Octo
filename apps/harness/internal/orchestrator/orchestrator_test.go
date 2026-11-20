@@ -156,6 +156,7 @@ type fakeReq struct {
 	Stream    bool              `json:"stream"`
 	System    json.RawMessage   `json:"system"`
 	MaxTokens int64             `json:"max_tokens"`
+	Model     string            `json:"model"`
 }
 
 func (f fakeReq) isOrchestrator() bool {
