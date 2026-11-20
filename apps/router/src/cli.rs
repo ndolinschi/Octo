@@ -7,7 +7,8 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub fn help() -> String {
     format!(
         "octo {VERSION}: the Octo HTTP proxy and model router\n\n\
-         usage: octo [--version | --help]\n\n\
+         usage: octo [--version | --help]\n\
+         \x20      octo export-delegations --out FILE.jsonl [--db PATH] [--redact]\n\n\
          With no arguments it starts the proxy. Configuration: $OCTO_CONFIG (a directory holding server.toml),\n\
          else ./config; see apps/router/docs/README.md.\n"
     )

@@ -287,6 +287,30 @@ func orAgentMode(m string) string {
 	return ModeAgent
 }
 
+// RoutedCutIn lists the router request ids of the sub-agents a rewind of the
+// session sid to fromID would hide (those spawned with tier auto).
+func (d *DB) RoutedCutIn(ctx context.Context, sid string, fromID int64) ([]string, error) {
+	var created string
+	if err := d.sql.QueryRowContext(ctx, `SELECT created_at FROM messages WHERE id = ?`, fromID).Scan(&created); err != nil {
+		return nil, err
+	}
+	rows, err := d.sql.QueryContext(ctx, `SELECT route_request_id FROM agents WHERE parent_id IS NOT NULL AND created_at >= ?
+		AND rewound_at IS NULL AND (? = '' OR session_id = ?) AND route_request_id IS NOT NULL AND route_request_id != ''`, created, sid, sid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // CountCut says how many messages and sub-agents a Rewind to fromID would hide.
 func (d *DB) CountCut(ctx context.Context, fromID int64) (messages, agents int, err error) {
 	return d.CountCutIn(ctx, "", fromID)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 )
@@ -25,6 +26,47 @@ type RouteScript struct {
 	CostUSD float64
 	// NoRequestID leaves request_id out of the answer.
 	NoRequestID bool
+	// Retry, when set, answers a request with attempt 2 (an escalation) instead:
+	// its Choice (empty: the first candidate left after exclude and min_tier).
+	Retry *RouteScript
+	// OutcomeStatus, when not 0 or 200, answers every outcome report with it.
+	OutcomeStatus int
+	// Label is the solved label the outcome endpoint answers (default: yes /
+	// completed); the fake does not derive one.
+	Label, Rule string
+}
+
+// OutcomeSeen is one outcome report the fake received.
+type OutcomeSeen struct {
+	RequestID string
+	Header    http.Header
+	Body      map[string]any
+}
+
+// Outcomes returns the outcome reports seen so far, oldest first.
+func (r *Router) Outcomes() []OutcomeSeen {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]OutcomeSeen(nil), r.outcomes...)
+}
+
+func (r *Router) outcomeEndpoint(w http.ResponseWriter, req *http.Request, id string) {
+	raw, _ := io.ReadAll(req.Body)
+	var body map[string]any
+	_ = json.Unmarshal(raw, &body)
+	r.mu.Lock()
+	s := r.route
+	r.outcomes = append(r.outcomes, OutcomeSeen{RequestID: id, Header: req.Header.Clone(), Body: body})
+	r.mu.Unlock()
+	if s != nil && s.OutcomeStatus != 0 && s.OutcomeStatus != http.StatusOK {
+		writeJSON(w, s.OutcomeStatus, map[string]any{"error": "scripted outcome status"})
+		return
+	}
+	label, rule := "yes", "completed"
+	if s != nil && s.Label != "" {
+		label, rule = s.Label, s.Rule
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"stored": true, "solved": label, "rule": rule, "confidence": "low"})
 }
 
 // RouteSeen is one route request the fake received.
@@ -80,8 +122,25 @@ func (r *Router) routeEndpoint(w http.ResponseWriter, req *http.Request) {
 	var body struct {
 		BudgetKey  string           `json:"budget_key"`
 		Candidates []routeCandidate `json:"candidates"`
+		Attempt    int              `json:"attempt"`
+		Exclude    []string         `json:"exclude"`
+		MinTier    string           `json:"min_tier"`
 	}
-	if json.Unmarshal(raw, &body) != nil || len(body.Candidates) == 0 {
+	_ = json.Unmarshal(raw, &body)
+	if body.Attempt == 2 && s.Retry != nil {
+		retry := *s.Retry
+		s = &retry
+		rank := map[string]int{"fast": 0, "balanced": 1, "deep": 2}
+		kept := body.Candidates[:0]
+		for _, c := range body.Candidates {
+			if slices.Contains(body.Exclude, c.ID) || (c.Kind == "api" && body.MinTier != "" && rank[c.Tier] < rank[body.MinTier]) {
+				continue
+			}
+			kept = append(kept, c)
+		}
+		body.Candidates = kept
+	}
+	if len(body.Candidates) == 0 {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"type": "error", "error": map[string]string{
 			"type": "no_candidate", "message": "no usable candidate"}})
 		return

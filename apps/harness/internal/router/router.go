@@ -63,6 +63,8 @@ type Router struct {
 	nextProbe time.Time
 	probing   bool
 	spent     map[string]float64
+
+	out outcomes
 }
 
 // New probes baseURL's origin once, synchronously and with a short timeout.

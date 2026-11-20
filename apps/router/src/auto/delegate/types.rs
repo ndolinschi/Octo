@@ -51,7 +51,7 @@ impl Band {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ApiTier {
     Fast,
@@ -91,9 +91,18 @@ impl ApiTier {
             Self::Deep => Band::Hard,
         }
     }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "fast" | "low" => Some(Self::Fast),
+            "balanced" | "mid" => Some(Self::Balanced),
+            "deep" | "high" => Some(Self::Deep),
+            _ => None,
+        }
+    }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Candidate {
     Api {
@@ -142,6 +151,9 @@ pub struct Task {
     pub tools: Vec<String>,
     #[serde(default)]
     pub depth: u32,
+    /// The tier the delegating (parent) agent runs at, when the caller knows it.
+    #[serde(default)]
+    pub parent_tier: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -149,6 +161,21 @@ pub struct RouteRequest {
     pub budget_key: String,
     pub task: Task,
     pub candidates: Vec<Candidate>,
+    /// The caller's session the delegation belongs to (recorded only).
+    #[serde(default)]
+    pub session_id: Option<String>,
+    /// 1 for a first delegation, 2 for the retry of an escalation.
+    #[serde(default)]
+    pub attempt: Option<u32>,
+    /// The request id of the delegation this one retries.
+    #[serde(default)]
+    pub escalated_from: Option<String>,
+    /// Candidate ids that must not be chosen (the one that failed).
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    /// The lowest API tier (and band) the choice may have.
+    #[serde(default)]
+    pub min_tier: Option<ApiTier>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -167,4 +194,7 @@ pub struct RouteResponse {
     pub estimated_cost_usd: Option<f64>,
     pub alternatives: Vec<Alternative>,
     pub request_id: String,
+    /// The classifier that decided the band (`jev`, `heuristic`; `learned` once a model runs).
+    pub classifier: &'static str,
+    pub attempt: u32,
 }

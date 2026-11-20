@@ -21,6 +21,7 @@ The **id** of a setting is the variable name in `harness.env`, so the file stays
 | `HARNESS_ACP_TRACE` | bool | advanced | now | Record an ACP wire trace: one JSON-lines file per agent session under `{data-dir}/traces/`, secrets removed, capped (see [acp-orchestrator.md](./acp-orchestrator.md#diagnostics-and-the-wire-trace)). Takes effect for sessions that start afterwards. |
 | `HARNESS_CHILD_ENV_ALLOW` | list | advanced | now | Extra variable names / `PREFIX_*` patterns passed to every child process (see README "Child environment"). Stored comma separated. |
 | `HARNESS_FEATURE_AUTO_MEMORY` | bool | advanced | now | Prompt before saving remembered items when a project's auto-memory is off, and digest completed turns when it is allowed. Default `true`. |
+| `HARNESS_DELEGATION_ESCALATE_ON_FAILURE` | bool | router | now | Policy `delegation.escalate_on_failure`: on = `once`, off = `off`. A sub-agent the router chose that fails (agent error, timeout, its own "Could not do it", failing tests at the end) is retried once with the same brief on the next stronger candidate. Default **off** (it spends money unasked). Feature flag `escalate_on_failure` in `GET /v1/config` `features`. Details: [architecture.md](./architecture.md) "Delegation outcomes and escalation". |
 
 The harness stores and reports the three `OCTO_ROUTER_*` settings and otherwise ignores them. They are never passed to child processes (`OCTO_ROUTER_` is on the child-environment deny list, which even `HARNESS_CHILD_ENV_ALLOW` cannot override).
 

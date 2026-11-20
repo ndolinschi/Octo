@@ -416,6 +416,9 @@ fn row(model: &str, cost_usd: f64) -> CallRow {
             classifier: "used",
             depth: 0,
             budget_key: "k".to_string(),
+            decided_by: Some("jev"),
+            fallback_reason: None,
+            attempt: None,
         }),
     }
 }

@@ -13,6 +13,7 @@ mod call_kind;
 mod call_provider;
 mod connect;
 mod cost;
+mod delegations;
 mod error;
 mod metrics;
 mod outcomes;
@@ -25,6 +26,10 @@ pub use call_provider::CallProvider;
 pub use cost::{
     blended_cost_micros, estimate_ratio, estimate_warn_due, resolve_cost, utc_date, utc_timestamp,
     warn_estimate_ratio, CostSource, LivePrices, ModelPrice, PriceSource, PriceTable, ResolvedCost,
+};
+pub use delegations::{
+    all_delegations, estimate_tokens, session_calls_cost, session_outcome, DelegationInsert,
+    LabelColumns, StoredDelegation, StoredOutcome,
 };
 pub use error::HistoryError;
 pub use metrics::{CostMicros, Millis, TokenCount};

@@ -93,6 +93,10 @@ impl AppState {
                 tiers.never_pay_more_for_less = config.autoroute_never_pay_more_for_less;
                 tiers.prices = prices.live();
                 tiers.route = config.autoroute_route.clone();
+                tiers.delegation = config
+                    .autoroute_delegation
+                    .kind()
+                    .expect("config load validates autoroute.delegation.classifier");
                 tiers
             }),
             config,

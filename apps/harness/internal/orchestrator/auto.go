@@ -61,6 +61,16 @@ type autoPlan struct {
 	info         projectstore.RouteInfo
 	// budget is set when the router said the budget is reached.
 	budget error
+	// decided: the router chose a candidate that can start (not a fallback).
+	decided bool
+}
+
+// autoRetry asks the router again for a failed delegation (escalation): attempt
+// 2, the failed candidate excluded, the next tier as the floor.
+type autoRetry struct {
+	from    string
+	exclude []string
+	minTier string
 }
 
 func (rt *runtime) apiCandidates() []autoCand {
@@ -189,6 +199,12 @@ func (rt *runtime) autoDefault(reason string) autoPlan {
 // resolveAuto decides who runs a task whose tier is "auto". It never fails:
 // without a usable router answer the plan is autoDefault with the reason.
 func (rt *runtime) resolveAuto(ctx context.Context, parent projectstore.Agent, in spawnInput) autoPlan {
+	return rt.resolveAutoWith(ctx, parent, in, nil)
+}
+
+// resolveAutoWith is resolveAuto; retry, when set, makes it the escalation's
+// second request.
+func (rt *runtime) resolveAutoWith(ctx context.Context, parent projectstore.Agent, in spawnInput, retry *autoRetry) autoPlan {
 	if !rt.routeEnabled() {
 		return rt.autoDefault(reasonNoRouter)
 	}
@@ -200,7 +216,12 @@ func (rt *runtime) resolveAuto(ctx context.Context, parent projectstore.Agent, i
 		BudgetKey: rt.pid(),
 		Task: router.RouteTask{
 			Title: in.Title, Brief: clipRunes(in.Task, routeBriefRunes), Tools: rt.childTools(parent), Depth: parent.Depth + 1,
+			ParentTier: rt.hints(parent).TierHint,
 		},
+		SessionID: rt.sessionID,
+	}
+	if retry != nil {
+		req.Attempt, req.EscalatedFrom, req.Exclude, req.MinTier = 2, retry.from, retry.exclude, retry.minTier
 	}
 	for _, c := range cands {
 		req.Candidates = append(req.Candidates, c.c)
@@ -222,7 +243,7 @@ func (rt *runtime) resolveAuto(ctx context.Context, parent projectstore.Agent, i
 	if c.agent == "" {
 		// The model of an API tier is the router's to serve: the tier hint and
 		// the project's tier policy carry the choice, as for any sub-agent.
-		p.tier = c.tier
+		p.tier, p.decided = c.tier, true
 		return p
 	}
 	model := c.model
@@ -239,7 +260,7 @@ func (rt *runtime) resolveAuto(ctx context.Context, parent projectstore.Agent, i
 			model = d.Model
 		}
 	}
-	p.tier, p.agent, p.model = bandTier(d.Band), c.agent, model
+	p.tier, p.agent, p.model, p.decided = bandTier(d.Band), c.agent, model, true
 	return p
 }
 

@@ -7,13 +7,14 @@ use serde_json::json;
 use crate::auto::calls::{CallRow, PersistedCall, RouteRecord};
 use crate::auto::decide::classify::{bump_tool_inspection_off_easy, record, RecordPlan};
 use crate::auto::{body, jev, new_request_id, valid_budget_key, Auto, Hints, Reject};
-use crate::history::{usage_from_output, History};
+use crate::history::{usage_from_output, DelegationInsert, History};
 
-use super::band;
+use super::band::{has_hard_keyword, read_only, HeuristicInput};
+use super::classifier::{DelegationClassifier, Verdict, VerdictStatus, JEV_VERSION};
 use super::policy::{
     api_swap, estimate_usd, select, select_after_budget, How, RoutePolicy, Selection,
 };
-use super::types::{Alternative, Band, Candidate, RouteRequest, RouteResponse};
+use super::types::{Alternative, ApiTier, Band, Candidate, RouteRequest, RouteResponse};
 
 pub struct RouteInput<'a> {
     pub auto: &'a Auto,
@@ -29,26 +30,12 @@ pub enum RouteError {
     Budget(Reject),
 }
 
-enum Classification {
-    Used,
-    NotUsed(&'static str),
-    BudgetReached,
-}
-
-struct Classified {
-    band: Band,
-    how: Classification,
-    cost_micros: u64,
-    cost_source: &'static str,
-    input_tokens: u64,
-    output_tokens: u64,
-}
-
 pub async fn route(
     input: RouteInput<'_>,
-    request: RouteRequest,
+    mut request: RouteRequest,
 ) -> Result<RouteResponse, RouteError> {
     validate(&request)?;
+    narrow(&mut request)?;
     let auto = input.auto;
     let tiers = auto.tiers();
     let policy = &tiers.route;
@@ -70,11 +57,31 @@ pub async fn route(
     let spent = auto.budget_spent(&key);
     let reached = budget.micros > 0 && spent >= budget.micros;
     let candidates = &request.candidates;
+    let heuristic_input = HeuristicInput {
+        facts: &facts,
+        text: &text,
+        tools: &request.task.tools,
+        depth: request.task.depth,
+        candidates,
+    };
+    let floor = request.min_tier.map(ApiTier::band);
+    let raise = |mut verdict: Verdict| {
+        if let Some(floor) = floor {
+            if floor.rank() > verdict.band.rank() {
+                verdict.band = floor;
+            }
+        }
+        verdict
+    };
 
-    let (classified, selection) = if reached {
-        let band = band::fallback(&facts, &text, candidates);
+    let (verdict, selection) = if reached {
+        let verdict = raise(Verdict::heuristic(
+            &heuristic_input,
+            tiers.delegation.name(),
+            VerdictStatus::Skipped,
+        ));
         let allow_api = budget.action == crate::auto::BudgetAction::Downgrade;
-        let selection = select_after_budget(tiers, policy, band, candidates, allow_api)
+        let selection = select_after_budget(tiers, policy, verdict.band, candidates, allow_api)
             .ok_or_else(|| {
                 RouteError::Budget(Reject {
                     budget_micros: budget.micros,
@@ -83,24 +90,14 @@ pub async fn route(
                     from_header: budget.from_header,
                 })
             })?;
-        (
-            Classified {
-                band,
-                how: Classification::BudgetReached,
-                cost_micros: 0,
-                cost_source: "estimated",
-                input_tokens: 0,
-                output_tokens: 0,
-            },
-            selection,
-        )
+        (verdict, selection)
     } else {
-        let classified = classify(&input, &request, &text, &facts, policy).await;
-        let selection = select(tiers, policy, classified.band, candidates)
+        let verdict = raise(classify(&input, &request, &text, &facts, &heuristic_input).await);
+        let selection = select(tiers, policy, verdict.band, candidates)
             .ok_or_else(|| RouteError::Invalid("no usable candidate".to_string()))?;
-        (classified, selection)
+        (verdict, selection)
     };
-    let spent_after = auto.charge(input.history, None, Some(&key), classified.cost_micros);
+    let spent_after = auto.charge(input.history, None, Some(&key), verdict.cost_micros);
 
     let chosen = &candidates[selection.index];
     let swap = match chosen {
@@ -108,12 +105,12 @@ pub async fn route(
         Candidate::Agent { .. } => None,
     };
     let reason = reason(&ReasonPlan {
-        band: classified.band,
-        classification: &classified.how,
+        verdict: &verdict,
         how: selection.how,
         chosen,
         budget: (budget.micros, spent),
         swap: swap.map(|served| (served, tiers.slug(served))),
+        floor,
     });
     let request_id = new_request_id();
     let (model, tier, decided_tier) = match chosen {
@@ -128,32 +125,34 @@ pub async fn route(
         }
         Candidate::Agent { .. } => (None, "agent".to_string(), None),
     };
+    let attempt = request.attempt.unwrap_or(1).max(1);
+    let estimated = estimate_usd(tiers, policy, candidates, chosen);
+    let fallback_reason = verdict.status.fallback_reason().map(str::to_string);
     let row = CallRow {
         model: model.clone().unwrap_or_else(|| chosen.id().to_string()),
-        tier,
+        tier: tier.clone(),
         decided_tier,
         trigger: "route".to_string(),
-        input_tokens: classified.input_tokens,
-        output_tokens: classified.output_tokens,
+        input_tokens: verdict.input_tokens,
+        output_tokens: verdict.output_tokens,
         cache_read_tokens: 0,
         cache_write_tokens: 0,
-        cost_usd: classified.cost_micros as f64 / 1_000_000.0,
-        cost_source: classified.cost_source,
+        cost_usd: verdict.cost_micros as f64 / 1_000_000.0,
+        cost_source: verdict.cost_source,
         estimate_ratio: None,
         price_source: None,
         upstream_id: None,
         spent_after_usd: spent_after.map(crate::auto::micros_usd),
         route: Some(RouteRecord {
             choice: chosen.id().to_string(),
-            band: classified.band.as_str(),
+            band: verdict.band.as_str(),
             reason: reason.clone(),
-            classifier: match classified.how {
-                Classification::Used => "used",
-                Classification::NotUsed(_) => "fallback",
-                Classification::BudgetReached => "skipped",
-            },
+            classifier: verdict.status.as_str(),
             depth: request.task.depth,
             budget_key: key.clone(),
+            decided_by: Some(verdict.decided_by),
+            fallback_reason: fallback_reason.clone(),
+            attempt: (attempt > 1).then_some(attempt),
         }),
     };
     auto.record_call_persisted(
@@ -161,19 +160,88 @@ pub async fn route(
         PersistedCall {
             request_id: request_id.clone(),
             session_id: None,
-            budget_key: Some(key),
+            budget_key: Some(key.clone()),
             row,
         },
     );
+    input.history.record_delegation(DelegationInsert {
+        request_id: request_id.clone(),
+        budget_key: key,
+        session_id: request.session_id.clone(),
+        attempt,
+        escalated_from: request.escalated_from.clone(),
+        title: request.task.title.clone(),
+        brief: request.task.brief.clone(),
+        text_features: json!({
+            "multiple_files": facts.mentions_multiple_files,
+            "tests": facts.mentions_tests,
+            "stack_trace": facts.mentions_stack_trace,
+            "hard_keyword": has_hard_keyword(&text),
+            "asks_inspection": jev::asks_file_or_repo_inspection(&text),
+            "read_only_tools": read_only(&request.task.tools),
+            "text_chars": text.chars().count(),
+        }),
+        tools: request.task.tools.clone(),
+        depth: request.task.depth,
+        parent_tier: request.task.parent_tier.clone(),
+        candidates: serde_json::to_value(candidates).unwrap_or_default(),
+        exclude: request.exclude.clone(),
+        min_tier: request.min_tier.map(|tier| tier.as_str().to_string()),
+        choice: chosen.id().to_string(),
+        choice_kind: match chosen {
+            Candidate::Api { .. } => "api",
+            Candidate::Agent { .. } => "agent",
+        },
+        choice_tier: match chosen {
+            Candidate::Api { tier, .. } => Some(tier.as_str().to_string()),
+            Candidate::Agent { .. } => None,
+        },
+        model: model.clone(),
+        served_tier: tier,
+        band: verdict.band.as_str().to_string(),
+        reason: reason.clone(),
+        classifier: verdict.decided_by.to_string(),
+        classifier_requested: verdict.requested.to_string(),
+        classifier_version: verdict.version.to_string(),
+        classifier_status: verdict.status.as_str().to_string(),
+        fallback_reason,
+        probabilities: verdict.probabilities,
+        estimated_cost_micros: estimated.map(|usd| (usd * 1_000_000.0).round() as u64),
+        classifier_cost_micros: verdict.cost_micros,
+    });
     Ok(RouteResponse {
         choice: chosen.id().to_string(),
         model,
-        band: classified.band,
+        band: verdict.band,
         reason,
-        estimated_cost_usd: estimate_usd(tiers, policy, candidates, chosen),
+        estimated_cost_usd: estimated,
         alternatives: alternatives(auto, policy, candidates, &selection),
         request_id,
+        classifier: verdict.decided_by,
+        attempt,
     })
+}
+
+/// Applies `exclude` and `min_tier`: excluded ids and API tiers below the floor are not offered at all.
+fn narrow(request: &mut RouteRequest) -> Result<(), RouteError> {
+    if request.exclude.is_empty() && request.min_tier.is_none() {
+        return Ok(());
+    }
+    let floor = request.min_tier.map_or(0, ApiTier::rank);
+    let exclude = request.exclude.clone();
+    request.candidates.retain(|candidate| {
+        !exclude.iter().any(|id| id == candidate.id())
+            && match candidate {
+                Candidate::Api { tier, .. } => tier.rank() >= floor,
+                Candidate::Agent { .. } => true,
+            }
+    });
+    if !request.candidates.iter().any(Candidate::usable) {
+        return Err(RouteError::Invalid(
+            "no usable candidate left after exclude and min_tier".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn alternatives(
@@ -217,6 +285,16 @@ fn validate(request: &RouteRequest) -> Result<(), RouteError> {
             "no usable candidate: every agent is logged out or out of limit and no API candidate was offered",
         );
     }
+    if let Some(id) = &request.escalated_from {
+        if id.is_empty() || id.len() > 128 || !id.chars().all(|c| c.is_ascii_graphic()) {
+            return invalid("escalated_from must be a request id");
+        }
+    }
+    if let Some(session) = &request.session_id {
+        if session.len() > 256 || session.chars().any(char::is_control) {
+            return invalid("session_id must be at most 256 characters");
+        }
+    }
     Ok(())
 }
 
@@ -235,23 +313,45 @@ async fn classify(
     request: &RouteRequest,
     text: &str,
     facts: &jev::ContextFacts,
-    policy: &RoutePolicy,
-) -> Classified {
-    let fallback = |why: &'static str| Classified {
-        band: band::fallback(facts, text, &request.candidates),
-        how: Classification::NotUsed(why),
-        cost_micros: 0,
-        cost_source: "estimated",
-        input_tokens: 0,
-        output_tokens: 0,
+    heuristic_input: &HeuristicInput<'_>,
+) -> Verdict {
+    match &input.auto.tiers().delegation {
+        DelegationClassifier::Heuristic => {
+            Verdict::heuristic(heuristic_input, "heuristic", VerdictStatus::Used)
+        }
+        DelegationClassifier::Learned { model_path } => Verdict::heuristic(
+            heuristic_input,
+            "learned",
+            VerdictStatus::Fallback(DelegationClassifier::learned_unavailable(model_path)),
+        ),
+        DelegationClassifier::Jev => {
+            jev_verdict(input, request, text, facts, heuristic_input).await
+        }
+    }
+}
+
+async fn jev_verdict(
+    input: &RouteInput<'_>,
+    request: &RouteRequest,
+    text: &str,
+    facts: &jev::ContextFacts,
+    heuristic_input: &HeuristicInput<'_>,
+) -> Verdict {
+    let fallback = |why: &str| {
+        Verdict::heuristic(
+            heuristic_input,
+            "jev",
+            VerdictStatus::Fallback(why.to_string()),
+        )
     };
+    let tiers = input.auto.tiers();
+    let policy = &tiers.route;
     if input.api_key.is_empty() {
         return fallback("no API key");
     }
     if policy.classifier_timeout_ms == 0 {
         return fallback("disabled");
     }
-    let tiers = input.auto.tiers();
     let capped = body::cap_classifier_text(text);
     let asked = tokio::time::timeout(
         Duration::from_millis(policy.classifier_timeout_ms),
@@ -290,9 +390,13 @@ async fn classify(
         return failed;
     };
     let complexity = bump_tool_inspection_off_easy(parsed.complexity, &request.task.tools, text);
-    Classified {
+    Verdict {
         band: Band::from_complexity(complexity),
-        how: Classification::Used,
+        requested: "jev",
+        decided_by: "jev",
+        version: JEV_VERSION,
+        status: VerdictStatus::Used,
+        probabilities: None,
         cost_micros,
         cost_source: recorded.cost_source,
         input_tokens: usage.input_tokens.map_or(0, |t| t.0),
@@ -301,12 +405,12 @@ async fn classify(
 }
 
 struct ReasonPlan<'a> {
-    band: Band,
-    classification: &'a Classification,
+    verdict: &'a Verdict,
     how: How,
     chosen: &'a Candidate,
     budget: (u64, u64),
     swap: Option<(&'static str, String)>,
+    floor: Option<Band>,
 }
 
 fn reason(plan: &ReasonPlan<'_>) -> String {
@@ -320,13 +424,16 @@ fn reason(plan: &ReasonPlan<'_>) -> String {
         Candidate::Api { tier, .. } => tier.as_str(),
         Candidate::Agent { .. } => "",
     };
-    let lead = match plan.classification {
-        Classification::Used => format!("{} task", plan.band.as_str()),
-        Classification::NotUsed(why) => format!(
-            "{} task estimated from its text (classifier not used: {why})",
-            plan.band.as_str()
-        ),
-        Classification::BudgetReached => format!(
+    let band = plan.verdict.band.as_str();
+    let lead = match &plan.verdict.status {
+        VerdictStatus::Used if plan.verdict.decided_by == "heuristic" => {
+            format!("{band} task estimated from its text (heuristic classifier)")
+        }
+        VerdictStatus::Used => format!("{band} task"),
+        VerdictStatus::Fallback(why) => {
+            format!("{band} task estimated from its text (classifier not used: {why})")
+        }
+        VerdictStatus::Skipped => format!(
             "Budget reached (${:.4} of ${:.4}, classifier not called)",
             plan.budget.1 as f64 / 1_000_000.0,
             plan.budget.0 as f64 / 1_000_000.0
@@ -353,7 +460,14 @@ fn reason(plan: &ReasonPlan<'_>) -> String {
         How::BudgetAgent => format!("flat-rate agent {name} is used"),
         How::BudgetApi => format!("the cheapest API tier offered ({tier}) is used"),
     };
-    format!("{lead}; {rest}.{swap_note}")
+    let floor_note = match plan.floor {
+        Some(floor) => format!(
+            " Retry of a failed delegation: at least the {} band.",
+            floor.as_str()
+        ),
+        None => String::new(),
+    };
+    format!("{lead}; {rest}.{swap_note}{floor_note}")
 }
 
 fn capitalize(text: &str) -> String {

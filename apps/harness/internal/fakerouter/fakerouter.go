@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -104,6 +105,7 @@ type Router struct {
 	compacted map[string]bool
 	route     *RouteScript
 	routeSeen []RouteSeen
+	outcomes  []OutcomeSeen
 }
 
 // New puts a fake router in front of upstream.
@@ -111,7 +113,7 @@ func New(upstream http.Handler, opts Options) *Router {
 	if opts.Capabilities == nil {
 		opts.Capabilities = []string{"autoroute", "route_hints", "result_headers", "budget_key"}
 		if opts.Route != nil {
-			opts.Capabilities = append(opts.Capabilities, "route_api")
+			opts.Capabilities = append(opts.Capabilities, "route_api", "route_outcome")
 		}
 	}
 	if opts.CostSource == "" {
@@ -159,6 +161,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		r.callRecord(w, req.URL.Path[len("/autoroute/v1/calls/"):])
 	case req.Method == http.MethodPost && req.URL.Path == "/autoroute/v1/route":
 		r.routeEndpoint(w, req)
+	case req.Method == http.MethodPost && strings.HasPrefix(req.URL.Path, "/autoroute/v1/route/") && strings.HasSuffix(req.URL.Path, "/outcome"):
+		r.outcomeEndpoint(w, req, strings.TrimSuffix(strings.TrimPrefix(req.URL.Path, "/autoroute/v1/route/"), "/outcome"))
 	case req.Method == http.MethodPost && req.URL.Path == "/v1/messages":
 		r.messages(w, req)
 	default:

@@ -37,8 +37,15 @@ pub use decide::sticky::{
 };
 pub use decide::{decide, decide_with, request_shape, Auto, Budget, DecideRequest, Limits};
 pub use delegate::{
-    route as delegate_route, Alternative, ApiTier, Band, Candidate, RouteError, RouteInput,
-    RoutePolicy, RouteRequest, RouteResponse, Task,
+    derive_label, finished_session, parse_reports, route as delegate_route, AgentSignal,
+    Alternative, ApiTier, Band, Candidate, DelegationClassifier, DelegationSettings, FinishStatus,
+    HeuristicInput, Label, OutcomeEvent, OutcomeReport, OutcomeUsage, RouteError, RouteInput,
+    RoutePolicy, RouteRequest, RouteResponse, Solved, Task, TestsReport, Verdict, VerdictStatus,
+    HEURISTIC_VERSION, JEV_VERSION,
+};
+pub use delegate::{
+    has_hard_keyword, heuristic as delegation_heuristic, read_only as read_only_tools,
+    HARD_KEYWORDS,
 };
 pub use hints::{valid_budget_key, AgentRole, Hints, InvalidTierHint, TierPolicy};
 pub use jev::{

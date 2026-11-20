@@ -179,3 +179,19 @@ The thesis's "adaptive routing based on machine learning" means three learned pa
 
 The defence date; whether the department accepts this framing of the topic; own runs for a measured (not simulated)
 end-to-end comparison (criterion 8) — the router must first log a solved / not-solved outcome per session.
+
+## As built — the data path at the delegation boundary (2026-11-20)
+
+The prerequisite above is built, at the delegation boundary (a fresh context, so a cheaper or stronger choice loses no
+prompt cache): every `POST /autoroute/v1/route` decision is a `delegations` record; the harness reports what became of it
+(`POST /autoroute/v1/route/{id}/outcome`: status, the sub-agent's own could-not signal, usage, duration, re-delegation,
+escalation, rewind, revert); the router derives one label, `solved` ∈ {yes, no, unknown}, with a rule id and a confidence,
+in one function (`apps/router/src/auto/delegate/outcome.rs`; rule and known noise in `apps/router/docs/history.md`).
+`octo export-delegations` writes the JSON lines (`octo.delegation.v1`, `--redact`) the pipeline in `apps/router/ml` is to
+read; the schema separates decision-time features from outcome fields. A classifier seam (`[autoroute.delegation]
+classifier = jev | heuristic | learned`) names who decided each band and keeps nullable per-tier probabilities; `learned`
+falls back to the heuristic with the reason recorded until a model runtime is added (criterion 6/7's ONNX part is not
+built, by decision: the experiment first has to show the model earns its place). Escalation on failure (harness setting,
+default off) yields paired records (attempt 1 failed → attempt 2 on a stronger candidate), the closest thing to a
+counterfactual the owner's own work can give. Verified with the mock model, the scripted agent and the fake and real
+router (`scripts/e2e-router.sh` cases 7–8); not verified with a real model or agent, and the label's noise rate is unknown.
