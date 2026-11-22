@@ -19,7 +19,7 @@ const MAX_HEIGHT = "max-h-[calc(var(--spacing-row)*var(--popup-rows)+8px)] touch
  * 160px: at a short window (200 % zoom, ~400px tall) the list stopped at 3 rows with the window's height unused.
  */
 const TALL_HEIGHT =
-  "max-h-[calc(round(down,min(480px,100vh-88px)-8px,var(--spacing-row))+8px)] touch:max-h-[calc(round(down,min(480px,100vh-88px)-8px,var(--spacing-ctl-lg))+8px)]";
+  "max-h-[calc(round(down,min(480px,100dvh-88px)-8px,var(--spacing-row))+8px)] touch:max-h-[calc(round(down,min(480px,100dvh-88px)-8px,var(--spacing-ctl-lg))+8px)]";
 
 /** The panel look of every popup list that floats on its own (slash and mention menus; the pickers get it from `Popover`). */
 export const POPUP_PANEL =
@@ -133,7 +133,6 @@ export function PopupList(props: {
                   role="option"
                   aria-selected={on}
                   aria-disabled={r.disabled || undefined}
-                  aria-checked={r.checked}
                   aria-busy={r.busy || undefined}
                   title={r.title}
                   data-picker-row={r.id}

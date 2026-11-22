@@ -14,7 +14,7 @@ import type { DiffMonaco } from "./DiffEditor";
 import { DiffPanel } from "./DiffPanel";
 import { TurnFiles } from "./TurnFiles";
 import { useChanges, type ChangesApi, type FocusFile, type Selection } from "./useChanges";
-import { useWidth } from "./useWidth";
+import { useWidth } from "../../lib/useWidth";
 
 /** Below this pane width the list and the diff take turns (the list first, Back returns to it). */
 const TWO_COLUMNS_MIN = 720;

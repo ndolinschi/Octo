@@ -103,12 +103,20 @@ export function Menu(props: {
       const t = e.target as Node;
       if (!ref.current?.contains(t) && !ignoreRef?.current?.contains(t)) onClose();
     };
+    const esc = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    };
     const close = () => onClose();
     document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("keydown", esc, true);
     window.addEventListener("blur", close);
     window.addEventListener("resize", close);
     return () => {
       document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("keydown", esc, true);
       window.removeEventListener("blur", close);
       window.removeEventListener("resize", close);
     };

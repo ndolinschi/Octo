@@ -24,7 +24,7 @@ import { IconButton } from "../primitives/IconButton";
 import { useTurnLine } from "./useTurnLine";
 import { providerIdOf, useAgentName, useLoginHint } from "./agentName";
 import { LazyMarkdown as Markdown, markdownPart } from "./LazyMarkdown";
-import { readyLazy, usePartsReady } from "./readyLazy";
+import { readyLazy, usePartsReady } from "../../lib/readyLazy";
 import { turnSig, useTurnWindow } from "./useTurnWindow";
 /** Code comments sent with a prompt render with the first such prompt (their own chunk). */
 /** The failed or stopped turn's notice: its own chunk (error mapping, notice, retry), warmed after first paint. */

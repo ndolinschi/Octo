@@ -35,7 +35,7 @@ import { useFileDiff, useReview, type ReviewData } from "./useReview";
 import { useReviewActions } from "./useReviewActions";
 import { useReviewKeys } from "./useReviewKeys";
 import { useThreads } from "./useThreads";
-import { useWidth } from "./useWidth";
+import { useWidth } from "../../lib/useWidth";
 
 /** Below this width the file list becomes a picker above the diff. */
 const NARROW_BELOW = 760;

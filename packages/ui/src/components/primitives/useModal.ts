@@ -3,11 +3,35 @@ import { usePresence } from "./Presence";
 import { useLatest } from "../../lib/hooks";
 
 const FOCUSABLE = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
+const NESTED_OVERLAY = '.octo-overlay, .octo-sheet, [role="menu"], [role="listbox"]';
 
 /**
- * Modal behaviour for an overlay panel: focuses `[data-autofocus]` (or the first focusable) on
- * open; Esc closes; Tab cycles inside the panel. Focus goes back to the opener as soon as the
- * overlay starts closing (inside a <Presence>, before its exit animation) or unmounts.
+ * True when an Escape event originated inside a distinct nested overlay (e.g. a portalled popover, menu, listbox, or stacked
+ * dialog/sheet) that should handle Escape first. Returns false when focus is still on the opener outside the panel.
+ */
+export function isEscapeInNestedOverlay(
+  target: { closest?(selector: string): Element | null } | null,
+  panel: { contains(node: Node): boolean } | null,
+): boolean {
+  if (!target || !panel || typeof target.closest !== "function") return false;
+  if (panel.contains(target as Node)) {
+    const nested = target.closest(".octo-overlay, .octo-sheet");
+    return nested !== null && nested !== (panel as unknown);
+  }
+  return target.closest(NESTED_OVERLAY) !== null;
+}
+
+/** Focuses `[data-autofocus]`, or the first focusable descendant, falling back to the panel itself when none exists yet. */
+export function focusModalPanel(el: Pick<HTMLElement, "querySelector" | "focus"> | null): void {
+  if (!el) return;
+  const first = el.querySelector<HTMLElement>("[data-autofocus]") ?? el.querySelector<HTMLElement>(FOCUSABLE);
+  (first ?? el).focus();
+}
+
+/**
+ * Modal behaviour for an overlay panel: focuses `[data-autofocus]` (or the first focusable, falling back to the panel itself)
+ * on open; Esc closes; Tab cycles inside the panel. Focus goes back to the opener as soon as the overlay starts closing
+ * (inside a <Presence>, before its exit animation) or unmounts.
  */
 export function useModal(panel: RefObject<HTMLElement | null>, onClose: () => void) {
   const open = usePresence() === "open";
@@ -16,9 +40,7 @@ export function useModal(panel: RefObject<HTMLElement | null>, onClose: () => vo
 
   useEffect(() => {
     previous.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const el = panel.current;
-    const first = el?.querySelector<HTMLElement>("[data-autofocus]") ?? el?.querySelector<HTMLElement>(FOCUSABLE);
-    first?.focus();
+    focusModalPanel(panel.current);
     return restore;
   }, [panel]);
 
@@ -36,8 +58,8 @@ export function useModal(panel: RefObject<HTMLElement | null>, onClose: () => vo
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        // A popover opened from the panel (a model picker) is portalled outside it and closes itself first.
-        if (e.target instanceof Node && panel.current && !panel.current.contains(e.target) && document.activeElement !== document.body) return;
+        // A nested overlay (a portalled model picker, menu, listbox, or stacked dialog) closes itself first.
+        if (isEscapeInNestedOverlay(e.target instanceof Element ? e.target : null, panel.current)) return;
         // A non-empty search field marked `data-esc-clears` takes the first Esc (it clears itself; the next one closes).
         if (e.target instanceof HTMLInputElement && e.target.dataset.escClears !== undefined && e.target.value) return;
         e.stopPropagation();

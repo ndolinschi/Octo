@@ -1,10 +1,9 @@
 import { Play, Plus, Settings, SlidersHorizontal } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { menuOrder } from "../../../lib/commands/config";
 import { runningRuns } from "../../../lib/projectRuns";
 import { navigate, settingsHref } from "../../../lib/route";
 import { workingText } from "../../../lib/statusBar";
-import { errorMessage } from "../../../lib/format";
 import { deviceMay, mayChangeProject, ON_YOUR_COMPUTER } from "../../../lib/remoteDevice";
 import { useHost } from "../../../state/host";
 import { useActivity } from "../../../state/activity";
@@ -31,6 +30,7 @@ import { StateGlyph } from "../../primitives/StateGlyph";
 import { ProjectStatus } from "../../status/ProjectStatus";
 import { RemoteIndicator } from "../../status/RemoteIndicator";
 import { tabInfo, TOOL_TABS } from "../tabInfo";
+import { runPhoneMoreCommand, runPhoneMoreCreateSession, type PhoneMoreAsyncHooks } from "./phoneMoreActions";
 
 /** The panels the phone reaches from "⋯", in this order (direction 7). */
 const PANELS: readonly ToolTab[] = [
@@ -52,8 +52,9 @@ const PANELS: readonly ToolTab[] = [
 /**
  * The phone header's "⋯" (direction 7): everything the desktop's top row and status bar carry, as one bottom sheet of 44px
  * rows in groups — this session (its open tabs, a new session), the project's commands, the panels, the status (changed
- * files, running commands, budget, agents at work in other projects, remote access) and the settings. Every choice closes the
- * sheet first (its history entry goes), then acts.
+ * files, running commands, budget, agents at work in other projects, remote access) and the settings. Synchronous choices
+ * close the sheet first (its history entry goes), then act; async actions ("New session", starting a command) stay open while
+ * pending and close only on success so errors render inside the sheet.
  */
 export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; sessionId: string | null; onClose(): void }) {
   const ws = useWorkspace();
@@ -75,6 +76,14 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
       .join("\n"),
   );
   const [problem, setProblem] = useState<string | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [start, setStart] = useState<HTMLElement | null>(null);
   const [end, setEnd] = useState<HTMLElement | null>(null);
   const slots = useMemo(() => ({ start, end }), [start, end]);
@@ -94,17 +103,43 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
   };
   // The action runs once the sheet has given focus back to its opener (which would otherwise take the focus, and the dock's
   // shown group, back to the conversation).
-  const then = (fn: () => void) => () => {
+  const closeAndRun = (fn: () => void) => {
     props.onClose();
     window.setTimeout(fn, 0);
   };
+  const then = (fn: () => void) => () => closeAndRun(fn);
   const busy = new Set(busyKey ? busyKey.split("\n") : []);
   const commands = project ? menuOrder(project.commands ?? []) : [];
-  const run = async (name: string) => {
-    if (busy.has(name.toLowerCase()) || !api) return ws.openRun(name);
-    const r = await startProjectRun(api, store, name);
-    if ("problem" in r) setProblem(r.problem);
-    else ws.openRun(name);
+  const asyncHooks: PhoneMoreAsyncHooks = {
+    setPending,
+    setProblem,
+    closeAndRun,
+    isMounted: () => mounted.current,
+  };
+  const createSession = () => {
+    if (pending !== null) return;
+    void runPhoneMoreCreateSession(
+      {
+        projectId,
+        createSession: (id) => bridge.createSession(id),
+        applySession,
+        refreshSessions: () => activity.refreshSessions(),
+        showSession: (id) => ws.showSession(id),
+      },
+      asyncHooks,
+    );
+  };
+  const run = (name: string) => {
+    if (pending !== null) return;
+    void runPhoneMoreCommand(
+      {
+        name,
+        alreadyRunning: busy.has(name.toLowerCase()),
+        startRun: api ? () => startProjectRun(api, store, name) : null,
+        openRun: (n) => ws.openRun(n),
+      },
+      asyncHooks,
+    );
   };
   // A4: the panel's purpose (the desktop's (i) after its title) leads the sheet on the phone.
   const ref = parseTab(props.active);
@@ -143,33 +178,32 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
           {deviceMay(device, "send") && (
             <ListRow
               size="lg"
-              leading={<Glyph icon={Plus} size={16} />}
+              disabled={pending !== null}
+              leading={pending === "new-session" ? <Spinner /> : <Glyph icon={Plus} size={16} />}
               title="New session"
-              onClick={then(() => {
-                bridge.createSession(projectId).then(
-                  ({ session }) => {
-                    applySession({ kind: "upsert", session });
-                    activity.refreshSessions();
-                    ws.showSession(session.id);
-                  },
-                  (e: unknown) => setProblem(`The session was not created: ${errorMessage(e).replace(/\.$/, "")}. Try again from the menu.`),
-                );
-              })}
+              description={pending === "new-session" ? "Creating session…" : undefined}
+              onClick={createSession}
             />
           )}
         </Group>
         {api && (
           <Group title="Run">
-            {commands.map((c) => (
-              <ListRow
-                key={c.name}
-                size="lg"
-                leading={busy.has(c.name.toLowerCase()) ? <Spinner /> : <Glyph icon={Play} size={16} />}
-                title={c.name}
-                description={busy.has(c.name.toLowerCase()) ? "Running: show it" : c.command}
-                onClick={then(() => void run(c.name))}
-              />
-            ))}
+            {commands.map((c) => {
+              const key = c.name.toLowerCase();
+              const isRunning = busy.has(key);
+              const isStarting = pending === `run:${key}`;
+              return (
+                <ListRow
+                  key={c.name}
+                  size="lg"
+                  disabled={pending !== null}
+                  leading={isRunning || isStarting ? <Spinner /> : <Glyph icon={Play} size={16} />}
+                  title={c.name}
+                  description={isRunning ? "Running: show it" : isStarting ? "Starting…" : c.command}
+                  onClick={() => run(c.name)}
+                />
+              );
+            })}
             <ListRow
               size="lg"
               leading={<Glyph icon={SlidersHorizontal} size={16} />}
