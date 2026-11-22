@@ -12,6 +12,8 @@ export type TranscriptCtx = {
   density: "regular" | "compact";
   /** The Sessions tab selects an agent's session in place; absent elsewhere (a delegation row then opens the Sessions tab). */
   onOpenSession?: ((agentId: string) => void) | undefined;
+  /** Decision 101: takes the reader to the one "needs you" card (approvals and forms at the transcript's end); absent where there is none. */
+  revealNeeds?: (() => void) | undefined;
 };
 
 export const TranscriptContext = createContext<TranscriptCtx>({

@@ -42,6 +42,8 @@ export function toolActivity(name: string, input: unknown): string {
       return arg && arg !== "." ? `Listing ${arg}` : "Listing the folder";
     case "write_file":
       return arg ? `Writing ${arg}` : "Writing a file";
+    case "edit":
+      return arg ? `Editing ${arg}` : "Editing a file";
     case "bash":
       return typeof record.command === "string" && record.command.trim()
         ? `Running ${quoted(record.command.trim().split("\n")[0] ?? "")}`

@@ -14,6 +14,7 @@ import { PHONE_QUERY, PhoneContext } from "../lib/phone";
 const V7Gallery = lazy(() => import("../components/v7/Gallery").then((m) => ({ default: m.Gallery })));
 // Demo-only component library gallery (`?demo=1&gallery=1`, decision 90); a separate chunk, never loaded otherwise.
 const Gallery = lazy(() => import("../components/primitives/Gallery").then((m) => ({ default: m.Gallery })));
+const RunCardGallery = lazy(() => import("../components/chat/RunCardGallery").then((m) => ({ default: m.RunCardGallery })));
 // The tooltip layer needs a hover first: its own chunk, fetched right after the first paint.
 const Tooltips = lazy(() => import("../components/primitives/Tooltips").then((m) => ({ default: m.Tooltips })));
 const loadDiffMonaco = () => import("../components/files/monaco");
@@ -51,7 +52,11 @@ export function OctoApp({ bridge, bridgeUrl, shell, demo = false, host, chrome =
                 </Suspense>
               ) : demo && new URLSearchParams(window.location.search).has("gallery") ? (
                 <Suspense fallback={null}>
-                  <Gallery />
+                  <Gallery>
+                    <Suspense fallback={null}>
+                      <RunCardGallery />
+                    </Suspense>
+                  </Gallery>
                 </Suspense>
               ) : (
                 <AppShell />

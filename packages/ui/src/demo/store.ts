@@ -20,6 +20,8 @@ export type ProjectRecord = {
   turn: { cancelled: boolean } | null;
   /** Parallel sessions: the running turn of each main session, by its root agent id. */
   turns?: Map<string, { cancelled: boolean }>;
+  /** A running sub-agent's own stop (its agent session's Stop, decision 101): the agent ends cancelled, its turn goes on. */
+  agentStops?: Map<string, { cancelled: boolean }>;
   /** How each root agent's latest turn ended (a session's resting state). */
   lastStatus?: Map<string, "completed" | "failed" | "cancelled">;
   /** Called when a turn of root `rootId` ended (the sessions layer starts what waited for a slot). */

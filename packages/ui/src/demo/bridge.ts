@@ -13,6 +13,7 @@ import {
   spawnRefusedTurn,
   stubbornTurn,
 } from "./live";
+import { RUN_CARDS_TRIGGER, runCardsTurn } from "./runCards";
 import {
   BridgeError,
   type Agent,
@@ -156,17 +157,19 @@ function scriptFor(text: string): (ctx: Ctx) => Promise<void> {
   return (ctx) =>
     FAIL_TRIGGER.test(text)
       ? failTurn(ctx, text)
-      : LIVE_TRIGGER.test(text)
-        ? liveTurn(ctx, text)
-        : SPAWN_REFUSED_TRIGGER.test(text)
-          ? spawnRefusedTurn(ctx, text)
-          : SLOW_TRIGGER.test(text)
-            ? slowTurn(ctx, text)
-            : APPROVAL_TRIGGER.test(text)
-              ? approvalTurn(ctx, text)
-              : STUBBORN_TRIGGER.test(text)
-                ? stubbornTurn(ctx, text)
-                : genericTurn(ctx, text);
+      : RUN_CARDS_TRIGGER.test(text)
+        ? runCardsTurn(ctx, text)
+        : LIVE_TRIGGER.test(text)
+          ? liveTurn(ctx, text)
+          : SPAWN_REFUSED_TRIGGER.test(text)
+            ? spawnRefusedTurn(ctx, text)
+            : SLOW_TRIGGER.test(text)
+              ? slowTurn(ctx, text)
+              : APPROVAL_TRIGGER.test(text)
+                ? approvalTurn(ctx, text)
+                : STUBBORN_TRIGGER.test(text)
+                  ? stubbornTurn(ctx, text)
+                  : genericTurn(ctx, text);
 }
 
 function seed(): ProjectRecord[] {

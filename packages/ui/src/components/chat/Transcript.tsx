@@ -79,6 +79,8 @@ export const Transcript = memo(function Transcript(props: {
   density?: "compact" | undefined;
   /** Sessions tab: a delegation row's "Open session" selects the agent's session in place (else it opens the Sessions tab). */
   onOpenSession?: ((agentId: string) => void) | undefined;
+  /** Decision 101: takes the reader to the "needs you" card at the end of the conversation (a run card links there). */
+  revealNeeds?: (() => void) | undefined;
   /** Whether the agent's message list has completed its initial load (used to gate live-enter animation). */
   loaded?: boolean;
 }) {
@@ -116,8 +118,15 @@ export const Transcript = memo(function Transcript(props: {
   const ctx = useMemo<TranscriptCtx>(() => {
     const results = new Map<string, ToolResult>();
     for (const m of messages) for (const b of m.content) if (b.type === "tool_result") results.set(b.tool_use_id, b);
-    return { results, agentRunning: running, now, density: props.density === "compact" ? "compact" : "regular", onOpenSession: props.onOpenSession };
-  }, [messages, running, now, props.density, props.onOpenSession]);
+    return {
+      results,
+      agentRunning: running,
+      now,
+      density: props.density === "compact" ? "compact" : "regular",
+      onOpenSession: props.onOpenSession,
+      revealNeeds: props.revealNeeds,
+    };
+  }, [messages, running, now, props.density, props.onOpenSession, props.revealNeeds]);
 
   const isOrchestrator = agent.parent_id === null;
   const lastTurn = isOrchestrator ? state.lastTurn : null;
@@ -583,6 +592,9 @@ const AssistantTurn = memo(function AssistantTurn(props: {
       : lastItem.kind === "tools" && lastItem.uses.some((u) => stepState(ctx.results.get(u.id), ctx.agentRunning, ending, interrupted) === "running")
         ? "tool"
         : null;
+  // Decision 101: while the turn waits on the round of agents it just started, their run cards right above say what the wait
+  // consists of; the "Waiting on A, B" line under them would say it a second time.
+  const waitingOnRound = live && lastItem?.kind === "delegations" && lastItem.uses.some((u) => !ctx.results.has(u.id));
   const prose = proseClass(compact ? "compact" : "reading");
   return (
     // Decision 91j: blocks of a reply (prose, cards) sit 16 apart (12 in the Sessions tab), step rows 8, and the meta line is tight to its reply.
@@ -625,7 +637,7 @@ const AssistantTurn = memo(function AssistantTurn(props: {
       })}
       {hasStreaming && <StreamingReply agentId={props.agentId} className={prose} />}
       {live && props.stopping && <ActivityRow data="stopping" className="octo-fade" state="running" still={!props.watched} verb="Stopping…" />}
-      {live && !props.stopping && (
+      {live && !props.stopping && !waitingOnRound && (
         <ActivityLine agentId={props.agentId} agentName={props.speaker} startedAt={start} watched={props.watched} current={currentStep} />
       )}
       {props.footer && !live && turn.prompt && (

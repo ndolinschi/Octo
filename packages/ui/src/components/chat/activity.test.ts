@@ -12,6 +12,7 @@ test("tool calls read as what is happening now", () => {
   assert.equal(toolActivity("spawn_agent", { role: "Test runner" }), "Starting Test runner");
   assert.equal(toolActivity("execute", { title: "pnpm lint" }), "Running `pnpm lint`");
   assert.equal(toolActivity("read", { title: "Read src/server/routes.ts" }), "Read src/server/routes.ts");
+  assert.equal(toolActivity("edit", { path: "src/billing/retry.ts" }), "Editing src/billing/retry.ts");
   assert.equal(toolActivity("mystery", {}), "Using mystery");
 });
 

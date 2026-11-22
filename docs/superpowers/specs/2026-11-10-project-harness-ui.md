@@ -4877,3 +4877,45 @@ mount. The placeholders are invisible until the turn parts are in (they show not
 **Entry.** 160.57 → 159.85 kB (`lib/turnEnding`: how turns and steps ended, out of `lib/transcript`); after merging the
 integration tip 160.05 → 159.87 kB (`lib/timeSeparator` out of `lib/format`). Not verified: WebKit, the Tauri shell, a real
 harness PTY, the phone layout's scroll.
+
+## Decision 101 — a sub-agent's row opens into its run card (2026-11-22)
+
+Owner: a compact "agent run status card" they liked, "a good, beautiful, adaptive UI that makes the work easier; for example
+when a sub-agent runs as a step we are waiting on". Its ideas, in our system (not its look): one card answers what is happening
+now, how far along it is, what was done and how long each step took, which model runs it, and what I can do.
+
+a. **Row and card are one element.** Collapsed, a delegation row is today's one-line `ActivityRow` (a turn with five agents is
+   still five lines), now a button with `aria-expanded` and a chevron after its text. Open, the same row becomes the card's head
+   (focus stays on it) inside the neutral raised surface the conversation's cards use (`RUN_CARD_FRAME`: `bg-raised`, radius 8,
+   `-mx-3 px-3` so the frame takes the column's edge and the glyph stays at x=0, the title at 24; no coloured edge, decision 81 —
+   the glyph says the state). Head: state glyph (working, done, failed, stopped, needs you), the title — while it runs, the
+   activity line's own words (`activityLine`: "Reading src/x.ts", "Running `pnpm test`", "Thinking…"; waiting for the person
+   wins), once it ended the outcome (the result's first line without Markdown marks, the failure's plain sentence, "Stopped") —
+   and the elapsed time right-aligned in tabular numbers (one live timer).
+b. **Honest progress.** With a plan of known steps (`agent.plan` / `agent.plan` events): "Step 4 of 6" and one segment per plan
+   step (done `fg-3`, current `accent`, pending `line-strong`); a finished plan reads "All 6 steps done" / "3 of 6 steps done". Without
+   a plan there is no denominator: "12 steps done" and, while it runs, an indeterminate mark travelling a track
+   (`octo-run-indeterminate`, still under reduced motion and while the agent waits for the person). Never an invented total or a
+   percentage (`runProgress`, tested).
+c. **Steps.** The last five tool calls, each the transcript's own row grammar (`callRow`: past-tense verb, the object, a quiet
+   qualifier; a file is the FileLink chip), its time right-aligned (`formatStepDuration`: tenths under ten seconds), a failed step
+   with its reason under it, a running step in the present tense (`toolActivity`) dim with its own one-second timer. Older steps
+   fold behind a quiet "Show N earlier". Times are the harness's (`tool_result.duration_ms`); a step it did not time shows none.
+d. **Meta and actions.** The meta line: the agent's label · the model that answered (`servedModel`, the asked one in the tooltip)
+   · tokens in the turn line's format; it wraps under the title on a narrow card. Where the router chose, its reason's first
+   sentence on its own line — for a retry, the escalation's own "Retried on the deep tier after the tests failed." Actions: Stop
+   while it runs (`stopSession` on the agent's session; no confirm, as the session menu's Stop has none) and "Open session" (the
+   `agent:<id>` tab; in the Sessions tab, its session in place). No Pause: the harness cannot pause and resume an agent. An agent
+   that waits for the person says "Approval needed · <what is asked>" with a "Review it" link to the one needs-you card (decision
+   91c), never its buttons. Labels become icon buttons with the same names and tooltips below a 20rem card (a container query);
+   on a coarse pointer they take a 44px target.
+e. **Waiting on is a step.** While the orchestrator waits on a round of agents it started, the running ones open as cards in
+   place — each one when it waits on at most two, else only the first (`waitedCards`) — and the "Waiting on A, B" line under
+   them is not shown. When an agent finishes its card stays 1.6 s with its outcome, then folds back into its row (instantly, no
+   height animation, so scroll anchoring holds); if focus is inside it, it stays open. The person's own open/close wins.
+f. **Reuse.** The agent tab's header shows the same card (head, meta, progress, Stop; the transcript below is the steps) in
+   place of its meta line and route line. The card's body is its own chunk (`runCardPart`, `readyLazy`, fetched with the
+   delegation rows and the agent header). A streaming agent re-renders only its own card: `RunCardBody` hands the memoised
+   `RunCardView` this agent's slices only, settled steps are memoised rows, and only the running step and the head tick.
+g. **Accessibility.** The open card is a labelled region ("Test writer: run"); its current step is said in a polite live region
+   at most once every 8 s (the latest text; `useThrottledAnnouncement`); focus rings are the global ones.

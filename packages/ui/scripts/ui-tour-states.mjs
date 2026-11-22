@@ -74,6 +74,15 @@ async function send(page, text) {
   await page.keyboard.press("Enter");
 }
 
+/** Decision 101: Design system tokens with "run cards demo" sent; its live round runs for ten minutes. */
+async function runCards(page, env) {
+  await boot(page, env);
+  await palette(page, "Design system tokens");
+  await send(page, "run cards demo");
+  await need(page, page.locator('[data-run-card="running"]'), "a run card", 20000);
+  await page.waitForTimeout(9000);
+}
+
 const click = async (page, name, opts = {}) => {
   const b = page.getByRole("button", { name, ...opts }).first();
   await b.click({ timeout: 8000 });
@@ -1768,7 +1777,47 @@ export const GROUPS = {
     },
   ],
 
-  gallery: ["buttons", "fields", "rows", "surfaces", "scales"].map((id) => ({
+  // Decision 101: the sub-agent run card in every state ("run cards demo" in Design system tokens; Orbit for "waiting on two").
+  runcard: [
+    ...[
+      ["running-plan", "Test writer", "running with a plan: step 4 of 6, segmented bar, the live step dim with its timer"],
+      ["running-no-plan", "Dependency mapper", "running without a plan: a count of steps done and an indeterminate mark, no total"],
+      ["needs-you", "Migration runner", "waiting for an approval: says what is asked and links to the one needs-you card"],
+      ["finished", "Doc writer", "finished: the outcome as the title, steps with their times"],
+      ["failed", "Test fixer", "failed: the reason as the title and on the failed step", 0],
+      ["escalated", "Test fixer", "escalated: 'Retried on the deep tier after the tests failed.'", 1],
+      ["stopped", "Lint sweeper", "stopped by the person"],
+      ["many-steps", "Code explorer", "41 steps: 'Show 36 earlier', a very long command cut with its tooltip"],
+    ].map(([name, role, what, nth = 0]) => ({
+      name: `run-card-${name}`,
+      text: `Design system tokens, 'run cards demo': the ${role} card, ${what}.`,
+      sizes: "all",
+      run: async (page, env) => {
+        await runCards(page, env);
+        let card = page.locator(`[data-run-card][aria-label="${role}: run"]`).nth(nth);
+        if (!(await card.count())) {
+          await page.getByRole("button", { name: new RegExp(`^${role}`) }).nth(nth).click({ timeout: 8000 });
+          await page.waitForTimeout(500);
+          card = page.locator(`[data-run-card][aria-label="${role}: run"]`).first();
+        }
+        await need(page, card, `${role} run card`);
+        await card.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(400);
+      },
+    })),
+    {
+      name: "run-card-waiting-on-two",
+      text: "Orbit mobile: the orchestrator waits on two agents, so both show as run cards in place of the 'Waiting on …' line.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await session(page, env, "Upgrade us to React Native");
+        await need(page, page.locator('[data-run-card="running"]').nth(1), "two run cards", 6000);
+      },
+    },
+  ],
+
+  gallery: ["buttons", "fields", "rows", "surfaces", "scales", "run-card"].map((id) => ({
     name: id,
     text: `Component library gallery (?gallery=1), section "${id}".`,
     sizes: "one",

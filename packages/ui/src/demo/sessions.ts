@@ -23,6 +23,7 @@ import {
 } from "@octo/agent-client";
 import { addRoot, addTalk, announceRoot, startIn, SYNC_PROMPT, syncRefactor } from "./parallel";
 import { clone, emit, newId, type ProjectRecord } from "./store";
+import { stopDemoAgent } from "./runtime";
 import { titleFromRequest } from "../lib/sessions/requestTitle";
 
 const delay = () => new Promise((r) => setTimeout(r, 60));
@@ -373,8 +374,20 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
     entries.set(id, e);
     rec.afterTurn = (rootId) => void afterTurn(rec, rootId);
     // A root agent's state is its session's: every change of it is a `session.updated`, as the harness sends.
+    const subStatus = new Map<string, string>();
     rec.listeners.add({
       onEvent: (ev) => {
+        // A sub-agent's session appears with it and follows its state, as the harness sends them (its run card's Stop needs it).
+        if ((ev.type === "agent.created" || ev.type === "agent.updated") && ev.agent.parent_id !== null) {
+          const sid = `ses_${ev.agent.id}`;
+          if (subStatus.get(sid) === ev.agent.status) return;
+          subStatus.set(sid, ev.agent.status);
+          void snapshot(id).then((list) => {
+            const s = list.find((x) => x.id === sid);
+            if (s) emit(rec, { type: ev.type === "agent.created" ? "session.created" : "session.updated", session: s });
+          });
+          return;
+        }
         if (ev.type !== "agent.updated" || ev.agent.parent_id !== null) return;
         const m = e.mains.find((x) => x.root === ev.agent.id);
         if (m) void announce(id, m.id);
@@ -934,6 +947,10 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
           m.paused = true;
           queueEvent(rec, m);
         }
+      } else if (s.agent_id && stopDemoAgent(rec, s.agent_id)) {
+        // A real sub-agent of a running turn (decision 101's Stop): it ends cancelled at its next step; its session follows it.
+        const agentId = s.agent_id;
+        for (let i = 0; i < 40 && rec.agents.find((a) => a.id === agentId)?.status === "running"; i++) await new Promise((r) => setTimeout(r, 50));
       } else e.agentState.set(sid, "stopped");
       await announce(id, sid);
       return find(id, sid);

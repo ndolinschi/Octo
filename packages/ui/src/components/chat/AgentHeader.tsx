@@ -3,9 +3,8 @@ import { Button } from "../primitives/Button";
 import { roleName } from "../../lib/orchestrator";
 import { ChevronRight } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { useId, useState } from "react";
+import { Suspense, useId, useState } from "react";
 import { cn } from "../../lib/cn";
-import { formatDuration } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
 import { agentDuration } from "../../lib/duration";
 import { hrefFor } from "../../lib/route";
@@ -13,13 +12,16 @@ import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Markdown } from "../shared/Markdown";
 import { statusLabel, tierLabel } from "../primitives/statusMore";
-import { useAcpNames } from "../../state/models";
-import { useModelNames } from "../../state/modelNames";
-import { routeLine } from "../../lib/modelsMore";
 import { contextText } from "../../lib/contextText";
 import { CHAT } from "../../state/workspace/layout";
 import { retryText } from "./DelegationGroup";
 import { prefillComposer } from "./composerDraft";
+import { ActivityRow } from "./ActivityRow";
+import { useRunHead } from "./useRunCard";
+import { RUN_CARD_FRAME, runCardBody } from "./runCardPart";
+
+void runCardBody.fetch().catch(() => undefined);
+const RunCardBody = runCardBody.Component;
 
 export function Breadcrumb({ agent }: { agent: Agent }) {
   const { projectId, state } = useProject();
@@ -71,18 +73,17 @@ export function AgentHeader({ agent, now: nowProp }: { agent: Agent; now?: numbe
   const now = nowProp ?? liveNow;
   const duration = agentDuration(agent, now);
   const nested = descendantCount(state, agent.id);
-  const names = useModelNames();
-  const served = names.served(agent);
-  const route = routeLine(agent, useAcpNames());
-  const meta = [
-    // Decision 37: the model that answered; the requested one too when a router chose another.
-    served.long,
+  const head = useRunHead(agent, { name: roleName(agent) });
+  // Decision 101: the header's state, model, route and time are the run card (the same one the delegation row opens into),
+  // without its steps: the transcript below is the steps. The card's meta adds what only this header said.
+  const extra = [
     agent.tier ? tierLabel(agent.tier) : "",
-    duration !== null ? formatDuration(duration) : "",
     nested > 0 ? `${nested} nested` : "",
     // Reported by an ACP agent (`usage_update`); absent otherwise — never a guessed window.
     contextText(agent.context_used, agent.context_size) ?? "",
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <header className="mb-5">
@@ -90,23 +91,21 @@ export function AgentHeader({ agent, now: nowProp }: { agent: Agent; now?: numbe
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <h1 className="shrink-0 text-heading text-fg">{roleName(agent)}</h1>
         {agent.title && <p className="min-w-0 flex-1 truncate text-base text-fg-2">{agent.title}</p>}
-        <p className="ml-auto shrink-0 text-xs text-fg-3 tabular-nums" title={served.asked ? `${served.name} (asked for ${served.asked})` : served.name}>
-          {meta.map((m) => (
-            <span key={m} className="ml-3 first:ml-0">
-              {m}
-            </span>
-          ))}
-          <span className={cn("ml-3", agent.status === "failed" ? "text-err" : "text-fg-2")}>{statusLabel(agent.status)}</span>
-        </p>
       </div>
-      {route && (
-        <p data-route-line className="mt-1 text-xs text-fg-3">
-          {route}
-        </p>
-      )}
+      <div data-run-card={head.state} role="region" aria-label={`${roleName(agent)}: run`} className={cn("@container/run mt-2", RUN_CARD_FRAME)}>
+        <ActivityRow
+          state={head.state}
+          data="run-head"
+          verb={<span className="text-fg">{head.title}</span>}
+          duration={duration}
+          tip={agent.status === "failed" && agent.error ? `${head.title}\n\n${agent.error}` : `${statusLabel(agent.status)}: ${head.title}`}
+        />
+        <Suspense fallback={null}>
+          <RunCardBody agentId={agent.id} title={head.title} variant="header" extra={extra || undefined} />
+        </Suspense>
+      </div>
       {agent.status === "failed" && (
         <p role="note" className="mt-1.5 text-sm text-fg-2">
-          <span className="text-err">{(agent.error || "This agent failed").replace(/\.$/, "")}.</span>{" "}
           {ws ? (
             <Button
               variant="link"
@@ -117,9 +116,8 @@ export function AgentHeader({ agent, now: nowProp }: { agent: Agent; now?: numbe
             >
               Retry
             </Button>
-          ) : (
-            "Ask in the session to retry it."
-          )}
+          ) : null}
+          {ws ? <span className="text-fg-3"> puts its task back in the box; nothing is sent yet.</span> : "Ask in the session to retry it."}
         </p>
       )}
       {agent.task && (
