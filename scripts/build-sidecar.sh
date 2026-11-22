@@ -83,8 +83,8 @@ if [[ "$ROUTER" -eq 0 ]]; then
   echo "build-sidecar: skipping the router (--no-router)"
   placeholder
 elif ! command -v cargo >/dev/null 2>&1; then
-  echo "build-sidecar: 'cargo' is not installed, so the router is NOT built. Install Rust from https://rustup.rs for a complete app." >&2
-  placeholder
+  echo "build-sidecar: 'cargo' is not installed, so the router cannot be built. Install Rust from https://rustup.rs, or pass --no-router." >&2
+  exit 1
 else
   echo "build-sidecar: building the router (cargo build --release -p octo) for $TRIPLE"
   (cd "$ROOT" && cargo build --release -p octo)

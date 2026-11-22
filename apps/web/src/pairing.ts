@@ -125,8 +125,8 @@ export function claim(fetch: FetchFn, base: string, code: string, name: string):
 }
 
 /** GET /pair/me: what this device is now (pending or active) and may do. */
-export function whoAmI(fetch: FetchFn, base: string, token: string): Promise<Me> {
-  return call<Me>(fetch, `${base}/pair/me`, { headers: { Authorization: `Bearer ${token}` } });
+export function whoAmI(fetch: FetchFn, base: string, token: string, signal?: AbortSignal): Promise<Me> {
+  return call<Me>(fetch, `${base}/pair/me`, { headers: { Authorization: `Bearer ${token}` }, ...(signal ? { signal } : {}) });
 }
 
 /** What the page shows. */

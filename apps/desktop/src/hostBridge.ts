@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { errorMessage } from "./errorMessage";
 import { parseConnection } from "./hostConnection";
 import { parseNotices, type HostNotice } from "./hostNotices";
@@ -38,13 +38,15 @@ async function failure(e: unknown): Promise<HostState> {
  * Asks the Tauri shell for the harness URL and API token (`bridge_url` starts the harness on first use), and restarts it on retry
  * (`bridge_restart`). Disabled (`enabled` false) it stays in `starting` and calls nothing.
  */
-export function useHostBridge(enabled: boolean): { state: HostState; retry: () => void; retrying: boolean } {
+export function useHostBridge(enabled: boolean): { state: HostState; retry: () => void; retrying: boolean; attempt: number } {
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{ attempt: number; state: HostState } | null>(null);
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
     if (!enabled) return;
     const run = { live: true };
+    inFlightRef.current = true;
     void (async () => {
       let next: HostState;
       try {
@@ -53,15 +55,23 @@ export function useHostBridge(enabled: boolean): { state: HostState; retry: () =
       } catch (e) {
         next = await failure(e);
       }
-      if (run.live) setResult({ attempt, state: next });
+      if (run.live) {
+        inFlightRef.current = false;
+        setResult({ attempt, state: next });
+      }
     })();
     return () => {
       run.live = false;
+      inFlightRef.current = false;
     };
   }, [enabled, attempt]);
 
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const retry = useCallback(() => {
+    if (!enabled || inFlightRef.current) return;
+    inFlightRef.current = true;
+    setAttempt((n) => n + 1);
+  }, [enabled]);
   // A result belongs to the attempt that produced it; a newer attempt is "starting" until it answers.
   const current = result?.attempt === attempt ? result.state : null;
-  return { state: current ?? { phase: "starting" }, retry, retrying: current === null && attempt > 0 };
+  return { state: current ?? { phase: "starting" }, retry, retrying: current === null && attempt > 0, attempt };
 }

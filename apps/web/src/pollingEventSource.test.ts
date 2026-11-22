@@ -117,3 +117,77 @@ test("a poll that never answers is abandoned after its deadline and the stream r
   assert.equal(pauses[0], 1000);
   assert.ok(n >= 3, "a new stream was opened after the stalled poll");
 });
+
+test("mobile resume cancels backoff sleep immediately and cleans up listeners on close", async () => {
+  let n = 0;
+  const wake: { fire?: () => void } = {};
+  let cleanedUp = false;
+  const f: FetchFn = () => {
+    n++;
+    if (n === 1) return Promise.reject(new Error("offline"));
+    if (n === 2) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ stream: "ps_ok", events: [] }) });
+    return new Promise(() => undefined);
+  };
+  const Ctor = pollingEventSource({
+    token: "t",
+    fetch: f,
+    wakeTarget: {
+      onResume(cb) {
+        wake.fire = cb;
+        return () => {
+          cleanedUp = true;
+        };
+      },
+    },
+  });
+  const es = new Ctor("/v1/projects/p1/events");
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(n, 1, "waiting in 1s backoff sleep");
+  assert.equal(es.readyState, 0);
+  const t0 = Date.now();
+  const fire1 = wake.fire;
+  if (!fire1) throw new Error("expected wake listener");
+  fire1();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.ok(Date.now() - t0 < 500, "backoff sleep aborted well before 1000ms");
+  assert.equal(es.readyState, 1, "reconnected immediately on wake");
+  assert.equal(cleanedUp, false);
+  es.close();
+  assert.equal(cleanedUp, true, "wake listener removed on close");
+});
+
+test("mobile resume aborts a stale in-flight poll and reopens without backoff", async () => {
+  let n = 0;
+  const wake: { fire?: () => void } = {};
+  const pauses: number[] = [];
+  const f: FetchFn = (_url, init) => {
+    n++;
+    if (n === 1) {
+      return new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+    }
+    if (n === 2) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ stream: "ps_fresh", events: [] }) });
+    return new Promise(() => undefined);
+  };
+  const Ctor = pollingEventSource({
+    token: "t",
+    fetch: f,
+    deadlineMs: 60_000,
+    sleep: (ms) => (pauses.push(ms), Promise.resolve()),
+    wakeTarget: {
+      onResume(cb) {
+        wake.fire = cb;
+        return () => undefined;
+      },
+    },
+  });
+  const es = new Ctor("/v1/projects/p1/events");
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(n, 1);
+  const fire2 = wake.fire;
+  if (!fire2) throw new Error("expected wake listener");
+  fire2();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(es.readyState, 1, "reopened immediately after aborting stale poll");
+  assert.deepEqual(pauses, [], "no backoff sleep on wake-triggered reopen");
+  es.close();
+});

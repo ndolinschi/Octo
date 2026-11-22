@@ -1,8 +1,5 @@
-import { abortingReads, createHttpBridge, type Bridge } from "@octo/agent-client";
-import { OctoApp, type HostCapabilities } from "@octo/ui";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { deviceChanged, deviceOf, WEB_PHONE_QUERY } from "./device";
-import { guardedFetch } from "./guardedFetch";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { deviceChanged } from "./device";
 import {
   NOTICE_DENIED,
   NOTICE_DISCONNECTED,
@@ -14,12 +11,12 @@ import {
   startPhase,
   whoAmI,
   type FetchFn,
-  type Me,
   type Phase,
   type StorageLike,
 } from "./pairing";
 import { PairingScreen } from "./PairingScreen";
-import { pollingEventSource } from "./pollingEventSource";
+
+const Remote = lazy(() => import("./Remote"));
 
 /** How often a waiting phone asks whether the computer allowed it, and how often a paired one checks it still is. */
 const WAIT_POLL_MS = 2000;
@@ -51,6 +48,7 @@ export default function App() {
   const [hashCode] = useState(takeHashCode);
   const [phase, setPhase] = useState<Phase>({ kind: "checking" });
   const [fatal, setFatal] = useState<string | null>(null);
+  const [checkRun, setCheckRun] = useState(0);
 
   const gone = useCallback((notice: string) => {
     clearToken(storage());
@@ -66,68 +64,68 @@ export default function App() {
     return () => {
       live = false;
     };
-  }, [base, hashCode]);
+  }, [base, hashCode, checkRun]);
 
   // Waiting for "Allow" on the computer; ready: a quiet check that the device is still paired.
   const token = phase.kind === "waiting" || phase.kind === "ready" ? phase.token : null;
   const waiting = phase.kind === "waiting";
   useEffect(() => {
     if (!token) return;
+    let live = true;
+    let inFlight: AbortController | null = null;
     const id = window.setInterval(
       () => {
-        whoAmI(pageFetch, base, token).then(
+        if (!live || document.hidden) return;
+        inFlight?.abort();
+        const controller = new AbortController();
+        inFlight = controller;
+        whoAmI(pageFetch, base, token, controller.signal).then(
           (me) => {
+            if (!live) return;
             if (waiting && me.status === "active") setPhase({ kind: "ready", token, me });
             // The computer switched this device to read-only (or back): the UI follows without a reload.
             else if (!waiting && me.status === "active") setPhase((p) => (p.kind === "ready" && deviceChanged(p.me, me) ? { ...p, me } : p));
           },
           (e: unknown) => {
+            if (!live || controller.signal.aborted) return;
             if (e instanceof PairingError && isDeviceGone(e.status, e.code)) gone(waiting ? NOTICE_DENIED : NOTICE_DISCONNECTED);
           },
         );
       },
       waiting ? WAIT_POLL_MS : CHECK_MS,
     );
-    return () => window.clearInterval(id);
+    return () => {
+      live = false;
+      window.clearInterval(id);
+      inFlight?.abort();
+    };
   }, [base, token, waiting, gone]);
 
   const lost = useCallback(() => gone(NOTICE_DISCONNECTED), [gone]);
   const onPaired = useCallback((t: string, name: string) => {
     saveToken(storage(), t);
+    setFatal(null);
     setPhase({ kind: "waiting", token: t, name });
   }, []);
+  const retry = useCallback(() => {
+    setFatal(null);
+    setPhase({ kind: "checking" });
+    setCheckRun((n) => n + 1);
+  }, []);
 
-  if (fatal) return <PairingScreen base={base} phase={{ kind: "pair", code: hashCode ?? "", notice: fatal }} onPaired={onPaired} />;
-  if (phase.kind === "ready") return <Remote token={phase.token} base={base} me={phase.me} onGone={lost} />;
+  if (fatal) return <PairingScreen base={base} phase={{ kind: "pair", code: hashCode ?? "", notice: fatal }} onPaired={onPaired} onRetry={retry} />;
+  if (phase.kind === "ready") {
+    return (
+      <Suspense
+        fallback={
+          <main className="flex min-h-full items-center justify-center bg-window text-sm text-fg-2">
+            <p role="status">Loading Octo…</p>
+          </main>
+        }
+      >
+        <Remote token={phase.token} base={base} me={phase.me} onGone={lost} />
+      </Suspense>
+    );
+  }
   return <PairingScreen key={phase.kind} base={base} phase={phase} onPaired={onPaired} />;
-}
-
-/** Whether the window is phone-sized (`WEB_PHONE_QUERY`), following rotation and resizing. */
-function usePhoneWindow(): boolean {
-  return useSyncExternalStore(
-    (onChange) => {
-      const mql = window.matchMedia(WEB_PHONE_QUERY);
-      mql.addEventListener("change", onChange);
-      return () => mql.removeEventListener("change", onChange);
-    },
-    () => window.matchMedia(WEB_PHONE_QUERY).matches,
-  );
-}
-
-function Remote({ token, base, me, onGone }: { token: string; base: string; me: Me; onGone(): void }) {
-  const bridge = useMemo<Bridge>(() => {
-    const f = guardedFetch(window.fetch.bind(window), onGone);
-    // P2-4: a read never answered gives its connection back after 12 s (the long poll passes its own signal and deadline).
-    return createHttpBridge({
-      baseUrl: base,
-      token,
-      fetch: abortingReads(f.fetch),
-      fetchBinary: f.fetchBinary,
-      EventSource: pollingEventSource({ token, fetch: f.poll }),
-    });
-  }, [token, base, onGone]);
-  const phone = usePhoneWindow();
-  // The layout is the web host's choice (see `WEB_PHONE_QUERY`); what the device may do comes from `/pair/me`.
-  const host = useMemo<HostCapabilities>(() => ({ layout: phone ? "phone" : "desktop", remoteDevice: deviceOf(me) }), [phone, me]);
-  return <OctoApp bridge={bridge} bridgeUrl={base} shell="web" host={host} />;
 }

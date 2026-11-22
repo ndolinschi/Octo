@@ -96,11 +96,11 @@ echo "install.sh: installing JavaScript dependencies (pnpm install)"
 pnpm install --frozen-lockfile
 
 echo "install.sh: building the sidecars (harness and router; the router needs a full Rust build the first time)"
-env -u OCTO_NO_ROUTER bash "$ROOT/scripts/build-sidecar.sh"
+env -u OCTO_NO_ROUTER -u OCTO_NO_WEB bash "$ROOT/scripts/build-sidecar.sh"
 
 if [[ "$OS" == Darwin ]]; then BUNDLES=app; else BUNDLES=appimage; fi
 echo "install.sh: building the app (tauri build --bundles $BUNDLES); this takes a while the first time"
-pnpm --filter @octo/desktop tauri build --bundles "$BUNDLES"
+pnpm --filter @octo/desktop tauri build --bundles "$BUNDLES" --config '{"build":{"beforeBuildCommand":"pnpm build"}}'
 
 BUNDLE_DIR="$ROOT/apps/desktop/src-tauri/target/release/bundle"
 

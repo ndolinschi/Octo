@@ -18,15 +18,53 @@ export type PollingOptions = {
   fetch: FetchFn;
   /** Seconds a poll may wait for an event (the harness caps it at 25; Cloudflare ends silent requests near 100 s). */
   wait?: number;
-  sleep?: (ms: number) => Promise<void>;
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   /**
    * P2-4: how long one poll may take before it is abandoned (a tunnel that stalls must not hold the stream for good); then it
    * counts as a network failure and the stream reopens. Default: `wait` + 20 s.
    */
   deadlineMs?: number;
+  /** Optional wake-up hook for tests; defaults to browser `document` (`visibilitychange`) and `window` (`online`). */
+  wakeTarget?: {
+    onResume(cb: () => void): () => void;
+  };
 };
 
-const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const defaultSleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise<void>((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+
+function subscribeWake(onWake: () => void, custom?: PollingOptions["wakeTarget"]): () => void {
+  if (custom) return custom.onResume(onWake);
+  const cleanups: (() => void)[] = [];
+  if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") onWake();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    cleanups.push(() => document.removeEventListener("visibilitychange", onVisibility));
+  }
+  if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+    window.addEventListener("online", onWake);
+    cleanups.push(() => window.removeEventListener("online", onWake));
+  }
+  return () => {
+    for (const fn of cleanups) fn();
+  };
+}
 
 /** `/v1/projects/{pid}/events` of an EventSource URL, as the poll URL; null for any other stream. */
 export function pollUrlOf(url: string): string | null {
@@ -46,6 +84,9 @@ export function pollingEventSource(opts: PollingOptions): EventSourceCtor {
     onerror: ((ev: unknown) => void) | null = null;
     private readonly listeners = new Map<string, Listener[]>();
     private readonly abort = new AbortController();
+    private stepAbort: AbortController | null = null;
+    private unlistenWake: (() => void) | null = null;
+    private woke = false;
     private closed = false;
 
     constructor(url: string) {
@@ -55,6 +96,7 @@ export function pollingEventSource(opts: PollingOptions): EventSourceCtor {
         queueMicrotask(() => this.onerror?.({ type: "error" }));
         return;
       }
+      this.unlistenWake = subscribeWake(() => this.wake(), opts.wakeTarget);
       void this.run(poll);
     }
 
@@ -67,7 +109,21 @@ export function pollingEventSource(opts: PollingOptions): EventSourceCtor {
     close(): void {
       this.closed = true;
       this.readyState = 2;
+      this.cleanupWake();
       this.abort.abort();
+      this.stepAbort?.abort();
+    }
+
+    private cleanupWake(): void {
+      this.unlistenWake?.();
+      this.unlistenWake = null;
+    }
+
+    /** Wakes mobile clients immediately on `visibilitychange` (visible) or `online`: cancels backoff or a stale poll. */
+    private wake(): void {
+      if (this.closed) return;
+      this.woke = true;
+      this.stepAbort?.abort();
     }
 
     /** Read through a method: `close()` may run while a poll is awaited, which narrowing cannot see. */
@@ -80,8 +136,9 @@ export function pollingEventSource(opts: PollingOptions): EventSourceCtor {
     }
 
     private async get(url: string): Promise<{ status: number; body: unknown }> {
-      // This poll's own signal: aborted by `close()` or by its deadline.
+      // This poll's own signal: aborted by `close()`, by `wake()`, or by its deadline.
       const one = new AbortController();
+      this.stepAbort = one;
       const stop = () => one.abort();
       this.abort.signal.addEventListener("abort", stop);
       const timer = setTimeout(stop, deadlineMs);
@@ -92,6 +149,7 @@ export function pollingEventSource(opts: PollingOptions): EventSourceCtor {
       } finally {
         clearTimeout(timer);
         this.abort.signal.removeEventListener("abort", stop);
+        if (this.stepAbort === one) this.stepAbort = null;
       }
       let body: unknown = null;
       try {
@@ -102,44 +160,73 @@ export function pollingEventSource(opts: PollingOptions): EventSourceCtor {
       return { status: res.status, body };
     }
 
+    private async backoffSleep(ms: number): Promise<void> {
+      const backoff = new AbortController();
+      this.stepAbort = backoff;
+      const stop = () => backoff.abort();
+      this.abort.signal.addEventListener("abort", stop);
+      try {
+        await sleep(ms, backoff.signal);
+      } finally {
+        this.abort.signal.removeEventListener("abort", stop);
+        if (this.stepAbort === backoff) this.stepAbort = null;
+      }
+    }
+
     private async run(poll: string): Promise<void> {
       let stream: string | null = null;
       let failures = 0;
-      while (!this.closed) {
-        try {
-          const url: string = stream ? `${poll}?stream=${encodeURIComponent(stream)}&wait=${String(wait)}` : poll;
-          const { status, body } = await this.get(url);
-          if (this.isClosed()) return;
-          if (status === 401 || status === 403) {
-            this.readyState = 2;
-            this.onerror?.({ type: "error", status });
-            return;
-          }
-          if (status === 410) {
+      try {
+        while (!this.closed) {
+          try {
+            this.woke = false;
+            const url: string = stream ? `${poll}?stream=${encodeURIComponent(stream)}&wait=${String(wait)}` : poll;
+            const { status, body } = await this.get(url);
+            if (this.isClosed()) return;
+            if (status === 401 || status === 403) {
+              this.readyState = 2;
+              this.onerror?.({ type: "error", status });
+              return;
+            }
+            if (status === 410) {
+              stream = null;
+              this.readyState = 0;
+              continue;
+            }
+            if (status !== 200 || !isPoll(body)) throw new Error(`poll answered ${String(status)}`);
+            failures = 0;
+            if (!stream) {
+              stream = body.stream;
+              this.readyState = 1;
+              this.onopen?.({ type: "open" });
+            }
+            for (const ev of body.events) {
+              if (this.isClosed()) return;
+              if (isRecord(ev) && typeof ev.type === "string") this.emit(ev.type, JSON.stringify(ev));
+            }
+            this.emit("heartbeat", "{}");
+          } catch {
+            if (this.isClosed()) return;
+            if (this.woke) {
+              this.woke = false;
+              failures = 0;
+              stream = null;
+              this.readyState = 0;
+              continue;
+            }
+            failures++;
             stream = null;
             this.readyState = 0;
-            continue;
+            this.onerror?.({ type: "error" });
+            await this.backoffSleep(Math.min(15_000, 1000 * 2 ** Math.min(failures - 1, 4)));
+            if (this.woke) {
+              this.woke = false;
+              failures = 0;
+            }
           }
-          if (status !== 200 || !isPoll(body)) throw new Error(`poll answered ${String(status)}`);
-          failures = 0;
-          if (!stream) {
-            stream = body.stream;
-            this.readyState = 1;
-            this.onopen?.({ type: "open" });
-          }
-          for (const ev of body.events) {
-            if (this.isClosed()) return;
-            if (isRecord(ev) && typeof ev.type === "string") this.emit(ev.type, JSON.stringify(ev));
-          }
-          this.emit("heartbeat", "{}");
-        } catch {
-          if (this.isClosed()) return;
-          failures++;
-          stream = null;
-          this.readyState = 0;
-          this.onerror?.({ type: "error" });
-          await sleep(Math.min(15_000, 1000 * 2 ** Math.min(failures - 1, 4)));
         }
+      } finally {
+        this.cleanupWake();
       }
     }
   };

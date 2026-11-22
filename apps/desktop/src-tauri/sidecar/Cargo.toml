@@ -5,6 +5,7 @@ description = "Starts, watches and stops the bundled harness and router (no Taur
 edition = "2021"
 
 [dependencies]
+getrandom = "0.3"
 serde = { version = "1", features = ["derive"] }
 
 [target.'cfg(unix)'.dependencies]

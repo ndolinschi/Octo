@@ -7,7 +7,7 @@
 //! `OCTO_CONFIG` pointing there. The client key therefore lives in a file in the app data directory (mode 0600 on
 //! Unix), never in a command line.
 
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 pub const LOG_NAME: &str = "router.log";
@@ -18,27 +18,10 @@ pub const PROCESS_NAMES: &[&str] = &["octo", "octo.exe"];
 /// The HTTP body limit written into `limits.toml` (the router's shipped default is 10 MiB; agent contexts are larger).
 pub const MAX_BODY_BYTES: u64 = 32 * 1024 * 1024;
 
-/// A random 256-bit key as 64 hex characters: `/dev/urandom` on Unix, hasher seeds from the OS elsewhere.
+/// A random 256-bit key as 64 hex characters from the operating system's CSPRNG.
 pub fn generate_key() -> String {
     let mut bytes = [0u8; 32];
-    let from_os = std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| f.read_exact(&mut bytes))
-        .is_ok();
-    if !from_os {
-        use std::hash::{BuildHasher, Hasher};
-        for chunk in bytes.chunks_mut(8) {
-            // `RandomState` is seeded from the operating system's randomness.
-            let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-            h.write_u128(
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_nanos())
-                    .unwrap_or(0),
-            );
-            h.write_u32(std::process::id());
-            chunk.copy_from_slice(&h.finish().to_le_bytes());
-        }
-    }
+    getrandom::fill(&mut bytes).expect("OS CSPRNG failed");
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -87,10 +70,13 @@ pub fn database_path(router_dir: &Path) -> PathBuf {
     router_dir.join("history.sqlite")
 }
 
-/// Writes the three fragments (replacing earlier ones). `server.toml` holds the key, so it is created 0600 on Unix.
+/// Writes the three fragments (replacing earlier ones). `server.toml` holds the key, so it is created 0600 on Unix,
+/// and both `router_dir` and `router_dir/config` are locked down to 0700 on Unix.
 pub fn write_config(router_dir: &Path, port: u16, client_key: &str) -> io::Result<PathBuf> {
     let dir = config_dir(router_dir);
     std::fs::create_dir_all(&dir)?;
+    enforce_dir_mode(router_dir)?;
+    enforce_dir_mode(&dir)?;
     write_private(&dir.join("server.toml"), &server_toml(port, client_key))?;
     std::fs::write(dir.join("limits.toml"), limits_toml())?;
     std::fs::write(
@@ -98,6 +84,17 @@ pub fn write_config(router_dir: &Path, port: u16, client_key: &str) -> io::Resul
         history_toml(&database_path(router_dir)),
     )?;
     Ok(dir)
+}
+
+#[cfg(unix)]
+fn enforce_dir_mode(path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+}
+
+#[cfg(not(unix))]
+fn enforce_dir_mode(_path: &Path) -> io::Result<()> {
+    Ok(())
 }
 
 fn write_private(path: &Path, text: &str) -> io::Result<()> {
@@ -154,6 +151,10 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            let dir_mode = std::fs::metadata(&d).unwrap().permissions().mode();
+            assert_eq!(dir_mode & 0o777, 0o700, "router_dir must be 0700");
+            let cfg_mode = std::fs::metadata(&dir).unwrap().permissions().mode();
+            assert_eq!(cfg_mode & 0o777, 0o700, "router config dir must be 0700");
             let mode = std::fs::metadata(dir.join("server.toml"))
                 .unwrap()
                 .permissions()

@@ -193,9 +193,23 @@ impl Bridge {
     }
 
     /// Notices for the current run: empty when all is well, one `router_failed` when the router was wanted but did
-    /// not come up (the harness runs without it).
+    /// not come up or stopped unexpectedly after start-up (the harness runs without it).
     pub fn notices(&self) -> Vec<Notice> {
-        let failure = self.router_failure.lock().ok().and_then(|g| g.clone());
+        let mut failure = self.router_failure.lock().ok().and_then(|g| g.clone());
+        if failure.is_none() {
+            let exited = self.running.lock().ok().and_then(|mut g| {
+                let r = g.as_mut()?;
+                let sc = r.router.as_mut()?;
+                let why = sc.exited()?;
+                r.router = None;
+                let _ = std::fs::remove_file(self.cfg.router_dir.join(router::PID_NAME));
+                Some(format!("The router stopped unexpectedly: {why}."))
+            });
+            if let Some(msg) = exited {
+                self.set_router_failure(Some(msg.clone()));
+                failure = Some(msg);
+            }
+        }
         match failure {
             Some(message) => vec![Notice {
                 kind: "router_failed".into(),
@@ -248,16 +262,25 @@ impl Bridge {
         self.restart_connection().map(|c| c.url)
     }
 
-    /// [`Bridge::restart`] returning the new run's [`Connection`] (a new token).
+    /// [`Bridge::restart`] returning the new run's [`Connection`] (a new token). Holds `self.running` across the
+    /// stop and start so concurrent callers cannot interleave between them.
     pub fn restart_connection(&self) -> Result<Connection, String> {
-        self.stop();
-        self.connection()
+        let mut guard = self
+            .running
+            .lock()
+            .map_err(|_| "internal error: bridge state is poisoned".to_string())?;
+        self.stop_locked(&mut guard);
+        let running = self.start()?;
+        let conn = Connection {
+            url: running.url.clone(),
+            token: running.token.clone(),
+        };
+        *guard = Some(running);
+        Ok(conn)
     }
 
-    /// Harness first (SIGTERM, 3 s, SIGKILL on its group), then the router. No-op when nothing runs.
-    pub fn stop(&self) {
-        let taken = self.running.lock().ok().and_then(|mut g| g.take());
-        if let Some(mut r) = taken {
+    fn stop_locked(&self, guard: &mut Option<Running>) {
+        if let Some(mut r) = guard.take() {
             if let Some(sc) = r.harness.as_mut() {
                 sc.stop(STOP_GRACE);
             }
@@ -265,6 +288,13 @@ impl Bridge {
                 sc.stop(STOP_GRACE);
             }
             self.remove_pid_files();
+        }
+    }
+
+    /// Harness first (SIGTERM, 3 s, SIGKILL on its group), then the router. No-op when nothing runs.
+    pub fn stop(&self) {
+        if let Ok(mut guard) = self.running.lock() {
+            self.stop_locked(&mut guard);
         }
     }
 

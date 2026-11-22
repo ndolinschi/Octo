@@ -76,8 +76,14 @@ import { gzipSync } from "node:zlib";
  * After merging the integration tip (compact folders, branch picker): 160.05 kB; the time separators (`formatSeparator`,
  * `needsSeparator`, read by the transcript, Changes and memory sessions) moved from `lib/format` to `lib/timeSeparator`:
  * 159.87 kB, 1.13 of room. Next candidates: `useLoginHint`, `useCopy`, the scroll spots, `useRequests`/`projectRowLines`. Budget unchanged.
+ *
+ * Production-readiness pass (2026-11-22): eager `watchStream` (removes SSE watchdog chunk-load failure window),
+ * `seq` deduplication, `abortingReads` body-read deadline wrapping, `state.ts` deleted-session eviction & caps,
+ * and `useModal` nested-overlay Escape fix added +0.99 kB to the entry (160.39 -> 161.38 kB gzip; meanwhile
+ * `@octo/web` initial JS dropped from 184.69 kB across 77 chunks to 73.28 kB across 2 chunks via lazy `Remote` +
+ * `$initial` coalescing). Budget = measured + 1.0 = 162.4.
  */
-const BUDGET_KB = 161.0;
+const BUDGET_KB = 162.4;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.resolve(process.argv[2] ?? path.join(root, "apps/desktop/dist"));

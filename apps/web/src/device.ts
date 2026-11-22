@@ -6,7 +6,7 @@ import type { Me } from "./pairing";
  * held sideways is ~844x390, wider than the app's own phone query); the desktop layout otherwise, so a tablet (portrait
  * from 768px, landscape) and a desktop browser get the desktop one.
  */
-export const WEB_PHONE_QUERY = "(max-width: 640px), (pointer: coarse) and (max-height: 500px)";
+export const WEB_PHONE_QUERY = "(max-width: 640px), (pointer: coarse) and (max-height: 479.98px)";
 
 /** `HostCapabilities.remoteDevice` from `/pair/me`: what the harness lets this device do. */
 export function deviceOf(me: Pick<Me, "read_only" | "permissions">): NonNullable<HostCapabilities["remoteDevice"]> {

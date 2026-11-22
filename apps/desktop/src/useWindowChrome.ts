@@ -19,23 +19,37 @@ export function useWindowChrome(): WindowChrome {
     if (!overlay || !tauri) return;
     let live = true;
     let stop: (() => void) | null = null;
-    void import("@tauri-apps/api/window").then(async ({ getCurrentWindow }) => {
-      const win = getCurrentWindow();
-      const onDown = (e: MouseEvent) => {
-        if (e.button !== 0 || !(e.target instanceof Element) || !isDragTarget(e.target)) return;
-        if (e.detail === 2) void win.toggleMaximize();
-        else if (e.detail === 1) void win.startDragging();
-      };
-      document.addEventListener("mousedown", onDown);
-      const sync = () => void win.isFullscreen().then((f) => live && setFullscreen(f));
-      const unlisten = await win.onResized(sync);
-      sync();
-      stop = () => {
-        document.removeEventListener("mousedown", onDown);
-        unlisten();
-      };
-      if (!live) stop();
-    });
+    void import("@tauri-apps/api/window")
+      .then(async ({ getCurrentWindow }) => {
+        if (!live) return;
+        const win = getCurrentWindow();
+        const onDown = (e: MouseEvent) => {
+          if (e.button !== 0 || !(e.target instanceof Element) || !isDragTarget(e.target)) return;
+          if (e.detail === 2) void win.toggleMaximize().catch(() => undefined);
+          else if (e.detail === 1) void win.startDragging().catch(() => undefined);
+        };
+        document.addEventListener("mousedown", onDown);
+        const isLive = () => live;
+        const sync = () =>
+          void win
+            .isFullscreen()
+            .then((f) => isLive() && setFullscreen(f))
+            .catch(() => undefined);
+        let unlisten: () => void;
+        try {
+          unlisten = await win.onResized(sync);
+        } catch {
+          document.removeEventListener("mousedown", onDown);
+          return;
+        }
+        sync();
+        stop = () => {
+          document.removeEventListener("mousedown", onDown);
+          unlisten();
+        };
+        if (!isLive()) stop();
+      })
+      .catch(() => undefined);
     return () => {
       live = false;
       stop?.();

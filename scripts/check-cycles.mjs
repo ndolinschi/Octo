@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Fails when the relative-import graph of the frontend packages has a cycle (type-only imports, re-exports and
-// `import()` count). Walks every .ts/.tsx under packages/ui/src and apps/desktop/src with
+// `import()` count). Walks every .ts/.tsx under packages/ui/src, apps/desktop/src, and apps/web/src with
 // the TypeScript parser. Usage: node scripts/check-cycles.mjs
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ts = createRequire(path.join(root, "packages/ui/package.json"))("typescript");
 // agent-client is out of scope for Q4: it has one known value cycle (lspSession.ts <-> client.ts via BridgeError), reported separately.
-const DIRS = ["packages/ui/src", "apps/desktop/src"];
+const DIRS = ["packages/ui/src", "apps/desktop/src", "apps/web/src"];
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {

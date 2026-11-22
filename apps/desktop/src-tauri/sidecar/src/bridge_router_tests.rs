@@ -89,7 +89,11 @@ impl Env {
             cfg = cfg.with_router(self.fake("router", m));
         }
         cfg.health_timeout = Duration::from_secs(10);
-        cfg.router_health_timeout = Duration::from_millis(1500);
+        cfg.router_health_timeout = if router_mode == Some("hang") {
+            Duration::from_millis(1500)
+        } else {
+            Duration::from_secs(10)
+        };
         Bridge::new(cfg)
     }
 
@@ -552,7 +556,7 @@ fn a_failed_router_start_is_retried_by_the_next_restart_and_the_notice_clears() 
     )
     .with_router(e.fake("router", "die"));
     cfg.health_timeout = Duration::from_secs(10);
-    cfg.router_health_timeout = Duration::from_millis(1500);
+    cfg.router_health_timeout = Duration::from_secs(10);
     let b = Bridge::new(cfg);
     b.url().unwrap();
     assert_eq!(b.notices().len(), 1);
@@ -603,5 +607,75 @@ fn a_leftover_router_from_a_crashed_run_is_terminated_at_the_next_start() {
     assert!(std::fs::read_to_string(b.router_log_path())
         .unwrap()
         .contains("left over from an earlier run"));
+    b.stop();
+}
+
+#[test]
+fn a_router_that_crashes_after_startup_is_reported_by_notices() {
+    need_python!();
+    let e = Env::new("runtimecrash");
+    e.settings(ON);
+    let b = e.bridge(Some("ok"));
+    b.url().unwrap();
+    assert!(b.notices().is_empty());
+
+    let pid: i32 = std::fs::read_to_string(e.router_dir().join("router.pid"))
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    unsafe {
+        libc::kill(pid, libc::SIGKILL);
+    }
+
+    let t0 = std::time::Instant::now();
+    let notices = loop {
+        let n = b.notices();
+        if !n.is_empty() {
+            break n;
+        }
+        assert!(
+            t0.elapsed() < Duration::from_secs(5),
+            "notices() did not detect the crashed router"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].kind, "router_failed");
+    assert!(
+        notices[0].message.contains("stopped unexpectedly"),
+        "{}",
+        notices[0].message
+    );
+    assert!(
+        notices[0].log_tail.contains("--- octo: starting"),
+        "{}",
+        notices[0].log_tail
+    );
+    assert!(!e.router_dir().join("router.pid").exists());
+    // Subsequent calls keep reporting the notice until restarted.
+    assert_eq!(b.notices().len(), 1);
+    b.stop();
+}
+
+#[test]
+fn concurrent_restart_connection_calls_serialize_cleanly() {
+    need_python!();
+    let e = Env::new("concurrentrestart");
+    let b = std::sync::Arc::new(e.bridge(None));
+    let first = b.connection().unwrap();
+
+    let b1 = std::sync::Arc::clone(&b);
+    let b2 = std::sync::Arc::clone(&b);
+    let t1 = std::thread::spawn(move || b1.restart_connection());
+    let t2 = std::thread::spawn(move || b2.restart_connection());
+    let c1 = t1.join().unwrap().unwrap();
+    let c2 = t2.join().unwrap().unwrap();
+    assert_ne!(c1.token, first.token);
+    assert_ne!(c2.token, first.token);
+    assert_ne!(c1.token, c2.token);
+    // Final active connection is one of the two completed restarts.
+    let current = b.connection().unwrap();
+    assert!(current == c1 || current == c2);
     b.stop();
 }

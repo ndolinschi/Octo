@@ -11,7 +11,17 @@ const FIELD =
  * device, "Pair"; then "waiting for you to allow this phone on your computer". The app's own primitives are not exported
  * from `@octo/ui`, so this one screen uses the same tokens with plain elements.
  */
-export function PairingScreen({ base, phase, onPaired }: { base: string; phase: Phase; onPaired(token: string, name: string): void }) {
+export function PairingScreen({
+  base,
+  phase,
+  onPaired,
+  onRetry,
+}: {
+  base: string;
+  phase: Phase;
+  onPaired(token: string, name: string): void;
+  onRetry?: () => void;
+}) {
   const ids = { code: useId(), name: useId(), note: useId() };
   const initial = phase.kind === "pair" ? phase.code : "";
   const [code, setCode] = useState(initial);
@@ -65,9 +75,18 @@ export function PairingScreen({ base, phase, onPaired }: { base: string; phase: 
         {phase.kind === "pair" && (
           <form onSubmit={submit} className="flex flex-col gap-4" aria-describedby={ids.note}>
             {notice && (
-              <p role="alert" className="rounded-md border border-panel-edge bg-panel p-card text-sm text-fg">
-                {notice}
-              </p>
+              <div role="alert" className="flex flex-col gap-2 rounded-md border border-panel-edge bg-panel p-card text-sm text-fg">
+                <p>{notice}</p>
+                {onRetry && (
+                  <button
+                    type="button"
+                    onClick={onRetry}
+                    className="h-9 self-start rounded-md border border-field-edge bg-window px-3 font-medium text-fg transition-[border-color] duration-100 hover:border-fg"
+                  >
+                    Retry
+                  </button>
+                )}
+              </div>
             )}
             <div className="flex flex-col gap-1">
               <label htmlFor={ids.code} className="text-sm text-fg-2">
