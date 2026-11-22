@@ -1,11 +1,11 @@
 import { agentBySpawnToolUse, descendantCount, type Agent } from "@octo/agent-client";
-import { Suspense, useRef, type MouseEvent } from "react";
+import { Suspense, useCallback, useRef, type MouseEvent } from "react";
 import { usePhone } from "../../lib/phone";
 import { roleText } from "../../lib/orchestrator";
 import { agentActivity } from "../../lib/orchestratorMore";
 import { agentDuration } from "../../lib/duration";
 import { cn } from "../../lib/cn";
-import { useNow } from "../../lib/hooks";
+import { useLatest, useNow } from "../../lib/hooks";
 import { spawnInput } from "../../lib/toolsMore";
 import { type ToolUse, type TurnEnd } from "../../lib/transcript";
 import { spawnStatus, type SpawnStatus } from "../../lib/turnEnding";
@@ -159,6 +159,9 @@ function DelegationRow({
         ws?.openAgent(agent.id, { otherSide: other });
       }
     : null;
+  // Stable, so the memoised card body is not re-rendered by this row's own renders (every project event reaches the row).
+  const openLatest = useLatest(openAgent);
+  const onOpen = useCallback(() => openLatest.current?.(), [openLatest]);
   const title = agent?.title || input.title;
   const tier = agent?.tier ?? (isTier(input.tier) ? input.tier : null);
   const nested = agent ? descendantCount(state, agent.id) : 0;
@@ -270,7 +273,7 @@ function DelegationRow({
       )}
       {open && (
         <Suspense fallback={null}>
-          <RunCardBody agentId={agent.id} title={head.title} onOpen={openAgent ? () => openAgent() : undefined} onNeeds={revealNeeds} />
+          <RunCardBody agentId={agent.id} title={head.title} onOpen={openAgent ? onOpen : undefined} onNeeds={revealNeeds} />
         </Suspense>
       )}
     </div>

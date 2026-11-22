@@ -16,7 +16,9 @@ type Result = { content: unknown; is_error: boolean };
  */
 const HARNESS_INTERRUPTED = /^(interrupted: the tool call did not complete|the agent stopped before this tool call finished)\.?$/i;
 /** What an ACP agent itself answers for the call `session/cancel` interrupted ("rejected" from Claude Code, and the like). */
-const AGENT_INTERRUPTED = /^(rejected|cancell?ed|interrupted)\b|tool use was rejected|interrupted by (the )?user/i;
+// "the agent ended its turn …": the harness closes an ACP call a cancelled turn left open (acp_session.go finishLocked).
+const AGENT_INTERRUPTED =
+  /^(rejected|cancell?ed|interrupted)\b|tool use was rejected|interrupted by (the )?user|^the agent ended its turn before this tool call finished/i;
 
 const resultText = (r: Result) => (typeof r.content === "string" ? r.content.trim() : "");
 

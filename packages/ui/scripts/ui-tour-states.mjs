@@ -156,7 +156,11 @@ async function reviewOpen(page, env) {
 async function runReviewCommand(page, name) {
   const pinned = page.getByRole("button", { name, exact: true }).filter({ visible: true }).first();
   if (await pinned.count()) return pinned.click({ timeout: 8000 });
-  await page.getByRole("button", { name: /^Run\b/ }).filter({ visible: true }).first().click({ timeout: 8000 });
+  await page
+    .getByRole("button", { name: /^Run\b/ })
+    .filter({ visible: true })
+    .first()
+    .click({ timeout: 8000 });
   await page.getByRole("menuitem", { name }).first().click({ timeout: 8000 });
 }
 
@@ -421,7 +425,11 @@ export const GROUPS = {
         await page.waitForTimeout(800);
         await send(page, "Then summarise the result in one line");
         // The queue is one collapsed band ("1 queued · …") above the box: open it to reach the row's buttons.
-        await page.getByText(/^1 queued/).filter({ visible: true }).first().click({ timeout: 8000 });
+        await page
+          .getByText(/^1 queued/)
+          .filter({ visible: true })
+          .first()
+          .click({ timeout: 8000 });
         await page.waitForTimeout(400);
         await need(page, page.getByRole("button", { name: /Send now/ }), "queue row with Send now");
       },
@@ -1006,7 +1014,8 @@ export const GROUPS = {
         await project(page, env, "Design system tokens");
         await tool(page, "Show processes");
         await need(page, page.locator("[data-processes]"), "processes tab", 15000);
-        if (await page.locator("[data-processes] [data-row]").filter({ visible: true }).count()) throw new Error("not reached: the empty state (the project lists processes)");
+        if (await page.locator("[data-processes] [data-row]").filter({ visible: true }).count())
+          throw new Error("not reached: the empty state (the project lists processes)");
         await page.waitForTimeout(600);
       },
     },
@@ -1234,12 +1243,18 @@ export const GROUPS = {
         await page.waitForTimeout(1500);
         await projectSettings(page);
         // "Always allowed" is a collapsed row of the dialog now: open it, then its list names the rules.
-        const toggle = page.getByRole("button", { name: /^Always allowed/ }).filter({ visible: true }).first();
+        const toggle = page
+          .getByRole("button", { name: /^Always allowed/ })
+          .filter({ visible: true })
+          .first();
         await need(page, toggle, "the Always allowed row");
         await toggle.scrollIntoViewIfNeeded();
         await toggle.click({ timeout: 8000 });
         await page.waitForTimeout(700);
-        const h = page.getByText(/Always.allowed/).filter({ visible: true }).first();
+        const h = page
+          .getByText(/Always.allowed/)
+          .filter({ visible: true })
+          .first();
         await need(page, h, "rules list");
         await h.scrollIntoViewIfNeeded();
         await page.waitForTimeout(500);
@@ -1363,7 +1378,10 @@ export const GROUPS = {
         // Below 420px the search is a button that opens the field.
         const opener = page.getByRole("button", { name: "Search pull requests" }).filter({ visible: true });
         if (await opener.count()) await opener.first().click();
-        const field = page.getByRole("searchbox", { name: /Search pull requests/ }).filter({ visible: true }).first();
+        const field = page
+          .getByRole("searchbox", { name: /Search pull requests/ })
+          .filter({ visible: true })
+          .first();
         await field.fill("482");
         await field.press("Enter");
         await need(page, page.getByText(/Which repository is it in|Pick the repository/), "the refusal", 12000);
@@ -1796,7 +1814,10 @@ export const GROUPS = {
         await runCards(page, env);
         let card = page.locator(`[data-run-card][aria-label="${role}: run"]`).nth(nth);
         if (!(await card.count())) {
-          await page.getByRole("button", { name: new RegExp(`^${role}`) }).nth(nth).click({ timeout: 8000 });
+          await page
+            .getByRole("button", { name: new RegExp(`^${role}`) })
+            .nth(nth)
+            .click({ timeout: 8000 });
           await page.waitForTimeout(500);
           card = page.locator(`[data-run-card][aria-label="${role}: run"]`).first();
         }

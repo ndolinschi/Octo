@@ -1,5 +1,6 @@
 import type { ActiveTool, AgentStatus, Message, PlanEntry } from "@octo/agent-client";
 import { callRow, viewState, type CallRow, type Locate } from "../../lib/toolView";
+import type { TurnEnd } from "../../lib/transcript";
 import { stepState, type StepState } from "../../lib/turnEnding";
 import { toolActivity } from "./activity";
 
@@ -45,7 +46,7 @@ const firstLine = (text: string) =>
  */
 export function runSteps(
   messages: readonly Message[],
-  opts: { running: boolean; locate?: Locate; activeTools?: Readonly<Record<string, ActiveTool>> | undefined },
+  opts: { running: boolean; end?: TurnEnd; locate?: Locate; activeTools?: Readonly<Record<string, ActiveTool>> | undefined },
 ): RunStep[] {
   const results = new Map<string, Extract<Message["content"][number], { type: "tool_result" }>>();
   for (const m of messages) for (const b of m.content) if (b.type === "tool_result") results.set(b.tool_use_id, b);
@@ -55,7 +56,7 @@ export function runSteps(
     for (const b of m.content) {
       if (b.type !== "tool_use") continue;
       const result = results.get(b.id);
-      const state = viewState(stepState(result, opts.running, null), result);
+      const state = viewState(stepState(result, opts.running, opts.end ?? null), result);
       const output = typeof result?.content === "string" ? result.content : undefined;
       const started = opts.activeTools?.[b.id]?.started_at ?? m.created_at;
       const at = Date.parse(started);

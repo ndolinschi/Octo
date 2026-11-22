@@ -1,6 +1,6 @@
 import type { ActiveTool, Agent, Message, PlanEntry } from "@octo/agent-client";
 import { ArrowUpRight, Square, type LucideIcon } from "lucide-react";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { WAIT_TEXT, agentWaiting, type AgentWait } from "../../lib/agentWaiting";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
@@ -97,7 +97,8 @@ export const RunCardView = memo(function RunCardView(p: {
   const folders = code?.folders;
   const locate = useMemo(() => (folders ? (path: string) => locateInProject(folders, path) : () => null), [folders]);
   const running = agent.status === "running";
-  const steps = useMemo(() => runSteps(p.messages ?? [], { running, locate, activeTools: p.tools }), [p.messages, running, locate, p.tools]);
+  const end = agent.status === "cancelled" ? "cancelled" : agent.status === "failed" ? "failed" : null;
+  const steps = useMemo(() => runSteps(p.messages ?? [], { running, end, locate, activeTools: p.tools }), [p.messages, running, end, locate, p.tools]);
   const progress = runProgress(p.plan, steps, agent.status);
   const served = names.served(agent);
   const model = served.name || (agent.tier ? tierLabel(agent.tier) : "");
@@ -206,13 +207,18 @@ function Actions(p: {
   const { bridge } = useApp();
   const [stopping, setStopping] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const row = useRef<HTMLDivElement>(null);
   const stop = () => {
     const sid = p.sessionId;
     if (!sid || stopping) return;
     setStopping(true);
     setProblem(null);
     bridge.stopSession(p.projectId, sid).then(
-      () => setStopping(false),
+      () => {
+        setStopping(false);
+        // Stop goes once the agent has stopped: focus moves to the card's own head row, not to the page.
+        row.current?.closest("[data-run-card]")?.querySelector<HTMLElement>("[aria-expanded]")?.focus();
+      },
       (e: unknown) => {
         setStopping(false);
         setProblem(`Couldn't stop ${p.agent.role || "the agent"}: ${errorMessage(e).replace(/\.$/, "")}. Try again, or stop the whole request.`);
@@ -240,7 +246,7 @@ function Actions(p: {
           )}
         </p>
       )}
-      <div data-run-actions className="-ml-2 flex items-center gap-1">
+      <div ref={row} data-run-actions className="-ml-2 flex items-center gap-1">
         {p.actions.includes("stop") && <Action icon={Square} label="Stop" variant="danger" loading={stopping} onClick={stop} />}
         {p.actions.includes("open") && p.onOpen && (
           <span className="ml-auto">

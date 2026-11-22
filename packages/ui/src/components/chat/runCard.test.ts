@@ -62,6 +62,15 @@ test("a failed step carries its reason; a call cut by a stop reads stopped; a re
   assert.equal(refused[0]?.reason, null);
 });
 
+test("a call a stopped agent left open reads stopped, not failed (the harness's closing text)", () => {
+  const messages = [
+    use("t1", "other", { title: "Waiting forever" }),
+    result("t1", "the agent ended its turn before this tool call finished", { error: true, ms: 3000 }),
+  ];
+  assert.equal(runSteps(messages, { running: false, end: "cancelled" })[0]?.state, "stopped");
+  assert.equal(runSteps(messages, { running: false, end: "cancelled" })[0]?.reason, null);
+});
+
 test("older steps fold behind 'Show N earlier'; the newest stay", () => {
   const all = Array.from({ length: 42 }, (_, i) => i);
   const folded = visibleSteps(all, false);

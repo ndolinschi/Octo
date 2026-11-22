@@ -4919,3 +4919,42 @@ f. **Reuse.** The agent tab's header shows the same card (head, meta, progress, 
    `RunCardView` this agent's slices only, settled steps are memoised rows, and only the running step and the head tick.
 g. **Accessibility.** The open card is a labelled region ("Test writer: run"); its current step is said in a polite live region
    at most once every 8 s (the latest text; `useThrottledAnnouncement`); focus rings are the global ones.
+
+### As built — decision 101 (2026-11-22)
+
+- **Code.** `components/chat/runCard.ts` (pure: `runSteps`, `runProgress`, `runActions`, `runTitle`, `visibleSteps`,
+  `waitedCards`, `routeShort`/`escalation`, `outcomeLine`; `runCard.test.ts`), `useRunCard.ts` (`useRunCardOpen`: the person's
+  choice, the waiting rule, the 1.6 s linger, focus inside keeps it; `useRunHead`; `useThrottledAnnouncement`),
+  `AgentRunCard.tsx` (`RunCardBody` → memoised `RunCardView`: meta, route line, progress, steps, actions), `RunCardSteps.tsx`,
+  `runCardPart.ts` (the lazy part and `RUN_CARD_FRAME`), `DelegationGroup.tsx` (the row is the card's head), `AgentHeader.tsx`
+  (the agent tab's header is the card without steps), `Transcript.tsx` (no "Waiting on" line under a round it waits on),
+  `ConversationView.tsx` (`revealNeeds`: scrolls to and focuses the needs-you card), `ActivityRow` (`formatDuration` prop),
+  `activity.ts` (`edit` → "Editing x"), `lib/duration.ts` (`formatStepDuration`, tested), `lib/turnEnding.ts` (the harness's
+  "the agent ended its turn before this tool call finished" for a stopped ACP agent reads stopped), `styles.css`
+  (`octo-run-indeterminate`, 44px action targets). Gallery: `RunCardGallery` (every state at full width and 320px), handed to
+  `primitives/Gallery` as children by `app/OctoApp`. Tour: group `runcard` (nine states) and gallery section `run-card`.
+- **Data added.** Harness: per-call timings (`tool.started.started_at`, `tool.finished.duration_ms`, `tool_result.duration_ms`
+  stored in `messages.tool_ms`; `apps/harness/docs/acp-orchestrator.md` "Tool timings"). Client: the types, `ActiveTool.started_at`
+  (reducer test). Demo: "run cards demo" (`demo/runCards.ts`: a round played in from six minutes ago — finished, failed, its
+  escalated retry, stopped, 41 steps with a very long command — and a live round of three: a plan, no plan, an approval), each
+  child with its own stop (`stopDemoAgent`, the agent sessions' Stop), sub-agent `session.created/updated`, `agent.plan` for a
+  sub-agent, tool timings.
+- **Verified** (Chromium, demo on a dev server, and against a real harness): screenshots of every state dark and light at
+  1440×900 and 390×700 (tour group `runcard`), the narrow chat at 400×800 and the gallery at 320px. Measured at 1440, 400 and 390:
+  the card's edges are −12/+12 px of the text column (the user bubble's right edge is +12), state glyph box at 0 (the 14px glyph
+  at 1), title and meta at 24, step glyphs at 0, all times in one right-aligned column, no horizontal overflow of the page or
+  the card; labels give way to icon buttons below a 20rem card. A demo script: the waiting rule opens the first of three and
+  then both remaining when one is stopped; no "Waiting on" line; Enter folds and opens with focus on the row; "Review it"
+  focuses the approval card; Stop ends the agent (cancelled) and its card then offers no Stop; Open session opens the agent tab,
+  whose header is the card. Render counts (a stub devtools hook, 10 s of the live round): `RunCardView` 3, settled step rows 0,
+  `AssistantTurn` 0, `Transcript` 3 (the delegation rows re-render with every project event, as before). Real harness (mock
+  model, scripted ACP agent): a turn that delegates shows the card while the turn waits, Stop stops the agent, Open session opens
+  its tab; built-in sub-agents' stored results carry `duration_ms`. Gates: `pnpm lint` 0 errors (no new warning in a touched
+  file), `pnpm format:check`, `@octo/ui` tests 1030 pass, `@octo/agent-client` 190 pass, `go test ./...` and `go vet` green;
+  build and `check-bundle-size.mjs`: initial JS 160.72 kB gzip (budget 161.00; 160.41 before this work, +0.31 kB; the card body
+  is a 3.10 kB gzip chunk of its own); `spacing-audit.mjs` total=0 skipped=0, `composer-fit`, `scroll-anchor` (worst 0 px, native
+  and manual, desk and phone), `stick-on-open`, `scroll-on-send`, `layout-shift` (anchor moved 0 px), `flicker` (0 running
+  animations on idle screens), `frame-colours` all ok. The audit has no scene of its own for an open card.
+- **Not verified:** WebKit; a real touch device and a screen reader (the live region's throttle was read, not heard); the
+  plan progress with a real ACP agent's plan (demo and gallery only); cost in dollars on the card (the agent row has tokens, no
+  cost: the meta shows tokens only); the escalation text from a real router (demo and gallery only).
