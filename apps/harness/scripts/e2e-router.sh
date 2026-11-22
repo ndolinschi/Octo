@@ -37,7 +37,7 @@ jget() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 cp -r "$ROOT/apps/router/config" "$TMP/config"
 sed -i "s|^bind_addr = .*|bind_addr = \"127.0.0.1:$RP\"|" "$TMP/config/server.toml"
 sed -i "s|^messages_url = .*|messages_url = \"http://127.0.0.1:$MP/v1/messages\"|; s|^decisions_url = .*|decisions_url = \"http://127.0.0.1:$MP/decisions\"|" "$TMP/config/openrouter.toml"
-sed -i "s|^database_path = .*|database_path = \"$TMP/history.sqlite\"|" "$TMP/config/history.toml"
+sed -i "s|^database_path = .*|database_path = \"$TMP/history.sqlite\"|; s|^store_payloads = .*|store_payloads = true|" "$TMP/config/history.toml"
 : > "$TMP/config/prices.toml"
 for slug in deepseek/deepseek-v4.1-flash minimax/minimax-m3.1-flash deepseek/deepseek-v4.1-flash-1017; do
   printf '[prices."%s"]\ninput = 5000.0\ncache_read = 500.0\ncache_write = 6000.0\noutput = 25000.0\n' "$slug" >> "$TMP/config/prices.toml"
