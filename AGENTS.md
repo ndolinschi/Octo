@@ -10,7 +10,7 @@ This repository is an **apps-directory monorepo**. Applications live under `apps
 | **ui** | [`packages/ui/`](./packages/ui/) | React | Shell-agnostic UI (`@octo/ui`): sidebar, tab workspace, chat, Monaco editor with comments and LSP |
 | **agent-client** | [`packages/agent-client/`](./packages/agent-client/) | TypeScript | Bridge HTTP + SSE client, state reducer, message-port bridge, file/plugin/LSP methods (`@octo/agent-client`) |
 
-**End-user guide:** [`docs/user-guide/README.md`](./docs/user-guide/README.md). **System overview** (parts, process diagram, data locations, main flows, where to look, every environment variable, status, specs index): [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md). **Current state and next steps:** [`docs/superpowers/HANDOVER.md`](./docs/superpowers/HANDOVER.md).
+**End-user guide:** [`docs/user-guide/README.md`](./docs/user-guide/README.md). **System overview** (parts, process diagram, data locations, main flows, where to look, every environment variable, status, specs index): [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md). **Runtime view** (start-up and shutdown order, failure modes, the API by area, the data model, background work, limits, diagnostics, "where to look when"): [`docs/SYSTEM.md`](./docs/SYSTEM.md). **UI component library and tokens:** [`packages/ui/COMPONENTS.md`](./packages/ui/COMPONENTS.md). **Dead-weight report** (evidence and a removal plan; the owner decides): [`docs/CLEANUP.md`](./docs/CLEANUP.md). **Current state and next steps:** [`docs/superpowers/HANDOVER.md`](./docs/superpowers/HANDOVER.md).
 
 **Web** host: [`apps/web/`](./apps/web/) — the mobile web client (`@octo/web`): the same UI, served by the harness through Remote access (`apps/harness/docs/remote-access.md`, spec `2026-11-14-remote-access-mobile-design.md`). Do not invent other shared packages until something is actually shared twice.
 
@@ -23,14 +23,16 @@ This repository is an **apps-directory monorepo**. Applications live under `apps
   pnpm-workspace.yaml
   AGENTS.md               # this file
   ARCHITECTURE.md         # pointer to the architecture docs
-  docs/ARCHITECTURE.md    # the system overview: parts, flows, data, env vars, status, specs index
+  docs/ARCHITECTURE.md    # the system overview: processes, parts, flows, module map, rules, env vars, status, specs index
+  docs/SYSTEM.md          # the runtime view: start-up, failure modes, API by area, data model, limits, diagnostics
+  docs/CLEANUP.md         # dead-weight report with evidence (nothing removed)
   docs/user-guide/        # end-user guide: install, first run, projects, approvals, remote access, privacy, troubleshooting, shortcuts
   docs/superpowers/       # HANDOVER.md (state and next steps), specs/, research/, plans/
   apps/router/            # Octo proxy
   apps/harness/           # Go agent harness (own go.mod); scripts/ has the e2e scripts
   apps/desktop/           # Vite host + Tauri shell; src-tauri/sidecar is the octo-sidecar crate
   apps/web/               # mobile web client (@octo/web), served by the harness through Remote access
-  packages/ui/            # shared React UI
+  packages/ui/            # shared React UI (COMPONENTS.md: component library, tokens, tool-tab anatomy)
   packages/agent-client/  # harness bridge client (HTTP + SSE, reducer, message-port bridge)
   scripts/                # dev.sh, build-sidecar.sh, install.sh, test-dev-sh.sh, install-go-toolchain.sh, checks
   .cursor/                # skills + rules
