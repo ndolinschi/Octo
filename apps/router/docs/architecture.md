@@ -1,6 +1,8 @@
 # Architecture
 
-Octo is a **single application crate** (`octo`, edition 2021). Process entry: `src/main.rs` → `proxy::run()`.
+Octo is a **single application crate** (`octo`, edition 2021). Process entry: `src/main.rs` → `proxy::run()`, or
+`export::run` for `octo export-delegations`. Module map checked against the source on 2026-11-22 (91 files, 16,405 lines in
+`src/`; 29 test files in `tests/`). Where the router sits in the whole system: [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md#module-map).
 
 ## Runtime shape
 
@@ -43,7 +45,9 @@ flowchart TB
 
 ```text
 src/
-├── main.rs                 tracing + proxy::run
+├── main.rs                 tracing + proxy::run (or export-delegations)
+├── cli.rs                  --version, --help
+├── export.rs               octo export-delegations: delegation records as JSON lines for ml/
 ├── lib.rs                  crate modules
 ├── config.rs               TOML merge
 ├── state.rs                AppState
@@ -56,10 +60,11 @@ src/
 │   ├── stdin_watch.rs      OCTO_EXIT_ON_STDIN_CLOSE
 │   ├── select.rs           OpenAI/OpenRouter/Claude pin
 │   ├── error.rs            ProxyError → JSON
-│   └── autoroute/          messages/chat/status/compact/retry, route (delegation), calls
+│   └── autoroute/          messages/chat/status/compact/retry, route (delegation), outcome, calls
 ├── auto/
 │   ├── decide/             sticky, classify, gate, route
-│   ├── delegate/           POST /autoroute/v1/route: types, band, choice policy, classifier glue
+│   ├── delegate/           POST /autoroute/v1/route: types, band, choice policy, classifier seam (jev, heuristic,
+│   │                       learned), outcome.rs (the derived `solved` label)
 │   ├── jev/                Decisions questions + parse
 │   ├── hints.rs            harness hint headers
 │   ├── ledger.rs           per-budget-key spend
@@ -67,6 +72,7 @@ src/
 │   ├── body.rs             shape, housekeeping, session_key
 │   ├── catalog.rs          tiers, windows, strip defaults
 │   ├── stall.rs            error/tool stalls
+│   ├── ladder.rs           ladder warnings at start-up
 │   ├── routing.rs          RouteMeta / triggers
 │   └── text_tool_call.rs   detector + escalate hook
 ├── providers/
@@ -74,7 +80,9 @@ src/
 │   ├── decision/           openrouter decisions
 │   ├── openrouter/         attribution + helpers
 │   └── utils.rs            POST + stream tee
-└── history/                connect, call insert, payload, cost
+├── prices/                 prices.toml + the OpenRouter catalogue refresh
+└── history/                connect, call insert, payload, cost, session outcomes, call records and spend,
+                            delegations.rs (delegation records and outcome reports)
 ```
 
 ## Two request paths

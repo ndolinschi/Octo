@@ -14,6 +14,9 @@ reducer, a message-port bridge for embedded hosts, and language-server sessions.
 | `sessionBridge.ts`                                                                | `sessionBridge`: a `Bridge` addressed to one main session (parallel sessions)                              |
 | `lspChannel.ts`, `lspSession.ts`                                                  | Language-server sessions over POST + SSE                                                                   |
 | `messageProtocol.ts` → `messageClient.ts`, `messageServer.ts`, `messageBridge.ts` | The same `Bridge` over a `MessagePort`, with a method allow-list                                           |
+| `rare.ts`, `rareNames.ts` | The less-used `Bridge` methods in a lazy chunk; `rareNames` lists what `createHttpBridge` forwards to it |
+| `review.ts`, `commands.ts`, `remoteAccess.ts`, `fileBytes.ts`, `terminalSession.ts` | Pull-request review, project commands, the `/v1/remote` control routes, base64 file reads, PTY terminals |
+| `readDeadline.ts` | How long a read may hold its connection before it is abandoned |
 | `index.ts`                                                                        | The public API                                                                                             |
 
 The API contract is the harness spec:

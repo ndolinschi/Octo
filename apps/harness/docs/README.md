@@ -15,6 +15,11 @@ Product docs for the Go agent harness (`apps/harness/`). Operational notes and b
 | [remote-access.md](./remote-access.md) | Remote access for a paired phone: the `cloudflared` quick tunnel, the second listener and its allow-list, pairing and device tokens, long-poll events, `/v1/remote` routes, settings |
 | [browser.md](./browser.md) | Browser tab and Design Mode (`browserproxy`): loopback reverse proxy, CSP/frame stripping, `inspector.js` injection and nonce guard, Remote access block, `octo-design` wire block |
 | [commands.md](./commands.md) | Project commands, ad-hoc processes, interactive PTY terminals (`/terminals`), force-kill (`SIGKILL`), restart, and worker subprocess management (`/commands`, `/runs`, `/processes`) |
+| [errors.md](./errors.md) | The error catalogue (`internal/usererr`): `message`, `hint`, `command`, `action`, `details`, every code |
+| [parity.md](./parity.md) | Parity features B1-B7 (slash commands, `/clear`, images, side question, always-allow, modes, plans, rewind, steer): exact API |
+
+System-wide: [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) (parts, flows, module map, environment variables) and
+[`docs/SYSTEM.md`](../../../docs/SYSTEM.md) (start-up, failure modes, API by area, data model, limits, diagnostics).
 
 ## Security
 

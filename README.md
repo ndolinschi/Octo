@@ -42,7 +42,10 @@ The repository is an apps-directory monorepo with shared frontend packages. Ther
 | Guide | Contents |
 | --- | --- |
 | [docs/user-guide/README.md](./docs/user-guide/README.md) | End-user guide: install, first run, working with an agent, Remote access, privacy and data, troubleshooting, shortcuts |
-| [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | System overview: parts, process diagram, data locations, flows, environment variables, status, specs index |
+| [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | System overview: processes, parts, data locations, flows, module map, cross-cutting rules, environment variables, status, specs index |
+| [docs/SYSTEM.md](./docs/SYSTEM.md) | Runtime view: start-up and shutdown, failure modes, API by area, data model, limits, diagnostics |
+| [packages/ui/COMPONENTS.md](./packages/ui/COMPONENTS.md) | UI component library, design tokens, tool-tab anatomy, check scripts |
+| [docs/CLEANUP.md](./docs/CLEANUP.md) | Dead-weight report with evidence and a removal plan |
 | [docs/superpowers/HANDOVER.md](./docs/superpowers/HANDOVER.md) | Current state, working rules, next steps |
 | [AGENTS.md](./AGENTS.md) | Monorepo map + how agents should work here |
 | [apps/router/README.md](./apps/router/README.md) | Octo user guide (curl, Claude Code, history) |

@@ -3,6 +3,7 @@
 Shared React UI (React 19, Tailwind 4, Monaco). Read first:
 
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — layers, allowed imports, providers, lazy boundary, known debt.
+- [`COMPONENTS.md`](./COMPONENTS.md) — the component library (primitives and shared composites, who uses each), design tokens, the tool-tab anatomy, how to add a tool tab or a card, what each check script verifies.
 - [`.cursor/rules/octo-typescript.mdc`](../../.cursor/rules/octo-typescript.mdc) — how to write TS/TSX here.
 - [`docs/superpowers/specs/2026-11-10-project-harness-ui.md`](../../docs/superpowers/specs/2026-11-10-project-harness-ui.md) — design decisions; the v6 section at the top is current.
 
@@ -50,7 +51,7 @@ harness at `VITE_HARNESS_BRIDGE_URL` (default `http://127.0.0.1:8790`).
 - `monaco-editor` as a value only in `components/files/monaco.ts`; heavy optional code behind `import()`.
 - Spacing, row heights, radii and colours come from the tokens in `styles.css`; the audit must stay at zero.
 - New `Bridge` methods: change `@octo/agent-client` first, then implement them in `src/demo/bridge.ts`. Demo code is exported only from `@octo/ui/demo` and hosts load it with `import()`; the package root never mentions it.
-- The window's top row (decision 67) is the dock groups' tab strips (`dock/TabStrip`, with `shell/ProjectBar`'s team chips and "⋯"); `shell/TitleBar` is only the window controls and a drag strip, and the status bar (decision 73) is `components/status` (the project fills it through `state/statusSlots`). Settings is a page, not a dialog. Features may not import each other: the shell fills `state/chatSlots` (approvals, queue) and `dock/TabView` mounts the Changes (`v7/`) and Memory (`memory/`) tabs. New views are lazy; the bundle budget in `scripts/check-bundle-size.mjs` is never raised.
+- The window's top row (decision 67) is the dock groups' tab strips (`dock/TabStrip`, with `shell/ProjectBar`'s team chips and "⋯"); `shell/TitleBar` is only the window controls and a drag strip, and the status bar (decision 73) is `components/status` (the project fills it through `state/statusSlots`). Settings is a page, not a dialog. Features may not import each other: the shell fills `state/chatSlots` (approvals, queue) and `dock/TabView` mounts the Changes (`v7/`) and Memory (`memory/`) tabs. New views are lazy (`readyLazy` + `registerWarm`); the bundle budget in `scripts/check-bundle-size.mjs` is raised only by hand with a reason in its header (it has been, several times).
 - A design change updates the spec's "As built" section in the same commit.
 
 ## Verifying UI work
