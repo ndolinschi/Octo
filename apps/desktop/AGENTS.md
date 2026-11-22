@@ -2,7 +2,7 @@
 
 Host for the shared UI: a Vite app (`src/`) inside a Tauri 2 shell (`src-tauri/`). It contains wiring only —
 screens live in [`packages/ui`](../../packages/ui/AGENTS.md), the bridge client in
-[`packages/agent-client`](../../packages/agent-client/AGENTS.md). Architecture: [`docs/architecture.md`](./docs/architecture.md); the whole system and where data lives: [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md).
+[`packages/agent-client`](../../packages/agent-client/AGENTS.md). Architecture: [`docs/architecture.md`](./docs/architecture.md); the whole system and where data lives: [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md); start-up order, timings and failure modes: [`docs/SYSTEM.md`](../../docs/SYSTEM.md#start-up).
 
 ## What belongs here
 
@@ -29,7 +29,7 @@ screens live in [`packages/ui`](../../packages/ui/AGENTS.md), the bridge client 
   `port` (free port), `shellenv` (login-shell PATH and allow-listed environment, parsers, fallback dirs; see "Login-shell environment" below), `process` (own process group, SIGTERM, 3 s, SIGKILL; pid file for crash cleanup),
   `logfile` (capped `harness.log` / `router.log`, tail), `health` (`GET /health` wait), `settings` (the three `OCTO_ROUTER_*` keys of `{app data}/harness/harness.env`,
   tolerant parser, values never logged), `router` (the router's config fragments, generated client key, pid-file name), `bridge` (the sequence; `OCTO_BRIDGE_URL` starts nothing; a new 256-bit API token per run goes to the harness as `HARNESS_API_TOKEN` in its environment only, never an argument or the log, and to the webview in `Connection { url, token }`; `OCTO_BRIDGE_TOKEN` supplies the token of an overridden harness; the router never sees it).
-  `src-tauri/src/lib.rs` is only glue: four commands (`bridge_url` and `bridge_restart` returning `{ url, token }`, `bridge_log_tail`, `bridge_notices`) and the exit hook.
+  `src-tauri/src/lib.rs` is only glue: five commands (`bridge_url` and `bridge_restart` returning `{ url, token }`, `bridge_log_tail`, `bridge_notices`, `chrome_debug` for the `OCTO_DEBUG_CHROME` title-bar guide) and the exit hook.
 - Login-shell environment (`shellenv`): one `$SHELL -ilc` run (3 s timeout) prints the PATH between markers and then `env -0` between a second pair of markers
   (NUL separated; values may hold newlines and `=`; the last complete marker pair wins). The harness gets `PATH` as before plus an allow-list of names, only when the shell has them:
   `LANG`, `LC_*`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `SSH_AUTH_SOCK`, `NVM_DIR`, `BUN_INSTALL`, `PNPM_HOME`, `VOLTA_HOME`,

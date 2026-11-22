@@ -47,45 +47,82 @@ flowchart TB
 
 ## Layout
 
+Every package of the module (`go list ./...`, 67 on 2026-11-22). Imports, callers, sizes and test counts per package are in
+the module map of [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md#module-map); limits and background work in
+[`docs/SYSTEM.md`](../../../docs/SYSTEM.md).
+
 | Path | Role |
 | --- | --- |
-| `cmd/harness` | CLI: `serve`, `doctor`, `run`, `sessions`, `show`, `mcp-relay` (wiring only; `serve.go` is the one wiring site for the server) |
-| `internal/settings` | Settings behind `GET`/`PUT /v1/settings`: the fixed list, validation, atomic `harness.env` writes, apply-now hooks, `restart_required`; see [settings.md](./settings.md) |
-| `internal/childenv` | Allow-list environment for every child process (bash tool, ACP agents, language servers, probes); `HARNESS_CHILD_ENV_ALLOW` adds names; see README "Child environment" |
-| `internal/config` | Env defaults (`ANTHROPIC_*`, `HARNESS_*`), model tiers |
-| `internal/anthropicclient` | SDK client + optional `ANTHROPIC_BASE_URL` |
-| `internal/agent` | `Loop`: system prompt, history, streaming, concurrent tools, usage, `Sink`; `Runner` = legacy CLI session |
-| `internal/store` | Legacy `harness.sqlite`: sessions + message JSON blobs |
-| `internal/projectstore` | `registry.sqlite` + per-project `project.sqlite` (projects, folders, agents, messages, notes); no SDK/agent imports |
-| `internal/events` | Per-project pub/sub hub with in-memory `seq` |
-| `internal/orchestrator` | Turn lifecycle, `spawn_agent`, note tools, system prompts, tool sets per agent kind, cancel/shutdown; `context.go` (context breakdown), `side*.go` (side questions) |
-| `internal/files` | Confined list / read / atomic write of files under a folder root (reuses `tools/local` path confinement) |
-| `internal/project` | Service layer: validation, defaults, notes, files, error kinds the bridge maps to HTTP |
-| `internal/bridge` | `net/http` handlers (Go 1.22 `ServeMux` patterns), SSE, CORS, JSON errors |
-| `internal/plugins` | Loads `plugin.json` manifests (language servers, ACP agents, tool servers) into an immutable `Registry`; resolves commands and `available`; never executes anything |
-| `internal/acp` | Agent Client Protocol client: process lifecycle, ndjson JSON-RPC connection, typed protocol structs, `Client.Run` with a `Handler` the orchestrator implements; no project/orchestrator imports |
-| `internal/lsp` | Language-server relay, HTTP-agnostic: `Manager` of `Session`s (process + LSP `Content-Length` framing, bounded event buffer, idle reaping, process-group kill). Frames and validates JSON only; never interprets LSP |
-| `internal/fakelsp` | Scripted language server for tests (re-exec of the test binary) |
-| `internal/mcp` | Harness MCP server (Streamable HTTP, POST/JSON, loopback only) with per-session bearer tokens; tools come from a `Backend` |
-| `internal/mcprelay` | `harness mcp-relay`: stdio-to-HTTP relay for agents without HTTP MCP support |
-| `internal/changes`, `internal/diff` | v7 change tracking: per-project tracker (index, pre-image copies, git-aware snapshot walk) and the line-diff counter; see [v7.md](./v7.md) |
-| `internal/approval`, `internal/inputs`, `internal/secrets` | v7 pending approvals and the turn grants ("allow for this request" per kind, "allow all for this request"); open forms (`request_input`); the per-project 0600 secret store and its redactor; see [v7.md](./v7.md) |
-| `internal/memory` | Orchestrator memory service (M1, M2): task records, memory files, search shaping, digest merge, the memory setting, limits and secret redaction; see [memory.md](./memory.md) |
-| `internal/acptrace` | Opt-in ACP wire trace: one redacted, size-capped JSON-lines file per agent process under `{data-dir}/traces/`; see [acp-orchestrator.md](./acp-orchestrator.md#diagnostics-and-the-wire-trace) |
-| `internal/diag` | The diagnostics report (`harness doctor`, `GET /v1/diagnostics`): versions, PATH, per-agent resolution and login state, the scrubbed log ring (last 200 lines) |
-| `internal/remoteaccess` | Remote access for a paired phone: runs `cloudflared` (quick tunnel) to a second loopback listener that serves the web app, pairing and the bridge API for device tokens through an allow-list, long-poll events, the device store `{data-dir}/remote/devices.json`; `/v1/remote` control routes on the main bridge; see [remote-access.md](./remote-access.md) |
-| `internal/limits` | Provider rate-limit headers remembered per model and limit kind (`GET /v1/limits`); in memory only |
-| `internal/permission` | `permission.Decide`, the one seam answering an ACP agent's permission requests (auto-approve today) |
-| `internal/fakeacp` | Scripted ACP agent for tests and demos (`examples/fakeacp` is its `main`); env switches advertise auth methods, models, `loadSession` and HTTP MCP, refuse unknown models or MCP servers; markers drive MCP tool calls (`[mcp-spawn]`), echo the prompt (`[echo]`), crash (`[crash]`) and hang (`[hang]`) |
-| `internal/mockllm` | Scripted Anthropic-compatible Messages server (used by tests and `examples/mockllm`) |
-| `internal/tools` | Registry → Anthropic tool defs; `ToolUseID(ctx)` for handlers |
-| `internal/tools/local` | `bash`, `read_file`, `write_file`, `list_dir` over one or more labelled roots |
-| `internal/tools/remote` | `GET {base}/tools` discovery, `POST {base}/tools/{name}` invoke |
-| `internal/cache` | On-disk cache for remote manifests (fallback when GET fails) |
-| `examples/remotetool` | Minimal remote tool server |
-| `examples/mockllm` | Thin `main` around `internal/mockllm` |
-| `examples/fakeacp` | Thin `main` around `internal/fakeacp` |
-| `plugins-examples` | Example manifests (not loaded automatically) |
+| `cmd/harness` | The binary: `serve` (wires every package below), `doctor`, `mcp-relay`, `run` / `sessions` / `show` (legacy one-shot CLI), `version` |
+| `internal/acp` | Agent Client Protocol client: JSON-RPC over a child's stdio, session/new, load, prompt, auth, model selection |
+| `internal/acptrace` | Opt-in wire trace of ACP sessions under `{data-dir}/traces/` (redacted, 5 MB x 20 files) |
+| `internal/activity` | The one-line "what the agent is doing now" label (Reading x, Running `cmd`) |
+| `internal/agent` | The built-in Messages-API tool loop (`agent.Loop`): streaming, concurrent tools, caching breakpoints, compaction, tool-result clearing; `Runner` for the legacy CLI |
+| `internal/anthropicclient` | The Anthropic SDK client with base URL, key source and a response observer (rate-limit headers) |
+| `internal/apitoken` | The bridge's bearer token: from `HARNESS_API_TOKEN` or generated into `{data-dir}/api-token` |
+| `internal/approval` | Pending approval requests and turn grants; one waiting request blocks only its agent |
+| `internal/attachments` | Images attached to a message: sniffed type, size, hash name |
+| `internal/bridge` | HTTP + SSE server: every `/v1` route, `/health`, `/mcp/...`, CORS, token check, loopback rules |
+| `internal/browserproxy` | Loopback reverse proxy for the Browser tab: header stripping, rewriting, inspector injection |
+| `internal/budget` | A project's spend: the router's last report, else usage rows plus price estimates |
+| `internal/buildinfo` | The version and commit stamped at build time (`harness --version`, `/health`) |
+| `internal/cache` | On-disk cache of remote tool manifests |
+| `internal/changes` | Change tracker: explicit writes plus before/after snapshots of the folders, pre-images, revert |
+| `internal/childenv` | Allow-list environment for every child process (bash, agents, language servers, probes) |
+| `internal/codehost` | Code-host adapter for PR review (GitHub through the user's `gh`) |
+| `internal/commands` | A project's named commands and ad-hoc runs (Processes tab): start, stream, stop, restart |
+| `internal/completion` | Pure part of inline completion: validation, fill-in-the-middle prompt, post-processing |
+| `internal/config` | Environment, flags and `harness.env` into `Config`; model tiers; context windows |
+| `internal/datalock` | One harness per data directory (OS lock on `harness.lock`) |
+| `internal/diag` | The diagnostics report (`harness doctor`, `GET /v1/diagnostics`), scrubbed log ring of 200 lines |
+| `internal/diff` | Line counts added/removed between two texts (Myers, bounded) |
+| `internal/events` | Per-project event hub with a monotonic `seq` |
+| `internal/fakeacp` | Scripted ACP agent for tests and demos (`examples/fakeacp`) |
+| `internal/fakelsp` | Scripted language server for tests |
+| `internal/fakerouter` | Stand-in Octo router for tests (health, result headers, call records, route, outcomes) |
+| `internal/features` | Process-wide feature flags (`HARNESS_FEATURE_AUTO_MEMORY`, `HARNESS_DELEGATION_ESCALATE_ON_FAILURE`) |
+| `internal/files` | Confined list/read/write of files under a folder root; refuses writes into `.git` |
+| `internal/gitx` | Hardened `git` runner (argv only, no hooks, no fsmonitor): refs, worktrees, branches, diffs |
+| `internal/globx` | Doublestar glob matching (approval rules) |
+| `internal/inputs` | Forms agents open with `request_input`, incl. JSON-schema forms |
+| `internal/instructions` | Reads AGENTS.md / CLAUDE.md of the project folders for the built-in loop |
+| `internal/limits` | Latest rate-limit headers per provider and model (memory only) |
+| `internal/lsp` | Language-server processes and the stdio relay (frames, never interprets LSP) |
+| `internal/mcp` | Small MCP server (Streamable HTTP) that gives an ACP orchestrator the harness's tools |
+| `internal/mcprelay` | `harness mcp-relay`: stdio-to-HTTP bridge for agents that only speak stdio MCP |
+| `internal/memory` | Orchestrator memory: task records, memory files, search shaping, digest merge, redaction |
+| `internal/mockllm` | Scripted Anthropic-compatible Messages server (`examples/mockllm`) |
+| `internal/notemd` | Markdown form of a note (front matter + body) and the description index |
+| `internal/orchestrator` | Turns per main session, sub-agents, `spawn_agent` incl. `tier: auto`, outcomes and escalation, ACP host and orchestrator, approvals glue, queue, compaction, memory window, side question, modes, recovery |
+| `internal/permission` | The one place that answers an ACP agent's permission request |
+| `internal/prices` | Optional `prices.toml` of the harness (never the router's) |
+| `internal/proctree` | Stops a child with everything it started; `children.json` ledger for leftovers |
+| `internal/projcfg` | Shapes of per-project settings kept outside the project row (commands, review config) |
+| `internal/project` | Service layer between bridge and orchestrator/store: validation, defaults, files, notes, sessions, branches, workspaces, usage, imports |
+| `internal/projectstore` | SQLite: `registry.sqlite` and one `project.sqlite` per project, migrations (schema 15), backups |
+| `internal/providers` | "What can run a model now": built-in loop, router, every ACP agent, with states and models; Ollama and loopback probes |
+| `internal/remoteaccess` | Remote access: `cloudflared` quick tunnel, second listener, pairing, device tokens, allow-list, long-poll |
+| `internal/review` | Pull-request review (RV1): sources, worktrees, viewed marks, findings, comments, submit |
+| `internal/review/reviewtest` | Fixtures for review tests (throw-away repo, fake `gh`) |
+| `internal/router` | Harness side of the router: detection, hint headers, result headers, call records, spend, route call, outcome reports |
+| `internal/secrets` | Per-project secret store (`secrets.json`, 0600) and its redactor |
+| `internal/sessionimport` | Imports other tools' sessions (`~/.claude/projects`, `~/.codex/sessions`, ...) |
+| `internal/settings` | Backend of the settings screen: the fixed list, `harness.env` writes, apply-now hooks |
+| `internal/store` | Legacy CLI session store (`harness.sqlite`) |
+| `internal/terminal` | PTY shells per project (Terminal tab) |
+| `internal/tools` | Tool registry, result caps, `ToolUseID` |
+| `internal/tools/local` | `bash`, `read_file`, `write_file`, `edit`, `list_dir`, `search_files` over labelled, confined roots |
+| `internal/tools/remote` | Remote HTTP tool discovery and invocation (`--remote`) |
+| `internal/tools/webfetch` | `web_fetch`: one GET, no private addresses unless allowed |
+| `internal/usererr` | The error catalogue: message, hint, command, action, details for everything said to a person |
+| `examples/fakeacp` | `main` around `internal/fakeacp` |
+| `examples/mockllm` | `main` around `internal/mockllm` |
+| `examples/remotetool` | Minimal remote tool server (manual demo of `--remote`) |
+| `internal/plugins` | Plugin manifests (language servers, ACP agents, tool servers), login and version probes |
+| `plugins-examples/subscription-agents` | Embeds the built-in `subscription-agents` manifest (11 ACP agents) |
+
+`plugins-examples/` also holds example manifests that are not loaded unless copied into a plugins directory
+(`acp-agents`, `fake-acp`, `go-tools`, `typescript-tools`).
 
 ## Conventions
 
@@ -157,7 +194,10 @@ Messages are stored as SDK-shaped content arrays exactly like the built-in loop'
   projects/{project_id}/project.sqlite
 ```
 
-Tables in `project.sqlite`: `project` (one row), `folders`, `agents`, `messages`, `notes` (columns per the spec), plus `usage`, `compactions` and `side_messages` (see below). Each database is opened with WAL, `busy_timeout`, and a single pooled connection, so parallel sub-agents serialize their writes inside the process. Deleting a project removes its directory.
+`project.sqlite` has 39 tables at schema 15 (`projectstore.SchemaVersion`); the list with the purpose of each, the
+migrations and the `.pre-*` backups are in [`docs/SYSTEM.md`](../../../docs/SYSTEM.md#data-model). The block above is the
+original layout; `{data-dir}` also holds `harness.env`, `harness.lock`, `api-token`, `children.json`, `traces/`, `remote/`
+and per project `shadow/` and `secrets.json`. Each database is opened with WAL, `busy_timeout`, and a single pooled connection, so parallel sub-agents serialize their writes inside the process. Deleting a project removes its directory.
 
 ### File API
 
