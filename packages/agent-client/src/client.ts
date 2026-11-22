@@ -1,4 +1,6 @@
 import { RARE_METHODS, type RareMethod } from "./rareNames";
+import { abortingReads } from "./readDeadline";
+import { watchStream } from "./streamWatch";
 import type { RemoteAccessApi } from "./remoteAccess";
 import type { AdhocCommandInput, CommandRun, CommandSuggestion, StartedCommandRun, WorkerProcess } from "./commands";
 import type {
@@ -526,6 +528,7 @@ export interface Bridge {
   clearSessionQueue?(projectId: string, sessionId: string): Promise<void>;
   resumeSessionQueue?(projectId: string, sessionId: string): Promise<void>;
   sendSessionQueuedNow?(projectId: string, sessionId: string, queueId: string, opts?: { interrupt?: boolean }): Promise<void>;
+  steerSessionQueued?(projectId: string, sessionId: string, queueId: string): Promise<{ steered: boolean }>;
   /** One main session's context report, compaction, rewind, latest plan and export (the project routes act on the default). */
   getSessionContext?(projectId: string, sessionId: string): Promise<ContextOverview | ContextBreakdown>;
   compactSession?(projectId: string, sessionId: string): Promise<CompactResult | CompactSentToAgent>;
@@ -569,6 +572,8 @@ export interface Bridge {
   getReviewFileDiff?(projectId: string, reviewId: string, path: string, options?: ReviewDiffOptions): Promise<ReviewFileDiff>;
   /** URL of a file's bytes at the head (`new`) or the base (`old`), for images next to their diff. */
   reviewFileRawUrl?(projectId: string, reviewId: string, path: string, side: "new" | "old"): string;
+  /** Authenticated bytes of a review file at `new` or `old` (carries the Authorization header, unlike `reviewFileRawUrl`). */
+  fetchReviewFileRaw?(projectId: string, reviewId: string, path: string, side: "new" | "old"): Promise<{ data: ArrayBuffer; type: string }>;
   setReviewFileViewed?(projectId: string, reviewId: string, path: string, viewed: boolean): Promise<ReviewFile>;
   /** The review threads the code host already has, grouped, with counts per file (refreshed with the review; `refresh` asks the host now). */
   listReviewThreads?(projectId: string, reviewId: string, options?: { refresh?: boolean }): Promise<ReviewThreads>;
@@ -619,7 +624,7 @@ export interface Bridge {
   previewReviewSubmit?(projectId: string, reviewId: string, input: ReviewSubmitInput): Promise<ReviewSubmitPreview>;
   /** Posts the pending comments and the verdict as one review. Only an explicit user action may call it. */
   submitReview?(projectId: string, reviewId: string, input: ReviewSubmitInput): Promise<ReviewSubmitResult>;
-  openLanguageServer(projectId: string, serverId: string): Promise<LanguageServerSession>;
+  openLanguageServer(projectId: string, serverId: string, opts?: { workspace?: "review" }): Promise<LanguageServerSession>;
   /** Opens a live interactive PTY shell in a project folder (HTTP bridge only). */
   openTerminal?(projectId: string, options?: TerminalOpenOptions): Promise<TerminalSession>;
   subscribe(projectId: string, handlers: SubscribeHandlers): () => void;
@@ -737,7 +742,7 @@ function fieldMessages(v: unknown): { fields: Record<string, string> } | null {
   return Object.keys(out).length ? { fields: out } : null;
 }
 
-function toBridgeError(status: number, text: string): BridgeError {
+export function toBridgeError(status: number, text: string): BridgeError {
   const body = parseJson(text);
   const err = isRecord(body) ? body.error : undefined;
   if (isRecord(err) && typeof err.message === "string") {
@@ -855,8 +860,9 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
         base,
         token,
         timers,
+        clockOffset: () => offset,
         sendTimeout: options.sendTimeoutMs,
-        binaryFetch: () => options.fetchBinary ?? globalBinaryFetch(),
+        binaryFetch: () => abortingReads(options.fetchBinary ?? globalBinaryFetch()),
         fail: toBridgeError,
       }),
     );
@@ -918,11 +924,12 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     setProviderCustomModels: async (id, models) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/custom-models`, { models }), id),
     setProviderPrefs: async (id, prefs) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/prefs`, prefs), id),
     // Only the editor and terminal tab open SSE sessions: each session module is its own lazy chunk.
-    openLanguageServer: async (id, serverId) =>
+    openLanguageServer: async (id, serverId, opts) =>
       (await import("./lspSession")).openLspSession(
         { request, openStream: (path) => new (options.EventSource ?? globalEventSource())(streamUrl(path)) },
         p(id),
         serverId,
+        opts,
       ),
     openTerminal: async (id, opts) =>
       (await import("./terminalSession")).openTerminalSession(
@@ -931,13 +938,14 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
         opts,
       ),
     /**
-     * The project's events. EventSource retries a dropped connection itself; the watchdog (`watchStream`, in the lazy
-     * half) also reopens a refused one (closed for good after an HTTP error) with backoff, and a half-open one: nothing
-     * at all, not even the harness's `heartbeat`, for `streamStaleMs`. Every reopen ends in `onOpen`, where the caller
-     * re-reads what it may have missed.
+     * The project's events. EventSource retries a dropped connection itself; the watchdog (`watchStream`) also reopens
+     * a refused one (closed for good after an HTTP error) with backoff, and a half-open one: nothing at all, not even
+     * the harness's `heartbeat`, for `streamStaleMs`. Every reopen ends in `onOpen`, where the caller re-reads what it
+     * may have missed.
      */
     subscribe(id, handlers) {
       const Ctor = options.EventSource ?? globalEventSource();
+      let lastSeq = 0;
       const h: StreamHandle = {
         seen: 0,
         source: null,
@@ -959,25 +967,29 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
             s.addEventListener(type, (ev) => {
               alive();
               const event = parseEvent(ev.data);
-              if (event) handlers.onEvent(event);
+              if (event) {
+                if (event.seq > 0) {
+                  if (event.seq === 1 && lastSeq > 1) lastSeq = 1;
+                  else if (event.seq <= lastSeq) return;
+                  else lastSeq = event.seq;
+                }
+                handlers.onEvent(event);
+              }
             });
           }
         },
       };
       h.open();
-      let stop: (() => void) | undefined;
-      let stopped = false;
-      // A failed chunk load leaves the stream as EventSource keeps it (no watchdog).
-      void import("./rare").then(
-        (m) => {
-          if (!stopped) stop = m.watchStream(h, handlers.onError, timers, options.streamStaleMs);
-        },
-        () => undefined,
-      );
+      const stop = watchStream(h, handlers.onError, timers, options.streamStaleMs);
       return () => {
-        stopped = true;
-        stop?.();
-        h.source?.close();
+        stop();
+        const s = h.source;
+        h.source = null;
+        if (s) {
+          s.onopen = null;
+          s.onerror = null;
+          s.close();
+        }
       };
     },
   };

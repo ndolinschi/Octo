@@ -117,9 +117,9 @@ test("model endpoints: refresh, custom models and preferences use the provider p
     return { ok: true, status: 200, text: async () => JSON.stringify(entry) };
   };
   const bridge = createHttpBridge({ baseUrl: "http://h:1", fetch });
-  const refreshed = await bridge.refreshProviderModels?.("claude-code");
+  const refreshed = await bridge.refreshProviderModels("claude-code");
   assert.equal(refreshed?.models_refreshed_at, "2026-11-12T12:00:00Z");
-  await bridge.setProviderCustomModels?.("a b", ["my-model", "vendor/x:7b"]);
+  await bridge.setProviderCustomModels("a b", ["my-model", "vendor/x:7b"]);
   await bridge.setProviderPrefs?.("claude-code", { preferred_model: "opus", roles: { fast: "haiku", deep: "" } });
   assert.deepEqual(seen, [
     { method: "POST", url: "http://h:1/v1/providers/claude-code/refresh-models", body: undefined },

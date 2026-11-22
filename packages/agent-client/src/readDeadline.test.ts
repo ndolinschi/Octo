@@ -47,11 +47,53 @@ test("a GET without its own signal is aborted after the deadline", () => {
   assert.equal(f.seen[0]?.signal?.aborted, true);
 });
 
-test("the timer is cleared when the read answers", async () => {
+test("the timer stays active until the body read settles, and clears once text() resolves", async () => {
   const f = fakes();
   const p = abortingReads(f.fetch, 12_000, f.platform)("http://h/health");
   f.settle();
-  await p;
+  const res = await p;
+  assert.equal(f.timers[0]?.cleared, false, "timer remains armed while body has not finished reading");
+  assert.equal(await res.text(), "{}");
+  assert.equal(f.timers[0]?.cleared, true);
+});
+
+test("a hung body read is aborted when the deadline expires, and arrayBuffer() clears the timer", async () => {
+  const f = fakes();
+  let finishBody: (() => void) | undefined;
+  const fetchWithBody: FetchLike = (url, init) => {
+    f.seen.push({ url, signal: init?.signal });
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      text: () =>
+        new Promise<string>((resolve) => {
+          finishBody = () => resolve("ok");
+        }),
+      arrayBuffer: async () => new ArrayBuffer(4),
+    });
+  };
+  const read = abortingReads(fetchWithBody, 12_000, f.platform);
+  const res1 = await read("http://h/slow-body");
+  const textPromise = res1.text();
+  assert.equal(f.timers[0]?.cleared, false);
+  f.timers[0]?.fn();
+  assert.equal(f.seen[0]?.signal?.aborted, true);
+  finishBody?.();
+  await textPromise;
+  assert.equal(f.timers[0]?.cleared, true);
+
+  const res2 = await read("http://h/bin");
+  assert.equal(f.timers[1]?.cleared, false);
+  await res2.arrayBuffer?.();
+  assert.equal(f.timers[1]?.cleared, true);
+});
+
+test("the timer is cleared when fetch itself rejects", async () => {
+  const f = fakes();
+  const failing: FetchLike = async () => {
+    throw new Error("boom");
+  };
+  await assert.rejects(abortingReads(failing, 12_000, f.platform)("http://h/fail"), (e: unknown) => e instanceof Error && e.message === "boom");
   assert.equal(f.timers[0]?.cleared, true);
 });
 

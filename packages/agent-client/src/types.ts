@@ -88,6 +88,12 @@ export type ProjectInput = {
   commands?: ProjectCommand[];
   /** Review configuration; a PATCH replaces it as a whole (400 `invalid_request` when invalid). */
   review?: ReviewConfigInput;
+  /** Parallel sessions: max_running, default_workspace, coordination (PATCH merges). */
+  session_settings?: Partial<SessionSettings>;
+  /** Parity B2: `"off"` (default) or `"on"`: agents get web_fetch only when on. */
+  network?: "off" | "on";
+  /** Parity B2: web_fetch may reach private and loopback addresses. */
+  network_private?: boolean;
 };
 
 /** Whether the project remembers automatically: `off` asks before saving; `allow` saves; `review` asks on each item; `blocked` disables memory. */

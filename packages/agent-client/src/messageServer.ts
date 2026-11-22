@@ -28,6 +28,13 @@ function toWireError(err: unknown): WireError {
       ...(err.hint !== undefined ? { hint: err.hint } : {}),
       ...(err.action !== undefined ? { action: err.action } : {}),
       ...(err.details !== undefined ? { details: err.details } : {}),
+      ...(err.command !== undefined ? { command: err.command } : {}),
+      ...(err.provider !== undefined ? { provider: err.provider } : {}),
+      ...(err.reason !== undefined ? { reason: err.reason } : {}),
+      ...(err.can_force !== undefined ? { can_force: err.can_force } : {}),
+      ...(err.files !== undefined ? { files: err.files } : {}),
+      ...(err.repos !== undefined ? { repos: err.repos } : {}),
+      ...(err.data !== undefined ? { data: err.data } : {}),
     };
   }
   const message = err instanceof Error ? err.message : String(err);
@@ -97,8 +104,8 @@ export function serveBridge(port: MessagePortLike, bridge: Bridge, options: Serv
     unsubscribe?.();
   }
 
-  function handleLspOpen(id: number, projectId: string, serverId: string): void {
-    bridge.openLanguageServer(projectId, serverId).then(
+  function handleLspOpen(id: number, projectId: string, serverId: string, workspace?: "review"): void {
+    bridge.openLanguageServer(projectId, serverId, workspace ? { workspace } : undefined).then(
       (sess) => {
         if (disposed) {
           void sess.close().catch(() => undefined);
@@ -141,7 +148,7 @@ export function serveBridge(port: MessagePortLike, bridge: Bridge, options: Serv
         void handleHost(msg.id, msg.action, msg.args);
         return;
       case "lsp-open":
-        return handleLspOpen(msg.id, msg.projectId, msg.serverId);
+        return handleLspOpen(msg.id, msg.projectId, msg.serverId, msg.workspace);
       case "lsp-send":
         void lsp
           .get(msg.session)

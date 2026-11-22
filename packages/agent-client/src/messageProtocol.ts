@@ -1,5 +1,6 @@
 import { BRIDGE_EVENT_TYPES, type Bridge } from "./client";
 import { isExitInfo } from "./lspChannel";
+import type { RepoRef, ReviewDirtyFile } from "./review";
 import type { BridgeEvent, LanguageServerFolder } from "./types";
 
 export type MessagePortLike = {
@@ -41,6 +42,7 @@ export type HttpOnlyMethod =
   | "clearSessionQueue"
   | "resumeSessionQueue"
   | "sendSessionQueuedNow"
+  | "steerSessionQueued"
   | "getSessionContext"
   | "compactSession"
   | "clearSession"
@@ -74,6 +76,7 @@ export type HttpOnlyMethod =
   | "listReviewFiles"
   | "getReviewFileDiff"
   | "reviewFileRawUrl"
+  | "fetchReviewFileRaw"
   | "setReviewFileViewed"
   | "listReviewComments"
   | "createReviewComment"
@@ -102,6 +105,13 @@ export type WireError = {
   hint?: string;
   action?: string;
   details?: string;
+  command?: string;
+  provider?: string;
+  reason?: string;
+  can_force?: boolean;
+  files?: ReviewDirtyFile[];
+  repos?: RepoRef[];
+  data?: unknown;
 };
 
 export type ClientMessage =
@@ -109,7 +119,7 @@ export type ClientMessage =
   | { kind: "subscribe"; sub: number; projectId: string }
   | { kind: "unsubscribe"; sub: number }
   | { kind: "host"; id: number; action: string; args: unknown[] }
-  | { kind: "lsp-open"; id: number; projectId: string; serverId: string }
+  | { kind: "lsp-open"; id: number; projectId: string; serverId: string; workspace?: "review" }
   | { kind: "lsp-send"; session: number; message: unknown }
   | { kind: "lsp-close"; session: number };
 
@@ -219,7 +229,9 @@ export function isClientMessage(msg: unknown): msg is ClientMessage {
     case "host":
       return isNum(msg.id) && typeof msg.action === "string" && Array.isArray(msg.args);
     case "lsp-open":
-      return isNum(msg.id) && typeof msg.projectId === "string" && typeof msg.serverId === "string";
+      return (
+        isNum(msg.id) && typeof msg.projectId === "string" && typeof msg.serverId === "string" && (msg.workspace === undefined || msg.workspace === "review")
+      );
     case "lsp-send":
       return isNum(msg.session) && "message" in msg;
     case "lsp-close":

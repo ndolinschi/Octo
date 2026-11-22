@@ -21,7 +21,7 @@ function wireFields(v: unknown): { fields: Record<string, string> } | undefined 
   return Object.keys(out).length ? { fields: out } : undefined;
 }
 
-/** The optional parts of a wire failure: fields, hint, a known action, details. */
+/** The optional parts of a wire failure: fields, hint, a known action, details, and typed error metadata. */
 function wireDetail(e: WireError): ConstructorParameters<typeof BridgeError>[3] {
   const action = isErrorAction(e.action) ? e.action : undefined;
   return {
@@ -29,6 +29,13 @@ function wireDetail(e: WireError): ConstructorParameters<typeof BridgeError>[3] 
     ...(typeof e.hint === "string" && e.hint ? { hint: e.hint } : {}),
     ...(action ? { action } : {}),
     ...(typeof e.details === "string" && e.details ? { details: e.details } : {}),
+    ...(typeof e.command === "string" && e.command ? { command: e.command } : {}),
+    ...(typeof e.provider === "string" ? { provider: e.provider } : {}),
+    ...(typeof e.reason === "string" ? { reason: e.reason } : {}),
+    ...(typeof e.can_force === "boolean" ? { can_force: e.can_force } : {}),
+    ...(Array.isArray(e.files) ? { files: e.files } : {}),
+    ...(Array.isArray(e.repos) ? { repos: e.repos } : {}),
+    ...(e.data !== undefined ? { data: e.data } : {}),
   };
 }
 
@@ -73,7 +80,10 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
       onMessage: channel.onMessage,
       onExit: channel.onExit,
       close: async () => {
-        if (lspSessions.delete(session)) send({ kind: "lsp-close", session });
+        if (lspSessions.delete(session)) {
+          channel.close();
+          send({ kind: "lsp-close", session });
+        }
       },
     };
   }
@@ -83,7 +93,7 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     if (!p) return;
     lspOpens.delete(msg.id);
     if (msg.ok) p.resolve(openedSession(msg));
-    else p.reject(new BridgeError(msg.error.status, msg.error.code, msg.error.message));
+    else p.reject(new BridgeError(msg.error.status, msg.error.code, msg.error.message, wireDetail(msg.error)));
   }
 
   function exitSession(msg: Extract<HostMessage, { kind: "lsp-exit" }>): void {
@@ -150,7 +160,7 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     listAgents: (id) => call("listAgents", [id]),
     getAgent: (id, agentId) => call("getAgent", [id, agentId]),
     listMessages: (id, agentId) => call("listMessages", [id, agentId]),
-    getTranscript: (id, agentId) => call("getTranscript", [id, agentId]),
+    getTranscript: (id, agentId, opts) => call("getTranscript", opts === undefined ? [id, agentId] : [id, agentId, opts]),
     sendMessage: (id, text) => call("sendMessage", [id, text]),
     cancelTurn: (id) => call("cancelTurn", [id]),
     getContext: (id, agentId) => call("getContext", agentId === undefined ? [id] : [id, agentId]),
@@ -176,11 +186,11 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     listAllSessions: (params) => call("listAllSessions", params === undefined ? [] : [params]),
     listBranches: (id, params) => call("listBranches", params === undefined ? [id] : [id, params]),
     switchBranch: (id, input) => call("switchBranch", [id, input]),
-    openLanguageServer: (projectId, serverId) => {
+    openLanguageServer: (projectId, serverId, opts) => {
       const id = nextId++;
       return new Promise<LanguageServerSession>((resolve, reject) => {
         lspOpens.set(id, { resolve: (v) => resolve(v as LanguageServerSession), reject });
-        send({ kind: "lsp-open", id, projectId, serverId });
+        send({ kind: "lsp-open", id, projectId, serverId, ...(opts?.workspace ? { workspace: opts.workspace } : {}) });
       });
     },
     subscribe,
@@ -195,6 +205,7 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     pending.clear();
     for (const p of lspOpens.values()) p.reject(err());
     lspOpens.clear();
+    for (const channel of lspSessions.values()) channel.exit({ code: -1, reason: "disposed" });
     lspSessions.clear();
   }
 

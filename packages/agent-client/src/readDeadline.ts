@@ -1,4 +1,4 @@
-import type { AbortSignalLike, FetchLike } from "./client";
+import type { AbortSignalLike, FetchResponseLike } from "./client";
 
 /**
  * P2-4: how long a read may hold its connection. A read the service takes and never answers (a hung proxy or tunnel, a stuck
@@ -31,17 +31,37 @@ function globalPlatform(): AbortPlatform | null {
   return { controller: () => new Ctl(), setTimeout: (fn, ms) => g.setTimeout?.(fn, ms), clearTimeout: (id) => g.clearTimeout?.(id) };
 }
 
+type AnyFetch = (url: string, init?: { method?: string; signal?: AbortSignalLike }) => Promise<FetchResponseLike>;
+
 /**
- * `fetch`, with every GET that has no signal of its own aborted after `ms`. Untouched: sends (they keep their own timeout and
- * read-back), requests with their own signal, and long polls (`…/events/poll`, which wait up to 25 s by design; the poller
- * passes its own signal and deadline).
+ * `fetch`, with every GET that has no signal of its own aborted after `ms` (including reading its body). Untouched: sends
+ * (they keep their own timeout and read-back), requests with their own signal, and long polls (`…/events/poll`, which wait
+ * up to 25 s by design; the poller passes its own signal and deadline).
  */
-export function abortingReads(fetch: FetchLike, ms: number = READ_ABORT_MS, platform: AbortPlatform | null = globalPlatform()): FetchLike {
+export function abortingReads<F extends AnyFetch>(fetch: F, ms: number = READ_ABORT_MS, platform: AbortPlatform | null = globalPlatform()): F {
   if (!platform) return fetch;
-  return (url, init) => {
+  const wrapped = (url: string, init?: { method?: string; signal?: AbortSignalLike }): Promise<FetchResponseLike> => {
     if ((init?.method ?? "GET") !== "GET" || init?.signal || url.includes("/events/poll")) return fetch(url, init);
     const ctl = platform.controller();
     const id = platform.setTimeout(() => ctl.abort(), ms);
-    return fetch(url, { ...init, signal: ctl.signal }).finally(() => platform.clearTimeout(id));
+    const clear = () => platform.clearTimeout(id);
+    return fetch(url, { ...init, signal: ctl.signal }).then(
+      (res) => {
+        const ab = res.arrayBuffer;
+        const bodyWrapped: FetchResponseLike = {
+          ok: res.ok,
+          status: res.status,
+          ...(res.headers ? { headers: res.headers } : {}),
+          text: () => res.text().finally(clear),
+          ...(ab ? { arrayBuffer: () => ab.call(res).finally(clear) } : {}),
+        };
+        return bodyWrapped;
+      },
+      (err: unknown) => {
+        clear();
+        throw err;
+      },
+    );
   };
+  return wrapped as F;
 }

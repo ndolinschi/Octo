@@ -18,6 +18,7 @@ const SCOPED = [
   ["clearQueue", "clearSessionQueue"],
   ["resumeQueue", "resumeSessionQueue"],
   ["sendQueuedNow", "sendSessionQueuedNow"],
+  ["steerQueued", "steerSessionQueued"],
   ["getContextOverview", "getSessionContext"],
   ["compactNow", "compactSession"],
   ["rewind", "rewindSession"],

@@ -1,4 +1,4 @@
-import { BridgeError, type Bridge, type FetchLike, type HttpBridgeOptions } from "./client";
+import { BridgeError, toBridgeError, type Bridge, type FetchLike, type HttpBridgeOptions } from "./client";
 import type { FileStat } from "./types";
 
 /** A file's bytes, base64-encoded (`GET …/files/content?encoding=base64`): any file, same roots, path checks and 2 MiB limit as text. */
@@ -36,8 +36,8 @@ export function withFileBytes<B extends Bridge>(bridge: B, options: Pick<HttpBri
     } catch (e) {
       throw new BridgeError(0, "network_error", e instanceof Error ? e.message : String(e));
     }
+    if (!ok) throw toBridgeError(status, text);
     const body = parseJson(text);
-    if (!ok) throw errorFrom(status, body, text);
     return parseFileBytes(body);
   };
   return { ...bridge, readFileBytes };
@@ -57,16 +57,6 @@ export function parseFileBytes(body: unknown): FileBytes {
     return { folder: body.folder, path: body.path, size: body.size, mtime: body.mtime, content: body.content, encoding: "base64" };
   }
   throw new BridgeError(0, "invalid_response", "Octo's local service sent an answer that could not be read.");
-}
-
-function errorFrom(status: number, body: unknown, text: string): BridgeError {
-  const err = isRecord(body) ? body.error : undefined;
-  if (isRecord(err) && typeof err.message === "string") {
-    return new BridgeError(status, typeof err.code === "string" ? err.code : "http_error", err.message, {
-      ...(typeof err.hint === "string" && err.hint ? { hint: err.hint } : {}),
-    });
-  }
-  return new BridgeError(status, "http_error", text.trim().slice(0, 200) || `HTTP ${status}`);
 }
 
 function globalFetch(): FetchLike {

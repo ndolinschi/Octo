@@ -42,8 +42,9 @@ async function deleteSession(t: LspTransport, path: string): Promise<void> {
   }
 }
 
-export async function openLspSession(t: LspTransport, projectPath: string, serverId: string): Promise<LanguageServerSession> {
-  const created = parseCreated(await t.request("POST", `${projectPath}/lsp/${encodeURIComponent(serverId)}/sessions`));
+export async function openLspSession(t: LspTransport, projectPath: string, serverId: string, opts?: { workspace?: "review" }): Promise<LanguageServerSession> {
+  const q = opts?.workspace === "review" ? "?workspace=review" : "";
+  const created = parseCreated(await t.request("POST", `${projectPath}/lsp/${encodeURIComponent(serverId)}/sessions${q}`));
   const sessionPath = `${projectPath}/lsp/sessions/${encodeURIComponent(created.sessionId)}`;
   const channel = createLspChannel();
   let source: EventSourceLike;
@@ -53,31 +54,45 @@ export async function openLspSession(t: LspTransport, projectPath: string, serve
     await deleteSession(t, sessionPath).catch(() => undefined);
     throw e;
   }
+  let exited = false;
+  let closing: Promise<void> | undefined;
+
   source.addEventListener("message", (ev) => {
     const message = parseFrame(ev.data);
     if (message !== undefined) channel.push(message);
   });
   source.addEventListener("exit", (ev) => {
     const info = parseFrame(ev.data);
-    if (isExitInfo(info)) {
+    if (isExitInfo(info) && !exited) {
+      exited = true;
+      source.onerror = null;
       source.close();
       channel.exit(info);
     }
   });
+  source.onerror = () => {
+    if (source.readyState === 2 && !closing && !exited) {
+      exited = true;
+      source.onerror = null;
+      source.close();
+      channel.exit({ code: -1, reason: "stream_closed" });
+    }
+  };
 
-  let closing: Promise<void> | undefined;
   return {
     rootUri: created.rootUri,
     workspaceFolders: created.folders,
     async send(message) {
-      if (closing) throw new BridgeError(0, "session_closed", "language server session closed");
+      if (closing || exited) throw new BridgeError(0, "session_closed", "language server session closed");
       await t.request("POST", `${sessionPath}/messages`, message);
     },
     onMessage: channel.onMessage,
     onExit: channel.onExit,
     close() {
       if (!closing) {
+        source.onerror = null;
         source.close();
+        channel.close();
         closing = deleteSession(t, sessionPath);
       }
       return closing;

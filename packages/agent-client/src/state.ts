@@ -154,9 +154,34 @@ export function emptyProjectState(): ProjectState {
   };
 }
 
+const MAX_CHANGES_TURNS = 200;
+const MAX_ANSWERED_INPUTS = 200;
+const MAX_TURN_OUTCOMES = 200;
+
 function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   const { [key]: _removed, ...rest } = record;
   return rest;
+}
+
+function omitKeys<T>(record: Record<string, T>, keys: ReadonlySet<string>): Record<string, T> {
+  if (keys.size === 0) return record;
+  const out: Record<string, T> = {};
+  for (const [k, v] of Object.entries(record)) {
+    if (!keys.has(k)) out[k] = v;
+  }
+  return out;
+}
+
+function capRecord<T>(record: Record<string, T>, max: number): Record<string, T> {
+  const entries = Object.entries(record);
+  if (entries.length <= max) return record;
+  return Object.fromEntries(entries.slice(entries.length - max));
+}
+
+function capNumRecord<T>(record: Record<number, T>, max: number): Record<number, T> {
+  const entries = Object.entries(record);
+  if (entries.length <= max) return record;
+  return Object.fromEntries(entries.slice(entries.length - max));
 }
 
 function upsertAgent(state: ProjectState, agent: Agent): ProjectState {
@@ -267,8 +292,8 @@ function turnFinished(state: ProjectState, event: Extract<BridgeEvent, { type: "
   const outcome: TurnOutcome = { status: event.status, error: event.error, ...errorFieldsOf(event), ...(event.notice ? { notice: event.notice } : {}) };
   const sid = event.session_id ?? null;
   const root = event.agent_id ?? (sid !== null ? state.sessions.byId[sid]?.rootAgentId : undefined) ?? undefined;
-  const request = lastRequestId(state, root === "" ? undefined : root);
-  const outcomes = (prev: Record<number, TurnOutcome>) => (request === null ? prev : { ...prev, [request]: outcome });
+  const request = sid !== null && !root ? null : lastRequestId(state, root || undefined);
+  const outcomes = (prev: Record<number, TurnOutcome>) => (request === null ? prev : capNumRecord({ ...prev, [request]: outcome }, MAX_TURN_OUTCOMES));
   if (sid === null) {
     return { ...state, streaming: {}, activeTools: {}, thinking: {}, activity: {}, lastTurn: outcome, turnOutcomes: outcomes(state.turnOutcomes) };
   }
@@ -301,7 +326,9 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
       return addMessage(state, event.message);
     case "message.updated": {
       const list = state.messages[event.message.agent_id] ?? [];
-      const next = list.map((m) => (m.id === event.message.id ? event.message : m));
+      const next = list.some((m) => m.id === event.message.id)
+        ? list.map((m) => (m.id === event.message.id ? event.message : m))
+        : mergeMessages(list, [event.message]);
       return { ...state, messages: { ...state.messages, [event.message.agent_id]: next } };
     }
     case "message.delta":
@@ -403,7 +430,7 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
     case "change.recorded": {
       const list = state.changes[event.turn_id] ?? [];
       if (list.some((c) => c.id === event.change.id)) return state;
-      return { ...state, changes: { ...state.changes, [event.turn_id]: [...list, event.change] } };
+      return { ...state, changes: capNumRecord({ ...state.changes, [event.turn_id]: [...list, event.change] }, MAX_CHANGES_TURNS) };
     }
     case "approval.requested":
       if (state.approvals.some((a) => a.id === event.approval.id)) return state;
@@ -421,9 +448,23 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
     case "session.updated":
       if (event.deleted && event.session_id !== undefined) {
         const gone = event.session_id;
+        const rootId = state.sessions.byId[gone]?.rootAgentId;
+        const evicted = new Set(state.agentOrder.filter((id) => agentSession(state, id) === gone || (rootId !== undefined && rootId !== "" && id === rootId)));
         const list = state.sessions.list.filter((s) => s.id !== gone);
         const defaultId = state.sessions.defaultId === gone ? null : state.sessions.defaultId;
-        return { ...state, sessions: { list, defaultId, currentId: defaultId, byId: omitKey(state.sessions.byId, gone) } };
+        return {
+          ...state,
+          agents: omitKeys(state.agents, evicted),
+          agentOrder: evicted.size === 0 ? state.agentOrder : state.agentOrder.filter((id) => !evicted.has(id)),
+          messages: omitKeys(state.messages, evicted),
+          streaming: omitKeys(state.streaming, evicted),
+          activeTools: omitKeys(state.activeTools, evicted),
+          activity: omitKeys(state.activity, evicted),
+          thinking: omitKeys(state.thinking, evicted),
+          plan: omitKeys(state.plan, evicted),
+          compactions: omitKeys(state.compactions, evicted),
+          sessions: { list, defaultId, currentId: defaultId, byId: omitKey(state.sessions.byId, gone) },
+        };
       }
       return event.session ? { ...state, sessions: upsertSession(state.sessions, event.session) } : state;
     case "session.default":
@@ -444,7 +485,10 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
       return {
         ...state,
         inputs: state.inputs.filter((i) => i.id !== event.id),
-        answeredInputs: { ...state.answeredInputs, [event.id]: { status: event.status, provided: event.provided, values: event.values } },
+        answeredInputs: capRecord(
+          { ...state.answeredInputs, [event.id]: { status: event.status, provided: event.provided, values: event.values } },
+          MAX_ANSWERED_INPUTS,
+        ),
       };
     case "queue.updated": {
       const queue = { paused: event.paused, messages: event.messages };
@@ -484,6 +528,27 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
     case "settings.changed": // not about this project
       return state;
   }
+}
+
+/** Resets `lastSeq` to 0 after a reconnect or full reload so a restarted harness stream is accepted cleanly. */
+export function resetEventSeq(state: ProjectState): ProjectState {
+  return state.lastSeq === 0 ? state : { ...state, lastSeq: 0 };
+}
+
+/**
+ * Applies a live stream event with duplicate-`seq` protection: ignores replayed events with `seq <= state.lastSeq`
+ * within the same stream epoch, and resets cleanly when a restarted harness begins again at `seq === 1`.
+ */
+export function applyStreamEvent(state: ProjectState, event: BridgeEvent): ProjectState {
+  if (event.seq > 0) {
+    if (event.seq === 1 && state.lastSeq > 1) {
+      const next = reduce(state, event);
+      return { ...next, lastSeq: 1 };
+    }
+    if (event.seq <= state.lastSeq) return state;
+  }
+  const next = reduce(state, event);
+  return { ...next, lastSeq: Math.max(next.lastSeq, event.seq) };
 }
 
 export function applyEvent(state: ProjectState, event: BridgeEvent): ProjectState {
@@ -548,7 +613,7 @@ export function withNotes(state: ProjectState, notes: Note[]): ProjectState {
 }
 
 export function childrenOf(state: ProjectState, agentId: string): Agent[] {
-  return state.agentOrder.map((id) => state.agents[id]).filter((a): a is Agent => a !== undefined && a.parent_id === agentId);
+  return state.agentOrder.map((id) => state.agents[id]).filter((a): a is Agent => a?.parent_id === agentId);
 }
 
 export function ancestorsOf(state: ProjectState, agentId: string): Agent[] {
@@ -569,8 +634,18 @@ export function agentBySpawnToolUse(state: ProjectState, toolUseId: string): Age
   return Object.values(state.agents).find((a) => a.spawn_tool_use_id === toolUseId);
 }
 
+function countDescendants(state: ProjectState, agentId: string, seen: Set<string>): number {
+  let sum = 0;
+  for (const child of childrenOf(state, agentId)) {
+    if (seen.has(child.id)) continue;
+    seen.add(child.id);
+    sum += 1 + countDescendants(state, child.id, seen);
+  }
+  return sum;
+}
+
 export function descendantCount(state: ProjectState, agentId: string): number {
-  return childrenOf(state, agentId).reduce((sum, child) => sum + 1 + descendantCount(state, child.id), 0);
+  return countDescendants(state, agentId, new Set([agentId]));
 }
 
 export function toolResultFor(messages: Message[], toolUseId: string): Extract<ContentBlock, { type: "tool_result" }> | undefined {
@@ -602,9 +677,9 @@ export function withInputs(state: ProjectState, inputs: InputRequest[]): Project
   return { ...state, inputs: [...inputs].sort((a, b) => a.created_at.localeCompare(b.created_at)) };
 }
 
-/** Replaces the queue with a loaded one (GET .../queue). */
+/** Replaces the queue with a loaded one (GET .../queue), keeping the default session slice in sync. */
 export function withQueue(state: ProjectState, queue: { paused: boolean; messages: QueuedMessage[] }): ProjectState {
-  return { ...state, queue };
+  return { ...state, queue, sessions: withSlice(state.sessions, state.sessions.defaultId, (x) => ({ ...x, queue })) };
 }
 
 /** Replaces the task records with a loaded list (GET .../tasks). */

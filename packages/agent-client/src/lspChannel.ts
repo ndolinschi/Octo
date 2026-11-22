@@ -1,8 +1,11 @@
 import type { LanguageServerExit } from "./types";
 
+export const MAX_CHANNEL_QUEUE = 1024;
+
 export type LspChannel = {
   push(message: unknown): void;
   exit(info: LanguageServerExit): void;
+  close(): void;
   onMessage(cb: (message: unknown) => void): () => void;
   onExit(cb: (info: LanguageServerExit) => void): () => void;
 };
@@ -23,13 +26,24 @@ export function createLspChannel(): LspChannel {
 
   return {
     push(message) {
-      if (buffering) queue.push(message);
-      else messageListeners.forEach((cb) => cb(message));
+      if (exited) return;
+      if (buffering) {
+        queue.push(message);
+        if (queue.length > MAX_CHANNEL_QUEUE) queue.shift();
+      } else {
+        messageListeners.forEach((cb) => cb(message));
+      }
     },
     exit(info) {
       if (exited) return;
       exited = info;
+      buffering = false;
+      queue = [];
       exitListeners.forEach((cb) => cb(info));
+    },
+    close() {
+      buffering = false;
+      queue = [];
     },
     onMessage(cb) {
       messageListeners.add(cb);

@@ -78,18 +78,11 @@ import type {
   SlashCommands,
   UsageReport,
 } from "./types";
-import {
-  BridgeError,
-  retryDelay,
-  type AbortSignalLike,
-  type BinaryFetchLike,
-  type BlobLike,
-  type Bridge,
-  type FetchResponseLike,
-  type StreamHandle,
-  type TimersLike,
-} from "./client";
+import { BridgeError, type AbortSignalLike, type BinaryFetchLike, type BlobLike, type Bridge, type FetchResponseLike, type TimersLike } from "./client";
 import type { RareMethod } from "./rareNames";
+import { globalTimers, STREAM_STALE_MS, watchStream } from "./streamWatch";
+
+export { STREAM_STALE_MS, watchStream };
 
 /** What the rare methods need from the client that loads them. */
 export type RareContext = {
@@ -102,6 +95,8 @@ export type RareContext = {
   base: string;
   token: string;
   timers: TimersLike | undefined;
+  /** P2-12: server clock minus local clock in ms (0 when close or unknown). */
+  clockOffset?: () => number;
   /** The send timeout (`POST …/messages`); default {@link SEND_TIMEOUT_MS}. */
   sendTimeout: number | undefined;
   /** The host's binary fetch (or the global one); throws `no_fetch` where there is none. */
@@ -123,78 +118,12 @@ function parseJson(text: string): unknown {
   }
 }
 
-function globalTimers(): TimersLike {
-  const g = globalThis as unknown as { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(id: unknown): void };
-  return {
-    // Under Node a watchdog timer must not keep the process alive (`unref`); a browser's timer id is a number.
-    setTimeout: (fn, ms) => {
-      const id = g.setTimeout(fn, ms) as { unref?(): void };
-      id.unref?.();
-      return id;
-    },
-    clearTimeout: (id) => g.clearTimeout(id),
-    now: () => Date.now(),
-  };
-}
-
 /**
  * A send (`POST …/messages`) the harness has not answered in this time fails with code `timeout`. The harness answers in
  * milliseconds (the turn runs after the answer); 15 s covers a busy machine and still unlocks the composer long before
  * anyone reaches for a reload. The message may have arrived: the caller re-reads the conversation before offering Retry.
  */
 export const SEND_TIMEOUT_MS = 15_000;
-/**
- * The harness sends a `heartbeat` event every 15 s. A stream that carried nothing for this long (two heartbeats missed) is
- * half-open: it is closed and opened again, and the reopen's `onOpen` is the caller's cue to re-read the project.
- */
-export const STREAM_STALE_MS = 35_000;
-/** How often the watchdog looks at the stream (it sends nothing; the cost is one timer). */
-const STREAM_CHECK_MS = 5_000;
-
-/**
- * The event stream's watchdog (A16, A11): a stream silent for `staleMs` (the harness sends a heartbeat every 15 s) is
- * closed and opened again; one EventSource closed for good (a refused connection) is opened again after 1 s, 2 s, 4 s …
- * 10 s. Returns the stop.
- */
-export function watchStream(
-  h: StreamHandle,
-  onError: ((e: unknown) => void) | undefined,
-  given: TimersLike | undefined,
-  staleMs = STREAM_STALE_MS,
-): () => void {
-  const timers = given ?? globalTimers();
-  let retryAt = 0;
-  let fails = 0;
-  let timer: unknown;
-  let stopped = false;
-  const watch = () => {
-    timers.clearTimeout(timer);
-    if (stopped) return;
-    const now = timers.now();
-    // Refused opens in a row set the backoff; an open stream ends the run.
-    if (h.source?.readyState === 1) fails = 0;
-    if (!h.source && now >= retryAt) h.open();
-    else if (h.source && now - h.seen > staleMs) {
-      h.source.close();
-      onError?.(new BridgeError(0, "stream_stale", "the event stream went quiet"));
-      h.open();
-    }
-    timer = timers.setTimeout(watch, h.source ? STREAM_CHECK_MS : retryAt - now);
-  };
-  h.refused = () => {
-    h.source?.close();
-    h.source = null;
-    retryAt = timers.now() + retryDelay((fails += 1), 10_000);
-    watch();
-  };
-  if (h.source?.readyState === 2) h.refused();
-  else watch();
-  return () => {
-    stopped = true;
-    timers.clearTimeout(timer);
-    delete h.refused;
-  };
-}
 
 /**
  * The bridge methods the first paint never calls (notes, review, commands, memory, sessions' writes, secrets, plans, ...).
@@ -208,6 +137,7 @@ export function createRareMethods({
   base,
   token,
   timers: given,
+  clockOffset,
   sendTimeout = SEND_TIMEOUT_MS,
   binaryFetch,
   fail,
@@ -248,7 +178,7 @@ export function createRareMethods({
    * project's default conversation, or in main session `sid` (its root agent's messages and its own queue).
    */
   const stored = async (id: string, text: string, since: number, sid?: string): Promise<unknown> => {
-    const after = (at: string) => Date.parse(at) >= since - 1000;
+    const after = (at: string) => Date.parse(at) >= since + (clockOffset?.() ?? 0) - 1000;
     const look = async () => {
       let root: string;
       if (sid === undefined) root = ((await request("GET", p(id))) as Project).orchestrator_agent_id;
@@ -319,21 +249,49 @@ export function createRareMethods({
     return body as unknown as CreatedSession;
   };
   const s = (id: string, sid: string) => `${p(id)}/sessions/${encodeURIComponent(sid)}`;
+  const fetchBinary = async (path: string, fallbackType: string): Promise<{ data: ArrayBuffer; type: string }> => {
+    const doFetch = binaryFetch();
+    const headers: Record<string, string> = {};
+    if (token !== "") headers.Authorization = `Bearer ${token}`;
+    let res: FetchResponseLike;
+    let errText = "";
+    let data: ArrayBuffer | undefined;
+    try {
+      res = await doFetch(`${base}${path}`, { method: "GET", headers });
+      if (!res.ok) {
+        errText = await res.text();
+      } else if (res.arrayBuffer) {
+        data = await res.arrayBuffer();
+      }
+    } catch (e) {
+      throw new BridgeError(0, "network_error", e instanceof Error ? e.message : String(e));
+    }
+    if (!res.ok) throw fail(res.status, errText);
+    if (!data) throw new BridgeError(0, "invalid_response", "this fetch cannot read binary bodies");
+    return { data, type: res.headers?.get("Content-Type") ?? fallbackType };
+  };
   const exportFrom = async (path: string): Promise<BlobLike> => {
     const doFetch = binaryFetch();
     const headers: Record<string, string> = {};
     if (token !== "") headers.Authorization = `Bearer ${token}`;
     let res: FetchResponseLike;
+    let errText = "";
+    let body: ArrayBuffer | string = "";
     try {
       res = await doFetch(`${base}${path}`, { method: "GET", headers });
+      if (!res.ok) {
+        errText = await res.text();
+      } else {
+        body = res.arrayBuffer ? await res.arrayBuffer() : await res.text();
+      }
     } catch (e) {
       throw new BridgeError(0, "network_error", e instanceof Error ? e.message : String(e));
     }
-    if (!res.ok) throw fail(res.status, await res.text());
+    if (!res.ok) throw fail(res.status, errText);
     const type = res.headers?.get("Content-Type") ?? "text/markdown";
     const Blob = (globalThis as { Blob?: new (parts: unknown[], init?: { type?: string }) => BlobLike }).Blob;
     if (!Blob) throw new BridgeError(0, "no_blob", "this environment has no Blob");
-    return new Blob([res.arrayBuffer ? await res.arrayBuffer() : await res.text()], { type });
+    return new Blob([body], { type });
   };
   const latestPlan = async (path: string) => {
     try {
@@ -450,6 +408,8 @@ export function createRareMethods({
         `${p(id)}/reviews/${encodeURIComponent(rid)}/files/${memoryPath(path)}${q.length ? `?${q.join("&")}` : ""}`,
       ) as Promise<ReviewFileDiff>;
     },
+    fetchReviewFileRaw: (id, rid, path, side) =>
+      fetchBinary(`${p(id)}/reviews/${encodeURIComponent(rid)}/files/${memoryPath(path)}?raw=${side}`, "application/octet-stream"),
     setReviewFileViewed: (id, rid, path, viewed) =>
       request("PATCH", `${p(id)}/reviews/${encodeURIComponent(rid)}/files/${memoryPath(path)}`, { viewed }) as Promise<ReviewFile>,
     listReviewThreads: (id, rid, options) =>
@@ -556,6 +516,10 @@ export function createRareMethods({
     sendSessionQueuedNow: async (id, sid, qid, opts) => {
       await request("POST", `${s(id, sid)}/queue/${encodeURIComponent(qid)}/send-now`, opts?.interrupt ? { interrupt: true } : undefined);
     },
+    steerSessionQueued: async (id, sid, qid) => {
+      const body = await request("POST", `${s(id, sid)}/queue/${encodeURIComponent(qid)}/send-now`);
+      return { steered: isRecord(body) && body.steered === true };
+    },
     getSessionContext: (id, sid) => request("GET", `${s(id, sid)}/context`) as Promise<ContextOverview | ContextBreakdown>,
     compactSession: (id, sid) => request("POST", `${s(id, sid)}/compact`) as Promise<CompactResult | CompactSentToAgent>,
     clearSession: async (id, sid) => created(await request("POST", `${s(id, sid)}/clear`)),
@@ -620,20 +584,7 @@ export function createRareMethods({
       if (!isRecord(body) || typeof body.id !== "string") throw new BridgeError(0, "invalid_response", 'missing "id" in response');
       return body as unknown as Attachment;
     },
-    fetchAttachment: async (id, attachmentId) => {
-      const doFetch = binaryFetch();
-      const headers: Record<string, string> = {};
-      if (token !== "") headers.Authorization = `Bearer ${token}`;
-      let res: FetchResponseLike;
-      try {
-        res = await doFetch(`${base}${p(id)}/attachments/${encodeURIComponent(attachmentId)}`, { method: "GET", headers });
-      } catch (e) {
-        throw new BridgeError(0, "network_error", e instanceof Error ? e.message : String(e));
-      }
-      if (!res.ok) throw fail(res.status, await res.text());
-      if (!res.arrayBuffer) throw new BridgeError(0, "invalid_response", "this fetch cannot read binary bodies");
-      return { data: await res.arrayBuffer(), type: res.headers?.get("Content-Type") ?? "application/octet-stream" };
-    },
+    fetchAttachment: (id, attachmentId) => fetchBinary(`${p(id)}/attachments/${encodeURIComponent(attachmentId)}`, "application/octet-stream"),
     listPlugins: () => unwrap<Plugin[]>(request("GET", "/v1/plugins"), "plugins"),
     listLanguageServers: (id) => unwrap<LanguageServerInfo[]>(request("GET", `${p(id)}/lsp`), "servers"),
     editQueued: (id, qid, text) => request("PATCH", `${p(id)}/queue/${encodeURIComponent(qid)}`, { text }) as Promise<QueuedMessage>,
