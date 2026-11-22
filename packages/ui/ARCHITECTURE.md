@@ -1,8 +1,13 @@
 # `@octo/ui` — architecture
 
 Shell-agnostic React UI for the project harness: sidebar, tab workspace, orchestrator chat, read-only agent
-transcripts, file view with a Monaco editor, notes, settings. Hosted by `apps/desktop` (Vite, Tauri) and, later,
-`apps/web`. It talks to the harness only through the `Bridge` interface from `@octo/agent-client`.
+transcripts, file view with a Monaco editor, tool tabs, settings. Hosted by `apps/desktop` (Vite, Tauri) and by `apps/web`
+(the phone client through Remote access). It talks to the harness only through the `Bridge` interface from
+`@octo/agent-client`.
+
+The component library, the design tokens and the anatomy of a tool tab: [`COMPONENTS.md`](./COMPONENTS.md). Where this
+package sits in the system: [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md#module-map). Checked against the code on
+2026-11-22 (import graph, file counts); sizes: 723 source files, about 85,000 lines.
 
 Design decisions (tokens, spacing, motion, every screen) live in
 [`docs/superpowers/specs/2026-11-10-project-harness-ui.md`](../../docs/superpowers/specs/2026-11-10-project-harness-ui.md).
@@ -12,8 +17,11 @@ in `.claude/rules/typescript.md`). This file describes structure: what lives whe
 ## Layers
 
 ```text
-app/                    OctoApp (props: bridge, bridgeUrl, shell, demo, host, tabs), AppShell, ProjectWorkspace
-components/<feature>/   chat · files · browser · terminal · processes · review · sessions · agents · notes · details · usage · memory · v7 · settings · providers · home · project · shell · side   (screens and their parts)
+app/                    OctoApp (props: bridge, bridgeUrl, shell, demo, host, tabs), AppShell, ProjectWorkspace, phone/ (the phone
+                        layout), project switching (decision 99), warmApp (chunk warm-up schedule)
+components/<feature>/   21 folders: chat · files · browser · terminal · processes · commands · review · sessions · agents · notes ·
+                        details · usage · memory · v7 · settings · providers · home · project · shell · side · status
+                        (screens and their parts)
 components/dock/        tab groups, strip, divider, drag layer, TabView = the composition point (hands one feature to another
                         as a prop: the file view's floating composer)
 components/primitives/  the component library (decision 90; see "Primitives" below) — import `lib` only
@@ -31,7 +39,8 @@ lib/                    pure helpers and small hooks: models (names, served mode
 demo/                   in-memory Bridge with seeded projects (for ?demo= and for scripted checks); its own entry point,
                         `@octo/ui/demo` (`demo/index.ts`), not part of the package root
 styles.css              design tokens (@theme), base rules, Monaco widget overrides
-scripts/                spacing-audit.mjs (Playwright; fails on off-scale spacing)
+scripts/                23 Playwright and audit scripts (spacing-audit, panel-measure, flicker, project-switch, ui-tour, ...;
+                        listed with what each verifies in COMPONENTS.md, "Check scripts")
 ```
 
 Allowed imports (a row may import the columns marked ✓), enforced on **resolved paths** by the `octo/layer-imports` ESLint
@@ -68,23 +77,11 @@ row in the sidebar or the conversation (`ChatHeader` and `SettingsDialog` are go
 
 ## Primitives (decision 90: one component library)
 
-A feature composes primitives and never styles a native control (`octo/no-native-controls`). Every primitive has a header
-comment with its purpose, props, variants, sizes and when NOT to use it; `?demo=1&gallery=1` renders all of them (a lazy chunk,
-`primitives/Gallery`; `packages/ui/scripts/gallery-shots.mjs` screenshots it in dark and light). Sizes come from one scale
-(`lib/controls.ts`, tokens `--spacing-ctl-xs|sm|md|lg` = 24/28/32/40 in `styles.css`); the touch target (`touch:` variant,
-`touch-hit` utility) lives inside the primitives.
-
-| Group    | Primitives                                                                                                                                                                            | Notes                                                                                  |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Actions  | `Button` (primary, secondary, quiet, danger, link; xs-lg; icon, iconEnd, pressed, loading, fullWidth), `IconButton` (quiet, primary, round; xs-lg), `Chip`, `MenuButton`, `Segmented` | `ghost` = `quiet`; `Button.tsx`'s `IconButton` is deprecated (old sizes sm 24 / md 28) |
-| Fields   | `TextField`, `TextArea` (one focus rule: border turns `fg`), `Select` (menu), `SearchField` (bordered, header, bare), `Checkbox`, `Switch`, `Field`                                   | `Input` / `Textarea` are deprecated aliases                                            |
-| Lists    | `ListRow` (28/32/40, two-line, slots, selection), `ListFrame`, `SectionHeader`, `ScrollArea`, `MiddleText`, `Picker`, `Menu`, `InfoList` rows                                         | `INFO_ROW*` and `SkeletonRows` are superseded                                          |
-| Messages | `Notice` (line, block; info, warn, error, success), `EmptyState`, `Skeleton`, `SkeletonText`, `SkeletonList`, `Spinner`                                                               | no coloured borders (decision 81); skeletons pulse only with `shimmer`                 |
-| Surfaces | `Card` (raised, panel, code), `Dialog`, `Popover`, `Tooltips`, `CommandLine`, `KeyHint` (`Kbd`, `Key` aliases)                                                                        |                                                                                        |
-| Marks    | `Glyph`, `StateGlyph`, status glyphs, `ProviderMark`, `Highlight`, `DayBars`, `Presence`, `Streak` + `StreakLayer`, file icons                                                        |                                                                                        |
-
-Frame (decision 95f): `Panel` (+ `PanelFilters`, `PanelBody`, `PanelEmpty`, `DetailHeader`), the one frame of every tool tab; keep it out of the entry chunk (tool tabs are lazy). Reserved, being built by other batches: `FieldRow`. Not yet built (audit group list): `RadioGroup`,
-`SelectButton`, `Badge`, `Loading`, `Toolbar`, `ListDetail`, `Meter`, `Dialog variant="palette"`.
+A feature composes primitives and never styles a native control (`octo/no-native-controls`, a lint warning). Every primitive
+has a header comment with its purpose, props, variants, sizes and when not to use it; `?demo=1&gallery=1` renders all of them
+(a lazy chunk, `primitives/Gallery`). Sizes come from one scale (`lib/controls.ts`, tokens `--spacing-ctl-xs|sm|md|lg` =
+24/28/32/40). The inventory (65 files, who uses each, what is deprecated or unused), the tokens and the tool-tab frame
+(`Panel`, decision 95f) are in [`COMPONENTS.md`](./COMPONENTS.md).
 
 ## Providers
 
@@ -114,7 +111,18 @@ HostProvider              embedding capabilities (openFile, pickFolder, theme) �
 
 ## Lazy-loading boundary
 
-The initial bundle must stay lean (budget and measured sizes are in the spec's "As built" sections).
+The initial bundle must stay lean. On 2026-11-19 the entry measured 160.39 kB gzip against a budget of 161.00 kB
+(`BUDGET_KB` in `scripts/check-bundle-size.mjs`; the history of every raise is in that file's header).
+
+What is deliberately kept out of the entry: Monaco and the language-server client, the demo bridge and its fixtures, every
+tool tab, Home, Settings, the palette, the model list, Markdown and the highlighter, the streak canvas, the provider marks,
+the less-used `Bridge` methods (`@octo/agent-client` `rare.ts`), and the `*More.ts` halves of helpers the first paint does not
+need (`lib/modelsMore.ts`, `toolsMore.ts`, `hooksMore.ts`, `matchMore.ts`, `orchestratorMore.ts`, `providers/providersMore.ts`).
+
+How a lazy surface opens fast: `lib/readyLazy.ts` wraps the loader so a component whose chunk is already in renders without
+suspending, and `lib/warm.ts` keeps a registry of loaders by key (`registerWarm("tool:files", ...)`) that
+`lib/warmSchedule.ts` (its own chunk) and `app/warmApp.ts` warm on idle or on intent (not under Save-Data). A new lazy
+surface uses both; a plain `React.lazy` suspends on its first render and React then holds the content back about 300 ms.
 
 - `monaco-editor` is imported as a value **only** in `components/files/monaco.ts`, reached through `import()`
   from `CodeEditor`. Everything that needs Monaco types uses `import type`.
@@ -132,7 +140,8 @@ The initial bundle must stay lean (budget and measured sizes are in the spec's "
   the tab picker and the model picker 1.5 s after start; the composer's menu is prefetched when the composer takes focus.
 
 `node scripts/check-bundle-size.mjs` (CI runs it after the desktop build) sums the gzip size of the entry chunk and its
-`modulepreload` chunks and fails above the budget recorded in the script (measured size + 3 kB); lazy chunks are not counted.
+`modulepreload` chunks and fails above `BUDGET_KB`; lazy chunks are not counted. The budget is raised only by hand, with a
+reason in the script's header.
 
 ## Routing, persistence, side effects
 
