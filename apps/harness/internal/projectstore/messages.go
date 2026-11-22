@@ -101,7 +101,7 @@ func (d *DB) LiveMessages(ctx context.Context, agentID string) ([]Message, error
 
 func (d *DB) Messages(ctx context.Context, agentID string) ([]Message, error) {
 	rows, err := d.sql.QueryContext(ctx,
-		`SELECT id, role, content_json, created_at, stopped, command, session_id FROM messages WHERE agent_id = ? AND rewound_at IS NULL ORDER BY id`, agentID)
+		`SELECT id, role, content_json, created_at, stopped, command, session_id, tool_ms FROM messages WHERE agent_id = ? AND rewound_at IS NULL ORDER BY id`, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -109,13 +109,14 @@ func (d *DB) Messages(ctx context.Context, agentID string) ([]Message, error) {
 	out := []Message{}
 	for rows.Next() {
 		var id int64
-		var role, content, created, command, sid string
+		var role, content, created, command, sid, toolMs string
 		var stopped bool
-		if err := rows.Scan(&id, &role, &content, &created, &stopped, &command, &sid); err != nil {
+		if err := rows.Scan(&id, &role, &content, &created, &stopped, &command, &sid, &toolMs); err != nil {
 			return nil, err
 		}
 		m := newMessage(id, agentID, role, []byte(content), created)
 		m.Stopped, m.Command, m.SessionID = stopped, command, sid
+		applyToolMs(m.Content, toolMs)
 		out = append(out, m)
 	}
 	return out, rows.Err()
@@ -126,6 +127,49 @@ func newMessage(id int64, agentID, role string, raw []byte, created string) Mess
 		ID: id, AgentID: agentID, Role: role, CreatedAt: created,
 		Raw: raw, Content: NormalizeContent(raw),
 	}
+}
+
+// ToolDurations maps a tool call's id to how long it ran, in milliseconds.
+type ToolDurations map[string]int64
+
+// SetToolDurations stores how long the calls answered by tool-result message id ran
+// (the run card's step times). Only ids the message answers are kept; an empty map
+// leaves the row as it was.
+func (d *DB) SetToolDurations(ctx context.Context, id int64, ms ToolDurations) error {
+	if len(ms) == 0 {
+		return nil
+	}
+	body, err := json.Marshal(ms)
+	if err != nil {
+		return err
+	}
+	_, err = d.sql.ExecContext(ctx, `UPDATE messages SET tool_ms = ? WHERE id = ?`, string(body), id)
+	return err
+}
+
+// ApplyToolDurations sets DurationMs on the tool_result blocks of content that ms times.
+func ApplyToolDurations(content []ContentBlock, ms ToolDurations) {
+	for i := range content {
+		b := &content[i]
+		if b.Type != "tool_result" || b.ToolUseID == nil {
+			continue
+		}
+		if v, ok := ms[*b.ToolUseID]; ok && v >= 0 {
+			b.DurationMs = &v
+		}
+	}
+}
+
+// applyToolMs is ApplyToolDurations from the stored column (” or unreadable: nothing).
+func applyToolMs(content []ContentBlock, stored string) {
+	if stored == "" {
+		return
+	}
+	var ms ToolDurations
+	if json.Unmarshal([]byte(stored), &ms) != nil {
+		return
+	}
+	ApplyToolDurations(content, ms)
 }
 
 // MarkStopped flags an assistant message as cut short (see Message.Stopped).

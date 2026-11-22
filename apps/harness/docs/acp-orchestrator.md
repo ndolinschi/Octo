@@ -202,6 +202,18 @@ An agent at work is never just a spinner. For ACP orchestrators, ACP sub-agents 
 - `agent.plan {agent_id, entries:[{content, status, priority}]}`: the agent's whole plan each time; the latest is on the agent row as `plan` (null when none; cleared when the next turn starts; schema version 4).
 - `tool.updated {agent_id, tool_use_id, status?, title?, locations?, summary?}`: what a `tool_call_update` changed. The tool row itself (`message.created` with the `tool_use`, and `tool.started`) is published when the agent announces the call, not when it ends (this was already so; it is now tested with a 400 ms tool).
 
+**Tool timings (2026-11-22, for the UI's sub-agent run card).** Every agent's sink (built-in loop and ACP alike, orchestrator
+and sub-agents) times each tool call from `ToolStarted` to its result: `tool.started` carries `started_at` (RFC 3339, UTC),
+`tool.finished` carries `duration_ms`, and the stored `tool_result` block of `GET …/messages` (and of `message.created`) carries the
+same `duration_ms`. The figure is kept beside the content, in the `messages.tool_ms` column (a JSON object `{tool_use_id: ms}`,
+added when missing; an older binary ignores it, so the schema version stays 15), never inside `content_json`, which is replayed to
+the model. The built-in loop publishes `tool.finished` before it stores the batch's results, an ACP agent stores the result first;
+whichever comes first measures and the other reuses the figure, so the event and the stored row agree. Results stored before this
+change, and synthetic ones (a dangling call closed after a crash), have no `duration_ms`: a client shows no time rather than a guess.
+Code: `orchestrator/sink.go` (`settleTool`), `projectstore/messages.go` (`SetToolDurations`, `ApplyToolDurations`). Tests:
+`orchestrator/tool_timing_test.go` (built-in loop with sub-agents; ACP with a 400 ms call stored before it finishes),
+`projectstore/tool_timing_test.go`.
+
 Text chunks are published as they arrive (no batching at all, so well inside the 50 ms bound); with no stored secret nothing is held back, with one at most its length minus one byte, until the next chunk or the end of the message. `current_mode_update` is ignored without error (`available_commands_update` feeds the "/" menu).
 
 The scripted agent has markers for these flows: `[live]` (thought, plan, a tool with title/status updates, 20 text chunks 20 ms apart, each carrying its send time), `[slow-tool]`, `[quiet]`, `[secret-thought:VALUE]`. Tests measure the first event reaching an SSE subscriber within 100 ms of the agent sending it and the 20 chunks arriving over about 400 ms.

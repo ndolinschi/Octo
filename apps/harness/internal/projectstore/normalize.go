@@ -12,6 +12,9 @@ type ContentBlock struct {
 	ToolUseID *string         `json:"tool_use_id,omitempty"`
 	Content   *string         `json:"content,omitempty"`
 	IsError   *bool           `json:"is_error,omitempty"`
+	// DurationMs is how long a tool_result's call ran (from its start to its result), when the harness timed it;
+	// absent on rows stored before tool timings and on calls it did not time. Never part of the stored content.
+	DurationMs *int64 `json:"duration_ms,omitempty"`
 	// An image block ("image") names an attachment; Name is its file name.
 	AttachmentID *string `json:"attachment_id,omitempty"`
 	MediaType    *string `json:"media_type,omitempty"`

@@ -47,6 +47,9 @@ var columnsAdded = []struct {
 	{"messages", []column{{"stopped", "INTEGER NOT NULL DEFAULT 0"}, {"rewound_at", "TEXT"}}},
 	// Schema 9 (B11): the agent slash command a user message ran ("" for plain text).
 	{"messages", []column{{"command", "TEXT NOT NULL DEFAULT ''"}}},
+	// Tool timings (UI run card): how long each tool call of a tool-result message ran, as a JSON object
+	// {tool_use_id: milliseconds}; '' for older rows. An older binary ignores the column, so no new schema version.
+	{"messages", []column{{"tool_ms", "TEXT NOT NULL DEFAULT ''"}}},
 	// Schema 9 (B11): a clear is a compaction row without a summary that starts a new conversation.
 	{"compactions", []column{{"cleared", "INTEGER NOT NULL DEFAULT 0"}, {"conversation_id", "TEXT NOT NULL DEFAULT ''"},
 		{"summary_source", "TEXT NOT NULL DEFAULT ''"}, {"title", "TEXT NOT NULL DEFAULT ''"}}},
