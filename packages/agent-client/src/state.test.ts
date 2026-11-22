@@ -140,7 +140,13 @@ test("tool.started keeps when the call started (the run card's live step timer);
   s = applyEvent(s, {
     type: "message.created",
     seq: 4,
-    message: { id: 9, agent_id: "a", role: "user", created_at: "t", content: [{ type: "tool_result", tool_use_id: "t1", content: "ok", is_error: false, duration_ms: 1200 }] },
+    message: {
+      id: 9,
+      agent_id: "a",
+      role: "user",
+      created_at: "t",
+      content: [{ type: "tool_result", tool_use_id: "t1", content: "ok", is_error: false, duration_ms: 1200 }],
+    },
   });
   const block = s.messages.a?.[0]?.content[0];
   assert.equal(block?.type === "tool_result" ? block.duration_ms : null, 1200);
