@@ -446,3 +446,64 @@ func TestBashFailureEndsWithTheExitStatus(t *testing.T) {
 		t.Fatalf("a successful command = %q %v", out, isErr)
 	}
 }
+
+func TestCappedBufferDrainsAndMarksTruncation(t *testing.T) {
+	b := cappedBuffer{limit: 10}
+	for range 5 {
+		n, err := b.Write([]byte("1234"))
+		if err != nil || n != 4 {
+			t.Fatalf("Write = (%d, %v), want (4, nil)", n, err)
+		}
+	}
+	got := b.String()
+	if !strings.HasPrefix(got, "1234123412") {
+		t.Fatalf("got %q, want prefix 1234123412", got)
+	}
+	if !strings.Contains(got, "truncated") {
+		t.Fatalf("got %q, want truncation marker", got)
+	}
+}
+
+func TestBashDrainsLargeOutputWithoutDeadlock(t *testing.T) {
+	workspace := t.TempDir()
+	reg := tools.NewRegistry()
+	if err := RegisterRootsLimits(reg, []Root{{Path: workspace}}, tools.Limits{ResultBytes: 1024}, ToolBash); err != nil {
+		t.Fatal(err)
+	}
+	def, _ := reg.Get("bash")
+	// Write > 2 MiB to stdout; cappedBuffer must keep draining so the child exits cleanly.
+	out, isErr, err := def.Handle(context.Background(), json.RawMessage(`{"command":"head -c 2621440 /dev/zero | tr '\\0' 'a'"}`))
+	if err != nil || isErr {
+		t.Fatalf("large bash output failed: err=%v isErr=%v out=%q", err, isErr, out[:min(len(out), 200)])
+	}
+	if !strings.Contains(out, "truncated") {
+		t.Fatalf("expected truncation marker in large bash output (len=%d)", len(out))
+	}
+}
+
+func TestReadRegularFileRejectsNonRegularAndOversized(t *testing.T) {
+	workspace := t.TempDir()
+	sub := filepath.Join(workspace, "subdir")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readRegularFile(sub, 1024); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("expected not a regular file error for directory, got %v", err)
+	}
+	big := filepath.Join(workspace, "big.txt")
+	if err := os.WriteFile(big, []byte(strings.Repeat("x", 2048)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readRegularFile(big, 1024); err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("expected too large error, got %v", err)
+	}
+	reg := tools.NewRegistry()
+	if err := Register(reg, workspace); err != nil {
+		t.Fatal(err)
+	}
+	def, _ := reg.Get("read_file")
+	out, isErr, err := def.Handle(context.Background(), json.RawMessage(`{"path":"subdir"}`))
+	if err != nil || !isErr || !strings.Contains(out, "not a regular file") {
+		t.Fatalf("read_file on dir = (%q, %v, %v), want isErr not a regular file", out, isErr, err)
+	}
+}

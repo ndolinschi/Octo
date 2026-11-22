@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -58,7 +59,9 @@ func bashHandler(rs *rootSet, lim tools.Limits) tools.Handler {
 		cmd.Dir = dir
 		// Same allow-list as plugin processes: no provider keys or other secrets.
 		cmd.Env = childenv.Build(os.Environ(), extra)
-		var stdout, stderr bytes.Buffer
+		capBytes := max(lim.Resolved().ResultBytes*4, 2<<20)
+		stdout := cappedBuffer{limit: capBytes}
+		stderr := cappedBuffer{limit: capBytes}
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 		err = cmd.Run()
@@ -74,6 +77,34 @@ func bashHandler(rs *rootSet, lim tools.Limits) tools.Handler {
 		}
 		return out, false, nil
 	}
+}
+
+// cappedBuffer buffers up to limit bytes and discards the rest while always returning len(p), nil
+// so child processes writing to stdout/stderr never block on a full pipe.
+type cappedBuffer struct {
+	buf       bytes.Buffer
+	limit     int
+	truncated bool
+}
+
+func (c *cappedBuffer) Write(p []byte) (int, error) {
+	if c.buf.Len() < c.limit {
+		keep := min(len(p), c.limit-c.buf.Len())
+		c.buf.Write(p[:keep])
+		if keep < len(p) {
+			c.truncated = true
+		}
+	} else if len(p) > 0 {
+		c.truncated = true
+	}
+	return len(p), nil
+}
+
+func (c *cappedBuffer) String() string {
+	if !c.truncated {
+		return c.buf.String()
+	}
+	return c.buf.String() + "\n[output truncated: stream exceeded buffer cap]"
 }
 
 // failedOutput is a failed command's result: its output, then always a last line saying how it ended ("exit
@@ -98,6 +129,9 @@ func failedOutput(out string, err error, timedOut bool, lim tools.Limits) string
 
 // readFooterReserve is the room read_file keeps for its own truncation footer.
 const readFooterReserve = 300
+
+// maxReadFileBytes bounds how much read_file will read into memory from a single file.
+const maxReadFileBytes = 16 << 20
 
 func readFileHandler(rs *rootSet, lim tools.Limits) tools.Handler {
 	lim = lim.Resolved()
@@ -125,12 +159,38 @@ func readFileHandler(rs *rootSet, lim tools.Limits) tools.Handler {
 		if err != nil {
 			return err.Error(), true, nil
 		}
-		data, err := os.ReadFile(path)
+		data, err := readRegularFile(path, maxReadFileBytes)
 		if err != nil {
 			return err.Error(), true, nil
 		}
 		return sliceFile(string(data), offset, limit, lim.ResultBytes)
 	}
+}
+
+func readRegularFile(path string, maxBytes int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("not a regular file: %s", filepath.Base(path))
+	}
+	if fi.Size() > maxBytes {
+		return nil, fmt.Errorf("file is too large to read (%d bytes; max %d bytes)", fi.Size(), maxBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("file is too large to read (max %d bytes)", maxBytes)
+	}
+	return data, nil
 }
 
 // sliceFile returns lines [offset, offset+limit) of content, 1-based, cut

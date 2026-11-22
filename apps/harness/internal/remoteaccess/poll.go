@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
@@ -53,7 +54,7 @@ func (m *Manager) poll(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	wait := m.o.PollWait
 	if v := q.Get("wait"); v != "" {
-		if n, err := strconv.ParseFloat(v, 64); err == nil && n >= 0 && time.Duration(n*float64(time.Second)) < wait {
+		if n, err := strconv.ParseFloat(v, 64); err == nil && !math.IsNaN(n) && !math.IsInf(n, 0) && n >= 0 && time.Duration(n*float64(time.Second)) < wait {
 			wait = time.Duration(n * float64(time.Second))
 		}
 	}

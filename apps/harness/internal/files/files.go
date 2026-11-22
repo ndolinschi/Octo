@@ -148,11 +148,15 @@ func List(root, rel string) ([]Entry, error) {
 		}
 		typ := d.Type()
 		if typ&os.ModeSymlink != 0 {
+			entryPath := path.Join(clean, d.Name())
+			if _, _, err := resolve(root, entryPath); err != nil {
+				continue
+			}
 			fi, err := os.Stat(filepath.Join(abs, d.Name()))
 			if err != nil {
 				continue
 			}
-			e := Entry{Name: d.Name(), Path: path.Join(clean, d.Name()), Type: "file", Size: fi.Size()}
+			e := Entry{Name: d.Name(), Path: entryPath, Type: "file", Size: fi.Size()}
 			if fi.IsDir() {
 				e.Type, e.Size = "dir", 0
 			}

@@ -30,6 +30,7 @@ func tree(t *testing.T) (root, outside string) {
 	must(os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0o644))
 	must(os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(root, "link.txt")))
 	must(os.Symlink(outside, filepath.Join(root, "outdir")))
+	must(os.Symlink(filepath.Join(root, "a.txt"), filepath.Join(root, "inroot.txt")))
 	return root, outside
 }
 
@@ -43,7 +44,7 @@ func TestListSortingAndGit(t *testing.T) {
 	for _, e := range got {
 		names = append(names, e.Type+":"+e.Name)
 	}
-	want := "dir:alpha,dir:outdir,dir:src,file:a.txt,file:b.txt,file:link.txt"
+	want := "dir:alpha,dir:src,file:a.txt,file:b.txt,file:inroot.txt"
 	if strings.Join(names, ",") != want {
 		t.Fatalf("entries = %v, want %s", names, want)
 	}

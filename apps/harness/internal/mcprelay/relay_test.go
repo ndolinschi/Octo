@@ -103,3 +103,21 @@ func TestRelayValidatesItsArguments(t *testing.T) {
 		}
 	}
 }
+
+func TestRelayConcurrentErrorsDoNotRace(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	var lines []string
+	for i := range 20 {
+		lines = append(lines, `{"jsonrpc":"2.0","id":`+strings.Repeat("1", i%3+1)+`,"method":"ping"}`)
+	}
+	var out, errOut bytes.Buffer
+	if err := mcprelay.Run(context.Background(), srv.URL, "t", "X", strings.NewReader(strings.Join(lines, "\n")+"\n"), &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	if errLines := strings.Split(strings.TrimSpace(errOut.String()), "\n"); len(errLines) != 20 {
+		t.Fatalf("errOut lines = %d, want 20", len(errLines))
+	}
+}

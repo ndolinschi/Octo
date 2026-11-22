@@ -23,6 +23,7 @@ type LSPSessions interface {
 	Start(ctx context.Context, project string, spec lsp.Spec) (*lsp.Session, error)
 	Get(project, id string) (*lsp.Session, error)
 	Close(project, id string) error
+	CloseProject(project string)
 }
 
 // WithLSP enables the language-server endpoints.

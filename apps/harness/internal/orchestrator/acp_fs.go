@@ -45,9 +45,12 @@ func (s *acpSession) WriteTextFile(ctx context.Context, req acp.WriteTextFilePar
 		s.deny(req.Path, err)
 		return err
 	}
-	abs, err := local.Resolve(root, rel)
+	abs, err := local.ResolveWritable(root, rel)
 	if err != nil {
 		s.deny(req.Path, err)
+		if errors.Is(err, local.ErrGitPath) {
+			return err
+		}
 		return fmt.Errorf("path %q is outside the project folders: %w", req.Path, err)
 	}
 	if s.rt.readOnlyMode() {

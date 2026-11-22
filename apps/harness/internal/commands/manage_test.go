@@ -94,3 +94,17 @@ func TestStartAdhocForceStopAndRestart(t *testing.T) {
 	}
 	_, _ = f.svc.StopWith(ctx, f.pid, srv3.ID, true)
 }
+
+func TestStopProject(t *testing.T) {
+	f := newFixture(t, projcfg.Command{Name: "Sleeper", Command: "sleep 30"})
+	ctx := context.Background()
+	run1, err := f.svc.Start(ctx, f.pid, "Sleeper", "")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	f.svc.StopProject(f.pid)
+	out := f.wait(run1.ID)
+	if out.status != projectstore.RunStopped {
+		t.Fatalf("status = %q, want stopped", out.status)
+	}
+}

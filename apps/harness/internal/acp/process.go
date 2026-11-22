@@ -61,16 +61,19 @@ func startProcess(spec Spec) (*process, error) {
 	cmd.Stderr = stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		tr.Close()
 		return nil, err
 	}
 	pr, pw, err := os.Pipe()
 	if err != nil {
+		tr.Close()
 		return nil, err
 	}
 	cmd.Stdout = pw
 	if err := cmd.Start(); err != nil {
 		_ = pr.Close()
 		_ = pw.Close()
+		tr.Close()
 		return nil, fmt.Errorf("start %s: %w", spec.Command, err)
 	}
 	if err := pw.Close(); err != nil {

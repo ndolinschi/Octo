@@ -319,3 +319,47 @@ func TestControlRoutesNeedTheLocalToken(t *testing.T) {
 		t.Fatalf("disable: %d %s", code, body)
 	}
 }
+
+func TestGateAttachmentBodyLimit(t *testing.T) {
+	var seenBytes int
+	api := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n, err := io.Copy(io.Discard, r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+			return
+		}
+		seenBytes = int(n)
+		w.WriteHeader(http.StatusCreated)
+	})
+	r := newRig(t, "", func(o *Options) {
+		o.Allow = map[Class]bool{ClassSend: true}
+		o.API = api
+	})
+	r.on()
+	tok, _ := r.pair(true)
+
+	// 1.5 MiB body exceeds maxBody (1 MiB) but is allowed for POST /v1/projects/*/attachments (6 MiB cap).
+	payload := strings.Repeat("a", 1500<<10)
+	req, _ := http.NewRequest(http.MethodPost, r.base()+"/v1/projects/p1/attachments", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusCreated || seenBytes != len(payload) {
+		t.Fatalf("attachment upload: status=%d seen=%d want 201/%d", res.StatusCode, seenBytes, len(payload))
+	}
+
+	// Same 1.5 MiB body on /messages must be rejected by the 1 MiB MaxBytesReader.
+	req2, _ := http.NewRequest(http.MethodPost, r.base()+"/v1/projects/p1/messages", strings.NewReader(payload))
+	req2.Header.Set("Authorization", "Bearer "+tok)
+	res2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res2.Body.Close()
+	if res2.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized message: status=%d want 413", res2.StatusCode)
+	}
+}

@@ -189,6 +189,21 @@ func (m *Manager) Close(project, id string) error {
 	return nil
 }
 
+// CloseProject ends every live language-server session belonging to project.
+func (m *Manager) CloseProject(project string) {
+	m.mu.Lock()
+	var mine []*Session
+	for _, s := range m.sessions {
+		if s.Project == project {
+			mine = append(mine, s)
+		}
+	}
+	m.mu.Unlock()
+	for _, s := range mine {
+		s.Close("project deleted")
+	}
+}
+
 // Restart ends session id and starts a fresh session with the same Spec.
 func (m *Manager) Restart(ctx context.Context, project, id string) (*Session, error) {
 	s, err := m.Get(project, id)

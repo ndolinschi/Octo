@@ -460,11 +460,11 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 // is closed to the file tools and the value is redacted from ACP traces and
 // the diagnostics log. Nothing secret is logged.
 func setupAPIToken(cfg config.Config) (string, error) {
+	local.ProtectDir(cfg.DataDir)
 	if cfg.NoAPIToken {
 		slog.Warn("bridge API token is off (--no-api-token / HARNESS_NO_API_TOKEN): any local process can call /v1")
 		return "", nil
 	}
-	local.ProtectDir(cfg.DataDir)
 	token, generated, err := apitoken.Resolve(cfg.DataDir, cfg.APIToken)
 	if err != nil {
 		return "", fmt.Errorf("api token: %w", err)

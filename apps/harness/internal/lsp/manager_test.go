@@ -425,3 +425,17 @@ func TestStartFailure(t *testing.T) {
 	}
 	start(t, m, "p1")
 }
+
+func TestCloseProjectOnlyClosesTargetProject(t *testing.T) {
+	m := newManager(t, lsp.Options{})
+	a := start(t, m, "p1")
+	b := start(t, m, "p2")
+	m.CloseProject("p1")
+	waitPidGone(t, a.PID())
+	if _, err := m.Get("p1", a.ID); !errors.Is(err, lsp.ErrNotFound) {
+		t.Fatalf("p1 session still present after CloseProject: %v", err)
+	}
+	if _, err := m.Get("p2", b.ID); err != nil {
+		t.Fatalf("p2 session closed unexpectedly: %v", err)
+	}
+}

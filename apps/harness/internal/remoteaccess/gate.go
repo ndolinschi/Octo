@@ -12,10 +12,14 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/attachments"
 	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
-const maxBody = 1 << 20
+const (
+	maxBody     = 1 << 20
+	uploadSlack = 1 << 20
+)
 
 // remoteHandler is everything the tunnel listener serves (spec section 3). Nothing here trusts the peer address:
 // every request arrives from cloudflared on 127.0.0.1.
@@ -134,13 +138,22 @@ func (m *Manager) apiGate() http.Handler {
 		defer done()
 		r = r.WithContext(ctx)
 		r.Header.Del("Authorization")
-		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+		limit := int64(maxBody)
+		if isAttachmentUpload(r) {
+			limit = attachments.MaxBytes + uploadSlack
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
 		if isPoll(r) {
 			m.poll(w, r)
 			return
 		}
 		m.o.API.ServeHTTP(w, r)
 	})
+}
+
+func isAttachmentUpload(r *http.Request) bool {
+	segs := split(r.URL.Path)
+	return r.Method == http.MethodPost && len(segs) == 4 && segs[0] == "v1" && segs[1] == "projects" && segs[3] == "attachments"
 }
 
 func isApprovalAnswer(r *http.Request) bool {

@@ -118,6 +118,12 @@ func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
 	if s.terminals != nil {
 		s.terminals.CloseProject(pid)
 	}
+	if s.lsp != nil {
+		s.lsp.CloseProject(pid)
+	}
+	if s.commands != nil {
+		s.commands.StopProject(pid)
+	}
 	if s.browser != nil {
 		if err := s.browser.CloseProject(r.Context(), pid); err != nil {
 			// Project is already deleted; listener shutdown is best-effort.

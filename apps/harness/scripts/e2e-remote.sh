@@ -11,11 +11,13 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; sleep 0.3; rm -rf "$TMP"; }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+source "$ROOT/scripts/lib-ports.sh"
+pick_port E2E_MOCK_PORT 8841; pick_port E2E_HARNESS_PORT 8842; pick_port E2E_REMOTE_PORT 8843
 jget() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 
 LOCAL="e2e-local-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
-BASE=http://127.0.0.1:8842
-REMOTE=http://127.0.0.1:8843
+BASE=http://127.0.0.1:$E2E_HARNESS_PORT
+REMOTE=http://127.0.0.1:$E2E_REMOTE_PORT
 lc() { command curl -sS -H "Authorization: Bearer $LOCAL" "$@"; }                 # the computer (local token)
 dc() { command curl -sS -H "Authorization: Bearer $DEVICE" "$@"; }                # the phone (device token)
 code() { command curl -s -o /dev/null -w '%{http_code}' "$@"; }
@@ -27,10 +29,10 @@ mkdir -p "$TMP/bin" "$TMP/web"
 cp "$ROOT/apps/harness/internal/remoteaccess/testdata/fake-cloudflared" "$TMP/bin/cloudflared"
 chmod +x "$TMP/bin/cloudflared"
 printf '<!doctype html><title>Octo web</title>\n' >"$TMP/web/index.html"
-"$TMP/mockllm" --addr 127.0.0.1:8841 --delay 30ms >"$TMP/mock.log" 2>&1 & PIDS+=($!)
+"$TMP/mockllm" --addr 127.0.0.1:$E2E_MOCK_PORT --delay 30ms >"$TMP/mock.log" 2>&1 & PIDS+=($!)
 PATH="$TMP/bin:$PATH" HARNESS_API_TOKEN="$LOCAL" HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock \
-  HARNESS_REMOTE_ADDR=127.0.0.1:8843 HARNESS_REMOTE_WEB_DIR="$TMP/web" \
-  "$TMP/harness" serve --addr 127.0.0.1:8842 --data-dir "$TMP/data" --base-url http://127.0.0.1:8841 >"$TMP/harness.log" 2>&1 & PIDS+=($!)
+  HARNESS_REMOTE_ADDR=127.0.0.1:$E2E_REMOTE_PORT HARNESS_REMOTE_WEB_DIR="$TMP/web" \
+  "$TMP/harness" serve --addr 127.0.0.1:$E2E_HARNESS_PORT --data-dir "$TMP/data" --base-url http://127.0.0.1:$E2E_MOCK_PORT >"$TMP/harness.log" 2>&1 & PIDS+=($!)
 waitfor "the harness" command curl -fsS "$BASE/health"
 
 echo "== off by default"
@@ -46,8 +48,8 @@ on() { [ "$(lc "$BASE/v1/remote" | jget 'd["state"]')" = on ]; }
 waitfor "state on" on
 ST=$(lc "$BASE/v1/remote")
 [ "$(jget 'd["url"]' <<<"$ST")" = "https://fake-quick-tunnel-1.trycloudflare.com" ] || fail "url: $ST"
-[ "$(jget 'd["listen"]' <<<"$ST")" = "127.0.0.1:8843" ] || fail "listen: $ST"
-grep -q -- "tunnel --no-autoupdate --url http://127.0.0.1:8843" "$TMP/bin/cloudflared.log" || fail "cloudflared args: $(cat "$TMP/bin/cloudflared.log")"
+[ "$(jget 'd["listen"]' <<<"$ST")" = "127.0.0.1:$E2E_REMOTE_PORT" ] || fail "listen: $ST"
+grep -q -- "tunnel --no-autoupdate --url http://127.0.0.1:$E2E_REMOTE_PORT" "$TMP/bin/cloudflared.log" || fail "cloudflared args: $(cat "$TMP/bin/cloudflared.log")"
 
 echo "== the tunnel listener: web app, headers, no CORS, the local token is refused"
 H=$(command curl -sS -D - -o /dev/null -H 'Origin: https://evil.example' "$REMOTE/")

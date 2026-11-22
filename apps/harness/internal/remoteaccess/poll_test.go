@@ -90,3 +90,18 @@ func TestPollStreamsPerDeviceAreBounded(t *testing.T) {
 		t.Fatalf("the oldest stream survived: %d", res.status)
 	}
 }
+
+func TestPollIgnoresNaNAndInfWait(t *testing.T) {
+	r := newRig(t, "", nil)
+	r.m.o.PollWait = 50 * time.Millisecond
+	r.on()
+	tok, _ := r.pair(true)
+	open := r.do("GET", "/v1/projects/p1/events/poll", tok, nil)
+	stream := open.body["stream"].(string)
+	for _, bad := range []string{"NaN", "Inf", "+Inf", "-Inf"} {
+		res := r.do("GET", "/v1/projects/p1/events/poll?stream="+stream+"&wait="+bad, tok, nil)
+		if res.status != 200 {
+			t.Fatalf("wait=%s: status=%d %s", bad, res.status, res.raw)
+		}
+	}
+}

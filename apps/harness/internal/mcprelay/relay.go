@@ -78,7 +78,9 @@ type relay struct {
 	endpoint, token string
 	client          *http.Client
 	wmu             sync.Mutex
-	out, errOut     io.Writer
+	out             io.Writer
+	emu             sync.Mutex
+	errOut          io.Writer
 	smu             sync.Mutex
 	sessionID       string
 }
@@ -157,24 +159,30 @@ func (r *relay) copySSE(body io.Reader) {
 	flush()
 }
 
+func (r *relay) logErr(args ...any) {
+	r.emu.Lock()
+	defer r.emu.Unlock()
+	fmt.Fprintln(r.errOut, args...)
+}
+
 // writeJSON writes one message as a single line (compacted: stdio framing
 // forbids embedded newlines).
 func (r *relay) writeJSON(b []byte) {
 	var buf bytes.Buffer
 	if err := json.Compact(&buf, bytes.TrimSpace(b)); err != nil {
-		fmt.Fprintln(r.errOut, "mcp-relay: dropping non-JSON answer:", err)
+		r.logErr("mcp-relay: dropping non-JSON answer:", err)
 		return
 	}
 	buf.WriteByte('\n')
 	r.wmu.Lock()
 	defer r.wmu.Unlock()
 	if _, err := r.out.Write(buf.Bytes()); err != nil {
-		fmt.Fprintln(r.errOut, "mcp-relay: write:", err)
+		r.logErr("mcp-relay: write:", err)
 	}
 }
 
 func (r *relay) fail(id json.RawMessage, isRequest bool, msg string) {
-	fmt.Fprintln(r.errOut, "mcp-relay:", msg)
+	r.logErr("mcp-relay:", msg)
 	if !isRequest {
 		return
 	}

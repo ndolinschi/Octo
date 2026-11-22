@@ -2,13 +2,16 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
+	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/tools/local"
 )
 
 func intp(n int) *int { return &n }
@@ -99,5 +102,50 @@ func TestACPFilesRefuseSymlinkEscape(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outside, "new")); err == nil {
 		t.Error("directory was created outside the root")
+	}
+}
+
+func TestACPWriteRefusesGitPath(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s := &acpSession{rt: &runtime{folders: []projectstore.Folder{{Label: "p", Path: root}}}, label: "t"}
+	for _, rel := range []string{".git/config", ".git/hooks/pre-commit"} {
+		err := s.WriteTextFile(context.Background(), acp.WriteTextFileParams{
+			Path:    filepath.Join(root, rel),
+			Content: "bad",
+		})
+		if !errors.Is(err, local.ErrGitPath) {
+			t.Errorf("WriteTextFile(%q) err = %v, want local.ErrGitPath", rel, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, ".git", "hooks")); err == nil {
+		t.Error(".git/hooks directory was created despite ErrGitPath")
+	}
+}
+
+func TestCloseProjectClearsMemories(t *testing.T) {
+	store, err := projectstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	o := New(store, nil, nil, Options{})
+	t.Cleanup(func() { _ = o.Shutdown(context.Background()) })
+	o.mu.Lock()
+	o.memories["p1"] = &memory.Service{}
+	o.memories["p2"] = &memory.Service{}
+	o.mu.Unlock()
+	o.CloseProject("p1")
+	o.mu.Lock()
+	_, p1Exists := o.memories["p1"]
+	_, p2Exists := o.memories["p2"]
+	o.mu.Unlock()
+	if p1Exists {
+		t.Fatal("p1 still present in o.memories after CloseProject")
+	}
+	if !p2Exists {
+		t.Fatal("p2 was unexpectedly removed from o.memories")
 	}
 }

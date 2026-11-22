@@ -66,7 +66,7 @@ func TestFileEndpoints(t *testing.T) {
 	for _, en := range list.Entries {
 		got = append(got, en.Type+":"+en.Path)
 	}
-	if want := "dir:out,dir:src,file:a.txt,file:big.txt,file:bin.dat"; strings.Join(got, ",") != want {
+	if want := "dir:src,file:a.txt,file:big.txt,file:bin.dat"; strings.Join(got, ",") != want {
 		t.Fatalf("entries = %v", got)
 	}
 

@@ -194,6 +194,9 @@ func (s *orchSession) closeLocked() {
 func (o *Orchestrator) CloseProject(projectID string) {
 	o.CloseSide(projectID)
 	o.dropTracker(projectID)
+	o.mu.Lock()
+	delete(o.memories, projectID)
+	o.mu.Unlock()
 	o.approvals.Forget(projectID)
 	o.inputs.Forget(projectID)
 	o.secrets.Forget(projectID)

@@ -13,13 +13,15 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; sleep 0.3; rm -rf "$TMP"; }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; [ -f "$TMP/harness.log" ] && tail -30 "$TMP/harness.log" >&2; exit 1; }
+source "$ROOT/scripts/lib-ports.sh"
+pick_port E2E_MOCK_PORT 8870; pick_port E2E_HARNESS_PORT 8871
 
 export HARNESS_API_TOKEN="e2e-token-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
-MOCK=http://127.0.0.1:8870
-BASE=http://127.0.0.1:8871
+MOCK=http://127.0.0.1:$E2E_MOCK_PORT
+BASE=http://127.0.0.1:$E2E_HARNESS_PORT
 curl() {
   case "$*" in
-    *127.0.0.1:8870*) command curl "$@" ;;
+    *127.0.0.1:$E2E_MOCK_PORT*) command curl "$@" ;;
     *) command curl -H "Authorization: Bearer $HARNESS_API_TOKEN" "$@" ;;
   esac
 }
@@ -38,9 +40,9 @@ is_state() { [ "$(state "$1" "$2")" = "$3" ]; }
 qlen() { curl -fsS "$BASE/v1/projects/$1/sessions/$2/queue" | jget 'len(d["messages"])'; }
 
 (cd "$ROOT/apps/harness" && go build -o "$TMP/harness-e2e-sessions" ./cmd/harness && go build -o "$TMP/mockllm-e2e-sessions" ./examples/mockllm)
-"$TMP/mockllm-e2e-sessions" --addr 127.0.0.1:8870 --delay 20ms >"$TMP/mock.log" 2>&1 & PIDS+=($!)
+"$TMP/mockllm-e2e-sessions" --addr 127.0.0.1:$E2E_MOCK_PORT --delay 20ms >"$TMP/mock.log" 2>&1 & PIDS+=($!)
 start_harness() {
-  HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness-e2e-sessions" serve --addr 127.0.0.1:8871 --data-dir "$TMP/data" \
+  HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness-e2e-sessions" serve --addr 127.0.0.1:$E2E_HARNESS_PORT --data-dir "$TMP/data" \
     --base-url "$MOCK" >>"$TMP/harness.log" 2>&1 &
   HPID=$!
   PIDS+=($HPID)

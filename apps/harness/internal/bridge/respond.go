@@ -53,6 +53,9 @@ func writeErr(w http.ResponseWriter, err error) {
 			project.KindUpstream:      http.StatusBadGateway,
 			project.KindUnprocessable: http.StatusUnprocessableEntity,
 		}[pe.Kind]
+		if status == 0 {
+			status = http.StatusInternalServerError
+		}
 		body := errorBody(pe.Code, pe.Catalogue())
 		if pe.Code == "model_unavailable" {
 			body["provider"], body["reason"], body["can_force"] = pe.Provider, pe.Reason, pe.CanForce

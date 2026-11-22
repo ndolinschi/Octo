@@ -591,6 +591,33 @@ func (s *Service) Stop(ctx context.Context, pid, rid string) (projectstore.Comma
 	return s.StopWith(ctx, pid, rid, false)
 }
 
+// StopProject ends every running command belonging to projectID.
+func (s *Service) StopProject(projectID string) {
+	s.mu.Lock()
+	var runs []*run
+	for _, r := range s.active {
+		if r.pid == projectID {
+			runs = append(runs, r)
+		}
+	}
+	s.mu.Unlock()
+	for _, r := range runs {
+		r.mu.Lock()
+		r.stopRequested = true
+		r.mu.Unlock()
+		signalGroup(r.cmd, true)
+	}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for _, r := range runs {
+		select {
+		case <-r.done:
+		case <-deadline.C:
+			return
+		}
+	}
+}
+
 // Shutdown ends every running command (the harness is stopping).
 func (s *Service) Shutdown(ctx context.Context) {
 	s.mu.Lock()

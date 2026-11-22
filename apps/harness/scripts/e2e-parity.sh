@@ -10,6 +10,8 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; sleep 0.3; rm -rf "$TMP"; }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+source "$ROOT/scripts/lib-ports.sh"
+pick_port E2E_MOCK_PORT 8840; pick_port E2E_HARNESS_PORT 8841; pick_port E2E_SITE_PORT 18842
 # The harness requires a bridge API token on /v1: every harness started below gets this one, every curl sends it.
 export HARNESS_API_TOKEN="e2e-token-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 curl() { command curl -H "Authorization: Bearer $HARNESS_API_TOKEN" "$@"; }
@@ -17,7 +19,7 @@ jget() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 
 (cd "$ROOT/apps/harness" && go build -o "$TMP/harness" ./cmd/harness && go build -o "$TMP/fakeacp" ./examples/fakeacp \
   && go build -o "$TMP/mockllm" ./examples/mockllm)
-"$TMP/mockllm" --addr 127.0.0.1:8840 --delay 20ms >"$TMP/mock.log" 2>&1 & PIDS+=($!)
+"$TMP/mockllm" --addr 127.0.0.1:$E2E_MOCK_PORT --delay 20ms >"$TMP/mock.log" 2>&1 & PIDS+=($!)
 
 mkdir -p "$TMP/plugins/fake"
 cat >"$TMP/plugins/fake/plugin.json" <<JSON
@@ -26,9 +28,9 @@ cat >"$TMP/plugins/fake/plugin.json" <<JSON
  {"id":"imager","label":"Imager","command":"$TMP/fakeacp",
  "env":{"OCTO_FAKEACP_UNIQUE_SESSIONS":"1","OCTO_FAKEACP_PROMPT_IMAGE":"1"}}]}
 JSON
-BASE=http://127.0.0.1:8841
-HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:8841 --data-dir "$TMP/data" \
-  --base-url http://127.0.0.1:8840 --plugins-dir "$TMP/plugins" >"$TMP/harness.log" 2>&1 & PIDS+=($!)
+BASE=http://127.0.0.1:$E2E_HARNESS_PORT
+HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:$E2E_HARNESS_PORT --data-dir "$TMP/data" \
+  --base-url http://127.0.0.1:$E2E_MOCK_PORT --plugins-dir "$TMP/plugins" >"$TMP/harness.log" 2>&1 & PIDS+=($!)
 for _ in $(seq 60); do curl -fsS "$BASE/health" >/dev/null 2>&1 && break; sleep 0.2; done
 curl -fsS "$BASE/health" >/dev/null 2>&1 || fail "harness did not start: $(cat "$TMP/harness.log")"
 
@@ -136,16 +138,16 @@ echo "   ok"
 
 echo "== B2 web_fetch: off by default, on per project, local addresses only when allowed"
 mkdir -p "$TMP/site" && printf '<html><body><h1>Docs</h1><p>The answer is 42.</p></body></html>' >"$TMP/site/index.html"
-(cd "$TMP/site" && exec python3 -m http.server 18842 --bind 127.0.0.1 >"$TMP/site.log" 2>&1) & PIDS+=($!)
-for _ in $(seq 50); do curl -fsS http://127.0.0.1:18842/index.html >/dev/null 2>&1 && break; sleep 0.1; done
+(cd "$TMP/site" && exec python3 -m http.server $E2E_SITE_PORT --bind 127.0.0.1 >"$TMP/site.log" 2>&1) & PIDS+=($!)
+for _ in $(seq 50); do curl -fsS http://127.0.0.1:$E2E_SITE_PORT/index.html >/dev/null 2>&1 && break; sleep 0.1; done
 PN0=$(newproject net0)
-post POST "/v1/projects/$PN0/messages" '{"text":"Go [fetch:http://127.0.0.1:18842/index.html]"}' >/dev/null; idle "$PN0"
+post POST "/v1/projects/$PN0/messages" "{\"text\":\"Go [fetch:http://127.0.0.1:$E2E_SITE_PORT/index.html]\"}" >/dev/null; idle "$PN0"
 res=$(tool_results "$PN0"); ! grep -q 'answer is 42' <<<"$res" || fail "web_fetch worked with the network off"
 PN1=$(newproject net1 full ',"network":"on"')
-post POST "/v1/projects/$PN1/messages" '{"text":"Go [fetch:http://127.0.0.1:18842/index.html]"}' >/dev/null; idle "$PN1"
+post POST "/v1/projects/$PN1/messages" "{\"text\":\"Go [fetch:http://127.0.0.1:$E2E_SITE_PORT/index.html]\"}" >/dev/null; idle "$PN1"
 res=$(tool_results "$PN1"); grep -q 'private' <<<"$res" || fail "a loopback fetch was not refused: $(tool_results "$PN1")"
 PN2=$(newproject net2 full ',"network":"on","network_private":true')
-post POST "/v1/projects/$PN2/messages" '{"text":"Go [fetch:http://127.0.0.1:18842/index.html]"}' >/dev/null; idle "$PN2"
+post POST "/v1/projects/$PN2/messages" "{\"text\":\"Go [fetch:http://127.0.0.1:$E2E_SITE_PORT/index.html]\"}" >/dev/null; idle "$PN2"
 res=$(tool_results "$PN2"); grep -q 'The answer is 42' <<<"$res" || fail "an allowed fetch returned nothing: $res / site log: $(cat "$TMP/site.log")"
 echo "   ok"
 

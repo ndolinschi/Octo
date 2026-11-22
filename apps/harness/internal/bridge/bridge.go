@@ -1,7 +1,9 @@
 package bridge
 
 import (
+	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/review"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // Version is the harness version (internal/buildinfo, stamped by the build).
@@ -115,7 +118,7 @@ func New(svc *project.Service, notes *project.Notes, files *project.Files, opts 
 	for _, o := range opts {
 		o(s)
 	}
-	return s.cors(s.requireToken(s.routes()))
+	return s.cors(s.recoverPanic(s.requireToken(s.routes())))
 }
 
 func (s *Server) routes() *http.ServeMux {
@@ -317,5 +320,48 @@ func (s *Server) cors(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r)
+	})
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	wroteHeader bool
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.wroteHeader = true
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) Write(p []byte) (int, error) {
+	w.wroteHeader = true
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (w *statusWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+func (s *Server) recoverPanic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sw := &statusWriter{ResponseWriter: w}
+		defer func() {
+			if rec := recover(); rec != nil {
+				if rec == http.ErrAbortHandler {
+					panic(rec)
+				}
+				slog.Error("http handler panic", "method", r.Method, "path", r.URL.Path, "panic", rec, "stack", string(debug.Stack()))
+				if !sw.wroteHeader {
+					writeProblem(sw, http.StatusInternalServerError, usererr.Generic("internal", "internal error"))
+				}
+			}
+		}()
+		next.ServeHTTP(sw, r)
 	})
 }
