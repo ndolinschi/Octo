@@ -716,16 +716,11 @@ fn merge_provider_pin(body: &mut Value, provider_order: &[String], allow_fallbac
     let Some(object) = body.as_object_mut() else {
         return;
     };
-    let provider = match object.get_mut("provider") {
-        Some(Value::Object(provider)) => provider,
-        Some(_) => return,
-        None => {
-            object.insert("provider".to_string(), json!({}));
-            object
-                .get_mut("provider")
-                .and_then(Value::as_object_mut)
-                .unwrap()
-        }
+    let entry = object
+        .entry("provider".to_string())
+        .or_insert_with(|| json!({}));
+    let Some(provider) = entry.as_object_mut() else {
+        return;
     };
     provider
         .entry("order")

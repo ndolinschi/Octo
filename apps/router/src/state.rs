@@ -50,6 +50,7 @@ impl AppState {
         Ok(Self {
             client: Client::builder()
                 .connect_timeout(connect_timeout)
+                .read_timeout(request_timeout)
                 .timeout(request_timeout)
                 .build()?,
             default_chat_provider,
@@ -78,13 +79,16 @@ impl AppState {
                 tiers.strip_fields = config.autoroute_strip_fields.clone();
                 tiers.require_parameters =
                     crate::auto::RequireParameters::parse(&config.autoroute_require_parameters)
-                        .expect("config load validates require_parameters");
+                        .ok_or_else(|| ConfigError::InvalidAutorouteRequireParameters {
+                            value: config.autoroute_require_parameters.clone(),
+                        })?;
                 tiers.background_by_client_model = config.autoroute_background_by_client_model;
                 tiers.background_model_patterns =
                     config.autoroute_background_model_patterns.clone();
                 tiers.server_tool_mode = config.autoroute_server_tool_mode.clone();
                 tiers.compact_cooldown_requests = config.autoroute_compact_cooldown_requests;
                 tiers.classifier_failure_tier = config.autoroute_classifier_failure_tier.clone();
+                tiers.classifier_timeout_ms = config.autoroute_classifier_timeout_ms;
                 tiers.default_max_tokens = config.autoroute_default_max_tokens;
                 tiers.retry_after_max_secs = config.autoroute_retry_after_max_secs;
                 tiers.session_budget_action =
@@ -93,10 +97,11 @@ impl AppState {
                 tiers.never_pay_more_for_less = config.autoroute_never_pay_more_for_less;
                 tiers.prices = prices.live();
                 tiers.route = config.autoroute_route.clone();
-                tiers.delegation = config
-                    .autoroute_delegation
-                    .kind()
-                    .expect("config load validates autoroute.delegation.classifier");
+                tiers.delegation = config.autoroute_delegation.kind().ok_or_else(|| {
+                    ConfigError::InvalidDelegationClassifier {
+                        value: config.autoroute_delegation.classifier.clone(),
+                    }
+                })?;
                 tiers
             }),
             config,

@@ -499,7 +499,7 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
         Some(id) => Some(req.auto.gate(&id).acquire().await),
         None => None,
     };
-    let loaded = models::load(req.auto, req.client, req.api_key).await;
+    let loaded = models::load(req.auto, req.client, req.decisions_url).await;
     let mut choice = match actor.clone() {
         Some(id) => req
             .auto
@@ -767,6 +767,7 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
         auto: req.auto,
         history: req.history,
         session_id: actor.clone(),
+        budget_key: budget_key.clone(),
         client: req.client,
         decisions_url: req.decisions_url,
         api_key: req.api_key,

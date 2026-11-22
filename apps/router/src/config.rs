@@ -79,6 +79,7 @@ pub struct Config {
     pub autoroute_server_tool_mode: String,
     pub autoroute_compact_cooldown_requests: u32,
     pub autoroute_classifier_failure_tier: String,
+    pub autoroute_classifier_timeout_ms: u64,
     pub autoroute_default_max_tokens: u64,
     pub autoroute_retry_after_max_secs: u64,
     pub autoroute_session_budget_action: String,
@@ -407,7 +408,7 @@ fn default_prune_interval_secs() -> u64 {
 }
 
 fn default_history_store_payloads() -> bool {
-    true
+    false
 }
 
 fn default_history_database_path() -> String {
@@ -458,6 +459,8 @@ struct AutorouteSection {
     compact_cooldown_requests: u32,
     #[serde(default = "default_autoroute_classifier_failure_tier")]
     classifier_failure_tier: String,
+    #[serde(default = "default_autoroute_classifier_timeout_ms")]
+    classifier_timeout_ms: u64,
     #[serde(default = "default_autoroute_default_max_tokens")]
     default_max_tokens: u64,
     #[serde(default = "default_autoroute_retry_after_max_secs")]
@@ -496,6 +499,7 @@ impl Default for AutorouteSection {
             server_tool_mode: default_autoroute_server_tool_mode(),
             compact_cooldown_requests: 0,
             classifier_failure_tier: default_autoroute_classifier_failure_tier(),
+            classifier_timeout_ms: default_autoroute_classifier_timeout_ms(),
             default_max_tokens: default_autoroute_default_max_tokens(),
             retry_after_max_secs: default_autoroute_retry_after_max_secs(),
             session_budget_action: default_autoroute_session_budget_action(),
@@ -512,6 +516,10 @@ fn default_autoroute_never_pay_more_for_less() -> bool {
 
 fn default_autoroute_classifier_failure_tier() -> String {
     "mid".to_string()
+}
+
+fn default_autoroute_classifier_timeout_ms() -> u64 {
+    5_000
 }
 
 fn default_autoroute_default_max_tokens() -> u64 {
@@ -767,7 +775,81 @@ fn merge_tables(into: &mut Map<String, Value>, from: Map<String, Value>) {
     }
 }
 
+fn validate_route_paths(file: &ConfigFile) -> Result<(), ConfigError> {
+    const STATIC_ROUTES: &[&str] = &[
+        "/health",
+        "/openai/completions",
+        "/openai/v1/chat/completions",
+        "/openrouter/completions",
+        "/openrouter/v1/chat/completions",
+        "/openrouter/decisions",
+        "/openrouter/v1/decisions",
+        "/claude/messages",
+        "/claude/v1/messages",
+        "/anthropic/messages",
+        "/anthropic/v1/messages",
+        "/openrouter/messages",
+        "/openrouter/v1/messages",
+        "/autoroute/v1/messages",
+        "/autoroute/v1/chat/completions",
+        "/autoroute/v1/route",
+        "/autoroute/v1/route/{request_id}/outcome",
+        "/autoroute/status",
+        "/autoroute/v1/calls/{request_id}",
+    ];
+    let configured = [
+        (
+            "openrouter.chat_completions_path",
+            file.openrouter.chat_completions_path.as_str(),
+        ),
+        (
+            "openrouter.decisions_path",
+            file.openrouter.decisions_path.as_str(),
+        ),
+        (
+            "openrouter.messages_path",
+            file.openrouter.messages_path.as_str(),
+        ),
+        (
+            "anthropic.messages_path",
+            file.anthropic.messages_path.as_str(),
+        ),
+    ];
+    for (field, path) in configured {
+        if !path.starts_with('/') || path.chars().any(char::is_whitespace) {
+            return Err(ConfigError::InvalidRoutePath {
+                field,
+                path: path.to_string(),
+            });
+        }
+    }
+    let mut seen: std::collections::HashSet<&str> = STATIC_ROUTES.iter().copied().collect();
+    for path in [
+        file.openrouter.chat_completions_path.as_str(),
+        file.openrouter.decisions_path.as_str(),
+        file.anthropic.messages_path.as_str(),
+    ] {
+        if !seen.insert(path) {
+            return Err(ConfigError::DuplicateRoutePath {
+                path: path.to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
 fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
+    if file.upstream.connect_timeout_secs == 0 {
+        return Err(ConfigError::InvalidUpstreamTimeout {
+            field: "connect_timeout_secs",
+        });
+    }
+    if file.upstream.request_timeout_secs == 0 {
+        return Err(ConfigError::InvalidUpstreamTimeout {
+            field: "request_timeout_secs",
+        });
+    }
+    validate_route_paths(&file)?;
     if crate::auto::RequireParameters::parse(&file.autoroute.require_parameters).is_none() {
         return Err(ConfigError::InvalidAutorouteRequireParameters {
             value: file.autoroute.require_parameters,
@@ -854,6 +936,7 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
         autoroute_server_tool_mode: file.autoroute.server_tool_mode,
         autoroute_compact_cooldown_requests: file.autoroute.compact_cooldown_requests,
         autoroute_classifier_failure_tier: file.autoroute.classifier_failure_tier,
+        autoroute_classifier_timeout_ms: file.autoroute.classifier_timeout_ms,
         autoroute_default_max_tokens: file.autoroute.default_max_tokens,
         autoroute_retry_after_max_secs: file.autoroute.retry_after_max_secs,
         autoroute_session_budget_action: file.autoroute.session_budget_action,
@@ -981,6 +1064,14 @@ pub enum ConfigError {
     },
     #[error("bind_addr {addr} is not loopback; set allow_remote = true in config/server.toml")]
     RemoteBindNotAllowed { addr: String },
+    #[error("upstream.{field} must be greater than zero")]
+    InvalidUpstreamTimeout { field: &'static str },
+    #[error(
+        "invalid route path {field} = {path:?}; must start with '/' and contain no whitespace"
+    )]
+    InvalidRoutePath { field: &'static str, path: String },
+    #[error("duplicate route path {path:?}")]
+    DuplicateRoutePath { path: String },
     #[error(
         "bind_addr {addr} is not loopback and no client_auth_key is set; refuse to start without a key"
     )]

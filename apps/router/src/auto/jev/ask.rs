@@ -29,6 +29,8 @@ struct Sent {
     failed: bool,
 }
 
+const MAX_DECISION_RESPONSE_BYTES: usize = 1024 * 1024;
+
 async fn send(request: &ClassifyRequest<'_>, request_body: String) -> Sent {
     let response = request
         .client
@@ -47,7 +49,10 @@ async fn send(request: &ClassifyRequest<'_>, request_body: String) -> Sent {
         };
     };
     let status = response.status().as_u16();
-    let Ok(text) = response.text().await else {
+    let Ok(bytes) =
+        crate::providers::utils::read_response_bytes_capped(response, MAX_DECISION_RESPONSE_BYTES)
+            .await
+    else {
         return Sent {
             request_body,
             response_body: String::new(),
@@ -55,6 +60,7 @@ async fn send(request: &ClassifyRequest<'_>, request_body: String) -> Sent {
             failed: true,
         };
     };
+    let text = String::from_utf8_lossy(&bytes).into_owned();
     Sent {
         request_body,
         response_body: text,

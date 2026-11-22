@@ -65,6 +65,7 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         autoroute_server_tool_mode: "passthrough".to_string(),
         autoroute_compact_cooldown_requests: 0,
         autoroute_classifier_failure_tier: "mid".to_string(),
+        autoroute_classifier_timeout_ms: 5_000,
         autoroute_default_max_tokens: 8192,
         autoroute_retry_after_max_secs: 10,
         autoroute_session_budget_action: "downgrade".to_string(),

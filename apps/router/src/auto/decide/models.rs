@@ -5,16 +5,28 @@ use crate::providers::openrouter::{fetch_models, OpenRouterModels, DEFAULT_MODEL
 
 use super::Auto;
 
-pub(super) async fn load(auto: &Auto, client: &Client, api_key: &str) -> Option<OpenRouterModels> {
+fn is_openrouter_url(url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    parsed.host_str().is_some_and(|host| {
+        host.eq_ignore_ascii_case("openrouter.ai")
+            || host.to_ascii_lowercase().ends_with(".openrouter.ai")
+    })
+}
+
+pub(super) async fn load(
+    auto: &Auto,
+    client: &Client,
+    decisions_url: &str,
+) -> Option<OpenRouterModels> {
     if let Some(models) = auto.catalog.lock().await.fresh() {
         return Some(models);
     }
-    if api_key.is_empty() {
+    if !is_openrouter_url(decisions_url) {
         return None;
     }
-    let models = fetch_models(client, DEFAULT_MODELS_URL, Some(api_key))
-        .await
-        .ok()?;
+    let models = fetch_models(client, DEFAULT_MODELS_URL, None).await.ok()?;
     auto.catalog.lock().await.store(models.clone());
     Some(models)
 }

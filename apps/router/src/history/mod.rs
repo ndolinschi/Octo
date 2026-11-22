@@ -188,6 +188,8 @@ impl History {
             return;
         };
         let limit = self.capture_limit;
+        let store_payloads = self.store_payloads;
+        let acquire_timeout = self.insert_acquire_timeout;
         let inserts = self.inserts.clone();
         let inflight = self.inflight.clone();
         let idle = self.idle.clone();
@@ -203,7 +205,7 @@ impl History {
             }
             let _done = Done(inflight, idle);
             let Ok(Ok(permit)) =
-                tokio::time::timeout(Duration::from_secs(5), inserts.acquire_owned()).await
+                tokio::time::timeout(acquire_timeout, inserts.acquire_owned()).await
             else {
                 tracing::warn!(
                     choice_rule = %row.choice_rule,
@@ -213,7 +215,7 @@ impl History {
                 return;
             };
             let _permit = permit;
-            if let Err(err) = insert_decision(&pool, &row, limit).await {
+            if let Err(err) = insert_decision(&pool, &row, limit, store_payloads).await {
                 tracing::warn!(%err, choice_rule = %row.choice_rule, "decision insert failed");
             }
         });
@@ -522,6 +524,7 @@ async fn insert_decision(
     pool: &SqlitePool,
     row: &DecisionRow,
     capture_limit: usize,
+    store_payloads: bool,
 ) -> Result<(), sqlx::Error> {
     use metrics::cost_micros_to_sql;
 
@@ -534,7 +537,15 @@ async fn insert_decision(
     let model = row.model.as_str();
     let status = i64::from(row.status);
     let latency_ms = i64::try_from(row.latency_ms).unwrap_or(i64::MAX);
-    let user_text = clip(&row.user_text, capture_limit);
+    let (user_text, request_payload, response_payload) = if store_payloads {
+        (
+            clip(&row.user_text, capture_limit),
+            clip(&row.request_payload, capture_limit),
+            clip(&row.response_payload, capture_limit),
+        )
+    } else {
+        (String::new(), String::new(), String::new())
+    };
     let is_hard = flag_to_sql(row.is_hard);
     let is_easy = flag_to_sql(row.is_easy);
     let is_hard_score = row.is_hard_score;
@@ -543,8 +554,6 @@ async fn insert_decision(
     let complexity = row.complexity;
     let choice_rule = row.choice_rule.as_str();
     let missing_tools = row.missing_tools.as_deref();
-    let request_payload = clip(&row.request_payload, capture_limit);
-    let response_payload = clip(&row.response_payload, capture_limit);
     let cost_micros = row.cost.map(cost_micros_to_sql);
     let or_cost_micros = row.or_cost.map(cost_micros_to_sql);
     let upstream_cost_micros = row.upstream_cost.map(cost_micros_to_sql);

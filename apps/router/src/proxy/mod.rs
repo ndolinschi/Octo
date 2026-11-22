@@ -49,6 +49,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     for warning in crate::auto::ladder_warnings(state.auto.tiers()) {
         tracing::warn!("{warning}");
     }
+    let mut history_pruner = None;
     match History::connect(
         &config.history_database_path,
         &config.history_token_key,
@@ -61,7 +62,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .with_prices(state.prices.live())
                 .with_store_payloads(config.history_store_payloads)
                 .with_retention(retention_from(&config));
-            state
+            history_pruner = state
                 .history
                 .spawn_pruner(Duration::from_secs(config.history_prune_interval_secs));
             info!(
@@ -108,6 +109,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some(task) = price_refresh {
         task.abort();
     }
+    if let Some(task) = history_pruner {
+        task.abort();
+    }
     history.drain().await;
     Ok(())
 }
@@ -119,11 +123,21 @@ async fn shutdown_signal() {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{signal, SignalKind};
-        let mut terminate = signal(SignalKind::terminate()).expect("install SIGTERM handler");
-        tokio::select! {
-            _ = ctrl_c => {}
-            _ = terminate.recv() => {}
-            _ = stdin_closed => info!("stdin closed ({})", stdin_watch::EXIT_ON_STDIN_CLOSE_ENV),
+        match signal(SignalKind::terminate()) {
+            Ok(mut terminate) => {
+                tokio::select! {
+                    _ = ctrl_c => {}
+                    _ = terminate.recv() => {}
+                    _ = stdin_closed => info!("stdin closed ({})", stdin_watch::EXIT_ON_STDIN_CLOSE_ENV),
+                }
+            }
+            Err(err) => {
+                tracing::warn!(%err, "failed to install SIGTERM handler; falling back to SIGINT/stdin");
+                tokio::select! {
+                    _ = ctrl_c => {}
+                    _ = stdin_closed => info!("stdin closed ({})", stdin_watch::EXIT_ON_STDIN_CLOSE_ENV),
+                }
+            }
         }
     }
 

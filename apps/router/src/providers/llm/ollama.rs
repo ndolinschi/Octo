@@ -111,13 +111,18 @@ impl Ollama {
             .await
             .map_err(ProxyError::from)?;
         let status = upstream.status();
-        let raw_resp = upstream.bytes().await.map_err(ProxyError::from)?;
         let limit = self.max_body_bytes.max(1024 * 1024);
-        let raw_slice = if raw_resp.len() > limit {
-            &raw_resp[..limit]
-        } else {
-            &raw_resp[..]
-        };
+        let raw_resp = crate::providers::utils::read_response_bytes_capped(upstream, limit)
+            .await
+            .map_err(|err| match err {
+                crate::providers::utils::ReadCappedError::Http(err) => ProxyError::from(err),
+                crate::providers::utils::ReadCappedError::TooLarge(max) => ProxyError::anthropic(
+                    StatusCode::BAD_GATEWAY,
+                    "api_error",
+                    format!("ollama response exceeded {max} bytes"),
+                ),
+            })?;
+        let raw_slice = &raw_resp[..];
 
         if !status.is_success() {
             let err_text = String::from_utf8_lossy(raw_slice).trim().to_string();

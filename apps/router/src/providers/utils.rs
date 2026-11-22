@@ -17,6 +17,34 @@ use crate::history::{
 };
 use crate::proxy::error::ProxyError;
 
+#[derive(Debug, thiserror::Error)]
+pub enum ReadCappedError {
+    #[error(transparent)]
+    Http(#[from] reqwest::Error),
+    #[error("upstream response exceeded {0} bytes")]
+    TooLarge(usize),
+}
+
+pub async fn read_response_bytes_capped(
+    mut response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<Vec<u8>, ReadCappedError> {
+    if response
+        .content_length()
+        .is_some_and(|len| len > max_bytes as u64)
+    {
+        return Err(ReadCappedError::TooLarge(max_bytes));
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if bytes.len().saturating_add(chunk.len()) > max_bytes {
+            return Err(ReadCappedError::TooLarge(max_bytes));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
 fn should_forward_response_header(name: &HeaderName) -> bool {
     if name == header::CONTENT_TYPE || name == header::CACHE_CONTROL {
         return true;

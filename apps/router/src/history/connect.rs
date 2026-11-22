@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
 
 use super::error::HistoryError;
@@ -35,10 +35,13 @@ pub async fn open_pool(database_path: &str) -> Result<SqlitePool, HistoryError> 
 }
 
 fn memory_options(database_path: &str) -> Result<SqliteConnectOptions, HistoryError> {
-    database_path.parse().map_err(|source| HistoryError::Open {
-        path: database_path.to_string(),
-        source,
-    })
+    database_path
+        .parse::<SqliteConnectOptions>()
+        .map(|opts| opts.busy_timeout(Duration::from_secs(5)))
+        .map_err(|source| HistoryError::Open {
+            path: database_path.to_string(),
+            source,
+        })
 }
 
 fn file_options(database_path: &str) -> Result<SqliteConnectOptions, HistoryError> {
@@ -51,5 +54,7 @@ fn file_options(database_path: &str) -> Result<SqliteConnectOptions, HistoryErro
     Ok(SqliteConnectOptions::new()
         .filename(path)
         .create_if_missing(true)
-        .journal_mode(SqliteJournalMode::Wal))
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal)
+        .busy_timeout(Duration::from_secs(5)))
 }

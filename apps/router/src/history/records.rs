@@ -26,6 +26,12 @@ pub struct PruneStats {
     pub calls_by_age: u64,
     pub calls_by_rows: u64,
     pub spend_rows: u64,
+    pub history_calls_by_age: u64,
+    pub history_calls_by_rows: u64,
+    pub decisions_by_age: u64,
+    pub session_outcomes_by_age: u64,
+    pub delegations_by_age: u64,
+    pub delegation_outcomes_by_age: u64,
 }
 
 type Work = Pin<Box<dyn Future<Output = ()> + Send>>;
@@ -196,6 +202,41 @@ impl History {
                 cutoff,
             )
             .await?;
+            stats.history_calls_by_age = delete_batches(
+                pool,
+                "DELETE FROM calls WHERE id IN \
+                 (SELECT id FROM calls WHERE created_at < ?1 ORDER BY id LIMIT ?2)",
+                cutoff,
+            )
+            .await?;
+            stats.decisions_by_age = delete_batches(
+                pool,
+                "DELETE FROM decisions WHERE id IN \
+                 (SELECT id FROM decisions WHERE created_at < ?1 ORDER BY id LIMIT ?2)",
+                cutoff,
+            )
+            .await?;
+            stats.session_outcomes_by_age = delete_batches(
+                pool,
+                "DELETE FROM session_outcomes WHERE session_id IN \
+                 (SELECT session_id FROM session_outcomes WHERE updated_at < ?1 LIMIT ?2)",
+                cutoff,
+            )
+            .await?;
+            stats.delegations_by_age = delete_batches(
+                pool,
+                "DELETE FROM delegations WHERE seq IN \
+                 (SELECT seq FROM delegations WHERE created_at < ?1 ORDER BY seq LIMIT ?2)",
+                cutoff,
+            )
+            .await?;
+            stats.delegation_outcomes_by_age = delete_batches(
+                pool,
+                "DELETE FROM delegation_outcomes WHERE seq IN \
+                 (SELECT seq FROM delegation_outcomes WHERE received_at < ?1 ORDER BY seq LIMIT ?2)",
+                cutoff,
+            )
+            .await?;
         }
         if let Some(max_rows) = retention.calls_max_rows {
             let offset = i64::try_from(max_rows).unwrap_or(i64::MAX);
@@ -205,6 +246,15 @@ impl History {
                  (SELECT seq FROM autoroute_calls WHERE seq <= COALESCE( \
                     (SELECT seq FROM autoroute_calls ORDER BY seq DESC LIMIT 1 OFFSET ?1), 0) \
                   ORDER BY seq LIMIT ?2)",
+                offset,
+            )
+            .await?;
+            stats.history_calls_by_rows = delete_batches(
+                pool,
+                "DELETE FROM calls WHERE id IN \
+                 (SELECT id FROM calls WHERE id <= COALESCE( \
+                    (SELECT id FROM calls ORDER BY id DESC LIMIT 1 OFFSET ?1), 0) \
+                  ORDER BY id LIMIT ?2)",
                 offset,
             )
             .await?;

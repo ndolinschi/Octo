@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use reqwest::Client;
 use serde_json::Value;
 
@@ -12,6 +14,7 @@ pub(super) struct ClassifyCtx<'a> {
     pub auto: &'a Auto,
     pub history: &'a History,
     pub session_id: Option<String>,
+    pub budget_key: Option<String>,
     pub client: &'a Client,
     pub decisions_url: &'a str,
     pub api_key: &'a str,
@@ -52,6 +55,10 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<ClassifiedPick> {
     if plan.ctx.api_key.is_empty() {
         return None;
     }
+    let timeout_ms = plan.ctx.tiers.classifier_timeout_ms;
+    if timeout_ms == 0 {
+        return None;
+    }
     let user_text = body::question_text(plan.ctx.body);
     let facts = jev::inspect(plan.ctx.body, &user_text);
     let with_task = match plan.ctx.task {
@@ -59,25 +66,41 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<ClassifiedPick> {
         None => user_text.clone(),
     };
     let classifier_text = body::cap_classifier_text(&with_task);
-    let asked = jev::classify(jev::ClassifyRequest {
-        client: plan.ctx.client,
-        decisions_url: plan.ctx.decisions_url,
-        api_key: plan.ctx.api_key,
-        user_text: &classifier_text,
-        tool_names: plan.ctx.all_tools,
-        current_tools: plan.current,
-        facts: &facts,
-        current_tier: plan.ctx.current_tier,
-        thresholds: jev::Thresholds {
-            hard: plan.ctx.tiers.hard_threshold,
-            easy: plan.ctx.tiers.easy_threshold,
-        },
-    })
-    .await;
+    let asked = match tokio::time::timeout(
+        Duration::from_millis(timeout_ms),
+        jev::classify(jev::ClassifyRequest {
+            client: plan.ctx.client,
+            decisions_url: plan.ctx.decisions_url,
+            api_key: plan.ctx.api_key,
+            user_text: &classifier_text,
+            tool_names: plan.ctx.all_tools,
+            current_tools: plan.current,
+            facts: &facts,
+            current_tier: plan.ctx.current_tier,
+            thresholds: jev::Thresholds {
+                hard: plan.ctx.tiers.hard_threshold,
+                easy: plan.ctx.tiers.easy_threshold,
+            },
+        }),
+    )
+    .await
+    {
+        Ok(asked) => asked,
+        Err(_) => {
+            tracing::warn!(
+                timeout_ms,
+                purpose = plan.purpose,
+                session_id = plan.ctx.session_id.as_deref().unwrap_or(""),
+                "autoroute classifier timed out; falling back"
+            );
+            return None;
+        }
+    };
     record(RecordPlan {
         auto: plan.ctx.auto,
         history: plan.ctx.history,
         session_id: plan.ctx.session_id.clone(),
+        budget_key: plan.ctx.budget_key.clone(),
         purpose: plan.purpose,
         asked: &asked,
     });
@@ -117,6 +140,7 @@ pub(in crate::auto) struct RecordPlan<'a> {
     pub auto: &'a Auto,
     pub history: &'a History,
     pub session_id: Option<String>,
+    pub budget_key: Option<String>,
     pub purpose: &'a str,
     pub asked: &'a jev::Asked,
 }
@@ -137,9 +161,15 @@ pub(in crate::auto) fn record(plan: RecordPlan<'_>) -> Recorded {
     } else {
         crate::providers::utils::cost_source_label(resolved.source)
     };
-    if let (Some(session_id), Some(cost)) = (&plan.session_id, cost) {
-        plan.auto
-            .charge(plan.history, Some(session_id.as_str()), None, cost.0);
+    if let Some(cost) = cost {
+        if plan.session_id.is_some() || plan.budget_key.is_some() {
+            plan.auto.charge(
+                plan.history,
+                plan.session_id.as_deref(),
+                plan.budget_key.as_deref(),
+                cost.0,
+            );
+        }
     }
     plan.history.record_decision(DecisionRow {
         session_id: plan.session_id,

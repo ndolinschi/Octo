@@ -127,7 +127,17 @@ async fn post(
         .map(str::trim)
         .filter(|value| value.starts_with("gen-"))
         .map(str::to_string);
-    let bytes = response.bytes().await?.to_vec();
+    let bytes =
+        crate::providers::utils::read_response_bytes_capped(response, state.config.max_body_bytes)
+            .await
+            .map_err(|err| match err {
+                crate::providers::utils::ReadCappedError::Http(err) => ProxyError::from(err),
+                crate::providers::utils::ReadCappedError::TooLarge(max) => ProxyError::anthropic(
+                    StatusCode::BAD_GATEWAY,
+                    "api_error",
+                    format!("compact upstream response exceeded {max} bytes"),
+                ),
+            })?;
     Ok((status, bytes, generation_id))
 }
 

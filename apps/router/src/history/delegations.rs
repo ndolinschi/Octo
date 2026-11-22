@@ -138,6 +138,19 @@ impl History {
         });
     }
 
+    /// Persists a delegation row inline so an immediate outcome report for the returned `request_id`
+    /// never races with the insert.
+    pub async fn persist_delegation(&self, row: &DelegationInsert) {
+        let Some(pool) = self.pool.as_ref() else {
+            return;
+        };
+        let store_text = self.store_payloads;
+        let brief_hash = self.text_hash(&row.brief);
+        if let Err(err) = insert_delegation(pool, row, store_text, &brief_hash).await {
+            tracing::warn!(%err, request_id = row.request_id, "delegation insert failed");
+        }
+    }
+
     pub async fn delegation(
         &self,
         request_id: &str,

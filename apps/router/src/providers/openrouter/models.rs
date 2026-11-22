@@ -1,7 +1,13 @@
+use std::time::Duration;
+
 use reqwest::Client;
 use serde::Deserialize;
 
+use crate::providers::utils::{read_response_bytes_capped, ReadCappedError};
+
 pub const DEFAULT_MODELS_URL: &str = "https://openrouter.ai/api/v1/models";
+pub const MAX_MODELS_BYTES: usize = 16 * 1024 * 1024;
+const MODELS_FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct OpenRouterModel {
@@ -33,6 +39,8 @@ impl OpenRouterModels {
 pub enum FetchModelsError {
     #[error("failed to fetch OpenRouter models")]
     Http(#[from] reqwest::Error),
+    #[error("OpenRouter models response exceeded {0} bytes")]
+    TooLarge(usize),
     #[error("failed to parse OpenRouter models response")]
     Parse(#[from] serde_json::Error),
 }
@@ -70,13 +78,31 @@ pub async fn fetch_models(
     models_url: &str,
     api_key: Option<&str>,
 ) -> Result<OpenRouterModels, FetchModelsError> {
-    let mut request = client.get(models_url);
-    if let Some(key) = api_key {
-        if !key.is_empty() {
-            request = request.bearer_auth(key);
+    fetch_models_with_limit(client, models_url, api_key, MAX_MODELS_BYTES).await
+}
+
+pub async fn fetch_models_with_limit(
+    client: &Client,
+    models_url: &str,
+    api_key: Option<&str>,
+    max_bytes: usize,
+) -> Result<OpenRouterModels, FetchModelsError> {
+    let mut request = client.get(models_url).timeout(MODELS_FETCH_TIMEOUT);
+    if !models_url.eq_ignore_ascii_case(DEFAULT_MODELS_URL) {
+        if let Some(key) = api_key {
+            if !key.is_empty() {
+                request = request.bearer_auth(key);
+            }
         }
     }
-    let body = request.send().await?.error_for_status()?.text().await?;
+    let response = request.send().await?.error_for_status()?;
+    let bytes = read_response_bytes_capped(response, max_bytes)
+        .await
+        .map_err(|err| match err {
+            ReadCappedError::Http(err) => FetchModelsError::Http(err),
+            ReadCappedError::TooLarge(limit) => FetchModelsError::TooLarge(limit),
+        })?;
+    let body = String::from_utf8_lossy(&bytes);
     models_from_json(&body).map_err(FetchModelsError::Parse)
 }
 
