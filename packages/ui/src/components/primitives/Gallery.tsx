@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "./Button";
 import { ButtonsSection } from "./gallery/ButtonsSection";
 import { FieldsSection } from "./gallery/FieldsSection";
@@ -14,9 +14,10 @@ type Theme = "dark" | "light";
  * (the button switches `data-theme` on the root, as the app does). Demo only: `?demo=1&gallery=1`; a lazy chunk that
  * `app/OctoApp` loads with `import()`. `scripts/gallery-shots.mjs` screenshots each `[data-gallery-section]`.
  *
+ * `children`: sections a feature adds (the app passes the chat's run card, decision 101); this file imports no feature.
  * `ViewTabs`, `FilterTabs` and `FieldRow` exist (decisions 82, 84) but are not in the gallery yet.
  */
-export function Gallery() {
+export function Gallery({ children }: { children?: ReactNode } = {}) {
   const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme === "light" ? "light" : "dark"));
   const flip = () => {
     const next: Theme = theme === "dark" ? "light" : "dark";
@@ -38,6 +39,7 @@ export function Gallery() {
         <SurfacesSection />
         <PanelSection />
         <ScalesSection />
+        {children}
       </div>
     </ScrollArea>
   );

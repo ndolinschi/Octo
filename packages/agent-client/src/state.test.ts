@@ -129,6 +129,29 @@ test("tool.started/finished maintain activeTools", () => {
   assert.deepEqual(s.activeTools.z, {});
 });
 
+test("tool.started keeps when the call started (the run card's live step timer); an older harness sends none", () => {
+  let s = emptyProjectState();
+  s = applyEvent(s, { type: "tool.started", seq: 1, agent_id: "a", tool_use_id: "t1", name: "bash", started_at: "2026-11-22T10:00:00.5Z" });
+  s = applyEvent(s, { type: "tool.started", seq: 2, agent_id: "a", tool_use_id: "t2", name: "read_file" });
+  assert.deepEqual(s.activeTools.a, { t1: { name: "bash", started_at: "2026-11-22T10:00:00.5Z" }, t2: { name: "read_file" } });
+  // The duration a finished call reports is carried by its stored result (`duration_ms` on the tool_result block).
+  s = applyEvent(s, { type: "tool.finished", seq: 3, agent_id: "a", tool_use_id: "t1", is_error: false, duration_ms: 1200 });
+  assert.deepEqual(s.activeTools.a, { t2: { name: "read_file" } });
+  s = applyEvent(s, {
+    type: "message.created",
+    seq: 4,
+    message: {
+      id: 9,
+      agent_id: "a",
+      role: "user",
+      created_at: "t",
+      content: [{ type: "tool_result", tool_use_id: "t1", content: "ok", is_error: false, duration_ms: 1200 }],
+    },
+  });
+  const block = s.messages.a?.[0]?.content[0];
+  assert.equal(block?.type === "tool_result" ? block.duration_ms : null, 1200);
+});
+
 test("note.changed upserts and deletes", () => {
   let s = emptyProjectState();
   s = applyEvent(s, { type: "note.changed", seq: 1, note: note("n1"), note_id: "n1" });

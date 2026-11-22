@@ -49,7 +49,8 @@ export type AnsweredInput = {
 };
 
 /** A tool call in flight; the optional fields come from tool.updated (ACP). */
-export type ActiveTool = { name: string; status?: string; title?: string; locations?: string[]; summary?: string };
+/** `started_at`: when the call started (from `tool.started`), for a live step timer; absent from older harnesses. */
+export type ActiveTool = { name: string; status?: string; title?: string; locations?: string[]; summary?: string; started_at?: string };
 
 export type ProjectState = {
   agents: Record<string, Agent>;
@@ -318,7 +319,7 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
           ...state.activeTools,
           [event.agent_id]: {
             ...state.activeTools[event.agent_id],
-            [event.tool_use_id]: { name: event.name },
+            [event.tool_use_id]: event.started_at ? { name: event.name, started_at: event.started_at } : { name: event.name },
           },
         },
       };

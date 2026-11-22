@@ -794,6 +794,39 @@
   }
 }
 
+/* Decision 101 b: a run without a plan has no denominator, so its current step is an indeterminate mark: a short accent
+   segment that travels the track while the agent works (motion only while something is in progress, decision 76). Under
+   reduced motion it stands still at the start: "working, extent unknown", never a fill level. */
+.octo-run-indeterminate::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 28%;
+  border-radius: inherit;
+  background: var(--octo-accent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .octo-run-indeterminate::after {
+    animation: octo-run-travel calc(var(--motion-slow) * 7) var(--ease-out-quint) infinite alternate;
+  }
+}
+:root[data-motion="reduced"] .octo-run-indeterminate::after {
+  animation: none;
+}
+@keyframes octo-run-travel {
+  from {
+    translate: 0;
+  }
+  to {
+    translate: 257%;
+  }
+}
+/* Decision 101 f: the run card's actions take a 44px target on a coarse pointer (the app's touch-hit is 40). */
+[data-run-actions] {
+  --spacing-touch: 44px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

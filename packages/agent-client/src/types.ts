@@ -233,7 +233,11 @@ export type ContentBlock =
   /** Parity B12: an image the user attached; fetch its bytes with `fetchAttachment(projectId, attachment_id)`. */
   | { type: "image"; attachment_id: string; media_type: string; width: number; height: number; name?: string }
   | { type: "tool_use"; id: string; name: string; input: unknown }
-  | { type: "tool_result"; tool_use_id: string; content: string; is_error: boolean };
+  /**
+   * `duration_ms`: how long the call ran, from its start to its result, as the harness timed it (the run card's step times);
+   * absent on results stored before tool timings and on calls the harness did not time — never a guess.
+   */
+  | { type: "tool_result"; tool_use_id: string; content: string; is_error: boolean; duration_ms?: number };
 
 export type Message = {
   id: number;
@@ -472,6 +476,8 @@ export type ToolStartedEvent = {
   agent_id: string;
   tool_use_id: string;
   name: string;
+  /** When the call started (RFC 3339); absent from older harnesses. */
+  started_at?: string;
 };
 /** An ACP agent's reasoning, streamed; never stored (not in messages, not searchable). */
 export type ThinkingDeltaEvent = { type: "message.thinking_delta"; seq: number; agent_id: string; text: string };
@@ -496,6 +502,8 @@ export type ToolFinishedEvent = {
   agent_id: string;
   tool_use_id: string;
   is_error: boolean;
+  /** How long the call ran (the stored result carries the same figure); absent from older harnesses. */
+  duration_ms?: number;
 };
 export type NoteChangedEvent = { type: "note.changed"; seq: number; note: Note | null; note_id: string };
 export type ProjectUpdatedEvent = { type: "project.updated"; seq: number; project: Project };

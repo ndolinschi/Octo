@@ -22,6 +22,8 @@ export function ActivityRow(props: {
   detail?: ReactNode;
   /** Milliseconds; shown as "3s" right-aligned. */
   duration?: number | null;
+  /** How `duration` is written (a run card's step: tenths under ten seconds); default `formatDuration`. */
+  formatDuration?: (ms: number) => string;
   /** Rows that open take `children`; without them the row is static and shows no chevron. */
   children?: ReactNode;
   defaultOpen?: boolean;
@@ -120,7 +122,7 @@ export function ActivityRow(props: {
   const meta = (
     <span data-row-meta={overlay || undefined} className="flex min-w-0 items-center gap-1.5 tabular-nums">
       {props.aside !== undefined && props.aside !== null && <span className="min-w-0 truncate">{props.aside}</span>}
-      {props.duration !== undefined && props.duration !== null && <span>{formatDuration(props.duration)}</span>}
+      {props.duration !== undefined && props.duration !== null && <span>{(props.formatDuration ?? formatDuration)(props.duration)}</span>}
     </span>
   );
   const showMeta = (props.duration !== undefined && props.duration !== null) || (props.aside !== undefined && props.aside !== null);

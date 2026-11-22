@@ -218,7 +218,7 @@ type Agent = {
 type ContentBlock =
   | { type: "text"; text: string }
   | { type: "tool_use"; id: string; name: string; input: unknown }
-  | { type: "tool_result"; tool_use_id: string; content: string; is_error: boolean };
+  | { type: "tool_result"; tool_use_id: string; content: string; is_error: boolean; duration_ms?: number }; // duration_ms: apps/harness/docs/acp-orchestrator.md "Tool timings"
 
 type Message = {
   id: number; agent_id: string; role: "user" | "assistant";
@@ -243,8 +243,8 @@ type BridgeEvent =
   | { type: "agent.updated";   seq: number; agent: Agent }         // status, tokens, result
   | { type: "message.created"; seq: number; message: Message }     // persisted message
   | { type: "message.delta";   seq: number; agent_id: string; text: string }  // streaming assistant text
-  | { type: "tool.started";    seq: number; agent_id: string; tool_use_id: string; name: string }
-  | { type: "tool.finished";   seq: number; agent_id: string; tool_use_id: string; is_error: boolean }
+  | { type: "tool.started";    seq: number; agent_id: string; tool_use_id: string; name: string; started_at?: string }
+  | { type: "tool.finished";   seq: number; agent_id: string; tool_use_id: string; is_error: boolean; duration_ms?: number }
   | { type: "note.changed";    seq: number; note: Note | null; note_id: string }  // null = deleted
   | { type: "project.updated"; seq: number; project: Project }
   | { type: "turn.finished";   seq: number; status: "completed" | "failed" | "cancelled"; error: string | null };

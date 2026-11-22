@@ -74,6 +74,15 @@ async function send(page, text) {
   await page.keyboard.press("Enter");
 }
 
+/** Decision 101: Design system tokens with "run cards demo" sent; its live round runs for ten minutes. */
+async function runCards(page, env) {
+  await boot(page, env);
+  await palette(page, "Design system tokens");
+  await send(page, "run cards demo");
+  await need(page, page.locator('[data-run-card="running"]'), "a run card", 20000);
+  await page.waitForTimeout(9000);
+}
+
 const click = async (page, name, opts = {}) => {
   const b = page.getByRole("button", { name, ...opts }).first();
   await b.click({ timeout: 8000 });
@@ -147,7 +156,11 @@ async function reviewOpen(page, env) {
 async function runReviewCommand(page, name) {
   const pinned = page.getByRole("button", { name, exact: true }).filter({ visible: true }).first();
   if (await pinned.count()) return pinned.click({ timeout: 8000 });
-  await page.getByRole("button", { name: /^Run\b/ }).filter({ visible: true }).first().click({ timeout: 8000 });
+  await page
+    .getByRole("button", { name: /^Run\b/ })
+    .filter({ visible: true })
+    .first()
+    .click({ timeout: 8000 });
   await page.getByRole("menuitem", { name }).first().click({ timeout: 8000 });
 }
 
@@ -412,7 +425,11 @@ export const GROUPS = {
         await page.waitForTimeout(800);
         await send(page, "Then summarise the result in one line");
         // The queue is one collapsed band ("1 queued · …") above the box: open it to reach the row's buttons.
-        await page.getByText(/^1 queued/).filter({ visible: true }).first().click({ timeout: 8000 });
+        await page
+          .getByText(/^1 queued/)
+          .filter({ visible: true })
+          .first()
+          .click({ timeout: 8000 });
         await page.waitForTimeout(400);
         await need(page, page.getByRole("button", { name: /Send now/ }), "queue row with Send now");
       },
@@ -997,7 +1014,8 @@ export const GROUPS = {
         await project(page, env, "Design system tokens");
         await tool(page, "Show processes");
         await need(page, page.locator("[data-processes]"), "processes tab", 15000);
-        if (await page.locator("[data-processes] [data-row]").filter({ visible: true }).count()) throw new Error("not reached: the empty state (the project lists processes)");
+        if (await page.locator("[data-processes] [data-row]").filter({ visible: true }).count())
+          throw new Error("not reached: the empty state (the project lists processes)");
         await page.waitForTimeout(600);
       },
     },
@@ -1225,12 +1243,18 @@ export const GROUPS = {
         await page.waitForTimeout(1500);
         await projectSettings(page);
         // "Always allowed" is a collapsed row of the dialog now: open it, then its list names the rules.
-        const toggle = page.getByRole("button", { name: /^Always allowed/ }).filter({ visible: true }).first();
+        const toggle = page
+          .getByRole("button", { name: /^Always allowed/ })
+          .filter({ visible: true })
+          .first();
         await need(page, toggle, "the Always allowed row");
         await toggle.scrollIntoViewIfNeeded();
         await toggle.click({ timeout: 8000 });
         await page.waitForTimeout(700);
-        const h = page.getByText(/Always.allowed/).filter({ visible: true }).first();
+        const h = page
+          .getByText(/Always.allowed/)
+          .filter({ visible: true })
+          .first();
         await need(page, h, "rules list");
         await h.scrollIntoViewIfNeeded();
         await page.waitForTimeout(500);
@@ -1354,7 +1378,10 @@ export const GROUPS = {
         // Below 420px the search is a button that opens the field.
         const opener = page.getByRole("button", { name: "Search pull requests" }).filter({ visible: true });
         if (await opener.count()) await opener.first().click();
-        const field = page.getByRole("searchbox", { name: /Search pull requests/ }).filter({ visible: true }).first();
+        const field = page
+          .getByRole("searchbox", { name: /Search pull requests/ })
+          .filter({ visible: true })
+          .first();
         await field.fill("482");
         await field.press("Enter");
         await need(page, page.getByText(/Which repository is it in|Pick the repository/), "the refusal", 12000);
@@ -1768,7 +1795,50 @@ export const GROUPS = {
     },
   ],
 
-  gallery: ["buttons", "fields", "rows", "surfaces", "scales"].map((id) => ({
+  // Decision 101: the sub-agent run card in every state ("run cards demo" in Design system tokens; Orbit for "waiting on two").
+  runcard: [
+    ...[
+      ["running-plan", "Test writer", "running with a plan: step 4 of 6, segmented bar, the live step dim with its timer"],
+      ["running-no-plan", "Dependency mapper", "running without a plan: a count of steps done and an indeterminate mark, no total"],
+      ["needs-you", "Migration runner", "waiting for an approval: says what is asked and links to the one needs-you card"],
+      ["finished", "Doc writer", "finished: the outcome as the title, steps with their times"],
+      ["failed", "Test fixer", "failed: the reason as the title and on the failed step", 0],
+      ["escalated", "Test fixer", "escalated: 'Retried on the deep tier after the tests failed.'", 1],
+      ["stopped", "Lint sweeper", "stopped by the person"],
+      ["many-steps", "Code explorer", "41 steps: 'Show 36 earlier', a very long command cut with its tooltip"],
+    ].map(([name, role, what, nth = 0]) => ({
+      name: `run-card-${name}`,
+      text: `Design system tokens, 'run cards demo': the ${role} card, ${what}.`,
+      sizes: "all",
+      run: async (page, env) => {
+        await runCards(page, env);
+        let card = page.locator(`[data-run-card][aria-label="${role}: run"]`).nth(nth);
+        if (!(await card.count())) {
+          await page
+            .getByRole("button", { name: new RegExp(`^${role}`) })
+            .nth(nth)
+            .click({ timeout: 8000 });
+          await page.waitForTimeout(500);
+          card = page.locator(`[data-run-card][aria-label="${role}: run"]`).first();
+        }
+        await need(page, card, `${role} run card`);
+        await card.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(400);
+      },
+    })),
+    {
+      name: "run-card-waiting-on-two",
+      text: "Orbit mobile: the orchestrator waits on two agents, so both show as run cards in place of the 'Waiting on …' line.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await session(page, env, "Upgrade us to React Native");
+        await need(page, page.locator('[data-run-card="running"]').nth(1), "two run cards", 6000);
+      },
+    },
+  ],
+
+  gallery: ["buttons", "fields", "rows", "surfaces", "scales", "run-card"].map((id) => ({
     name: id,
     text: `Component library gallery (?gallery=1), section "${id}".`,
     sizes: "one",

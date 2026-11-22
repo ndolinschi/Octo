@@ -217,22 +217,22 @@ function liveScript(rec: ProjectRecord, v: V7): void {
  * "helper approval" (NEW-3): once the turn's sub-agent runs, its command asks for an approval; the approval goes when the
  * agent stops running (a stop, or the end of the turn).
  */
-function helperApproval(rec: ProjectRecord, v: V7): void {
+function helperApproval(rec: ProjectRecord, v: V7, role = "Command runner", command = "pnpm db:check"): void {
   const turn = rec.messages.filter((m) => m.agent_id === orchestratorOf(rec).id && m.role === "user").at(-1)?.id ?? 0;
   let once = false;
   const timer = setInterval(() => {
-    const helper = rec.agents.find((a) => a.parent_id !== null && a.status === "running" && a.role === "Command runner");
-    const asked = v.approvals.find((a) => a.agent_label === "Command runner");
+    const helper = rec.agents.find((a) => a.parent_id !== null && a.status === "running" && a.role === role);
+    const asked = v.approvals.find((a) => a.agent_label === role);
     if (helper && !asked && !once) {
       once = true;
       const approval: Approval = {
         id: newId("apr"),
         agent_id: helper.id,
-        agent_label: "Command runner",
+        agent_label: role,
         turn_id: turn,
         kind: "command",
-        title: "pnpm db:check",
-        detail: { command: "pnpm db:check" },
+        title: command,
+        detail: { command },
         created_at: iso(),
       };
       v.approvals.push(approval);
@@ -298,6 +298,10 @@ export function withDemoV7(base: Bridge, records: Map<string, ProjectRecord>): B
     if (/helper approval/i.test(text)) {
       const { rec, v } = state(id);
       helperApproval(rec, v);
+    }
+    if (/run cards demo/i.test(text)) {
+      const { rec, v } = state(id);
+      helperApproval(rec, v, "Migration runner", "pnpm db:migrate");
     }
     if (/memory approval/i.test(text)) {
       const { rec, v } = state(id);

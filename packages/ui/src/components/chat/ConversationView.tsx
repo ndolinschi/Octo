@@ -116,6 +116,15 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
   const [rewinding, setRewinding] = useState<{ id: number; which: "next" | "this" } | null>(null);
   const restoreTo = useCallback((id: number) => setRewinding({ id, which: "next" }), []);
   const keepEditing = useCallback(() => composer.current?.refinePlan(), []);
+  // Decision 101: a run card that waits for the person links to the one "needs you" card (decision 91c) at the transcript's end.
+  const needsSlot = useRef<HTMLDivElement>(null);
+  const revealNeeds = useCallback(() => {
+    const slot = needsSlot.current;
+    const card = slot?.querySelector<HTMLElement>("[tabindex]") ?? slot?.querySelector<HTMLElement>("button");
+    if (!slot || !card) return;
+    card.scrollIntoView({ block: "center" });
+    card.focus({ preventScroll: true });
+  }, []);
   // Conversation-level relative labels update per minute; active 1s timers are localized inside ActivityLine, AgentHeader, and DelegationRow.
   const now = useNow(true, CLOCK_MINUTE_MS);
   const memory = ws?.memory;
@@ -369,6 +378,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
                     hideFirstPrompt={!isOrchestrator}
                     onKeepEditing={isOrchestrator ? keepEditing : undefined}
                     onRewind={isOrchestrator && bridge.rewind ? restoreTo : undefined}
+                    revealNeeds={isOrchestrator ? revealNeeds : undefined}
                   />
                 </Suspense>
                 {isOrchestrator && (
@@ -376,7 +386,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
                     <InlineNotes />
                   </Suspense>
                 )}
-                {isOrchestrator && slots?.approvals?.({ onOpenAgent: (id) => ws?.openAgent(id) })}
+                {isOrchestrator && slots?.approvals && <div ref={needsSlot}>{slots.approvals({ onOpenAgent: (id) => ws?.openAgent(id) })}</div>}
               </div>
             </div>
           </div>

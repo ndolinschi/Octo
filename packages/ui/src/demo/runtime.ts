@@ -1,6 +1,6 @@
 import { autoDescription, charCount } from "../lib/notes";
 import { listed, newDemoNote } from "./notes";
-import type { Agent, ContentBlock, Message, Note, Tier } from "@octo/agent-client";
+import type { Agent, ContentBlock, Message, Note, PlanEntry, Tier } from "@octo/agent-client";
 import { agentById, clone, emit, newId, orchestratorOf, writeDemoFile, type ProjectRecord } from "./store";
 import { errorMessage } from "../lib/format";
 
@@ -31,8 +31,33 @@ export type ChildSpec = {
   tier: Tier;
   /** An ACP agent from a plugin (`spawn_agent` with `agent`): the child's model is `acp:{id}`, no tier. */
   acp?: string;
+  /** The child's own clock start (ms); in the past it plays in at once with its historical times (decision 101 demo). */
+  startAt?: number;
+  /** The router's decision for an `auto` spawn (`route_choice`, `route_reason`, `route_band`). */
+  route?: { choice: string; reason: string; band?: "easy" | "medium" | "hard" };
   run(ctx: Ctx, agentId: string): Promise<string>;
 };
+
+/** Thrown by a scripted child to end it as the person's Stop does (status cancelled; the turn goes on). */
+export class StoppedByUser extends Error {
+  constructor() {
+    super("Cancelled by user");
+  }
+}
+
+/** A sub-agent's own stop (its agent session's Stop): the agent ends cancelled at its next step; false when it is not running. */
+export function stopDemoAgent(rec: ProjectRecord, agentId: string): boolean {
+  const stop = rec.agentStops?.get(agentId);
+  if (!stop || stop.cancelled) return false;
+  stop.cancelled = true;
+  return true;
+}
+
+/** An agent's whole plan, as an ACP agent's `agent.plan` sends it (also kept on its row). */
+export function setPlan(ctx: Ctx, agentId: string, entries: PlanEntry[]): void {
+  Object.assign(agentById(ctx.rec, agentId), { plan: entries });
+  emit(ctx.rec, { type: "agent.plan", agent_id: agentId, entries: clone(entries) });
+}
 
 const CANCELLED = Symbol("cancelled");
 const MODEL: Record<Tier, string> = {
@@ -131,7 +156,7 @@ export async function act(ctx: Ctx, agentId: string, tools: ToolSpec[], text?: s
   charge(ctx, agentId, (text?.length ?? 0) + 120 * tools.length);
   for (const u of uses) {
     ctx.rec.activeTools.set(u.id, { agentId, name: u.spec.name });
-    emit(ctx.rec, { type: "tool.started", agent_id: agentId, tool_use_id: u.id, name: u.spec.name });
+    emit(ctx.rec, { type: "tool.started", agent_id: agentId, tool_use_id: u.id, name: u.spec.name, started_at: iso(ctx) });
   }
   try {
     await sleep(ctx, Math.max(...tools.map((t) => t.ms ?? 600)));
@@ -149,9 +174,11 @@ export async function act(ctx: Ctx, agentId: string, tools: ToolSpec[], text?: s
     }
     throw e;
   }
+  // As the harness times them (tool timings): each call ran its own `ms`; the batch waited for the longest.
+  const ran = (u: (typeof uses)[number]) => u.spec.ms ?? 600;
   for (const u of uses) {
     ctx.rec.activeTools.delete(u.id);
-    emit(ctx.rec, { type: "tool.finished", agent_id: agentId, tool_use_id: u.id, is_error: Boolean(u.spec.error) });
+    emit(ctx.rec, { type: "tool.finished", agent_id: agentId, tool_use_id: u.id, is_error: Boolean(u.spec.error), duration_ms: ran(u) });
     if (u.spec.name === "save_note" && !u.spec.error) saveNote(ctx, String(u.spec.input.title), String(u.spec.input.content));
     if (u.spec.name === "write_file" && !u.spec.error && u.spec.content !== undefined) agentWrite(ctx, u.spec);
     if (u.spec.name === "edit" && !u.spec.error && u.spec.content !== undefined) acpWrite(ctx, u.spec);
@@ -160,7 +187,7 @@ export async function act(ctx: Ctx, agentId: string, tools: ToolSpec[], text?: s
     ctx,
     agentId,
     "user",
-    uses.map((u) => ({ type: "tool_result" as const, tool_use_id: u.id, content: u.spec.result, is_error: Boolean(u.spec.error) })),
+    uses.map((u) => ({ type: "tool_result" as const, tool_use_id: u.id, content: u.spec.result, is_error: Boolean(u.spec.error), duration_ms: ran(u) })),
   );
 }
 
@@ -214,7 +241,15 @@ export async function delegate(ctx: Ctx, parentId: string, children: ChildSpec[]
 
   const results = await Promise.all(
     uses.map(async (u) => {
-      const child = { ...ctx, t: ctx.t + 120 };
+      // Each child has its own stop (decision 101: a sub-agent's session can be stopped while the turn goes on).
+      const own = { cancelled: false };
+      const parentSignal = ctx.signal;
+      const signal = {
+        get cancelled() {
+          return parentSignal.cancelled || own.cancelled;
+        },
+      };
+      const child: Ctx = { ...ctx, t: u.spec.startAt ?? ctx.t + 120, signal };
       await sleep(child, 0);
       const agent: Agent = {
         id: newId("agt"),
@@ -235,7 +270,9 @@ export async function delegate(ctx: Ctx, parentId: string, children: ChildSpec[]
         created_at: iso(child),
         started_at: iso(child),
         finished_at: null,
+        ...(u.spec.route ? { route_choice: u.spec.route.choice, route_reason: u.spec.route.reason, route_band: u.spec.route.band ?? null } : {}),
       };
+      (ctx.rec.agentStops ??= new Map()).set(agent.id, own);
       ctx.rec.agents.push(agent);
       ctx.rec.project.agent_count = ctx.rec.agents.length;
       emit(ctx.rec, { type: "agent.created", agent: clone(agent) });
@@ -248,11 +285,24 @@ export async function delegate(ctx: Ctx, parentId: string, children: ChildSpec[]
         updateAgent(child, agent.id, { status: "completed", result, finished_at: iso(child) });
         outcome = { content: result, error: false };
       } catch (e) {
-        if (e === CANCELLED) throw e;
+        if (e === CANCELLED && parentSignal.cancelled) throw e;
+        if (e === CANCELLED || e instanceof StoppedByUser) {
+          // Stopped on its own (its session's Stop): the agent reads stopped, its parent gets the stop as the call's result.
+          child.t = e === CANCELLED ? Math.max(child.t, Date.now()) : child.t;
+          for (const [id, t] of ctx.rec.activeTools) if (t.agentId === agent.id) ctx.rec.activeTools.delete(id);
+          ctx.rec.streaming.delete(agent.id);
+          updateAgent(child, agent.id, { status: "cancelled", error: "Cancelled by user", finished_at: iso(child) });
+          outcome = { content: "The person stopped this agent before it finished.", error: true };
+          ctx.rec.agentStops.delete(agent.id);
+          ctx.rec.activeTools.delete(u.id);
+          emit(ctx.rec, { type: "tool.finished", agent_id: parentId, tool_use_id: u.id, is_error: true });
+          return { use: u, outcome, t: child.t };
+        }
         const message = errorMessage(e);
         updateAgent(child, agent.id, { status: "failed", error: message, finished_at: iso(child) });
         outcome = { content: `Sub-agent failed: ${message}`, error: true };
       }
+      ctx.rec.agentStops.delete(agent.id);
       ctx.rec.activeTools.delete(u.id);
       emit(ctx.rec, { type: "tool.finished", agent_id: parentId, tool_use_id: u.id, is_error: outcome.error });
       return { use: u, outcome, t: child.t };

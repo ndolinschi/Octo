@@ -34,6 +34,58 @@ type agentSink struct {
 	ckWrite sync.Mutex // one checkpoint write at a time; never held together with mu by the streaming path
 	// onCleared, when set, is told how many tool results a request had cleared.
 	onCleared func(n int)
+	// Tool timings (the UI's run card): when each call started, and how long a settled one ran until both its result is
+	// stored and ToolFinished is published (in either order: the loop finishes first, an ACP agent stores first). Guarded by mu.
+	toolStart map[string]time.Time
+	toolMs    map[string]int64
+}
+
+// toolStarted records when call id started and returns that time.
+func (s *agentSink) toolStarted(id string) time.Time {
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.toolStart == nil {
+		s.toolStart = map[string]time.Time{}
+	}
+	s.toolStart[id] = now
+	return now
+}
+
+// settleTool is how long call id ran. The first caller (its stored result or ToolFinished) measures it and keeps the
+// figure; the second gets the same figure and forgets the call. ok is false for a call this sink did not see start.
+func (s *agentSink) settleTool(id string) (int64, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ms, ok := s.toolMs[id]; ok {
+		delete(s.toolMs, id)
+		return ms, true
+	}
+	start, ok := s.toolStart[id]
+	if !ok {
+		return 0, false
+	}
+	delete(s.toolStart, id)
+	ms := time.Since(start).Milliseconds()
+	if s.toolMs == nil {
+		s.toolMs = map[string]int64{}
+	}
+	s.toolMs[id] = ms
+	return ms, true
+}
+
+// toolDurations are the timings of the calls a tool-result message answers.
+func (s *agentSink) toolDurations(content []projectstore.ContentBlock) projectstore.ToolDurations {
+	out := projectstore.ToolDurations{}
+	for _, b := range content {
+		if b.Type != "tool_result" || b.ToolUseID == nil {
+			continue
+		}
+		if ms, ok := s.settleTool(*b.ToolUseID); ok {
+			out[*b.ToolUseID] = ms
+		}
+	}
+	return out
 }
 
 // Cleared implements agent.ClearObserver.
@@ -69,6 +121,16 @@ func (s *agentSink) store(ctx context.Context, role string, msg anthropic.Messag
 	stored, err := s.rt.db.AppendMessage(c, s.agentID, role, body)
 	if err != nil {
 		return stored, err
+	}
+	if role == "user" {
+		// The run card's step times: stored beside the content (never in it: the content is replayed to the model).
+		if ms := s.toolDurations(stored.Content); len(ms) > 0 {
+			if err := s.rt.db.SetToolDurations(c, stored.ID, ms); err != nil {
+				s.rt.logErr("store tool timings", err)
+			} else {
+				projectstore.ApplyToolDurations(stored.Content, ms)
+			}
+		}
 	}
 	if stopped {
 		if err := s.rt.db.MarkStopped(c, stored.ID); err != nil {
@@ -246,11 +308,18 @@ func (s *agentSink) Activity(kind, label, toolID string) {
 }
 
 func (s *agentSink) ToolStarted(id, name string) {
-	s.rt.publish(events.ToolStarted, map[string]any{"agent_id": s.agentID, "tool_use_id": id, "name": name})
+	at := s.toolStarted(id)
+	s.rt.publish(events.ToolStarted, map[string]any{
+		"agent_id": s.agentID, "tool_use_id": id, "name": name, "started_at": at.UTC().Format(time.RFC3339Nano),
+	})
 }
 
 func (s *agentSink) ToolFinished(id string, isError bool) {
-	s.rt.publish(events.ToolFinished, map[string]any{"agent_id": s.agentID, "tool_use_id": id, "is_error": isError})
+	fields := map[string]any{"agent_id": s.agentID, "tool_use_id": id, "is_error": isError}
+	if ms, ok := s.settleTool(id); ok {
+		fields["duration_ms"] = ms
+	}
+	s.rt.publish(events.ToolFinished, fields)
 }
 
 func (s *agentSink) Usage(u agent.Usage) { s.record(u, nil) }
