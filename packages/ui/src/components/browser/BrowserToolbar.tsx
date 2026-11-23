@@ -98,7 +98,7 @@ export function BrowserToolbar(props: {
               if (draftUrl !== null && draftUrl.trim() === props.url) setDraftUrl(null);
             }}
             placeholder="http://localhost:5173 or https://…"
-            className="font-mono text-xs touch:text-sm"
+            className="font-mono text-xs touch:text-input-touch"
           />
         </label>
       </form>
