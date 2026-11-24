@@ -193,34 +193,27 @@ export function CommandPalette(props: {
     };
   }, [bridge, openId, filesOnly]);
 
+  const rawSearch = query.trim();
+  const contentOnly = filesOnly && rawSearch.startsWith(":");
+  const searchNeedle = contentOnly ? rawSearch.slice(1).trim() : rawSearch;
+  const fileSearchActive = Boolean(openId && bridge.searchProjectFiles && (filesOnly || searchNeedle.length >= 2));
+
   useEffect(() => {
     const search = bridge.searchProjectFiles;
-    if (!openId || !search) {
-      setFileMatches([]);
-      setContentMatches([]);
-      return;
-    }
-    const raw = query.trim();
-    const contentOnly = filesOnly && raw.startsWith(":");
-    const needle = contentOnly ? raw.slice(1).trim() : raw;
-    if (!filesOnly && needle.length < 2) {
-      setFileMatches([]);
-      setContentMatches([]);
-      return;
-    }
+    if (!openId || !search || !fileSearchActive) return;
     let alive = true;
-    const delay = filesOnly && needle === "" ? 0 : 140;
+    const delay = filesOnly && searchNeedle === "" ? 0 : 140;
     const timer = window.setTimeout(() => {
       if (!contentOnly) {
-        void search(openId, { q: needle, mode: "name", limit: filesOnly ? 24 : 8 }).then(
+        void search(openId, { q: searchNeedle, mode: "name", limit: filesOnly ? 24 : 8 }).then(
           (m) => alive && setFileMatches(m),
           () => alive && setFileMatches([]),
         );
       } else {
         setFileMatches([]);
       }
-      if (needle.length >= 2) {
-        void search(openId, { q: needle, mode: "content", limit: filesOnly ? 24 : 8 }).then(
+      if (searchNeedle.length >= 2) {
+        void search(openId, { q: searchNeedle, mode: "content", limit: filesOnly ? 24 : 8 }).then(
           (m) => alive && setContentMatches(m),
           () => alive && setContentMatches([]),
         );
@@ -232,7 +225,7 @@ export function CommandPalette(props: {
       alive = false;
       window.clearTimeout(timer);
     };
-  }, [bridge, openId, query, filesOnly]);
+  }, [bridge, openId, filesOnly, contentOnly, searchNeedle, fileSearchActive]);
 
   const groups = useMemo<Group[]>(() => {
     const now = Date.now();
@@ -398,14 +391,16 @@ export function CommandPalette(props: {
           navigate(h.project_id);
         }),
       }));
-    const fileRows: Item[] = fileMatches.map((m) => ({
+    const activeFileMatches = fileSearchActive && !contentOnly ? fileMatches : [];
+    const activeContentMatches = fileSearchActive && searchNeedle.length >= 2 ? contentMatches : [];
+    const fileRows: Item[] = activeFileMatches.map((m) => ({
       id: `f:${m.folder}:${m.path}`,
       label: m.path,
       detail: openProject && openProject.folder_count > 1 ? m.folder : undefined,
       filePath: m.path,
       run: go(() => workspace?.api.openFile?.(m.folder, m.path)),
     }));
-    const contentRows: Item[] = contentMatches.map((m, idx) => ({
+    const contentRows: Item[] = activeContentMatches.map((m, idx) => ({
       id: `fc:${m.folder}:${m.path}:${m.line ?? 0}:${idx}`,
       label: `${m.path}${m.line ? `:${m.line}` : ""}`,
       detail: m.preview,
@@ -453,6 +448,9 @@ export function CommandPalette(props: {
     fileMatches,
     contentMatches,
     filesOnly,
+    fileSearchActive,
+    contentOnly,
+    searchNeedle,
     props.actions,
     openId,
     nav,
