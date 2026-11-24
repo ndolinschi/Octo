@@ -18,11 +18,14 @@ export type IntelClient = { retry(fileKey: FileKey): void; dispose(): void };
 const EMPTY: FileIntel = { status: null, problems: [], notice: null };
 const NOTICE_MS = 4_000;
 
+export type KeyedProblem = { key: FileKey; problem: Problem };
+
 export class EditorIntel {
   private files = new Map<string, FileIntel>();
   private listeners = new Set<() => void>();
   private noticeTimers = new Map<string, number>();
   private client: IntelClient | null = null;
+  private problemsCache: readonly KeyedProblem[] | null = null;
 
   subscribe = (cb: () => void) => {
     this.listeners.add(cb);
@@ -31,6 +34,11 @@ export class EditorIntel {
 
   get(key: FileKey): FileIntel {
     return this.files.get(key) ?? EMPTY;
+  }
+
+  /** All diagnostics across open files (stable array reference between updates, for `useSyncExternalStore`). */
+  allProblems(): readonly KeyedProblem[] {
+    return (this.problemsCache ??= [...this.files].flatMap(([k, v]) => v.problems.map((problem) => ({ key: k as FileKey, problem }))));
   }
 
   /** Starts the client once (the editor chunk calls this with its factory when Monaco is in). */
@@ -83,6 +91,7 @@ export class EditorIntel {
   }
 
   private emit() {
+    this.problemsCache = null;
     this.listeners.forEach((cb) => cb());
   }
 }

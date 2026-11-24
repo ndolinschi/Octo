@@ -44,16 +44,21 @@ function build(editor: Monaco.editor.ICodeEditor, path: string | undefined): Men
     return a?.isSupported() ? a : null;
   };
   const comment = COMMENT_IDS.map(action).find(Boolean) ?? null;
+  const inlineEdit = editable ? action("octo.inlineEdit") : null;
   const define = action("editor.action.revealDefinition");
   const refs = action("editor.action.goToReferences");
   const nav: MenuItem[] = [];
   if (comment) nav.push({ id: "comment", label: "Add comment", shortcut: MAC ? "⌘⌥C" : "Ctrl+Alt+C", run: () => void comment.run() });
   if (define) nav.push({ id: "definition", label: "Go to definition", shortcut: "F12", run: () => void define.run() });
   if (refs) nav.push({ id: "references", label: "Find references", shortcut: "Shift+F12", run: () => void refs.run() });
+  // Cursor-style inline agent edit (Mod+I) for the selection or current line.
+  if (inlineEdit && path && sel) {
+    nav.unshift({ id: "inline-edit", label: "Edit with agent", shortcut: MAC ? "⌘I" : "Ctrl+I", run: () => void inlineEdit.run() });
+  }
   // G4: the selection's lines (or the caret's line) as a file mention in the conversation's composer.
   if (path && sel && canAddToChat()) {
     const lines = selectedLines({ startLine: sel.startLineNumber, startColumn: sel.startColumn, endLine: sel.endLineNumber, endColumn: sel.endColumn });
-    nav.unshift({ id: "chat", label: "Add to chat", run: () => void addToChat(chatMention(path, lines)) });
+    nav.unshift({ id: "chat", label: "Add to chat", shortcut: MAC ? "⌘L" : "Ctrl+L", run: () => void addToChat(chatMention(path, lines)) });
   }
 
   const clip: MenuItem[] = [];

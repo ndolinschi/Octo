@@ -55,6 +55,7 @@ import { usePhone } from "../../lib/phone";
 import { useNewSession, type StartedSession } from "./useNewSession";
 import { useContextShortcut } from "./useContextShortcut";
 import { deviceMay, ON_YOUR_COMPUTER } from "../../lib/remoteDevice";
+import { INITIAL_HISTORY, stepHistory, type PromptHistoryState } from "../../lib/promptHistory";
 
 const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
 const ModelRefusedActions = lazy(() => import("../shared/ModelRefusedActions").then((m) => ({ default: m.ModelRefusedActions })));
@@ -121,8 +122,8 @@ export type ComposerProps = {
     | undefined;
   /** The orchestrator's context window, for the meter. */
   context: { used: number | null | undefined; size: number | null | undefined };
-  /** The newest request, recalled by ↑ in an empty field. */
-  lastRequest: string | null;
+  /** Session prompt history (oldest → newest) for multi-step ↑/↓ recall with draft preservation. */
+  recentRequests: readonly string[];
   onSend(text: string, opts?: { attachments?: string[] }): Promise<void>;
   /** B12: whether the orchestrator takes images (`false` is said as soon as one is attached). */
   acceptsImages?: boolean | null | undefined;
@@ -199,6 +200,7 @@ const ComposerView = forwardRef<ComposerHandle, ComposerProps>(function Composer
   const [command, setCommand] = useState<string | null>(null);
   const startNew = useNewSession();
   const [started, setStarted] = useState<StartedSession | null>(null);
+  const historyRef = useRef<PromptHistoryState>(INITIAL_HISTORY);
   const slashListId = useId();
   const listId = useId();
   const slots = useChatSlots();
@@ -439,10 +441,19 @@ const ComposerView = forwardRef<ComposerHandle, ComposerProps>(function Composer
       } else void submit();
       return;
     }
-    if (e.key === "ArrowUp" && !text && props.lastRequest && !e.shiftKey && !e.altKey) {
-      e.preventDefault();
-      place(props.lastRequest);
-      return;
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && props.recentRequests.length > 0) {
+      const up = e.key === "ArrowUp";
+      const el = e.currentTarget;
+      const edge = el.selectionStart === el.selectionEnd && !(up ? text.slice(0, el.selectionStart) : text.slice(el.selectionStart)).includes("\n");
+      if (edge && (historyRef.current.index >= 0 || (up && !text))) {
+        const next = stepHistory(props.recentRequests, historyRef.current, up ? -1 : 1, text);
+        if (next) {
+          e.preventDefault();
+          historyRef.current = next.state;
+          place(next.text);
+          return;
+        }
+      }
     }
     if (e.key === "Escape" && props.running && !menu) {
       e.preventDefault();
@@ -688,6 +699,7 @@ const ComposerView = forwardRef<ComposerHandle, ComposerProps>(function Composer
                 data-long-word={longWord || undefined}
                 disabled={disabled}
                 onChange={(e) => {
+                  historyRef.current = INITIAL_HISTORY;
                   setText(e.target.value);
                   setRefused(null);
                   setPastingLong(false);

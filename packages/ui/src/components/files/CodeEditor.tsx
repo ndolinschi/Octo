@@ -9,6 +9,7 @@ import { browserIdle, saveData } from "../../lib/warmSchedule";
 import { EmptyState } from "../primitives/EmptyState";
 import { EditorContextMenu } from "../shared/EditorContextMenu";
 import { EditorSkeleton } from "./EditorSkeleton";
+import { EditorActionLayer } from "./editor/EditorActionLayer";
 import type { EditorBuffers, MonacoApi } from "../../lib/buffers";
 import { errorMessage } from "../../lib/format";
 import { type FileKey } from "../../lib/files";
@@ -75,6 +76,8 @@ function reveal(editor: Monaco.editor.IStandaloneCodeEditor, at: FilePosition | 
   });
 }
 
+export type CursorPos = { line: number; column: number };
+
 /**
  * Thin Monaco wrapper: one editor instance per file view (it outlives every file the view shows; decision 85), swapping
  * the file's model in (kept in `buffers` so edits outlive this component); view state is saved on a swap and on unmount and restored.
@@ -90,12 +93,16 @@ export const CodeEditor = memo(function CodeEditor(props: {
   onMonaco(mod: MonacoModule): void;
   /** Esc with nothing selected and no widget open: focus leaves the editor (the file's tab). */
   onEscape?(): void;
+  /** Reports the active caret line and column (used by the file bar's clickable Ln/Col indicator). */
+  onCursor?(pos: CursorPos | null): void;
+  /** Registers a callback to trigger Monaco's Go to Line widget from the file bar. */
+  goToLineRef?: { current: (() => void) | null };
   /** Read first (a phone, A5): the text can be read and selected, not typed into. */
   readOnly?: boolean;
   /** Wrap long lines (a phone reading an SVG's source, A7.1). */
   wrap?: boolean;
 }) {
-  const { file, buffers } = props;
+  const { file, buffers, goToLineRef } = props;
   const [editor, setEditor] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const host = useRef<HTMLDivElement>(null);
   const [mod, setMod] = useState<MonacoModule | null>(null);
@@ -105,6 +112,7 @@ export const CodeEditor = memo(function CodeEditor(props: {
   const onSave = useLatest(props.onSave);
   const onMonaco = useLatest(props.onMonaco);
   const onEscape = useLatest(props.onEscape);
+  const onCursor = useLatest(props.onCursor);
   const bottomPadding = useLatest(props.bottomPadding ?? 8);
 
   useEffect(() => {
@@ -156,14 +164,15 @@ export const CodeEditor = memo(function CodeEditor(props: {
       showFoldingControls: "mouseover",
       renderLineHighlight: "line",
       renderLineHighlightOnlyWhenFocus: true,
-      occurrencesHighlight: "off",
+      occurrencesHighlight: "singleFile",
+      matchBrackets: "always",
       stopRenderingLineAfter: 10000,
       overviewRulerLanes: 0,
       overviewRulerBorder: false,
       hideCursorInOverviewRuler: true,
       stickyScroll: { enabled: false },
       bracketPairColorization: { enabled: false },
-      guides: { indentation: true, bracketPairs: false },
+      guides: { indentation: true, bracketPairs: "active" },
       // Slim and quiet like the app's other scroll areas: a 4px thumb in an 8px track (styles.css widens it to 6 and
       // darkens it on hover/drag); none when content fits.
       scrollbar: {
@@ -191,10 +200,20 @@ export const CodeEditor = memo(function CodeEditor(props: {
     });
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSave.current());
     editor.addCommand(monaco.KeyCode.Escape, () => onEscape.current?.(), ESCAPE_OUT_WHEN);
+    const cursorSub = editor.onDidChangeCursorPosition((e) => onCursor.current?.({ line: e.position.lineNumber, column: e.position.column }));
+    if (goToLineRef) {
+      goToLineRef.current = () => {
+        editor.focus();
+        void editor.getAction("editor.action.gotoLine")?.run();
+      };
+    }
     editorRef.current = editor;
     buffers.editors.add(editor);
     setEditor(editor);
     return () => {
+      cursorSub.dispose();
+      onCursor.current?.(null);
+      if (goToLineRef) goToLineRef.current = null;
       setEditor(null);
       if (shownKey.current) buffers.saveView(shownKey.current, editor.saveViewState());
       shownKey.current = null;
@@ -205,7 +224,7 @@ export const CodeEditor = memo(function CodeEditor(props: {
       editorRef.current = null;
     };
     // Theme changes are applied below without recreating the editor.
-  }, [mod, buffers, bottomPadding, onMonaco, onSave, onEscape]);
+  }, [mod, buffers, bottomPadding, onMonaco, onSave, onEscape, onCursor, goToLineRef]);
 
   useEffect(() => {
     // `domReadOnly`: the input element itself is read-only too, so a tap on a phone does not raise the on-screen keyboard (WebKit
@@ -246,7 +265,9 @@ export const CodeEditor = memo(function CodeEditor(props: {
     if (view) editor.restoreViewState(view);
     shownKey.current = file.key;
     reveal(editor, buffers.takeReveal(file.key));
-  }, [mod, buffers, file, editor]);
+    const pos = editor.getPosition();
+    if (pos) onCursor.current?.({ line: pos.lineNumber, column: pos.column });
+  }, [mod, buffers, file, editor, onCursor]);
 
   // A link, a comment or a definition asked for a position in this file.
   useEffect(
@@ -269,11 +290,12 @@ export const CodeEditor = memo(function CodeEditor(props: {
   }
 
   return (
-    <div className="relative h-full min-h-0 min-w-0 overflow-clip">
+    <div className="relative h-full min-h-0 min-w-0 overflow-clip" data-editor-chat={file ? "" : undefined}>
       {/* Decision 60: grey lines in the editor's own box until Monaco is in, shown at once (no empty frame, no late spinner). */}
       {!editor && !failed && <EditorSkeleton />}
       <div ref={host} className="h-full min-h-0 min-w-0" data-testid="code-editor" />
       {editor && file && <EditorContextMenu editor={editor} path={file.path} />}
+      {mod && editor && file && <EditorActionLayer editor={editor} monaco={mod.monaco} path={file.path} readOnly={props.readOnly ?? false} />}
       {mod && editor && file && <mod.EditorComments editor={editor} monaco={mod.monaco} buffers={buffers} folder={file.folder} path={file.path} />}
       {mod && editor && file && (
         <Suspense fallback={null}>

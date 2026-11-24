@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, ChevronUp, CornerDownRight, ExternalLink, Pilcrow, Undo2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronUp, CornerDownRight, ExternalLink, Pilcrow, Undo2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { useDelayedLoading } from "../../lib/hooksMore";
@@ -20,7 +20,7 @@ const KIND_TONE = { A: "text-ok", M: "text-fg-3", D: "text-err" } as const;
 
 /**
  * The right side of the changes view: a 40px row like the file view's breadcrumb (back on narrow panes, the file,
- * counts, prev / next, whitespace, Open file, Revert), any revert outcome, then the diff or why there is none.
+ * counts, prev / next, whitespace, Open file, Keep, Revert), any revert outcome, then the diff or why there is none.
  */
 export function DiffPanel(props: {
   selection: Selection;
@@ -32,6 +32,8 @@ export function DiffPanel(props: {
   theme: import("../../lib/theme").Theme;
   loadMonaco(): Promise<DiffMonaco>;
   commented: readonly { start: number; end: number }[];
+  kept?: boolean;
+  onToggleKept?(): void;
   onBack?(): void;
   onPrev: (() => void) | null;
   onNext: (() => void) | null;
@@ -52,9 +54,10 @@ export function DiffPanel(props: {
   const loading = useDelayedLoading(props.diff.status === "loading");
   const canOpen = props.onOpenFile !== undefined && file.kind !== "deleted";
   const moreItems: MenuItem[] = [
-    { id: "prev", label: "Previous file", disabled: !props.onPrev, run: () => props.onPrev?.() },
-    { id: "next", label: "Next file", disabled: !props.onNext, run: () => props.onNext?.() },
+    { id: "prev", label: "Previous file", shortcut: "Alt+[", disabled: !props.onPrev, run: () => props.onPrev?.() },
+    { id: "next", label: "Next file", shortcut: "Alt+]", disabled: !props.onNext, run: () => props.onNext?.() },
     { id: "ws", label: props.ignoreWhitespace ? "Show whitespace changes" : "Ignore whitespace", run: props.onToggleWhitespace },
+    ...(props.onToggleKept && !reverted ? [{ id: "keep", label: props.kept ? "Unmark kept" : "Keep file", run: props.onToggleKept }] : []),
     ...(canOpen && firstLine !== null ? [{ id: "line", label: `Go to line ${firstLine}`, run: () => props.onOpenFile?.(firstLine) }] : []),
     ...(canOpen ? [{ id: "open", label: "Open file", run: () => props.onOpenFile?.() }] : []),
   ];
@@ -83,8 +86,8 @@ export function DiffPanel(props: {
           />
         </span>
         <span className="flex shrink-0 items-center gap-1 @max-[480px]/diff:hidden">
-          <IconButton icon={ChevronUp} label="Previous file" disabled={!props.onPrev} onClick={() => props.onPrev?.()} />
-          <IconButton icon={ChevronDown} label="Next file" disabled={!props.onNext} onClick={() => props.onNext?.()} />
+          <IconButton icon={ChevronUp} label="Previous file" shortcut="Alt+[" disabled={!props.onPrev} onClick={() => props.onPrev?.()} />
+          <IconButton icon={ChevronDown} label="Next file" shortcut="Alt+]" disabled={!props.onNext} onClick={() => props.onNext?.()} />
           <span className="contents @max-lg/diff:hidden">
             <Button variant="quiet" size="sm" pressed={props.ignoreWhitespace} title="Hide changes that are only whitespace" onClick={props.onToggleWhitespace}>
               Ignore whitespace
@@ -97,6 +100,19 @@ export function DiffPanel(props: {
             <IconButton icon={CornerDownRight} label={`Go to line ${firstLine}`} onClick={() => props.onOpenFile?.(firstLine)} />
           )}
           {props.onOpenFile && file.kind !== "deleted" && <IconButton icon={ExternalLink} label="Open file" onClick={() => props.onOpenFile?.()} />}
+          {props.onToggleKept && !reverted && (
+            <Button
+              variant={props.kept ? "quiet" : "secondary"}
+              size="sm"
+              icon={Check}
+              pressed={Boolean(props.kept)}
+              title={props.kept ? "Marked kept (click to undo)" : "Mark file reviewed & keep changes"}
+              onClick={props.onToggleKept}
+              className={cn(props.kept && "text-ok")}
+            >
+              <span className="@max-md/diff:sr-only">{props.kept ? "Kept" : "Keep"}</span>
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="sm"

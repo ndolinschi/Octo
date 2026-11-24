@@ -1,10 +1,11 @@
 import "@xterm/xterm/css/xterm.css";
 import { Eraser, Plus, RotateCw } from "lucide-react";
-import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { mayChangeProject, ON_YOUR_COMPUTER } from "../../lib/remoteDevice";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
+import { onTerminalCommand, takeTerminalCommand } from "../../state/terminalRun";
 import { domId } from "../../state/workspace/ids";
 import type { TabId } from "../../state/workspace/layout";
 import { MOD, useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
@@ -37,6 +38,20 @@ export default function TerminalTab(props: { tab: TabId; terminalId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const ready = canRunLocal && !!bridge.openTerminal && folders.length > 0;
   const termRef = useTerminalSurface({ hostRef, entry, bridge, enabled: ready, defaultFolder });
+  const visible = ws ? ws.isVisible(props.tab) : true;
+
+  // Run commands queued from Markdown shell code blocks once this visible terminal's shell is running.
+  useEffect(() => {
+    if (!ready || !visible || snap.status !== "running") return;
+    const flush = () => {
+      const cmd = takeTerminalCommand();
+      if (!cmd) return;
+      entry.write(`${cmd}\n`);
+      termRef.current?.focus();
+    };
+    flush();
+    return onTerminalCommand(flush);
+  }, [ready, visible, snap.status, entry, termRef]);
 
   const restart = useCallback(
     (nextFolder?: string) => {

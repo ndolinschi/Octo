@@ -26,7 +26,7 @@ import { Presence } from "../primitives/Presence";
 import { Segmented } from "../primitives/Segmented";
 import { Spinner } from "../primitives/Status";
 import { EditorSkeleton } from "./EditorSkeleton";
-import { CodeEditor, warmMonacoNow, warmMonacoSoon } from "./CodeEditor";
+import { CodeEditor, warmMonacoNow, warmMonacoSoon, type CursorPos } from "./CodeEditor";
 import { EditorStatus } from "./EditorStatus";
 import { fileIcon, isMarkdown } from "../primitives/fileIcons";
 import { fileSizeLabel, imageType, isSvg } from "../../lib/imagePreview";
@@ -209,6 +209,11 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
       />
     );
   }
+  const [cursor, setCursor] = useState<CursorPos | null>(null);
+  const goToLineRef = useRef<(() => void) | null>(null);
+  const onCursor = useCallback((pos: CursorPos | null) => {
+    setCursor((prev) => (prev?.line === pos?.line && prev?.column === pos?.column ? prev : pos));
+  }, []);
   const body = (
     <div className="relative h-full min-h-0">
       {fileKey !== null && (
@@ -222,6 +227,8 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
             onSave={onSaveEditor}
             onMonaco={onMonacoEditor}
             onEscape={leaveEditor}
+            onCursor={onCursor}
+            goToLineRef={goToLineRef}
             readOnly={readFirst}
             wrap={phone && svg}
           />
@@ -280,6 +287,18 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
           )}
           {file?.modified && !saving && <span className={narrow ? "sr-only" : "shrink-0"}>Unsaved</span>}
         </span>
+        {fileKey && !narrow && cover === null && cursor && (
+          <Button
+            variant="quiet"
+            size="xs"
+            data-cursor-pos
+            title="Go to line"
+            onClick={() => goToLineRef.current?.()}
+            className="shrink-0 font-mono text-xs text-fg-3 tabular-nums hover:text-fg"
+          >
+            Ln {cursor.line}, Col {cursor.column}
+          </Button>
+        )}
         {fileKey && (
           <EditorStatus
             compact={compact}

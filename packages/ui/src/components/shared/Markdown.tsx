@@ -1,9 +1,11 @@
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Play } from "lucide-react";
 import { Button } from "../primitives/Button";
 import { memo, Suspense, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useCopy, useScrollFade } from "../../lib/hooks";
+import { isShellLang, queueTerminalCommand } from "../../state/terminalRun";
+import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { InlineCode } from "./FileLink";
 import { readyLazy } from "../../lib/readyLazy";
 import { MarkdownImage } from "./MarkdownImage";
@@ -73,10 +75,13 @@ export function HighlightedCode({ code, lang }: { code: string; lang: string | u
 
 function CodeBlock({ children }: { children?: ReactNode }) {
   const [copied, copy] = useCopy();
+  const [sent, setSent] = useState(false);
+  const ws = useOptionalWorkspace();
   const child: unknown = Array.isArray(children) ? children[0] : children;
   const className = child && typeof child === "object" && "props" in child ? ((child as { props: { className?: string } }).props.className ?? "") : "";
   const lang = /language-([\w+-]+)/.exec(className)?.[1];
   const code = textOf(children).replace(/\n$/, "");
+  const canRun = Boolean(ws?.toolEnabled("terminal") && isShellLang(lang) && code.trim().length > 0);
   const pre = useRef<HTMLPreElement>(null);
   useScrollFade(pre, "x");
   const [scrolls, setScrolls] = useState(false);
@@ -89,14 +94,37 @@ function CodeBlock({ children }: { children?: ReactNode }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, [code]);
+  useEffect(() => {
+    if (!sent) return;
+    const id = window.setTimeout(() => setSent(false), 1500);
+    return () => window.clearTimeout(id);
+  }, [sent]);
   return (
     // Card inset 12 on all sides: a 20px caption row, 8 below it, then 20px code lines.
     <div className="octo-code-surface my-3 overflow-hidden p-card">
-      <div className="mb-2 flex h-5 items-center">
+      <div className="mb-2 flex h-5 items-center gap-1">
         <span className="font-mono text-xs text-fg-3">{lang ?? "text"}</span>
-        <Button variant="quiet" size="xs" icon={copied ? Check : Copy} onClick={() => copy(code)} className="-my-0.5 -mr-2 ml-auto">
-          {copied ? "Copied" : "Copy"}
-        </Button>
+        <span className="-my-0.5 -mr-2 ml-auto flex items-center gap-0.5">
+          {canRun && (
+            <Button
+              variant="quiet"
+              size="xs"
+              icon={sent ? Check : Play}
+              data-run-code
+              title="Run in terminal"
+              onClick={() => {
+                queueTerminalCommand(code);
+                ws?.openTool("terminal");
+                setSent(true);
+              }}
+            >
+              {sent ? "Sent" : "Run"}
+            </Button>
+          )}
+          <Button variant="quiet" size="xs" icon={copied ? Check : Copy} onClick={() => copy(code)}>
+            {copied ? "Copied" : "Copy"}
+          </Button>
+        </span>
       </div>
       {/* Plain first, coloured when the highlighter is in: same text, same metrics (colours only). */}
       {/* 7f: a block that scrolls sideways is a named stop in the tab order, so the keyboard can scroll it (WebKit does not

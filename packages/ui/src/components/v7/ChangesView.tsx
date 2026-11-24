@@ -1,10 +1,13 @@
+import { Check } from "lucide-react";
 import { PanelBody, PanelEmpty } from "../primitives/Panel";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import type { TurnChanges } from "@octo/agent-client";
 import { useMediaQuery } from "../../lib/hooks";
 import { useHistoryLayer } from "../../lib/historyLayer";
 import { usePhone } from "../../lib/phone";
 import { DIFF_SPLIT_MIN, diffLayout, earlierRequestLabel, filesChanged, neighbours, rowKey, splitPath } from "../../lib/v7/changes";
+import { keepAllFiles, keptChangesSnapshot, subscribeKeptChanges, toggleFileKept } from "../../state/keptChanges";
+import { useOptionalProject } from "../../state/project";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { SkeletonList } from "../primitives/Skeleton";
@@ -50,6 +53,8 @@ export function ChangesView(props: ChangesViewProps) {
   const box = useRef<HTMLDivElement>(null);
   const width = useWidth(box);
   const wideWindow = useMediaQuery(`(min-width: ${DIFF_SPLIT_MIN}px)`);
+  const projectId = useOptionalProject()?.projectId ?? "default";
+  const kept = useSyncExternalStore(subscribeKeptChanges, () => keptChangesSnapshot(projectId));
   const c = useChanges(props.api, props.refreshKey ?? 0, props.focusTurn ?? null, props.focusFile ?? null);
   const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
   const [showDiff, setShowDiff] = useState(props.focusFile != null);
@@ -79,6 +84,30 @@ export function ChangesView(props: ChangesViewProps) {
   };
   const sel = c.selected;
   const commented = useMemo(() => (sel && props.commentsFor ? props.commentsFor(sel.file.folder, sel.file.path) : NONE), [sel, props]);
+  const allKeys = useMemo(() => c.all.map((s) => rowKey(s.turnId, s.file)), [c.all]);
+  const keptCount = useMemo(() => allKeys.filter((k) => kept.has(k)).length, [allKeys, kept]);
+  const selKey = sel ? rowKey(sel.turnId, sel.file) : null;
+  const selKept = selKey !== null && kept.has(selKey);
+
+  const toggleCurrentKept = () => {
+    if (!selKey) return;
+    const nowKept = toggleFileKept(projectId, selKey);
+    // Keeping a file advances to the next unkept file so reviewing a multi-file turn is one click/keystroke per file.
+    if (nowKept && near.next && !kept.has(rowKey(near.next.turnId, near.next.file))) {
+      c.select(near.next);
+    }
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented || !e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === "]" && near.next) {
+      e.preventDefault();
+      c.select(near.next);
+    } else if (e.key === "[" && near.prev) {
+      e.preventDefault();
+      c.select(near.prev);
+    }
+  };
 
   const runConfirm = async () => {
     const what = confirm;
@@ -119,11 +148,25 @@ export function ChangesView(props: ChangesViewProps) {
         label={label(t)}
         selectedKey={two || showDiff ? c.selectedKey : null}
         rows={c.rows}
+        kept={kept}
         reverting={turnBusy === t.turn_id}
         onSelect={(file) => select({ turnId: t.turn_id, file })}
         onRevertTurn={() => setConfirm({ kind: "turn", turn: t })}
       />
     ));
+
+  const reviewHeader = allKeys.length > 0 && (
+    <div className="flex items-center justify-between gap-2 px-2 py-1 text-xs text-fg-3">
+      <span className="tabular-nums">
+        {keptCount}/{allKeys.length} kept
+      </span>
+      {keptCount < allKeys.length && (
+        <Button variant="quiet" size="xs" icon={Check} onClick={() => keepAllFiles(projectId, allKeys)}>
+          Keep all
+        </Button>
+      )}
+    </div>
+  );
 
   const diff = sel && (
     <DiffPanel
@@ -136,6 +179,8 @@ export function ChangesView(props: ChangesViewProps) {
       theme={props.theme}
       loadMonaco={props.loadMonaco}
       commented={commented}
+      kept={selKept}
+      onToggleKept={toggleCurrentKept}
       {...(two ? {} : { onBack: () => setShowDiff(false) })}
       onPrev={near.prev ? () => near.prev && c.select(near.prev) : null}
       onNext={near.next ? () => near.next && c.select(near.next) : null}
@@ -148,7 +193,7 @@ export function ChangesView(props: ChangesViewProps) {
   );
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col bg-panel" data-v7-changes>
+    <div className="flex h-full min-h-0 min-w-0 flex-col bg-panel" data-v7-changes onKeyDown={onKeyDown}>
       {props.focusTurn != null && props.onShowAll && (
         <div className="flex h-ctl-lg shrink-0 items-center gap-2 border-b border-line pr-pane pl-4 text-sm text-fg-2">
           <span className="min-w-0 flex-1 truncate">Showing one request</span>
@@ -167,6 +212,7 @@ export function ChangesView(props: ChangesViewProps) {
               aria-label="Changed files"
               className="@container/list flex w-[clamp(17.5rem,30%,22.5rem)] shrink-0 flex-col gap-2 overflow-y-auto border-r border-line px-pane pt-1 pb-4"
             >
+              {reviewHeader}
               {list}
               <FloatRoom />
             </nav>
@@ -176,6 +222,7 @@ export function ChangesView(props: ChangesViewProps) {
           diff
         ) : (
           <nav aria-label="Changed files" className="@container/list flex min-w-0 flex-1 flex-col gap-2 overflow-y-auto px-pane pt-1 pb-4">
+            {reviewHeader}
             {list}
             <FloatRoom />
           </nav>

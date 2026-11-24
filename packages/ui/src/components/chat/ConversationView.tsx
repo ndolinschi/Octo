@@ -79,6 +79,7 @@ const AgentGone = lazy(() => import("./AgentGone"));
 /** The agy-style inline project selector loads only on empty sessions (kept out of the initial bundle). */
 export const projectBarPart = readyLazy(() => import("./ComposerProjectBar").then((m) => m.ComposerProjectBar));
 const ComposerProjectBar = projectBarPart.Component;
+const PendingChangesBar = lazy(() => import("./PendingChangesBar").then((m) => ({ default: m.PendingChangesBar })));
 
 /** The turn rail appears from the first request (decision 34). */
 
@@ -418,6 +419,11 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
               {showProjectBar && (
                 <Suspense fallback={<div className="h-8 px-1.5" aria-hidden />}>
                   <ComposerProjectBar project={project} projects={projects} draft={composerProps.draft} onOverlay={setOverlay} />
+                </Suspense>
+              )}
+              {!empty && (
+                <Suspense fallback={null}>
+                  <PendingChangesBar />
                 </Suspense>
               )}
               <Composer ref={composer} {...composerProps} comments={commentsSlot} onOverlay={setOverlay} />

@@ -1,7 +1,8 @@
-import { Undo2 } from "lucide-react";
+import { Check, Undo2 } from "lucide-react";
 import type { FileChangeSummary, TurnChanges } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { filesChanged, kindLabel, kindLetter, rowKey, sourceLabel, splitPath } from "../../lib/v7/changes";
+import { Glyph } from "../primitives/Glyph";
 import { IconButton } from "../primitives/IconButton";
 import { ListRow } from "../primitives/ListRow";
 import { SectionHeader } from "../primitives/SectionHeader";
@@ -21,6 +22,7 @@ export function TurnFiles(props: {
   label: string;
   selectedKey: string | null;
   rows: Readonly<Record<string, RowState>>;
+  kept?: ReadonlySet<string>;
   reverting: boolean;
   onSelect(file: FileChangeSummary): void;
   onRevertTurn(): void;
@@ -63,7 +65,13 @@ export function TurnFiles(props: {
           const key = rowKey(turn.turn_id, f);
           return (
             <li key={key}>
-              <FileRow file={f} selected={props.selectedKey === key} state={props.rows[key]} onClick={() => props.onSelect(f)} />
+              <FileRow
+                file={f}
+                selected={props.selectedKey === key}
+                kept={props.kept?.has(key) === true}
+                state={props.rows[key]}
+                onClick={() => props.onSelect(f)}
+              />
             </li>
           );
         })}
@@ -72,7 +80,19 @@ export function TurnFiles(props: {
   );
 }
 
-function FileRow({ file, selected, state, onClick }: { file: FileChangeSummary; selected: boolean; state: RowState | undefined; onClick(): void }) {
+function FileRow({
+  file,
+  selected,
+  kept,
+  state,
+  onClick,
+}: {
+  file: FileChangeSummary;
+  selected: boolean;
+  kept: boolean;
+  state: RowState | undefined;
+  onClick(): void;
+}) {
   const { dir, name } = splitPath(file.path);
   const letter = kindLetter(file.kind);
   const reverted = state !== undefined && "reverted" in state;
@@ -81,18 +101,22 @@ function FileRow({ file, selected, state, onClick }: { file: FileChangeSummary; 
     <ListRow
       size="md"
       selected={selected}
-      tip={`${kindLabel(file.kind)} by ${sourceLabel(file.source)}: ${file.folder}/${file.path}${reverted ? " (reverted)" : ""}`}
+      tip={`${kindLabel(file.kind)} by ${sourceLabel(file.source)}: ${file.folder}/${file.path}${reverted ? " (reverted)" : kept ? " (kept)" : ""}`}
       onClick={onClick}
       leading={
-        // 7e: a span's aria-label is ignored; the letter is hidden and its word read instead.
-        <span className={cn("font-mono text-xs font-medium", KIND_TONE[letter])}>
-          <span aria-hidden>{letter}</span>
-          <span className="sr-only">{kindLabel(file.kind)}</span>
-        </span>
+        kept && !reverted ? (
+          <Glyph icon={Check} size={14} className="text-ok" />
+        ) : (
+          // 7e: a span's aria-label is ignored; the letter is hidden and its word read instead.
+          <span className={cn("font-mono text-xs font-medium", KIND_TONE[letter])}>
+            <span aria-hidden>{letter}</span>
+            <span className="sr-only">{kindLabel(file.kind)}</span>
+          </span>
+        )
       }
       title={
         <span className="flex min-w-0 items-baseline gap-2">
-          <span className={cn("shrink-0 truncate", reverted && "text-fg-3 line-through")}>{name}</span>
+          <span className={cn("shrink-0 truncate", reverted && "text-fg-3 line-through", !reverted && kept && "text-fg-2")}>{name}</span>
           <span className="min-w-0 flex-1 truncate text-xs text-fg-3" dir="rtl">
             <bdi>{dir}</bdi>
           </span>

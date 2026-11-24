@@ -11,7 +11,8 @@ import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { ComposerMode, ComposerProps } from "./Composer";
 import { appendToDraft, applyCrossProjectDraft, draftOf } from "./composerDraft";
-import { registerChatInsert } from "../../state/chatInsert";
+import { registerChatInsert, registerChatSubmit } from "../../state/chatInsert";
+import { useLatest } from "../../lib/hooks";
 import type { QueuedMessage } from "./ComposerPills";
 import { slot, type TabMemory } from "../../state/workspace/tabMemory";
 import type { TabId } from "../../state/workspace/layout";
@@ -115,12 +116,14 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
       focusChat();
     });
   }, [draft, focusChat]);
-  const lastRequest = useMemo(() => {
-    for (let i = (messages?.length ?? 0) - 1; i >= 0; i--) {
-      const m = messages?.[i];
-      if (m?.role === "user" && m.content.some((b) => b.type === "text")) return promptText(m);
+  const recentRequests = useMemo(() => {
+    const out: string[] = [];
+    for (const m of messages ?? []) {
+      if (m.role !== "user" || !m.content.some((b) => b.type === "text")) continue;
+      const t = promptText(m).trim();
+      if (t && out[out.length - 1] !== t) out.push(t);
     }
-    return null;
+    return out;
   }, [messages]);
 
   const onSend = useCallback(
@@ -195,6 +198,13 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   const serverQueue = bridge.sendOrQueueMessage !== undefined;
   const routed = !!config?.router;
   const { add: queueAdd, remove: queueRemove, items: queuedItems } = queue;
+  // Mod+I inline agent edit sends directly (or queues if busy without serverQueue) and reveals the conversation.
+  const submitInline = useLatest((prompt: string) => {
+    if (running && !serverQueue) queueAdd(prompt);
+    else void onSend(prompt).catch(() => undefined);
+    focusChat?.();
+  });
+  useEffect(() => (focusChat ? registerChatSubmit((p) => submitInline.current(p)) : undefined), [focusChat, submitInline]);
   const currentDefaultId = state.sessions.currentId ?? "";
   const sessionProp = useMemo<ComposerProps["session"]>(() => {
     if (!activeSession || !ws) return undefined;
@@ -261,7 +271,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
         : undefined,
       commentCount,
       designNoteCount,
-      lastRequest,
+      recentRequests,
       context: { used: contextUsed, size: contextSize },
       serverQueue,
       queue: { items: queuedItems, add: queueAdd, remove: queueRemove },
@@ -326,7 +336,6 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
       device,
       draft,
       health,
-      lastRequest,
       live,
       loadFailed,
       loopReason,
@@ -341,6 +350,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
       queueAdd,
       queueRemove,
       queuedItems,
+      recentRequests,
       routed,
       running,
       servedTitle,

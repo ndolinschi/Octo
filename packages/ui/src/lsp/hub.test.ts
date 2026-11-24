@@ -88,3 +88,26 @@ test("the client starts once, retries are forwarded, and dispose resets everythi
   hub.retry(B);
   assert.deepEqual(second.calls, [`retry ${B}`]);
 });
+
+test("allProblems aggregates diagnostics across files with a stable cached reference", () => {
+  const hub = new EditorIntel();
+  const empty1 = hub.allProblems();
+  const empty2 = hub.allProblems();
+  assert.equal(empty1, empty2);
+  assert.deepEqual(empty1, []);
+
+  hub.setProblems(A, [{ severity: "error", message: "bad type", source: "ts", line: 4, column: 2 }]);
+  hub.setProblems(B, [{ severity: "warning", message: "unused", source: "ts", line: 9, column: 1 }]);
+  const snap1 = hub.allProblems();
+  const snap2 = hub.allProblems();
+  assert.equal(snap1, snap2);
+  assert.equal(snap1.length, 2);
+  assert.equal(snap1[0]?.key, A);
+  assert.equal(snap1[1]?.key, B);
+
+  hub.clear(A);
+  const snap3 = hub.allProblems();
+  assert.notEqual(snap3, snap1);
+  assert.equal(snap3.length, 1);
+  assert.equal(snap3[0]?.key, B);
+});

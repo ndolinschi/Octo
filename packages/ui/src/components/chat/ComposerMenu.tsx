@@ -1,5 +1,5 @@
 import type { Bridge, PluginAgent } from "@octo/agent-client";
-import { AtSign, MessageSquare, Paperclip, type LucideIcon } from "lucide-react";
+import { AtSign, CircleAlert, FileDiff, MessageSquare, Paperclip, type LucideIcon } from "lucide-react";
 import { GLYPH } from "../primitives/glyphs";
 import { Glyph } from "../primitives/Glyph";
 import { SearchField } from "../primitives/SearchField";
@@ -11,13 +11,18 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { splitKey } from "../../lib/files";
+import type { KeyedProblem } from "../../lsp/hub";
 import { useApp } from "../../state/app";
 import { useOptionalCode } from "../../state/code";
+import { useOptionalProject } from "../../state/project";
+import { loadTurnChanges, turnChangesEntry } from "../../state/turnChanges";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { PickerSection } from "../../lib/picker";
 import { fileIcon } from "../primitives/fileIcons";
@@ -34,10 +39,13 @@ export type MenuPick = { insert: string } | { run(): void };
 
 type Entry = { id: string; group: string; label: string; detail?: string; hint: string; icon: LucideIcon; match: string; pick: MenuPick };
 
-const FILES_SHOWN = 6;
+const FILES_SHOWN = 8;
 /** Above the composer box when typed; 4px above the "+" chip when opened by it (decision 56). */
 const GAP = 6;
 const CHIP_GAP = 4;
+
+const NO_PROBLEMS: readonly KeyedProblem[] = [];
+const NO_SUB = () => () => undefined;
 
 const plugins = new WeakMap<Bridge, Promise<PluginAgent[]>>();
 function availableAgents(bridge: Bridge): Promise<PluginAgent[]> {
@@ -66,8 +74,8 @@ export type ComposerMenuHandle = { onKeyDown(e: KeyboardEvent): boolean };
  * Tab accepts the active row only as the mention menu (a completion of what is typed); in the "+" menu Tab keeps focus in its
  * search field, the panel's only focusable element, and focus leaving the panel closes it. Resizing the window closes it, as
  * `Menu` and `Popover` do (B9).
- * Groups appear only with entries: Files (the same loader as Filter files), Agents (available plugin
- * ACP agents), Comments (pending), Project actions; Attach (image, mention a file) comes first.
+ * Groups appear only with entries: Context (@Changes, @Problems), Files (open files first + walked + server search),
+ * Agents (available plugin ACP agents), Comments (pending), Project actions; Attach (image, mention a file) comes first.
  */
 export const ComposerMenu = forwardRef<
   ComposerMenuHandle,
@@ -94,11 +102,13 @@ export const ComposerMenu = forwardRef<
 >(function ComposerMenu(props, handle) {
   const { bridge } = useApp();
   const code = useOptionalCode();
+  const proj = useOptionalProject();
   const ws = useOptionalWorkspace();
   const state = usePresence();
   const [ownQuery, setOwnQuery] = useState("");
   const query = (props.query ?? ownQuery).trim().toLowerCase();
   const [agents, setAgents] = useState<PluginAgent[]>([]);
+  const [remoteHits, setRemoteHits] = useState<{ folder: string; path: string }[]>([]);
   // The pick belongs to the query it was made under: typing starts again from the first row.
   const [pick, setPick] = useState<{ query: string; id: string | null }>({ query: "", id: null });
   const selected = pick.query === query ? pick.id : null;
@@ -110,6 +120,24 @@ export const ComposerMenu = forwardRef<
   // Direction 7: on the phone the "+" opens a sheet first (attach, mention or run, mode, model, folder); "Mention" opens this list.
   const [sheet, setSheet] = useState(usePhone() && props.query === null);
 
+  const projectId = proj?.projectId ?? ws?.projectId ?? null;
+  const changesEntry = useMemo(() => (projectId ? turnChangesEntry(bridge, projectId) : null), [bridge, projectId]);
+  const turnChanges = useSyncExternalStore(
+    changesEntry
+      ? (l) => {
+          changesEntry.listeners.add(l);
+          return () => changesEntry.listeners.delete(l);
+        }
+      : NO_SUB,
+    () => changesEntry?.data ?? null,
+  );
+  useEffect(() => {
+    if (projectId && changesEntry) void loadTurnChanges(bridge, projectId, changesEntry);
+  }, [bridge, projectId, changesEntry]);
+
+  const intel = code?.intel;
+  const problems = useSyncExternalStore(intel ? intel.subscribe : NO_SUB, () => (intel ? intel.allProblems() : NO_PROBLEMS));
+
   useEffect(() => {
     let alive = true;
     void availableAgents(bridge).then((a) => alive && setAgents(a));
@@ -119,6 +147,28 @@ export const ComposerMenu = forwardRef<
   }, [bridge]);
   const indexFiles = code?.indexFiles;
   useEffect(() => indexFiles?.(), [indexFiles]);
+
+  // Server-side file search fallback so `@` finds deep/unwalked files instantaneously in large repositories.
+  useEffect(() => {
+    if (!projectId || !bridge.searchProjectFiles || query.length < 2) return;
+    let alive = true;
+    const timer = window.setTimeout(() => {
+      void bridge.searchProjectFiles?.(projectId, { q: query, mode: "name", limit: 8 }).then(
+        (matches) => {
+          if (alive) setRemoteHits(matches.map((m) => ({ folder: m.folder, path: m.path })));
+        },
+        () => {
+          if (alive) setRemoteHits([]);
+        },
+      );
+    }, 120);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [bridge, projectId, query]);
+
+  const activeRemoteHits = query.length >= 2 ? remoteHits : [];
 
   const entries = useMemo(() => {
     const out: Entry[] = [
@@ -137,21 +187,89 @@ export const ComposerMenu = forwardRef<
     for (const t of props.sendTo ?? []) {
       out.push({ id: `to:${t.id}`, group: "This message", label: t.label, hint: "Open", icon: t.icon, match: t.label, pick: { run: t.run } });
     }
-    const files = code?.loadedFiles ?? [];
+
+    // Cursor-style smart @Context mentions: @Changes and @Problems.
+    const changedPaths: string[] = [];
+    const seenChanged = new Set<string>();
+    for (const turn of turnChanges ?? []) {
+      for (const f of turn.files) {
+        if (seenChanged.has(f.path)) continue;
+        seenChanged.add(f.path);
+        changedPaths.push(f.path);
+        if (changedPaths.length >= 12) break;
+      }
+      if (changedPaths.length >= 12) break;
+    }
+    if (changedPaths.length > 0) {
+      out.push({
+        id: "ctx:changes",
+        group: "Context",
+        label: "Changes",
+        detail: `${changedPaths.length} changed ${changedPaths.length === 1 ? "file" : "files"}`,
+        hint: "Insert mentions",
+        icon: FileDiff,
+        match: "changes diff modified files recent edits git",
+        pick: { insert: `${changedPaths.map((p) => `@${p}`).join(" ")} ` },
+      });
+    }
+    if (problems.length > 0) {
+      const errs = problems.filter((p) => p.problem.severity === "error").length;
+      const warns = problems.filter((p) => p.problem.severity === "warning").length;
+      const summary = [errs ? `${errs} ${errs === 1 ? "error" : "errors"}` : "", warns ? `${warns} ${warns === 1 ? "warning" : "warnings"}` : ""]
+        .filter(Boolean)
+        .join(", ");
+      const lines = problems.slice(0, 12).map(({ key, problem }) => {
+        const { path } = splitKey(key);
+        return `- ${path}:${problem.line} (${problem.severity}): ${problem.message}`;
+      });
+      out.push({
+        id: "ctx:problems",
+        group: "Context",
+        label: "Problems",
+        detail: summary || `${problems.length} diagnostics`,
+        hint: "Insert diagnostics",
+        icon: CircleAlert,
+        match: "problems errors warnings diagnostics lint lsp",
+        pick: { insert: `Problems:\n${lines.join("\n")}\n` },
+      });
+    }
+
+    // Merge open editor files + walked files + server search fallback, prioritizing currently open files.
+    const openSet = new Set<string>();
+    const merged: { folder: string; path: string }[] = [];
+    const seen = new Set<string>();
+    const addFile = (folder: string, path: string, isOpen = false) => {
+      const id = `${folder}/${path}`;
+      if (isOpen) openSet.add(id);
+      if (seen.has(id)) return;
+      seen.add(id);
+      merged.push({ folder, path });
+    };
+    for (const f of code?.files ?? []) {
+      if (f.status === "ready") addFile(f.folder, f.path, true);
+    }
+    for (const f of code?.loadedFiles ?? []) addFile(f.folder, f.path);
+    for (const f of activeRemoteHits) addFile(f.folder, f.path);
+
     const basenameCounts = new Map<string, number>();
     const foldersSeen = new Set<string>();
-    for (const f of files) {
+    for (const f of merged) {
       const base = f.path.slice(f.path.lastIndexOf("/") + 1);
       basenameCounts.set(base, (basenameCounts.get(base) ?? 0) + 1);
       foldersSeen.add(f.folder);
     }
     const multiFolder = foldersSeen.size > 1;
-    const hits = query ? files.filter((f) => `${f.folder}/${f.path}`.toLowerCase().includes(query)) : files;
-    // Ranked: name matches before path matches, then shorter paths.
+    const hits = query ? merged.filter((f) => `${f.folder}/${f.path}`.toLowerCase().includes(query)) : merged;
+    // Ranked: open editor files first, then name matches before path matches, then shorter paths.
     const name = (p: string) => p.slice(p.lastIndexOf("/") + 1).toLowerCase();
     hits
       .slice()
-      .sort((a, b) => Number(!name(a.path).includes(query)) - Number(!name(b.path).includes(query)) || a.path.length - b.path.length)
+      .sort((a, b) => {
+        const aOpen = openSet.has(`${a.folder}/${a.path}`) ? 0 : 1;
+        const bOpen = openSet.has(`${b.folder}/${b.path}`) ? 0 : 1;
+        if (aOpen !== bOpen) return aOpen - bOpen;
+        return Number(!name(a.path).includes(query)) - Number(!name(b.path).includes(query)) || a.path.length - b.path.length;
+      })
       .slice(0, FILES_SHOWN)
       .forEach((f) => {
         const base = f.path.slice(f.path.lastIndexOf("/") + 1);
@@ -163,7 +281,7 @@ export const ComposerMenu = forwardRef<
           group: "Files",
           label: base,
           detail: path,
-          hint: "Mention file",
+          hint: openSet.has(path) ? "Open" : "Mention file",
           icon: fileIcon(f.path),
           match: path,
           pick: { insert: `${mention} ` },
@@ -183,7 +301,7 @@ export const ComposerMenu = forwardRef<
       });
     }
     if (props.pendingComments > 0) {
-      const label = `Review ${props.pendingComments} pending ${props.pendingComments === 1 ? "comment" : "comments"}`;
+      const label = `Review ${props.pendingComments}\u00a0pending ${props.pendingComments === 1 ? "comment" : "comments"}`;
       out.push({ id: "comments", group: "Comments", label, hint: "Open", icon: MessageSquare, match: label, pick: { run: props.onOpenComments } });
     }
     if (ws) {
@@ -197,7 +315,20 @@ export const ComposerMenu = forwardRef<
       for (const [id, label, icon, run] of actions) out.push({ id: `action:${id}`, group: "Project", label, hint: "Run", icon, match: label, pick: { run } });
     }
     return query ? out.filter((e) => e.group === "Files" || e.match.toLowerCase().includes(query)) : out;
-  }, [code?.loadedFiles, agents, props.pendingComments, props.onOpenComments, props.onPickImage, props.sendTo, ws, query]);
+  }, [
+    code?.files,
+    code?.loadedFiles,
+    activeRemoteHits,
+    turnChanges,
+    problems,
+    agents,
+    props.pendingComments,
+    props.onOpenComments,
+    props.onPickImage,
+    props.sendTo,
+    ws,
+    query,
+  ]);
 
   // Entries are keyed by id; the selection survives the list changing under it while its row is still there.
   const current = entries.find((e) => e.id === selected) ?? entries[0] ?? null;
@@ -296,7 +427,11 @@ export const ComposerMenu = forwardRef<
           lead: <Glyph icon={Icon} size={14} />,
           run: () => choose(e),
           ...(e.detail ? { title: e.detail } : {}),
-          ...(e.detail && e.group === "Files" ? { detail: e.detail.slice(0, e.detail.lastIndexOf("/")), pathDetail: true } : {}),
+          ...(e.detail && e.group === "Files"
+            ? { detail: e.detail.slice(0, e.detail.lastIndexOf("/")), pathDetail: true }
+            : e.detail && e.group === "Context"
+              ? { detail: e.detail }
+              : {}),
         };
       }),
   }));

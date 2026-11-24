@@ -248,8 +248,15 @@ function Shell() {
         e.stopPropagation();
         paletteGate.toggleFiles();
       }
-      // Ctrl/Cmd+L: the caret into the visible composer, from anywhere (Monaco keeps Tab for indenting).
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "l" && !document.querySelector('[aria-modal="true"]')) {
+      // Ctrl/Cmd+L: the caret into the visible composer, from anywhere (Monaco handles its own Mod+L to attach the selection first).
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        !e.altKey &&
+        !e.shiftKey &&
+        e.key.toLowerCase() === "l" &&
+        !document.querySelector('[aria-modal="true"]') &&
+        !(e.target instanceof Element && e.target.closest("[data-editor-chat]"))
+      ) {
         const composer = visibleComposer();
         if (composer) {
           e.preventDefault();

@@ -3,28 +3,41 @@
  * without the files feature importing the chat (features may not import each other). The chat registers how to insert;
  * the last composer mounted wins and leaving unregisters it. This module owns the channel; nothing else holds it.
  */
-type Inserter = (text: string) => void;
+type Handler = (text: string) => void;
 
-const inserters: Inserter[] = [];
-
-/** The chat's composer calls this while it is mounted; the returned function unregisters it. */
-export function registerChatInsert(insert: Inserter): () => void {
-  inserters.push(insert);
-  return () => {
-    const i = inserters.lastIndexOf(insert);
-    if (i >= 0) inserters.splice(i, 1);
+function channel() {
+  const stack: Handler[] = [];
+  return {
+    register(fn: Handler): () => void {
+      stack.push(fn);
+      return () => {
+        const i = stack.lastIndexOf(fn);
+        if (i >= 0) stack.splice(i, 1);
+      };
+    },
+    ready: () => stack.length > 0,
+    send(text: string): boolean {
+      const fn = stack[stack.length - 1];
+      if (!fn) return false;
+      fn(text);
+      return true;
+    },
   };
 }
 
-/** Whether a composer can take text now (the menus offer "Add to chat" only then). */
-export function canAddToChat(): boolean {
-  return inserters.length > 0;
-}
+const insertCh = channel();
+const submitCh = channel();
 
+/** The chat's composer calls this while it is mounted; the returned function unregisters it. */
+export const registerChatInsert = insertCh.register;
+/** Whether a composer can take text now (the menus offer "Add to chat" only then). */
+export const canAddToChat = insertCh.ready;
 /** Appends `text` to the conversation's draft and shows the conversation with the caret in its composer. */
-export function addToChat(text: string): boolean {
-  const insert = inserters[inserters.length - 1];
-  if (!insert) return false;
-  insert(text);
-  return true;
-}
+export const addToChat = insertCh.send;
+
+/** Registers the active conversation's direct submit handler (used by the editor's Mod+I inline edit bar). */
+export const registerChatSubmit = submitCh.register;
+/** Whether an editor inline-edit bar can send a targeted edit prompt directly to the conversation. */
+export const canSubmitToChat = submitCh.ready;
+/** Sends (or queues when busy) `text` directly to the active conversation and focuses the chat. */
+export const submitToChat = submitCh.send;
