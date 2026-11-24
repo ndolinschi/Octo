@@ -616,6 +616,23 @@ export type WriteFileInput = {
   workspace_id?: string;
 };
 
+export type FileSearchMode = "name" | "content";
+export type FileSearchParams = {
+  q: string;
+  mode?: FileSearchMode;
+  workspaceId?: string;
+  limit?: number;
+};
+export type FileSearchMatch = {
+  folder: string;
+  path: string;
+  line?: number;
+  preview?: string;
+};
+export type FilePathResult = { folder: string; path: string };
+export type MkdirInput = { folder: string; path: string; workspace_id?: string };
+export type RenameFileInput = { folder: string; from: string; to: string; workspace_id?: string };
+
 export type FileChangedEvent = {
   type: "file.changed";
   seq: number;

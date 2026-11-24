@@ -145,6 +145,7 @@ function CodeLink() {
       close: code.close,
       restore: code.restore,
       select: code.select,
+      openFile: (folder, path, line) => code.openFile(folder, path, line ? { line, column: 1 } : undefined),
     });
     return () => ws.attachCode(null);
   });

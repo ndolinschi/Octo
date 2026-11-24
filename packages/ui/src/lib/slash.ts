@@ -30,18 +30,29 @@ export const NEW_COMMAND: OctoSlashCommand = {
   endpoint: "ui:new",
 };
 
-/** Slash command names suppressed when their corresponding UI tool tabs (`memory`, `review`) are disabled. */
-export function disabledSlashCommands(flags: { memory: boolean; review: boolean }): ReadonlySet<string> {
+/** Claude Code Desktop parity: `/btw [question]` opens the side-question panel and asks without interrupting the current session. */
+export const BTW_COMMAND: OctoSlashCommand = {
+  name: "btw",
+  description: "Ask a side question without interrupting this session",
+  args: "question",
+  available: true,
+  endpoint: "ui:btw",
+};
+
+/** Slash command names suppressed when their corresponding UI tool tabs (`memory`, `review`, `side`) are disabled. */
+export function disabledSlashCommands(flags: { memory: boolean; review: boolean; side?: boolean }): ReadonlySet<string> {
   const out = new Set<string>();
   if (!flags.memory) out.add("memory");
   if (!flags.review) out.add("review");
+  if (flags.side === false) out.add("btw");
   return out;
 }
 
-/** The Octo commands of the menu and of `octoCommandFor`: the harness's (or the fallback) and `/new`, minus UI-disabled ones. */
+/** The Octo commands of the menu and of `octoCommandFor`: the harness's (or the fallback), `/new`, and `/btw`, minus UI-disabled ones. */
 export function octoCommands(cmds: SlashCommands | null, disabled?: ReadonlySet<string>): OctoSlashCommand[] {
   const list = cmds?.octo ?? OCTO_FALLBACK;
-  const all = list.some((c) => c.name === NEW_COMMAND.name) ? list : [...list, NEW_COMMAND];
+  const extras = [NEW_COMMAND, BTW_COMMAND].filter((cmd) => !list.some((c) => c.name === cmd.name));
+  const all = extras.length > 0 ? [...list, ...extras] : list;
   return disabled && disabled.size > 0 ? all.filter((c) => !disabled.has(c.name)) : all;
 }
 
@@ -63,15 +74,16 @@ export const OCTO_COMMAND_NAMES: readonly string[] = [
   "remember",
   "help",
   "new",
+  "btw",
 ];
 
 /**
- * A command whose argument is optional: Enter runs it (`/new` an empty session, `/model` the picker, `/review` the tab) and Tab puts
+ * A command whose argument is optional: Enter runs it (`/new` an empty session, `/btw` opens Side, `/model` the picker, `/review` the tab) and Tab puts
  * its name in the text to add the argument. A required argument (`/mode`, `/remember`, an agent's command) is completed on both.
  */
 export function argsOptional(row: Pick<SlashRow, "group" | "name" | "args">): boolean {
   if (row.group !== "octo" || !row.args) return false;
-  return row.args.startsWith("[") || row.name === NEW_COMMAND.name || row.name === "model";
+  return row.args.startsWith("[") || row.name === NEW_COMMAND.name || row.name === BTW_COMMAND.name || row.name === "model";
 }
 
 /** The word after a `/` at the very start of the text, up to the caret; null when the text does not start with a slash command being typed. */

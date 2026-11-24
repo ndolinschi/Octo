@@ -56,6 +56,12 @@ export const PREFS = {
   scrollSpots: (projectId: string) => key(`scroll.${projectId}`),
   /** File tree compact folders (Settings → Editor, decision 98): `"on" | "off"` as plain text. */
   compactFolders: key("compactFolders"),
+  /** Transcript detail level (`Ctrl+O` / Project actions): `"normal" | "thinking" | "verbose"`. */
+  transcriptView: key("transcriptView"),
+  /** Desktop notifications when a session finishes, fails, or needs input while unfocused (B8): `"on" | "off"`. */
+  notifications: key("notifications"),
+  /** File editor auto-save toggle (FileView ⋯ menu): `"on" | "off"`. */
+  editorAutoSave: key("editorAutoSave"),
 } as const;
 
 /** How a value is stored. `parse` never throws: missing, malformed or foreign text becomes a valid (default) value. */

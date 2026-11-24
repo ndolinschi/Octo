@@ -64,6 +64,7 @@ export type CodeLink = {
   close(key: FileKey): void;
   restore(key: FileKey): void;
   select(key: FileKey): void;
+  openFile?(folder: string, path: string, line?: number): void;
 };
 
 type Closing = { tabs: TabId[]; files: string[] };
@@ -1038,6 +1039,7 @@ export function WorkspaceProvider({
       openSession: (id) => valueRef.current.openSession(id),
       showSession: (id) => valueRef.current.showSession(id),
       dropTab: (tab) => valueRef.current.dropTab(tab),
+      openFile: (folder, path, line) => code.current?.openFile?.(folder, path, line),
       current: () => valueRef.current,
     };
     nav.setWorkspace(api);

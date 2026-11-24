@@ -36,8 +36,12 @@ import { ImagePreview } from "./ImagePreview";
 const MarkdownPreview = lazy(() => import("./MarkdownPreview").then((m) => ({ default: m.MarkdownPreview })));
 import { TreeColumn } from "./TreeColumn";
 import { useTreeShell } from "./useTreeShell";
+import { choiceCodec, PREFS, usePersistentState } from "../../lib/storage";
 import { slot } from "../../state/workspace/tabMemory";
 import { useTabMemory } from "../../state/workspace/useTabMemory";
+
+const autoSaveCodec = choiceCodec(["on", "off"] as const, "off");
+const AUTO_SAVE_DELAY_MS = 800;
 
 /** Renders the floating composer over the editor area; `onHeight` reports the room it takes. Supplied by the dock. */
 export type FloatingSlot = (onHeight: (px: number) => void, rest: boolean) => ReactNode;
@@ -66,6 +70,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   // SVG is text that is also a picture: Preview | Source like Markdown, the same remembered choice (walk B15).
   const svg = fileKey !== null && isSvg(path);
   const [mode, setMode] = useTabMemory(tab, MD_MODE, "preview");
+  const [autoSave, setAutoSave] = usePersistentState(PREFS.editorAutoSave, autoSaveCodec);
   const floating = useFloatingHere(tab);
   const [floatHeight, setFloatHeight] = useState(0);
   const bottomRoom = floating && floatHeight > 0 ? floatHeight + FLOAT_ROOM : 0;
@@ -158,6 +163,13 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   const onSaveEditor = useCallback(() => {
     if (shownKey) void saveFile(shownKey);
   }, [saveFile, shownKey]);
+
+  // Claude Code Desktop parity: when Auto save is enabled, persist dirty edits after a short quiet window unless a conflict/error notice is showing.
+  useEffect(() => {
+    if (autoSave !== "on" || !file || file.status !== "ready" || !file.modified || file.saving || file.notice) return;
+    const id = window.setTimeout(() => void saveFile(file.key), AUTO_SAVE_DELAY_MS);
+    return () => window.clearTimeout(id);
+  }, [autoSave, file, saveFile]);
   const onMonacoEditor = useCallback(
     (mod: Parameters<Parameters<typeof CodeEditor>[0]["onMonaco"]>[0]) => startIntelFn((o) => new mod.LspManager({ ...o, monaco: mod.monaco })),
     [startIntelFn],
@@ -294,7 +306,15 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
               {editing ? "Done" : "Edit"}
             </Button>
           )}
-          {fileKey && <MoreMenu tab={tab} folder={folder} path={path} />}
+          {fileKey && (
+            <MoreMenu
+              tab={tab}
+              folder={folder}
+              path={path}
+              autoSave={autoSave === "on"}
+              onToggleAutoSave={() => setAutoSave((cur) => (cur === "on" ? "off" : "on"))}
+            />
+          )}
           {!page && (
             <IconButton
               icon={shell.open ? PanelLeftClose : PanelLeftOpen}
@@ -543,13 +563,26 @@ function ModeToggle({ label, mode, onChange }: { label: string; mode: Mode; onCh
   );
 }
 
-function MoreMenu({ tab, folder, path }: { tab: TabId; folder: string; path: string }) {
+function MoreMenu({
+  tab,
+  folder,
+  path,
+  autoSave,
+  onToggleAutoSave,
+}: {
+  tab: TabId;
+  folder: string;
+  path: string;
+  autoSave: boolean;
+  onToggleAutoSave(): void;
+}) {
   const ws = useWorkspace();
   const code = useCode();
   const [, copy] = useCopy();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const button = useRef<HTMLButtonElement>(null);
   const absolute = code.folders.find((f) => f.label === folder)?.path;
+  const filename = path.slice(path.lastIndexOf("/") + 1);
   const phone = usePhone();
   const toggle = () => {
     const r = button.current?.getBoundingClientRect();
@@ -593,12 +626,20 @@ function MoreMenu({ tab, folder, path }: { tab: TabId; folder: string; path: str
             onClose={() => setMenu(null)}
             items={[
               {
+                id: "auto-save",
+                label: "Auto save",
+                checked: autoSave,
+                run: onToggleAutoSave,
+              },
+              { id: "sep-save", separator: true },
+              {
                 id: "path",
                 label: "Copy path",
                 ...(absolute ? { title: `${absolute}/${path}` } : {}),
                 run: () => copy(absolute ? `${absolute.replace(/\/$/, "")}/${path}` : `${folder}/${path}`),
               },
               { id: "rel", label: "Copy relative path", title: `${folder}/${path}`, run: () => copy(`${folder}/${path}`) },
+              { id: "filename", label: "Copy filename", title: filename, run: () => copy(filename) },
               { id: "reveal", label: "Reveal in tree", run: () => code.openFile(folder, path) },
               { id: "sep", separator: true },
               { id: "move", label: "Move to the other side", disabled: !ws.canMoveToOtherSide(tab), run: () => ws.moveToOtherSide(tab) },

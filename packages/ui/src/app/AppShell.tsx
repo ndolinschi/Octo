@@ -43,6 +43,8 @@ registerWarm("palette", palettePart.fetch);
 registerWarm("palette", loadSettingsIndex);
 /** The shortcuts sheet: its own chunk, mounted for its "?" key; it renders only while open. */
 const ShortcutsSheet = lazy(() => import("../components/shell/ShortcutsSheet"));
+/** Native desktop notifications for background session completions / approvals (lazy chunk). */
+const DesktopNotifier = lazy(() => import("../components/shell/DesktopNotifier"));
 /** Demo-only `#/p/<id>/memory` (the Memory view on its own); not in a normal start's chunks. */
 const MemoryRoute = lazy(() => import("./MemoryRoute").then((m) => ({ default: m.MemoryRoute })));
 /** States the app is rarely in: their own chunks (bundle budget). */
@@ -240,6 +242,11 @@ function Shell() {
         e.stopPropagation();
         // P2-7: what is typed before the palette's field has focus goes to the field, not to the composer.
         paletteGate.toggle();
+      }
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        e.stopPropagation();
+        paletteGate.toggleFiles();
       }
       // Ctrl/Cmd+L: the caret into the visible composer, from anywhere (Monaco keeps Tab for indenting).
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "l" && !document.querySelector('[aria-modal="true"]')) {
@@ -447,6 +454,7 @@ function Shell() {
               <CommandPalette
                 key={paletteState.id}
                 paletteId={paletteState.id}
+                initialMode={paletteState.mode ?? "all"}
                 openProjectId={known ? route.projectId : null}
                 actions={actions}
                 settingsIndex={loadSettingsIndex}
@@ -456,6 +464,7 @@ function Shell() {
           </Presence>
           <Suspense fallback={null}>
             <ShortcutsSheet />
+            <DesktopNotifier />
           </Suspense>
           <Presence show={pending}>
             <Suspense fallback={null}>

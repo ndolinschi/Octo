@@ -28,6 +28,8 @@ export type ProjectRecord = {
   afterTurn?: (rootId: string) => void;
   /** folder label → folder-relative path → file. Directories are implied by paths. */
   files: Map<string, Map<string, DemoFile>>;
+  /** Explicit directories (so newly created empty folders appear in the tree). */
+  dirs?: Map<string, Set<string>>;
   /** Folder labels whose sample content has been loaded (see `ensureSeeded`). */
   seeded: Set<string>;
   /**

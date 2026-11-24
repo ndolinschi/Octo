@@ -262,3 +262,62 @@ func TestFileListChain(t *testing.T) {
 		}
 	}
 }
+
+func TestFileSearchAndCrudEndpoints(t *testing.T) {
+	e := newEnv(t, nil)
+	pid, label, dir := newFileProject(t, e)
+
+	// Search by filename
+	var nameRes struct {
+		Matches []struct {
+			Folder, Path, Preview string
+			Line                  int
+		}
+	}
+	e.into(t, "GET", "/v1/projects/"+pid+"/files/search?q=main&mode=name", nil, http.StatusOK, &nameRes)
+	if len(nameRes.Matches) != 1 || nameRes.Matches[0].Path != "src/main.go" || nameRes.Matches[0].Folder != label {
+		t.Fatalf("name search = %+v", nameRes.Matches)
+	}
+
+	// Search by content
+	var contentRes struct {
+		Matches []struct {
+			Folder, Path, Preview string
+			Line                  int
+		}
+	}
+	e.into(t, "GET", "/v1/projects/"+pid+"/files/search?q=package+main&mode=content", nil, http.StatusOK, &contentRes)
+	if len(contentRes.Matches) != 1 || contentRes.Matches[0].Path != "src/main.go" || contentRes.Matches[0].Line != 1 {
+		t.Fatalf("content search = %+v", contentRes.Matches)
+	}
+	e.wantError(t, "GET", "/v1/projects/"+pid+"/files/search?q=x&mode=bogus", nil, http.StatusBadRequest, "invalid_request")
+
+	// Mkdir
+	var mk struct{ Folder, Path string }
+	e.into(t, "POST", "/v1/projects/"+pid+"/files/mkdir", map[string]any{"folder": label, "path": "src/util"}, http.StatusCreated, &mk)
+	if mk.Folder != label || mk.Path != "src/util" {
+		t.Fatalf("mkdir = %+v", mk)
+	}
+	e.wantError(t, "POST", "/v1/projects/"+pid+"/files/mkdir", map[string]any{"folder": label, "path": "src/util"}, http.StatusConflict, "already_exists")
+	e.wantError(t, "POST", "/v1/projects/"+pid+"/files/mkdir", map[string]any{"folder": label, "path": ".git/evil"}, http.StatusBadRequest, "invalid_request")
+
+	// Rename
+	var rn struct{ Folder, Path string }
+	e.into(t, "POST", "/v1/projects/"+pid+"/files/rename", map[string]any{"folder": label, "from": "a.txt", "to": "src/util/b.txt"}, http.StatusOK, &rn)
+	if rn.Folder != label || rn.Path != "src/util/b.txt" {
+		t.Fatalf("rename = %+v", rn)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "src/util/b.txt")); err != nil {
+		t.Fatalf("renamed file missing: %v", err)
+	}
+	e.wantError(t, "POST", "/v1/projects/"+pid+"/files/rename", map[string]any{"folder": label, "from": "src/util/b.txt", "to": "src/main.go"}, http.StatusConflict, "already_exists")
+	e.wantError(t, "POST", "/v1/projects/"+pid+"/files/rename", map[string]any{"folder": label, "from": "src/util/b.txt", "to": ".git/x"}, http.StatusBadRequest, "invalid_request")
+
+	// Delete
+	e.into(t, "DELETE", filesURL(pid, "/entry", label, "src/util"), nil, http.StatusNoContent, nil)
+	if _, err := os.Stat(filepath.Join(dir, "src/util")); !os.IsNotExist(err) {
+		t.Fatalf("deleted dir still exists: %v", err)
+	}
+	e.wantError(t, "DELETE", filesURL(pid, "/entry", label, ".git"), nil, http.StatusBadRequest, "invalid_request")
+	e.wantError(t, "DELETE", filesURL(pid, "/entry", label, "../escape"), nil, http.StatusBadRequest, "invalid_request")
+}

@@ -88,7 +88,12 @@ import type {
   ContextOverview,
   FileContent,
   FileEntry,
+  FilePathResult,
+  FileSearchMatch,
+  FileSearchParams,
   FileStat,
+  MkdirInput,
+  RenameFileInput,
   LanguageServerInfo,
   LanguageServerSession,
   Limit,
@@ -320,6 +325,14 @@ export interface Bridge {
   listFiles(projectId: string, folder: string, path: string, opts?: { workspaceId?: string }): Promise<FileEntry[]>;
   readFile(projectId: string, folder: string, path: string, opts?: { workspaceId?: string }): Promise<FileContent>;
   writeFile(projectId: string, input: WriteFileInput): Promise<FileStat>;
+  /** Search project files by path (`name`) or UTF-8 line content (`content`). Optional: older harnesses lack it. */
+  searchProjectFiles?(projectId: string, params: FileSearchParams): Promise<FileSearchMatch[]>;
+  /** Create a directory inside a project folder. Optional: older harnesses lack it. */
+  createDirectory?(projectId: string, input: MkdirInput): Promise<FilePathResult>;
+  /** Rename or move a file or directory inside a project folder. Optional: older harnesses lack it. */
+  renameFile?(projectId: string, input: RenameFileInput): Promise<FilePathResult>;
+  /** Delete a file or directory inside a project folder. Optional: older harnesses lack it. */
+  deleteFile?(projectId: string, folder: string, path: string, opts?: { workspaceId?: string }): Promise<void>;
   listPlugins(): Promise<Plugin[]>;
   getUsage(params?: UsageParams): Promise<UsageReport>;
   getLimits(): Promise<Limit[]>;

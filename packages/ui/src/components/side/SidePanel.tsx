@@ -5,11 +5,12 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
 import { PANEL_COLUMN } from "../../lib/panelColumn";
-import { useStickToBottom } from "../../lib/hooks";
+import { useLatest, useStickToBottom } from "../../lib/hooks";
 import { settingsHref } from "../../lib/route";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { toolTab } from "../../state/workspace/layout";
+import { onSideQuestion, takeSideQuestion } from "../../state/workspace/sideStart";
 import { SIDE_PINNED } from "../../state/workspace/tabMemory";
 import { useTabMemory } from "../../state/workspace/useTabMemory";
 import { Button } from "../primitives/Button";
@@ -78,16 +79,17 @@ export function SidePanel() {
   const pending = side.pending;
   const { ref: scroller } = useStickToBottom<HTMLDivElement>([list.length, pending?.text, pending?.activity?.label]);
 
+  const loadSideRef = useLatest(loadSide);
   useEffect(() => {
     let alive = true;
-    loadSide().then(
+    loadSideRef.current().then(
       () => alive && setLoad("ok"),
       () => alive && setLoad("error"),
     );
     return () => {
       alive = false;
     };
-  }, [loadSide]);
+  }, [projectId, loadSideRef]);
 
   const clear = () => {
     // The Clear button goes away with the answers: focus goes to the input, where the next question is typed (B1 family).
@@ -107,6 +109,16 @@ export function SidePanel() {
       setSendError({ message: errorMessage(e), code: e instanceof BridgeError ? e.code : null });
     }
   };
+  const askRef = useLatest(ask);
+  useEffect(() => {
+    if (load === "loading") return;
+    const runQueued = () => {
+      const q = takeSideQuestion(projectId);
+      if (q) void askRef.current(q);
+    };
+    runQueued();
+    return onSideQuestion(runQueued);
+  }, [projectId, load, askRef]);
   const stop = () => {
     // A failure to stop shows as the answer carrying on; the harness's stop is a plain 204.
     void bridge.stopSide?.(projectId).catch(() => undefined);

@@ -115,8 +115,15 @@ export function ToolGroup({ uses, end = null, interrupted = false }: { uses: Too
     it.state === "done" && it.row.path && toolKind(it.use.name, it.use.input) === "edit" ? `${it.row.folder}\u0001${it.row.path}` : "",
   );
   const folder = (code?.folders.length ?? 0) > 1 && new Set(items.map((it) => it.row.folder).filter(Boolean)).size > 1;
+  const verbose = ctx.viewMode === "verbose";
+  const [groupOpen, setGroupOpen] = useState<boolean | null>(null);
+  const [prevVerbose, setPrevVerbose] = useState(verbose);
+  if (verbose !== prevVerbose) {
+    setPrevVerbose(verbose);
+    setGroupOpen(null);
+  }
   const [only] = runs;
-  if (runs.length === 1 && only) return <ToolRow run={only} folder={folder} end={end} interrupted={interrupted} />;
+  if (runs.length === 1 && only) return <ToolRow run={only} folder={folder} end={end} interrupted={interrupted} verbose={verbose} />;
   const states = items.map((it) => it.state);
   const problems = groupProblems(states, interrupted ? "interrupted" : "stopped");
   return (
@@ -125,9 +132,11 @@ export function ToolGroup({ uses, end = null, interrupted = false }: { uses: Too
       // One truncating line (the problems are part of it, dim) so a narrow column cuts it with an ellipsis before the chevron.
       verb={<GroupSummary long={groupSummary(uses)} short={groupShortSummary(uses)} problems={problems} />}
       tip={[groupSummary(uses), problems].filter(Boolean).join(" · ")}
+      open={groupOpen ?? verbose}
+      onOpenChange={setGroupOpen}
     >
       {runs.map((run) => (
-        <ToolRow key={run[0]?.use.id} run={run} folder={folder} end={end} interrupted={interrupted} />
+        <ToolRow key={run[0]?.use.id} run={run} folder={folder} end={end} interrupted={interrupted} verbose={verbose} />
       ))}
     </ActivityRow>
   );
@@ -168,7 +177,13 @@ function GroupSummary({ long, short, problems }: { long: string; short: string; 
   );
 }
 
-function ToolRow({ run, folder, end, interrupted }: { run: readonly Item[]; folder: boolean; end: TurnEnd; interrupted: boolean }) {
+function ToolRow({ run, folder, end, interrupted, verbose }: { run: readonly Item[]; folder: boolean; end: TurnEnd; interrupted: boolean; verbose: boolean }) {
+  const [open, setOpen] = useState<boolean | null>(null);
+  const [prevVerbose, setPrevVerbose] = useState(verbose);
+  if (verbose !== prevVerbose) {
+    setPrevVerbose(verbose);
+    setOpen(null);
+  }
   const [first] = run;
   if (!first) return null;
   const word = interrupted && first.state === "stopped" ? "interrupted" : WORD[first.state];
@@ -178,6 +193,8 @@ function ToolRow({ run, folder, end, interrupted }: { run: readonly Item[]; fold
       verb={first.row.verb}
       detail={<RowDetail run={run} folder={folder} />}
       tip={tipOf(run)}
+      open={open ?? verbose}
+      onOpenChange={setOpen}
       {...(word ? { aside: word } : {})}
     >
       <ToolDetail uses={run.map((r) => r.use)} end={end} interrupted={interrupted} />

@@ -3,6 +3,8 @@ import type {
   BrowserProxySession,
   CompletionResult,
   ConversationMarker,
+  FilePathResult,
+  FileSearchMatch,
   FileStat,
   LanguageServerInfo,
   Plugin,
@@ -334,6 +336,20 @@ export function createRareMethods({
     getContext: (id, agentId) =>
       request("GET", `${p(id)}/context${agentId === undefined ? "" : `?agent=${encodeURIComponent(agentId)}`}`) as Promise<ContextBreakdown>,
     writeFile: (id, input) => request("PUT", `${p(id)}/files/content`, input) as Promise<FileStat>,
+    searchProjectFiles: (id, params) => {
+      const q = [`q=${encodeURIComponent(params.q)}`];
+      if (params.mode) q.push(`mode=${encodeURIComponent(params.mode)}`);
+      if (params.workspaceId) q.push(`workspace=${encodeURIComponent(params.workspaceId)}`);
+      if (params.limit !== undefined) q.push(`limit=${params.limit}`);
+      return unwrap<FileSearchMatch[]>(request("GET", `${p(id)}/files/search?${q.join("&")}`), "matches");
+    },
+    createDirectory: (id, input) => request("POST", `${p(id)}/files/mkdir`, input) as Promise<FilePathResult>,
+    renameFile: (id, input) => request("POST", `${p(id)}/files/rename`, input) as Promise<FilePathResult>,
+    deleteFile: async (id, folder, path, opts) => {
+      const q = [`folder=${encodeURIComponent(folder)}`, `path=${encodeURIComponent(path)}`];
+      if (opts?.workspaceId) q.push(`workspace=${encodeURIComponent(opts.workspaceId)}`);
+      await request("DELETE", `${p(id)}/files/entry?${q.join("&")}`);
+    },
     askSide: (id, text) => request("POST", `${p(id)}/side`, { text }) as Promise<SideStarted>,
     listSide: (id) => unwrap<SideMessage[]>(request("GET", `${p(id)}/side`), "messages"),
     clearSide: async (id) => {

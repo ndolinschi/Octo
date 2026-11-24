@@ -3,6 +3,7 @@ import { compactedLine } from "../../lib/compactNow";
 import { saveConversation } from "../../lib/download";
 import { errorCode, errorMessage, structuredError } from "../../lib/format";
 import { MODES } from "../../lib/modes";
+import { queueSideQuestion } from "../../state/workspace/sideStart";
 import type { ComposerMode } from "./composerMode";
 import type { NoteInput } from "./notesContext";
 
@@ -12,8 +13,8 @@ export type SlashDeps = {
   projectId: string;
   mode: ComposerMode | null | undefined;
   openModel(query: string): void;
-  openTool(tool: "review" | "memory"): void;
-  toolDisabled?: ((tool: "review" | "memory") => boolean) | undefined;
+  openTool(tool: "review" | "memory" | "side"): void;
+  toolDisabled?: ((tool: "review" | "memory" | "side") => boolean) | undefined;
   openSettings(): void;
   push: ((note: NoteInput) => void) | undefined;
   rewindLast: (() => void) | undefined;
@@ -63,6 +64,11 @@ export async function runSlash(d: SlashDeps, name: string, args: string): Promis
       case "review":
         if (d.toolDisabled?.("review")) return false;
         d.openTool("review");
+        return true;
+      case "btw":
+        if (d.toolDisabled?.("side")) return false;
+        if (args) queueSideQuestion(projectId, args);
+        d.openTool("side");
         return true;
       case "context":
         push?.({ kind: "context" });

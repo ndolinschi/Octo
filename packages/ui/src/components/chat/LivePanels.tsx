@@ -1,14 +1,24 @@
 import type { PlanEntry } from "@octo/agent-client";
 import { useState } from "react";
+import { useTranscriptView } from "../../lib/transcriptView";
 import { ActivityRow } from "./ActivityRow";
 
 /**
- * The agent's reasoning (decision 55 c): a dim row, collapsed, whose last line streams; expanding shows the stream.
+ * The agent's reasoning (decision 55 c): a dim row, collapsed in Normal view and expanded in Thinking / Verbose views,
+ * whose last line streams; expanding shows the stream.
  * `after`: a tool call or text already follows it, so it is done (no spinner) even while reasoning keeps streaming.
  * It is never stored: when the turn ends it goes, unless it was open (then the text read so far stays until closed).
  */
 export function ThinkingRow({ text, after = false }: { text: string; after?: boolean }) {
-  const [open, setOpen] = useState(false);
+  const viewMode = useTranscriptView();
+  const autoOpen = viewMode === "thinking" || viewMode === "verbose";
+  const [override, setOverride] = useState<boolean | null>(null);
+  const [prevAuto, setPrevAuto] = useState(autoOpen);
+  if (autoOpen !== prevAuto) {
+    setPrevAuto(autoOpen);
+    setOverride(null);
+  }
+  const open = override ?? autoOpen;
   const [kept, setKept] = useState("");
   if (open && text && kept !== text) setKept(text);
   const shown = text || (open ? kept : "");
@@ -22,7 +32,7 @@ export function ThinkingRow({ text, after = false }: { text: string; after?: boo
         verb={running ? "Thinking" : "Thought"}
         detail={open ? undefined : <span className="octo-thinking-tail">{tail}</span>}
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={setOverride}
       >
         <div className="max-h-60 overflow-y-auto overscroll-contain text-sm leading-5 whitespace-pre-wrap text-fg-3">{shown}</div>
       </ActivityRow>

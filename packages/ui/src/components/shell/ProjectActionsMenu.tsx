@@ -12,6 +12,7 @@ import { useProject } from "../../state/project";
 import { useTabFlags } from "../../state/tabFlags";
 import type { ToolTab } from "../../state/workspace/layout";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { setTranscriptView, TRANSCRIPT_VIEW_DETAIL, TRANSCRIPT_VIEW_LABEL, TRANSCRIPT_VIEWS, useTranscriptView } from "../../lib/transcriptView";
 import { Menu, type MenuItem } from "../primitives/Menu";
 import { sessionMenuItems, useCreateProjectSession, useSyncProjectSessions } from "./sessionSwitcher";
 
@@ -32,6 +33,7 @@ export default function ProjectActionsMenu(props: {
   const tabFlags = useTabFlags();
   const ws = useOptionalWorkspace();
   const createSession = useCreateProjectSession();
+  const viewMode = useTranscriptView();
   useSyncProjectSessions(Boolean(project));
   if (!project) return null;
   const canShow = (tool: ToolTab) => (ws ? ws.toolEnabled(tool) : isTabEnabled(tabFlags, tool, { memoryBlocked: project.memory?.auto_memory === "blocked" }));
@@ -66,6 +68,15 @@ export default function ProjectActionsMenu(props: {
           ...(canShow("sessions") ? { onShowAll: () => ws?.openTool("sessions") } : {}),
         }),
         ...(toolItems.length > 0 ? [{ id: "sep-tools", separator: true as const }, ...toolItems] : []),
+        { id: "sep-view", separator: true },
+        { id: "view-caption", caption: "Transcript view (Ctrl+O)" },
+        ...TRANSCRIPT_VIEWS.map((v) => ({
+          id: `view:${v}`,
+          label: TRANSCRIPT_VIEW_LABEL[v],
+          title: TRANSCRIPT_VIEW_DETAIL[v],
+          checked: viewMode === v,
+          run: () => setTranscriptView(v),
+        })),
         { id: "sep", separator: true },
         ...(openProjectInEditor
           ? [{ id: "editor", label: "Open in editor", disabled: project.folders.length === 0, run: () => openProjectInEditor(project.id) }]

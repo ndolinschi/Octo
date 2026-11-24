@@ -1,11 +1,12 @@
 import { ChevronRight } from "lucide-react";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
-import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { forwardRef, lazy, memo, Suspense, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
-import { ancestors, fileKey, parentPath } from "../../lib/files";
+import { ancestors, fileKey, fileName, parentPath } from "../../lib/files";
 import { useCompactFolders } from "../../lib/compactFoldersPref";
 import { TreeScrollController } from "../../lib/treeScroll";
+import { useApp } from "../../state/app";
 import { useCode } from "../../state/code";
 import { isNode, treeRows, TYPE_AHEAD_MS, typeAhead, type NodeRow, type Row } from "./treeRows";
 import { useOptionalComments } from "../../state/comments";
@@ -20,6 +21,9 @@ import { Menu, type MenuItem } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { chatMention } from "../../lib/chatMention";
 import { addToChat, canAddToChat } from "../../state/chatInsert";
+import type { FileTreeAction } from "./FileTreeActionsDialog";
+
+const FileTreeActionsDialog = lazy(() => import("./FileTreeActionsDialog"));
 
 /**
  * Indent per level (polish step 4, E2: was 16). A root folder is the tree's section head and its entries start on its own
@@ -108,7 +112,6 @@ const TreeNodeRow = memo(function TreeNodeRow({
       onKeyDown={(e) => onKeyDownRow(e, row)}
       onClick={() => onActivateRow(row)}
       onContextMenu={(e) => {
-        if (isRoot) return;
         e.preventDefault();
         onMenuRow(row, { x: e.clientX, y: e.clientY });
       }}
@@ -170,6 +173,7 @@ export const FileTree = forwardRef<
     label?: string;
   }
 >(function FileTree({ folders, filter = "", onOpenFile, onExitTop, label = "Project files" }, handle) {
+  const { bridge } = useApp();
   const code = useCode();
   const counts = useOptionalComments()?.counts;
   const { dirs, isExpanded, ensureDir, selectedKey, revealTick, loadedFiles } = code;
@@ -193,6 +197,7 @@ export const FileTree = forwardRef<
   const rows = useMemo(() => (slow ? allRows : allRows.filter((r) => r.kind !== "loading")), [allRows, slow]);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ row: NodeRow; x: number; y: number } | null>(null);
+  const [action, setAction] = useState<FileTreeAction | null>(null);
   const openMenu = useCallback((row: NodeRow, at: { x: number; y: number }) => setMenu({ row, ...at }), []);
   const refs = useRef(new Map<string, HTMLDivElement>());
   const scrollCtrl = useRef(new TreeScrollController());
@@ -355,19 +360,90 @@ export const FileTree = forwardRef<
       })}
       {query && rows.length === 0 && <p className="flex h-ctl-sm items-center px-2 text-xs text-fg-3">No files match</p>}
       <Presence show={menu !== null}>
-        {menu && <Menu label={menu.row.name} x={menu.x} y={menu.y} items={rowMenu(menu.row)} onClose={() => setMenu(null)} />}
+        {menu && (
+          <Menu
+            label={menu.row.name}
+            x={menu.x}
+            y={menu.y}
+            items={rowMenu(
+              menu.row,
+              {
+                canMkdir: Boolean(bridge.createDirectory),
+                canRename: Boolean(bridge.renameFile),
+                canDelete: Boolean(bridge.deleteFile),
+              },
+              setAction,
+            )}
+            onClose={() => setMenu(null)}
+          />
+        )}
+      </Presence>
+      <Presence show={action !== null}>
+        {action && (
+          <Suspense fallback={null}>
+            <FileTreeActionsDialog action={action} {...(onOpenFile ? { onOpenFile } : {})} onClose={() => setAction(null)} />
+          </Suspense>
+        )}
       </Presence>
     </div>
   );
 });
 
+type RowMenuCaps = { canMkdir: boolean; canRename: boolean; canDelete: boolean };
+
 /**
- * G4: a row's right-click menu: Add to chat (the file or folder as a mention in the composer), when a composer is there; Copy
- * path. A compact row's menu acts on its last directory, as in VS Code (decision 98).
+ * G4: a row's right-click menu: New file / New folder (on folders and roots), Rename / Delete (on non-root items),
+ * Add to chat (the file or folder as a mention in the composer), Copy path, and Copy filename.
+ * A compact row's menu acts on its last directory, as in VS Code (decision 98).
  */
-function rowMenu(row: NodeRow): MenuItem[] {
+function rowMenu(row: NodeRow, caps: RowMenuCaps, onAction: (action: FileTreeAction) => void): MenuItem[] {
+  const isRoot = row.kind === "dir" && row.path === "";
+  const dirPath = row.kind === "dir" ? row.path : parentPath(row.path);
   const items: MenuItem[] = [];
-  if (canAddToChat()) items.push({ id: "chat", label: "Add to chat", run: () => void addToChat(chatMention(row.path)) });
-  items.push({ id: "path", label: "Copy path", run: () => void navigator.clipboard.writeText(row.path) });
+  if (row.kind === "dir") {
+    items.push({ id: "new-file", label: "New file…", run: () => onAction({ kind: "new-file", folder: row.folder, dirPath }) });
+    if (caps.canMkdir) {
+      items.push({ id: "new-folder", label: "New folder…", run: () => onAction({ kind: "new-folder", folder: row.folder, dirPath }) });
+    }
+  }
+  if (!isRoot && (caps.canRename || caps.canDelete)) {
+    if (items.length > 0) items.push({ id: "sep-crud", separator: true });
+    if (caps.canRename) {
+      items.push({
+        id: "rename",
+        label: "Rename…",
+        run: () => onAction({ kind: "rename", folder: row.folder, path: row.path, isDir: row.kind === "dir" }),
+      });
+    }
+    if (caps.canDelete) {
+      items.push({
+        id: "delete",
+        label: "Delete…",
+        run: () => onAction({ kind: "delete", folder: row.folder, path: row.path, isDir: row.kind === "dir" }),
+      });
+    }
+  }
+  if (items.length > 0) items.push({ id: "sep-copy", separator: true });
+  if (!isRoot && canAddToChat()) {
+    items.push({ id: "chat", label: "Add to chat", run: () => void addToChat(chatMention(row.path)) });
+  }
+  if (!isRoot) {
+    items.push({
+      id: "path",
+      label: "Copy path",
+      run: () => void navigator.clipboard.writeText(row.path),
+    });
+    items.push({
+      id: "filename",
+      label: "Copy filename",
+      run: () => void navigator.clipboard.writeText(fileName(row.path)),
+    });
+  } else {
+    items.push({
+      id: "path",
+      label: "Copy folder name",
+      run: () => void navigator.clipboard.writeText(row.folder),
+    });
+  }
   return items;
 }

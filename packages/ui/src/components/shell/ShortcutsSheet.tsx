@@ -18,6 +18,7 @@ const GROUPS: readonly { title: string; items: readonly Shortcut[] }[] = [
     title: "General",
     items: [
       { keys: ["Mod", "K"], does: "Search and run commands" },
+      { keys: ["Mod", "P"], does: "Quick open a file" },
       { keys: ["?"], does: "Show this list (not while typing)" },
       { keys: ["Mod", "L"], does: "Write a message" },
       { keys: ["Esc"], does: "Close a dialog, menu or the palette" },
@@ -32,6 +33,7 @@ const GROUPS: readonly { title: string; items: readonly Shortcut[] }[] = [
       { keys: ["Esc"], does: "Stop the current reply" },
       { keys: ["↑"], does: "In an empty box, bring back your last request" },
       { keys: ["Shift", "Tab"], does: "Change the mode" },
+      { keys: ["Ctrl", "O"], does: "Cycle transcript view (Normal / Thinking / Verbose)" },
       { keys: ["Alt", "↑"], does: "Previous request" },
       { keys: ["Alt", "↓"], does: "Next request" },
       { keys: ["Mod", "Shift", "U"], does: "Context details" },

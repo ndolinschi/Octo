@@ -200,6 +200,127 @@ func (f *Files) WriteInWorkspace(ctx context.Context, pid, folder, path, content
 	return stat(folder, info), nil
 }
 
+// FileSearchMatch is a filename or content match tagged with its project folder label.
+type FileSearchMatch struct {
+	Folder  string `json:"folder"`
+	Path    string `json:"path"`
+	Line    int    `json:"line,omitempty"`
+	Column  int    `json:"column,omitempty"`
+	Preview string `json:"preview,omitempty"`
+}
+
+// SearchInWorkspace searches files across all folders of pid (or one workspace) by name or content.
+func (f *Files) SearchInWorkspace(ctx context.Context, pid, query, mode, workspaceID string, limit int) ([]FileSearchMatch, error) {
+	db, err := f.store.Get(ctx, pid)
+	if errors.Is(err, projectstore.ErrNotFound) {
+		return nil, notFound("project")
+	}
+	if err != nil {
+		return nil, storeErr(err)
+	}
+	folders, err := db.Folders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	out := make([]FileSearchMatch, 0, limit)
+	for _, fo := range folders {
+		if len(out) >= limit {
+			break
+		}
+		root := fo.Path
+		if workspaceID != "" && workspaceID != projectstore.SharedWorkspace {
+			if p, ok, err := db.WorkspaceFolderPath(ctx, workspaceID, fo.Label); err == nil && ok {
+				root = p
+			}
+		}
+		if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
+			continue
+		}
+		hits, err := files.Search(root, query, mode, limit-len(out))
+		if err != nil {
+			return nil, fileErr(err)
+		}
+		for _, h := range hits {
+			out = append(out, FileSearchMatch{
+				Folder:  fo.Label,
+				Path:    h.Path,
+				Line:    h.Line,
+				Column:  h.Column,
+				Preview: h.Preview,
+			})
+			if len(out) >= limit {
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
+// MkdirInWorkspace creates a directory inside a project folder.
+func (f *Files) MkdirInWorkspace(ctx context.Context, pid, folder, path, workspaceID string) (string, error) {
+	root, review, err := f.rootForWorkspace(ctx, pid, folder, workspaceID)
+	if err != nil {
+		return "", err
+	}
+	if review {
+		return "", reviewReadOnly()
+	}
+	clean, err := files.Mkdir(root, path)
+	if err != nil {
+		return "", fileErr(err)
+	}
+	f.publishFileChanged(pid, folder, clean, workspaceID)
+	return clean, nil
+}
+
+// RenameInWorkspace renames a file or directory inside a project folder.
+func (f *Files) RenameInWorkspace(ctx context.Context, pid, folder, from, to, workspaceID string) (string, error) {
+	root, review, err := f.rootForWorkspace(ctx, pid, folder, workspaceID)
+	if err != nil {
+		return "", err
+	}
+	if review {
+		return "", reviewReadOnly()
+	}
+	clean, err := files.Rename(root, from, to)
+	if err != nil {
+		return "", fileErr(err)
+	}
+	f.publishFileChanged(pid, folder, clean, workspaceID)
+	return clean, nil
+}
+
+// DeleteInWorkspace deletes a file or directory inside a project folder.
+func (f *Files) DeleteInWorkspace(ctx context.Context, pid, folder, path, workspaceID string) error {
+	root, review, err := f.rootForWorkspace(ctx, pid, folder, workspaceID)
+	if err != nil {
+		return err
+	}
+	if review {
+		return reviewReadOnly()
+	}
+	clean, err := files.Delete(root, path)
+	if err != nil {
+		return fileErr(err)
+	}
+	f.publishFileChanged(pid, folder, clean, workspaceID)
+	return nil
+}
+
+func (f *Files) publishFileChanged(pid, folder, rel, workspaceID string) {
+	fields := map[string]any{"folder": folder, "path": rel, "source": events.SourceUser}
+	if workspaceID != "" && workspaceID != projectstore.SharedWorkspace {
+		fields["workspace_id"] = workspaceID
+	}
+	f.hub.Publish(pid, events.FileChanged, fields)
+}
+
 func stat(folder string, info files.Info) FileStat {
 	return FileStat{Folder: folder, Path: info.Path, Size: info.Size, MTime: files.FormatTime(info.MTime)}
 }
@@ -208,6 +329,8 @@ func fileErr(err error) error {
 	switch {
 	case errors.Is(err, files.ErrNotFound):
 		return notFound("path")
+	case errors.Is(err, files.ErrExists):
+		return &Error{Kind: KindConflict, Code: "already_exists", Message: "a file or folder already exists at that path"}
 	case errors.Is(err, files.ErrGitPath):
 		return of(KindInvalid, usererr.GitPathRefused(err.Error()))
 	case errors.Is(err, files.ErrInvalidPath):

@@ -107,8 +107,19 @@ test("disabledSlashCommands omits /memory and /review when their UI tab flags ar
   };
   assert.deepEqual(
     slashGroups(cmds, "", bothDisabled).rows.map((r) => r.name),
-    ["remember", "new"],
+    ["remember", "new", "btw"],
   );
   assert.equal(octoCommandFor("/remember use pnpm", cmds, bothDisabled)?.command.name, "remember");
   assert.equal(octoCommandFor("/review", cmds, bothDisabled), null);
+
+  const sideDisabled = disabledSlashCommands({ memory: true, review: true, side: false });
+  assert.equal(sideDisabled.has("btw"), true);
+  assert.equal(octoCommandFor("/btw what does this do?", cmds, sideDisabled), null);
+});
+
+test("/btw is an Octo command that works without harness listing and accepts optional question text", () => {
+  assert.equal(octoCommandFor("/btw what is retryDelay?", null)?.command.name, "btw");
+  assert.equal(octoCommandFor("/btw what is retryDelay?", null)?.args, "what is retryDelay?");
+  assert.equal(octoCommandFor("/btw", null)?.args, "");
+  assert.equal(argsOptional({ group: "octo", name: "btw", args: "[question]" }), true);
 });

@@ -1,4 +1,4 @@
-import type { Agent } from "@octo/agent-client";
+import type { Agent, FileSearchMatch } from "@octo/agent-client";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { formatRelative } from "../../lib/format";
@@ -20,6 +20,8 @@ import { hitRow } from "../../lib/requestSearch";
 import { useRequests } from "../../state/requests";
 import { useRequestSearch } from "../../state/requestSearch";
 import { Button } from "../primitives/Button";
+import { fileIcon } from "../primitives/fileIcons";
+import { Glyph } from "../primitives/Glyph";
 import { Highlight } from "../primitives/Highlight";
 import { ListRow } from "../primitives/ListRow";
 import { usePresence } from "../primitives/Presence";
@@ -52,6 +54,7 @@ type Item = {
   search?: string | undefined;
   shortcut?: string | undefined;
   glyph?: GlyphState;
+  filePath?: string;
   pending?: true;
   run(): void;
 };
@@ -107,6 +110,7 @@ function openSetting(section: string, row?: string) {
 export function CommandPalette(props: {
   /** NEW-7: which open this palette is (`lib/typeahead`): it takes only the keys held for it. */
   paletteId: number;
+  initialMode?: "all" | "files";
   openProjectId: string | null;
   actions: PaletteAction[];
   settingsIndex: () => Promise<SettingsIndex>;
@@ -123,12 +127,15 @@ export function CommandPalette(props: {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const [agents, setAgents] = useState<Agent[] | null>(null);
+  const [fileMatches, setFileMatches] = useState<FileSearchMatch[]>([]);
+  const [contentMatches, setContentMatches] = useState<FileSearchMatch[]>([]);
   const baseId = useId();
+  const filesOnly = props.initialMode === "files" && props.openProjectId !== null;
   const openProject = projects?.find((p) => p.id === props.openProjectId);
   const orchestrators = useOrchestrators(projects);
   const sessionIndex = useSessionIndex(projects);
-  const { requests } = useRequests(openProject, true);
-  const pastHits = useRequestSearch(query);
+  const { requests } = useRequests(openProject, !filesOnly);
+  const pastHits = useRequestSearch(filesOnly ? "" : query);
   const { onClose } = props;
   const state = usePresence();
   // The workspace's tabs and tab actions, as they are when the palette opens.
@@ -162,6 +169,7 @@ export function CommandPalette(props: {
   const [settings, setSettings] = useState<SettingsIndex | null>(null);
   const { settingsIndex } = props;
   useEffect(() => {
+    if (filesOnly) return;
     let alive = true;
     settingsIndex().then(
       (i) => alive && setSettings(i),
@@ -170,11 +178,11 @@ export function CommandPalette(props: {
     return () => {
       alive = false;
     };
-  }, [settingsIndex]);
+  }, [settingsIndex, filesOnly]);
 
   const openId = openProject?.id;
   useEffect(() => {
-    if (!openId) return;
+    if (!openId || filesOnly) return;
     let alive = true;
     bridge.listAgents(openId).then(
       (a) => alive && setAgents(a),
@@ -183,7 +191,48 @@ export function CommandPalette(props: {
     return () => {
       alive = false;
     };
-  }, [bridge, openId]);
+  }, [bridge, openId, filesOnly]);
+
+  useEffect(() => {
+    const search = bridge.searchProjectFiles;
+    if (!openId || !search) {
+      setFileMatches([]);
+      setContentMatches([]);
+      return;
+    }
+    const raw = query.trim();
+    const contentOnly = filesOnly && raw.startsWith(":");
+    const needle = contentOnly ? raw.slice(1).trim() : raw;
+    if (!filesOnly && needle.length < 2) {
+      setFileMatches([]);
+      setContentMatches([]);
+      return;
+    }
+    let alive = true;
+    const delay = filesOnly && needle === "" ? 0 : 140;
+    const timer = window.setTimeout(() => {
+      if (!contentOnly) {
+        void search(openId, { q: needle, mode: "name", limit: filesOnly ? 24 : 8 }).then(
+          (m) => alive && setFileMatches(m),
+          () => alive && setFileMatches([]),
+        );
+      } else {
+        setFileMatches([]);
+      }
+      if (needle.length >= 2) {
+        void search(openId, { q: needle, mode: "content", limit: filesOnly ? 24 : 8 }).then(
+          (m) => alive && setContentMatches(m),
+          () => alive && setContentMatches([]),
+        );
+      } else {
+        setContentMatches([]);
+      }
+    }, delay);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [bridge, openId, query, filesOnly]);
 
   const groups = useMemo<Group[]>(() => {
     const now = Date.now();
@@ -349,9 +398,32 @@ export function CommandPalette(props: {
           navigate(h.project_id);
         }),
       }));
+    const fileRows: Item[] = fileMatches.map((m) => ({
+      id: `f:${m.folder}:${m.path}`,
+      label: m.path,
+      detail: openProject && openProject.folder_count > 1 ? m.folder : undefined,
+      filePath: m.path,
+      run: go(() => workspace?.api.openFile?.(m.folder, m.path)),
+    }));
+    const contentRows: Item[] = contentMatches.map((m, idx) => ({
+      id: `fc:${m.folder}:${m.path}:${m.line ?? 0}:${idx}`,
+      label: `${m.path}${m.line ? `:${m.line}` : ""}`,
+      detail: m.preview,
+      filePath: m.path,
+      run: go(() => workspace?.api.openFile?.(m.folder, m.path, m.line)),
+    }));
+    if (filesOnly) {
+      const only: Group[] = [
+        { title: "Files", items: fileRows },
+        { title: "Matches in files", items: contentRows },
+      ];
+      return only.filter((g) => g.items.length);
+    }
     // Past requests come after the actions that match: a typed query that names an action finds the action first.
     const all: Group[] = q
       ? [
+          { title: "Files", items: fileRows },
+          { title: "Matches in files", items: contentRows },
           { title: "Tabs", items: rank(tabRows) },
           { title: "Projects", items: rank(projectRows) },
           { title: "Sessions", items: rank(sessionRows) },
@@ -374,9 +446,13 @@ export function CommandPalette(props: {
   }, [
     query,
     projects,
+    openProject,
     orchestrators,
     requests,
     agents,
+    fileMatches,
+    contentMatches,
+    filesOnly,
     props.actions,
     openId,
     nav,
@@ -444,6 +520,7 @@ export function CommandPalette(props: {
   };
 
   let index = -1;
+  const highlightQuery = filesOnly && query.trim().startsWith(":") ? query.trim().slice(1).trim() : query;
   return createPortal(
     <div className="fixed inset-0 z-50 flex flex-col items-center p-3" inert={state === "closed"}>
       <div className="octo-scrim fixed inset-0 bg-scrim" data-state={state} onMouseDown={onClose} aria-hidden />
@@ -452,7 +529,7 @@ export function CommandPalette(props: {
         ref={panel}
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-label={filesOnly ? "Quick open file" : "Command palette"}
         data-state={state}
         className="octo-overlay relative flex max-h-[70vh] w-full max-w-[560px] flex-col overflow-hidden rounded-xl bg-overlay shadow-pop forced-colors:border forced-colors:border-[CanvasText]"
       >
@@ -460,8 +537,16 @@ export function CommandPalette(props: {
           <SearchField
             variant="header"
             className={phone ? "min-w-0 flex-1 border-b-0!" : "min-w-0 flex-1"}
-            label="Search or run an action"
-            placeholder={narrow ? "Search or run an action" : "Search tabs, projects, requests, agents, actions"}
+            label={filesOnly ? "Open a file" : "Search or run an action"}
+            placeholder={
+              filesOnly
+                ? narrow
+                  ? "Open a file…"
+                  : "Open a file by name (or :text to search inside files)"
+                : narrow
+                  ? "Search or run an action"
+                  : "Search files, tabs, projects, requests, actions"
+            }
             value={query}
             clearOnEscape={false}
             onChange={(v) => {
@@ -495,6 +580,7 @@ export function CommandPalette(props: {
               {g.items.map((item) => {
                 index += 1;
                 const i = index;
+                const FileIcon = item.filePath ? fileIcon(item.filePath) : null;
                 return (
                   <ListRow
                     key={item.id}
@@ -509,8 +595,18 @@ export function CommandPalette(props: {
                       setSelected(i);
                     }}
                     onClick={item.run}
-                    leading={item.glyph ? <StateGlyph state={item.glyph} box={16} /> : item.pending ? <Skeleton shape="circle" className="size-3" /> : <span />}
-                    title={<Highlight text={item.label} query={query} />}
+                    leading={
+                      FileIcon ? (
+                        <Glyph icon={FileIcon} size={14} className="text-fg-3" />
+                      ) : item.glyph ? (
+                        <StateGlyph state={item.glyph} box={16} />
+                      ) : item.pending ? (
+                        <Skeleton shape="circle" className="size-3" />
+                      ) : (
+                        <span />
+                      )
+                    }
+                    title={<Highlight text={item.label} query={highlightQuery} />}
                     tip={item.label}
                     meta={item.shortcut ?? item.detail}
                   />
@@ -518,7 +614,11 @@ export function CommandPalette(props: {
               })}
             </div>
           ))}
-          {!flat.length && <p className="px-2 py-6 text-center text-sm text-fg-3">No matches for “{query.trim()}”</p>}
+          {!flat.length && (
+            <p className="px-2 py-6 text-center text-sm text-fg-3">
+              {query.trim() ? `No matches for “${query.trim()}”` : filesOnly ? "No files in this project yet" : "No matches"}
+            </p>
+          )}
         </div>
         <p role="status" className="sr-only">
           {flat.length === 0 ? "No results" : flat.length === 1 ? "1 result" : `${flat.length} results`}

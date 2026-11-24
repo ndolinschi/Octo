@@ -1,5 +1,6 @@
 import type { ContentBlock } from "@octo/agent-client";
 import { createContext, useContext } from "react";
+import type { TranscriptViewMode } from "../../lib/transcriptView";
 
 export type ToolResult = Extract<ContentBlock, { type: "tool_result" }>;
 export type ToolState = "running" | "done" | "error" | "interrupted";
@@ -10,6 +11,8 @@ export type TranscriptCtx = {
   now: number;
   /** `compact`: the transcript in a pane narrower than the conversation's own floor (Sessions tab): smaller type, tighter bubbles, time-only reply meta. */
   density: "regular" | "compact";
+  /** Transcript detail level (`Ctrl+O`): normal (summaries), thinking (thinking expanded), or verbose (all tool steps expanded). */
+  viewMode: TranscriptViewMode;
   /** The Sessions tab selects an agent's session in place; absent elsewhere (a delegation row then opens the Sessions tab). */
   onOpenSession?: ((agentId: string) => void) | undefined;
   /** Decision 101: takes the reader to the one "needs you" card (approvals and forms at the transcript's end); absent where there is none. */
@@ -21,6 +24,7 @@ export const TranscriptContext = createContext<TranscriptCtx>({
   agentRunning: false,
   now: 0,
   density: "regular",
+  viewMode: "normal",
 });
 
 export function useTranscript() {

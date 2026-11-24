@@ -47,6 +47,8 @@ export type WorkspaceApi = {
   showSession?(sessionId: string): void;
   /** Closes `tab` immediately without confirmation (e.g. when its session was deleted). */
   dropTab?(tab: TabId): void;
+  /** Opens a project file in the editor, optionally scrolling to 1-based `line`. */
+  openFile?(folder: string, path: string, line?: number): void;
   /** The workspace as it is now, for the palette's tab actions and tab rows (`workspace/paletteCommands`). */
   current(): PaletteWorkspace;
 };

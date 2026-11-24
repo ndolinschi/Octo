@@ -23,12 +23,13 @@ export function typeaheadKey(held: Typeahead, key: string): Typeahead | null {
 }
 
 export type PalettePhase = "closed" | "opening" | "open" | "closing";
+export type PaletteMode = "all" | "files";
 /** `id`: the palette of this phase (each open makes a new one); `held`: the keys typed while it is `opening`. */
-export type PaletteGate = { phase: PalettePhase; id: number; held: Typeahead };
+export type PaletteGate = { phase: PalettePhase; id: number; held: Typeahead; mode?: PaletteMode };
 
 export type PaletteEvent =
-  | { type: "toggle" }
-  | { type: "open" }
+  | { type: "toggle"; mode?: PaletteMode }
+  | { type: "open"; mode?: PaletteMode }
   | { type: "close"; id?: number }
   | { type: "ready"; id: number }
   | { type: "exited"; id: number }
@@ -44,17 +45,25 @@ const showing = (g: PaletteGate) => g.phase === "opening" || g.phase === "open";
  */
 export function paletteStep(g: PaletteGate, e: PaletteEvent): { gate: PaletteGate; typed?: Typeahead; consumed?: boolean } {
   switch (e.type) {
-    case "toggle":
-      return paletteStep(g, showing(g) ? { type: "close", id: g.id } : { type: "open" });
-    case "open":
-      return showing(g) ? { gate: g } : { gate: { phase: "opening", id: g.id + 1, held: EMPTY } };
+    case "toggle": {
+      const mode = e.mode ?? "all";
+      if (showing(g)) {
+        if ((g.mode ?? "all") === mode) return paletteStep(g, { type: "close", id: g.id });
+        return { gate: { phase: "opening", id: g.id + 1, held: EMPTY, mode } };
+      }
+      return paletteStep(g, { type: "open", mode });
+    }
+    case "open": {
+      const mode = e.mode ?? "all";
+      return showing(g) && (g.mode ?? "all") === mode ? { gate: g } : { gate: { phase: "opening", id: g.id + 1, held: EMPTY, mode } };
+    }
     case "close":
       if (!showing(g) || (e.id !== undefined && e.id !== g.id)) return { gate: g };
       // The closing palette's keys go with it.
-      return { gate: { phase: "closing", id: g.id, held: EMPTY } };
+      return { gate: { phase: "closing", id: g.id, held: EMPTY, ...(g.mode ? { mode: g.mode } : {}) } };
     case "ready":
       if (e.id !== g.id || g.phase !== "opening") return { gate: g, typed: EMPTY };
-      return { gate: { phase: "open", id: g.id, held: EMPTY }, typed: g.held };
+      return { gate: { phase: "open", id: g.id, held: EMPTY, ...(g.mode ? { mode: g.mode } : {}) }, typed: g.held };
     case "exited":
       return e.id === g.id && g.phase === "closing" ? { gate: { ...g, phase: "closed" } } : { gate: g };
     case "key": {
@@ -107,9 +116,11 @@ export const palette = {
   },
   snapshot: (): PaletteGate => gate,
   /** Ctrl/Cmd+K: opens a new palette (holding the keys typed from now on) or closes the one showing. */
-  toggle: () => void dispatch({ type: "toggle" }),
+  toggle: () => void dispatch({ type: "toggle", mode: "all" }),
+  /** Ctrl/Cmd+P: opens the palette in file quick-open mode (or closes it if already in files mode). */
+  toggleFiles: () => void dispatch({ type: "toggle", mode: "files" }),
   /** A button that opens the palette (no-op while one shows). */
-  open: () => void dispatch({ type: "open" }),
+  open: () => void dispatch({ type: "open", mode: "all" }),
   /** Closes palette `id` (only if it is the one showing); without an id, whichever shows. */
   close: (id?: number) => void dispatch(id === undefined ? { type: "close" } : { type: "close", id }),
   /** Palette `id`'s field has focus: the keys held for it, once (empty for any other palette or a second call). */

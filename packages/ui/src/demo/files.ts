@@ -1,5 +1,17 @@
-import { BridgeError, type FileBytes, type FileContent, type FileEntry, type FileStat, type WriteFileInput } from "@octo/agent-client";
-import { writeDemoFile, type DemoFile, type ProjectRecord } from "./store";
+import {
+  BridgeError,
+  type FileBytes,
+  type FileContent,
+  type FileEntry,
+  type FilePathResult,
+  type FileSearchMatch,
+  type FileSearchParams,
+  type FileStat,
+  type MkdirInput,
+  type RenameFileInput,
+  type WriteFileInput,
+} from "@octo/agent-client";
+import { emit, writeDemoFile, type DemoFile, type ProjectRecord } from "./store";
 
 /** Same limit as the harness. */
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -28,9 +40,20 @@ function folderTree(rec: ProjectRecord, folder: string): Map<string, DemoFile> {
   return tree;
 }
 
+function folderDirs(rec: ProjectRecord, folder: string): Set<string> {
+  rec.dirs ??= new Map();
+  let set = rec.dirs.get(folder);
+  if (!set) {
+    set = new Set();
+    rec.dirs.set(folder, set);
+  }
+  return set;
+}
+
 function cleanPath(path: string): string {
   const parts = path.split("/").filter((p) => p && p !== ".");
-  if (parts.includes("..")) throw new BridgeError(400, "invalid", "path escapes the folder");
+  if (parts.includes("..")) throw new BridgeError(400, "invalid_request", "path escapes the folder");
+  if (parts.some((p) => p.toLowerCase() === ".git")) throw new BridgeError(400, "invalid_request", "path inside .git is refused");
   return parts.join("/");
 }
 
@@ -38,17 +61,20 @@ function size(file: DemoFile): number {
   return file.size ?? new TextEncoder().encode(file.content).length;
 }
 
-function isDir(tree: Map<string, DemoFile>, path: string): boolean {
+function isDir(tree: Map<string, DemoFile>, dirs: ReadonlySet<string> | undefined, path: string): boolean {
   if (!path) return true;
+  if (dirs?.has(path)) return true;
+  for (const d of dirs ?? []) if (d.startsWith(`${path}/`)) return true;
   for (const p of tree.keys()) if (p.startsWith(`${path}/`)) return true;
   return false;
 }
 
 export function listDemoFiles(rec: ProjectRecord, folder: string, rawPath: string): FileEntry[] {
   const tree = folderTree(rec, folder);
+  const dirs = rec.dirs?.get(folder);
   const path = cleanPath(rawPath);
   if (tree.has(path)) throw new BridgeError(400, "invalid", "path is not a directory");
-  if (!isDir(tree, path)) throw new BridgeError(404, "not_found", "path not found");
+  if (!isDir(tree, dirs, path)) throw new BridgeError(404, "not_found", "path not found");
   const prefix = path ? `${path}/` : "";
   const entries = new Map<string, FileEntry>();
   for (const [p, file] of tree) {
@@ -59,6 +85,13 @@ export function listDemoFiles(rec: ProjectRecord, folder: string, rawPath: strin
     const dir = rest.includes("/");
     const chain = dir ? demoChain(tree, prefix + name) : [];
     entries.set(name, { name, path: prefix + name, type: dir ? "dir" : "file", size: dir ? 0 : size(file), ...(chain.length ? { chain } : {}) });
+  }
+  for (const d of dirs ?? []) {
+    if (!d.startsWith(prefix)) continue;
+    const rest = d.slice(prefix.length);
+    const name = rest.split("/")[0];
+    if (!name || name === ".git" || entries.has(name)) continue;
+    entries.set(name, { name, path: prefix + name, type: "dir", size: 0 });
   }
   return [...entries.values()].sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === "dir" ? -1 : 1));
 }
@@ -90,10 +123,11 @@ function stat(folder: string, path: string, file: DemoFile): FileStat {
 
 export function readDemoFile(rec: ProjectRecord, folder: string, rawPath: string): FileContent {
   const tree = folderTree(rec, folder);
+  const dirs = rec.dirs?.get(folder);
   const path = cleanPath(rawPath);
   const file = tree.get(path);
   if (!file) {
-    if (isDir(tree, path)) throw new BridgeError(400, "invalid", "path is not a regular file");
+    if (isDir(tree, dirs, path)) throw new BridgeError(400, "invalid", "path is not a regular file");
     throw new BridgeError(404, "not_found", "path not found");
   }
   if (size(file) > MAX_BYTES) throw new BridgeError(413, "file_too_large", "file exceeds the 2 MiB limit");
@@ -108,10 +142,11 @@ const DEMO_PNG =
 /** The file API's `?encoding=base64` read: any file, same limits; binary `.png` files are {@link DEMO_PNG}. */
 export function readDemoFileBytes(rec: ProjectRecord, folder: string, rawPath: string): FileBytes {
   const tree = folderTree(rec, folder);
+  const dirs = rec.dirs?.get(folder);
   const path = cleanPath(rawPath);
   const file = tree.get(path);
   if (!file) {
-    if (isDir(tree, path)) throw new BridgeError(400, "invalid", "path is not a regular file");
+    if (isDir(tree, dirs, path)) throw new BridgeError(400, "invalid", "path is not a regular file");
     throw new BridgeError(404, "not_found", "path not found");
   }
   if (size(file) > MAX_BYTES) throw new BridgeError(413, "file_too_large", "file exceeds the 2 MiB limit");
@@ -127,14 +162,150 @@ export function readDemoFileBytes(rec: ProjectRecord, folder: string, rawPath: s
 
 export function writeDemo(rec: ProjectRecord, input: WriteFileInput): FileStat {
   const tree = folderTree(rec, input.folder);
+  const dirs = rec.dirs?.get(input.folder);
   const path = cleanPath(input.path);
-  if (!path || isDir(tree, path)) throw new BridgeError(400, "invalid", "path is not a regular file");
+  if (!path || isDir(tree, dirs, path)) throw new BridgeError(400, "invalid", "path is not a regular file");
   const current = tree.get(path);
   const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-  if (!current && !isDir(tree, parent)) throw new BridgeError(404, "not_found", "parent directory not found");
+  if (!current && !isDir(tree, dirs, parent)) throw new BridgeError(404, "not_found", "parent directory not found");
   if (input.expected_mtime !== undefined && current && current.mtime !== input.expected_mtime) {
     throw new BridgeError(409, "file_changed", "file changed on disk");
   }
   const file = writeDemoFile(rec, input.folder, path, input.content, "user");
   return stat(input.folder, path, file);
+}
+
+export function mkdirDemo(rec: ProjectRecord, input: MkdirInput): FilePathResult {
+  const tree = folderTree(rec, input.folder);
+  const dirs = folderDirs(rec, input.folder);
+  const path = cleanPath(input.path);
+  if (!path) throw new BridgeError(400, "invalid_request", "path is required");
+  if (tree.has(path) || isDir(tree, dirs, path)) {
+    throw new BridgeError(409, "already_exists", "A file or folder already exists at that path.");
+  }
+  dirs.add(path);
+  emit(rec, { type: "file.changed", folder: input.folder, path, source: "user" });
+  return { folder: input.folder, path };
+}
+
+export function renameDemo(rec: ProjectRecord, input: RenameFileInput): FilePathResult {
+  const tree = folderTree(rec, input.folder);
+  const dirs = folderDirs(rec, input.folder);
+  const from = cleanPath(input.from);
+  const to = cleanPath(input.to);
+  if (!from || !to) throw new BridgeError(400, "invalid_request", "from and to paths are required");
+  const srcIsFile = tree.has(from);
+  const srcIsDir = !srcIsFile && isDir(tree, dirs, from);
+  if (!srcIsFile && !srcIsDir) throw new BridgeError(404, "not_found", "path not found");
+  if (tree.has(to) || isDir(tree, dirs, to)) {
+    throw new BridgeError(409, "already_exists", "A file or folder already exists at that path.");
+  }
+  if (srcIsFile) {
+    const file = tree.get(from)!;
+    tree.delete(from);
+    tree.set(to, file);
+  } else {
+    const prefix = `${from}/`;
+    for (const [p, file] of [...tree.entries()]) {
+      if (p.startsWith(prefix)) {
+        tree.delete(p);
+        tree.set(`${to}/${p.slice(prefix.length)}`, file);
+      }
+    }
+    for (const d of [...dirs]) {
+      if (d === from) {
+        dirs.delete(d);
+        dirs.add(to);
+      } else if (d.startsWith(prefix)) {
+        dirs.delete(d);
+        dirs.add(`${to}/${d.slice(prefix.length)}`);
+      }
+    }
+    dirs.add(to);
+  }
+  emit(rec, { type: "file.changed", folder: input.folder, path: to, source: "user" });
+  return { folder: input.folder, path: to };
+}
+
+export function deleteDemo(rec: ProjectRecord, folder: string, rawPath: string): void {
+  const tree = folderTree(rec, folder);
+  const dirs = rec.dirs?.get(folder);
+  const path = cleanPath(rawPath);
+  if (!path) throw new BridgeError(400, "invalid_request", "cannot delete folder root");
+  const hadFile = tree.delete(path);
+  let removed = hadFile;
+  const prefix = `${path}/`;
+  for (const p of [...tree.keys()]) {
+    if (p.startsWith(prefix)) {
+      tree.delete(p);
+      removed = true;
+    }
+  }
+  if (dirs) {
+    for (const d of [...dirs]) {
+      if (d === path || d.startsWith(prefix)) {
+        dirs.delete(d);
+        removed = true;
+      }
+    }
+  }
+  if (!removed) throw new BridgeError(404, "not_found", "path not found");
+  emit(rec, { type: "file.changed", folder, path, source: "user" });
+}
+
+function subseqMatch(needle: string, haystack: string): boolean {
+  let i = 0;
+  for (let j = 0; j < haystack.length && i < needle.length; j += 1) {
+    if (haystack[j] === needle[i]) i += 1;
+  }
+  return i === needle.length;
+}
+
+export function searchDemoFiles(rec: ProjectRecord, params: FileSearchParams): FileSearchMatch[] {
+  const mode = params.mode ?? "name";
+  const limit = Math.max(1, Math.min(200, params.limit ?? 50));
+  const q = params.q.trim().toLowerCase();
+  const out: FileSearchMatch[] = [];
+  if (mode === "content") {
+    if (!q) return out;
+    for (const f of rec.project.folders) {
+      const tree = rec.files.get(f.label);
+      if (!tree) continue;
+      for (const [path, file] of [...tree.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+        if (file.binary || size(file) > MAX_BYTES) continue;
+        const lines = file.content.split("\n");
+        for (let idx = 0; idx < lines.length; idx += 1) {
+          const line = lines[idx] ?? "";
+          if (line.toLowerCase().includes(q)) {
+            const trimmed = line.trim();
+            out.push({ folder: f.label, path, line: idx + 1, preview: trimmed.length > 160 ? `${trimmed.slice(0, 160)}…` : trimmed });
+            if (out.length >= limit) return out;
+          }
+        }
+      }
+    }
+    return out;
+  }
+  const scored: { score: number; match: FileSearchMatch }[] = [];
+  for (const f of rec.project.folders) {
+    const tree = rec.files.get(f.label);
+    if (!tree) continue;
+    for (const path of tree.keys()) {
+      if (!q) {
+        scored.push({ score: 0, match: { folder: f.label, path } });
+        continue;
+      }
+      const lp = path.toLowerCase();
+      const base = lp.slice(lp.lastIndexOf("/") + 1);
+      let score = -1;
+      if (base === q) score = 0;
+      else if (base.startsWith(q)) score = 1;
+      else if (base.includes(q)) score = 2;
+      else if (lp.includes(q)) score = 3;
+      else if (subseqMatch(q, lp)) score = 4;
+      if (score >= 0) scored.push({ score, match: { folder: f.label, path } });
+    }
+  }
+  scored.sort((a, b) => a.score - b.score || a.match.path.localeCompare(b.match.path));
+  return scored.slice(0, limit).map((s) => s.match);
 }

@@ -57,6 +57,7 @@ const TURN_PARTS = [markdownPart, toolGroup, delegationGroup, turnChanges, turnB
 // Decision 99: fetched with this chunk (warmed after first paint), so a project first shown from Home lays its turns out at once.
 for (const part of TURN_PARTS) void part.fetch().catch(() => undefined);
 import { TranscriptContext, useTranscript, type ToolResult, type TranscriptCtx } from "./transcriptContext";
+import { cycleTranscriptView, useTranscriptView } from "../../lib/transcriptView";
 import { proseClass } from "../primitives/Prose";
 import { ActivityLine, useBatched } from "./LiveActivity";
 import { ActivityRow } from "./ActivityRow";
@@ -86,6 +87,18 @@ export const Transcript = memo(function Transcript(props: {
 }) {
   const { agent, messages, now } = props;
   const loaded = props.loaded ?? true;
+  const viewMode = useTranscriptView();
+  useEffect(() => {
+    if (!props.watched) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        cycleTranscriptView();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [props.watched]);
   const { state, steered, projectId, running: projectRunning } = useProject();
   // G5: the person pressed Stop and the harness has not ended the turn yet.
   const stopping = useStopping(projectId, projectRunning) !== null;
@@ -123,10 +136,11 @@ export const Transcript = memo(function Transcript(props: {
       agentRunning: running,
       now,
       density: props.density === "compact" ? "compact" : "regular",
+      viewMode,
       onOpenSession: props.onOpenSession,
       revealNeeds: props.revealNeeds,
     };
-  }, [messages, running, now, props.density, props.onOpenSession, props.revealNeeds]);
+  }, [messages, running, now, props.density, viewMode, props.onOpenSession, props.revealNeeds]);
 
   const isOrchestrator = agent.parent_id === null;
   const lastTurn = isOrchestrator ? state.lastTurn : null;

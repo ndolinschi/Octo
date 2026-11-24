@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { notificationSupport, requestNotificationPermission, setNotificationsPref, useNotificationsPref } from "../../lib/notifications";
 import { PREFS, sidebarViewCodec, usePersistentState, writePref } from "../../lib/storage";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
@@ -18,6 +19,16 @@ export function GeneralSection() {
   const [saved, run] = useSave();
   const [view, setView] = usePersistentState(PREFS.sidebarView, sidebarViewCodec);
   const [savedView, runView] = useSave();
+  const notifPref = useNotificationsPref();
+  const [savedNotif, runNotif] = useSave();
+  const notifId = useId();
+  const support = notificationSupport();
+  const notifDesc =
+    support === "unsupported"
+      ? "Desktop notifications are not available in this browser or window."
+      : support === "denied"
+        ? "Notifications are blocked by your system or browser settings."
+        : "Notify when a session finishes, fails, or needs your input while Octo is in the background.";
   return (
     <>
       <SettingsGroup label="Startup">
@@ -61,6 +72,32 @@ export function GeneralSection() {
                 void runView(async () => {
                   if (!writePref(PREFS.sidebarView, sidebarViewCodec.stringify(v))) throw new Error("Could not save: the browser's storage is full or blocked");
                   setView(v);
+                })
+              }
+            />
+          }
+        />
+        <SettingsRow
+          rowId="notifications"
+          title="Desktop notifications"
+          htmlFor={notifId}
+          description={notifDesc}
+          status={<SaveStatus state={savedNotif} />}
+          control={
+            <Switch
+              id={notifId}
+              label="Desktop notifications"
+              disabled={support !== "supported"}
+              checked={notifPref === "on" && support === "supported"}
+              onChange={(on) =>
+                void runNotif(async () => {
+                  if (on) {
+                    const ok = await requestNotificationPermission();
+                    if (!ok) throw new Error("Notification permission was not granted");
+                    setNotificationsPref("on");
+                  } else {
+                    setNotificationsPref("off");
+                  }
                 })
               }
             />

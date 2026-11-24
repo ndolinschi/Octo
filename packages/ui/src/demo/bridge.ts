@@ -29,7 +29,7 @@ import {
 import { basename } from "../lib/format";
 import { atlasHistory } from "./atlas";
 import { backgroundTurn, docsHistory } from "./extra";
-import { ensureSeeded, listDemoFiles, readDemoFile, readDemoFileBytes, writeDemo } from "./files";
+import { deleteDemo, ensureSeeded, listDemoFiles, mkdirDemo, readDemoFile, readDemoFileBytes, renameDemo, searchDemoFiles, writeDemo } from "./files";
 import { genericTurn } from "./generic";
 import { infraAcpTurn, ledgerShowcase, pastHistory } from "./history";
 import { demoLanguageServers, demoPlugins } from "./plugins";
@@ -846,6 +846,26 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       await delay();
       await ensureSeeded(get(id));
       return writeDemo(get(id), input);
+    },
+    searchProjectFiles: async (id, params) => {
+      await delay();
+      await ensureSeeded(get(id));
+      return searchDemoFiles(get(id), params);
+    },
+    createDirectory: async (id, input) => {
+      await delay();
+      await ensureSeeded(get(id));
+      return mkdirDemo(get(id), input);
+    },
+    renameFile: async (id, input) => {
+      await delay();
+      await ensureSeeded(get(id));
+      return renameDemo(get(id), input);
+    },
+    deleteFile: async (id, folder, path) => {
+      await delay();
+      await ensureSeeded(get(id));
+      deleteDemo(get(id), folder, path);
     },
     complete: async (id, input, opts) => {
       const rec = get(id);

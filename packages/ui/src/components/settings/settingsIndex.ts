@@ -51,6 +51,13 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
   },
   {
     section: "general",
+    id: "notifications",
+    title: "Desktop notifications",
+    description: "Notify when a session finishes, fails, or needs input while Octo is in the background",
+    keywords: "notifications alerts sound background finish approval",
+  },
+  {
+    section: "general",
     id: "bridge",
     title: "Octo's local service",
     description: "The background service that keeps projects and runs agents",

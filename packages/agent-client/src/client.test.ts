@@ -221,6 +221,38 @@ test("request shapes and envelope unwrapping", async () => {
       path: "/v1/projects/a%2Fb/lsp",
       result: [{ id: "gopls" }],
     },
+    {
+      run: (b) => (b.searchProjectFiles ? b.searchProjectFiles("p", { q: "auth", mode: "content", limit: 12 }) : Promise.reject(new Error("missing"))),
+      reply: '{"matches":[{"folder":"repo","path":"src/auth.go","line":4,"preview":"func auth()"}]}',
+      method: "GET",
+      path: "/v1/projects/p/files/search?q=auth&mode=content&limit=12",
+      result: [{ folder: "repo", path: "src/auth.go", line: 4, preview: "func auth()" }],
+    },
+    {
+      run: (b) => (b.createDirectory ? b.createDirectory("p", { folder: "repo", path: "src/util" }) : Promise.reject(new Error("missing"))),
+      reply: '{"folder":"repo","path":"src/util"}',
+      status: 201,
+      method: "POST",
+      path: "/v1/projects/p/files/mkdir",
+      body: { folder: "repo", path: "src/util" },
+      result: { folder: "repo", path: "src/util" },
+    },
+    {
+      run: (b) => (b.renameFile ? b.renameFile("p", { folder: "repo", from: "a.txt", to: "b.txt" }) : Promise.reject(new Error("missing"))),
+      reply: '{"folder":"repo","path":"b.txt"}',
+      method: "POST",
+      path: "/v1/projects/p/files/rename",
+      body: { folder: "repo", from: "a.txt", to: "b.txt" },
+      result: { folder: "repo", path: "b.txt" },
+    },
+    {
+      run: (b) => (b.deleteFile ? b.deleteFile("p", "repo", "src/old.ts") : Promise.reject(new Error("missing"))),
+      reply: "",
+      status: 204,
+      method: "DELETE",
+      path: "/v1/projects/p/files/entry?folder=repo&path=src%2Fold.ts",
+      result: undefined,
+    },
   ];
   for (const c of cases) {
     const { bridge, calls } = bridgeWith(c.status ?? 200, c.reply);
