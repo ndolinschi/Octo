@@ -152,8 +152,8 @@ export function KeySteps({ provider, upstream }: { provider: Provider; upstream:
   const { load } = settings;
   if (load.status === "loading")
     return (
-      <p className="flex h-9 items-center gap-2 text-sm text-fg-3" aria-busy>
-        <Spinner size={10} /> Loading…
+      <p className="flex h-ctl-md items-center gap-2 text-sm text-fg-3" aria-busy>
+        <Spinner size="xs" /> Loading…
       </p>
     );
   if (load.status === "unavailable" || load.status === "error")

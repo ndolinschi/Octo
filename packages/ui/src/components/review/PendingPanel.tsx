@@ -3,9 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import type { ReviewComment, ReviewFinding, ReviewFindingDecision } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { commentWhere } from "../../lib/review/position";
-import { Button, IconButton } from "../primitives/Button";
-import { Input } from "../primitives/Field";
-import { Segmented } from "../primitives/Segmented";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
+import { KeyHint } from "../primitives/KeyHint";
+import { TextField } from "../primitives/TextField";
+import { ViewTabs } from "../primitives/ViewTabs";
 
 type Tab = "comments" | "findings";
 
@@ -70,23 +72,21 @@ export function PendingPanel(props: {
       aria-label="Pending comments and findings"
       className="absolute inset-y-0 right-0 z-20 flex w-[400px] max-w-full flex-col border-l border-panel-edge bg-overlay shadow-pop outline-none"
     >
-      <header className="flex h-ctl-lg shrink-0 items-center gap-2 border-b border-line pr-2 pl-4">
+      <header className="flex h-ctl-lg shrink-0 items-center gap-2 pr-2 pl-4 shadow-[inset_0_-1px_0_var(--octo-line)]">
         <h2 className="text-heading text-fg">Pending</h2>
         <span className="min-w-0 truncate text-xs text-fg-3">Posted only when you submit</span>
-        <IconButton icon={X} label="Close" onClick={props.onClose} className="ml-auto max-md:size-10" />
+        <IconButton icon={X} label="Close" onClick={props.onClose} className="ml-auto" />
       </header>
       {props.findings.length > 0 && (
-        <div className="shrink-0 border-b border-line px-4 py-2">
-          <Segmented<Tab>
-            label="Pending list"
-            value={tab}
-            onChange={setTab}
-            options={[
-              { id: "comments", label: `Comments ${props.comments.length}` },
-              { id: "findings", label: `Findings ${props.findings.length}` },
-            ]}
-          />
-        </div>
+        <ViewTabs<Tab>
+          label="Pending list"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { id: "comments", label: `Comments ${props.comments.length}` },
+            { id: "findings", label: `Findings ${props.findings.length}` },
+          ]}
+        />
       )}
       {props.problem && (
         <p role="alert" className="border-b border-line px-4 py-2 text-xs text-err">
@@ -97,7 +97,7 @@ export function PendingPanel(props: {
         {tab === "comments" ? (
           props.comments.length === 0 ? (
             <p className="text-sm text-fg-3">
-              No pending comments. Hover a line and press the “+” in the gutter, or select lines and press <kbd className="font-sans">c</kbd>.
+              No pending comments. Hover a line and press the “+” in the gutter, or select lines and press <KeyHint always>c</KeyHint>.
             </p>
           ) : (
             <ul className="flex flex-col">
@@ -115,7 +115,7 @@ export function PendingPanel(props: {
         )}
       </div>
       <footer className="flex shrink-0 justify-end border-t border-line p-2">
-        <Button size="sm" variant="secondary" onClick={props.onGeneral} className="max-md:h-10">
+        <Button size="sm" variant="secondary" onClick={props.onGeneral}>
           Add a general comment
         </Button>
       </footer>
@@ -157,8 +157,8 @@ function CommentCard(props: {
             </>
           ) : (
             <>
-              <IconButton icon={Pencil} size="sm" label="Edit comment" onClick={() => props.onEdit(c)} className="max-md:size-10" />
-              <IconButton icon={Trash2} size="sm" label="Delete comment" onClick={() => setConfirm(true)} className="max-md:size-10" />
+              <IconButton icon={Pencil} size="xs" label="Edit comment" onClick={() => props.onEdit(c)} />
+              <IconButton icon={Trash2} size="xs" label="Delete comment" onClick={() => setConfirm(true)} />
             </>
           )}
         </span>
@@ -199,15 +199,15 @@ function FindingCard(props: {
         </Button>
         {f.verdict && <span className="ml-auto shrink-0 text-xs text-fg-3">{f.verdict}</span>}
       </div>
-      <p className="text-sm [overflow-wrap:anywhere] text-fg">{f.statement}</p>
-      {f.scenario && <p className="text-xs [overflow-wrap:anywhere] text-fg-2">{f.scenario}</p>}
+      <p className="text-sm wrap-anywhere text-fg">{f.statement}</p>
+      {f.scenario && <p className="text-xs wrap-anywhere text-fg-2">{f.scenario}</p>}
       {f.patch && <pre className="overflow-x-auto rounded-sm bg-code-bg px-2 py-1.5 font-mono text-xs leading-5 text-fg">{f.patch}</pre>}
       {f.status === "new" && reason === null && (
         <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={() => props.onDecide(f, { status: "kept" })} className="max-md:h-10">
+          <Button size="sm" variant="secondary" onClick={() => props.onDecide(f, { status: "kept" })}>
             Keep as my comment
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setReason("")} className="max-md:h-10">
+          <Button size="sm" variant="quiet" onClick={() => setReason("")}>
             Dismiss
           </Button>
         </div>
@@ -220,7 +220,7 @@ function FindingCard(props: {
             props.onDecide(f, { status: "dismissed", ...(reason.trim() ? { reason: reason.trim() } : {}) });
           }}
         >
-          <Input
+          <TextField
             aria-label="Why dismiss this finding (optional)"
             placeholder="Why? It tunes the next pass"
             value={reason}
@@ -230,7 +230,7 @@ function FindingCard(props: {
             <Button size="sm" variant="secondary" type="submit">
               Dismiss finding
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setReason(null)}>
+            <Button size="sm" variant="quiet" onClick={() => setReason(null)}>
               Cancel
             </Button>
           </div>

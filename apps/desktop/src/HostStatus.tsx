@@ -6,8 +6,8 @@ export function HostStatus({ state, retrying, onRetry }: { state: Exclude<HostSt
     return (
       <main className="grid h-full place-items-center bg-window px-6 text-fg" role="status" aria-live="polite">
         <div className="flex flex-col items-center gap-4 text-center">
-          <div className="grid size-12 place-items-center rounded-xl border border-line bg-panel shadow-sm">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <div className="grid size-10 place-items-center rounded-xl border border-panel-edge bg-panel shadow-panel">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
               <circle cx="12" cy="12" r="7" className="stroke-line" strokeWidth="2" />
               <circle cx="12" cy="12" r="7" className="octo-ring-turn stroke-fg" strokeWidth="2" strokeLinecap="round" strokeDasharray="16 28" />
             </svg>
@@ -47,7 +47,7 @@ export function HostStatus({ state, retrying, onRetry }: { state: Exclude<HostSt
           type="button"
           onClick={onRetry}
           disabled={retrying}
-          className="mt-5 inline-flex h-8 items-center rounded-sm bg-primary px-3 text-sm font-medium text-primary-fg hover:opacity-90 disabled:bg-active disabled:text-fg-3"
+          className="mt-5 inline-flex h-ctl-md items-center rounded-sm bg-primary px-3 text-sm font-medium text-primary-fg transition-opacity duration-fast hover:opacity-90 disabled:bg-active disabled:text-fg-3"
         >
           {retrying ? "Starting…" : "Retry"}
         </button>

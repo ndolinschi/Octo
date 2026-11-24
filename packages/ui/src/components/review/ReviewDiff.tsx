@@ -13,6 +13,7 @@ import { DIFF_WAIT_MS, DIFF_WAIT_START, diffWait } from "../../lib/review/diffWa
 import { commentableRuns, type Anchor, type LineRun, type Side } from "../../lib/review/position";
 import { DIFF_FLASH_MS } from "../../lib/v7/changes";
 import { EditorContextMenu } from "../shared/EditorContextMenu";
+import { EmptyState } from "../primitives/EmptyState";
 import { Spinner } from "../primitives/Status";
 
 import type { Theme } from "../../lib/theme";
@@ -99,10 +100,18 @@ export function ReviewDiff(props: {
       hideUnchangedRegions: { enabled: true, contextLineCount: 3, minimumLineCount: 4, revealLineCount: 20 },
       glyphMargin: true,
       lineNumbersMinChars: 3,
+      lineDecorationsWidth: 6,
       folding: false,
       renderLineHighlight: "none",
       stickyScroll: { enabled: false },
-      scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false, alwaysConsumeMouseWheel: false },
+      scrollbar: {
+        verticalScrollbarSize: 8,
+        horizontalScrollbarSize: 8,
+        verticalSliderSize: 4,
+        horizontalSliderSize: 4,
+        useShadows: false,
+        alwaysConsumeMouseWheel: false,
+      },
       // Decision 79: long lines wrap in a review, so the diff never needs sideways scrolling and cannot open scrolled to the right.
       wordWrap: "on",
       diffWordWrap: "inherit",
@@ -391,9 +400,11 @@ export function ReviewDiff(props: {
       {editor && <EditorContextMenu editor={editor.getModifiedEditor()} path={props.path} />}
       {editor && <EditorContextMenu editor={editor.getOriginalEditor()} path={props.path} />}
       {failed && (
-        <p role="alert" className="absolute inset-x-0 top-6 px-6 text-center text-sm text-err">
-          The diff viewer did not load: {failed}. Reload the window to try again.
-        </p>
+        <div className="absolute inset-0 flex flex-col">
+          <EmptyState tone="err" title="The diff viewer did not load">
+            {failed}. Reload the window to try again.
+          </EmptyState>
+        </div>
       )}
       {zoneNodes.map(({ z, inner }) => createPortal(props.renderZone(z.key), inner, z.key))}
       {loading && (

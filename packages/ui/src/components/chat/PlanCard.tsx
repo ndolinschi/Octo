@@ -48,7 +48,7 @@ function PlanCard(props: { plan: Plan; onPlan(plan: Plan): void; onRefresh(): Pr
     return (
       // 7a/7b: the card spans the column's whole edge (the user bubble's and the composer's), its glyph on the text edge.
       <div data-plan="approved" role="group" aria-label="Approved plan" className="-mx-3 text-sm">
-        <Card surface="panel" padding="none">
+        <Card padding="none">
           <Button variant="quiet" size="md" fullWidth aria-expanded={open} onClick={() => setOpen((o) => !o)} className="justify-start px-3">
             <Glyph icon={Check} size={14} className="shrink-0 text-ok" />
             <span className="text-left">Plan approved</span>
@@ -84,7 +84,7 @@ function PlanCard(props: { plan: Plan; onPlan(plan: Plan): void; onRefresh(): Pr
       }
       error={problem}
     >
-      <div className="max-h-80 overflow-y-auto">
+      <div className="max-h-80 overflow-y-auto overscroll-contain">
         <LazyMarkdown text={shown.body} className="octo-prose" />
       </div>
       {running && !problem && <p className="text-fg-3">Octo is still working.</p>}

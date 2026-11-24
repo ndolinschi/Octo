@@ -42,7 +42,7 @@ export function RouterSettings(props: { open?: boolean; onOpen?(open: boolean): 
       {open && (
         <div id={panelId} className="divide-y divide-line">
           {harness.load.status === "unavailable" && <SettingsRow title="Not available here" description="This window can't read or change Octo's settings." />}
-          {harness.load.status === "loading" && <SkeletonList count={1} size="lg" twoLine />}
+          {harness.load.status === "loading" && <SkeletonList count={3} size="lg" twoLine />}
           {harness.load.status === "error" && (
             <LoadErrorRow what="settings" message={harness.load.message} hint="Octo's local service answers only on this computer." onRetry={harness.reload} />
           )}

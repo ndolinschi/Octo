@@ -56,7 +56,7 @@ export function FilterTabs<T extends string>(props: {
       onKeyDown={onKeyDown}
       className={cn(
         "flex min-w-0 items-center gap-1 overflow-x-auto fade-x text-xs",
-        props.bare ? "shrink" : "h-row shrink-0 px-pane phone:h-ctl-lg",
+        props.bare ? "shrink" : "h-ctl-sm shrink-0 px-pane phone:h-ctl-lg",
         props.className,
       )}
     >
@@ -73,7 +73,7 @@ export function FilterTabs<T extends string>(props: {
             onClick={() => props.onChange(o.id)}
             className={cn(
               "touch-hit flex h-ctl-xs shrink-0 items-center justify-center gap-1 rounded-sm px-2 whitespace-nowrap press-row focus-inset phone:h-ctl-lg phone:min-w-ctl-lg",
-              on ? "text-fg" : "text-fg-3 hover:text-fg-2",
+              on ? "font-medium text-fg" : "text-fg-3 hover:text-fg-2",
             )}
           >
             {o.label}

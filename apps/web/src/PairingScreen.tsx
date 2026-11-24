@@ -4,7 +4,7 @@ import { claim, deviceNameFromUA, formatCode, PairingError, type FetchFn, type P
 const pageFetch: FetchFn = (url, init) => window.fetch(url, init);
 
 const FIELD =
-  "h-ctl-lg w-full rounded-md border border-field-edge bg-panel px-3 text-input-touch text-fg outline-none placeholder:text-fg-3 transition-[border-color] duration-100 focus-visible:border-fg";
+  "h-ctl-lg w-full rounded-md border border-field-edge bg-panel px-3 text-input-touch text-fg outline-none placeholder:text-fg-3 transition-[border-color] duration-fast focus-visible:border-fg";
 
 /**
  * The phone's first screen (spec section 8): the code from the computer (filled from a scanned QR link), a name for this
@@ -45,7 +45,7 @@ export function PairingScreen({
 
   return (
     // Add. 8c: `#root` already keeps clear of the notch and the home indicator (styles.css); this screen adds only its own space.
-    <main className="flex min-h-full flex-col items-center bg-window px-4 pt-12 pb-6 text-fg">
+    <main className="flex min-h-full flex-col items-center bg-window px-4 pt-10 pb-6 text-fg">
       <div className="flex w-full max-w-sm flex-col gap-6">
         <header className="flex flex-col items-center gap-3 text-center">
           <img src="/icons/icon-128.png" alt="" width={56} height={56} className="rounded-xl" />
@@ -81,7 +81,7 @@ export function PairingScreen({
                   <button
                     type="button"
                     onClick={onRetry}
-                    className="h-9 self-start rounded-md border border-field-edge bg-window px-3 font-medium text-fg transition-[border-color] duration-100 hover:border-fg"
+                    className="h-ctl-lg self-start rounded-md border border-field-edge bg-window px-3 font-medium text-fg transition-[border-color] duration-fast hover:border-fg"
                   >
                     Retry
                   </button>
@@ -120,7 +120,7 @@ export function PairingScreen({
             <button
               type="submit"
               disabled={busy || code.replace(/-/g, "").length !== 8}
-              className="h-10 rounded-md bg-primary font-medium text-primary-fg disabled:bg-active disabled:text-fg-3"
+              className="h-ctl-lg rounded-md bg-primary font-medium text-primary-fg disabled:bg-active disabled:text-fg-3"
             >
               {busy ? "Connecting…" : "Connect"}
             </button>

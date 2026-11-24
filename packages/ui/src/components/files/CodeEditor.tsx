@@ -6,6 +6,7 @@ import type { Theme } from "../../lib/theme";
 import { useLatest } from "../../lib/hooks";
 import { monoFont } from "../../lib/monoFont";
 import { browserIdle, saveData } from "../../lib/warmSchedule";
+import { EmptyState } from "../primitives/EmptyState";
 import { EditorContextMenu } from "../shared/EditorContextMenu";
 import { EditorSkeleton } from "./EditorSkeleton";
 import type { EditorBuffers, MonacoApi } from "../../lib/buffers";
@@ -259,9 +260,11 @@ export const CodeEditor = memo(function CodeEditor(props: {
 
   if (failed) {
     return (
-      <p role="alert" className="px-3 pt-3 text-sm text-fg-2">
-        The editor couldn't load ({failed}). Reload the window to try again.
-      </p>
+      <div className="flex h-full min-h-0 flex-col">
+        <EmptyState tone="err" title="The editor couldn't load">
+          {failed}. Reload the window to try again.
+        </EmptyState>
+      </div>
     );
   }
 

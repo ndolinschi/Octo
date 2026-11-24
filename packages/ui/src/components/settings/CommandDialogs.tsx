@@ -7,7 +7,6 @@ import { Checkbox } from "../primitives/Checkbox";
 import { Field } from "../primitives/Field";
 import { FieldRow } from "../primitives/FieldRow";
 import { Notice } from "../primitives/Notice";
-import { Switch } from "../primitives/Switch";
 import { TextArea, TextField } from "../primitives/TextField";
 
 /** Add or edit one project command (decision 68). `others` are the rest of the list, so a clash or a third pin is named before saving. */
@@ -24,7 +23,7 @@ export function CommandDialog(props: {
   const [pinned, setPinned] = useState(props.initial?.pinned === true);
   const [busy, setBusy] = useState(false);
   const [server, setServer] = useState<string | null>(null);
-  const ids = [useId(), useId(), useId(), useId()] as const;
+  const ids = [useId(), useId(), useId()] as const;
   const draft: ProjectCommand = { name: name.trim(), command: command.trim(), ...(cwd.trim() ? { cwd: cwd.trim() } : {}), ...(pinned ? { pinned: true } : {}) };
   const problem = name.trim() || command.trim() ? commandsProblem([...props.others, draft]) : null;
   const valid = name.trim() !== "" && command.trim() !== "" && problem === null;
@@ -83,12 +82,7 @@ export function CommandDialog(props: {
             className="font-mono"
           />
         </Field>
-        <div className="flex items-center gap-3">
-          <Switch id={ids[3]} label="Show as a button in the header" checked={pinned} onChange={setPinned} />
-          <label htmlFor={ids[3]} className="text-sm text-fg-2">
-            Show as a button in the header (two at most)
-          </label>
-        </div>
+        <Checkbox label="Show as a button in the header (two at most)" checked={pinned} onChange={setPinned} />
         {(problem || server) && <Notice tone="error">{server ?? problem}</Notice>}
       </div>
     </Dialog>
@@ -121,7 +115,7 @@ export function OfferedDialog(props: {
           <Button variant="quiet" onClick={props.onClose}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={busy} onClick={() => void save()}>
+          <Button variant="primary" loading={busy} disabled={busy} onClick={() => void save()}>
             Save
           </Button>
         </>
@@ -148,7 +142,11 @@ export function OfferedDialog(props: {
             className="py-1"
           />
         ))}
-        {server && <Notice tone="error">{server}</Notice>}
+        {server && (
+          <Notice tone="error" className="mt-2">
+            {server}
+          </Notice>
+        )}
       </div>
     </Dialog>
   );

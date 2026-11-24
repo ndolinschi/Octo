@@ -69,7 +69,7 @@ export function Home({ onNewProject, unseen }: { onNewProject(): void; onSearch(
             {/* Polish step 2 (F5): one left edge at 16px inside the column — the heading's text, the tiles' glyphs, the cards'
                 captions and glyphs (card 8 + row 8) — instead of a centred heading over left-aligned rows. */}
             <h1 id="home-title" data-page-title tabIndex={-1} className="px-4 text-display text-fg focus-visible:shadow-none">
-              {count > 0 && <span className="octo-lead block">{count === 1 ? "1 project" : `${count} projects`}</span>}
+              {count > 0 && <span className="octo-lead block tabular-nums">{count === 1 ? "1 project" : `${count} projects`}</span>}
               What should we work on?
             </h1>
             <TriageRow items={[...triaged, ...(sessions ?? [])]} loading={data.projects === null} value={filter} onChange={setFilter} />

@@ -9,8 +9,9 @@ type Variant = "quiet" | "primary" | "round";
 const VARIANT: Record<Variant, string> = {
   quiet: "text-fg-3 hover:bg-hover hover:text-fg disabled:opacity-40",
   primary: "bg-primary text-primary-fg hover:opacity-90 disabled:bg-active disabled:text-fg-3 disabled:opacity-100",
-  // The floating circle (jump to latest): overlay surface, hairline, elevation; its focus ring composes with the shadow.
-  round: "rounded-full border border-line bg-overlay text-fg-2 shadow-float octo-ring-float hover:text-fg disabled:opacity-40",
+  // The floating circle (jump to latest): overlay surface, hairline via shadow-float; its focus ring composes with the shadow.
+  round:
+    "rounded-full bg-overlay text-fg-2 shadow-float octo-ring-float hover:text-fg disabled:opacity-40 forced-colors:border forced-colors:border-[CanvasText]",
 };
 
 /**

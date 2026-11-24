@@ -62,11 +62,12 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
       <span
         aria-hidden
         className={cn(
-          "mt-0.5 grid size-4 shrink-0 place-items-center rounded-xs border transition-[background-color,border-color] duration-fast peer-focus-visible:outline-2 peer-focus-visible:outline-offset-1 peer-focus-visible:outline-focus",
+          "grid size-4 shrink-0 place-items-center rounded-xs border transition-[background-color,border-color] duration-fast peer-focus-visible:outline-2 peer-focus-visible:outline-offset-1 peer-focus-visible:outline-focus",
+          !props.hideLabel && "mt-0.5",
           on ? "border-primary bg-primary text-primary-fg" : props.invalid ? "border-err bg-panel" : "border-input-border bg-panel group-hover:border-fg-3",
         )}
       >
-        {on && <Glyph icon={mixed ? Minus : Check} size={14} />}
+        {on && <Glyph icon={mixed ? Minus : Check} size={12} />}
       </span>
       {!props.hideLabel && (
         <span className="flex min-w-0 flex-col">

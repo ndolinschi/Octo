@@ -21,7 +21,7 @@ import {
 } from "../../lib/v7/approval";
 import { alwaysLabel, canAlwaysAllow } from "../../lib/v7/rules";
 import { Button } from "../primitives/Button";
-import { Textarea } from "../primitives/Field";
+import { TextArea } from "../primitives/TextField";
 import { Glyph } from "../primitives/Glyph";
 import { Card } from "../primitives/Card";
 import { Notice } from "../primitives/Notice";
@@ -204,7 +204,7 @@ function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
         </Suspense>
       )}
       {c.noteOpen && (
-        <Textarea
+        <TextArea
           id={noteId}
           aria-label="Note for the agent"
           placeholder="Why, or what to do instead (sent with a denial)"
@@ -419,14 +419,14 @@ function CompactApproval(props: ApprovalCardProps) {
             {subjectLine(approval)}
           </span>
           {diff && <LineCounts added={diff.added} removed={diff.removed} />}
-          <Glyph icon={ChevronRight} size={14} className={cn("shrink-0 text-fg-3", open && "rotate-90")} />
+          <Glyph icon={ChevronRight} size={14} className={cn("shrink-0 text-fg-3 transition-transform duration-base", open && "rotate-90")} />
         </Button>
         {props.showAgent && <span className="ml-auto shrink-0 text-xs text-fg-3">{approval.agent_label}</span>}
       </div>
       {open && (
         <div id={detailsId} className="flex flex-col gap-2 pb-1">
           {patch ? (
-            <Suspense fallback={<div className="h-6" />}>
+            <Suspense fallback={<div className="h-ctl-xs" />}>
               <PatchView patch={patch} open />
             </Suspense>
           ) : (
@@ -509,8 +509,8 @@ function ResolvedApproval({ approval, resolution }: { approval: Approval; resolu
       data-resolved=""
       className="@container/v7 text-sm"
     >
-      <Card surface="panel" padding="none">
-        <div className="flex h-8 min-w-0 items-center gap-2 px-3" title={resolution.note ? `Note: ${resolution.note}` : undefined}>
+      <Card padding="none">
+        <div className="flex h-ctl-md min-w-0 items-center gap-2 px-3" title={resolution.note ? `Note: ${resolution.note}` : undefined}>
           <Glyph icon={icon} size={14} className={cn("shrink-0", allowed ? "text-ok" : resolution.by === "timeout" ? "text-warn" : "text-err")} />
           <span className="shrink-0 text-fg-2">{resolutionLabel(resolution, approval)}</span>
           <span

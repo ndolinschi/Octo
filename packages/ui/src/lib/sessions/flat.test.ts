@@ -42,25 +42,25 @@ const g = (id: string, projectId: string, minutesAgo: number, over: Partial<Glob
   ...over,
 });
 
-test("flatSessions keeps a fallback session for an empty project and the active empty session", () => {
+test("flatSessions hides untouched empty default sessions so empty projects show as project rows instead of phantom New session entries", () => {
   const emptyDefault = g("s1", "test", 2, { default: true, current: true, project_name: "Test Project" });
   const emptyOther = g("s2", "test", 1, { project_name: "Test Project" });
   const emptySecondaryProject = g("s3", "other", 10, { default: true, project_name: "Other" });
 
-  // Active empty project's open session is visible (not hidden just because exchanges === 0).
-  assert.deepEqual(
-    flatSessions([emptyDefault], "s1").map((s) => s.id),
-    ["s1"],
-  );
+  // Neither the active empty default session nor inactive empty project defaults appear in flatSessions.
+  assert.deepEqual(flatSessions([emptyDefault], "s1"), []);
+  assert.deepEqual(flatSessions([emptyOther, emptyDefault, emptySecondaryProject], null), []);
 
-  // When on Home (no active session) or another project, each empty project still surfaces its default session.
+  // As soon as a message is queued or running, the session appears.
+  const queued = g("s4", "test", 1, { queued: 1 });
+  const working = g("s5", "other", 2, { state: "working" });
   assert.deepEqual(
-    flatSessions([emptyOther, emptyDefault, emptySecondaryProject], null).map((s) => s.id),
-    ["s1", "s3"],
+    flatSessions([emptyDefault, queued, working], "s4").map((s) => s.id),
+    ["s4", "s5"],
   );
 });
 
-test("flatSessions hides unused stale empty drafts on projects that already have activity, unless active", () => {
+test("flatSessions keeps only non-archived main sessions with activity", () => {
   const activeAlpha = g("a-chat", "alpha", 15, { exchanges: 3, title: "Fix login" });
   const staleEmptyAlpha = g("a-draft", "alpha", 5, { exchanges: 0 });
   const newEmptyAlpha = g("a-new", "alpha", 1, { exchanges: 0 });
@@ -69,18 +69,18 @@ test("flatSessions hides unused stale empty drafts on projects that already have
 
   assert.deepEqual(
     flatSessions([activeAlpha, staleEmptyAlpha, newEmptyAlpha, archived, betaEmpty], "a-new").map((s) => s.id),
-    ["a-new", "a-chat", "b-def"],
+    ["a-chat"],
   );
 });
 
-test("treeSessions keeps brand-new empty projects compact but reveals an active new empty session alongside existing sessions", () => {
+test("treeSessions hides empty idle sessions for both brand-new and active projects", () => {
   const onlyEmpty = [g("t1", "test", 1, { default: true })];
   assert.deepEqual(treeSessions(onlyEmpty, false, "t1"), { shown: [], hidden: 0 });
 
   const mixed = [g("a1", "alpha", 10, { exchanges: 2 }), g("a2", "alpha", 1, { exchanges: 0 })];
   assert.deepEqual(
     treeSessions(mixed, false, "a2").shown.map((s) => s.id),
-    ["a2", "a1"],
+    ["a1"],
   );
 });
 

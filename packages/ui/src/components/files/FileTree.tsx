@@ -319,7 +319,7 @@ export const FileTree = forwardRef<
               className="flex h-ctl-xs shrink-0 items-center gap-1 rounded-sm px-1 text-xs text-fg-3 focus-inset touch:h-ctl-lg"
             >
               <Indent px={indent} />
-              <span className="grid size-6 shrink-0 place-items-center">{row.kind === "loading" && <Spinner size={10} />}</span>
+              <span className="grid size-6 shrink-0 place-items-center">{row.kind === "loading" && <Spinner size="xs" />}</span>
               {row.kind === "loading" ? (
                 "Loading…"
               ) : (
@@ -353,7 +353,7 @@ export const FileTree = forwardRef<
           />
         );
       })}
-      {query && rows.length === 0 && <p className="flex h-row items-center px-2 text-xs text-fg-3">No files match</p>}
+      {query && rows.length === 0 && <p className="flex h-ctl-sm items-center px-2 text-xs text-fg-3">No files match</p>}
       <Presence show={menu !== null}>
         {menu && <Menu label={menu.row.name} x={menu.x} y={menu.y} items={rowMenu(menu.row)} onClose={() => setMenu(null)} />}
       </Presence>

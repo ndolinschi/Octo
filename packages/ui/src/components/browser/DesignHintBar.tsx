@@ -48,7 +48,7 @@ export function DesignHintBar(props: {
       data-design-hint-bar
       role="toolbar"
       aria-label="Design mode tools"
-      className="@container/dh flex min-h-9 shrink-0 flex-wrap items-center gap-2 border-b border-line bg-raised px-2 py-1"
+      className="@container/dh flex min-h-strip shrink-0 flex-wrap items-center gap-2 border-b border-line px-pane py-1"
     >
       <div className="flex shrink-0 items-center gap-0.5">
         {TOOLS.map((t) => (
@@ -70,7 +70,7 @@ export function DesignHintBar(props: {
       </span>
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        <label htmlFor={batchSwitchId} className="cursor-pointer text-xs text-fg-2 select-none">
+        <label htmlFor={batchSwitchId} className="text-xs text-fg-2 select-none">
           Batch edits
         </label>
         <Switch id={batchSwitchId} label="Batch edits" checked={props.batchEdits} onChange={props.onBatchEditsChange} />

@@ -1,16 +1,17 @@
 import { ChevronDown } from "lucide-react";
 import { useRef, useState } from "react";
 import { cn } from "../../lib/cn";
+import { CONTROL } from "../../lib/controls";
 import { Glyph } from "./Glyph";
 import { Menu, type MenuItem } from "./Menu";
 import { Presence } from "./Presence";
 
 /**
  * A quiet text button with a 14px chevron that opens a menu (decision 33: options are a menu, not a button group).
- * 24px, `fg-2` text, no border; the `hover` fill while hovered and `active` while its menu is open. The label never
+ * 24px (`xs`, default) or 28px (`sm`), `fg-2` text, no border; the `hover` fill while hovered and `active` while its menu is open. The label never
  * truncates — it is the control's whole meaning.
  */
-export function MenuButton(props: { label: string; text: string; items: MenuItem[]; alignEnd?: boolean; className?: string }) {
+export function MenuButton(props: { label: string; text: string; items: MenuItem[]; size?: "xs" | "sm"; alignEnd?: boolean; className?: string }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const button = useRef<HTMLButtonElement>(null);
   const toggle = () => {
@@ -27,7 +28,8 @@ export function MenuButton(props: { label: string; text: string; items: MenuItem
         aria-expanded={menu !== null}
         onClick={toggle}
         className={cn(
-          "touch-hit flex h-chip shrink-0 press items-center gap-1 rounded-sm px-2 text-sm whitespace-nowrap hover:bg-hover hover:text-fg phone:h-ctl-lg phone:min-w-ctl-lg",
+          "touch-hit flex shrink-0 press items-center gap-1 rounded-sm px-2 text-sm whitespace-nowrap hover:bg-hover hover:text-fg phone:h-ctl-lg phone:min-w-ctl-lg",
+          CONTROL[props.size ?? "xs"].h,
           menu ? "bg-active text-fg" : "text-fg-2",
           props.className,
         )}

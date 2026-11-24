@@ -372,7 +372,7 @@ function ProcessRow(props: {
       // Work-surface polish item 5: hidden actions overlay the row's end (ListRow), so the PID / duration column ends on one
       // edge; on a phone they show in a slot as wide as the widest set (two lg buttons), so the column lines up there too.
       trailing={
-        <span className={cn("flex shrink-0 items-center justify-end gap-0.5", phone && "w-21")}>
+        <span className={cn("flex shrink-0 items-center justify-end gap-0.5", phone && "w-[calc(var(--spacing-ctl-lg)*2+2px)]")}>
           {canStop && <IconButton icon={Square} size={actionSize} label={`Stop ${name}`} onClick={props.onStop} />}
           {(!phone || !canStop) && canKill && <IconButton icon={OctagonX} size={actionSize} label={`Kill ${name}`} onClick={props.onKill} />}
           {menuItems.length > 0 && !busy && <IconMenu label={`Actions for ${name}`} size={actionSize} items={menuItems} />}

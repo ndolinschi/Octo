@@ -509,9 +509,7 @@ export function CommandPalette(props: {
                       setSelected(i);
                     }}
                     onClick={item.run}
-                    leading={
-                      item.glyph ? <StateGlyph state={item.glyph} box={16} /> : item.pending ? <Skeleton shape="circle" className="size-3.5" /> : <span />
-                    }
+                    leading={item.glyph ? <StateGlyph state={item.glyph} box={16} /> : item.pending ? <Skeleton shape="circle" className="size-3" /> : <span />}
                     title={<Highlight text={item.label} query={query} />}
                     tip={item.label}
                     meta={item.shortcut ?? item.detail}

@@ -65,7 +65,7 @@ export function ReviewView(props: {
             <Button size="sm" variant="secondary" onClick={retry}>
               Retry
             </Button>
-            <Button size="sm" variant="ghost" onClick={props.onBack}>
+            <Button size="sm" variant="quiet" onClick={props.onBack}>
               Back to the list
             </Button>
           </>
@@ -415,7 +415,7 @@ function Ready(props: {
       {threads.load.status === "error" && (
         <div role="status" className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line px-4 py-1.5 text-sm">
           <span className="text-fg-2">The existing comments did not load: {threads.load.message}.</span>
-          <Button size="sm" variant="secondary" onClick={threads.refresh} className="max-md:h-10">
+          <Button size="sm" variant="secondary" onClick={threads.refresh}>
             Retry
           </Button>
         </div>
@@ -657,9 +657,9 @@ function Banners(props: {
 function ReviewSkeleton() {
   return (
     <div className="flex h-full min-h-0 flex-col" aria-busy aria-label="Loading the review">
-      <div className="flex h-16 shrink-0 flex-col justify-center gap-3 border-b border-line pr-4 pl-10">
-        <div className="h-3 w-2/5 rounded-sm bg-hover" />
-        <div className="h-2 w-3/5 rounded-sm bg-hover" />
+      <div className="flex h-ctl-lg shrink-0 items-center gap-2 px-pane shadow-[inset_0_-1px_0_var(--octo-line)]">
+        <div className="ml-2 h-3 w-2/5 rounded-sm bg-hover" />
+        <div className="ml-auto h-3 w-20 rounded-sm bg-hover" />
       </div>
       <div className="flex min-h-0 flex-1">
         <div className="shrink-0 border-r border-line px-pane pt-1 max-md:hidden" style={{ width: FILES_WIDTH }}>

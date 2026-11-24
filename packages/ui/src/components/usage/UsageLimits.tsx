@@ -8,12 +8,11 @@ import { useDelayedLoading } from "../../lib/hooksMore";
 import { toolTab } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { isStale, limitKindLabel, observedLabel, remainingShare, remainingText, resetLabel, sortLimits, spentShare } from "../../lib/usage";
-import { Glyph } from "../primitives/Glyph";
-import { GLYPH } from "../primitives/glyphs";
 import { InfoSection } from "../primitives/InfoList";
 import { ListRow } from "../primitives/ListRow";
 import { Notice } from "../primitives/Notice";
 import { PanelEmpty } from "../primitives/Panel";
+import { ProviderMark } from "../primitives/ProviderMark";
 import { SkeletonList } from "../primitives/Skeleton";
 import { modelLabel } from "../primitives/statusMore";
 import { useLimits } from "./useUsage";
@@ -118,7 +117,14 @@ export function UsageLimits() {
       {settled && limits.status !== "error" && (
         <InfoSection title="Subscription limits of coding agents" labelId="usage-plan-limits">
           {agents.map((a) => (
-            <ListRow key={a.id} size="md" leading={<Glyph icon={GLYPH.agent} size={14} />} title={a.label} meta="Coding agent" tone="quiet" />
+            <ListRow
+              key={a.id}
+              size="md"
+              leading={<ProviderMark id={a.id} label={a.label} className="text-fg-3" />}
+              title={a.label}
+              meta="Coding agent"
+              tone="quiet"
+            />
           ))}
           <p className="px-2 pt-1 text-xs text-fg-3">
             {agents.length

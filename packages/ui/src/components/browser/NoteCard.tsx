@@ -81,15 +81,10 @@ export function NoteCard(props: {
       if (canSubmit || draft.elements.length > 0 || draft.area) props.onStageToChat();
       return;
     }
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       if (canSubmit && !props.busy) props.onSubmit();
       return;
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      props.onCancel();
     }
   };
 
@@ -99,6 +94,13 @@ export function NoteCard(props: {
       role="dialog"
       aria-label="Design note"
       data-design-note-card
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          props.onCancel();
+        }
+      }}
       style={{ left: pos.left, top: pos.top }}
       className="absolute z-20 flex max-h-[calc(100%-16px)] w-[min(360px,calc(100%-16px))] flex-col gap-2 overflow-y-auto overscroll-contain rounded-xl bg-overlay p-3 text-sm shadow-pop forced-colors:border forced-colors:border-[CanvasText]"
     >
@@ -108,13 +110,13 @@ export function NoteCard(props: {
             <span
               key={el.selector}
               title={el.component?.file ? `${el.selector} (${el.component.file})` : el.selector}
-              className="max-w-full truncate rounded-sm bg-raised px-1.5 py-0.5 font-mono text-xs text-fg"
+              className="max-w-full truncate rounded-sm bg-code-bg px-1.5 py-0.5 font-mono text-xs text-fg"
             >
               {elementSummary(el)}
             </span>
           ))}
           {draft.elements.length === 0 && draft.area && (
-            <span className="rounded-sm bg-raised px-1.5 py-0.5 font-mono text-xs text-fg">{`Area ${draft.area.width}×${draft.area.height}`}</span>
+            <span className="rounded-sm bg-code-bg px-1.5 py-0.5 font-mono text-xs text-fg">{`Area ${draft.area.width}×${draft.area.height}`}</span>
           )}
           {singleEl?.component?.file && <span className="max-w-full truncate font-mono text-xs text-fg-3">{singleEl.component.file}</span>}
         </div>
@@ -122,7 +124,7 @@ export function NoteCard(props: {
       </div>
 
       {draft.textEdit && (
-        <p className="truncate rounded-sm bg-raised px-2 py-1 text-xs text-fg-2">{`Text: "${draft.textEdit.before}" → "${draft.textEdit.after}"`}</p>
+        <p className="truncate rounded-sm bg-code-bg px-2 py-1 text-xs text-fg-2">{`Text: "${draft.textEdit.before}" → "${draft.textEdit.after}"`}</p>
       )}
 
       <TextArea

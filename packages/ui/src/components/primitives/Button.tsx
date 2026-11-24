@@ -14,7 +14,7 @@ const VARIANT: Record<ButtonVariant, string> = {
   secondary: "border border-line-strong text-fg hover:bg-hover disabled:text-fg-3",
   quiet: "text-fg-2 hover:bg-hover hover:text-fg disabled:text-fg-3",
   // An opaque surface for a control that floats over content (the composer's status chips): it must not show text through it.
-  float: "border border-line-strong bg-overlay text-fg hover:bg-raised disabled:text-fg-3",
+  float: "bg-overlay text-fg shadow-float octo-ring-float hover:bg-raised disabled:text-fg-3 forced-colors:border forced-colors:border-[CanvasText]",
   ghost: "text-fg-2 hover:bg-hover hover:text-fg disabled:text-fg-3",
   // Decision 81c: destructive and deny actions are quiet buttons with coloured text, not coloured outlines.
   danger: "text-err hover:bg-hover disabled:text-fg-3",

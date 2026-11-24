@@ -10,6 +10,7 @@ import { Checkbox } from "../primitives/Checkbox";
 import { Field } from "../primitives/Field";
 import { Notice } from "../primitives/Notice";
 import { DetailHeader, FormActions } from "../primitives/Panel";
+import { proseClass } from "../primitives/Prose";
 import { ScrollArea } from "../primitives/ScrollArea";
 import { Segmented } from "../primitives/Segmented";
 import { TextArea, TextField } from "../primitives/TextField";
@@ -129,7 +130,7 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
           error={tooLong ? `Shorten the description by ${length - NOTE_LIMITS.description} characters.` : null}
           errorId={`${id}-desc-error`}
         >
-          <div className="relative">
+          <div className="flex items-center gap-2">
             <TextField
               id={`${id}-desc`}
               value={description}
@@ -137,9 +138,9 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
               onChange={(e) => setDescription(e.target.value.replace(/\n/g, " "))}
               aria-invalid={tooLong ? true : undefined}
               aria-describedby={tooLong ? `${id}-desc-error` : undefined}
-              className="pr-16"
+              className="min-w-0 flex-1"
             />
-            <span aria-live="off" className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-fg-3 tabular-nums">
+            <span aria-live="off" className="shrink-0 text-xs text-fg-3 tabular-nums">
               {length}/{NOTE_LIMITS.description}
             </span>
           </div>
@@ -175,7 +176,7 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
             />
           ) : (
             <div className="min-h-0 flex-1 rounded-md border border-field-edge bg-panel px-3 py-2">
-              {body.trim() ? <Markdown text={body} className="octo-prose octo-prose-sm" /> : <p className="text-sm text-fg-3">Nothing to preview yet.</p>}
+              {body.trim() ? <Markdown text={body} className={proseClass("compact")} /> : <p className="text-sm text-fg-3">Nothing to preview yet.</p>}
             </div>
           )}
           {bodyError && (

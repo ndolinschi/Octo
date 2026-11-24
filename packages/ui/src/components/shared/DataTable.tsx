@@ -46,9 +46,9 @@ export function TableFrame({ children, tone = "panel", note }: { children: React
           {children}
         </table>
       </div>
-      <div className="flex h-row items-center gap-2 text-xs text-fg-3">
+      <div className="flex h-ctl-sm items-center gap-2 text-xs text-fg-3">
         {rows > FOLD_ROWS ? (
-          <Button variant="quiet" size="xs" aria-expanded={all} onClick={() => setAll((x) => !x)} className="-ml-1.5">
+          <Button variant="quiet" size="xs" aria-expanded={all} onClick={() => setAll((x) => !x)} className="-ml-2 tabular-nums">
             {all ? "Show fewer" : `Show all ${rows} rows`}
           </Button>
         ) : (
@@ -70,9 +70,10 @@ export function TableFrame({ children, tone = "panel", note }: { children: React
             if (r) setMenu(menu ? null : { x: r.right, y: r.bottom + 4 });
           }}
           className={cn(
-            "-mr-1.5 ml-auto",
-            "opacity-0 group-focus-within/table:opacity-100 group-hover/table:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100",
-            (menu !== null || copied) && "opacity-100",
+            "-mr-2 ml-auto transition-opacity duration-fast",
+            menu !== null || copied
+              ? "opacity-100"
+              : "pointer-events-none opacity-0 group-focus-within/table:pointer-events-auto group-focus-within/table:opacity-100 group-hover/table:pointer-events-auto group-hover/table:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100",
           )}
         >
           {copied ? "Copied" : "Copy"}

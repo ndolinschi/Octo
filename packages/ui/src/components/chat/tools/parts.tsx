@@ -35,7 +35,7 @@ export function BodyFrame(props: { kind: string; children?: ReactNode; lead?: Re
       {props.children}
       {/* R2: on touch the line is as tall as a touch target and its actions 8px apart, so "Copy command" / "Raw" and the code
           above (a diff's last line number, a table's Copy) never share a touch zone. */}
-      <div className={cn("flex min-h-8 min-w-0 flex-wrap items-center gap-x-3 px-3 py-1 text-fg-3 touch:min-h-11", content && "border-t border-line")}>
+      <div className={cn("flex min-h-ctl-md min-w-0 flex-wrap items-center gap-x-3 px-3 py-1 text-fg-3 touch:min-h-ctl-lg", content && "border-t border-line")}>
         {props.lead !== undefined && props.lead !== null && props.lead !== false && (
           <span className="flex min-w-0 items-center gap-1.5 tabular-nums">{props.lead}</span>
         )}

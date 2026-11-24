@@ -29,7 +29,7 @@ export function SidebarDrawer(props: { onClose(): void; opener: RefObject<HTMLEl
   return (
     // Starts under the title bar row, so its toggle stays visible (Esc or the scrim closes the drawer).
     <div
-      className={cn("fixed z-40", phone ? "octo-sheet inset-x-0" : "inset-x-0 top-bar bottom-7")}
+      className={cn("fixed z-40", phone ? "octo-sheet inset-x-0" : "inset-x-0 top-bar bottom-(--octo-status-h)")}
       data-sheet={phone ? "full" : undefined}
       inert={state === "closed"}
     >

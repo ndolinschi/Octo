@@ -110,11 +110,3 @@ export function TextMenu(props: {
     </>
   );
 }
-
-export function Key({ children }: { children: ReactNode }) {
-  return (
-    <kbd aria-hidden data-key-hint className="octo-v7-kbd max-sm:hidden">
-      {children}
-    </kbd>
-  );
-}

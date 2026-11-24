@@ -174,7 +174,7 @@ export function ProcessDetail(props: { item: ProcessItem; busy: string | null; c
               const el = e.currentTarget;
               following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX;
             }}
-            className="max-h-[58vh] min-h-32 overflow-y-auto rounded-md border border-line bg-code-bg p-3 font-mono text-xs leading-5 break-words whitespace-pre-wrap text-fg focus-inset"
+            className="max-h-[58vh] min-h-32 overflow-y-auto overscroll-contain rounded-md bg-code-bg p-3 font-mono text-xs leading-5 break-words whitespace-pre-wrap text-fg focus-inset"
           >
             {text || (item.kind === "command" ? (active ? "Waiting for output…" : "No output.") : "No diagnostic output on stderr.")}
           </pre>

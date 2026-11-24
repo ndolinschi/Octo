@@ -158,7 +158,7 @@ export function SaveStatus(props: { state: SaveState; restart?: boolean; onResta
   if (state.kind === "saving")
     return (
       <p role="status" className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap text-fg-3">
-        <Spinner size={10} /> Saving…
+        <Spinner size="xs" /> Saving…
       </p>
     );
   if (state.kind === "error")

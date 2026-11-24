@@ -356,7 +356,7 @@ export const Transcript = memo(function Transcript(props: {
           </Suspense>
         ))}
         {warning && (
-          <div data-turn-warning className="-mt-4">
+          <div data-turn-warning className="-mx-3 -mt-4">
             <Suspense fallback={null}>
               <ErrorNotice tone="info" fields={{ message: warning }} raw={`warning: ${warning}`} agent={agentName} />
             </Suspense>
@@ -486,7 +486,7 @@ const UserPrompt = memo(function UserPrompt({
         data-bubble
         data-one-line={(oneLine && !external && !steered && images.length === 0 && comments.length === 0 && designNotes.length === 0) || undefined}
         // R2 (owner's addition 10): the shape, padding and fill are the request bubble's block in styles.css (the raised tone, E1).
-        className={cn("transition-[box-shadow] duration-300 forced-colors:border", compact ? "text-sm" : "text-base")}
+        className={cn("transition-[box-shadow] duration-slow forced-colors:border", compact ? "text-sm" : "text-base")}
       >
         {text && (
           <div ref={box} id={id} data-long-word={longWord || undefined} className={cn("wrap-anywhere whitespace-pre-wrap", !expanded && "line-clamp-8")}>

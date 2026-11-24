@@ -111,7 +111,7 @@ function Bar({ share }: { share: number }) {
 function Body({ r, nested, onToggle }: { r: UsageTableRow; nested: boolean; onToggle?: ((key: string) => void) | undefined }) {
   const dim = nested;
   return (
-    <tr className={cn("min-h-row border-t border-line first:border-t-0", dim && "text-fg-3")}>
+    <tr className={cn("h-ctl-sm border-t border-line first:border-t-0", dim && "text-fg-3")}>
       {/* 6h: the model (or project) names the row's numbers for a screen reader's table navigation. */}
       <th scope="row" className={cn("w-full max-w-0 px-2 text-left font-normal @max-xl/utable:py-1.5", nested && "pl-6")}>
         <div className="flex min-w-0 items-center gap-1">
@@ -141,7 +141,7 @@ function Head({ first }: { first: string }) {
   return (
     <thead>
       <tr className="border-b border-line">
-        <th scope="col" className="h-row w-full max-w-0 px-2 text-left text-xs font-normal text-fg-3">
+        <th scope="col" className="h-ctl-sm w-full max-w-0 px-2 text-left text-xs font-normal text-fg-3">
           {first}
         </th>
         <th scope="col" className={cn(TH, WIDE)}>
@@ -181,7 +181,7 @@ export function UsageTableSkeleton({ first = "", rows }: { first?: string; rows:
         <Head first={first} />
         <tbody>
           {Array.from({ length: rows + 1 }, (_, i) => (
-            <tr key={i} className="min-h-row border-t border-line first:border-t-0">
+            <tr key={i} className="h-ctl-sm border-t border-line first:border-t-0">
               <td className="w-full max-w-0 px-2 text-left @max-xl/utable:py-1.5">
                 <span className="flex h-5 items-center">
                   <Skeleton width={i === rows ? "24%" : (BAR_W[i % BAR_W.length] ?? "50%")} />
@@ -201,7 +201,7 @@ export function UsageTableSkeleton({ first = "", rows }: { first?: string; rows:
           ))}
         </tbody>
       </table>
-      <div className="h-row" />
+      <div className="h-ctl-sm" />
     </div>
   );
 }
@@ -241,10 +241,10 @@ export function UsageTable({
       <table aria-label={label} className="w-full table-auto border-collapse text-sm">
         <Head first={first} />
         {rows.map((r) => (
-          <tbody key={r.key} className="border-t border-line first:border-t-0">
+          <tbody key={r.key} className="border-t border-line first-of-type:border-t-0">
             <Body r={r} nested={false} onToggle={onToggle} />
             {(r.expandable ? r.open : true) && r.nestedNote && (
-              <tr className="h-row text-fg-3">
+              <tr className="h-ctl-sm text-fg-3">
                 <td colSpan={8} className="px-2 pl-6 text-xs">
                   {r.nestedNote}
                 </td>
@@ -254,7 +254,7 @@ export function UsageTable({
           </tbody>
         ))}
         <tfoot>
-          <tr className="h-row border-t border-line font-medium">
+          <tr className="h-ctl-sm border-t border-line font-medium">
             <th scope="row" className="px-2 text-left font-medium text-fg">
               Total
             </th>
@@ -263,9 +263,9 @@ export function UsageTable({
           </tr>
         </tfoot>
       </table>
-      <div className="flex min-h-row items-center gap-2 px-2 text-xs text-fg-3 phone:min-h-ctl-lg">
+      <div className="flex min-h-ctl-sm items-center gap-2 px-2 text-xs text-fg-3 phone:min-h-ctl-lg">
         <span className="min-w-0 truncate">{note}</span>
-        <Button variant="quiet" size="xs" icon={copied ? Check : Copy} className="-mr-1.5 ml-auto" onClick={() => copy(csv())}>
+        <Button variant="quiet" size="xs" icon={copied ? Check : Copy} className="-mr-2 ml-auto" onClick={() => copy(csv())}>
           {copied ? "Copied" : "Copy as CSV"}
         </Button>
       </div>

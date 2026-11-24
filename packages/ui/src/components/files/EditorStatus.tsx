@@ -101,9 +101,9 @@ export function EditorStatus({
             hideReady && shownState !== "starting" && !broken
               ? "sr-only"
               : cn(
-                  "flex h-7 min-w-0 shrink items-center gap-1.5",
+                  "flex h-ctl-sm min-w-0 shrink items-center gap-1.5",
                   broken && hideReady && "shrink-0",
-                  compact && shownState === "ready" ? "w-7 shrink-0 justify-center" : "px-1",
+                  compact && shownState === "ready" ? "w-ctl-sm shrink-0 justify-center" : "px-1",
                 )
           }
         >

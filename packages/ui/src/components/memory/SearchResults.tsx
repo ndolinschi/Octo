@@ -33,7 +33,7 @@ export function SearchResults(props: { state: SearchState; query: string; canOpe
   if (state.status === "loading")
     return (
       <div className="px-pane pt-1">
-        <SkeletonList count={5} size="md" twoLine shimmer />
+        <SkeletonList count={5} size="md" twoLine />
       </div>
     );
   if (state.status === "error") return <MemoryError message={state.message} />;

@@ -154,7 +154,7 @@ function SessionDetail(props: {
           <Prose size="compact" text={session.summary} />
         </div>
       )}
-      <ul ref={exchangeRows} aria-label="Requests" className="flex flex-col">
+      <ul ref={exchangeRows} aria-label="Requests" className="flex flex-col gap-1.5">
         {exchanges.map((e) => (
           <ExchangeRow
             key={e.id}

@@ -65,7 +65,7 @@ export function ProjectActions() {
         )}
       </Presence>
       {failure && (
-        <div role="alert" className="fixed top-12 right-3 z-[60] w-96 max-w-[calc(100vw-1.5rem)]">
+        <div className="fixed top-bar right-3 z-50 mt-2 w-96 max-w-[calc(100vw-24px)] overflow-hidden rounded-xl bg-overlay shadow-pop [&>div]:bg-transparent">
           <Suspense fallback={null}>
             <ErrorNotice
               fields={failure}

@@ -110,8 +110,27 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
           />
         }
       >
-        {list.length === 0 ? (
-          <PanelEmpty title="No sessions yet">Your first request starts a session. New session starts another.</PanelEmpty>
+        {counts.all === 0 && counts.archived === 0 && counts.agents === 0 ? (
+          <PanelEmpty
+            title="No sessions yet"
+            actions={
+              <NewSessionButton
+                loading={actions.busy === "create"}
+                memoryBlocked={project?.memory?.auto_memory === "blocked"}
+                onCreate={() => {
+                  void actions.create().then((created) => {
+                    if (created) ws?.openSession(created.id);
+                    if (!created) return;
+                    setSelected(created.id);
+                    setFilter("all");
+                    setOpen(created.id);
+                  });
+                }}
+              />
+            }
+          >
+            Your first request starts a session. New session starts another.
+          </PanelEmpty>
         ) : (
           <ListDetail
             label="Sessions"
@@ -135,7 +154,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
                   />
                 </PanelFilters>
                 {filter === "agents" && agentsOf !== null && (
-                  <div className="flex h-row items-center gap-2 px-4 text-xs text-fg-3">
+                  <div className="flex h-ctl-sm items-center gap-2 px-4 text-xs text-fg-3">
                     <span className="min-w-0 truncate">Agents of {list.find((s) => s.id === agentsOf)?.title ?? "this session"}</span>
                     <Button variant="link" size="xs" className="shrink-0" onClick={() => setAgentsOf(null)}>
                       All agents

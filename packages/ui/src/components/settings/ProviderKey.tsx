@@ -6,6 +6,7 @@ import { KeyLink } from "../shared/providers/ConnectSteps";
 import { useHarnessSettings } from "./harnessSettings";
 import { useSettingsActions } from "./pageContext";
 import { Notice } from "../primitives/Notice";
+import { SkeletonList } from "../primitives/Skeleton";
 import { SaveStatus } from "./parts";
 import { useSave } from "./useSave";
 
@@ -34,7 +35,7 @@ export function ProviderKey() {
   return (
     // S5: one label for the key ("API key", the field's own), not a caption, a state line and a field label saying it thrice.
     <section id="row-api-key" aria-label="API key" className="flex flex-col gap-3">
-      {harness.load.status === "loading" && <p className="text-sm text-fg-3">Loading…</p>}
+      {harness.load.status === "loading" && <SkeletonList count={1} size="md" />}
       {harness.load.status === "unavailable" && <p className="text-sm text-fg-2">This window can&apos;t read or change Octo&apos;s settings.</p>}
       {harness.load.status === "error" && (
         <Notice

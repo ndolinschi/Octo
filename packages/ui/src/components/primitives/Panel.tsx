@@ -73,17 +73,19 @@ export function Panel(props: {
           )}
         </header>
       </div>
-      {props.notice !== undefined && <div className={cn("shrink-0 px-pane pb-2", measure)}>{props.notice}</div>}
+      {props.notice !== undefined && <div className={cn("shrink-0 px-pane py-2", measure)}>{props.notice}</div>}
       {props.filters !== undefined && props.filters}
       {props.views}
       <div data-panel-body className="relative min-h-0 flex-1">
         {props.children}
       </div>
       {props.footer !== undefined && (
-        // R2: a hairline over the footer, so the list's last row ends on an edge instead of under a loose caption.
-        <p data-panel-footer className={cn("line-clamp-2 shrink-0 border-t border-line px-4 py-1.5 text-xs text-fg-3", measure)}>
-          {props.footer}
-        </p>
+        // R2: a full-width hairline over the footer, so the list's last row ends on an edge instead of under a loose caption.
+        <div className="shrink-0 border-t border-line">
+          <p data-panel-footer className={cn("line-clamp-2 px-4 py-1.5 text-xs text-fg-3", measure)}>
+            {props.footer}
+          </p>
+        </div>
       )}
     </section>
   );
@@ -92,7 +94,7 @@ export function Panel(props: {
 /** The filter row: `FilterTabs` (with `bare`) first, then a search, 8px apart, centred in 36px. */
 export function PanelFilters(props: { children: ReactNode; /** Inside a scroller that already has the 8px inset. */ flush?: boolean; className?: string }) {
   return (
-    <div data-panel-filters className={cn("flex min-h-9 shrink-0 items-center gap-2 touch:min-h-ctl-lg", !props.flush && "px-pane", props.className)}>
+    <div data-panel-filters className={cn("flex min-h-strip shrink-0 items-center gap-2 touch:min-h-ctl-lg", !props.flush && "px-pane", props.className)}>
       {props.children}
     </div>
   );
@@ -184,7 +186,7 @@ export function DetailHeader(props: { title: ReactNode; meta?: ReactNode; action
         <div className="flex min-h-ctl-sm items-center">
           <h2 className="min-w-0 text-heading break-words text-fg">{props.title}</h2>
         </div>
-        {props.meta !== undefined && <p className="truncate text-xs text-fg-3">{props.meta}</p>}
+        {props.meta !== undefined && <p className="truncate text-xs text-fg-3 tabular-nums">{props.meta}</p>}
       </div>
       {props.actions !== undefined && <div className="flex h-ctl-sm shrink-0 items-center gap-1 phone:min-h-ctl-lg">{props.actions}</div>}
     </header>

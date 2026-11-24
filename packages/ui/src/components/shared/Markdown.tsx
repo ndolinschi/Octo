@@ -103,7 +103,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
           focus a scroller by itself); one that fits is not. */}
       <pre
         ref={pre}
-        className="octo-code overflow-x-auto fade-x font-mono text-xs leading-5"
+        className="octo-code overflow-x-auto rounded-xs fade-x font-mono text-xs leading-5 focus-inset"
         {...(scrolls ? { tabIndex: 0, role: "region", "aria-label": `Code, ${lang ?? "text"}` } : {})}
       >
         <code>

@@ -85,7 +85,9 @@ function SchemaCard(props: InputFormCardProps & { form: NormalForm }) {
 function SentNote({ secret }: { secret: boolean }) {
   return (
     <p className="flex items-start gap-2 text-xs text-fg-3">
-      <Glyph icon={Lock} size={14} className="mt-px shrink-0" />
+      <span aria-hidden className="grid h-4 shrink-0 place-items-center">
+        <Glyph icon={Lock} size={14} />
+      </span>
       <span>
         Sent to Octo's local service, not to the model.
         {secret && " Secrets are stored for this project; the agent only learns that they were provided."}
@@ -144,10 +146,10 @@ function AnsweredForm({
   const secrets = onReplaceSecret ? answered.provided : [];
   return (
     <div role="group" aria-label={`${request.title}: ${line.text}`} data-v7-form={request.id} data-resolved="" className="@container/v7 text-sm">
-      <Card surface="panel" padding="none">
-        <div className="flex min-h-8 min-w-0 items-center gap-2 px-3 py-1">
+      <Card padding="none">
+        <div className="flex min-h-ctl-md min-w-0 items-center gap-2 px-3 py-1">
           <Glyph icon={icon} size={14} className={cn("shrink-0", line.status === "submitted" ? "text-ok" : "text-fg-3")} />
-          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+          <span className="min-w-0 flex-1 wrap-anywhere">
             <span className="text-fg-2">{request.title}</span>
             <span className="text-fg-3"> · {line.text}</span>
           </span>

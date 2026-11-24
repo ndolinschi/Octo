@@ -36,7 +36,10 @@ export function TeamCard({ projects, agents }: { projects: ProjectSummary[] | nu
   if (agents && running.length === 0) return null;
   return (
     <Card as="section" padding="sm">
-      <SectionHeader inset aside={busy > 0 ? <span className="shrink-0 text-xs text-fg-3">{busy === 1 ? "1 project" : `${busy} projects`}</span> : undefined}>
+      <SectionHeader
+        inset
+        aside={busy > 0 ? <span className="shrink-0 text-xs text-fg-3 tabular-nums">{busy === 1 ? "1 project" : `${busy} projects`}</span> : undefined}
+      >
         Agents at work
       </SectionHeader>
       {!agents ? (
@@ -46,7 +49,9 @@ export function TeamCard({ projects, agents }: { projects: ProjectSummary[] | nu
           {shown.map(({ project, agent }) => (
             <TeamRow key={agent.id} project={project} agent={agent} now={now} wait={waits.get(agent.id) ?? null} />
           ))}
-          {running.length > TEAM_ROWS && <p className="flex h-ctl-sm items-center px-2 text-xs text-fg-3">+{running.length - TEAM_ROWS} more running</p>}
+          {running.length > TEAM_ROWS && (
+            <p className="flex h-ctl-sm items-center px-2 text-xs text-fg-3 tabular-nums">+{running.length - TEAM_ROWS} more running</p>
+          )}
         </div>
       )}
     </Card>

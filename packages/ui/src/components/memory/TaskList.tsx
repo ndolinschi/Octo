@@ -8,6 +8,7 @@ import { Button } from "../primitives/Button";
 import { fileIcon } from "../primitives/fileIcons";
 import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
+import { PanelEmpty } from "../primitives/Panel";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { Expansion, RowLine, useCollapseOnEscape, useReveal } from "./parts";
 
@@ -33,7 +34,7 @@ export function TaskList(props: {
   const [open, setOpen] = useState<string | null>(at >= 0 ? props.focus : null);
   const [unfolded, setUnfolded] = useState(at >= 8);
   const rows = fold(shown, unfolded);
-  if (shown.length === 0) return <p className="px-2 py-3 text-sm text-fg-3">No {STATUS_LABEL[props.status].toLowerCase()} tasks.</p>;
+  if (shown.length === 0) return <PanelEmpty>{`No ${STATUS_LABEL[props.status].toLowerCase()} tasks.`}</PanelEmpty>;
   return (
     <>
       <ul aria-label="Tasks" className="flex flex-col gap-1.5">

@@ -3,7 +3,9 @@ import { useQuietOpen } from "../../lib/quietFocus";
 import { useListStops } from "../../lib/listStops";
 import { useMemo, useState, useRef } from "react";
 import type { Note } from "@octo/agent-client";
+import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { errorMessage } from "../../lib/format";
+import { useNow } from "../../lib/hooks";
 import { formatDay } from "../../lib/memory/dates";
 import { filterNotes, indexFooter, noteFileName, noteLine, sortNotes, titleFromFileName } from "../../lib/notes";
 import { useProject } from "../../state/project";
@@ -36,7 +38,7 @@ export function NotesPanel() {
   const [query, setQuery] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
-  const now = Date.now();
+  const now = useNow(true, CLOCK_MINUTE_MS);
 
   const sorted = useMemo(() => sortNotes(state.notes), [state.notes]);
   const shown = useMemo(() => filterNotes(sorted, query), [sorted, query]);
@@ -148,7 +150,16 @@ export function NotesPanel() {
         {...(state.notes.length > 0 ? { footer: <NotesFooter notes={state.notes} /> } : {})}
       >
         {empty ? (
-          <PanelEmpty title="No notes yet">Decisions and facts saved while working appear here, and agents read them when they are relevant.</PanelEmpty>
+          <PanelEmpty
+            title="No notes yet"
+            actions={
+              <Button variant="secondary" size="sm" icon={Plus} onClick={() => setMode({ kind: "new" })}>
+                New note
+              </Button>
+            }
+          >
+            Decisions and facts saved while working appear here, and agents read them when they are relevant.
+          </PanelEmpty>
         ) : (
           <ListDetail
             label="Notes"

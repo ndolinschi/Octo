@@ -63,6 +63,7 @@ export function CssInspector(props: {
               <TextField
                 id={inputId}
                 size="xs"
+                touchSize="sm"
                 value={current}
                 onChange={(e) => props.onChangeProp(prop, before, e.target.value)}
                 className="min-w-0 flex-1 font-mono text-xs"
@@ -70,7 +71,7 @@ export function CssInspector(props: {
               {modified ? (
                 <IconButton icon={RotateCcw} label={`Reset ${prop}`} size="xs" onClick={() => props.onChangeProp(prop, before, null)} />
               ) : (
-                <span aria-hidden className="size-6 shrink-0" />
+                <span aria-hidden className="size-ctl-xs shrink-0" />
               )}
             </div>
           );

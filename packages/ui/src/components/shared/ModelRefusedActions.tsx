@@ -3,7 +3,6 @@ import { errorMessage } from "../../lib/format";
 import { USE_ANYWAY_NOTE, recheckAgent } from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
-import { Spinner } from "../primitives/Status";
 
 /**
  * The two ways out of a refused model switch whose only reason is a login the probe could not confirm (decision
@@ -37,10 +36,10 @@ export function ModelRefusedActions({ provider, onRetry, onForce }: { provider: 
           {note}
         </span>
       )}
-      <Button size="sm" variant="ghost" className="ml-auto" onClick={check} disabled={running} aria-busy={running}>
-        {running ? <Spinner size={10} /> : "Check again"}
+      <Button size="sm" variant="quiet" className="ml-auto" onClick={check} loading={running}>
+        Check again
       </Button>
-      <Button size="sm" variant="ghost" onClick={onForce} disabled={running}>
+      <Button size="sm" variant="quiet" onClick={onForce} disabled={running}>
         Use anyway
       </Button>
     </>

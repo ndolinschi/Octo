@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { elementSummary, type DesignNote } from "../../lib/browser/designNotes";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
+import { ListRow } from "../primitives/ListRow";
 import { Popover } from "../primitives/Popover";
 import { Presence } from "../primitives/Presence";
 
@@ -43,7 +44,7 @@ export function PendingNotesPopover(props: {
           onClose={() => setOpen(false)}
           className="w-[min(360px,calc(100vw-16px))]"
         >
-          <p className="flex h-row shrink-0 items-center px-3 pt-1 text-xs text-fg-3">Pending batch edits on this page</p>
+          <p className="flex h-ctl-sm shrink-0 items-center px-3 text-xs text-fg-3">Pending batch edits on this page</p>
           <ul className="flex max-h-64 flex-col gap-0.5 overflow-y-auto overscroll-contain p-1">
             {props.notes.map((note, idx) => {
               const target =
@@ -53,31 +54,28 @@ export function PendingNotesPopover(props: {
                 (note.textEdit ? `"${note.textEdit.before}" → "${note.textEdit.after}"` : "") ||
                 (note.cssEdits?.length ? `${note.cssEdits.length} CSS ${note.cssEdits.length === 1 ? "change" : "changes"}` : "Visual note");
               return (
-                <li key={note.id} className="group/row relative flex items-center rounded-sm hover:bg-hover">
-                  <button
-                    type="button"
+                <li key={note.id}>
+                  <ListRow
+                    size="sm"
                     onClick={() => {
                       setOpen(false);
                       props.onSelect(note);
                     }}
-                    className="flex min-h-row min-w-0 flex-1 items-center gap-2 rounded-sm px-2 text-left press-row focus-inset touch:min-h-ctl-lg"
-                  >
-                    <span className="shrink-0 font-mono text-xs text-fg-3 tabular-nums">{`#${note.pinNumber ?? idx + 1}`}</span>
-                    <span className="shrink-0 font-mono text-xs text-fg-2">{target}</span>
-                    <span className="min-w-0 flex-1 truncate text-xs text-fg">{detail}</span>
-                  </button>
-                  <IconButton
-                    icon={X}
-                    label={`Remove pin ${idx + 1}`}
-                    size="xs"
-                    onClick={() => props.onRemove(note.id)}
-                    className="mr-1 opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100 focus-visible:opacity-100 touch:opacity-100"
+                    leading={<span className="font-mono text-xs text-fg-3 tabular-nums">{`#${note.pinNumber ?? idx + 1}`}</span>}
+                    title={
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="max-w-32 shrink-0 truncate font-mono text-xs text-fg-2">{target}</span>
+                        <span className="min-w-0 flex-1 truncate text-xs text-fg">{detail}</span>
+                      </span>
+                    }
+                    tip={`${target}: ${detail}`}
+                    trailing={<IconButton icon={X} label={`Remove pin ${idx + 1}`} size="xs" onClick={() => props.onRemove(note.id)} />}
                   />
                 </li>
               );
             })}
           </ul>
-          <div className="flex h-bar shrink-0 items-center justify-end border-t border-line px-2">
+          <div className="flex h-ctl-md shrink-0 items-center justify-end border-t border-line px-2">
             <Button
               variant="quiet"
               size="xs"

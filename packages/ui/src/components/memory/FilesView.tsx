@@ -209,6 +209,9 @@ function FileEditor(props: { file: MemoryFile; onCancel(): void; onSave(content:
           e.stopPropagation();
           if (discarding) keepEditing();
           else if (!busy) cancel();
+        } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !problem && dirty && !busy) {
+          e.preventDefault();
+          void save();
         }
       }}
       onSubmit={(e) => {

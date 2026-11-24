@@ -68,7 +68,7 @@ export default function ProjectSessionPicker({ anchor, onClose }: { anchor: RefO
                   tabIndex={-1}
                   label={`Open ${title} in new tab`}
                   title="Open in new tab"
-                  className="-mr-1 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
+                  className="pointer-events-none -mr-1 opacity-0 transition-opacity duration-fast group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
                   onClick={(e) => {
                     e.stopPropagation();
                     onClose();

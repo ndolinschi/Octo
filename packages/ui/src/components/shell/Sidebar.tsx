@@ -99,7 +99,7 @@ export function Sidebar(props: {
                 tabIndex={0}
                 aria-label="Review, unavailable: open a project first"
                 title="Open a project first"
-                className="rounded-sm focus-inset"
+                className="block rounded-sm focus-inset"
               >
                 {/* 11c: the look of the row, not a second control inside the wrapper (no nested disabled button). */}
                 <ListRow size="md" leading={<Glyph icon={GitPullRequest} size={16} className="text-fg-2" />} title="Review" disabled />

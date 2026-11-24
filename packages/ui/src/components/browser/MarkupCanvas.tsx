@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import type { MarkupPoint, MarkupStroke, Rect } from "../../lib/browser/designNotes";
+import { useApp } from "../../state/app";
 import type { DesignTool } from "./DesignHintBar";
-
-const STROKE_COLOR = "#f17878";
 
 function constrainBox(startX: number, startY: number, curX: number, curY: number, shift: boolean, alt: boolean) {
   let dx = curX - startX;
@@ -33,9 +32,9 @@ function constrainArrow(startX: number, startY: number, curX: number, curY: numb
   return { x1: startX, y1: startY, x2: startX + dx, y2: startY + dy };
 }
 
-function drawStroke(ctx: CanvasRenderingContext2D, s: MarkupStroke) {
+function drawStroke(ctx: CanvasRenderingContext2D, s: MarkupStroke, defaultColor: string) {
   ctx.save();
-  ctx.strokeStyle = s.color ?? STROKE_COLOR;
+  ctx.strokeStyle = s.color ?? defaultColor;
   ctx.lineWidth = s.width ?? 2.5;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -118,6 +117,7 @@ export function MarkupCanvas(props: {
   onAreaSelected(rect: Rect): void;
   onAddStroke(stroke: MarkupStroke): void;
 }) {
+  const { theme } = useApp();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [draftArea, setDraftArea] = useState<Rect | null>(null);
   const [draftStroke, setDraftStroke] = useState<MarkupStroke | null>(null);
@@ -140,14 +140,19 @@ export function MarkupCanvas(props: {
       }
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
+      const cs = getComputedStyle(canvas);
+      const strokeColor = cs.getPropertyValue("--octo-err").trim() || "currentColor";
+      const areaStroke = cs.getPropertyValue("--octo-drop-edge").trim() || "currentColor";
+      const areaFill = cs.getPropertyValue("--octo-drop").trim() || "transparent";
+
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
       const shownArea = draftArea ?? props.area;
       if (shownArea) {
         ctx.save();
-        ctx.strokeStyle = "#4da3ff";
-        ctx.fillStyle = "rgba(77, 163, 255, 0.08)";
+        ctx.strokeStyle = areaStroke;
+        ctx.fillStyle = areaFill;
         ctx.lineWidth = 1.5;
         ctx.setLineDash([5, 4]);
         ctx.fillRect(shownArea.x, shownArea.y, shownArea.width, shownArea.height);
@@ -155,15 +160,15 @@ export function MarkupCanvas(props: {
         ctx.restore();
       }
 
-      for (const s of props.strokes) drawStroke(ctx, s);
-      if (draftStroke) drawStroke(ctx, draftStroke);
+      for (const s of props.strokes) drawStroke(ctx, s, strokeColor);
+      if (draftStroke) drawStroke(ctx, draftStroke, strokeColor);
     };
 
     paint();
     const ro = new ResizeObserver(paint);
     ro.observe(parent);
     return () => ro.disconnect();
-  }, [props.strokes, props.area, draftArea, draftStroke]);
+  }, [props.strokes, props.area, draftArea, draftStroke, theme]);
 
   const localPoint = (e: PointerEvent<HTMLCanvasElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -177,7 +182,7 @@ export function MarkupCanvas(props: {
     const pt = localPoint(e);
     dragRef.current = { startX: pt.x, startY: pt.y, points: [pt] };
     if (props.tool === "draw") {
-      setDraftStroke({ kind: "draw", points: [pt], color: STROKE_COLOR, width: 2.5 });
+      setDraftStroke({ kind: "draw", points: [pt], width: 2.5 });
     }
   };
 
@@ -195,13 +200,13 @@ export function MarkupCanvas(props: {
       });
     } else if (props.tool === "draw") {
       drag.points.push(pt);
-      setDraftStroke({ kind: "draw", points: [...drag.points], color: STROKE_COLOR, width: 2.5 });
+      setDraftStroke({ kind: "draw", points: [...drag.points], width: 2.5 });
     } else if (props.tool === "arrow") {
       const line = constrainArrow(drag.startX, drag.startY, pt.x, pt.y, e.shiftKey, e.altKey);
-      setDraftStroke({ kind: "arrow", ...line, color: STROKE_COLOR, width: 2.5 });
+      setDraftStroke({ kind: "arrow", ...line, width: 2.5 });
     } else if (props.tool === "rect" || props.tool === "ellipse") {
       const box = constrainBox(drag.startX, drag.startY, pt.x, pt.y, e.shiftKey, e.altKey);
-      setDraftStroke({ kind: props.tool, ...box, color: STROKE_COLOR, width: 2.5 });
+      setDraftStroke({ kind: props.tool, ...box, width: 2.5 });
     }
   };
 

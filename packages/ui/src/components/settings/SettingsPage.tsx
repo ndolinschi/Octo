@@ -175,7 +175,7 @@ export function SettingsPage(props: {
                 data-page-title
                 tabIndex={-1}
                 // The phone's header names the open section; the title here is for a screen reader only.
-                className={cn("px-settings-inset text-display font-medium text-fg focus-visible:shadow-none", !searching && (index || phone) && "sr-only")}
+                className={cn("px-settings-inset text-title text-fg focus-visible:shadow-none", !searching && (index || phone) && "sr-only")}
               >
                 {searching ? "Search" : index ? "Settings" : sectionLabel(section)}
               </h1>
@@ -184,7 +184,7 @@ export function SettingsPage(props: {
                   {SECTIONS.map((x) =>
                     sectionLocked(device, x.id) ? (
                       // Remote access: what this device may not change stays listed, disabled, with where to change it.
-                      <ListRow key={x.id} size="lg" title={x.label} description={ON_YOUR_COMPUTER} disabled className="rounded-none px-4" />
+                      <ListRow key={x.id} size="lg" title={x.label} description={ON_YOUR_COMPUTER} disabled className="px-4" />
                     ) : (
                       <ListRow
                         key={x.id}
@@ -192,7 +192,7 @@ export function SettingsPage(props: {
                         title={x.label}
                         trailing={<Glyph icon={ChevronRight} size={16} className="text-fg-3" />}
                         trailingShown
-                        className="rounded-none px-4"
+                        className="px-4"
                         onClick={() => {
                           markFromList();
                           window.location.hash = settingsHref(x.id);
@@ -302,11 +302,11 @@ function Results({
           <SectionHeader line="tight" className="px-settings-inset">
             {s.label}
           </SectionHeader>
-          <ListFrame className="p-1">
+          <ListFrame>
             {results
               .filter((r) => r.section === s.id)
               .map((r) => (
-                <ListRow key={r.id} size="lg" title={r.title} description={r.description} onClick={() => onOpen(r)} />
+                <ListRow key={r.id} size="lg" title={r.title} description={r.description} className="px-settings-inset" onClick={() => onOpen(r)} />
               ))}
           </ListFrame>
         </section>

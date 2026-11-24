@@ -15,7 +15,7 @@ export function ImageChip({ alt, title, detail, action }: { alt: string | undefi
       role={action ? "group" : "img"}
       aria-label={alt || "Image"}
       title={title}
-      className="inline-flex h-6 max-w-full items-center gap-2 rounded-sm border border-line px-2 align-middle text-xs text-fg-3"
+      className="inline-flex h-ctl-xs max-w-full items-center gap-2 rounded-sm border border-line px-2 align-middle text-xs text-fg-3"
     >
       <Glyph icon={Image} size={14} className="shrink-0" />
       <span className="truncate">{alt || "Image"}</span>
@@ -34,7 +34,7 @@ export function MarkdownImage({ src, alt }: { src: string | undefined; alt: stri
   const source = imageSource(src);
   const [load, setLoad] = useState(false);
   if (source.kind === "inline" || (source.kind === "remote" && load)) {
-    return <img src={src} alt={alt ?? ""} referrerPolicy="no-referrer" className="max-w-full" />;
+    return <img src={src} alt={alt ?? ""} referrerPolicy="no-referrer" className="max-w-full rounded-md" />;
   }
   if (source.kind === "remote") {
     return (

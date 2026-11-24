@@ -14,6 +14,7 @@ import { IconButton } from "../primitives/IconButton";
 import { IconMenu } from "../primitives/IconMenu";
 import { ListRow } from "../primitives/ListRow";
 import { Notice } from "../primitives/Notice";
+import { FormActions } from "../primitives/Panel";
 import { Segmented } from "../primitives/Segmented";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { TextField } from "../primitives/TextField";
@@ -99,14 +100,14 @@ export function AddFact(props: { onDone(): void; onKept(): void }) {
       />
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2">
         <Segmented<RememberKind> label="Kind" options={KINDS} value={kind} onChange={setKind} />
-        <div className="ml-auto flex items-center gap-2">
+        <FormActions className="ml-auto">
           <Button variant="quiet" size="sm" onClick={props.onDone} disabled={busy}>
             Cancel
           </Button>
           <Button type="submit" variant="primary" size="sm" loading={busy} disabled={text.trim() === ""}>
             Remember
           </Button>
-        </div>
+        </FormActions>
       </div>
       {error && <Notice tone="error">{error}</Notice>}
     </form>

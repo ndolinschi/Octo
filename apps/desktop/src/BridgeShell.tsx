@@ -38,7 +38,7 @@ export function BridgeShell({ choice, onRestart }: { choice: BridgeChoice; onRes
           <Lights />
         </Suspense>
       )}
-      {guideY !== null && (
+      {import.meta.env.DEV && guideY !== null && (
         <div aria-hidden data-chrome-guide className="pointer-events-none fixed inset-x-0 z-50 h-px bg-[#ff00ff]" style={{ top: guideY - 0.5 }} />
       )}
     </>

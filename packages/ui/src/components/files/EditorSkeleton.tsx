@@ -41,7 +41,7 @@ export function FileViewSkeleton() {
   const { page, column } = treeLayout(width, stored, TREE_MIN, ws.narrow);
   return (
     <div ref={root} aria-hidden className="flex min-h-0 flex-1 flex-col">
-      <div data-file-bar className="h-bar shrink-0 shadow-[inset_0_-1px_0_var(--octo-line)]" />
+      <div data-file-bar className="h-ctl-lg shrink-0 shadow-[inset_0_-1px_0_var(--octo-line)]" />
       <div className="relative flex min-h-0 flex-1">
         {open && !page && width > 0 && <aside data-tree-skeleton style={{ width: column }} className="shrink-0 border-r border-line bg-panel" />}
         <div data-editor-area className="relative min-w-0 flex-1">

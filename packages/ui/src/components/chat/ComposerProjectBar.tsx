@@ -1,7 +1,6 @@
 import type { Project, ProjectSession, ProjectSummary } from "@octo/agent-client";
-import { ChevronDown, FolderGit2, GitBranch } from "lucide-react";
+import { FolderGit2, GitBranch } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { cn } from "../../lib/cn";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { focusSoon, visibleComposer } from "../../lib/focus";
 import { formatRelative } from "../../lib/format";
@@ -162,26 +161,20 @@ export function ComposerProjectBar(props: {
 
   return (
     <>
-      <div data-composer-project-bar className="flex min-h-8 min-w-0 items-center gap-1 px-1.5 phone:min-h-ctl-lg">
-        <button
+      <div data-composer-project-bar className="flex min-h-ctl-md min-w-0 items-center gap-1 px-1.5 phone:min-h-ctl-lg">
+        <Chip
           ref={projectBtn}
-          type="button"
           data-project-selector
           aria-haspopup="dialog"
-          aria-expanded={projectPickerOpen}
-          aria-label={`Project: ${props.project.name}`}
-          title={`Switch project (${props.project.name})`}
+          icon={FolderGit2}
+          name="Project"
+          label={props.project.name}
+          tip={`Switch project (${props.project.name})`}
+          cut="end"
+          open={projectPickerOpen}
           disabled={switching}
           onClick={() => setProjectPickerOpen((v) => !v)}
-          className={cn(
-            "touch-hit flex h-ctl-sm min-w-0 press items-center gap-1.5 rounded-sm px-2 text-sm hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-50",
-            projectPickerOpen ? "bg-active text-fg" : "text-fg-2",
-          )}
-        >
-          <Glyph icon={FolderGit2} size={14} className="shrink-0 text-fg-3" />
-          <span className="min-w-0 truncate">{props.project.name}</span>
-          <Glyph icon={ChevronDown} size={14} className="shrink-0 text-fg-3" />
-        </button>
+        />
         {worktreeLabel !== null ? (
           <span
             data-workspace-label
@@ -211,15 +204,18 @@ export function ComposerProjectBar(props: {
         ) : (
           !bridge.listBranches &&
           canMove && (
-            <button
+            <Chip
               ref={wsBtn}
-              type="button"
               data-workspace-selector
               aria-haspopup="menu"
-              aria-expanded={wsMenu !== null}
-              aria-label="Workspace: Main checkout"
-              title="Main checkout — move session to a git worktree"
+              icon={GitBranch}
+              name="Workspace"
+              label="Main checkout"
+              tip="Main checkout — move session to a git worktree"
+              cut="end"
+              open={wsMenu !== null}
               disabled={switching}
+              className="max-w-[45%]"
               onClick={() => {
                 if (wsMenu) {
                   setWsMenu(null);
@@ -228,15 +224,7 @@ export function ComposerProjectBar(props: {
                 const r = wsBtn.current?.getBoundingClientRect();
                 setWsMenu(r ? { x: r.left, y: r.bottom + 4 } : null);
               }}
-              className={cn(
-                "touch-hit flex h-ctl-sm max-w-[45%] min-w-0 shrink-0 press items-center gap-1.5 rounded-sm px-2 text-sm hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-50",
-                wsMenu ? "bg-active text-fg" : "text-fg-2",
-              )}
-            >
-              <Glyph icon={GitBranch} size={14} className="shrink-0 text-fg-3" />
-              <span className="min-w-0 truncate">Main checkout</span>
-              <Glyph icon={ChevronDown} size={14} className="shrink-0 text-fg-3" />
-            </button>
+            />
           )
         )}
       </div>

@@ -134,7 +134,9 @@ export function AgentsPanel() {
           <PanelBody ref={scroller} onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)}>
             <div ref={rows} className={cn("flex flex-col gap-4", PANEL_COLUMN)}>
               <section aria-labelledby="agents-running" className="flex flex-col">
-                <SectionHeader inset id="agents-running">{`Running ${groups.running.length}`}</SectionHeader>
+                <SectionHeader inset id="agents-running" aside={<span className="tabular-nums">{groups.running.length}</span>}>
+                  Running
+                </SectionHeader>
                 <ul className="flex flex-col gap-1.5">{groups.running.map((n) => node(n, true))}</ul>
               </section>
             </div>

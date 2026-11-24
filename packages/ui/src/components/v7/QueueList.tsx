@@ -121,7 +121,7 @@ function QueueBody(props: QueueListProps) {
       <section aria-label={queueCountLabel(count)} data-queue-summary className={sectionClass}>
         <ListRow
           tone="quiet"
-          leading={<Clock size={14} />}
+          leading={<Glyph icon={Clock} size={14} />}
           title={queueSummary(messages, props.waiting)}
           tip={messages.map((m) => queueLine(m.text)).join("\n")}
           expanded={false}
@@ -150,11 +150,13 @@ function QueueBody(props: QueueListProps) {
           ) : undefined
         }
       >
-        {props.paused
-          ? `${queueCountLabel(count)} · paused after a failed or stopped reply`
-          : props.waiting
-            ? `${queueCountLabel(count)} · ${props.waiting}`
-            : queueCountLabel(count)}
+        <span className="tabular-nums">
+          {props.paused
+            ? `${queueCountLabel(count)} · paused after a failed or stopped reply`
+            : props.waiting
+              ? `${queueCountLabel(count)} · ${props.waiting}`
+              : queueCountLabel(count)}
+        </span>
       </SectionHeader>
       {props.paused && (
         <div className="flex min-h-ctl-sm flex-wrap items-center gap-2 pr-0.5 pl-2">
@@ -180,7 +182,7 @@ function QueueBody(props: QueueListProps) {
               <li key={m.id} data-row>
                 <ListRow
                   tone="quiet"
-                  leading={<Clock size={14} />}
+                  leading={<Glyph icon={Clock} size={14} />}
                   title={text}
                   tip={m.text}
                   className={cn(busy && "opacity-70")}
@@ -216,7 +218,7 @@ function QueueBody(props: QueueListProps) {
       {(view.hidden > 0 || expanded) && messages.length > 2 && (
         <ListRow
           tone="quiet"
-          leading={expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          leading={<Glyph icon={expanded ? ChevronUp : ChevronDown} size={14} />}
           title={expanded ? "Show less" : `${view.hidden} more queued`}
           onClick={() => setExpanded((x) => !x)}
         />
@@ -262,7 +264,7 @@ export function QueueBadge({ count }: { count: number }) {
   return (
     <span
       aria-label={queueCountLabel(count)}
-      className="pointer-events-none absolute -top-1 -right-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[11px] leading-none font-medium text-primary-fg tabular-nums"
+      className="pointer-events-none absolute -top-1 -right-1 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-xs leading-none font-medium text-primary-fg tabular-nums"
     >
       {count}
     </span>

@@ -47,7 +47,7 @@ export function ViewTabs<T extends string>(props: {
     box.current?.querySelectorAll<HTMLElement>('[role="tab"]')[to ?? 0]?.focus();
   };
   return (
-    <div className={cn("box-content h-row-nav shrink-0 border-b border-line touch:h-ctl-lg", props.className)}>
+    <div className={cn("h-ctl-md shrink-0 shadow-[inset_0_-1px_0_var(--octo-line)] touch:h-ctl-lg", props.className)}>
       <div className={cn("flex h-full min-w-0 items-stretch px-pane", props.contentClassName)}>
         <div ref={box} role="tablist" tabIndex={-1} aria-label={props.label} onKeyDown={onKeyDown} className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
           {props.options.map((o) => {
@@ -68,14 +68,14 @@ export function ViewTabs<T extends string>(props: {
                   } else props.onChange(o.id);
                 }}
                 className={cn(
-                  "relative shrink-0 px-2 text-sm whitespace-nowrap press-row focus-inset",
+                  "relative inline-flex shrink-0 items-center gap-1 px-2 text-sm whitespace-nowrap press-row focus-inset",
                   on ? "font-medium text-fg" : "text-fg-3 hover:text-fg-2",
                   // The underline rests on the row's hairline.
                   on && "after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-fg",
                 )}
               >
-                {o.label}
-                {o.menu && <Glyph icon={ChevronDown} size={14} className="ml-1 inline align-text-bottom text-fg-3" />}
+                <span>{o.label}</span>
+                {o.menu && <Glyph icon={ChevronDown} size={12} className="shrink-0 text-fg-3" />}
               </button>
             );
           })}

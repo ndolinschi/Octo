@@ -18,10 +18,11 @@ import { errorMessage } from "../../lib/format";
 import { folderName, labelsForFolders } from "../../lib/folderPick";
 import { canRun, choosable, chipLabel, useProviders } from "../../lib/providers";
 import { useApp } from "../../state/app";
-import { Button, IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { Field } from "../primitives/Field";
 import { FieldRow } from "../primitives/FieldRow";
+import { IconButton } from "../primitives/IconButton";
 import { Notice } from "../primitives/Notice";
 import { TextArea, TextField } from "../primitives/TextField";
 import { notReady } from "../../lib/errors/modelReadiness";
@@ -215,24 +216,24 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
             <p className="basis-full text-sm text-fg-2 max-[420px]:order-last max-[420px]:basis-auto sm:flex-1 sm:basis-0">
               Delete <span className="text-fg">{props.project?.name}</span> and its history? This can't be undone.
             </p>
-            <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
+            <Button variant="quiet" onClick={() => setConfirmDelete(false)}>
               Cancel
             </Button>
-            <Button variant="danger" onClick={() => void remove()} disabled={busy} autoFocus>
+            <Button variant="danger" loading={busy} onClick={() => void remove()} disabled={busy} autoFocus>
               Delete project
             </Button>
           </>
         ) : (
           <>
             {props.onDelete && (
-              <Button variant="ghost" className="text-err! hover:text-err! min-[421px]:mr-auto min-[421px]:-ml-3" onClick={() => setConfirmDelete(true)}>
+              <Button variant="quiet" className="text-err! hover:text-err! min-[421px]:mr-auto min-[421px]:-ml-3" onClick={() => setConfirmDelete(true)}>
                 Delete project
               </Button>
             )}
-            <Button variant="ghost" onClick={props.onClose}>
+            <Button variant="quiet" onClick={props.onClose}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit" form={id} disabled={busy}>
+            <Button variant="primary" type="submit" form={id} loading={busy} disabled={busy}>
               {editing ? "Save changes" : "Create project"}
             </Button>
           </>
@@ -290,10 +291,10 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
           {!editing && (
             <div className="flex flex-wrap items-center gap-1.5">
               {filled.map((f) => (
-                <span key={f.key} title={f.path} className="inline-flex h-7 max-w-full items-center gap-1 rounded-sm bg-raised pl-2 text-sm text-fg">
+                <span key={f.key} title={f.path} className="inline-flex h-ctl-sm max-w-full items-center gap-1 rounded-sm bg-raised pl-2 text-sm text-fg">
                   <Glyph icon={FolderOpen} size={14} className="shrink-0 text-fg-3" />
                   <span className="min-w-0 truncate">{folderName(f.path)}</span>
-                  <IconButton icon={X} label={`Remove ${folderName(f.path)}`} onClick={() => removeFolder(f.key)} className="size-7" />
+                  <IconButton icon={X} size="sm" label={`Remove ${folderName(f.path)}`} onClick={() => removeFolder(f.key)} />
                 </span>
               ))}
               <AddFolder
@@ -336,7 +337,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
           {editing && (
             <Button
               size="sm"
-              variant="ghost"
+              variant="quiet"
               icon={Plus}
               className="-ml-3 w-fit"
               onClick={() =>
@@ -567,7 +568,7 @@ function AddFolder(props: { first: boolean; current: string[]; onChoose(path: st
       <Button
         ref={button}
         size="sm"
-        variant="ghost"
+        variant="quiet"
         icon={Plus}
         aria-haspopup="dialog"
         aria-expanded={open}

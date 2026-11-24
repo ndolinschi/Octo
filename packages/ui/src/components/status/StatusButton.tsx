@@ -11,7 +11,7 @@ export function StatusButton({ warning, className, ...rest }: Omit<ButtonProps, 
       data-status-item
       variant="quiet"
       size="xs"
-      className={cn("min-w-0", warning === "warn" && "text-warn", warning === "err" && "text-err", className)}
+      className={cn("min-w-0 tabular-nums", warning === "warn" && "text-warn hover:text-warn", warning === "err" && "text-err hover:text-err", className)}
       {...rest}
     />
   );

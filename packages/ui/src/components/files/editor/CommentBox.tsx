@@ -90,7 +90,7 @@ function Composer(props: Extract<ZoneProps, { kind: "composer" }>) {
       />
       <div className="flex items-center justify-end gap-1.5 pt-0.5 pr-1.5 pb-1.5 pl-3">
         <p className="mr-auto min-w-0 truncate text-xs text-fg-3 @max-[360px]/zone:hidden">Enter to add, Shift+Enter for a new line</p>
-        <Button size="sm" variant="ghost" onClick={props.onCancel}>
+        <Button size="sm" variant="quiet" onClick={props.onCancel}>
           Cancel
         </Button>
         <Button size="sm" variant="primary" type="submit" disabled={!text.trim()}>
@@ -105,10 +105,10 @@ function Card(props: Extract<ZoneProps, { kind: "card" }>) {
   const label = linesLabel(props.start, props.end);
   return (
     <article aria-label={`Pending comment on ${label}`} className={cn(BOX, "group/card px-3 pt-1.5 pb-2")}>
-      <header className="flex h-6 items-center gap-1.5 text-xs text-fg-3">
+      <header className="flex h-ctl-xs items-center gap-1.5 text-xs text-fg-3">
         <Glyph icon={MessageSquare} size={14} className="shrink-0" />
         <span className="min-w-0 truncate tabular-nums">{label.replace(/^l/, "L")}</span>
-        <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-fast group-focus-within/card:opacity-100 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100">
+        <span className="pointer-events-none ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-fast group-focus-within/card:pointer-events-auto group-focus-within/card:opacity-100 group-hover/card:pointer-events-auto group-hover/card:opacity-100 touch:pointer-events-auto touch:opacity-100">
           <Button variant="quiet" size="xs" onClick={props.onEdit}>
             Edit
           </Button>

@@ -22,10 +22,10 @@ export function EmptyState(props: {
     <div data-empty-state className={cn("flex min-h-0 flex-1 flex-col", props.className)}>
       <div aria-hidden className="flex-[42]" />
       <div className="mx-auto flex w-full max-w-sm shrink-0 flex-col items-center gap-2 px-4 text-center">
-        <p role={props.tone === "err" ? "alert" : undefined} className={cn("text-heading", props.tone === "err" ? "text-err" : "text-fg")}>
+        <p role={props.tone === "err" ? "alert" : undefined} className={cn("text-heading text-balance", props.tone === "err" ? "text-err" : "text-fg")}>
           {props.title}
         </p>
-        {props.children && <div className="text-sm text-fg-2">{props.children}</div>}
+        {props.children && <div className="text-sm text-pretty text-fg-2">{props.children}</div>}
         {props.actions && <div className="mt-2 flex w-full flex-col items-center gap-1">{props.actions}</div>}
       </div>
       <div aria-hidden className="flex-[58]" />

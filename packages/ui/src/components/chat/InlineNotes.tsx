@@ -50,6 +50,7 @@ function Note({ note }: { note: InlineNote }) {
     case "error":
       return (
         <ErrorNotice
+          className="-mx-3"
           fields={note.fields}
           raw={note.raw}
           code={note.code}
@@ -104,9 +105,8 @@ function Help({ onClose }: { onClose(): void }) {
   const tabFlags = useTabFlags();
   const always = OCTO_FALLBACK.filter((c) => c.name !== "memory" || tabFlags.memory);
   return (
-    <section data-help aria-label="Commands" className="text-sm">
+    <section data-help aria-label="Commands" className="-mx-3 text-sm">
       <Card
-        surface="panel"
         header={
           <>
             <h3 className="min-w-0 flex-1 truncate text-heading text-fg">Commands</h3>

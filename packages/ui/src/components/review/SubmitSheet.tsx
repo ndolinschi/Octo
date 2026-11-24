@@ -18,10 +18,12 @@ import {
 import { Button } from "../primitives/Button";
 import { CommandLine } from "../primitives/CommandLine";
 import { Dialog } from "../primitives/Dialog";
-import { Field, Textarea } from "../primitives/Field";
+import { Field } from "../primitives/Field";
 import { Glyph } from "../primitives/Glyph";
+import { Notice } from "../primitives/Notice";
 import { Segmented } from "../primitives/Segmented";
 import { Spinner } from "../primitives/Status";
+import { TextArea } from "../primitives/TextField";
 
 type Preview = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; preview: ReviewSubmitPreview };
 
@@ -139,11 +141,10 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
           <span id={noteId} className="min-w-0 flex-1 basis-48 text-xs text-fg-3 max-[420px]:basis-auto">
             {ok || !ready ? submitText(review, verdict, ready ? ready.comments.length : count, hasBody, replies.length) : SUBMIT_EMPTY_TEXT}
           </span>
-          <Button variant="ghost" onClick={props.onClose}>
+          <Button variant="quiet" onClick={props.onClose}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={!ok || busy} aria-busy={busy} aria-describedby={noteId} onClick={() => void submit()}>
-            {busy && <Spinner />}
+          <Button variant="primary" loading={busy} disabled={!ok || busy} aria-describedby={noteId} onClick={() => void submit()}>
             {submitButtonText(review, verdict)}
           </Button>
         </>
@@ -154,21 +155,15 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
           <Segmented<ReviewVerdict> label="Verdict" value={verdict} onChange={setVerdict} options={VERDICTS.map((v) => ({ id: v.id, label: v.label }))} />
         </Field>
         <Field label="Review text" htmlFor={bodyId} optional>
-          <Textarea
-            id={bodyId}
-            rows={3}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Summary for the author"
-            className="max-sm:text-input-touch"
-          />
+          <TextArea id={bodyId} rows={3} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Summary for the author" />
         </Field>
         {problem && (
-          <div role="alert" className="flex flex-col gap-2 rounded-md bg-code-bg p-3 text-sm">
-            <p className="font-medium text-err">{problem.title}</p>
-            <p className="text-fg-2">{problem.advice}</p>
-            {problem.command && <CommandLine command={problem.command} />}
-          </div>
+          <Notice form="block" tone="error" title={problem.title}>
+            <div className="flex flex-col gap-2">
+              <p className="text-fg-2">{problem.advice}</p>
+              {problem.command && <CommandLine command={problem.command} />}
+            </div>
+          </Notice>
         )}
         <section aria-label="What will be posted" className="flex flex-col gap-2">
           <h3 className="text-heading text-fg">{review.kind === "local" ? "What will be recorded" : "What will be posted"}</h3>

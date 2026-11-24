@@ -18,10 +18,10 @@ export function Switch(props: { checked: boolean; onChange(next: boolean): void;
       disabled={props.disabled}
       onClick={() => props.onChange(!props.checked)}
       className={cn(
-        "touch-hit relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border border-transparent transition-[background-color] duration-base disabled:opacity-50",
-        props.checked ? "bg-primary" : "bg-active",
+        "touch-hit relative inline-flex h-ctl-xs w-ctl-lg shrink-0 items-center rounded-full transition-[background-color,box-shadow] duration-base disabled:opacity-50",
+        props.checked ? "bg-primary" : "bg-active shadow-[inset_0_0_0_1px_var(--octo-input-border)]",
         // 6d: forced colours drop both fills; the track gets an edge, and on is the system's highlight.
-        "forced-colors:border-[CanvasText] forced-colors:forced-color-adjust-none",
+        "forced-colors:outline forced-colors:outline-1 forced-colors:outline-[CanvasText] forced-colors:forced-color-adjust-none",
         props.checked ? "forced-colors:bg-[Highlight]" : "forced-colors:bg-[Canvas]",
         props.className,
       )}

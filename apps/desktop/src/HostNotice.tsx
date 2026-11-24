@@ -9,12 +9,10 @@ import { noticeSummary } from "./hostNotices";
  */
 export function HostNotice({ notice, retrying, onRetry, onDismiss }: { notice: Notice; retrying: boolean; onRetry: () => void; onDismiss: () => void }) {
   const [open, setOpen] = useState(false);
-  const button = "shrink-0 rounded-sm px-1.5 text-xs text-link hover:underline focus-visible:underline disabled:text-fg-3 disabled:no-underline";
+  const button =
+    "inline-flex h-ctl-xs shrink-0 items-center rounded-sm px-1.5 text-xs text-link hover:underline focus-visible:underline disabled:text-fg-3 disabled:no-underline";
   return (
-    <section
-      aria-label="Notice"
-      className="fixed bottom-3 left-3 z-50 w-[min(520px,calc(100vw-1.5rem))] rounded-md border border-line-strong bg-overlay text-sm text-fg shadow-pop"
-    >
+    <section aria-label="Notice" className="fixed bottom-8 left-3 z-50 w-[min(520px,calc(100vw-1.5rem))] rounded-xl bg-overlay text-sm text-fg shadow-pop">
       <div className="flex items-center gap-2 px-3 py-1.5">
         <p role="status" className="min-w-0 flex-1 truncate text-fg-2" title={noticeSummary(notice)}>
           {noticeSummary(notice)}

@@ -102,7 +102,7 @@ export function ActivityRow(props: {
   };
   const leading =
     props.state === "running" ? (
-      <Spinner size={14} className="text-accent" />
+      <Spinner size="md" still={props.still} className="text-accent" />
     ) : props.state === "failed" ? (
       <StateGlyph state="failed" size={14} />
     ) : props.state === "stopped" ? (

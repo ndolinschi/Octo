@@ -108,7 +108,7 @@ function ImportSessionsRow() {
         rowId="import-sessions"
         title="Import sessions"
         description={available ? "Bring in past conversations from Claude Code, Codex, Gemini, and OpenCode." : "Not available on this connection."}
-        status={result ? <span className="text-xs text-fg-3">{result}</span> : undefined}
+        status={result ? <Notice tone="success">{result}</Notice> : undefined}
         control={
           available ? (
             <Button size="sm" onClick={() => setOpen(true)}>
@@ -166,7 +166,7 @@ function DeleteAllSessionsRow() {
         description={
           available ? "Delete every session and message across all projects. Project notes, memory, and files are kept." : "Not available on this connection."
         }
-        status={status ? <span className="text-xs text-fg-3">{status}</span> : undefined}
+        status={status ? <Notice tone="success">{status}</Notice> : undefined}
         control={
           available ? (
             <Button

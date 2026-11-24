@@ -320,7 +320,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
                   e.stopPropagation();
                   if (inside) removeModel(inside, r.value.slice(`acp:${inside}/`.length));
                 }}
-                className="-mr-1 opacity-0 group-hover:opacity-100"
+                className="pointer-events-none -mr-1 opacity-0 transition-opacity duration-fast group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
               />
             ),
           }
@@ -371,7 +371,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         }}
       />
       {agent && (
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-1.5 py-1">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-1 py-1">
           <Button variant="quiet" size="xs" icon={ChevronLeft} onClick={back} className="min-w-0 shrink">
             <span className="truncate">{agent.label}</span>
           </Button>

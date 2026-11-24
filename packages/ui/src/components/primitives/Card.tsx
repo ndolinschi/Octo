@@ -65,7 +65,7 @@ export function ListFrame(props: { as?: "div" | "ul"; className?: string; childr
     <Tag
       className={cn(
         // The edge is an overlay (`after`) and row hairlines are inset shadows, so borders never shrink padding at the sides or fixed row heights (ListRow).
-        "relative flex flex-col overflow-hidden rounded-xl border-y border-transparent bg-panel shadow-panel after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-panel-edge [&>*:not(:last-child)]:shadow-[inset_0_-1px_0_var(--octo-line)]",
+        "relative flex flex-col overflow-hidden rounded-xl border-y border-transparent bg-panel shadow-panel after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-panel-edge [&>*]:rounded-none [&>*:not(:last-child)]:shadow-[inset_0_-1px_0_var(--octo-line)]",
         props.className,
       )}
     >

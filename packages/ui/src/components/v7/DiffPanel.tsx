@@ -3,9 +3,9 @@ import { useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { kindLabel, kindLetter, splitPath, type DiffLayout } from "../../lib/v7/changes";
-import { Button, IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
 import { EmptyState } from "../primitives/EmptyState";
-import { IconButton as GoToButton } from "../primitives/IconButton";
+import { IconButton } from "../primitives/IconButton";
 import { FloatRoom } from "../primitives/floatRoom";
 import { IconMenu } from "../primitives/IconMenu";
 import type { MenuItem } from "../primitives/Menu";
@@ -60,8 +60,8 @@ export function DiffPanel(props: {
   ];
   return (
     <div className="@container/diff flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex h-ctl-lg shrink-0 items-center gap-1 border-b border-line px-2 touch:h-auto touch:min-h-ctl-lg touch:py-1">
-        {props.onBack && <IconButton icon={ArrowLeft} label="Back to the list" onClick={props.onBack} className="max-md:size-10" />}
+      <div className="flex h-ctl-lg shrink-0 items-center gap-1 px-pane shadow-[inset_0_-1px_0_var(--octo-line)] touch:h-auto touch:min-h-ctl-lg touch:py-1">
+        {props.onBack && <IconButton icon={ArrowLeft} label="Back to the list" onClick={props.onBack} />}
         <span className={cn("w-4 shrink-0 text-center font-mono text-xs font-medium", KIND_TONE[letter])}>
           <span aria-hidden>{letter}</span>
           <span className="sr-only">{kindLabel(file.kind)}</span>
@@ -72,55 +72,38 @@ export function DiffPanel(props: {
         </span>
         <LineCounts added={file.added} removed={file.removed} className="ml-2 shrink-0 @max-md/diff:hidden" />
         <span className="hidden shrink-0 items-center gap-1 @max-[480px]/diff:flex">
-          <IconMenu label="More actions for this file" items={moreItems} className="max-md:size-10" />
-          <GoToButton
+          <IconMenu label="More actions for this file" items={moreItems} />
+          <IconButton
             icon={Undo2}
-            size="md"
+            size="sm"
             label={reverted ? "Reverted" : "Revert"}
             disabled={reverted || reverting}
             aria-busy={reverting}
             onClick={props.onRevert}
-            className="max-md:size-10"
           />
         </span>
         <span className="flex shrink-0 items-center gap-1 @max-[480px]/diff:hidden">
-          <IconButton icon={ChevronUp} label="Previous file" disabled={!props.onPrev} onClick={() => props.onPrev?.()} className="max-md:size-10" />
-          <IconButton icon={ChevronDown} label="Next file" disabled={!props.onNext} onClick={() => props.onNext?.()} className="max-md:size-10" />
+          <IconButton icon={ChevronUp} label="Previous file" disabled={!props.onPrev} onClick={() => props.onPrev?.()} />
+          <IconButton icon={ChevronDown} label="Next file" disabled={!props.onNext} onClick={() => props.onNext?.()} />
           <span className="contents @max-lg/diff:hidden">
-            <Button
-              variant="quiet"
-              size="sm"
-              aria-pressed={props.ignoreWhitespace}
-              className={cn("max-md:h-10", props.ignoreWhitespace && "bg-active text-fg")}
-              title="Hide changes that are only whitespace"
-              onClick={props.onToggleWhitespace}
-            >
+            <Button variant="quiet" size="sm" pressed={props.ignoreWhitespace} title="Hide changes that are only whitespace" onClick={props.onToggleWhitespace}>
               Ignore whitespace
             </Button>
           </span>
           <span className="hidden @max-lg/diff:contents">
-            <IconButton
-              icon={Pilcrow}
-              label="Ignore whitespace"
-              pressed={props.ignoreWhitespace}
-              className="max-md:size-10"
-              onClick={props.onToggleWhitespace}
-            />
+            <IconButton icon={Pilcrow} label="Ignore whitespace" pressed={props.ignoreWhitespace} onClick={props.onToggleWhitespace} />
           </span>
           {props.onOpenFile && file.kind !== "deleted" && firstLine !== null && (
-            <GoToButton icon={CornerDownRight} label={`Go to line ${firstLine}`} onClick={() => props.onOpenFile?.(firstLine)} className="max-md:size-10" />
+            <IconButton icon={CornerDownRight} label={`Go to line ${firstLine}`} onClick={() => props.onOpenFile?.(firstLine)} />
           )}
-          {props.onOpenFile && file.kind !== "deleted" && (
-            <IconButton icon={ExternalLink} label="Open file" onClick={() => props.onOpenFile?.()} className="max-md:size-10" />
-          )}
+          {props.onOpenFile && file.kind !== "deleted" && <IconButton icon={ExternalLink} label="Open file" onClick={() => props.onOpenFile?.()} />}
           <Button
             variant="secondary"
             size="sm"
             icon={Undo2}
-            className="max-md:h-10"
             title={reverted ? "Reverted" : "Revert"}
             disabled={reverted || reverting}
-            aria-busy={reverting}
+            loading={reverting}
             onClick={props.onRevert}
           >
             <span className="@max-md/diff:sr-only">{reverted ? "Reverted" : "Revert"}</span>

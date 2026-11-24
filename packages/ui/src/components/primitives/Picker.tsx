@@ -100,8 +100,10 @@ export function Picker(props: {
       align={props.align ?? "start"}
       className={props.widthClass ?? "w-80 max-w-[calc(100vw-16px)]"}
     >
-      <div className="flex h-bar shrink-0 items-center gap-2 border-b border-line px-3">
-        <Glyph icon={Search} size={14} className="shrink-0 text-fg-3" />
+      <div className="flex h-ctl-lg shrink-0 items-center gap-2 border-b border-line px-3">
+        <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+          <Glyph icon={Search} size={14} className="text-fg-3" />
+        </span>
         <input
           ref={search}
           data-autofocus
@@ -118,7 +120,7 @@ export function Picker(props: {
             props.onQuery?.(e.target.value);
           }}
           onKeyDown={onKeyDown}
-          className="h-full min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none max-sm:text-input-touch"
+          className="h-full min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none touch:text-input-touch"
         />
       </div>
       <PopupList

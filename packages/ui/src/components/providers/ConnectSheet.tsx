@@ -53,8 +53,8 @@ export function ConnectSheet({ target, onClose, onUseAnyway }: { target: string;
       }
     >
       {providers.status === "loading" && (
-        <p className="flex h-9 items-center gap-2 text-sm text-fg-3" aria-busy>
-          <Spinner size={10} /> Checking what is on this machine…
+        <p className="flex h-ctl-md items-center gap-2 text-sm text-fg-3" aria-busy>
+          <Spinner size="xs" /> Checking what is on this machine…
         </p>
       )}
       {providers.status === "error" && !provider && (
@@ -86,6 +86,7 @@ function CheckAgain({ provider, onCheck, onUseAnyway }: { provider: Provider; on
     <span className="mr-auto flex min-w-0 flex-col gap-1 max-[420px]:mr-0">
       <span className="flex flex-wrap items-center gap-3 max-[420px]:flex-col max-[420px]:items-stretch">
         <Button
+          loading={running}
           onClick={() => {
             setChecked(true);
             setRunning(true);
@@ -99,15 +100,8 @@ function CheckAgain({ provider, onCheck, onUseAnyway }: { provider: Provider; on
             );
           }}
           disabled={running}
-          aria-busy={running}
         >
-          {running ? (
-            <>
-              <Spinner size={10} /> Checking…
-            </>
-          ) : (
-            "Check again"
-          )}
+          {running ? "Checking…" : "Check again"}
         </Button>
         {onUseAnyway && (
           <Button variant="quiet" onClick={onUseAnyway} disabled={running}>

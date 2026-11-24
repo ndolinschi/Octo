@@ -119,7 +119,7 @@ export const TurnRail = memo(function TurnRail({
           id="octo-rail-card"
           role="tooltip"
           style={{ top: cardTop }}
-          className="pointer-events-none absolute left-full z-30 ml-3 w-[min(320px,60vw)] rounded-md bg-overlay p-3 text-sm shadow-pop"
+          className="pointer-events-none absolute left-full z-30 ml-3 w-[min(320px,60vw)] rounded-xl bg-overlay p-3 text-sm shadow-pop"
         >
           <p className="line-clamp-3 wrap-anywhere whitespace-pre-wrap text-fg">{requestTitle(r.text).replace(/\n\s*\n+/g, "\n")}</p>
           <p className={cn("mt-1 flex gap-2 text-xs tabular-nums", r.state === "failed" ? "text-err" : "text-fg-3")}>
@@ -175,7 +175,7 @@ const RailTick = memo(function RailTick({ req, index: i, last, pitch, active, ta
           "group/mark relative flex h-full w-6 items-center justify-end before:absolute before:inset-x-0 before:inset-y-0 before:content-['']",
           i === 0 && "before:-top-2",
           last && "before:-bottom-2",
-          "focus-visible:shadow-none focus-visible:after:absolute focus-visible:after:-inset-x-1 focus-visible:after:-inset-y-0.5 focus-visible:after:rounded-2xs focus-visible:after:shadow-[0_0_0_1px_var(--octo-focus)] focus-visible:after:content-['']",
+          "focus-visible:shadow-none focus-visible:after:absolute focus-visible:after:-inset-x-1 focus-visible:after:-inset-y-0.5 focus-visible:after:rounded-2xs focus-visible:after:shadow-[0_0_0_2px_var(--octo-focus)] focus-visible:after:content-['']",
         )}
       >
         <span

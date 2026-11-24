@@ -23,6 +23,8 @@ export function StateGlyph(props: {
   label?: boolean;
   /** Drawn in `fg-3` whatever the state (a count of zero on Home: the tile is wholly quiet, polish step 2 F5). */
   quiet?: boolean;
+  /** Pauses the working ring while unwatched (decision 76). */
+  still?: boolean | undefined;
   className?: string;
 }) {
   const size = props.size ?? 12;
@@ -31,7 +33,12 @@ export function StateGlyph(props: {
   return (
     <span
       data-state-glyph={props.state}
-      className={cn("inline-grid shrink-0 place-items-center", props.quiet ? "text-fg-3" : TONE[GLYPH_TONE[props.state]], props.className)}
+      data-paused={props.still ? "" : undefined}
+      className={cn(
+        "inline-grid shrink-0 place-items-center",
+        props.quiet ? "text-fg-3" : props.className && /\btext-/.test(props.className) ? undefined : TONE[GLYPH_TONE[props.state]],
+        props.className,
+      )}
       style={{ width: box, height: box }}
       title={props.label ? glyphLabel(props.state) : undefined}
     >
@@ -42,15 +49,14 @@ export function StateGlyph(props: {
             cy={g.c}
             r={g.r}
             strokeWidth={g.stroke}
-            strokeOpacity={g.ringOpacity}
+            strokeOpacity={props.state === "working" ? 0.25 : g.ringOpacity}
             strokeDasharray={g.dash ?? undefined}
-            className={cn(props.state === "working" && "text-fg-3")}
           />
         )}
         {g.arc && <path d={g.arc} strokeLinecap="round" className="octo-ring-turn" />}
         {g.dot !== null && <circle cx={g.c} cy={g.c} r={g.dot} fill="currentColor" fillOpacity={g.dotOpacity} stroke="none" />}
         {g.alert && (
-          <g className="octo-ring-pulse">
+          <g>
             <line x1={g.alert.x} y1={g.alert.y1} x2={g.alert.x} y2={g.alert.y2} strokeLinecap="round" />
             <circle cx={g.alert.x} cy={g.alert.cy} r={g.alert.dr} fill="currentColor" stroke="none" />
           </g>

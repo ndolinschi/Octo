@@ -4958,3 +4958,51 @@ g. **Accessibility.** The open card is a labelled region ("Test writer: run"); i
 - **Not verified:** WebKit; a real touch device and a screen reader (the live region's throttle was read, not heard); the
   plan progress with a real ACP agent's plan (demo and gallery only); cost in dollars on the card (the agent row has tokens, no
   cost: the meta shows tokens only); the escalation text from a real router (demo and gallery only).
+
+### As built — UI microscopic polish pass (2026-11-24)
+
+Full component-by-component audit across `packages/ui`, `apps/desktop`, and `apps/web` (tokens/CSS, primitives, dock/tabs,
+shell/status/shared, chat/AI transcript & v7, files/review/browser, all 10 tool tabs, Home/Settings/Providers/Project/hosts).
+
+- **Tokens & CSS (`packages/ui/src/styles.css`, `Prose.css`):** raised dark `--octo-overlay` to `#282828`; lifted
+  `--octo-input-border` to `#828282` for WCAG 3:1 UI contrast across dark and light; differentiated light `--octo-code-bg`
+  (`#efefef`) from `--octo-raised` (`#f3f3f3`); made `--octo-mark` theme-adaptive; added theme-tinted `--octo-shadow-float` on
+  `cursor`/`claude`/`codex`/`opencode`; improved `.octo-skeleton` contrast in light mode; added `--octo-status-h` coupling
+  `StatusBar` and `SidebarDrawer`; harmonized `.octo-lead` across dark themes; removed dead `.octo-v7-kbd`; tuned prose headings,
+  compact table row height (`12/16` + `6px 8px`), streaming caret, and `@utility tab-close-fade`.
+- **Primitives & composition:** fixed `StateGlyph` cascade so caller text colors (`text-current` on `Button primary/danger/link
+  loading`, `text-fg-2` on `Spinner`) are never overridden by default `text-fg`; fixed `Switch` knob centering and 3:1 unchecked
+  edge; migrated `ViewTabs` to exact 32px `h-ctl-md` with inset hairline (no 33px border-box drift); removed double border on
+  `IconButton round` and floating surfaces; unified `TerminalTab` onto shared `Panel`/`PanelEmpty`/`PanelPurpose`/`Notice`;
+  differentiated unfocused active tabs (`bg-tab-active/70 text-fg-2`) and prevented `TabStrip` shadow clipping (`-my-1 py-1`);
+  fixed `ConnectScreen` tonal lift (`bg-raised` + `octo-in-card`) and equal-height grid split; replaced deprecated `Button.IconButton`,
+  `Field.Input/Textarea`, `variant="ghost"`, `SkeletonRows`, `octo-prose-sm`, `h-row`, and off-scale heights/paddings across chat,
+  v7, review, files, browser, tool tabs, settings, project dialogs, desktop host views, and web `PairingScreen`.
+- **Verified (Chromium, demo on local Vite dev server):** `pnpm lint` (0 errors across all 4 packages; `@octo/ui` warnings
+  reduced 197 → 167; `check-cycles` clean), `pnpm format:check`, `@octo/ui` unit tests (1043/1043 pass), `pnpm test:scripts`,
+  `@octo/desktop` & `@octo/web` production builds + `scripts/check-bundle-size.mjs` (within budget), `spacing-audit.mjs`
+  (`total=0` across 102 screen × viewport checks), `frame-colours.mjs` (all 13 checks ok), `backdrop-check.mjs` (all 24 checks
+  clear), `width-stability.mjs` (ok, 13 states), `panel-measure.mjs` (40px headers, 32px ViewTabs, 36px filter rows),
+  `gallery-shots.mjs` (0 console errors, 0 off-height controls), plus visual inspection of gallery and composed app screens
+  (Home, Chat/AI messages + v7 cards, Review split, Settings, ConnectScreen) in Dark and Light.
+- **Not verified:** WebKit; native Tauri window/sidecar run; real third-party CLI providers; manual visual screenshot pass of
+  the 4 secondary dark themes (`cursor`, `claude`, `codex`, `opencode`) beyond token inspection.
+
+### As built — sidebar project deletion & empty default session filtering (2026-11-24)
+
+- **No phantom "New session" rows:** `flatSessions` and `treeSessions` (`packages/ui/src/lib/sessions/flat.ts`) no longer inject
+  untouched empty default sessions (`exchanges === 0`, idle, no queued messages) via project fallbacks or `activeSessionId`.
+  `visibleNodes` / `filterCounts` (`packages/ui/src/lib/sessions/model.ts`) and `SessionsTab` also exclude untouched empty default
+  main sessions so empty projects display `"No sessions yet"` and deleting a project's last session removes it cleanly instead of
+  resurrecting a fresh `"New session"`.
+- **Project deletion from every sidebar mode:** in default `sessions` mode (`SessionTree.tsx`), projects without session activity
+  render under a `Projects` caption as flat `ProjectRow` entries (`+`, `⋯ → Delete project…`, no expand chevron), and session
+  rows expose `Delete project…` (with the project name as subtitle) alongside `Delete session…`. In `projects` mode
+  (`ProjectItem.tsx`), rows now render a visible hover/focus/touch `⋯` action button opening the project menu (`New session`,
+  `Delete project…`).
+- **Verified (Chromium, demo on local Vite dev server):** `@octo/ui` unit tests (`flat.test.ts`, `model.test.ts`, full suite),
+  `pnpm format:check`, `pnpm lint` (0 errors), `check-cycles`, `@octo/desktop` build + `scripts/check-bundle-size.mjs` (161.40 /
+  162.40 kB gzip), `spacing-audit.mjs --only home,chat-idle,sessions-list` (`total=0`), and Playwright E2E across `sessions`,
+  `projects`, and `tree` sidebar modes plus `SessionsTab` (deleting empty projects, projects with sessions, active projects, and
+  last sessions).
+- **Not verified:** live Go harness backend deletion flow in this run (verified against the in-memory demo bridge).

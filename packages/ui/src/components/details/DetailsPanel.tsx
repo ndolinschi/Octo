@@ -254,6 +254,7 @@ function Context() {
       )}
       {ctx.status === "error" && (
         <Notice
+          tone="error"
           className="px-2"
           action={
             <Button variant="link" size="xs" onClick={ctx.retry}>
@@ -270,14 +271,14 @@ function Context() {
             <span className="text-fg">{meter.percent ?? "Context size unknown"}</span>
             <span className="ml-auto shrink-0 font-mono text-xs text-fg-2 tabular-nums">{meter.amount}</span>
           </div>
-          {/* One 3px bar: the window's used share, split by part (decision 38). */}
+          {/* One 4px bar: the window's used share, split by part (decision 38, matching UsageLimits). */}
           <div
             role="meter"
             aria-label="Context used"
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={Math.round(meter.fill * 100)}
-            className="mx-2 mb-1 flex h-[3px] overflow-hidden rounded-full bg-line"
+            className="mx-2 mb-1 flex h-1 overflow-hidden rounded-full bg-line"
           >
             {meter.rows.map((r) => (
               <span key={r.key} className={`octo-ctx-${r.key} h-full`} style={{ width: `${(meter.fill > 0 ? meter.fill : 1) * r.share * 100}%` }} />
@@ -401,7 +402,11 @@ function PluginsInUse() {
   const empty = load !== null && servers !== null && servers.length + load.agents.length === 0;
   return (
     <InfoSection title="Integrations in use" labelId="details-plugins">
-      {failed && <Notice className="px-2">Couldn't read the plugins. Reopen this tab to try again.</Notice>}
+      {failed && (
+        <Notice tone="error" className="px-2">
+          Couldn't read the plugins. Reopen this tab to try again.
+        </Notice>
+      )}
       {(load === null || servers === null) && !failed && (
         // The skeleton holds its room from the start and shows only once loading is slow (no jump either way).
         <div className={cn(!slow && "opacity-0")}>
@@ -456,7 +461,7 @@ function Activity() {
           title={
             <>
               {roleOf(a)}
-              <span className="ml-2 text-fg-3">{a.title}</span>
+              <span className="ml-2 text-xs text-fg-3">{a.title}</span>
             </>
           }
           meta={
@@ -557,7 +562,7 @@ function Outputs(props: { extraFolders: readonly { label: string; path: string }
           const shown = open[g.label] ? g.files : g.files.slice(0, PAGE);
           return (
             <div key={g.label} role="group" aria-label={g.label} className="flex flex-col">
-              <div className="flex h-row items-center px-2 text-xs text-fg-3">
+              <div className="flex h-ctl-sm items-center px-2 text-xs text-fg-3">
                 <span aria-hidden className="mr-2 size-4 shrink-0" />
                 {g.label}
               </div>

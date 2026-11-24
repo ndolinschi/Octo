@@ -26,6 +26,7 @@ import { FilterTabs } from "../primitives/FilterTabs";
 import { ViewTabs } from "../primitives/ViewTabs";
 import { Spinner } from "../primitives/Status";
 import { ScrollArea } from "../primitives/ScrollArea";
+import { PanelPurpose } from "../shared/PanelPurpose";
 import { BranchList } from "./BranchList";
 import { CutText, ChecksMark, Counts, TextMenu } from "./parts";
 import { usePullList } from "./usePullList";
@@ -209,6 +210,7 @@ function Picker(props: {
   const onlyFolder = props.folders[0];
   const lead = (
     <>
+      <PanelPurpose tool="review" />
       {folderLead}
       {repoLead ||
         (!folderLead && onlyFolder && (
@@ -392,7 +394,7 @@ function Picker(props: {
                 {/* R7: the rows are one Tab stop; ↑/↓/Home/End move between them. */}
                 {/* A maximised review is 1400 wide: the rows keep Home's column (880, left-aligned as every panel body), so the time
                     and the counts stay near the title they belong to. */}
-                <div ref={list} className="flex flex-col gap-1.5">
+                <div ref={list} className="flex max-w-home flex-col gap-1.5">
                   {typed && available && (
                     <ListRow
                       size="md"

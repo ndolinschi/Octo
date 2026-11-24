@@ -1,5 +1,5 @@
 import type { RemoteDevice, RemoteStatus } from "@octo/agent-client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { encodeQr } from "../../lib/qr";
 import { Button } from "../primitives/Button";
 import { Switch } from "../primitives/Switch";
@@ -62,7 +62,7 @@ export function PairingPanel({
       <QrImage text={pairing.link} size={168} />
       <div className="flex min-w-0 flex-1 flex-col gap-2 max-sm:items-center max-sm:text-center">
         <p className="text-sm text-fg-2">Scan with the phone's camera, or open the address there and type the code.</p>
-        <p className="font-mono text-figure tracking-widest text-fg" aria-label={`Pairing code ${pairing.code.split("").join(" ")}`}>
+        <p className="font-mono text-title tracking-widest text-fg tabular-nums" aria-label={`Pairing code ${pairing.code.split("").join(" ")}`}>
           {pairing.code}
         </p>
         <p className="text-xs text-fg-3 tabular-nums" aria-live="off">
@@ -116,6 +116,7 @@ export function DeviceRow({
   onReadOnly(v: boolean): void;
   onRevoke(): void;
 }) {
+  const roId = useId();
   return (
     <SettingsRow
       title={device.name}
@@ -124,8 +125,8 @@ export function DeviceRow({
       control={
         <>
           <span className="flex items-center gap-2 text-xs text-fg-2">
-            Read-only
-            <Switch checked={device.read_only} onChange={onReadOnly} label={`${device.name} can only read`} disabled={busy} />
+            <label htmlFor={roId}>Read-only</label>
+            <Switch id={roId} checked={device.read_only} onChange={onReadOnly} label={`${device.name} can only read`} disabled={busy} />
           </span>
           {/* Red is kept for "Remove all and turn off": one device's removal is an ordinary button (it can pair again). */}
           <Button size="sm" onClick={onRevoke} disabled={busy}>

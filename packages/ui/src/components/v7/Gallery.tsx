@@ -19,7 +19,7 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 export function Gallery({ loadMonaco }: { loadMonaco(): Promise<DiffMonaco> }) {
   const { theme } = useApp();
   return (
-    <main className="bg-bg h-full overflow-y-auto text-fg" data-v7-gallery>
+    <main className="h-full overflow-y-auto bg-panel text-fg" data-v7-gallery>
       <div className="mx-auto flex max-w-4xl flex-col gap-10 px-4 py-8">
         <header className="flex flex-col gap-1">
           <h1 className="text-title text-fg">v7 components</h1>

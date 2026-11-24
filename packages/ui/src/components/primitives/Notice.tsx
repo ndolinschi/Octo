@@ -43,7 +43,7 @@ export function Notice(props: {
   const role = props.tone === "error" ? "alert" : "status";
   if (props.form === "block") {
     return (
-      <div role={role} className={cn("flex min-w-0 flex-col gap-2 rounded-md bg-raised p-card text-sm", props.className)}>
+      <div role={role} className={cn("octo-in-card flex min-w-0 flex-col gap-2 rounded-md bg-raised p-card text-sm", props.className)}>
         <div className="flex min-w-0 items-start gap-2">
           <Glyph icon={tone.icon} size={16} className={cn("mt-0.5 shrink-0", tone.glyph)} />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -58,7 +58,9 @@ export function Notice(props: {
   }
   return (
     <div role={role} className={cn("flex min-w-0 items-start gap-2 text-xs", tone.text, props.className)}>
-      <Glyph icon={tone.icon} size={14} className={cn("mt-px shrink-0", tone.glyph)} />
+      <span aria-hidden className="grid h-4 shrink-0 place-items-center">
+        <Glyph icon={tone.icon} size={14} className={tone.glyph} />
+      </span>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
         <span className="min-w-0 break-words">{props.children}</span>
         {props.action}

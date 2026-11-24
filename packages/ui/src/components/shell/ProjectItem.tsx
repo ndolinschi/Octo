@@ -1,9 +1,12 @@
 import type { ProjectSummary } from "@octo/agent-client";
+import { Ellipsis } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 import { useReadable } from "../../lib/errors/useReadable";
 import { projectRowLines, type OrchestratorState } from "../../lib/orchestrator";
+import { usePhone } from "../../lib/phone";
 import { hrefFor } from "../../lib/route";
 import { isPending } from "../../state/orchestrators";
+import { IconButton } from "../primitives/IconButton";
 import { ListRow } from "../primitives/ListRow";
 import { Skeleton } from "../primitives/Skeleton";
 import { OrchestratorGlyph } from "../primitives/statusMore";
@@ -29,12 +32,13 @@ export function ProjectItem(props: {
   /** Mounted under the row (the app passes the expandable sessions of the project). */ extra?: ReactNode;
 }) {
   const { project, active, state } = props;
+  const phone = usePhone();
   const error = useReadable(state.kind === "needs" ? state.error : null);
   const { meta, full } = projectRowLines(state, props.now, project.updated_at);
   const unseen = props.unseen && !active;
   const sentence = `${unseen && state.kind === "idle" ? "New activity" : full}${error ? `: ${error}` : ""}`;
   return (
-    <li data-project-row className="group/p relative" onContextMenu={props.onMenu}>
+    <li data-project-row {...(props.onMenu ? { "data-tree-row": "" } : {})} className="group/p relative" onContextMenu={props.onMenu}>
       <ListRow
         href={hrefFor(project.id)}
         selected={active}
@@ -43,7 +47,7 @@ export function ProjectItem(props: {
         tip={error ? `${project.name}: ${error}` : project.name}
         onClick={props.onPick}
         size="md"
-        leading={isPending(state) ? <Skeleton shape="circle" className="size-3.5" /> : <OrchestratorGlyph state={state.kind} unseen={unseen} />}
+        leading={isPending(state) ? <Skeleton shape="circle" className="size-3" /> : <OrchestratorGlyph state={state.kind} unseen={unseen} />}
         title={
           <>
             {project.name}
@@ -51,11 +55,33 @@ export function ProjectItem(props: {
           </>
         }
         meta={
-          <span aria-hidden data-meta data-project-meta className="inline-block min-w-6 text-right tabular-nums">
+          <span
+            aria-hidden
+            data-meta
+            data-project-meta
+            {...(props.onMenu ? { "data-tree-meta": "" } : {})}
+            className="inline-block min-w-6 text-right tabular-nums"
+          >
             {meta}
           </span>
         }
       />
+      {props.onMenu && (
+        <span data-tree-actions role="none" className="absolute top-1 right-1 touch:top-2">
+          <IconButton
+            icon={Ellipsis}
+            size={phone ? "lg" : "xs"}
+            tabIndex={-1}
+            aria-hidden="true"
+            label={`Actions for ${project.name}`}
+            aria-haspopup="menu"
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onMenu?.(e);
+            }}
+          />
+        </span>
+      )}
       {props.extra}
     </li>
   );

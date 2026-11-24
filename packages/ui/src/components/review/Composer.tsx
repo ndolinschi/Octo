@@ -1,10 +1,9 @@
-import { useState, type KeyboardEvent } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { MOD_LABEL } from "../../lib/keys";
 import { Button } from "../primitives/Button";
 import { Checkbox } from "../primitives/Checkbox";
-import { Textarea } from "../primitives/Field";
-import { Spinner } from "../primitives/Status";
+import { TextArea } from "../primitives/TextField";
 
 export type ComposerValue = { body: string; suggestion: string | undefined };
 
@@ -30,6 +29,7 @@ export function Composer(props: {
   onSave(value: ComposerValue): Promise<string | null>;
   onCancel(): void;
 }) {
+  const suggestionId = useId();
   const [body, setBody] = useState(props.initialBody);
   const [suggest, setSuggest] = useState(props.initialSuggestion !== undefined);
   const [suggestion, setSuggestion] = useState(props.initialSuggestion ?? props.linesText);
@@ -62,13 +62,13 @@ export function Composer(props: {
   return (
     <form
       aria-label={props.heading}
-      className="flex max-h-[60%] shrink-0 flex-col gap-2 overflow-y-auto border-t border-line bg-raised p-3"
+      className="octo-in-card flex max-h-[60%] shrink-0 flex-col gap-2 overflow-y-auto overscroll-contain border-t border-line bg-raised p-3"
       onSubmit={(e) => {
         e.preventDefault();
         void save();
       }}
     >
-      <div className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1">
+      <div className="flex min-h-ctl-xs flex-wrap items-center gap-x-3 gap-y-1">
         <h3 className="min-w-0 truncate text-sm font-medium text-fg">{props.heading}</h3>
         {props.suggestFor !== undefined && (
           <span title="Suggest a change (s)" className="ml-auto">
@@ -76,7 +76,7 @@ export function Composer(props: {
           </span>
         )}
       </div>
-      <Textarea
+      <TextArea
         ref={focusMount}
         aria-label="Comment"
         placeholder="Write a comment. It stays pending until you submit the review."
@@ -84,15 +84,14 @@ export function Composer(props: {
         value={body}
         onKeyDown={onKeyDown}
         onChange={(e) => setBody(e.target.value)}
-        className="max-sm:text-input-touch"
       />
       {suggest && props.suggestFor !== undefined && (
         <div className="flex flex-col gap-1">
-          <label htmlFor="review-suggestion" className="text-xs text-fg-3">
+          <label htmlFor={suggestionId} className="text-xs text-fg-3">
             Replacement for {props.suggestFor}. Posted as a suggested change the author can apply.
           </label>
-          <Textarea
-            id="review-suggestion"
+          <TextArea
+            id={suggestionId}
             rows={Math.min(6, Math.max(3, suggestion.split("\n").length))}
             spellCheck={false}
             value={suggestion}
@@ -109,11 +108,10 @@ export function Composer(props: {
         </p>
       )}
       <div className="flex items-center justify-end gap-2">
-        {busy && <Spinner />}
-        <Button size="sm" variant="ghost" onClick={props.onCancel} className="max-sm:h-10">
+        <Button size="sm" variant="quiet" onClick={props.onCancel}>
           Cancel
         </Button>
-        <Button size="sm" variant="primary" type="submit" disabled={busy} data-shortcut={`${MOD_LABEL}↵`} className="max-sm:h-10">
+        <Button size="sm" variant="primary" type="submit" loading={busy} data-shortcut={`${MOD_LABEL}↵`}>
           {props.saveLabel}
         </Button>
       </div>

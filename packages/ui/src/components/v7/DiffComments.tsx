@@ -2,7 +2,7 @@ import type * as Monaco from "monaco-editor";
 import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import type { MonacoApi } from "../../lib/buffers";
 import { Button } from "../primitives/Button";
-import { Textarea } from "../primitives/Field";
+import { TextArea } from "../primitives/TextField";
 import { focusOnMount } from "./parts";
 
 /** A line comment from the changes view: lines of the file as changed (the diff's modified side). */
@@ -138,10 +138,10 @@ export function DiffComments(props: {
     <div
       role="dialog"
       aria-label={`Comment on ${lines}`}
-      className="absolute z-10 flex flex-col gap-2 rounded-md border border-transparent bg-overlay p-2 shadow-pop forced-colors:border-[CanvasText]"
+      className="absolute z-10 flex flex-col gap-2 rounded-xl bg-overlay p-2 shadow-pop forced-colors:border forced-colors:border-[CanvasText]"
       style={{ top: draft.top, left: draft.left, width: draft.width }}
     >
-      <Textarea
+      <TextArea
         aria-label={`Comment on ${lines}`}
         placeholder={`Comment on ${lines}, sent with your next message`}
         rows={2}
@@ -151,10 +151,10 @@ export function DiffComments(props: {
         onChange={(e) => setText(e.target.value)}
       />
       <div className="flex items-center justify-end gap-2">
-        <Button size="sm" variant="ghost" onClick={close}>
+        <Button size="sm" variant="quiet" onClick={close}>
           Cancel
         </Button>
-        <Button size="sm" variant="primary" disabled={!text.trim()} onClick={add} data-shortcut="⌘↵">
+        <Button size="sm" variant="primary" disabled={!text.trim()} onClick={add}>
           Add comment
         </Button>
       </div>

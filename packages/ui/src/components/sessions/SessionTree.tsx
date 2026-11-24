@@ -33,6 +33,7 @@ import { IconButton } from "../primitives/IconButton";
 import { ListRow } from "../primitives/ListRow";
 import type { MenuItem } from "../primitives/Menu";
 import { MiddleText } from "../primitives/MiddleText";
+import { Notice } from "../primitives/Notice";
 import { Presence } from "../primitives/Presence";
 import { SkeletonList } from "../primitives/Skeleton";
 import { StateGlyph } from "../primitives/StateGlyph";
@@ -60,7 +61,10 @@ export type SessionTreeProps = {
   onPick(): void;
 };
 
-type MenuAt = ({ session: GlobalSession } | { project: ProjectSummary; open: boolean; anchor: HTMLElement | null }) & { x: number; y: number };
+type MenuAt = ({ session: GlobalSession } | { project: ProjectSummary; open: boolean; expandable: boolean; anchor: HTMLElement | null }) & {
+  x: number;
+  y: number;
+};
 
 /**
  * The sidebar's main navigation (UI decision 96): "Projects and sessions" — a `role="tree"` of project rows (32px, the
@@ -101,7 +105,7 @@ export function SessionTree(props: SessionTreeProps) {
   const defaultOf = (pid: string) => index.byProject.get(pid)?.find((s) => s.default ?? s.current)?.id ?? null;
   const currentSession = props.agentRoute ? null : (props.activeSessionId ?? (props.activeProjectId ? defaultOf(props.activeProjectId) : null));
   // Decision F3: what needs the person is pinned on top; both groups keep the stable order by start.
-  const pinned = useMemo(() => pinNeedsYou(flatSessions(index.all, currentSession)), [index.all, currentSession]);
+  const pinned = useMemo(() => pinNeedsYou(flatSessions(index.all)), [index.all]);
   const flat = useMemo(() => [...pinned.needs, ...pinned.rest], [pinned]);
   const oneProject = useMemo(() => new Set(flat.map((s) => s.project_id)).size <= 1, [flat]);
   const loading = projects === null && health !== "offline";
@@ -130,6 +134,7 @@ export function SessionTree(props: SessionTreeProps) {
   };
   const menuItems = (s: GlobalSession): MenuItem[] => {
     const isDefault = s.default ?? s.current;
+    const project = props.mode === "sessions" && !device ? ordered?.find((p) => p.id === s.project_id) : undefined;
     const items: MenuItem[] = [{ id: "rename", label: "Rename", run: () => setRenaming(s.id) }];
     if (!isDefault) items.push({ id: "default", label: "Make default", run: () => void act(() => bridge.setDefaultSession(s.project_id, s.id)) });
     if (s.project_id === props.activeProjectId) items.push({ id: "tab", label: "Open in new tab", run: () => nav.workspace()?.openSession(s.id) });
@@ -142,7 +147,9 @@ export function SessionTree(props: SessionTreeProps) {
       const patch = bridge.patchSession;
       items.push({ id: "archive", label: "Archive", run: () => void act(() => patch(s.project_id, s.id, { archived: true })) });
     }
-    if (bridge.deleteSession) items.push({ id: "sep", separator: true }, { id: "delete", label: "Delete…", run: () => setDeleting(s) });
+    if (bridge.deleteSession || project) items.push({ id: "sep", separator: true });
+    if (bridge.deleteSession) items.push({ id: "delete", label: project ? "Delete session…" : "Delete…", run: () => setDeleting(s) });
+    if (project) items.push({ id: "delete-project", label: "Delete project…", sub: project.name, run: () => setDeletingProject(project) });
     return items;
   };
   const menuPoint = (e: MouseEvent | KeyboardEvent, el?: HTMLElement | null) => {
@@ -155,9 +162,9 @@ export function SessionTree(props: SessionTreeProps) {
   const openMenu = (s: GlobalSession, e: MouseEvent | KeyboardEvent, el?: HTMLElement | null) => setMenu({ session: s, ...menuPoint(e, el) });
   // 11a / A6: a project row's menu (Shift+F10, the ContextMenu key, a right click, a long press on the phone): the "+" and the
   // chevron of the row, for the keyboard and for the phone (which shows the chevron only).
-  const openProjectMenu = (p: ProjectSummary, open: boolean, e: MouseEvent | KeyboardEvent, el?: HTMLElement | null) => {
+  const openProjectMenu = (p: ProjectSummary, open: boolean, expandable: boolean, e: MouseEvent | KeyboardEvent, el?: HTMLElement | null) => {
     const anchor = el ?? (e.currentTarget instanceof HTMLElement ? e.currentTarget : null);
-    setMenu({ project: p, open, anchor, ...menuPoint(e, anchor) });
+    setMenu({ project: p, open, expandable, anchor, ...menuPoint(e, anchor) });
   };
   const createSession = (projectId: string) => {
     void act(async () => {
@@ -168,14 +175,14 @@ export function SessionTree(props: SessionTreeProps) {
       props.onPick();
     });
   };
-  const projectMenuItems = (m: { project: ProjectSummary; open: boolean; anchor: HTMLElement | null }): MenuItem[] => [
+  const projectMenuItems = (m: { project: ProjectSummary; open: boolean; expandable: boolean; anchor: HTMLElement | null }): MenuItem[] => [
     {
       id: "new",
       label: "New session",
       disabled: !props.canCreate,
       run: () => createSession(m.project.id),
     },
-    { id: "toggle", label: m.open ? "Hide sessions" : "Show sessions", run: () => toggle(m.project.id, !m.open) },
+    ...(m.expandable ? [{ id: "toggle", label: m.open ? "Hide sessions" : "Show sessions", run: () => toggle(m.project.id, !m.open) }] : []),
     ...(!device
       ? [
           { id: "sep-del", separator: true as const },
@@ -220,7 +227,7 @@ export function SessionTree(props: SessionTreeProps) {
     const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (row?.session && menuKey) return openMenu(row.session, e, focused);
     const project = menuKey && row?.level === 1 && !row.session ? ordered?.find((p) => rowId("p", p.id) === row.id) : undefined;
-    if (project) return openProjectMenu(project, row?.open === true, e, focused);
+    if (project) return openProjectMenu(project, row?.open === true, props.mode !== "sessions", e, focused);
     const move = treeKey(e.key, props.mode === "sessions" ? keyRows.map((r) => ({ ...r, level: 1 as const, open: false })) : keyRows, at);
     if (!move) return;
     e.preventDefault();
@@ -317,20 +324,22 @@ export function SessionTree(props: SessionTreeProps) {
         // the flat Sessions list keeps "New session", its glyph's right edge on the rows' meta edge.
         <div data-side-caption className="mt-4 mb-1 flex h-5 shrink-0 items-center pr-0.5 pl-2">
           <h2 className="text-xs text-fg-3">{props.mode === "sessions" ? "Sessions" : "Projects"}</h2>
-          <NewButton
-            label="New session"
-            disabled={!props.canCreate || !projects?.length}
-            onClick={() => {
-              const targetId = props.activeProjectId ?? ordered?.[0]?.id;
-              if (targetId) createSession(targetId);
-            }}
-          />
+          {props.mode === "sessions" && (
+            <NewButton
+              label="New session"
+              disabled={!props.canCreate || !projects?.length}
+              onClick={() => {
+                const targetId = props.activeProjectId ?? ordered?.[0]?.id;
+                if (targetId) createSession(targetId);
+              }}
+            />
+          )}
         </div>
       )}
       {error && (
-        <p role="alert" className="px-2 pb-1 text-xs text-err">
+        <Notice tone="error" className="px-2 pb-1">
           {error}
-        </p>
+        </Notice>
       )}
       <ul
         ref={list}
@@ -348,28 +357,33 @@ export function SessionTree(props: SessionTreeProps) {
                     The rows' glyphs say "Needs you" / "Failed" to a screen reader, so the captions are for the eye. */}
                 <GroupCaption first>Needs you</GroupCaption>
                 {pinned.needs.map((s) => sessionRow(s, false))}
-                <GroupCaption>Other sessions</GroupCaption>
+                {pinned.rest.length > 0 && <GroupCaption>Other sessions</GroupCaption>}
               </>
             )}
             {!sessionsLoading && (pinned.needs.length > 0 ? pinned.rest : flat).map((s) => sessionRow(s, false))}
-            {unrepresented.map((p) => (
-              <li key={p.id} role="none" className="flex flex-col">
-                <ProjectRow
-                  project={p}
-                  sessions={index.byProject.get(p.id) ?? []}
-                  active={p.id === props.activeProjectId}
-                  open={false}
-                  unseen={props.unseen.has(p.id) && p.id !== props.activeProjectId}
-                  state={orchestrators.get(p.id) ?? { kind: "idle", at: p.updated_at }}
-                  now={now}
-                  canCreate={props.canCreate}
-                  onToggle={() => toggle(p.id, true)}
-                  onOpen={props.onPick}
-                  onNew={() => createSession(p.id)}
-                  onMenu={(e) => openProjectMenu(p, false, e)}
-                />
-              </li>
-            ))}
+            {!sessionsLoading && unrepresented.length > 0 && (
+              <>
+                <GroupCaption first={flat.length === 0}>Projects</GroupCaption>
+                {unrepresented.map((p) => (
+                  <li key={p.id} role="none" className="flex flex-col">
+                    <ProjectRow
+                      project={p}
+                      sessions={index.byProject.get(p.id) ?? []}
+                      active={p.id === props.activeProjectId}
+                      open={false}
+                      expandable={false}
+                      unseen={props.unseen.has(p.id) && p.id !== props.activeProjectId}
+                      state={orchestrators.get(p.id) ?? { kind: "idle", at: p.updated_at }}
+                      now={now}
+                      canCreate={props.canCreate}
+                      onOpen={props.onPick}
+                      onNew={() => createSession(p.id)}
+                      onMenu={(e) => openProjectMenu(p, false, false, e)}
+                    />
+                  </li>
+                ))}
+              </>
+            )}
           </>
         ) : (
           projectRows.map(({ p, sessions, active, open, shown, hidden, showMore }) => (
@@ -389,7 +403,7 @@ export function SessionTree(props: SessionTreeProps) {
                   props.onPick();
                 }}
                 onNew={() => createSession(p.id)}
-                onMenu={(e) => openProjectMenu(p, open, e)}
+                onMenu={(e) => openProjectMenu(p, open, true, e)}
               />
               {open && (shown.length > 0 || showMore) && (
                 <ul role="group" className="flex flex-col">
@@ -504,34 +518,36 @@ function projectGlyph(sessions: readonly GlobalSession[], state: OrchestratorSta
   return sum === "idle" && unseen ? "unseen" : sum;
 }
 
-/** A project row of the tree: glyph, name, meta ("2 running", or the time since its last activity); "+", "⋯" and the chevron on hover. */
+/** A project row of the tree: glyph, name, meta ("2 running", or the time since its last activity); "+", "⋯" and (in tree mode) the chevron on hover. */
 function ProjectRow(props: {
   project: ProjectSummary;
   sessions: readonly GlobalSession[];
   active: boolean;
   open: boolean;
+  expandable?: boolean;
   unseen: boolean;
   state: OrchestratorState;
   now: number;
   canCreate: boolean;
-  onToggle(): void;
+  onToggle?(): void;
   onOpen(): void;
   onNew(): void;
   onMenu(e: MouseEvent): void;
 }) {
   const phone = usePhone();
+  const expandable = props.expandable !== false;
   const { running } = projectSummary(props.sessions);
   const latest = mainSessions(props.sessions)[0];
   const lines = projectRowLines(props.state, props.now, props.project.updated_at);
   const meta = running > 1 ? `${running} running` : running === 1 ? null : latest ? formatRelative(latest.last_activity_at, props.now) : lines.meta;
   const glyph = projectGlyph(props.sessions, props.state, props.unseen);
   return (
-    <div data-tree-row data-tree-project role="none" className="group/r relative" onContextMenu={props.onMenu}>
+    <div data-tree-row data-tree-project={expandable ? "" : "flat"} role="none" className="group/r relative" onContextMenu={props.onMenu}>
       <ListRow
         role="treeitem"
         aria-haspopup="menu"
         level={1}
-        expanded={props.open}
+        {...(expandable ? { expanded: props.open } : {})}
         id={rowId("p", props.project.id)}
         size="md"
         href={hrefFor(props.project.id)}
@@ -547,7 +563,7 @@ function ProjectRow(props: {
         }
       />
       {/* The pointer's ways to these (the keyboard's: Shift+F10 on the row, ← / →): out of the tree's a11y. On the phone the
-          chevron alone, a full 44px target; "New session" is in the row's menu (a long press) and in the header's "⋯". */}
+          chevron alone in tree mode (or "⋯" in flat mode), a full 44px target. */}
       <span data-tree-actions role="none" className="absolute top-1 right-1 flex touch:top-2">
         {!phone && (
           <>
@@ -558,7 +574,10 @@ function ProjectRow(props: {
               aria-hidden="true"
               label={`New session in ${props.project.name}`}
               disabled={!props.canCreate}
-              onClick={props.onNew}
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onNew();
+              }}
             />
             <IconButton
               icon={Ellipsis}
@@ -567,19 +586,42 @@ function ProjectRow(props: {
               aria-hidden="true"
               label={`Actions for ${props.project.name}`}
               aria-haspopup="menu"
-              onClick={(e) => props.onMenu(e)}
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onMenu(e);
+              }}
             />
           </>
         )}
-        <IconButton
-          icon={ChevronRight}
-          size={phone ? "lg" : "xs"}
-          tabIndex={-1}
-          aria-hidden="true"
-          label={props.open ? `Hide the sessions of ${props.project.name}` : `Show the sessions of ${props.project.name}`}
-          className={cn(props.open && "[&_svg]:rotate-90")}
-          onClick={props.onToggle}
-        />
+        {expandable ? (
+          <IconButton
+            icon={ChevronRight}
+            size={phone ? "lg" : "xs"}
+            tabIndex={-1}
+            aria-hidden="true"
+            label={props.open ? `Hide the sessions of ${props.project.name}` : `Show the sessions of ${props.project.name}`}
+            className={cn(props.open && "[&_svg]:rotate-90")}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onToggle?.();
+            }}
+          />
+        ) : (
+          phone && (
+            <IconButton
+              icon={Ellipsis}
+              size="lg"
+              tabIndex={-1}
+              aria-hidden="true"
+              label={`Actions for ${props.project.name}`}
+              aria-haspopup="menu"
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onMenu(e);
+              }}
+            />
+          )
+        )}
       </span>
     </div>
   );

@@ -78,7 +78,9 @@ export function ComposerPills(props: {
             <img src={img.url} alt="" className="size-5 shrink-0 rounded-xs object-cover" />
           )}
           <span className="min-w-0 truncate text-fg">{img.name}</span>
-          <span className="shrink-0 text-xs text-fg-3 tabular-nums">{img.state === "failed" ? "not attached" : imageSize(img.bytes)}</span>
+          <span className={cn("shrink-0 text-xs tabular-nums", img.state === "failed" ? "text-err" : "text-fg-3")}>
+            {img.state === "failed" ? "not attached" : imageSize(img.bytes)}
+          </span>
           <IconButton icon={X} size="xs" label={`Remove ${img.name}`} onClick={() => props.onRemoveImage?.(img.id)} />
         </li>
       ))}

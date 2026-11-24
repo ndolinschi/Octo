@@ -4,7 +4,7 @@ import { timeAgo } from "../../lib/format";
 import { plural, totalsText } from "../../lib/review/files";
 import { reviewTarget } from "../../lib/review/submit";
 import { TheirText } from "./ExternalText";
-import { Segmented } from "../primitives/Segmented";
+import { ViewTabs } from "../primitives/ViewTabs";
 import { ChecksMark, checksState } from "./parts";
 
 type Section = "description" | "conversation" | "checks" | "commits";
@@ -57,10 +57,11 @@ export function Overview({
           </a>
         )}
       </p>
-      <Segmented<Section>
+      <ViewTabs<Section>
         label="Overview section"
         value={section}
         onChange={setSection}
+        className="-mx-4"
         options={[
           { id: "description", label: "Description" },
           { id: "conversation", label: `Conversation ${conversation.length}` },
@@ -91,7 +92,7 @@ export function Overview({
         (checks.length ? (
           <ul className="flex flex-col">
             {checks.map((c, i) => (
-              <li key={i} className="flex min-h-7 items-center gap-2 text-sm">
+              <li key={i} className="flex min-h-ctl-sm items-center gap-2 text-sm">
                 <ChecksMark state={checksState(c.bucket)} />
                 <span className="min-w-0 truncate text-fg">{c.name}</span>
                 {c.workflow && <span className="min-w-0 truncate text-xs text-fg-3">{c.workflow}</span>}
@@ -105,7 +106,7 @@ export function Overview({
       {section === "commits" && (
         <ul className="flex flex-col">
           {review.meta.commits.map((c) => (
-            <li key={c.sha} className="flex min-h-7 items-baseline gap-2 text-sm">
+            <li key={c.sha} className="flex min-h-ctl-sm items-baseline gap-2 text-sm">
               <code className="shrink-0 font-mono text-xs text-fg-3">{c.sha.slice(0, 7)}</code>
               <span className="min-w-0 truncate text-fg" title={c.subject}>
                 {c.subject}

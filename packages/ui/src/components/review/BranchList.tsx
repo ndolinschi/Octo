@@ -136,7 +136,7 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
           <PanelEmpty title="No local branches">This folder has no branch to review. Create one, or switch to Pull requests.</PanelEmpty>
         ) : (
           <PanelBody>
-            <div ref={list} className="flex flex-col gap-1.5">
+            <div ref={list} className="flex max-w-home flex-col gap-1.5">
               {rows.map((b) => (
                 <BranchRow
                   key={b.name}

@@ -226,7 +226,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
           right-hand group of 28px controls with 16px glyphs, 4 apart. In page mode the Files / Editor switch is the first item. */}
       <div
         data-file-bar={fileKey ? "file" : "tree"}
-        className="flex h-bar shrink-0 items-center gap-1 px-2 text-xs text-fg-3 shadow-[inset_0_-1px_0_var(--octo-line)]"
+        className="flex h-ctl-lg shrink-0 items-center gap-1 px-pane text-xs text-fg-3 shadow-[inset_0_-1px_0_var(--octo-line)]"
       >
         {page &&
           fileKey &&
@@ -263,7 +263,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
         <span data-file-status className="flex min-w-0 shrink items-center gap-2 pl-1 empty:hidden" role="status">
           {saving && (
             <>
-              <Spinner size={10} /> Saving…
+              <Spinner size="xs" /> Saving…
             </>
           )}
           {file?.modified && !saving && <span className={narrow ? "sr-only" : "shrink-0"}>Unsaved</span>}
@@ -683,7 +683,7 @@ function Notice({ file }: { file: OpenFile }) {
         <Button size="sm" onClick={() => void code.reloadFromDisk(file.key)}>
           Reload from disk
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => void code.save(file.key, { overwrite: true })}>
+        <Button size="sm" variant="quiet" onClick={() => void code.save(file.key, { overwrite: true })}>
           Overwrite
         </Button>
       </>
@@ -695,7 +695,7 @@ function Notice({ file }: { file: OpenFile }) {
         <Button size="sm" onClick={() => void code.reloadFromDisk(file.key)}>
           Reload
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => code.dismissNotice(file.key)}>
+        <Button size="sm" variant="quiet" onClick={() => code.dismissNotice(file.key)}>
           Keep mine
         </Button>
       </>

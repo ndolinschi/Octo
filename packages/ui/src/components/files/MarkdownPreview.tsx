@@ -80,7 +80,7 @@ export function MarkdownPreview({ file, bottomRoom, onOpen }: { file: OpenFile; 
         <article aria-label={`Preview of ${file.name}`} className="mx-auto w-full max-w-measure py-8">
           {front && front.fields.length > 0 && (
             // Front matter is metadata, not content: a quiet key / value block, not a rule and a heading.
-            <dl aria-label="Front matter" className="mb-6 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-md border border-line px-3 py-2 text-xs">
+            <dl aria-label="Front matter" className="mb-6 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-raised px-3 py-2 text-xs">
               {front.fields.map(([k, v]) => (
                 <Fragment key={k}>
                   <dt className="text-fg-3">{k}</dt>

@@ -11,7 +11,7 @@ const VISIBLE = 9;
  * The list's height: whole rows of the row token in force (28px, 40px under `touch:`) plus the list's 4px padding top and
  * bottom. Computed by CSS from the same tokens as the rows' `h-row` / `touch:h-ctl-lg`, so a narrow window shows whole rows.
  */
-const MAX_HEIGHT = "max-h-[calc(var(--spacing-row)*var(--popup-rows)+8px)] touch:max-h-[calc(var(--spacing-ctl-lg)*var(--popup-rows)+8px)]";
+const MAX_HEIGHT = "max-h-[calc(var(--spacing-ctl-sm)*var(--popup-rows)+8px)] touch:max-h-[calc(var(--spacing-ctl-lg)*var(--popup-rows)+8px)]";
 
 /**
  * `tall` (audit B4): up to 480px, but never past the window, still whole rows (CSS `round`). 88px is the popover's margins
@@ -19,7 +19,7 @@ const MAX_HEIGHT = "max-h-[calc(var(--spacing-row)*var(--popup-rows)+8px)] touch
  * 160px: at a short window (200 % zoom, ~400px tall) the list stopped at 3 rows with the window's height unused.
  */
 const TALL_HEIGHT =
-  "max-h-[calc(round(down,min(480px,100dvh-88px)-8px,var(--spacing-row))+8px)] touch:max-h-[calc(round(down,min(480px,100dvh-88px)-8px,var(--spacing-ctl-lg))+8px)]";
+  "max-h-[calc(round(down,min(480px,100dvh-88px)-8px,var(--spacing-ctl-sm))+8px)] touch:max-h-[calc(round(down,min(480px,100dvh-88px)-8px,var(--spacing-ctl-lg))+8px)]";
 
 /** The panel look of every popup list that floats on its own (slash and mention menus; the pickers get it from `Popover`). */
 export const POPUP_PANEL =
@@ -119,7 +119,7 @@ export function PopupList(props: {
             {...(s.title ? { "aria-labelledby": `${listId}-g-${s.title.replace(/\W/g, "_")}` } : { "aria-label": props.label })}
           >
             {s.title && (
-              <div id={`${listId}-g-${s.title.replace(/\W/g, "_")}`} className="flex h-row items-center px-2 text-xs text-fg-3">
+              <div id={`${listId}-g-${s.title.replace(/\W/g, "_")}`} className="flex h-ctl-sm items-center px-2 text-xs text-fg-3">
                 {s.title}
               </div>
             )}
@@ -143,7 +143,7 @@ export function PopupList(props: {
                   }}
                   className={cn(
                     "group flex min-w-0 items-center gap-2 rounded-md px-2 press-row touch:h-ctl-lg",
-                    r.sub ? "h-10" : "h-row",
+                    r.sub ? "min-h-ctl-lg py-1" : "h-ctl-sm",
                     r.disabled ? "text-fg-3" : on ? "bg-active text-fg" : "text-fg hover:bg-hover/50",
                   )}
                 >
@@ -164,12 +164,12 @@ export function PopupList(props: {
                         {r.checked && <span className="sr-only">(current)</span>}
                         {r.detail &&
                           (r.pathDetail ? (
-                            <span className="min-w-0 flex-1 truncate text-xs text-fg-3" dir="rtl">
+                            <span className={cn("min-w-0 flex-1 truncate text-xs", sub)} dir="rtl">
                               {/* RTL truncation keeps the end of the path visible. */}
                               <bdi>{r.detail}</bdi>
                             </span>
                           ) : props.tagDetail ? (
-                            <span className="shrink-0 rounded-xs bg-hover px-1.5 text-xs text-fg-3">{r.detail}</span>
+                            <span className={cn("shrink-0 rounded-xs bg-hover px-1.5 text-xs", sub)}>{r.detail}</span>
                           ) : (
                             // On the active row the muted detail steps up to fg-2 (fg-3 over the active fill measured 4.06:1).
                             <span className={cn("min-w-0 flex-1 shrink-[10] truncate text-xs", sub)}>{r.detail}</span>
@@ -196,7 +196,7 @@ export function PopupList(props: {
           </div>
         ),
       )}
-      {count === 0 && <div className="flex min-h-row items-center gap-2 px-2 text-xs text-fg-3">{props.empty ?? "Nothing matches"}</div>}
+      {count === 0 && <div className="flex min-h-ctl-sm items-center gap-2 px-2 text-xs text-fg-3">{props.empty ?? "Nothing matches"}</div>}
     </div>
   );
 }

@@ -41,7 +41,7 @@ export function RunBar() {
       {/* Polish step 6b (R3): the review header folds by its own width (container `rh`, `review/ReviewHeader`): below 1024 the
           pinned commands live only in this menu, below 480 the menu is its play glyph. 28px like the header's other controls. */}
       <span className="flex @max-[480px]/rh:hidden">
-        <MenuButton label="Run a command" text={r.running.size > 0 ? "Running…" : "Run"} alignEnd items={items} className="h-ctl-sm!" />
+        <MenuButton label="Run a command" size="sm" text={r.running.size > 0 ? "Running…" : "Run"} alignEnd items={items} />
       </span>
       <span className="flex @min-[480px]/rh:hidden">
         <IconMenu label="Run a command" icon={Play} items={items} />

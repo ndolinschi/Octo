@@ -86,6 +86,17 @@ function childrenOf(list: readonly ProjectSession[], main: ProjectSession, keep:
   return list.filter((s) => s.kind === "agent" && s.parent_session_id === main.id && keep(s)).sort(oldest);
 }
 
+/** An empty idle main session with no queued messages or live child agents (e.g. a project's untouched default session). */
+function isEmptyMain(list: readonly ProjectSession[], s: ProjectSession): boolean {
+  return (
+    hasNoRequests(s) &&
+    (s.queued ?? 0) === 0 &&
+    !s.needs_you &&
+    s.children === 0 &&
+    !list.some((x) => x.kind === "agent" && x.parent_session_id === s.id && !x.archived)
+  );
+}
+
 /**
  * What a filter shows, in order. `all`: the main sessions newest first, each with its agent sessions; `working`: the main
  * sessions that work or wait, and a main session that is idle but has a working agent shows just those agents; `mine`: the
@@ -98,12 +109,12 @@ export function visibleNodes(list: readonly ProjectSession[], filter: SessionFil
   switch (filter) {
     case "all":
       return mains
-        .filter(live)
+        .filter((m) => live(m) && !isEmptyMain(list, m))
         .sort(newest)
         .map((m) => ({ session: m, children: childrenOf(list, m, live) }));
     case "mine":
       return mains
-        .filter(live)
+        .filter((m) => live(m) && !isEmptyMain(list, m))
         .sort(newest)
         .map((m) => ({ session: m, children: [] }));
     case "agents":
@@ -130,10 +141,11 @@ export function visibleNodes(list: readonly ProjectSession[], filter: SessionFil
 /** The dim number after each filter: how many rows it lists (sessions of any kind for Working and Archived). */
 export function filterCounts(list: readonly ProjectSession[]): Record<SessionFilter, number> {
   const live = list.filter((s) => !s.archived);
+  const liveMains = live.filter((s) => s.kind === "main" && !isEmptyMain(list, s));
   return {
-    all: live.filter((s) => s.kind === "main").length,
+    all: liveMains.length,
     working: live.filter(isWorking).length,
-    mine: live.filter((s) => s.kind === "main").length,
+    mine: liveMains.length,
     agents: live.filter((s) => s.kind === "agent" && isWorking(s)).length,
     archived: list.length - live.length,
   };

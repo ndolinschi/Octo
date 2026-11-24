@@ -74,7 +74,7 @@ export function StickyPrompt(props: { text: string; author: string | null; onHei
             aria-hidden={clamped || expanded ? undefined : true}
             tabIndex={clamped || expanded ? undefined : -1}
             onClick={() => (clamped || expanded) && setExpanded((x) => !x)}
-            className={cn(boxClass, clamped || expanded ? "press-row hover:brightness-110" : "pointer-events-none")}
+            className={cn(boxClass, clamped || expanded ? "press-row transition-colors duration-fast hover:border-line-strong" : "pointer-events-none")}
           >
             {body}
           </button>

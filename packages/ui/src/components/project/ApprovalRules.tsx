@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { errorMessage } from "../../lib/format";
 import { describeRule } from "../../lib/v7/rules";
 import { useApp } from "../../state/app";
-import { Button, IconButton } from "../primitives/Button";
-import { Spinner } from "../primitives/Status";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
+import { Notice } from "../primitives/Notice";
+import { SkeletonList } from "../primitives/Skeleton";
 
 type Load = { kind: "loading" } | { kind: "ready"; rules: ApprovalRule[] } | { kind: "error"; message: string };
 
@@ -58,16 +60,8 @@ export function ApprovalRules({ projectId }: { projectId: string }) {
       </Button>
       {open && (
         <div className="mt-2 flex flex-col gap-1 text-sm">
-          {load.kind === "loading" && (
-            <p className="flex items-center gap-2 text-fg-3">
-              <Spinner /> Loading…
-            </p>
-          )}
-          {load.kind === "error" && (
-            <p role="alert" className="text-err">
-              {load.message}
-            </p>
-          )}
+          {load.kind === "loading" && <SkeletonList count={2} size="sm" />}
+          {load.kind === "error" && <Notice tone="error">{load.message}</Notice>}
           {load.kind === "ready" && load.rules.length === 0 && (
             <p className="text-fg-3">Nothing is always allowed. Choose “Always allow” on an approval to add a rule.</p>
           )}
@@ -76,23 +70,19 @@ export function ApprovalRules({ projectId }: { projectId: string }) {
               {load.rules.map((rule) => {
                 const v = describeRule(rule);
                 return (
-                  <li key={rule.id} className="flex min-h-row items-center gap-2">
+                  <li key={rule.id} className="flex min-h-ctl-sm items-center gap-2">
                     <span className="w-20 shrink-0 text-fg-3">{v.subject}</span>
                     <span className="min-w-0 flex-1">
                       <code className="font-mono text-xs break-all text-fg">{rule.match}</code>
                       <span className="block text-xs text-fg-3">{v.sentence}</span>
                     </span>
-                    <IconButton icon={X} size="sm" label={`Remove the rule for ${rule.match}`} disabled={removing !== null} onClick={() => void remove(rule)} />
+                    <IconButton icon={X} size="xs" label={`Remove the rule for ${rule.match}`} disabled={removing !== null} onClick={() => void remove(rule)} />
                   </li>
                 );
               })}
             </ul>
           )}
-          {problem && (
-            <p role="alert" className="text-err">
-              {problem}
-            </p>
-          )}
+          {problem && <Notice tone="error">{problem}</Notice>}
         </div>
       )}
     </div>

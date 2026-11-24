@@ -1,4 +1,4 @@
-import { ChevronLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 import { connectSubtitle, defaultProviderId, providerGroups, useProviders } from "../../lib/providers";
@@ -54,9 +54,9 @@ export function ConnectScreen() {
             </Notice>
           )}
           {list && (
-            // Decision 91b: list and detail side by side in one frame from 880px of content; below it the list is a page and a row
+            // Decision 91b: list and detail side by side in one tonal frame from 880px of content; below it the list is a page and a row
             // opens the detail as another page with a back control (as Settings → Providers on a phone).
-            <div className="flex flex-col overflow-hidden rounded-xl border border-panel-edge bg-panel shadow-panel @min-[880px]:flex-row @min-[880px]:items-start">
+            <div className="octo-in-card grid overflow-hidden rounded-xl bg-raised @min-[880px]:grid-cols-[var(--spacing-settings-list)_minmax(0,1fr)]">
               <ProviderRows
                 framed={false}
                 groups={groups}
@@ -66,12 +66,12 @@ export function ConnectScreen() {
                   setDetailOpen(true);
                 }}
                 onExpand={setExpanded}
-                className={cn("w-full shrink-0 @min-[880px]:w-72 @min-[880px]:border-r @min-[880px]:border-line", detailOpen && "@max-[879px]:hidden")}
+                className={cn("w-full @min-[880px]:border-r @min-[880px]:border-line", detailOpen && "@max-[879px]:hidden")}
               />
               {selected && (
-                <div className={cn("flex min-w-0 flex-1 flex-col", !detailOpen && "@max-[879px]:hidden")}>
+                <div className={cn("flex min-w-0 flex-col", !detailOpen && "@max-[879px]:hidden")}>
                   <div className="px-2 pt-2 @min-[880px]:hidden">
-                    <Button variant="quiet" size="sm" icon={ChevronLeft} onClick={() => setDetailOpen(false)}>
+                    <Button variant="quiet" size="sm" icon={ArrowLeft} onClick={() => setDetailOpen(false)}>
                       Providers
                     </Button>
                   </div>

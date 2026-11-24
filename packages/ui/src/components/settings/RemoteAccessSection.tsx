@@ -5,6 +5,7 @@ import { useCopy } from "../../lib/hooks";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { Notice } from "../primitives/Notice";
+import { Presence } from "../primitives/Presence";
 import { SkeletonList } from "../primitives/Skeleton";
 import { Switch } from "../primitives/Switch";
 import { RISK_TEXT, stateLine } from "../shared/remoteText";
@@ -128,32 +129,34 @@ export function RemoteAccessSection() {
         </SettingsGroup>
       )}
 
-      {confirming && (
-        <Dialog
-          title="Turn on remote access?"
-          description={RISK_TEXT}
-          width="sm"
-          onClose={() => setConfirming(false)}
-          footer={
-            <>
-              <Button variant="quiet" onClick={() => setConfirming(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={() => {
-                  setConfirming(false);
-                  void run((a) => a.enable(true));
-                }}
-              >
-                Turn on
-              </Button>
-            </>
-          }
-        >
-          {null}
-        </Dialog>
-      )}
+      <Presence show={confirming}>
+        {confirming && (
+          <Dialog
+            title="Turn on remote access?"
+            description={RISK_TEXT}
+            width="sm"
+            onClose={() => setConfirming(false)}
+            footer={
+              <>
+                <Button variant="quiet" onClick={() => setConfirming(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setConfirming(false);
+                    void run((a) => a.enable(true));
+                  }}
+                >
+                  Turn on
+                </Button>
+              </>
+            }
+          >
+            {null}
+          </Dialog>
+        )}
+      </Presence>
     </>
   );
 }

@@ -9,9 +9,9 @@ import { Button } from "../primitives/Button";
 import { Checkbox } from "../primitives/Checkbox";
 import { Dialog } from "../primitives/Dialog";
 import { Notice } from "../primitives/Notice";
+import { SearchField } from "../primitives/SearchField";
 import { Select } from "../primitives/Select";
 import { SkeletonList } from "../primitives/Skeleton";
-import { TextField } from "../primitives/TextField";
 
 type LoadState = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; items: ImportableSession[] };
 
@@ -67,7 +67,6 @@ export function ImportSessionsDialog(props: { onClose(): void; onImported(count:
     return load.items.filter((s) => `${s.title} ${s.provider_label} ${s.cwd} ${s.preview}`.toLowerCase().includes(q));
   }, [load, query]);
 
-  const newItems = useMemo(() => (load.status === "ready" ? load.items.filter((s) => !s.already_imported) : []), [load]);
   const selectableVisible = useMemo(() => filtered.filter((s) => !s.already_imported), [filtered]);
   const targetOf = (s: ImportableSession) => targets.get(keyOf(s)) ?? s.matched_project_id ?? fallbackProjectId;
 
@@ -159,16 +158,16 @@ export function ImportSessionsDialog(props: { onClose(): void; onImported(count:
         {ready && load.items.length > 0 && (
           <>
             <div className="flex flex-wrap items-center gap-2">
-              <TextField
+              <SearchField
                 size="sm"
-                aria-label="Filter sessions to import"
+                label="Filter sessions to import"
                 placeholder="Filter by title, folder, or provider"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={setQuery}
                 className="min-w-44 flex-1"
               />
               <Button size="sm" variant="quiet" disabled={selectableVisible.length === 0} onClick={selectAllNew}>
-                Select new ({newItems.length})
+                Select new ({selectableVisible.length})
               </Button>
               {selected.size > 0 && (
                 <Button size="sm" variant="quiet" onClick={() => setSelected(new Set())}>
@@ -179,7 +178,7 @@ export function ImportSessionsDialog(props: { onClose(): void; onImported(count:
             {filtered.length === 0 ? (
               <p className="py-6 text-center text-sm text-fg-3">No sessions match &ldquo;{query}&rdquo;.</p>
             ) : (
-              <ul aria-label="Importable sessions" className="divide-y divide-line rounded-md border border-line bg-panel">
+              <ul aria-label="Importable sessions" className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-raised">
                 {filtered.map((s) => {
                   const key = keyOf(s);
                   const checked = selected.has(key);
@@ -187,7 +186,7 @@ export function ImportSessionsDialog(props: { onClose(): void; onImported(count:
                   const countText = s.exchange_count === 1 ? "1 exchange" : `${s.exchange_count} exchanges`;
                   const when = formatRelative(s.updated_at || s.started_at, now);
                   return (
-                    <li key={key} data-import-row={key} className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-start sm:gap-3">
+                    <li key={key} data-import-row={key} className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-start sm:gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-start gap-2">
                           <Checkbox
@@ -196,9 +195,9 @@ export function ImportSessionsDialog(props: { onClose(): void; onImported(count:
                             onChange={(next) => toggle(key, next)}
                             label={
                               <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-                                <span className="min-w-0 font-medium text-fg">{s.title || "Untitled session"}</span>
-                                <span className="rounded-xs bg-raised px-1.5 py-0.5 text-xs text-fg-2">{s.provider_label}</span>
-                                {s.already_imported && <span className="rounded-xs bg-raised px-1.5 py-0.5 text-xs text-fg-3">Imported</span>}
+                                <span className="min-w-0 text-fg">{s.title || "Untitled session"}</span>
+                                <span className="rounded-xs bg-hover px-1.5 py-0.5 text-xs text-fg-2">{s.provider_label}</span>
+                                {s.already_imported && <span className="rounded-xs bg-hover px-1.5 py-0.5 text-xs text-fg-3">Imported</span>}
                               </span>
                             }
                           />

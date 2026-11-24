@@ -5,8 +5,9 @@ import { cn } from "../../lib/cn";
 import { focusSoon } from "../../lib/focus";
 import { timeAgo } from "../../lib/format";
 import { threadSummary, visibleComments } from "../../lib/review/threads";
-import { Button, IconButton } from "../primitives/Button";
-import { Textarea } from "../primitives/Field";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
+import { TextArea } from "../primitives/TextField";
 import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
 import { FormActions } from "../primitives/Panel";
@@ -83,7 +84,7 @@ export function ThreadCard(props: {
       // R4 (polish step 6b): a card is a tone, no outline (step 1's rule); inside it a field is recessed (`octo-in-card`).
       className="octo-in-card flex flex-col gap-2 rounded-md bg-raised p-3 text-sm"
     >
-      <header className="flex min-h-5 items-center gap-2 text-xs text-fg-3">
+      <header className="flex min-h-ctl-xs items-center gap-2 text-xs text-fg-3">
         {props.showPath && (
           <span className="min-w-0 truncate font-mono" title={t.path}>
             {t.path}
@@ -93,7 +94,7 @@ export function ThreadCard(props: {
         <span className="shrink-0">{t.outdated ? "Outdated: the code changed since this comment was written" : t.resolved ? "Resolved" : "Unresolved"}</span>
         {t.side === "old" && !t.outdated && <span className="shrink-0">removed side</span>}
         <span aria-hidden className="min-w-0 flex-1" />
-        {t.resolved && fold && <IconButton icon={ChevronDown} label="Collapse the thread" onClick={() => setOpen(false)} />}
+        {t.resolved && fold && <IconButton icon={ChevronDown} size="xs" label="Collapse the thread" onClick={() => setOpen(false)} />}
       </header>
       {shown.map((c, i) => (
         <div key={c.id} className={cn("flex flex-col gap-1", i > 0 && "border-t border-line pt-2")}>
@@ -115,7 +116,7 @@ export function ThreadCard(props: {
             <p className="text-xs text-fg-3">Your reply · pending until you submit the review</p>
             <p className="break-words whitespace-pre-wrap text-fg">{c.body}</p>
           </div>
-          {!props.actions.readOnly && <IconButton icon={Trash2} label="Delete this reply" onClick={() => props.actions.deleteReply(c)} />}
+          {!props.actions.readOnly && <IconButton icon={Trash2} size="xs" label="Delete this reply" onClick={() => props.actions.deleteReply(c)} />}
         </div>
       ))}
       {!props.actions.readOnly &&
@@ -168,7 +169,7 @@ function ReplyBox(props: { body: string; onBody(body: string): void; takeFocus: 
   };
   return (
     <div className="flex flex-col gap-2">
-      <Textarea
+      <TextArea
         ref={field}
         rows={3}
         value={body}
@@ -182,7 +183,6 @@ function ReplyBox(props: { body: string; onBody(body: string): void; takeFocus: 
             props.onCancel();
           }
         }}
-        className="max-sm:text-input-touch"
       />
       {problem && (
         <p role="alert" className="text-xs text-err">
@@ -196,7 +196,7 @@ function ReplyBox(props: { body: string; onBody(body: string): void; takeFocus: 
           <Button variant="quiet" size="sm" onClick={props.onCancel}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" disabled={!body.trim() || busy} onClick={() => void save()}>
+          <Button variant="primary" size="sm" loading={busy} disabled={!body.trim() || busy} onClick={() => void save()}>
             Add reply
           </Button>
         </FormActions>

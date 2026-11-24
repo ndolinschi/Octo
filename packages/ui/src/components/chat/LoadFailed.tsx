@@ -8,7 +8,7 @@ export function LoadFailed({ error, onRetry }: { error: string; onRetry(): void 
       fields={{ message: error, hint: "Octo tries again by itself.", action: "retry" }}
       onRetry={onRetry}
       // B3: on the column's own edges (it was inset 16px more than the transcript: x28 on a phone).
-      className="my-4"
+      className="-mx-3 my-4"
     />
   );
 }

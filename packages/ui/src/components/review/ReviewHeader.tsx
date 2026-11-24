@@ -64,10 +64,10 @@ export function ReviewHeader(props: {
     // A div, not <header>: the window has its own banner (axe landmark-no-duplicate-banner).
     <div data-review-header className="@container/rh flex h-ctl-lg shrink-0 items-center gap-2 px-pane shadow-[inset_0_-1px_0_var(--octo-line)]">
       {!phone && <IconButton icon={ArrowLeft} label="All pull requests" onClick={props.onBack} />}
-      <h1 className="min-w-0 flex-1 truncate px-1 text-heading text-fg" title={`${r.title}\n${facts.join(" · ")}`}>
-        {r.title}
-        {r.meta.draft && <span className="ml-2 text-xs font-normal text-fg-3">Draft</span>}
-      </h1>
+      <div className="flex min-w-0 flex-1 items-baseline gap-2 px-1" title={`${r.title}\n${facts.join(" · ")}`}>
+        <h1 className="min-w-0 truncate text-heading text-fg">{r.title}</h1>
+        {r.meta.draft && <span className="shrink-0 text-xs text-fg-3">Draft</span>}
+      </div>
       <div data-review-actions className="flex shrink-0 items-center gap-1">
         {props.runs}
         <span className="flex items-center gap-1 @max-[720px]/rh:hidden">

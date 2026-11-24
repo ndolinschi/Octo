@@ -52,7 +52,7 @@ export function SheetFrame({
         aria-label={label}
         data-state={state}
         data-sheet={full ? "full" : "bottom"}
-        className={cn("octo-sheet absolute inset-x-0 flex flex-col overflow-hidden bg-overlay text-fg focus:outline-none", className)}
+        className={cn("octo-sheet absolute inset-x-0 flex flex-col overflow-hidden bg-overlay text-fg focus:outline-none focus-visible:shadow-none", className)}
       >
         {!bare && (
           <header className="flex h-ctl-lg shrink-0 items-center gap-2 pr-2 pl-4">

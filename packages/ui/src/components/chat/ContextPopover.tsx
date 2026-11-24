@@ -73,14 +73,14 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
               </div>
               <ul className="flex flex-col">
                 {view.rows.map((r) => (
-                  <li key={r.id} data-context-part={r.id} className="flex h-row items-center gap-2">
+                  <li key={r.id} data-context-part={r.id} className="flex h-ctl-sm items-center gap-2">
                     <span aria-hidden className={cn("size-2 shrink-0 rounded-2xs", contextKey(r).key)} />
                     <span className={cn("min-w-0 flex-1 truncate", r.kind === "free" ? "text-fg-3" : "text-fg-2")}>{r.label}</span>
                     <span className="shrink-0 font-mono text-xs text-fg-2 tabular-nums">
                       {a}
                       {formatTokens(r.tokens)}
                     </span>
-                    <span className="w-9 shrink-0 text-right font-mono text-xs text-fg-3 tabular-nums">{r.percent}%</span>
+                    <span className="w-10 shrink-0 text-right font-mono text-xs text-fg-3 tabular-nums">{r.percent}%</span>
                   </li>
                 ))}
               </ul>
@@ -103,7 +103,7 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
             <Button
               size="sm"
               variant="secondary"
-              disabled={compacting}
+              loading={compacting}
               onClick={() => {
                 setCompacting(true);
                 setNote(null);
@@ -121,11 +121,10 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
                 );
               }}
             >
-              {compacting && <Spinner />}
               Compact now
             </Button>
           )}
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setDetails(true)}>
+          <Button size="sm" variant="quiet" className="ml-auto" onClick={() => setDetails(true)}>
             Open context details
           </Button>
         </div>

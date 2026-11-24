@@ -1,7 +1,8 @@
 import { useId, useRef, useState, type SyntheticEvent } from "react";
 import { errorMessage } from "../../lib/format";
 import { Button } from "../primitives/Button";
-import { Field, Input } from "../primitives/Field";
+import { Field } from "../primitives/Field";
+import { TextField } from "../primitives/TextField";
 
 /**
  * A write-only key field (decision 53 b). The value lives only in the DOM input: it is read on submit, handed to
@@ -54,7 +55,7 @@ export function SecretForm(props: {
         errorId={errId}
       >
         <div className="flex gap-2 max-[420px]:flex-col">
-          <Input
+          <TextField
             ref={input}
             id={id}
             type="password"
@@ -65,10 +66,10 @@ export function SecretForm(props: {
             aria-invalid={status.kind === "error" || undefined}
             aria-describedby={status.kind === "error" ? errId : undefined}
             data-autofocus={props.focusFirst || undefined}
-            className="min-w-0 flex-1 font-mono text-xs max-sm:text-input-touch"
+            className="min-w-0 flex-1 font-mono text-xs"
           />
-          <Button type="submit" variant="primary" disabled={status.kind === "saving"} aria-busy={status.kind === "saving"}>
-            {status.kind === "saving" ? "Saving…" : props.set ? "Replace key" : "Save key"}
+          <Button type="submit" variant="primary" loading={status.kind === "saving"}>
+            {props.set ? "Replace key" : "Save key"}
           </Button>
         </div>
       </Field>

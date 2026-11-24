@@ -239,3 +239,17 @@ test("parallel sessions: queued is its own state (dashed ring, its words), count
   assert.equal(canDelete([d], d), false);
   assert.equal(canDelete([d], s("x", { default: false })), true);
 });
+
+test("visibleNodes and filterCounts hide untouched empty default sessions while keeping working or queued ones", () => {
+  const emptyDef = s("empty-def", { title: "", exchanges: 0, current: true, default: true });
+  const queuedEmpty = s("queued-empty", { title: "", exchanges: 0, queued: 1 });
+  const workingEmpty = s("working-empty", { title: "", exchanges: 0, state: "working" });
+  assert.deepEqual(visibleNodes([emptyDef], "all"), []);
+  assert.deepEqual(visibleNodes([emptyDef], "mine"), []);
+  assert.deepEqual(filterCounts([emptyDef]), { all: 0, working: 0, mine: 0, agents: 0, archived: 0 });
+  assert.deepEqual(
+    visibleNodes([emptyDef, queuedEmpty, workingEmpty], "all").map((n) => n.session.id),
+    ["queued-empty", "working-empty"],
+  );
+  assert.equal(filterCounts([emptyDef, queuedEmpty, workingEmpty]).all, 2);
+});

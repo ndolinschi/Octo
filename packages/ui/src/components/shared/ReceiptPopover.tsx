@@ -55,7 +55,7 @@ export function ReceiptPopover(props: { anchor: RefObject<HTMLElement | null>; p
             <div
               role="img"
               aria-label={`${view.totalText}. ${view.segments.map((s) => `${s.label} ${formatTokens(s.tokens)}`).join(", ")}`}
-              className="flex h-2 w-full gap-px overflow-hidden rounded-xs bg-hover"
+              className="flex h-2 w-full overflow-hidden rounded-full bg-line"
             >
               {view.segments
                 .filter((s) => s.tokens > 0)
@@ -67,7 +67,7 @@ export function ReceiptPopover(props: { anchor: RefObject<HTMLElement | null>; p
                   />
                 ))}
             </div>
-            <p className="text-sm text-fg-2">{view.totalText}</p>
+            <p className="text-sm text-fg-2 tabular-nums">{view.totalText}</p>
             <ul className="-mx-2 flex flex-col">
               {view.segments.map((s) => (
                 <li key={s.name}>

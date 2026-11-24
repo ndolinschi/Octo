@@ -72,7 +72,7 @@ export function UsageByModel({ load, view }: { load: Load<UsageData>; view: Usag
         note={`${countNote(placed.rows.length, "model", "models")}, ${view.scope === "project" ? "this project" : "all projects"}`}
         footer={
           placed.unplaced.length > 0 && (
-            <p className="px-2 text-xs text-fg-3">
+            <p className="px-2 text-xs text-fg-3 tabular-nums">
               Tiers without a known model: {placed.unplaced.map((r) => `${r.label} ${formatTokens(r.total)}`).join(", ")}.
             </p>
           )

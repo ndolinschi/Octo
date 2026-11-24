@@ -110,7 +110,7 @@ export function SearchField({
             // The button unmounts with the text; focus would fall to the page.
             own.current?.focus();
           }}
-          className="-mr-1.5"
+          className={cn(variant === "bare" ? "" : props.align === "rows" ? "-mr-1" : "-mr-2", variant === "bordered" && props.size === "xs" && "size-5")}
         />
       ) : (
         props.shortcut

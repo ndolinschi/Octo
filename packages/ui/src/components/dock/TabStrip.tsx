@@ -282,7 +282,7 @@ export function TabStrip(props: {
             if (list.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) list.current.scrollLeft += e.deltaY;
           }}
           style={listWidth > 0 ? { maxWidth: listWidth } : undefined}
-          className="flex min-w-0 shrink items-center gap-1 overflow-x-auto fade-x"
+          className="-my-1 flex min-w-0 shrink items-center gap-1 overflow-x-auto fade-x py-1"
         >
           {shown.map((tab, i) => {
             const info = infos.get(tab) ?? tabInfo(tab, ctx);

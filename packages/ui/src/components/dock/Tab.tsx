@@ -71,10 +71,14 @@ export function Tab(props: {
       }}
       style={style}
       className={cn(
-        "group/tab relative flex h-row w-max shrink items-center rounded-sm press-row",
-        selected ? (props.focusedGroup ? "bg-tab-active text-fg shadow-tab" : "bg-hover text-fg") : "text-fg-3 hover:bg-hover hover:text-fg-2",
+        "group/tab relative flex h-ctl-sm w-max shrink items-center rounded-sm press-row",
+        selected
+          ? props.focusedGroup
+            ? "bg-tab-active text-fg shadow-tab"
+            : "bg-tab-active/70 text-fg-2 hover:bg-tab-active hover:text-fg"
+          : "text-fg-3 hover:bg-hover hover:text-fg-2",
         // Neighbours slide out of the way (`--motion-base`); the dragged tab follows the pointer.
-        props.dragging === "other" && "motion-safe:transition-transform motion-safe:duration-base motion-safe:ease-(--ease-out-quint)",
+        props.dragging === "other" && "motion-safe:transition-transform motion-safe:duration-base motion-safe:ease-out-quint",
         props.dragging === "self-attached" && "z-10 bg-tab-active text-fg shadow-pop",
         props.dragging === "self-detached" && "opacity-40",
       )}
@@ -102,13 +106,11 @@ export function Tab(props: {
             and 0px tall, so every tab is always as wide as its medium-weight title: selecting a tab never changes a width (83). */}
         <span
           data-tab-label
-          data-bold={info.label}
+          data-bold={info.detail ? `${info.label} / ${info.detail}` : info.label}
           aria-hidden={info.name ? true : undefined}
           className={cn(
             "flex min-w-0 flex-col overflow-hidden after:invisible after:h-0 after:font-medium after:whitespace-nowrap after:content-[attr(data-bold)]",
-            !slot &&
-              canClose &&
-              "group-focus-within/tab:[mask-image:linear-gradient(to_right,#000_calc(100%-26px),transparent_calc(100%-4px))] group-hover/tab:[mask-image:linear-gradient(to_right,#000_calc(100%-26px),transparent_calc(100%-4px))]",
+            !slot && canClose && "group-focus-within/tab:tab-close-fade group-hover/tab:tab-close-fade",
           )}
         >
           <span className={cn("min-w-0 truncate", selected && "font-medium")}>
@@ -145,7 +147,9 @@ export function Tab(props: {
               className={cn(
                 // A 24px hit area around the 16px slot (decision 36); without a slot it sits over the faded title end.
                 slot ? "absolute -inset-1" : "absolute top-1/2 right-1 -translate-y-1/2",
-                selected && info.status !== "modified" ? "" : "opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100",
+                selected && info.status !== "modified"
+                  ? ""
+                  : "pointer-events-none opacity-0 transition-opacity duration-fast group-focus-within/tab:pointer-events-auto group-focus-within/tab:opacity-100 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100",
               )}
             />
           )}

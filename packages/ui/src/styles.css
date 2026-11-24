@@ -13,7 +13,7 @@
   --octo-window: #0b0b0b;
   --octo-panel: #171717;
   --octo-raised: #232323;
-  --octo-overlay: #262626;
+  --octo-overlay: #282828;
   --octo-code-bg: #1d1d1d;
   --octo-hover: rgb(255 255 255 / 0.05);
   --octo-hover-in-card: rgb(255 255 255 / 0.08);
@@ -23,7 +23,7 @@
   --octo-line-strong: rgb(255 255 255 / 0.14);
   --octo-panel-edge: rgb(255 255 255 / 0.05);
   --octo-panel-highlight: rgb(255 255 255 / 0.04);
-  --octo-input-border: #7a7a7a; /* 5b: ≥ 3:1 on raised (3.66) and on a selected row (3.43); #6e6e6e was 3.08 / 2.89 */
+  --octo-input-border: #828282; /* ≥ 3.2:1 on raised and on selected rows across all dark themes */
   /* T3: a text field's edge at rest is a hairline no brighter than a card's; focus turns it `fg` (decision 90c).
      `input-border` stays for the small boxes that need a strong edge to be seen (checkbox) and the composer's focus. */
   --octo-field-edge: rgb(255 255 255 / 0.14);
@@ -52,8 +52,8 @@
   --octo-drop: rgb(92 157 255 / 0.1);
   --octo-drop-edge: rgb(92 157 255 / 0.45);
   --octo-selection: rgb(92 157 255 / 0.32);
-  /* Polish step 5, P7 (B33): a search match, a highlighter tint in the warn hue (it was the 5 % hover, hard to see). */
-  --octo-mark: rgb(216 176 122 / 0.3);
+  /* Polish step 5, P7 (B33): a search match, a highlighter tint in the theme's warn hue. */
+  --octo-mark: color-mix(in srgb, var(--octo-warn) 30%, transparent);
   --octo-comment-line: rgb(92 157 255 / 0.08);
   /* Context meter parts (decision 38): one hue per part, legend swatches and the 3px bar only. */
   --octo-ctx-messages: #5c9dff;
@@ -85,6 +85,7 @@
   --octo-primary: #ededf0;
   --octo-primary-fg: #141416;
   --octo-shadow-pop: 0 0 0 1px rgb(215 220 255 / 0.11), inset 0 1px 0 rgb(225 230 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.74);
+  --octo-shadow-float: 0 0 0 1px rgb(215 220 255 / 0.1), inset 0 1px 0 rgb(225 230 255 / 0.05), 0 8px 24px -8px rgb(0 0 0 / 0.74);
   --octo-drop: rgb(77 163 255 / 0.11);
   --octo-drop-edge: rgb(77 163 255 / 0.45);
   --octo-selection: rgb(77 163 255 / 0.3);
@@ -112,6 +113,7 @@
   --octo-primary: #f2efe9;
   --octo-primary-fg: #171512;
   --octo-shadow-pop: 0 0 0 1px rgb(255 240 220 / 0.11), inset 0 1px 0 rgb(255 242 225 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.74);
+  --octo-shadow-float: 0 0 0 1px rgb(255 240 220 / 0.1), inset 0 1px 0 rgb(255 242 225 / 0.05), 0 8px 24px -8px rgb(0 0 0 / 0.74);
   --octo-drop: rgb(217 119 87 / 0.12);
   --octo-drop-edge: rgb(217 119 87 / 0.45);
   --octo-selection: rgb(217 119 87 / 0.28);
@@ -140,6 +142,7 @@
   --octo-primary: #eef1f6;
   --octo-primary-fg: #0f1216;
   --octo-shadow-pop: 0 0 0 1px rgb(210 230 255 / 0.11), inset 0 1px 0 rgb(220 238 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.74);
+  --octo-shadow-float: 0 0 0 1px rgb(210 230 255 / 0.1), inset 0 1px 0 rgb(220 238 255 / 0.05), 0 8px 24px -8px rgb(0 0 0 / 0.74);
   --octo-drop: rgb(56 184 137 / 0.11);
   --octo-drop-edge: rgb(56 184 137 / 0.45);
   --octo-selection: rgb(56 184 137 / 0.28);
@@ -168,6 +171,7 @@
   --octo-primary: #ececf2;
   --octo-primary-fg: #111116;
   --octo-shadow-pop: 0 0 0 1px rgb(225 220 255 / 0.11), inset 0 1px 0 rgb(232 228 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.74);
+  --octo-shadow-float: 0 0 0 1px rgb(225 220 255 / 0.1), inset 0 1px 0 rgb(232 228 255 / 0.05), 0 8px 24px -8px rgb(0 0 0 / 0.74);
   --octo-drop: rgb(155 138 255 / 0.12);
   --octo-drop-edge: rgb(155 138 255 / 0.45);
   --octo-selection: rgb(155 138 255 / 0.28);
@@ -183,7 +187,7 @@
   --octo-panel: #ffffff;
   --octo-raised: #f3f3f3;
   --octo-overlay: #ffffff;
-  --octo-code-bg: #f3f3f3;
+  --octo-code-bg: #efefef;
   --octo-hover: rgb(0 0 0 / 0.035);
   --octo-hover-in-card: rgb(0 0 0 / 0.055);
   /* Selection is a tint, not mid-grey (was black 9 %); still clearly above hover. */
@@ -192,7 +196,7 @@
   --octo-line-strong: rgb(0 0 0 / 0.14);
   --octo-panel-edge: rgb(0 0 0 / 0.06);
   --octo-panel-highlight: rgb(255 255 255 / 0);
-  --octo-input-border: #8a8a8a;
+  --octo-input-border: #828282; /* ≥ 3.3:1 on white panels and on selected rows (#eeeeee) */
   --octo-field-edge: rgb(0 0 0 / 0.14);
   --octo-seg-track: rgb(0 0 0 / 0.05);
   --octo-seg-on: #ffffff;
@@ -239,6 +243,12 @@
   --motion-fast: 100ms;
   --motion-base: 150ms;
   --motion-slow: 220ms;
+  --octo-status-h: var(--spacing-ctl-sm);
+}
+@media (max-height: 599px) {
+  :root {
+    --octo-status-h: 0px;
+  }
 }
 @utility duration-fast {
   transition-duration: var(--motion-fast);
@@ -397,8 +407,8 @@
     background: var(--octo-window);
     color: var(--octo-fg);
     font-family: var(--font-sans);
-    font-size: 13px;
-    line-height: 20px;
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -509,6 +519,11 @@
   }
 }
 
+/* Fade a tab's trailing label edge under its hover/focus close button (24px → 4px, on scale). */
+@utility tab-close-fade {
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent calc(100% - 4px));
+}
+
 /* Controls that carry their own elevation shadow (chips, Jump to latest, the comment "+"): the focus ring is
    composed with it, never replaced by it (unlayered, so it wins over the shadow utility). */
 .octo-ring-float:focus-visible {
@@ -605,9 +620,12 @@
 [data-tree-level="2"] [data-row] {
   padding-left: 24px;
 }
-/* The title gives way to the actions instead of running under them: a project row has three (80px with the inset), a session one. */
+/* The title gives way to the actions instead of running under them: a tree project row has three (80px), a flat project row two (56px), a session one (32px). */
 [data-tree-project]:is(:hover, :focus-within) [data-row] {
   padding-right: 80px;
+}
+[data-tree-project="flat"]:is(:hover, :focus-within) [data-row] {
+  padding-right: 56px;
 }
 [data-tree-row]:not([data-tree-project]):is(:hover, :focus-within) [data-row] {
   padding-right: 32px;
@@ -621,6 +639,9 @@
   }
   [data-tree-project] [data-row] {
     padding-right: 80px;
+  }
+  [data-tree-project="flat"] [data-row] {
+    padding-right: 48px;
   }
   [data-tree-row]:not([data-tree-project]) [data-row] {
     padding-right: 32px;
@@ -878,7 +899,9 @@
 .octo-prose h1,
 .octo-prose h2,
 .octo-prose h3,
-.octo-prose h4 {
+.octo-prose h4,
+.octo-prose h5,
+.octo-prose h6 {
   font-weight: 600;
   margin: var(--octo-prose-heading-top) 0 var(--octo-prose-heading-bottom);
 }
@@ -886,21 +909,26 @@
 .octo-prose h2 {
   font-size: var(--text-title);
   line-height: var(--text-title--line-height);
+  letter-spacing: var(--text-title--letter-spacing);
 }
 .octo-prose h3,
-.octo-prose h4 {
+.octo-prose h4,
+.octo-prose h5,
+.octo-prose h6 {
   font-size: var(--text-heading);
   line-height: var(--text-heading--line-height);
 }
 /* Document prose (the Markdown preview): a three-step heading scale, 20 / 16 / 14, so a file's h1 and
    h2 are told apart (the chat keeps its two-step scale). */
 .octo-prose.octo-doc h1 {
-  font-size: 20px;
-  line-height: 28px;
+  font-size: var(--text-display);
+  line-height: var(--text-display--line-height);
+  letter-spacing: var(--text-display--letter-spacing);
 }
 .octo-prose.octo-doc h2 {
   font-size: var(--text-title);
   line-height: var(--text-title--line-height);
+  letter-spacing: var(--text-title--letter-spacing);
 }
 /* Compact prose (notes, task briefs): UI size, secondary colour. */
 .octo-prose.octo-prose-sm {
@@ -971,8 +999,9 @@
 }
 .octo-prose .octo-file-link svg {
   position: absolute;
-  top: 3px;
+  top: 50%;
   left: 4px;
+  translate: 0 -50%;
   color: var(--octo-fg-3);
 }
 @media (hover: hover) {
@@ -1332,14 +1361,13 @@
   }
 }
 
-/* Decision 28's two-tone titles: the lead-in. fg-3 in light; in dark one step lighter (#b4b4b4), because the titles sit
-   on the streak's grain and fg-3 measured 4.36:1 at its brightest speck (≥ 4.5 needed). */
+/* Decision 28's two-tone titles: the lead-in. fg-3 in light; in dark one step lighter (midway between fg-2 and fg-3), because
+   the titles sit on the streak's grain and fg-3 measured 4.36:1 at its brightest speck (≥ 4.5 needed). */
 .octo-lead {
   color: var(--octo-fg-3);
 }
-:root[data-theme="dark"] .octo-lead,
 :root:not([data-theme="light"]) .octo-lead {
-  color: #b4b4b4;
+  color: color-mix(in oklab, var(--octo-fg-2) 50%, var(--octo-fg-3));
 }
 
 /* Decision 56: no "Jump to latest" under an open composer popover. */
@@ -1536,9 +1564,9 @@
 .octo-prose[data-streaming] > :is(ul, ol):last-child > li:last-child::after {
   width: 2px;
   height: 1.05em;
-  margin-left: 3px;
+  margin-left: 2px;
   vertical-align: -0.15em;
-  border-radius: 1px;
+  border-radius: var(--radius-2xs);
   background: var(--octo-accent);
   animation: octo-stream-caret 1.1s ease-in-out infinite;
 }
@@ -1572,7 +1600,7 @@
 @keyframes octo-msg-in {
   from {
     opacity: 0;
-    translate: 0 5px;
+    translate: 0 4px;
   }
 }
 [data-live-enter] {
@@ -1639,19 +1667,6 @@
 /* Approvals, forms, the queue and the changes view (components/v7). Decision 81: a card that waits for the person has the
    neutral border of any card (no warn edge, no pulse); a key hint is a faint chip, never a coloured box. Changed lines
    flash their add/remove tone for 600 ms and fade; under reduced motion the global rule above cuts the motion. */
-.octo-v7-kbd {
-  display: inline-grid;
-  min-width: 16px;
-  height: 16px;
-  place-items: center;
-  background: color-mix(in srgb, currentColor 14%, transparent);
-  border-radius: var(--radius-2xs);
-  padding: 0 4px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1;
-  opacity: 0.7;
-}
 .monaco-editor .octo-v7-flash-add {
   animation: octo-v7-flash-add 600ms ease-out 1 both;
 }
@@ -1853,7 +1868,7 @@
 
 /* Skeleton (decision 77): a static muted shape; it pulses only while loading is in progress (decision 76). */
 .octo-skeleton {
-  background: var(--octo-hover);
+  background: color-mix(in srgb, var(--octo-fg) 8%, transparent);
 }
 .octo-skeleton[data-shimmer] {
   animation: octo-skeleton-pulse 1.4s ease-in-out infinite;
@@ -1953,6 +1968,10 @@
 /* A framed field (FIELD_FRAME) darkens its edge while focused: not for that programmatic focus either. */
 :root [data-quiet-root] :has(> input:focus-visible),
 :root :has(> input[data-quiet-focus]:focus-visible) {
+  border-color: var(--octo-field-edge);
+}
+:root [data-quiet-root] :has(> input:focus-visible)::after,
+:root :has(> input[data-quiet-focus]:focus-visible)::after {
   border-color: var(--octo-field-edge);
 }
 /* ── /polish step 6b: review ── */
@@ -2324,6 +2343,7 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 .octo-sheet[data-sheet="full"] {
   top: var(--octo-vv-top, 0px);
   height: var(--octo-vvh, 100vh);
+  padding-top: var(--octo-safe-top);
   padding-bottom: var(--octo-safe-bottom);
   background: var(--octo-window);
   animation: octo-fade-in var(--motion-base) var(--ease-out-quint) both;

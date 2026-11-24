@@ -1,12 +1,12 @@
 import { X } from "lucide-react";
 import type { Review } from "@octo/agent-client";
 import { checkoutSentence, dirtyList, dirtyStatusWord, goBackCommand, hasConflicts } from "../../lib/review/checkout";
-import { Button, IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
 import { CommandLine } from "../primitives/CommandLine";
 import { Dialog } from "../primitives/Dialog";
 import type { MenuItem } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
-import { Spinner } from "../primitives/Status";
 import { TextMenu } from "./parts";
 import type { useCheckout } from "./useCheckout";
 
@@ -56,13 +56,13 @@ export function CheckoutBanner({ checkout }: { checkout: Checkout }) {
           <span role="alert" className="min-w-0 flex-1 text-err">
             {checkout.error}
           </span>
-          <IconButton icon={X} label="Dismiss" onClick={checkout.dismissError} className="max-md:size-10" />
+          <IconButton icon={X} label="Dismiss" onClick={checkout.dismissError} />
         </>
       )}
       {!checkout.error && checkout.inWorkspace && (
         <>
           <span className="min-w-0 flex-1 text-fg-2">Read-only copy: the file tree and editor show this pull request.</span>
-          <Button size="sm" variant="secondary" disabled={checkout.busy} onClick={() => void checkout.back()} className="max-md:h-10">
+          <Button size="sm" variant="secondary" disabled={checkout.busy} onClick={() => void checkout.back()}>
             Back to my folder
           </Button>
         </>
@@ -73,7 +73,7 @@ export function CheckoutBanner({ checkout }: { checkout: Checkout }) {
             {checkoutSentence(s)} {back ? "To go back:" : ""}
           </span>
           {back && <CommandLine command={back} />}
-          <IconButton icon={X} label="Dismiss" onClick={checkout.dismissSwitched} className="max-md:size-10" />
+          <IconButton icon={X} label="Dismiss" onClick={checkout.dismissSwitched} />
         </>
       )}
     </div>
@@ -94,11 +94,10 @@ export function DirtyDialog({ checkout }: { checkout: Checkout }) {
           onClose={checkout.closeDirty}
           footer={
             <>
-              <Button variant="ghost" onClick={checkout.closeDirty}>
+              <Button variant="quiet" onClick={checkout.closeDirty}>
                 Cancel
               </Button>
-              <Button variant="primary" disabled={conflicts || checkout.busy} aria-busy={checkout.busy} onClick={() => void checkout.confirmWorkingCopy()}>
-                {checkout.busy && <Spinner />}
+              <Button variant="primary" disabled={conflicts || checkout.busy} loading={checkout.busy} onClick={() => void checkout.confirmWorkingCopy()}>
                 Check out and keep my changes
               </Button>
             </>

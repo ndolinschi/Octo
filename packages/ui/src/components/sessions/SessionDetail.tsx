@@ -224,7 +224,7 @@ function AgentFacts(props: {
     <div className="flex min-w-0 flex-col gap-2 px-2 pb-3">
       {task !== "" && <p className="border-l-2 border-line-strong pl-3 text-sm break-words whitespace-pre-wrap text-fg-2">{task}</p>}
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-fg-3">
-        <span className="min-w-0 truncate">
+        <span className="min-w-0 truncate tabular-nums">
           Started by {props.startedBy}
           {used > 0 ? ` · ${formatTokens(used)} tokens` : ""}
         </span>

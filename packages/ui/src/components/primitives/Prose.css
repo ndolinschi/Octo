@@ -53,11 +53,11 @@
 /* Tables scroll inside their own frame (decision 44); 28px rows here. */
 .octo-prose.octo-prose-compact .octo-table {
   font-size: 12px;
-  line-height: 20px;
+  line-height: 16px;
 }
 .octo-prose.octo-prose-compact .octo-table th,
 .octo-prose.octo-prose-compact .octo-table td {
-  padding: 4px 8px;
+  padding: 6px 8px;
 }
 .octo-prose.octo-prose-compact .octo-table-frame {
   margin: 0 0 8px;

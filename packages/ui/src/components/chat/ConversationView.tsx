@@ -357,7 +357,7 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
             <div className="px-(--pad)">
               <div data-column className="mx-auto w-full max-w-measure px-3 pt-2 pb-8">
                 {!isOrchestrator && (
-                  <Suspense fallback={<div className="mb-5 h-12" aria-hidden />}>
+                  <Suspense fallback={<div className="mb-5 h-ctl-lg" aria-hidden />}>
                     <AgentHeader agent={agent} />
                   </Suspense>
                 )}

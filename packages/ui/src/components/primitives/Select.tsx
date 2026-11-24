@@ -155,6 +155,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
         className={cn(
           FIELD,
           "touch-hit flex w-full min-w-0 items-center justify-between gap-2 px-3 text-left disabled:opacity-50 touch:h-ctl-lg",
+          open && "border-fg",
           CONTROL[size].h,
           props.className,
         )}
@@ -202,9 +203,9 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
                 >
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="min-w-0 truncate">{o.label}</span>
-                    {o.description && <span className="min-w-0 truncate text-xs text-fg-3">{o.description}</span>}
+                    {o.description && <span className={cn("min-w-0 truncate text-xs", i === active ? "text-fg-2" : "text-fg-3")}>{o.description}</span>}
                   </span>
-                  <span aria-hidden className="size-4 shrink-0">
+                  <span aria-hidden className="grid size-4 shrink-0 place-items-center">
                     {o.value === value && <Glyph icon={Check} size={14} className="text-fg-2" />}
                   </span>
                 </div>

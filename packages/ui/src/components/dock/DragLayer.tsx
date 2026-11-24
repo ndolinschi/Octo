@@ -24,8 +24,8 @@ export function DragLayer() {
       {chip && (
         <div
           data-drag-chip
-          className="octo-fade fixed flex h-7 max-w-[240px] items-center rounded-sm border border-line-strong bg-overlay px-2.5 text-sm text-fg shadow-pop"
-          style={{ left: drag.x + 12, top: drag.y + 10 }}
+          className="octo-fade fixed top-0 left-0 flex h-ctl-sm max-w-60 items-center rounded-sm bg-overlay px-2 text-sm text-fg shadow-pop"
+          style={{ translate: `${drag.x + 12}px ${drag.y + 12}px` }}
         >
           <span className="truncate">{drag.label}</span>
         </div>

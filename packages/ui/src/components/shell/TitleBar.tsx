@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowRight, PanelLeft } from "lucide-react";
 import { useHistoryAvailability } from "../../lib/history";
 import { controlsPadding, SIDE_PAD, useChrome } from "../../state/chrome";
 import { useShell } from "../../state/shell";
-import { IconButton } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
 import { cn } from "../../lib/cn";
 import { DRAWER_QUERY } from "../../lib/constants";
 import { useMediaQuery } from "../../lib/hooks";

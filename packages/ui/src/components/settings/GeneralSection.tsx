@@ -84,7 +84,7 @@ function BridgeRow() {
       title="Octo's local service"
       description={
         <span role="status" className="inline-flex items-center gap-1.5" title={`${bridgeUrl}${version ? ` · version ${version}` : ""}`}>
-          {health === "checking" ? <Spinner size={10} /> : <ToneDot tone={health === "online" ? "ok" : "err"} />}
+          {health === "checking" ? <Spinner size="xs" /> : <ToneDot tone={health === "online" ? "ok" : "err"} />}
           {state}
           {health === "online" && !demo ? ". It keeps your projects and runs the agents." : ""}
         </span>

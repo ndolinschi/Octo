@@ -11,6 +11,7 @@ import { Button } from "../primitives/Button";
 import { EmptyState } from "../primitives/EmptyState";
 import { Glyph } from "../primitives/Glyph";
 import { IconButton } from "../primitives/IconButton";
+import { Notice } from "../primitives/Notice";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { useRuns } from "./RunsContext";
 
@@ -49,7 +50,9 @@ export function RunPanel({ tab }: { /** The "Run: name" tab (decision 68): fills
       aria-label={standalone ? `Runs of ${tab}` : "Command runs"}
       className={cn("flex min-h-0 flex-col bg-panel", standalone ? "flex-1" : "h-1/3 min-h-48 shrink-0 border-t border-line")}
     >
-      <header className={cn("flex shrink-0 items-center gap-2 border-b border-line", standalone ? "h-ctl-lg pr-pane pl-4" : "min-h-9 px-3")}>
+      <header
+        className={cn("flex shrink-0 items-center gap-2 shadow-[inset_0_-1px_0_var(--octo-line)]", standalone ? "h-ctl-lg pr-pane pl-4" : "min-h-ctl-md px-3")}
+      >
         {standalone ? (
           cur ? (
             <RunLine v={cur} />
@@ -84,9 +87,9 @@ export function RunPanel({ tab }: { /** The "Run: name" tab (decision 68): fills
         {!standalone && <IconButton icon={X} label="Close the run panel" onClick={r.closePanel} />}
       </header>
       {r.error && (
-        <p role="alert" className={cn("shrink-0 border-b border-line py-1.5 text-xs text-err", standalone ? "px-4" : "px-3")}>
-          {r.error}
-        </p>
+        <div className={cn("shrink-0 border-b border-line py-2", standalone ? "px-4" : "px-3")}>
+          <Notice tone="error">{r.error}</Notice>
+        </div>
       )}
       {cur ? (
         <RunBody v={cur} withLine={!standalone} standalone={standalone} />
@@ -129,7 +132,9 @@ function RunLine({ v }: { v: RunView }) {
         {run.command}
       </span>
       {(tone === "err" || tone === "ok") && <span className={cn("shrink-0 text-xs", TONE[tone])}>{runStatusText(run)}</span>}
-      <span className="shrink-0 text-xs text-fg-3">{isRunning(run) ? <LiveDuration startedAt={run.started_at} /> : durationText(run.duration_ms)}</span>
+      <span className="shrink-0 text-xs text-fg-3 tabular-nums">
+        {isRunning(run) ? <LiveDuration startedAt={run.started_at} /> : durationText(run.duration_ms)}
+      </span>
     </div>
   );
 }
@@ -157,7 +162,7 @@ function RunBody({ v, withLine, standalone }: { v: RunView; withLine: boolean; s
               <span className="min-w-0 truncate font-mono" title={`${run.command} in ${run.cwd}`}>
                 {run.command}
               </span>
-              {isRunning(run) ? <LiveDuration startedAt={run.started_at} /> : <span>{durationText(run.duration_ms)}</span>}
+              {isRunning(run) ? <LiveDuration startedAt={run.started_at} /> : <span className="tabular-nums">{durationText(run.duration_ms)}</span>}
             </>
           )}
           {notes.map((n) => (
@@ -186,5 +191,5 @@ function RunBody({ v, withLine, standalone }: { v: RunView; withLine: boolean; s
 /** Ticks only while a run is running (decision 76). */
 function LiveDuration({ startedAt }: { startedAt: string }) {
   const now = useNow(true, 1000);
-  return <span className="tabular-nums">{durationText(now - Date.parse(startedAt))}</span>;
+  return <span className="tabular-nums">{durationText(Math.max(0, now - Date.parse(startedAt)))}</span>;
 }

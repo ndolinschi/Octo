@@ -106,7 +106,7 @@ export function FloatingComposer({ onHeight, rest = false }: { onHeight?(px: num
   if (last?.state === "working") {
     turn = (
       <>
-        <Spinner size={12} className="text-accent" />
+        <Spinner size="md" className="text-accent" />
         Working… {formatDuration(now - last.startedAt)}
       </>
     );
@@ -147,12 +147,12 @@ export function FloatingComposer({ onHeight, rest = false }: { onHeight?(px: num
         {chips && !collapsed && (
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {turn && (
-              <Button variant="float" size="xs" onClick={ws.focusChat} title="Show the conversation">
+              <Button variant="float" size="xs" className="tabular-nums" onClick={ws.focusChat} title="Show the conversation">
                 {turn}
               </Button>
             )}
             {agentsRunning > 0 && (
-              <Button variant="float" size="xs" onClick={ws.focusChat} title="Show the conversation">
+              <Button variant="float" size="xs" className="tabular-nums" onClick={ws.focusChat} title="Show the conversation">
                 <RunningDot />
                 {agentsRunning}&nbsp;{agentsRunning === 1 ? "agent" : "agents"} running
               </Button>

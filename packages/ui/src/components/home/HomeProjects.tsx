@@ -259,7 +259,7 @@ function ProjectRow({
         // on the name's line (the 20px title line's centre is 8px above the 36px two-line block's centre).
         leading={
           <span className={cn("flex -translate-y-2", state.kind !== "working" && STILL)}>
-            {isPending(state) ? <Skeleton shape="circle" className="size-3.5" /> : <OrchestratorGlyph state={state.kind} />}
+            {isPending(state) ? <Skeleton shape="circle" className="size-3" /> : <OrchestratorGlyph state={state.kind} />}
           </span>
         }
         tip={`${project.name} — ${line}${second ? `\n${second}` : ""}`}

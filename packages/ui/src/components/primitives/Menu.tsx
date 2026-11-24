@@ -195,15 +195,19 @@ export function Menu(props: {
               if (gate.current(e) && !item.disabled) e.currentTarget.focus();
             }}
             className={cn(
-              // Radius 6 = menu radius (10) − its padding (4).
+              // Radius 8 = menu radius (12) − its padding (4).
               "group/item flex items-center gap-2 rounded-md px-2 outline-none focus-visible:shadow-none touch:h-ctl-lg",
-              item.sub ? "h-10" : "h-row",
+              item.sub ? "min-h-ctl-lg py-1" : "h-ctl-sm",
               item.disabled ? "text-fg-3" : "text-fg focus:bg-active",
             )}
           >
             {hasLeading && (
               <span aria-hidden className="grid size-4 shrink-0 place-items-center">
-                {item.checked ? <Glyph icon={Check} size={14} /> : item.icon ? <Glyph icon={item.icon} size={14} className="text-fg-3" /> : null}
+                {item.checked ? (
+                  <Glyph icon={Check} size={14} />
+                ) : item.icon ? (
+                  <Glyph icon={item.icon} size={14} className="text-fg-3 group-focus/item:text-fg-2" />
+                ) : null}
               </span>
             )}
             {item.sub ? (
@@ -216,7 +220,7 @@ export function Menu(props: {
             )}
             {/* 5f: on the highlighted item the meta steps up to fg-2 (fg-3 on `active` was 4.06:1), as a selected ListRow's does. */}
             {item.detail && <span className="shrink-0 pl-4 text-xs text-fg-3 group-focus/item:text-fg-2">{item.detail}</span>}
-            {item.shortcut && <kbd className="shrink-0 pl-4 font-sans text-xs text-fg-2">{item.shortcut}</kbd>}
+            {item.shortcut && <kbd className={cn("shrink-0 pl-4 font-sans text-xs", item.disabled ? "text-fg-3" : "text-fg-2")}>{item.shortcut}</kbd>}
           </div>
         ) : "caption" in item ? (
           <p key={item.id} title={item.title} className={cn("px-2 py-1 text-xs text-fg-3", hasLeading && "pl-8")}>

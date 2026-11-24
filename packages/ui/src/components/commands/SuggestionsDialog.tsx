@@ -5,7 +5,8 @@ import { errorMessage } from "../../lib/format";
 import { useProject } from "../../state/project";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
-import { SkeletonRows } from "../primitives/InfoList";
+import { Notice } from "../primitives/Notice";
+import { SkeletonList } from "../primitives/Skeleton";
 import { useRuns } from "./RunsContext";
 
 type Load = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; list: CommandSuggestion[] };
@@ -60,35 +61,27 @@ export function SuggestionsDialog({ onClose }: { onClose(): void }) {
       }
     >
       <div className="flex flex-col gap-2 text-sm">
-        {load.status === "loading" && <SkeletonRows count={4} />}
-        {load.status === "error" && (
-          <p role="alert" className="text-err">
-            The suggestions did not load: {load.message}. Close this and try again.
-          </p>
-        )}
+        {load.status === "loading" && <SkeletonList count={4} size="md" twoLine />}
+        {load.status === "error" && <Notice tone="error">The suggestions did not load: {load.message}. Close this and try again.</Notice>}
         {load.status === "ready" && open.length === 0 && <p className="text-fg-3">Everything the project's files suggest is already a command.</p>}
         {open.length > 0 && (
           <ul className="flex flex-col gap-1">
             {open.map((s) => (
-              <li key={`${s.source}:${s.name}`} className="flex min-h-10 items-center gap-3">
+              <li key={`${s.source}:${s.name}`} className="flex min-h-ctl-lg items-center gap-3">
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-fg">{s.name}</span>
                   <span className="truncate font-mono text-xs text-fg-3">
                     {s.command} · {s.source}
                   </span>
                 </span>
-                <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => void add(s)} className="max-md:h-10">
+                <Button size="sm" variant="secondary" loading={busy === s.name} disabled={busy !== null} onClick={() => void add(s)}>
                   Add
                 </Button>
               </li>
             ))}
           </ul>
         )}
-        {problem && (
-          <p role="alert" className="text-xs text-err">
-            {problem}
-          </p>
-        )}
+        {problem && <Notice tone="error">{problem}</Notice>}
       </div>
     </Dialog>
   );

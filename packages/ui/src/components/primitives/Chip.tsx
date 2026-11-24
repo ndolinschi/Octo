@@ -38,9 +38,9 @@ export const Chip = forwardRef<
       title={tip ?? `${name}: ${label}`}
       aria-expanded={open}
       className={cn(
-        "touch-hit flex h-ctl-sm min-w-0 shrink-0 press items-center gap-1.5 rounded-sm text-sm hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-50",
+        "touch-hit flex h-ctl-sm min-w-0 shrink-0 press items-center gap-1.5 rounded-sm text-sm hover:bg-hover disabled:pointer-events-none disabled:opacity-50",
         bare ? "w-ctl-sm justify-center" : "px-2",
-        open ? "bg-active text-fg" : warn ? "text-warn" : "text-fg-2",
+        open ? "bg-active text-fg" : warn ? "text-warn hover:text-warn" : "text-fg-2 hover:text-fg",
         className,
       )}
       {...rest}

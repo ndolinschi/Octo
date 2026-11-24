@@ -75,7 +75,7 @@ export function ThreadList(props: {
       ref={list}
       role="list"
       aria-label={threadsLabel(props.rows)}
-      className="flex max-h-72 shrink-0 flex-col overflow-y-auto border-b border-line px-1 py-1"
+      className="flex max-h-72 shrink-0 flex-col overflow-y-auto border-b border-line px-pane py-1"
     >
       {props.rows.map((r) => {
         const t = r.thread;

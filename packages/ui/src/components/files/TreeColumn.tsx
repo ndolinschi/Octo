@@ -82,7 +82,7 @@ export function TreeColumn(props: {
       </PanelFilters>
       <div id={`${props.id}-list`} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4 [overflow-anchor:none]">
         {active && fileIndex.status === "done" && fileIndex.partial && (
-          <p className="flex h-row items-center px-2 text-xs text-fg-3">Showing matches in loaded folders</p>
+          <p className="flex h-ctl-sm items-center px-2 text-xs text-fg-3">Showing matches in loaded folders</p>
         )}
         {active && fileIndex.status === "loading" && (
           <p className="sr-only" role="status">

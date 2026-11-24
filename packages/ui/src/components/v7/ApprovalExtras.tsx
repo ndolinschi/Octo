@@ -6,7 +6,6 @@ import { patchCounts, patchLines } from "../../lib/v7/patch";
 import { describeRule } from "../../lib/v7/rules";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
-import { Spinner } from "../primitives/Status";
 import { LineCounts } from "./parts";
 
 /** The change as a unified diff, folded behind "Show changes" (the card stays one decision, not a diff viewer). */
@@ -18,22 +17,18 @@ export function PatchView({ patch, open: shown }: { patch: string; /** Always op
   return (
     <div data-patch>
       {shown === undefined && (
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
-          className="-ml-1.5 inline-flex h-6 press items-center gap-1 rounded-sm px-1.5 text-fg-2 hover:bg-hover hover:text-fg"
-        >
-          <Glyph icon={ChevronRight} size={14} className={cn("text-fg-3", open && "rotate-90")} />
+        <Button variant="quiet" size="xs" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="-ml-2 gap-1">
+          <Glyph icon={ChevronRight} size={14} className={cn("text-fg-3 transition-transform duration-base", open && "rotate-90")} />
           {open ? "Hide changes" : "Show changes"}
           <LineCounts added={counts.added} removed={counts.removed} className="ml-1" />
-        </button>
+        </Button>
       )}
       {open && (
         <pre
+          tabIndex={0}
           aria-label="Changes"
           className={cn(
-            "octo-code octo-code-surface max-h-60 overflow-auto py-1 font-mono text-xs leading-5 focus-visible:shadow-[0_0_0_2px_var(--octo-focus)]",
+            "octo-code octo-code-surface max-h-60 overflow-auto overscroll-contain py-1 font-mono text-xs leading-5 focus-visible:shadow-[0_0_0_2px_var(--octo-focus)]",
             shown === undefined && "mt-1",
           )}
         >
@@ -69,17 +64,16 @@ export function AlwaysPanel(props: { rule: ApprovalRuleSpec; busy: boolean; disa
       <p className="text-fg-2">
         From now on, allow <span className="text-fg">{v.sentence}</span> in this project without asking:
       </p>
-      <pre className="octo-code max-h-24 overflow-auto font-mono text-xs break-all whitespace-pre-wrap">
+      <pre className="octo-code max-h-24 overflow-auto overscroll-contain font-mono text-xs break-all whitespace-pre-wrap">
         <span className="font-sans text-fg-3 select-none">{v.subject}: </span>
         {v.code}
       </pre>
       <p className="text-xs text-fg-3">You can remove it later in the project's settings.</p>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="primary" className="max-md:h-10" disabled={props.disabled} aria-busy={props.busy} onClick={props.onSave}>
-          {props.busy && <Spinner size={12} className="text-current" />}
+        <Button size="sm" variant="primary" disabled={props.disabled} loading={props.busy} onClick={props.onSave}>
           Save rule and allow
         </Button>
-        <Button size="sm" variant="ghost" className="max-md:h-10" disabled={props.disabled} onClick={props.onCancel}>
+        <Button size="sm" variant="quiet" disabled={props.disabled} onClick={props.onCancel}>
           Cancel
         </Button>
       </div>

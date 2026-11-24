@@ -73,7 +73,10 @@ export function DiffPane(props: {
       {/* R4 (polish step 6b): the file's bar is one 40px line with the editor bar's controls (28px, 16px glyphs, gap 4): the
           name leads, the folder and counts are meta, then Viewed, previous / next change and "⋯". In page mode (R6) the file
           picker takes the name's place on the same line. */}
-      <div data-diff-bar className="flex h-ctl-lg shrink-0 items-center gap-1 border-b border-line px-2 touch:h-auto touch:min-h-ctl-lg touch:py-1">
+      <div
+        data-diff-bar
+        className="flex h-ctl-lg shrink-0 items-center gap-1 px-2 shadow-[inset_0_-1px_0_var(--octo-line)] touch:h-auto touch:min-h-ctl-lg touch:py-1"
+      >
         {props.picker ?? (
           <span className="flex min-w-0 flex-1 items-baseline gap-2 pl-2">
             <span className="min-w-0 shrink truncate text-sm font-medium text-fg" title={f.path}>
@@ -89,8 +92,8 @@ export function DiffPane(props: {
           <span title={f.viewed ? "Viewed (v)" : "Mark as viewed (v)"} className="flex px-1 @max-[440px]/diff:px-0.5">
             <Checkbox label="Viewed" checked={f.viewed} onChange={props.onViewed} />
           </span>
-          <IconButton icon={ChevronUp} label="Previous change (k)" onClick={() => props.onStepChange(-1)} className="@max-[440px]/diff:hidden" />
-          <IconButton icon={ChevronDown} label="Next change (j)" onClick={() => props.onStepChange(1)} className="@max-[440px]/diff:hidden" />
+          <IconButton icon={ChevronUp} label="Previous change" shortcut="k" onClick={() => props.onStepChange(-1)} className="@max-[440px]/diff:hidden" />
+          <IconButton icon={ChevronDown} label="Next change" shortcut="j" onClick={() => props.onStepChange(1)} className="@max-[440px]/diff:hidden" />
           {/* As in Changes (DiffPanel): the first changed line, opened in the editor; the line numbers of the new side open it too. */}
           {canOpen && firstLine !== null && (
             <IconButton

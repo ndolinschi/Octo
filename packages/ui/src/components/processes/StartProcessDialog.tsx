@@ -11,6 +11,7 @@ import { FieldRow } from "../primitives/FieldRow";
 import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
 import { Notice } from "../primitives/Notice";
+import { SectionHeader } from "../primitives/SectionHeader";
 import { TextField } from "../primitives/TextField";
 
 /**
@@ -74,7 +75,7 @@ export function StartProcessDialog(props: {
           <Button variant="quiet" onClick={props.onClose}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={!valid || busy} onClick={() => void submit({ command, name, cwd })}>
+          <Button variant="primary" loading={busy} disabled={!valid || busy} onClick={() => void submit({ command, name, cwd })}>
             Start
           </Button>
         </>
@@ -89,7 +90,7 @@ export function StartProcessDialog(props: {
       >
         {(props.commands.length > 0 || suggestions.length > 0) && (
           <div className="flex flex-col gap-1">
-            <span className="px-2 text-xs text-fg-3">Quick start</span>
+            <SectionHeader inset>Quick start</SectionHeader>
             {props.commands.map((c) => (
               <ListRow
                 key={`cmd:${c.name}`}

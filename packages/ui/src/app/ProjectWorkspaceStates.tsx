@@ -5,6 +5,7 @@ import { useHost } from "../state/host";
 import { useProject } from "../state/project";
 import { Button } from "../components/primitives/Button";
 import { EmptyState } from "../components/primitives/EmptyState";
+import { Notice } from "../components/primitives/Notice";
 import { ErrorNotice } from "../components/shared/ErrorNotice";
 
 const NOTICE = "mx-auto w-full max-w-measure px-6 pt-10 text-sm max-drawer:px-4";
@@ -44,15 +45,19 @@ export function LoadError({ message, onRetry }: { message: string; onRetry(): Pr
       {problem ? (
         <ErrorNotice fields={problem} data="project-unavailable" />
       ) : (
-        <>
-          <p className="text-fg">Couldn't load this project.</p>
-          <p className="mt-1 text-fg-2">{message.replace(/\.$/, "")}. Octo tries again by itself; Retry tries now.</p>
-        </>
+        <Notice form="block" tone="error" title="Couldn't load this project.">
+          {message.replace(/\.$/, "")}. Octo tries again by itself; Retry tries now.
+        </Notice>
       )}
-      {deleteErr && <p className="mt-2 text-xs text-err">{deleteErr}</p>}
+      {deleteErr && (
+        <Notice tone="error" className="mt-2">
+          {deleteErr}
+        </Notice>
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button
           size="sm"
+          loading={busy}
           disabled={busy || deleting}
           onClick={async () => {
             setBusy(true);

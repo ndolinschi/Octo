@@ -17,6 +17,7 @@ import { FloatRoom } from "../primitives/floatRoom";
 import { IconButton } from "../primitives/IconButton";
 import { Notice } from "../primitives/Notice";
 import { Panel, PanelEmpty } from "../primitives/Panel";
+import { proseClass } from "../primitives/Prose";
 import { ScrollArea } from "../primitives/ScrollArea";
 import { SkeletonList } from "../primitives/Skeleton";
 import { Spinner } from "../primitives/Status";
@@ -178,6 +179,7 @@ export function SidePanel() {
               {load === "loading" && list.length === 0 && <SkeletonList count={2} size="md" />}
               {load === "error" && list.length === 0 && (
                 <Notice
+                  tone="error"
                   action={
                     <Button
                       variant="link"
@@ -200,7 +202,7 @@ export function SidePanel() {
                 <div key={ex.id} data-side-exchange className="flex flex-col gap-2">
                   {ex.question && <SideQuestion text={ex.question.text} />}
                   {ex.answer ? (
-                    <Markdown text={ex.answer.text} className="octo-prose octo-prose-sm" />
+                    <Markdown text={ex.answer.text} className={proseClass("compact")} />
                   ) : pending?.side_id === ex.id ? (
                     <Answering pending={pending} />
                   ) : null}

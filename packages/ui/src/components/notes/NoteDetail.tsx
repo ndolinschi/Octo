@@ -8,6 +8,7 @@ import { Button } from "../primitives/Button";
 import { IconMenu } from "../primitives/IconMenu";
 import { Notice } from "../primitives/Notice";
 import { DetailHeader, FormActions } from "../primitives/Panel";
+import { proseClass } from "../primitives/Prose";
 import { SkeletonText } from "../primitives/SkeletonText";
 import { Markdown } from "../shared/Markdown";
 import type { DocLoad } from "./useNoteDoc";
@@ -121,7 +122,7 @@ export function NoteDetail(props: {
         )}
         {load.status === "ok" &&
           (load.doc.content.trim() ? (
-            <Markdown text={load.doc.content} className="octo-prose octo-prose-sm" />
+            <Markdown text={load.doc.content} className={proseClass("compact")} />
           ) : (
             <p className="text-sm text-fg-3">This note has no body.</p>
           ))}

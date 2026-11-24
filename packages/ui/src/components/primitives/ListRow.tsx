@@ -122,7 +122,11 @@ export function ListRow(props: {
             <span
               aria-hidden={metaText !== "" || undefined}
               data-row-tail
-              className={cn("ml-auto truncate pl-1 text-xs", !props.metaYields && "max-w-[40%] shrink-0", selected || active ? "text-fg-2" : "text-fg-3")}
+              className={cn(
+                "ml-auto truncate pl-1 text-xs tabular-nums",
+                !props.metaYields && "max-w-[40%] shrink-0",
+                selected || active ? "text-fg-2" : "text-fg-3",
+              )}
             >
               {props.meta}
             </span>
@@ -145,7 +149,7 @@ export function ListRow(props: {
     <div
       onPointerMove={props.onPointerMove}
       className={cn(
-        "group flex min-w-0 items-center rounded-sm",
+        "group flex min-w-0 items-center rounded-sm transition-colors duration-fast",
         rowHeight(props.size ?? "sm", twoLine),
         // styles.css, "row actions": the overlay, its fill and the tails (meta, `data-row-tail`) that give way to it.
         overlay && "octo-row-host",
@@ -156,11 +160,12 @@ export function ListRow(props: {
             // tint is half the hover tint there and never reads as a second selection.
             cn(
               props.tone === "quiet" ? "text-fg-2" : "text-fg",
-              interactive &&
+              !disabled &&
+                interactive &&
                 (props.hover === "text"
                   ? props.tone === "quiet"
-                    ? "transition-colors hover:text-fg"
-                    : "transition-colors hover:text-fg-2"
+                    ? "hover:text-fg"
+                    : "hover:text-fg-2"
                   : props.role === "option"
                     ? "hover:bg-hover/50"
                     : "hover:bg-hover"),
