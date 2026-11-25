@@ -49,7 +49,7 @@ on its behalf. The harness already runs ACP agents; the router is an HTTP proxy 
 
 ## As built — agent hygiene and the ten agents (2026-11-11)
 
-From the Synara research ([`../research/2026-11-11-synara-gap.md`](../research/2026-11-11-synara-gap.md)):
+From the Synara research (`2026-11-11-synara-gap.md`, not in the public tree):
 
 - **Environment scrub** (`internal/childenv`): ACP agents, language servers and auth probes no longer inherit the
   harness's provider keys and base URLs (`ANTHROPIC_`, `OPENAI_`, `XAI_`, `GEMINI_`, `OPENROUTER_`, `HARNESS_`,

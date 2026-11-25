@@ -142,7 +142,7 @@ Other composites the task list names live in features or primitives: `Panel`, `P
 
 ## Unused, deprecated and duplicated
 
-From the import graph (no production importer) and the `@deprecated` tags. Detail and evidence: [`docs/CLEANUP.md`](../../docs/CLEANUP.md).
+From the import graph (no production importer) and the `@deprecated` tags. The table below lists each item.
 
 | Item | State |
 | --- | --- |

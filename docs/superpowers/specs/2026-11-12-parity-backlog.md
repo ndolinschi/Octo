@@ -1,7 +1,7 @@
 # Parity backlog — what we add after comparing with OpenCode and Cursor
 
 **Date:** 2026-11-12 · **Status:** approved to build (owner: "check our features against OpenCode and Cursor … and add
-them to us") · **Source:** [`../research/2026-11-12-feature-comparison.md`](../research/2026-11-12-feature-comparison.md)
+them to us") · **Source:** research note `2026-11-12-feature-comparison.md` (not in the public tree)
 (a sub-agent's report; OpenCode was run without a model, Cursor is from its public docs only).
 Ideas are adapted; no code, text or assets are copied.
 

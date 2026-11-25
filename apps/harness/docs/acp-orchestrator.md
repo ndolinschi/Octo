@@ -121,8 +121,8 @@ Built-in entry `antigravity` in `plugins-examples/subscription-agents/plugin.jso
 
 Not done, on purpose: steering a running turn with a second `session/prompt` (agy supports it; Octo queues the message), elicitation
 forms (agy falls back to chat), `session/resume` (load is used), `--sandbox`, `--process-per-session`, `--dangerously-skip-permissions`.
-The test double is the scripted agent's agy profile (`OCTO_FAKEACP_PROFILE=agy`, `internal/fakeacp/agy.go`); the live steps are in
-`docs/superpowers/LIVE-CHECKLIST.md`, block "Antigravity (agy)".
+The test double is the scripted agent's agy profile (`OCTO_FAKEACP_PROFILE=agy`, `internal/fakeacp/agy.go`); live agy verification
+is the owner's manual checklist (Antigravity block), not kept in the public tree.
 
 ## An agent that does not start in agent mode
 

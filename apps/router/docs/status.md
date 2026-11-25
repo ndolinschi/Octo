@@ -76,11 +76,11 @@ pie showData
 | `background_by_client_model` | **false** | `bg_signal` observe-only | defaults regression |
 | `server_tool_mode` | **passthrough** | Server tools hit models that may not support them | `autoroute_server_tools` |
 | Chat autoroute compact | No Messages compact API | Chat overflow ≠ messages compact | `allow_compact: !chat` |
-| Text-as-tool-call | Detect + **next-turn** escalate | Mid-tier can emit Agent JSON as text this turn | [debug/text-tool-call](./debug/2026-11-06-text-tool-call.md) |
+| Text-as-tool-call | Detect + **next-turn** escalate | Mid-tier can emit Agent JSON as text this turn | Incident note (2026-11-06, text-as-tool-call) |
 | `prices.toml` zeros | Rows left at `0.0` skip the estimate | Fall through to reported cost, else `none`; `minimax-m3.1-flash` keeps the peak rate (the catalogue halves it off-peak) | `prices.toml` |
 | Catalogue price refresh | **Built 2026-11-14** | Prices refreshed from the OpenRouter catalogue at start and every 6 h, cached beside the history DB; `prices.toml` = fallback + `source = "manual"` overrides; `/health` `prices`, `price_source` per call record. Live fetch checked once by the agent; estimates vs real billed costs not verified | [prices.md](./prices.md), `tests/price_catalogue.rs` |
 | `provider_order` Mistral | Prefers Mistral endpoint | Hard-fail if Mistral down and fallbacks false | ratelim / text-tool docs |
-| Filter-by-Parameters | Strip list tuned for known keys | New Anthropic-only fields → 404 again | [experiments/ratelim](./experiments/2026-11-06-ratelim.md) |
+| Filter-by-Parameters | Strip list tuned for known keys | New Anthropic-only fields → 404 again | Experiment note (2026-11-06, ratelim vs taskq) |
 
 ```mermaid
 flowchart LR
@@ -111,7 +111,7 @@ flowchart LR
 | Same-turn rewrite of text → `tool_use` | Fix mid-tier Agent text emissions | Explicitly not implemented |
 | History spill-to-disk | Survive insert bursts | Not implemented (drop only) |
 
-Full plan: [plans/2026-11-06-orchestration-plan.md](./plans/2026-11-06-orchestration-plan.md).
+Full plan: unshipped orchestration plan (P0–P4, 2026-11-06).
 
 ---
 
@@ -136,4 +136,4 @@ Update when:
 - A plan item lands on `main` → move out of **Not shipped**
 - A live incident finds a new Anthropic-only key or provider quirk → add under **Partial**
 
-Dated evidence folders under `docs/verification`, `docs/experiments`, and `docs/debug` remain the audit trail; this matrix is the executive view.
+Integration tests and this matrix are the audit trail for `main`; dated incident notes from 2026-11-06 are not kept in the public tree.

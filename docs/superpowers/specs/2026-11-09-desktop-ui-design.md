@@ -70,4 +70,4 @@ Scaffold: pnpm workspace, placeholder `OctoApp` screen, Tauri shell consuming `@
 
 ## Phase 2 (follow-up PR)
 
-See [`../plans/2026-11-09-harness-bridge-phase2.md`](../plans/2026-11-09-harness-bridge-phase2.md).
+See plan `2026-11-09-harness-bridge-phase2.md` (not in the public tree).

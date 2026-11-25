@@ -11,7 +11,6 @@ Companion documents:
 - [`SYSTEM.md`](SYSTEM.md): the runtime view for someone operating or debugging Octo (start-up, shutdown, failure modes, the
   HTTP + SSE API by area, the data model, background work, limits, diagnostics, "where to look when").
 - [`packages/ui/COMPONENTS.md`](../packages/ui/COMPONENTS.md): the UI component library, design tokens and the tool-tab anatomy.
-- [`CLEANUP.md`](CLEANUP.md): the dead-weight report of 2026-11-22 (evidence and a removal plan; nothing was removed).
 - The [user guide](user-guide/README.md), for the person who uses Octo.
 
 Contents: [At a glance](#at-a-glance) · [Parts](#the-parts) · [Data](#data-locations) · [Flows](#main-flows) ·
@@ -437,7 +436,7 @@ tokens and the tool-tab anatomy: [`packages/ui/COMPONENTS.md`](../packages/ui/CO
 | `.github/workflows/ci.yml` | Router: `cargo fmt --check`, clippy, `cargo test -p octo` |
 | `.github/workflows/harness.yml` | Go: gofmt, vet, test, build; job `e2e`: three e2e scripts and `pnpm test:dev-sh` (also `--router --mock`) |
 | `.github/workflows/desktop.yml` | Frontend: lint, format, all package tests, `test:scripts`, builds, bundle budget; shell: `cargo check`, fmt, clippy, `cargo test -p octo-sidecar` |
-| `docs/` | This file, [SYSTEM.md](SYSTEM.md), [CLEANUP.md](CLEANUP.md), the user guide, `superpowers/` (handover, live checklist, 21 specs, 13 research notes, 3 plans) |
+| `docs/` | This file, [SYSTEM.md](SYSTEM.md), the user guide, `superpowers/specs/` (design contracts with "As built" notes) |
 
 ## Cross-cutting rules
 
@@ -618,8 +617,7 @@ router with a mock upstream, a fake `gh`, demo data, Chromium (Playwright) on Li
 polish, performance, security and robustness pass was verified here and nowhere else**: not on macOS, not in WebKit, not in
 the Tauri runtime (the shell is not compiled in this environment), not with a real agent CLI or a real Ollama. "Owner" is
 the owner's Linux runs. "status not recorded" where no note says. Test counts are not kept in this file (they go stale):
-run the suites (commands under [Gates](#gates-and-scripts)); the last counts are one dated line in
-[`HANDOVER.md`](superpowers/HANDOVER.md).
+run the suites (commands under [Gates](#gates-and-scripts)).
 
 | Area | State | Verified here | Not verified |
 | --- | --- | --- | --- |
@@ -668,7 +666,7 @@ run the suites (commands under [Gates](#gates-and-scripts)); the last counts are
 | Robustness: unavailable projects (`status: "unavailable"`, `project_unavailable`, `folder_missing`), a lock on the data directory (`data_dir_in_use`), `children.json` clean-up of terminals and runs left by a killed harness, `harness --version`, versions of the harness, router, desktop, UI and shell aligned to 0.2.0 (on 2026-11-22 every `package.json` says 0.2.0, `@octo/web` and `@octo/agent-client` included) | Built | Go and Rust tests; the clean-up on Linux | The macOS process clean-up (compiled for macOS, never run there) |
 | Security pass, 2026-11-19: a CSP for the Tauri webview (`tauri.conf.json`), remote Markdown images load only after "Load image", writes into `.git` refused by the file API, hardened `git` (no hooks, no fsmonitor), a remote device may only allow or deny one request at a time (`remote_decision_forbidden`), private file modes (`0700` / `0600`), Cloudflare's signed apt repository in the Linux install line | Built | Go tests (`TestWebBuildCSPIsTheHeader`, the allow-list test), UI and desktop tests (`tauriCsp.test.ts`), the production build in Chromium with the policy as a header: 0 violations, 0 off-machine requests | The CSP in the Tauri runtime and in WebKit; "Load image" against a real remote host; a real tunnel and phone |
 | CI additions (2026-11-18/19): the `e2e` job of `harness.yml` (three e2e scripts and `pnpm test:dev-sh`, with and without `--router --mock`), the web client's test and build in `desktop.yml`, `pnpm test:scripts` (actions pinned to commit SHAs), `check-cycles`, clippy of the shell | Built | The same commands run here | `go test -race` is not in CI (it was too slow on a loaded runner; run it locally before touching concurrency code) |
-| Live checklist 4 (`docs/superpowers/LIVE-CHECKLIST.md`) | Written; the owner's run is pending | | Every item |
+| Live checklist 4 (owner's manual checklist, not in the public tree) | Written; the owner's run is pending | | Every item |
 | Bots | Draft; not built | | Owner questions 1–2 |
 | Subscription routing through the router (S3b) | Not built; not recommended | | Owner decision |
 | I3 savings view | Not built | | |
@@ -676,8 +674,7 @@ run the suites (commands under [Gates](#gates-and-scripts)); the last counts are
 
 ## Specs index
 
-Every file in `docs/superpowers/specs/`, `docs/superpowers/research/` and `docs/superpowers/plans/`, with the status
-written in the file, shortened.
+Every file in `docs/superpowers/specs/`, with the status written in the file, shortened.
 
 ### Specs (`docs/superpowers/specs/`)
 
@@ -705,33 +702,6 @@ written in the file, shortened.
 | `2026-11-13-learned-router-design.md` | The learned router for the owner's thesis: data, features, evaluation; revisions 2 and 3 after the experiments | Revision 3: the data path at the delegation boundary is built (records, outcomes, label, export, escalation); a model in the router is not |
 | `2026-11-15-dynamic-forms-mentions-design.md` | Forms built from a JSON schema (one renderer; agent tool, tool servers, a block inside a reply), one mention system in the composer and in messages (files, projects, sessions, agents, notes; Markdown in a request), and requests to another project's agent (`ask_project`, `/ask`) | Draft in the file. Part A (forms from a JSON schema) is built: `internal/inputs/schema*.go`, `shared/SchemaForm`, UI decision 97. The mention system and `ask_project`: status not recorded |
 
-### Research (`docs/superpowers/research/`)
-
-| File | What it is | Status in the file |
-| --- | --- | --- |
-| `2026-11-10-cost-audit.md` | Read-only audit of router and harness cost behaviour | Findings drove the cost fixes |
-| `2026-11-10-t3code-gap.md` | Feature gap against another agent GUI (source read at a commit) | Basis of the v7 scope |
-| `2026-11-10-ui-review-v6.md` | Independent UI review of v6 | Read-only; superseded by later reviews |
-| `2026-11-10-ui-review-v6.1.md` | Independent review of v6.1 with a regression table | Read-only |
-| `2026-11-11-ui-review-v6.2.md` | Independent review of v6.2: 0 blockers, 6 major, 13 minor | Read-only; its majors feed UI part 2 |
-| `2026-11-11-synara-gap.md` | Gap against another multi-agent app and the ten agents | Sub-agent's sourced report; no agent CLI run; one claim confirmed in code |
-| `2026-11-11-editor-ui-references.md` | Reference study for borrowed UI behaviours (decision 47) | Adapted, not copied |
-| `2026-11-12-feature-comparison.md` | Comparison with OpenCode and Cursor: inventory, scoreboard, 25 ranked gaps | Nothing built from it directly; source of the parity backlog |
-| `2026-11-12-ui-review-round-1.md` | The orchestrator's review of the screenshots: round 1 (findings 1–15, decision 91) and round 2 (16–27, decision 94) | Rules a–k and a–g are part of the UI spec; open findings: status not recorded |
-| `2026-11-12-ui-component-audit.md` | Audit of native controls, duplicates and inconsistencies; replacement table; current lint baseline | Decision 90; 49 warnings left (per folder in the file) |
-| `2026-11-13-decision-95-menus-as-built.md` | As-built note of decision 95 a/b: one popup list, keys on open | Record of what was built |
-| `2026-11-13-panel-frame.md` | Measurements of the tool tabs before and after the panel frame (decision 95f), with `panel-measure.mjs` | Record |
-| `2026-11-13-ui-verification.md` | UI verification by parts (nine parts, four sizes, dark and light); findings by severity | A check; no code changed. Which findings remain open: status not recorded |
-
-### Plans (`docs/superpowers/plans/`)
-
-| File | Status |
-| --- | --- |
-| `2026-11-09-desktop-ui-phase1.md` | Phase 1 plan; done |
-| `2026-11-09-harness-bridge-phase2.md` | Superseded by the project-based bridge spec; kept for history |
-| `2026-11-10-frontend-code-quality.md` | Approved; Q1–Q4 done, Q5 (split providers and large components) pending |
-
-
 ## Gates and scripts
 
 | Area | Gate (from the repo root unless stated) |
@@ -755,7 +725,7 @@ agent CLI.
 ## Known contradictions
 
 Differences between a spec or doc and the code, found while checking this file on 2026-11-12, 2026-11-19 and 2026-11-22. The
-code is described above. Contradictions between documents found on 2026-11-22 are also listed in [CLEANUP.md](CLEANUP.md#contradictions-between-documents).
+code is described above.
 Items fixed since 2026-11-11 were removed (the v7 header, the missing live checklist, the router status file).
 
 1. `specs/2026-11-11-orchestrator-memory-design.md`, "As built — M1", says "M2 and M3 are not built". The sections "As
@@ -780,7 +750,7 @@ Items fixed since 2026-11-11 were removed (the v7 header, the missing live check
 10. (2026-11-19) `pnpm format:check` covers TypeScript, CSS and JSON only. Markdown is not checked or formatted by prettier, and
     existing pages have long table lines.
 11. (2026-11-22) `packages/ui/AGENTS.md` says "the bundle budget in `scripts/check-bundle-size.mjs` is never raised"; the
-    script's header records the budget being raised by hand several times, now to 161.00 kB, and `HANDOVER.md` says so too.
+    script's header records the budget being raised by hand several times, now to 161.00 kB.
     The practice is "raise it with a reason"; the AGENTS.md sentence is stale. Corrected there.
 12. (2026-11-22) `apps/router/AGENTS.md` says "Do not add `#[cfg(test)]` modules in `src/`"; `src/cli.rs`,
     `src/auto/action.rs` and `src/proxy/error.rs` have them. Code was not changed.

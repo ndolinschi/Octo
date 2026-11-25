@@ -116,7 +116,7 @@ routes also take `?token=`. Errors are catalogue bodies (`message`, `hint`, `com
 | Events | `GET /v1/projects/{pid}/events` (SSE) | below |
 
 Routes with no caller in `@octo/agent-client`, `@octo/ui`, `apps/web` or the scripts (found by matching every route against
-their sources, [CLEANUP.md](CLEANUP.md#go)): only `GET /v1/projects/{pid}/notes/{nid}/export`, documented in `memory.md`.
+their sources): only `GET /v1/projects/{pid}/notes/{nid}/export`, documented in `memory.md`.
 
 The router's own routes (`apps/router/src/proxy/routes.rs`): `GET /health`; provider passthrough (`/v1/chat/completions`,
 `/v1/messages`, `/v1/decisions` and aliases under `/openai`, `/openrouter`, `/claude`, `/anthropic`); `/autoroute/v1/messages`,

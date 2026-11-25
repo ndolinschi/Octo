@@ -7,3 +7,7 @@ __pycache__/
 models/*.bin
 models/*.pt
 models/*.safetensors
+models/m2_delegation.onnx
+models/m2_delegation.json
+models/m2_delegation_tokenizer/
+results/

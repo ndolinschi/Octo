@@ -430,8 +430,8 @@ of the easy briefs (p_low 0.20); "Move the monorepo build from webpack to vite �
 
 ## M2' artefacts
 
-`models/m2_delegation.onnx` (int8, per-channel dynamic quantisation, 23.0 MB; fp32 would be 90.4 MB and is not
-committed), `models/m2_delegation_tokenizer/`, `models/m2_delegation.json`, reference scorer `src/routerml/stage6_score.py`
+`models/m2_delegation.onnx` (int8, per-channel dynamic quantisation, 23.0 MB; fp32 would be 90.4 MB; built by
+`make stage6-m2`, gitignored, not shipped), `models/m2_delegation_tokenizer/`, `models/m2_delegation.json`, reference scorer `src/routerml/stage6_score.py`
 (onnxruntime + tokenizers only). 22.7 M parameters; final training 1 116 s on 4 CPUs (each CV fold 9–19 min). Parity
 against PyTorch on 100 texts: fp32 max |Δp| 3e-7; int8 max 0.051, mean 0.010, same tier at τ = 0.5 for 96 of 100
 (a first per-tensor int8 export moved p by up to 0.25 and was replaced). CPU latency, one thread, tokenisation included:

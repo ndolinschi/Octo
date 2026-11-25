@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-10 · **Status:** approved scope and order (owner); details decided by the orchestrating agent; **harness side built (2026-11-11); the UI side is tracked in the UI spec**: see "As built — v7 (harness)" at the end and `apps/harness/docs/v7.md`
 **Builds on:** [`2026-11-10-project-harness-design.md`](./2026-11-10-project-harness-design.md), [`2026-11-10-workspace-plugins-acp-design.md`](./2026-11-10-workspace-plugins-acp-design.md), [`2026-11-10-project-harness-ui.md`](./2026-11-10-project-harness-ui.md)
-**Why these three:** [`../research/2026-11-10-t3code-gap.md`](../research/2026-11-10-t3code-gap.md)
+**Why these three:** research note `2026-11-10-t3code-gap.md` (not in the public tree)
 
 Build order: 1 → 2 → 3. Each is harness → client → UI, with its own acceptance criteria and commit.
 

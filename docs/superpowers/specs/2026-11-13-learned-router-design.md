@@ -223,7 +223,7 @@ reasoning models beat the high tier).
 ## What gets built for delegation routing as a result
 
 1. **No learned text classifier in the router.** `POST /autoroute/v1/route` keeps its classifier call (JEV) and the
-   deterministic text rule as the fallback; `models/m2_delegation.onnx` stays an artefact of the study (23 MB int8,
+   deterministic text rule as the fallback; `models/m2_delegation.onnx` is built locally by `make stage6-m2` (23 MB int8,
    p50 2.7 ms for a short brief), not a router dependency. Acceptance criterion 6 is not pursued for a text model.
 2. **Own-run data first.** The harness logs, per delegation: the brief (title, brief, tools, depth), the candidate and
    concrete model that ran it, cost, and an outcome (the sub-agent's result accepted / rejected / rewound, tests passing

@@ -4,7 +4,7 @@
 harness and work together; auto-routing must help the harness economise"); I1 to build now, I2–I3 after
 **Builds on:** [`2026-11-10-usage-design.md`](./2026-11-10-usage-design.md),
 [`2026-11-10-subscription-agents-design.md`](./2026-11-10-subscription-agents-design.md) (S3a),
-[`../research/2026-11-10-cost-audit.md`](../research/2026-11-10-cost-audit.md), `apps/router/docs/autoroute.md`
+research note `2026-11-10-cost-audit.md` (not in the public tree), `apps/router/docs/autoroute.md`
 
 ## Where money goes today, and what each side knows
 

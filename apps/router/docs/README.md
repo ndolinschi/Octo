@@ -31,16 +31,4 @@ harness passes on as `router_version`. The version is one number with the harnes
 - Not done: a truncated upstream SSE stream still ends as 200 without an error event (the stream relay has no hook for it
   yet; reported to the owner).
 
-## Archive (evidence & design notes)
-
-Dated investigations kept for provenance; prefer the guides above for day-to-day reading.
-
-| Path | Kind |
-| --- | --- |
-| [verification/](./verification/) | Autoroute verification checklist (2026-11-06) |
-| [experiments/](./experiments/) | Live session write-ups (e.g. ratelim vs taskq) |
-| [debug/](./debug/) | Incident notes (text-as-tool-call, long sessions) |
-| [research/](./research/) | Orchestration investigation |
-| [plans/](./plans/) | Unshipped orchestration plan (P0–P4) |
-
 Root shortcut: [`ARCHITECTURE.md`](../ARCHITECTURE.md) redirects here. How the router fits the whole system (harness, desktop shell, data locations): [`../../../docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md).

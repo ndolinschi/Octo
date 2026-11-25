@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-10
 **Status:** approved (decisions made by the orchestrating agent on the owner's behalf; owner reviews the finished work)
-**Supersedes:** Phase 2 stub [`../plans/2026-11-09-harness-bridge-phase2.md`](../plans/2026-11-09-harness-bridge-phase2.md) (session-based bridge)
+**Supersedes:** Phase 2 stub `2026-11-09-harness-bridge-phase2.md` (session-based bridge, not in the public tree)
 
 ## Intent
 
