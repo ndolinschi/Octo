@@ -1,0 +1,2745 @@
+/* Octo design tokens. Hosts must `@import "tailwindcss"` before this file. */
+@source "./";
+
+@custom-variant dark (&:where(:not([data-theme="light"]), :not([data-theme="light"]) *));
+
+/* Neutral greys; colour means state: ok (done), err (failed), accent (activity: running, unseen), link.
+   v6 surfaces: a near-black neutral window holds LIGHTER panels as cards (8px gutters, radius 12, faint
+   edge + 1px inner top highlight); raised boxes sit on panels; overlays float above everything. */
+:root,
+:root:not([data-theme="light"]) {
+  color-scheme: dark;
+  /* Polish trial T4: three tones about 4 % lightness apart (window 4 %, panel 9 %, raised 13.5 %), neutral hue. */
+  --octo-window: #0b0b0b;
+  --octo-panel: #171717;
+  --octo-raised: #232323;
+  --octo-overlay: #282828;
+  --octo-code-bg: #1d1d1d;
+  --octo-hover: rgb(255 255 255 / 0.05);
+  --octo-hover-in-card: rgb(255 255 255 / 0.08);
+  /* Selected rows/tabs sit clearly above hover (v6.1 review: 0.05 vs 0.09 read as two selections). */
+  --octo-active: rgb(255 255 255 / 0.12);
+  --octo-line: rgb(255 255 255 / 0.08);
+  --octo-line-strong: rgb(255 255 255 / 0.14);
+  --octo-panel-edge: rgb(255 255 255 / 0.05);
+  --octo-panel-highlight: rgb(255 255 255 / 0.04);
+  --octo-input-border: #828282; /* ≥ 3.2:1 on raised and on selected rows across all dark themes */
+  /* T3: a text field's edge at rest is a hairline no brighter than a card's; focus turns it `fg` (decision 90c).
+     `input-border` stays for the small boxes that need a strong edge to be seen (checkbox) and the composer's focus. */
+  --octo-field-edge: rgb(255 255 255 / 0.14);
+  /* Polish step 3, C4: a segmented control reads as a control at rest: a recessed track (a tint, no outline) and the chosen
+     segment one step up. */
+  --octo-seg-track: rgb(255 255 255 / 0.06);
+  --octo-seg-on: rgb(255 255 255 / 0.12);
+  --octo-fg: #f0f0f0;
+  --octo-fg-2: #c6c6c6;
+  --octo-fg-3: #a2a2a2;
+  --octo-accent: #5c9dff;
+  --octo-link: #6fa8ff;
+  --octo-ok: #5fbf7f;
+  --octo-err: #f6847e;
+  --octo-warn: #d8b07a;
+  --octo-primary: #ececec;
+  --octo-primary-fg: #141414;
+  --octo-focus: rgb(255 255 255 / 0.6);
+  --octo-scrim: rgb(0 0 0 / 0.55);
+  --octo-shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.11), inset 0 1px 0 rgb(255 255 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.72);
+  --octo-shadow-panel: inset 0 1px 0 var(--octo-panel-highlight);
+  --octo-shadow-float: 0 0 0 1px rgb(255 255 255 / 0.1), inset 0 1px 0 rgb(255 255 255 / 0.05), 0 8px 24px -8px rgb(0 0 0 / 0.72);
+  --octo-tab-active: var(--octo-raised);
+  --octo-shadow-tab: inset 0 0 0 1px var(--octo-panel-edge), inset 0 1px 0 var(--octo-panel-highlight);
+  --octo-shadow-seg: 0 0 #0000;
+  --octo-drop: rgb(92 157 255 / 0.1);
+  --octo-drop-edge: rgb(92 157 255 / 0.45);
+  --octo-selection: rgb(92 157 255 / 0.32);
+  /* Polish step 5, P7 (B33): a search match, a highlighter tint in the theme's warn hue. */
+  --octo-mark: color-mix(in srgb, var(--octo-warn) 30%, transparent);
+  --octo-comment-line: rgb(92 157 255 / 0.08);
+  /* Context meter parts (decision 38): one hue per part, legend swatches and the 3px bar only. */
+  --octo-ctx-messages: #5c9dff;
+  --octo-ctx-tool_results: #9a8cff;
+  --octo-ctx-summary: #4fb8b0;
+  --octo-ctx-notes: #d8b07a;
+  --octo-ctx-tools: #8a8a8a;
+  --octo-ctx-system: #5e5e5e;
+  --octo-ctx-other: #474747;
+}
+
+/* Cursor: cool charcoal-slate surfaces with electric blue accents. */
+:root[data-theme="cursor"] {
+  --octo-window: #111113;
+  --octo-panel: #18181b;
+  --octo-raised: #212126;
+  --octo-overlay: #26262c;
+  --octo-code-bg: #1b1b1f;
+  --octo-panel-edge: rgb(215 220 255 / 0.06);
+  --octo-panel-highlight: rgb(225 230 255 / 0.045);
+  --octo-fg: #ededf0;
+  --octo-fg-2: #bdbdc8;
+  --octo-fg-3: #9d9daa;
+  --octo-accent: #4da3ff;
+  --octo-link: #6bb5ff;
+  --octo-ok: #4ec9b0;
+  --octo-err: #f17878;
+  --octo-warn: #e5b567;
+  --octo-primary: #ededf0;
+  --octo-primary-fg: #141416;
+  --octo-shadow-pop: 0 0 0 1px rgb(215 220 255 / 0.11), inset 0 1px 0 rgb(225 230 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.74);
+  --octo-shadow-float: 0 0 0 1px rgb(215 220 255 / 0.1), inset 0 1px 0 rgb(225 230 255 / 0.05), 0 8px 24px -8px rgb(0 0 0 / 0.74);
+  --octo-drop: rgb(77 163 255 / 0.11);
+  --octo-drop-edge: rgb(77 163 255 / 0.45);
+  --octo-selection: rgb(77 163 255 / 0.3);
+  --octo-comment-line: rgb(77 163 255 / 0.08);
+  --octo-ctx-messages: #4da3ff;
+}
+
+/* Claude Code: warm espresso-charcoal surfaces with terracotta-amber accents. */
+:root[data-theme="claude"] {
+  --octo-window: #141311;
+  --octo-panel: #1c1a17;
+  --octo-raised: #26231f;
+  --octo-overlay: #2b2823;
+  --octo-code-bg: #1f1d1a;
+  --octo-panel-edge: rgb(255 240 220 / 0.06);
+  --octo-panel-highlight: rgb(255 242 225 / 0.045);
+  --octo-fg: #f2efe9;
+  --octo-fg-2: #cac3b8;
+  --octo-fg-3: #ada497;
+  --octo-accent: #d97757;
+  --octo-link: #e58d70;
+  --octo-ok: #68b87d;
+  --octo-err: #eb7a72;
+  --octo-warn: #e0a960;
+  --octo-primary: #f2efe9;
+  --octo-primary-fg: #171512;
+  --octo-shadow-pop: 0 0 0 1px rgb(255 240 220 / 0.11), inset 0 1px 0 rgb(255 242 225 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.74);
+  --octo-shadow-float: 0 0 0 1px rgb(255 240 220 / 0.1), inset 0 1px 0 rgb(255 242 225 / 0.05), 0 8px 24px -8px rgb(0 0 0 / 0.74);
+  --octo-drop: rgb(217 119 87 / 0.12);
+  --octo-drop-edge: rgb(217 119 87 / 0.45);
+  --octo-selection: rgb(217 119 87 / 0.28);
+  --octo-comment-line: rgb(217 119 87 / 0.09);
+  --octo-ctx-messages: #d97757;
+  --octo-ctx-notes: #e0a960;
+}
+
+/* Codex: deep ink-slate surfaces with emerald-mint accents. */
+:root[data-theme="codex"] {
+  --octo-window: #0d0f12;
+  --octo-panel: #14171c;
+  --octo-raised: #1d2128;
+  --octo-overlay: #22272f;
+  --octo-code-bg: #171a20;
+  --octo-panel-edge: rgb(210 230 255 / 0.06);
+  --octo-panel-highlight: rgb(220 238 255 / 0.045);
+  --octo-fg: #eef1f6;
+  --octo-fg-2: #bcc5d2;
+  --octo-fg-3: #98a3b3;
+  --octo-accent: #38b889;
+  --octo-link: #52c99d;
+  --octo-ok: #4cc38a;
+  --octo-err: #f07b78;
+  --octo-warn: #dfb064;
+  --octo-primary: #eef1f6;
+  --octo-primary-fg: #0f1216;
+  --octo-shadow-pop: 0 0 0 1px rgb(210 230 255 / 0.11), inset 0 1px 0 rgb(220 238 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.74);
+  --octo-shadow-float: 0 0 0 1px rgb(210 230 255 / 0.1), inset 0 1px 0 rgb(220 238 255 / 0.05), 0 8px 24px -8px rgb(0 0 0 / 0.74);
+  --octo-drop: rgb(56 184 137 / 0.11);
+  --octo-drop-edge: rgb(56 184 137 / 0.45);
+  --octo-selection: rgb(56 184 137 / 0.28);
+  --octo-comment-line: rgb(56 184 137 / 0.08);
+  --octo-ctx-messages: #38b889;
+  --octo-ctx-summary: #52c99d;
+}
+
+/* OpenCode: midnight graphite surfaces with violet-indigo accents. */
+:root[data-theme="opencode"] {
+  --octo-window: #0b0b0e;
+  --octo-panel: #131318;
+  --octo-raised: #1c1c24;
+  --octo-overlay: #22222b;
+  --octo-code-bg: #17171d;
+  --octo-panel-edge: rgb(225 220 255 / 0.06);
+  --octo-panel-highlight: rgb(232 228 255 / 0.045);
+  --octo-fg: #ececf2;
+  --octo-fg-2: #c0c0cd;
+  --octo-fg-3: #9c9dad;
+  --octo-accent: #9b8aff;
+  --octo-link: #b0a3ff;
+  --octo-ok: #5dc286;
+  --octo-err: #f27c85;
+  --octo-warn: #e3b368;
+  --octo-primary: #ececf2;
+  --octo-primary-fg: #111116;
+  --octo-shadow-pop: 0 0 0 1px rgb(225 220 255 / 0.11), inset 0 1px 0 rgb(232 228 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.74);
+  --octo-shadow-float: 0 0 0 1px rgb(225 220 255 / 0.1), inset 0 1px 0 rgb(232 228 255 / 0.05), 0 8px 24px -8px rgb(0 0 0 / 0.74);
+  --octo-drop: rgb(155 138 255 / 0.12);
+  --octo-drop-edge: rgb(155 138 255 / 0.45);
+  --octo-selection: rgb(155 138 255 / 0.28);
+  --octo-comment-line: rgb(155 138 255 / 0.09);
+  --octo-ctx-messages: #9b8aff;
+  --octo-ctx-tool_results: #c084fc;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  /* T4: a light, clean ground (was #ececec) under white panels; raised is a soft tone one step under white. */
+  --octo-window: #f5f5f5;
+  --octo-panel: #ffffff;
+  --octo-raised: #f3f3f3;
+  --octo-overlay: #ffffff;
+  --octo-code-bg: #efefef;
+  --octo-hover: rgb(0 0 0 / 0.035);
+  --octo-hover-in-card: rgb(0 0 0 / 0.055);
+  /* Selection is a tint, not mid-grey (was black 9 %); still clearly above hover. */
+  --octo-active: rgb(0 0 0 / 0.065);
+  --octo-line: rgb(0 0 0 / 0.09);
+  --octo-line-strong: rgb(0 0 0 / 0.14);
+  --octo-panel-edge: rgb(0 0 0 / 0.06);
+  --octo-panel-highlight: rgb(255 255 255 / 0);
+  --octo-input-border: #828282; /* ≥ 3.3:1 on white panels and on selected rows (#eeeeee) */
+  --octo-field-edge: rgb(0 0 0 / 0.14);
+  --octo-seg-track: rgb(0 0 0 / 0.05);
+  --octo-seg-on: #ffffff;
+  --octo-fg: #1a1a1a;
+  --octo-fg-2: #424242;
+  --octo-fg-3: #5e5e5e;
+  --octo-accent: #0a66e0;
+  --octo-link: #0a5fd1;
+  --octo-ok: #17703d; /* 5d: ≥ 4.5:1 on a selected row (#eee: 5.29); #1a7f45 was 4.35 */
+  --octo-err: #b42a23;
+  --octo-warn: #8a5512;
+  --octo-primary: #1a1a1a;
+  --octo-primary-fg: #ffffff;
+  --octo-focus: rgb(0 0 0 / 0.55);
+  --octo-scrim: rgb(0 0 0 / 0.2);
+  --octo-shadow-pop: 0 0 0 1px rgb(0 0 0 / 0.06), 0 2px 4px rgb(0 0 0 / 0.04), 0 16px 40px -12px rgb(0 0 0 / 0.18);
+  --octo-shadow-panel: 0 1px 2px rgb(0 0 0 / 0.04);
+  --octo-shadow-float: 0 0 0 1px rgb(0 0 0 / 0.08), 0 8px 24px -8px rgb(0 0 0 / 0.18);
+  --octo-tab-active: var(--octo-panel);
+  --octo-shadow-tab: var(--octo-shadow-seg);
+  /* C4: the chosen segment lifts off its track in light (white on a grey tint needs a whisper of shadow to read). */
+  --octo-shadow-seg: 0 0 0 0.5px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.08);
+  --octo-drop: rgb(10 102 224 / 0.08);
+  --octo-drop-edge: rgb(10 102 224 / 0.4);
+  --octo-selection: rgb(10 102 224 / 0.2);
+  --octo-mark: rgb(255 190 40 / 0.45);
+  --octo-comment-line: rgb(10 102 224 / 0.06);
+  --octo-ctx-messages: #0a66e0;
+  --octo-ctx-tool_results: #6d4fd8;
+  --octo-ctx-summary: #12857c;
+  --octo-ctx-notes: #a8701c;
+  --octo-ctx-tools: #8c8c8c;
+  --octo-ctx-system: #b8b8b8;
+  --octo-ctx-other: #d4d4d4;
+}
+
+/* Spacing scale (px): 2 4 6 8 12 16 20 24 32 40 — nothing else. Tailwind steps 0.5 1 1.5 2 3 4 5 6 8 10
+   are exactly these; the semantic names below say what a value is for. Prose uses the --octo-* ones. */
+/* Motion (spec "Motion"): three durations and one curve. fast — hover fills, reveals, presses and every exit; base — overlays
+   (menus, popovers, dialogs, the palette, tooltips), chevrons, switches; slow — drawers, sheets and large surfaces. Enters use
+   `--ease-out-quint`, exits ease-out. Only opacity, transforms (scale, translate, rotate), colours and shadows move: never a
+   layout property. Tab and panel swaps are instant. `lib/constants` mirrors the durations for the Web Animations API. */
+:root {
+  --motion-fast: 100ms;
+  --motion-base: 150ms;
+  --motion-slow: 220ms;
+  --octo-status-h: var(--spacing-ctl-sm);
+}
+@media (max-height: 599px) {
+  :root {
+    --octo-status-h: 0px;
+  }
+}
+@utility duration-fast {
+  transition-duration: var(--motion-fast);
+}
+@utility duration-base {
+  transition-duration: var(--motion-base);
+}
+@utility duration-slow {
+  transition-duration: var(--motion-slow);
+}
+
+:root {
+  --octo-prose-gap: 12px; /* between paragraphs, lists, tables, code blocks, cards */
+  --octo-prose-heading-top: 24px;
+  --octo-prose-heading-bottom: 8px;
+  --octo-prose-item: 4px; /* between list items */
+}
+
+@theme inline {
+  --color-window: var(--octo-window);
+  --color-panel: var(--octo-panel);
+  --color-raised: var(--octo-raised);
+  --color-overlay: var(--octo-overlay);
+  --color-code-bg: var(--octo-code-bg);
+  --color-hover: var(--octo-hover);
+  --color-active: var(--octo-active);
+  --color-tab-active: var(--octo-tab-active);
+  --color-mark: var(--octo-mark);
+  --color-line: var(--octo-line);
+  --color-line-strong: var(--octo-line-strong);
+  --color-input-border: var(--octo-input-border);
+  --color-field-edge: var(--octo-field-edge);
+  --color-seg-track: var(--octo-seg-track);
+  --color-seg-on: var(--octo-seg-on);
+  --color-focus: var(--octo-focus);
+  --color-fg: var(--octo-fg);
+  --color-fg-2: var(--octo-fg-2);
+  --color-fg-3: var(--octo-fg-3);
+  --color-accent: var(--octo-accent);
+  --color-link: var(--octo-link);
+  --color-ok: var(--octo-ok);
+  --color-err: var(--octo-err);
+  --color-warn: var(--octo-warn);
+  --color-primary: var(--octo-primary);
+  --color-primary-fg: var(--octo-primary-fg);
+  --color-scrim: var(--octo-scrim);
+  --shadow-pop: var(--octo-shadow-pop);
+  --shadow-panel: var(--octo-shadow-panel);
+  --shadow-float: var(--octo-shadow-float);
+  --shadow-tab: var(--octo-shadow-tab);
+  --shadow-seg: var(--octo-shadow-seg);
+  --color-panel-edge: var(--octo-panel-edge);
+  --color-drop: var(--octo-drop);
+  --color-drop-edge: var(--octo-drop-edge);
+}
+
+@theme {
+  /* The sidebar becomes a drawer below this width (`max-drawer:` variant). Mirrors DRAWER_BELOW in lib/constants.ts; a test keeps them equal. */
+  --breakpoint-drawer: 1000px;
+  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
+  --text-base: 14px;
+  --text-base--line-height: 22px;
+  /* Two-step heading scale (both semibold): title for page titles and markdown h1–h2,
+     heading for dialog/section titles, markdown h3–h4 and the sub-agent role. */
+  --text-title: 16px;
+  --text-title--line-height: 20px;
+  --text-title--font-weight: 600;
+  /* Home only: the page title and the cards' figures. */
+  --text-display: 20px;
+  --text-display--line-height: 28px;
+  --text-display--font-weight: 600;
+  --text-figure: 24px;
+  --text-figure--line-height: 32px;
+  --text-figure--font-weight: 600;
+  --text-heading: 14px;
+  --text-heading--line-height: 20px;
+  --text-heading--font-weight: 600;
+  /* Inputs on touch screens stay at 16px so iOS does not zoom. */
+  --text-input-touch: 16px;
+  --text-input-touch--line-height: 20px;
+  /* Radius scale (retest3 evenness): 6 · 8 · 12 + pill, plus 2 and 4 for tiny marks only. Concentric: a child at
+     inset i inside radius R takes R − i.
+     2xs 2 kbd hints, composer marks · xs 4 inline code, focus marks, delegation rows (card 8 − 4) ·
+     sm 6 chips, segments, tiny buttons (a segment sits 2px inside the 8px track) ·
+     md 8 fields, buttons, every selectable row (a row sits 4px inside a 12px overlay), cards, code blocks ·
+     xl 12 surfaces: panels, grouped-list cards, overlays (menu, popover, palette, dialog), composer.
+     There is no 10: `--radius-lg` was removed, `rounded-lg` now falls back to Tailwind's 8px. Pill is `rounded-full`. */
+  --radius-2xs: 2px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-xl: 12px;
+  /* One rendered stroke for every lucide icon at every size (12 14 16 20): see "retest3: evenness" below. */
+  --icon-stroke: 1.5px;
+  /* Semantic spacing (all on the scale). */
+  --spacing-gutter: 8px; /* window edge → panel, panel → panel, sidebar → panel: one value everywhere */
+  --spacing-pane: 8px; /* panel or sidebar edge → its tab strip, rows, bars (one inset rule) */
+  --spacing-card: 12px; /* card edge → content (prompt box, delegation card, code block, comment card) */
+  --spacing-dialog: 20px; /* dialog edge → content (16 under 640px) */
+  --spacing-pad: 24px; /* conversation side padding (16 when the conversation is under 560px) */
+  /* Row heights, by role (nothing else): 24 compact controls and chips · 28 tabs, tree rows, menu rows,
+     request rows, filter input · 32 sidebar nav and project rows, delegation rows, palette results,
+     dialog inputs · 36 group tab strip · 40 header rows (chat header, file breadcrumb row, one-line
+     composer). */
+  --spacing-chip: 24px;
+  --spacing-row: 28px;
+  --spacing-row-nav: 32px;
+  --spacing-strip: 36px;
+  --spacing-bar: 40px;
+  --spacing-slot: 16px; /* leading slot of every row (icon, chevron or status) */
+  /* Content width of the conversation column (transcript, header, pinned prompt, composer share both
+     edges) and of the Markdown preview. */
+  --spacing-measure: 720px;
+  /* Running text of answers (paragraphs, lists, quotes, headings) stops here, inside the measure: ~80 characters of Inter
+     at 14px (its average character is ~0.73ch). Tables, code blocks, the prompt and the composer keep the measure. */
+  --spacing-answer: 60ch;
+  --spacing-sidebar: 260px;
+  --spacing-float: 640px; /* floating composer, max width */
+  --spacing-details: 480px; /* Details and Usage content column: a measure for label ↔ value rows in a wide group */
+  --spacing-home: 880px; /* Home's content column (two cards side by side) */
+  --spacing-dialog-wide: 640px; /* dialogs with a two-column body (Settings → Integrations) */
+  --ease-out-quint: cubic-bezier(0.2, 0, 0, 1);
+  --animate-caret: caret 1s steps(2, start) infinite;
+
+  @keyframes caret {
+    to {
+      visibility: hidden;
+    }
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  /* Add. 8b: iOS enlarges text in landscape unless told not to. */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  /* The window itself never scrolls (every screen scrolls in its own box): no elastic bounce of the page under a wheel or
+     trackpad gesture that no box takes (macOS WebKit fires `scroll` on the document for it, which closed popups). */
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+  body {
+    margin: 0;
+    background: var(--octo-window);
+    color: var(--octo-fg);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::selection {
+    background: var(--octo-selection);
+  }
+  /* Focus ring as a shadow, so it follows each element's radius; the transparent outline keeps
+     a ring in forced-colours mode. Rows and tabs use the inset variant (utility focus-inset). */
+  :focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 1px;
+    box-shadow: 0 0 0 2px var(--octo-focus);
+  }
+  /* Chrome is not text: buttons, tabs and menus don't select (the transcript and code do). */
+  button,
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"],
+  [role="treeitem"],
+  [role="separator"] {
+    cursor: default;
+    user-select: none;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--octo-line-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--octo-line-strong);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--octo-fg-3);
+  }
+}
+
+/* Scroll areas reserve a gutter on both edges, so centred content lines up with the
+   non-scrolling rows below it (composer, read-only bar). */
+@utility scroll-quiet {
+  scrollbar-gutter: stable both-edges;
+}
+
+/* Inset focus ring for rows and tabs that sit flush in a list. */
+@utility focus-inset {
+  &:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--octo-focus);
+  }
+}
+
+/* Pressed state for buttons: a small scale, never under reduced motion, never when disabled. */
+@utility press {
+  transition-property: scale, background-color, color, opacity, border-color;
+  transition-duration: var(--motion-fast);
+  transition-timing-function: ease-out;
+  -webkit-tap-highlight-color: transparent;
+  @media (prefers-reduced-motion: no-preference) {
+    &:active:not(:disabled, [aria-disabled="true"]) {
+      scale: 0.97;
+    }
+  }
+}
+
+/* Pressed state for rows and tabs: the hover tint layered over whatever fill the row has. */
+@utility press-row {
+  transition-property: background-color, color;
+  transition-duration: var(--motion-fast);
+  transition-timing-function: ease-out;
+  -webkit-tap-highlight-color: transparent;
+  &:active:not(:disabled, [aria-disabled="true"]) {
+    box-shadow: inset 0 0 0 999px var(--octo-hover);
+  }
+}
+
+/* Horizontal scroller whose overflowing ends fade out (set by data attributes from script). */
+@utility fade-x {
+  scrollbar-width: none;
+  &[data-fade~="start"] {
+    mask-image: linear-gradient(to right, transparent, #000 20px);
+  }
+  &[data-fade~="end"] {
+    mask-image: linear-gradient(to left, transparent, #000 20px);
+  }
+  &[data-fade~="start"][data-fade~="end"] {
+    mask-image: linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+  }
+}
+
+/* Vertical lists whose scrollbar is hidden (so rows keep the pane inset on both sides): overflowing ends fade. */
+@utility fade-y {
+  scrollbar-width: none;
+  &[data-fade~="start"] {
+    mask-image: linear-gradient(to bottom, transparent, #000 24px);
+  }
+  &[data-fade~="end"] {
+    mask-image: linear-gradient(to top, transparent, #000 24px);
+  }
+  &[data-fade~="start"][data-fade~="end"] {
+    mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+  }
+}
+
+/* Fade a tab's trailing label edge under its hover/focus close button (24px → 4px, on scale). */
+@utility tab-close-fade {
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent calc(100% - 4px));
+}
+
+/* Controls that carry their own elevation shadow (chips, Jump to latest, the comment "+"): the focus ring is
+   composed with it, never replaced by it (unlayered, so it wins over the shadow utility). */
+.octo-ring-float:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--octo-focus),
+    var(--octo-shadow-float);
+}
+.octo-ring-pop:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--octo-focus),
+    var(--octo-shadow-pop);
+}
+.octo-ring-panel:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--octo-focus),
+    var(--octo-shadow-panel);
+}
+
+/* Polish trial T3: inside a raised card (primitives/Card) a code block and a field are recessed to the panel's tone, so
+   a block in a card is told apart by tone, never by an outline of its own. */
+.octo-in-card {
+  --octo-code-bg: var(--octo-panel);
+  /* Polish step 3, C4: on a raised card the page's hover tint was too faint to say "button"; one step stronger here. */
+  --octo-hover: var(--octo-hover-in-card);
+}
+/* The one code surface (a Markdown fence, a tool body, an approval's command or diff, a command line): 8px radius, the code
+   tone and a hairline. Inside a card the card is the outline and the tone tells the block apart, so the hairline goes: one
+   outline per level. */
+.octo-code-surface {
+  border: 1px solid color-mix(in oklab, var(--octo-line) 70%, transparent);
+  border-radius: var(--radius-md);
+  background-color: var(--octo-code-bg);
+}
+.octo-in-card .octo-code-surface {
+  border-width: 0;
+}
+
+/* Polish step 5, P7: a list that pre-opens its first item beside it (wide) marks that row; in one column nothing is open, so
+   no row may read as chosen until the person chooses one (`ListDetail` sets `data-unpicked`). */
+@container ld (width < 640px) {
+  [data-unpicked] .group:has(> [data-row][aria-current="true"]) {
+    background-color: transparent;
+    --row-tint: transparent; /* the row actions' overlay (ListRow) matches the row */
+  }
+}
+
+/* Isolate layout and style recalculation per file-tree row for snappy filtering and selection. */
+[role="tree"] > [role="treeitem"] {
+  contain: layout style;
+}
+
+/* Decision 96: the sidebar tree's row actions (a project's "+" and chevron, a session's "⋯") appear on hover and focus, where
+   the row's meta is; the meta gives way to them. Always shown on touch and in the drawer, where there is no hover. */
+[data-tree-row] > [data-tree-actions] {
+  opacity: 0;
+  transition: opacity var(--motion-fast);
+}
+[data-tree-row]:is(:hover, :focus-within) > [data-tree-actions] {
+  opacity: 1;
+}
+/* The meta (and its slot's inset) leaves the row rather than keeping its width: the title gets the room it frees. */
+[data-tree-row]:is(:hover, :focus-within) :has(> [data-tree-meta]) {
+  display: none;
+}
+/* MiddleText with a distinguishing tail (lib/distinctSplit): the head gives way first, down to its first letter; then the tail. */
+.octo-mid[data-distinct] > :first-child {
+  min-width: calc(var(--spacing) * 4);
+}
+.octo-mid[data-distinct] > :last-child {
+  max-width: calc(100% - var(--spacing) * 4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* ListRow `metaYields`: no shrink weight on the title (it would shave a subpixel off a title that fits and draw a false
+   ellipsis); a cap that leaves the meta 64px and the 8px gap instead. */
+[data-meta-yields] > :first-child {
+  flex-shrink: 0;
+  max-width: calc(100% - var(--spacing) * 18);
+}
+[data-meta-yields] > [data-row-tail] {
+  min-width: 0;
+  text-align: right;
+}
+/* A flat Sessions row's meta is its project's name: no cap of its own (2026-11-19). ListRow's `metaYields` gives it the room a
+   short title leaves ("New session  PCMS + PCFS" whole) and makes it give way first, down to 64px, under a long one. */
+/* Addendum 13: a session under its project starts its highlight where every sidebar row does; the step in is inside the row
+   (its glyph one 16px column right of the project's). */
+[data-tree-level="2"] [data-row] {
+  padding-left: 24px;
+}
+/* The title gives way to the actions instead of running under them: a tree project row has three (80px), a flat project row two (56px), a session one (32px). */
+[data-tree-project]:is(:hover, :focus-within) [data-row] {
+  padding-right: 80px;
+}
+[data-tree-project="flat"]:is(:hover, :focus-within) [data-row] {
+  padding-right: 56px;
+}
+[data-tree-row]:not([data-tree-project]):is(:hover, :focus-within) [data-row] {
+  padding-right: 32px;
+}
+@media (pointer: coarse), (max-width: 767.98px) {
+  [data-tree-row] > [data-tree-actions] {
+    opacity: 1;
+  }
+  [data-tree-row] :has(> [data-tree-meta]) {
+    display: none;
+  }
+  [data-tree-project] [data-row] {
+    padding-right: 80px;
+  }
+  [data-tree-project="flat"] [data-row] {
+    padding-right: 48px;
+  }
+  [data-tree-row]:not([data-tree-project]) [data-row] {
+    padding-right: 32px;
+  }
+}
+
+/* Balance pass: the same rule for a turn's activity rows with a hover-only action (a helper's "Open session"): the action
+   sits where the duration is and the duration gives way, so every row of a turn keeps its meta on one right edge. */
+[data-row-overlay] {
+  position: relative;
+}
+[data-row-overlay] > [data-row-actions] {
+  position: absolute;
+  top: 2px;
+  right: -4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--motion-fast);
+}
+[data-row-overlay]:is(:hover, :focus-within) > [data-row-actions] {
+  opacity: 1;
+}
+[data-row-overlay]:is(:hover, :focus-within) [data-row-meta] {
+  visibility: hidden;
+}
+[data-row-overlay]:is(:hover, :focus-within) [data-row] {
+  padding-right: 32px;
+}
+@media (pointer: coarse) {
+  [data-row-overlay] > [data-row-actions] {
+    opacity: 1;
+  }
+  [data-row-overlay] [data-row-meta] {
+    visibility: hidden;
+  }
+  [data-row-overlay] [data-row] {
+    padding-right: 32px;
+  }
+}
+
+/* Under the pinned prompt: 8px of panel, then an ease-in fade (content reappears from ~0%, so a line passing
+   under the pin has no visible cut edge; multi-stop, no band). */
+.octo-pin-fade {
+  background: linear-gradient(
+    to bottom,
+    var(--octo-panel) 0,
+    var(--octo-panel) 8px,
+    color-mix(in srgb, var(--octo-panel) 97%, transparent) calc(8px + (100% - 8px) * 0.2),
+    color-mix(in srgb, var(--octo-panel) 86%, transparent) calc(8px + (100% - 8px) * 0.42),
+    color-mix(in srgb, var(--octo-panel) 60%, transparent) calc(8px + (100% - 8px) * 0.66),
+    color-mix(in srgb, var(--octo-panel) 26%, transparent) calc(8px + (100% - 8px) * 0.86),
+    transparent 100%
+  );
+}
+
+/* A prompt the sidebar or palette jumped to: a brief accent ring (static under reduced motion). */
+[data-flash] {
+  box-shadow: 0 0 0 2px var(--octo-accent);
+}
+
+[data-theme-switching] *,
+[data-theme-switching] *::before,
+[data-theme-switching] *::after {
+  transition: none !important;
+}
+
+/* Overlays (dialog, palette, menu, drawer, scrim) enter with opacity + a slight scale/rise on a
+   decelerating curve and leave faster; `data-state="closed"` is set by <Presence> during the exit. */
+.octo-overlay {
+  animation: octo-overlay-in var(--motion-base) var(--ease-out-quint) both;
+  transform-origin: var(--octo-origin, 50% 0);
+}
+.octo-overlay[data-state="closed"] {
+  animation: octo-overlay-out var(--motion-fast) ease-out both;
+}
+/* Tooltips: a short fade in and out, no rise (they appear under the pointer). A tooltip that follows another while the layer is
+   warm (`data-warm`) shows at once: the fade never stacks on top of the warm-up. */
+.octo-tooltip {
+  animation: octo-fade-in var(--motion-fast) ease-out both;
+}
+.octo-tooltip[data-warm] {
+  animation: none;
+}
+.octo-tooltip[data-state="closed"] {
+  animation: octo-fade-out var(--motion-fast) ease-out both;
+}
+/* Anything opened from the keyboard appears and leaves instantly (see Presence). */
+:root[data-input="keyboard"] .octo-overlay,
+:root[data-input="keyboard"] .octo-scrim,
+:root[data-input="keyboard"] .octo-drawer {
+  animation: none !important;
+}
+.octo-drawer {
+  animation: octo-drawer-in var(--motion-slow) var(--ease-out-quint) both;
+}
+.octo-drawer[data-state="closed"] {
+  animation: octo-drawer-out var(--motion-fast) ease-out both;
+}
+.octo-scrim {
+  animation: octo-fade-in var(--motion-base) var(--ease-out-quint) both;
+}
+.octo-scrim[data-state="closed"] {
+  animation: octo-fade-out var(--motion-fast) ease-out both;
+}
+/* Drop indicator and drag chip: fade in, then glide (see DragLayer). */
+.octo-fade {
+  animation: octo-fade-in var(--motion-fast) ease-out both;
+}
+/* A loading placeholder (MainSkeleton): the same fade, after 300ms, so a fast load (switching projects takes about 240ms
+   in the demo) never shows it. */
+/* Decision 99: a project switch already held the previous screen for SWITCH_HOLD_MS; its loading state shows at once. */
+[data-switching="true"] .octo-fade-late {
+  animation: none;
+}
+.octo-fade-late {
+  animation: octo-fade-in var(--motion-fast) ease-out 300ms both;
+}
+@keyframes octo-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes octo-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes octo-overlay-in {
+  from {
+    opacity: 0;
+    scale: 0.98;
+    translate: 0 4px;
+  }
+}
+@keyframes octo-overlay-out {
+  to {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+@keyframes octo-drawer-in {
+  from {
+    opacity: 0;
+    translate: -12px 0;
+  }
+}
+@keyframes octo-drawer-out {
+  to {
+    opacity: 0;
+    translate: -12px 0;
+  }
+}
+
+/* No tooltip while a tab is dragged (dock/drag.ts sets the attribute). */
+:root[data-dragging] [data-tooltip] {
+  display: none;
+}
+
+/* Decisions 29 and 76: only the working ring's arc turns; the needs-you dot is static. Never under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .octo-ring-turn {
+    transform-origin: center;
+    transform-box: view-box;
+    animation: octo-ring-turn 1s linear infinite;
+  }
+}
+@keyframes octo-ring-turn {
+  to {
+    rotate: 360deg;
+  }
+}
+
+/* Decision 101 b: a run without a plan has no denominator, so its current step is an indeterminate mark: a short accent
+   segment that travels the track while the agent works (motion only while something is in progress, decision 76). Under
+   reduced motion it stands still at the start: "working, extent unknown", never a fill level. */
+.octo-run-indeterminate::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 28%;
+  border-radius: inherit;
+  background: var(--octo-accent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .octo-run-indeterminate::after {
+    animation: octo-run-travel calc(var(--motion-slow) * 7) var(--ease-out-quint) infinite alternate;
+  }
+}
+:root[data-motion="reduced"] .octo-run-indeterminate::after {
+  animation: none;
+}
+@keyframes octo-run-travel {
+  from {
+    translate: 0;
+  }
+  to {
+    translate: 257%;
+  }
+}
+/* Decision 101 f: the run card's actions take a 44px target on a coarse pointer (the app's touch-hit is 40). */
+[data-run-actions] {
+  --spacing-touch: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  /* Overlays keep a plain cross-fade (tooltips are one already). */
+  .octo-overlay,
+  .octo-drawer,
+  .octo-sheet,
+  .octo-scrim,
+  .octo-tooltip:not([data-warm]) {
+    animation-name: octo-fade-in !important;
+    animation-duration: var(--motion-fast) !important;
+  }
+  .octo-overlay[data-state="closed"],
+  .octo-drawer[data-state="closed"],
+  .octo-sheet[data-state="closed"],
+  .octo-scrim[data-state="closed"],
+  .octo-tooltip[data-state="closed"] {
+    animation-name: octo-fade-out !important;
+    animation-duration: var(--motion-fast) !important;
+  }
+}
+
+/* Prose (assistant markdown). One rhythm: blocks 12 apart, headings 24 above / 8 below, list items 4,
+   lines 22 (body) / 20 (code); every value from the spacing scale. */
+.octo-prose {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--octo-fg);
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+/* Pause multi-line optimal wrapping while tokens stream in; snaps to pretty once streaming finishes. */
+.octo-prose[data-streaming] {
+  text-wrap: wrap;
+}
+.octo-prose > :first-child {
+  margin-top: 0;
+}
+.octo-prose > :last-child {
+  margin-bottom: 0;
+}
+.octo-prose p,
+.octo-prose ul,
+.octo-prose ol,
+.octo-prose blockquote {
+  margin: 0 0 var(--octo-prose-gap);
+}
+.octo-prose h1,
+.octo-prose h2,
+.octo-prose h3,
+.octo-prose h4,
+.octo-prose h5,
+.octo-prose h6 {
+  font-weight: 600;
+  margin: var(--octo-prose-heading-top) 0 var(--octo-prose-heading-bottom);
+}
+.octo-prose h1,
+.octo-prose h2 {
+  font-size: var(--text-title);
+  line-height: var(--text-title--line-height);
+  letter-spacing: var(--text-title--letter-spacing);
+}
+.octo-prose h3,
+.octo-prose h4,
+.octo-prose h5,
+.octo-prose h6 {
+  font-size: var(--text-heading);
+  line-height: var(--text-heading--line-height);
+}
+/* Document prose (the Markdown preview): a three-step heading scale, 20 / 16 / 14, so a file's h1 and
+   h2 are told apart (the chat keeps its two-step scale). */
+.octo-prose.octo-doc h1 {
+  font-size: var(--text-display);
+  line-height: var(--text-display--line-height);
+  letter-spacing: var(--text-display--letter-spacing);
+}
+.octo-prose.octo-doc h2 {
+  font-size: var(--text-title);
+  line-height: var(--text-title--line-height);
+  letter-spacing: var(--text-title--letter-spacing);
+}
+/* Compact prose (notes, task briefs): UI size, secondary colour. */
+.octo-prose.octo-prose-sm {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--octo-fg-2);
+}
+.octo-prose ul,
+.octo-prose ol {
+  padding-left: 24px;
+}
+.octo-prose ul {
+  list-style: disc;
+}
+.octo-prose ol {
+  list-style: decimal;
+}
+.octo-prose li {
+  margin: var(--octo-prose-item) 0 0;
+  padding-left: 2px;
+}
+.octo-prose li:first-child {
+  margin-top: 0;
+}
+.octo-prose li > ul,
+.octo-prose li > ol {
+  margin: var(--octo-prose-item) 0 0;
+}
+.octo-prose li::marker {
+  color: var(--octo-fg-3);
+}
+.octo-prose strong {
+  font-weight: 600;
+}
+.octo-prose a {
+  color: var(--octo-link);
+  text-decoration: underline;
+  text-decoration-thickness: from-font;
+  text-underline-offset: 2px;
+}
+.octo-prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: var(--octo-active);
+  overflow-wrap: anywhere;
+}
+/* A file named in prose (decision 19): the inline-code chip with the file glyph; link colour on hover. */
+.octo-prose .octo-file-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: text;
+}
+.octo-prose .octo-file-link > code {
+  position: relative;
+  /* The glyph sits in the padding, out of the line: an inline SVG is a break opportunity, so "(" ended a line and the chip
+     started the next. */
+  padding-left: 24px;
+  transition-property: color;
+  transition-duration: var(--motion-fast);
+}
+.octo-prose .octo-file-link svg {
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  translate: 0 -50%;
+  color: var(--octo-fg-3);
+}
+@media (hover: hover) {
+  .octo-prose .octo-file-link:hover > code,
+  .octo-prose .octo-file-link:hover svg {
+    color: var(--octo-link);
+  }
+}
+.octo-prose .octo-file-link:focus-visible > code {
+  color: var(--octo-link);
+}
+.octo-prose blockquote {
+  border-left: 2px solid var(--octo-line-strong);
+  padding-left: 12px;
+  color: var(--octo-fg-2);
+}
+.octo-prose hr {
+  border: 0;
+  border-top: 1px solid var(--octo-line);
+  margin: var(--octo-prose-heading-top) 0;
+}
+/* Tables (decision 44): hairline rows, a medium fg-2 header, numeric columns right-aligned, 32px rows, the first column
+   sticky while the table scrolls sideways inside its own box. Used by answers and by tabular tool results. */
+.octo-table-frame {
+  --octo-table-bg: var(--octo-panel);
+  max-width: 100%;
+  width: fit-content;
+  min-width: min(100%, 240px);
+}
+.octo-table-frame.octo-table-code {
+  --octo-table-bg: var(--octo-code-bg);
+}
+.octo-prose .octo-table-frame {
+  margin: 0 0 var(--octo-prose-gap);
+}
+.octo-prose > .octo-table-frame:last-child {
+  margin-bottom: 0;
+}
+.octo-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+}
+.octo-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--octo-fg);
+}
+.octo-table th,
+.octo-table td {
+  text-align: left;
+  /* 6 + 20 + 6 = 32px rows; the hairline is an inset shadow, so it takes no height and stays on the scale. */
+  padding: 6px 12px;
+  box-shadow: inset 0 -1px 0 var(--octo-line);
+  vertical-align: top;
+  overflow-wrap: normal;
+  min-width: 4em;
+  max-width: 28em;
+  background: var(--octo-table-bg);
+}
+.octo-table th:first-child,
+.octo-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding-left: 0;
+}
+.octo-table th:last-child,
+.octo-table td:last-child {
+  padding-right: 0;
+}
+.octo-table th {
+  color: var(--octo-fg-2);
+  font-weight: 500;
+  box-shadow: inset 0 -1px 0 var(--octo-line-strong);
+  white-space: nowrap;
+}
+.octo-table td code {
+  white-space: nowrap;
+}
+/* Numeric columns (every body cell a number): right-aligned, tabular numerals. */
+.octo-table .octo-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.octo-table-frame[data-folded] tbody tr:nth-child(n + 13) {
+  display: none;
+}
+
+.octo-prose[data-streaming] > :last-child:not(ul, ol, pre, table, div)::after,
+.octo-prose[data-streaming] > :is(ul, ol):last-child > li:last-child::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: var(--octo-fg-2);
+  animation: var(--animate-caret);
+}
+
+/* Fenced code in prose: the editor's plain-text colour (lib/codePalette.ts), so a block does not change
+   colour when the highlighter's token colours arrive. */
+:root,
+:root:not([data-theme="light"]) {
+  --octo-code-text: #d8d8d8;
+}
+:root[data-theme="light"] {
+  --octo-code-text: #262626;
+}
+.octo-code {
+  color: var(--octo-code-text);
+  tab-size: 4;
+}
+
+/* ---------- Monaco: shapes the theme can't express (colours live in components/files/monaco.ts) ---------- */
+
+/* Code comments: commented lines carry a 2px accent rail in the line-decorations gutter and a faint accent tint. */
+.monaco-editor .octo-comment-rail {
+  width: 2px !important;
+  margin-left: 3px;
+  background: var(--octo-accent);
+}
+.monaco-editor .octo-comment-line {
+  background: var(--octo-comment-line);
+}
+/* Comment boxes (overlay widgets) use the UI font and our focus treatment, not Monaco's outline. */
+.monaco-editor .octo-comment-box {
+  font-family: var(--font-sans);
+}
+.monaco-editor .octo-comment-box :focus {
+  outline-color: transparent !important;
+}
+
+/* The editors' overflow-widget layer (hover, suggest, peek) on <body>: above panels and the tree column,
+   below dialogs and the palette (z 50+). It is a positioning root only. */
+:root .monaco-editor.octo-monaco-overflow {
+  position: fixed;
+  inset: 0 auto auto 0;
+  z-index: 45;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+/* Scrollbars: a slim rounded thumb inset in its track (like the app's thin scrollbars), a little
+   wider and stronger while hovered or dragged. Colours come from the theme. */
+.monaco-editor .monaco-scrollable-element > .scrollbar > .slider {
+  border-radius: 999px;
+  /* Only the colour: Monaco moves the thumb with top/left as the view scrolls (a transition there made it trail the scroll),
+     and the thicker hovered thumb is a layout change, so it snaps. */
+  transition-property: background-color;
+  transition-duration: var(--motion-fast);
+  transition-timing-function: ease-out;
+}
+/* Polish step 4, E4: a 4px thumb (was 6) centred in its track (8px in the editor, 10 in the diffs), 6px while hovered or dragged. */
+.monaco-editor .monaco-scrollable-element > .scrollbar.vertical > .slider {
+  width: 4px !important;
+  left: calc(50% - 2px) !important;
+}
+.monaco-editor .monaco-scrollable-element > .scrollbar.horizontal > .slider {
+  height: 4px !important;
+  top: calc(50% - 2px) !important;
+}
+.monaco-editor .monaco-scrollable-element > .scrollbar.vertical:hover > .slider,
+.monaco-editor .monaco-scrollable-element > .scrollbar.vertical > .slider.active {
+  width: 6px !important;
+  left: calc(50% - 3px) !important;
+}
+.monaco-editor .monaco-scrollable-element > .scrollbar.horizontal:hover > .slider,
+.monaco-editor .monaco-scrollable-element > .scrollbar.horizontal > .slider.active {
+  height: 6px !important;
+  top: calc(50% - 3px) !important;
+}
+
+/* Hover, suggest and peek widgets: overlay surface, radius 8, the popover shadow, UI type. `:root` lifts
+   these above Monaco's own rules, which load later (lazy chunk) with the same specificity. */
+:root .monaco-editor .monaco-resizable-hover,
+:root .monaco-editor .suggest-widget,
+:root .monaco-editor .suggest-details,
+:root .monaco-editor .monaco-editor-overlaymessage .message {
+  border-radius: 8px;
+  box-shadow: var(--octo-shadow-pop);
+  overflow: hidden;
+}
+:root .monaco-editor .monaco-hover {
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+}
+:root .monaco-editor .monaco-hover .hover-contents {
+  padding: 8px 12px;
+}
+:root .monaco-editor .monaco-hover code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+:root .monaco-editor .monaco-hover hr {
+  border-top-color: var(--octo-line);
+}
+:root .monaco-editor .monaco-hover .hover-row.status-bar {
+  border-top: 1px solid var(--octo-line);
+  font-size: 12px;
+}
+:root .monaco-editor .suggest-widget .monaco-list .monaco-list-row {
+  border-radius: 4px;
+}
+:root .monaco-editor .peekview-widget .head {
+  font-family: var(--font-sans);
+}
+
+/* Streak (decision 32, third pass; supersedes 21/21b and the glow of decision 12): a thin white-hot line with a
+   long-tail glow and grain everywhere, on the start screens only — Home, the empty project (behind its whole group),
+   the no-projects hero. The canvas is drawn at one buffer pixel per device pixel (capped at 2x), smooth, with no
+   dither cells (owner's audit, item 15); it overhangs by 12px (the drift that used it was removed by decision 50: a backdrop never moves). Its
+   colours are the looks in `lib/streak.ts`. */
+/* Decision 91a: the streak is a band at the top of its panel, never behind content: `--octo-band-h` tall (the screens keep
+   that area free), its lower edge fading out. */
+:root {
+  --octo-band-h: clamp(72px, 14svh, 140px);
+}
+.octo-streak-layer {
+  height: var(--octo-band-h);
+  mask-image: linear-gradient(to bottom, #000 0, #000 55%, transparent 100%);
+  animation: octo-fade-in var(--motion-slow) ease-out both;
+}
+.octo-streak {
+  position: absolute;
+  left: -12px;
+  top: -12px;
+  max-width: none;
+  image-rendering: auto;
+  opacity: 0;
+  transition-property: opacity;
+  transition-duration: var(--motion-slow);
+}
+.octo-streak[data-drawn] {
+  opacity: 1;
+}
+/* Decision 50: a backdrop never moves — no drift, no scrolling with content (its layer sits outside the scroller), no
+   selection or drag. */
+.octo-streak-layer,
+.octo-streak {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+/* The backdrop is its own composited layer, painted once: a click elsewhere (a focus ring, a menu, a sibling's
+   re-render) never makes it repaint, and translucent cards over it blend with a stable layer (owner: "flickers a
+   bit" in WebKit; not reproduced in Chromium — see the hand-back). */
+.octo-streak-layer {
+  contain: strict;
+  transform: translateZ(0);
+}
+@media (forced-colors: active) {
+  /* The heat map, token bars and day charts keep their tones (they are data, not decoration). */
+  [class*="octo-heat-"],
+  [data-day] > span,
+  .bg-fg-3 {
+    forced-color-adjust: none;
+  }
+}
+/* An empty day is opaque: over the streak a translucent cell would take the band's colour and read as activity. */
+.octo-heat-0 {
+  background: color-mix(in srgb, var(--octo-fg) 7%, var(--octo-panel));
+}
+.octo-heat-1 {
+  background: color-mix(in srgb, var(--octo-accent) 28%, var(--octo-panel));
+}
+.octo-heat-2 {
+  background: color-mix(in srgb, var(--octo-accent) 50%, var(--octo-panel));
+}
+.octo-heat-3 {
+  background: color-mix(in srgb, var(--octo-accent) 74%, var(--octo-panel));
+}
+.octo-heat-4 {
+  background: var(--octo-accent);
+}
+
+/* Decision 91a: the streak never sits behind content, so there is no scrim and no wash under the strip. The class stays
+   for the one caller (`dock/Dock.tsx`) that still renders it. */
+.octo-streak-topfade {
+  display: none;
+}
+
+/* Context meter (decision 38): bar segments and legend swatches take the part's colour. */
+.octo-ctx-messages {
+  background: var(--octo-ctx-messages);
+}
+.octo-ctx-tool_results {
+  background: var(--octo-ctx-tool_results);
+}
+.octo-ctx-summary {
+  background: var(--octo-ctx-summary);
+}
+.octo-ctx-notes {
+  background: var(--octo-ctx-notes);
+}
+.octo-ctx-tools {
+  background: var(--octo-ctx-tools);
+}
+.octo-ctx-system {
+  background: var(--octo-ctx-system);
+}
+.octo-ctx-other {
+  background: var(--octo-ctx-other);
+}
+@media (forced-colors: active) {
+  [class*="octo-ctx-"] {
+    background: CanvasText;
+  }
+}
+
+/* Decision 28's two-tone titles: the lead-in. fg-3 in light; in dark one step lighter (midway between fg-2 and fg-3), because
+   the titles sit on the streak's grain and fg-3 measured 4.36:1 at its brightest speck (≥ 4.5 needed). */
+.octo-lead {
+  color: var(--octo-fg-3);
+}
+:root:not([data-theme="light"]) .octo-lead {
+  color: color-mix(in oklab, var(--octo-fg-2) 50%, var(--octo-fg-3));
+}
+
+/* Decision 56: no "Jump to latest" under an open composer popover. */
+:root[data-composer-popover] [data-jump-room] button {
+  visibility: hidden;
+}
+
+/* composer — decision 62: one container (radius 14, raised, a hairline that brightens on focus), 15px text. */
+.octo-composer {
+  border-radius: var(--radius-xl);
+  outline: 1px solid var(--octo-line);
+  outline-offset: -1px;
+  transition: outline-color var(--motion-fast);
+}
+.octo-composer:focus-within {
+  outline-color: var(--octo-input-border);
+}
+/* Empty-session composer shell: outer rounded frame holding the inline project selector above the raised composer card. */
+.octo-composer-shell {
+  border-radius: calc(var(--radius-xl) + 2px);
+  background-color: color-mix(in srgb, var(--octo-window) 75%, var(--octo-panel));
+  outline: 1px solid var(--octo-line);
+  outline-offset: -1px;
+}
+:root[data-theme="light"] .octo-composer-shell {
+  background-color: var(--octo-window);
+}
+:root[data-theme="light"] .octo-composer-shell .octo-composer {
+  background-color: var(--octo-panel);
+}
+.octo-composer[data-floating] {
+  outline-color: transparent;
+  box-shadow: var(--octo-shadow-float);
+}
+.octo-composer[data-floating]:focus-within {
+  outline-color: var(--octo-input-border);
+}
+/* Polish step 5, P9: over a tool tab the floating composer rests as one line, the text and send (FloatingComposer sets
+   `data-collapsed` until focus is inside it): the queue band, pills and chips wait for focus, the text shows one line. */
+[data-floating-composer][data-collapsed] .octo-composer {
+  flex-direction: row;
+  align-items: center;
+  min-height: var(--spacing-ctl-lg);
+  overflow-x: clip;
+  border-radius: 12px;
+}
+[data-floating-composer][data-collapsed] .octo-composer > :not([data-composer-pad], [data-composer-row]),
+[data-floating-composer][data-collapsed] :has(> .octo-composer) > :not(.octo-composer),
+[data-floating-composer][data-collapsed] :has(> * > .octo-composer) > :not(:has(> .octo-composer)) {
+  display: none;
+}
+[data-floating-composer][data-collapsed] [data-composer-pad] {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-block: 8px;
+  padding-right: 40px;
+}
+[data-floating-composer][data-collapsed] .octo-composer-input {
+  max-height: 22px;
+  overflow: hidden;
+}
+/* The control row keeps its full width, laid out but unseen, so the chips' measured label shedding is right the moment it
+   opens; only send/stop/queue shows, at the line's end. */
+[data-floating-composer][data-collapsed] [data-composer-row] {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  padding: 0 6px;
+  visibility: hidden;
+}
+[data-floating-composer][data-collapsed] [data-composer-row] > [data-action] {
+  visibility: visible;
+}
+.octo-composer[data-drop] {
+  outline: 1px dashed var(--octo-drop-edge);
+  background-color: color-mix(in srgb, var(--octo-raised) 100%, var(--octo-drop));
+}
+.octo-composer-input {
+  /* T1: content size (the reply's 14), so the placeholder is the size of the text around it (was 15). */
+  font-size: 14px;
+  line-height: 22px;
+  min-height: 22px;
+  /* Decision 69: the scrollbar that appears at 10 lines must not change the text width (it re-wrapped the text, flipped the
+     scrollbar off again and the composer's height oscillated until React gave up: "Maximum update depth exceeded"). */
+  scrollbar-gutter: stable;
+}
+/* stress: perf (P1-5). A word of 1000+ characters (a log, base64, minified code) is set without kerning: with Inter's
+   kerning Chromium re-shapes the whole word on every relayout (50k characters: 2 s per keystroke; without: ~20 ms).
+   `data-long-word` comes from `plainShaping` / `hasLongWord` (lib/composerInput.ts); the composer also sets it on a text
+   over 100k characters. */
+[data-long-word] {
+  font-kerning: none;
+}
+/* stress: perf (P1-5). The text area grows with its text from 1 to 10 lines (decision 62) by itself where the engine can
+   (`useComposerText` measures only where it cannot): one layout per keystroke instead of a measure-and-set pair. */
+@supports (field-sizing: content) {
+  [data-composer] textarea.octo-composer-input {
+    field-sizing: content;
+    max-height: calc(22px * 10);
+    overflow-y: auto;
+  }
+}
+/* Touch screens: 16px so iOS does not zoom into the field. */
+@media (pointer: coarse) {
+  .octo-composer-input {
+    font-size: 16px;
+  }
+}
+
+/* Polish step 3, C5: a form in the conversation is content: its fields take the reply's 14px (16 under touch, as every field). */
+[data-v7-form] :is(input:not([type="checkbox"]), textarea) {
+  font-size: var(--text-base);
+}
+@media (pointer: coarse), (max-width: 767.98px) {
+  [data-v7-form] :is(input:not([type="checkbox"]), textarea) {
+    font-size: var(--text-input-touch);
+  }
+}
+
+/* Owner report §5 (line length): answers read at ~80 characters a line; the column's edges (prompt, tool rows, tables,
+   code, composer) stay at the measure. */
+[data-conv] .octo-prose :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+  max-width: var(--spacing-answer);
+}
+/* Very wide conversations (a 1920px window or more with the sidebar): the column steps up for tables and code; the type
+   size and the prose measure stay. */
+@container conv (min-width: 1240px) {
+  [data-conv] > * {
+    --spacing-measure: 820px;
+  }
+}
+
+/* compact conversation — decision 61: the conversation column adapts to its own width (container `conv`). */
+@container conv (max-width: 479.98px) {
+  [data-conv] > * {
+    --pad: 12px;
+  }
+  [data-conv] [data-time-sep],
+  [data-conv] [data-rail] {
+    display: none;
+  }
+  /* Requests are right-aligned bubbles at every width now (R2, the request bubble's block at the end of this file). */
+  [data-conv] .octo-prose {
+    overflow-wrap: anywhere;
+  }
+  [data-conv] .octo-prose :not(pre) > code {
+    word-break: break-all;
+  }
+  [data-conv] .octo-prose ul,
+  [data-conv] .octo-prose ol {
+    padding-left: 16px;
+  }
+  /* Copy and time under a reply: on hover or tap only. */
+  [data-conv] [data-turn-footer] {
+    opacity: 0;
+    transition: opacity var(--motion-fast);
+  }
+  [data-conv] article:hover [data-turn-footer],
+  [data-conv] article:focus-within [data-turn-footer],
+  [data-conv] article:active [data-turn-footer] {
+    opacity: 1;
+  }
+}
+/* Below 360: the composer's chips are icons only. */
+@container conv (max-width: 359.98px) {
+  [data-conv] [data-composer-chip] {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+  [data-conv] [data-composer-chip] [data-chip-label] {
+    display: none;
+  }
+}
+
+/* Decision 45 (b): the streaming line and the activity shimmer pause while hidden or off-screen ([data-paused]) and stand
+   still under reduced motion. Decision 87: the composer has no glow and no coloured edge. */
+[data-paused] .octo-shimmer-sweep,
+[data-paused] .octo-shimmer-text {
+  animation-play-state: paused;
+}
+
+/* While Octo's local service does not answer (`data-offline` on the app root), whatever was running is not known to be: the
+   working rings, the activity shimmer and the needs-you pulse stand still, and the working ring is drawn in the quiet tone. */
+[data-offline] :is(.octo-ring-turn, .octo-ring-pulse, .octo-shimmer-sweep, .octo-shimmer-text) {
+  animation-play-state: paused;
+}
+[data-offline] [data-state-glyph="working"] {
+  color: var(--octo-fg-3);
+}
+
+/* Streaming cursor: subtle opacity pulse instead of masking the last 24px of typed characters. */
+.octo-prose[data-streaming] > :last-child:not(ul, ol, pre, table, div)::after,
+.octo-prose[data-streaming] > :is(ul, ol):last-child > li:last-child::after {
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  border-radius: var(--radius-2xs);
+  background: var(--octo-accent);
+  animation: octo-stream-caret 1.1s ease-in-out infinite;
+}
+@keyframes octo-stream-caret {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+[data-paused] .octo-prose[data-streaming] > :last-child::after,
+[data-paused] .octo-prose[data-streaming] > :is(ul, ol):last-child > li:last-child::after {
+  animation-play-state: paused;
+}
+
+/* Collapsible activity steps: the rows open at once (their height is layout, never animated: the conversation below would
+   reflow on every frame) and fade in. */
+.octo-drawer-rows {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: opacity var(--motion-base) ease-out;
+}
+.octo-drawer-rows[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+/* Calm live entrance for newly appended prompts/turns after initial load. */
+@keyframes octo-msg-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+[data-live-enter] {
+  animation: octo-msg-in var(--motion-base) var(--ease-out-quint) both;
+}
+
+/* The activity line's shimmer: a bright copy of the label seen through a moving soft window. The window and the
+   copy move in opposite directions by the same amount, so the copy stays on the label: transform only. */
+.octo-shimmer {
+  position: relative;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.octo-shimmer-sweep {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(90deg, transparent 30%, #000 50%, transparent 70%);
+  transform: translateX(-100%);
+}
+.octo-shimmer-text {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--octo-fg);
+  transform: translateX(100%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .octo-shimmer-sweep {
+    animation: octo-shimmer-sweep 1.8s linear infinite;
+  }
+  .octo-shimmer-text {
+    animation: octo-shimmer-hold 1.8s linear infinite;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .octo-shimmer-sweep {
+    display: none;
+  }
+}
+@keyframes octo-shimmer-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes octo-shimmer-hold {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+/* v7 */
+/* Approvals, forms, the queue and the changes view (components/v7). Decision 81: a card that waits for the person has the
+   neutral border of any card (no warn edge, no pulse); a key hint is a faint chip, never a coloured box. Changed lines
+   flash their add/remove tone for 600 ms and fade; under reduced motion the global rule above cuts the motion. */
+.monaco-editor .octo-v7-flash-add {
+  animation: octo-v7-flash-add 600ms ease-out 1 both;
+}
+.monaco-editor .octo-v7-flash-del {
+  animation: octo-v7-flash-del 600ms ease-out 1 both;
+}
+@keyframes octo-v7-flash-add {
+  from {
+    background: color-mix(in srgb, var(--octo-ok) 45%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+@keyframes octo-v7-flash-del {
+  from {
+    background: color-mix(in srgb, var(--octo-err) 45%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+/* Decision 47: the line comment "+" in the glyph lane of the diff's modified side, on the hovered line only. */
+.monaco-editor .octo-v7-plus {
+  cursor: pointer;
+}
+.monaco-editor .octo-v7-plus::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: var(--radius-xs);
+  background:
+    linear-gradient(var(--octo-primary-fg), var(--octo-primary-fg)) center / 8px 2px no-repeat,
+    linear-gradient(var(--octo-primary-fg), var(--octo-primary-fg)) center / 2px 8px no-repeat,
+    var(--octo-primary);
+}
+.monaco-editor .octo-v7-commented {
+  background: var(--octo-comment-line);
+}
+.monaco-editor .octo-v7-rail {
+  width: 2px !important;
+  margin-left: 3px;
+  background: var(--octo-accent);
+}
+/* completion */
+/* Inline completion (inline completion design, decision 7). Ghost text in the line-number tone (a step below comments, so a
+   suggestion does not read as code), never italic. */
+.monaco-editor .ghost-text-decoration,
+.monaco-editor .ghost-text-decoration-preview,
+.monaco-editor .ghost-text {
+  color: var(--vscode-editorLineNumber-foreground, var(--octo-fg-3)) !important;
+  font-style: normal !important;
+}
+/* "Thinking": a 1px line under the status item with a light sweeping across it; a still line under reduced motion. */
+.octo-completion-shimmer {
+  position: absolute;
+  inset: auto 6px 0;
+  height: 1px;
+  overflow: hidden;
+  background: var(--octo-line-strong);
+}
+.octo-completion-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 50%;
+  background: linear-gradient(90deg, transparent, var(--octo-fg-2), transparent);
+  animation: octo-completion-sweep 900ms cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+@keyframes octo-completion-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(200%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .octo-completion-shimmer::after {
+    animation: none;
+    width: 100%;
+    background: var(--octo-fg-3);
+  }
+}
+/* /completion */
+/* settings — decision 59 (the settings page) and decision 53 (the connect screen). */
+@theme {
+  /* Below this width the settings navigation is a select on top and rows stack their control under the text. */
+  --breakpoint-settings: 760px;
+  --spacing-settings: 780px; /* the settings page's content column */
+  --spacing-connect: 928px; /* the connect screen: 880px of content for the list and the detail side by side (decision 91b) */
+}
+/* Settings → Appearance → Reduce motion: whatever the system says. */
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0s !important;
+  scroll-behavior: auto !important;
+}
+/* end settings */
+/* polish step 6a: settings — one composed page for every section (S1-S7). */
+@theme {
+  /* S1: one content column for every section, Providers included (decision 59 had 780 for rows and the full width for
+     Providers, so the page's left edge moved between sections). Home's column is the same 880. */
+  --spacing-settings-page: 880px;
+  /* S1: the one left edge inside the column: page title, group captions, row labels and footers sit this far in from the
+     surfaces' edge (a row's own side padding). */
+  --spacing-settings-inset: var(--spacing-card); /* retest3: Settings rows share the card inset (12) with conversation cards */
+  /* S2: a settings row is a label line (20) and one explanation line (16) between 12px paddings: 60. A row without an
+     explanation keeps the height and centres its one line. */
+  --spacing-settings-row: 60px;
+  /* S1: Providers' list column inside the one list | detail surface (decision 89 a). */
+  --spacing-settings-list: 288px;
+}
+/* S7: Providers in one column (the list alone) marks no row as chosen until a row is pressed, as `ListDetail` does (P7). */
+@container providers (width < 768px) {
+  [data-unpicked] .group:has(> [data-row][aria-current="true"]) {
+    background-color: transparent;
+    --row-tint: transparent; /* the row actions' overlay (ListRow) matches the row */
+  }
+}
+/* end polish step 6a */
+/* review */
+/* Pull-request review (RV2): a finding's lines in the diff get a warn tint and rail; comments reuse the v7 rail. */
+.monaco-editor .octo-review-finding {
+  background: color-mix(in srgb, var(--octo-warn) 10%, transparent);
+}
+.monaco-editor .octo-review-finding-rail {
+  width: 2px !important;
+  margin-left: 3px;
+  background: var(--octo-warn);
+}
+/* /review */
+
+/* component library tokens (decision 90) */
+@theme {
+  /* One control size scale (lib/controls.ts). The older spellings below are aliases of the same pixels. */
+  --spacing-ctl-xs: 24px;
+  --spacing-ctl-sm: 28px;
+  --spacing-ctl-md: 32px;
+  --spacing-ctl-lg: 40px;
+  --spacing-chip: var(--spacing-ctl-xs);
+  --spacing-row: var(--spacing-ctl-sm);
+  --spacing-row-nav: var(--spacing-ctl-md);
+  --spacing-bar: var(--spacing-ctl-lg);
+  /* Minimum hit area of any control on a touch screen. */
+  --spacing-touch: 40px;
+}
+
+/* Coarse pointer or narrow window: written once here, never in a feature. */
+@custom-variant touch {
+  /* A comma list in the one-line form dropped the narrow-window half (B1 found it at 390px): two blocks instead. */
+  @media (pointer: coarse) {
+    @slot;
+  }
+  @media (max-width: 767.98px) {
+    @slot;
+  }
+}
+
+/* An invisible 40px hit area around a control that keeps its visual size (static elements only; a control that is
+   absolute, fixed or sticky positions itself and must wrap itself if it needs the target). */
+@utility touch-hit {
+  @media (pointer: coarse), (max-width: 767.98px) {
+    &:where(:not(.absolute, .fixed, .sticky)) {
+      position: relative;
+    }
+    &::after {
+      content: "";
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--spacing-touch)) / 2));
+      inset-inline: min(0px, calc((100% - var(--spacing-touch)) / 2));
+    }
+  }
+}
+
+/* ScrollArea gutter="stable": reserve the scrollbar's width on its own edge. */
+@utility scroll-gutter {
+  scrollbar-gutter: stable;
+}
+
+/* Key hint (KeyHint): 16px box, 12px text, hairline in the current colour. */
+.octo-keyhint {
+  display: inline-grid;
+  min-width: 16px;
+  height: 16px;
+  place-items: center;
+  /* 5c: the text keeps its colour's full contrast (opacity .7 was 3.1–4.2:1 on fg-3 / fg-2 in light); the quieting is in the
+     frame alone, which is decoration. */
+  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+  border-radius: var(--radius-2xs);
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+}
+
+/* Skeleton (decision 77): a static muted shape; it pulses only while loading is in progress (decision 76). */
+.octo-skeleton {
+  background: color-mix(in srgb, var(--octo-fg) 8%, transparent);
+}
+.octo-skeleton[data-shimmer] {
+  animation: octo-skeleton-pulse 1.4s ease-in-out infinite;
+}
+@keyframes octo-skeleton-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .octo-skeleton[data-shimmer] {
+    animation: none;
+  }
+}
+/* parity */
+/* Decision 70: the composer's highlight layer colors what it understands; color and background tint only, never a change of metrics. */
+[data-composer-highlight] {
+  scrollbar-width: none;
+}
+[data-composer-highlight]::-webkit-scrollbar {
+  display: none;
+}
+:where([data-composer-highlight] mark) {
+  background: transparent;
+  color: inherit;
+}
+.octo-mention {
+  border-radius: var(--radius-2xs);
+  background: color-mix(in srgb, var(--octo-accent) 18%, transparent);
+  color: var(--octo-link);
+}
+.octo-command {
+  border-radius: var(--radius-2xs);
+  background: var(--octo-active);
+  color: var(--octo-fg);
+}
+.octo-md-heading {
+  color: var(--octo-accent);
+}
+.octo-md-tag {
+  border-radius: var(--radius-2xs);
+  background: color-mix(in srgb, var(--octo-ok) 16%, transparent);
+  color: var(--octo-ok);
+}
+.octo-md-code {
+  border-radius: var(--radius-2xs);
+  background: var(--octo-hover-in-card);
+  color: var(--octo-warn);
+}
+.octo-md-quote {
+  color: var(--octo-fg-3);
+}
+.octo-md-list {
+  color: var(--octo-accent);
+}
+.octo-md-link {
+  color: var(--octo-link);
+}
+.octo-md-strong {
+  color: var(--octo-fg);
+}
+.octo-md-em {
+  color: var(--octo-fg-2);
+}
+[data-column] [data-prompt] {
+  margin-inline: -12px;
+}
+/* /parity */
+
+/* ── polish step 6b: review ─────────────────────────────────────────────────────────────────────────────────────────────
+   R4: a thread card in the diff keeps a reading width from the code's left edge (`max-w-thread`).
+   R5: the segmented track inside the review (Pending's Comments | Findings, the overview's sections) and the submit sheet
+   reads in light: the global 5 % tint is faint on the white overlay; 8 % here. Dark keeps the global track. */
+@theme {
+  --container-thread: 720px;
+}
+:root[data-theme="light"] :where([data-review], [data-review-sheet]) {
+  --octo-seg-track: rgb(0 0 0 / 0.08);
+}
+/* A thread in the diff sits in Monaco's view-zone layer, under the code's line layer: lift it so a pointer reaches its Reply,
+   links and fold buttons (found while taking these shots: Monaco's `view-lines` took every click on the card). */
+.octo-thread-zone {
+  z-index: 1;
+}
+/* Polish pass F3, item 5: a wholly added or removed line carries Monaco's word decoration over the whole line too, so it read
+   at line + word strength (≈ 25 %) where the conversation's diff shows a whole line at the line tint (9 / 8 %). The word tint
+   stays for words changed inside a changed line. R2: the same in Changes (`data-v7-changes`, ChangesView). */
+:is([data-review], [data-v7-changes]) .monaco-diff-editor .view-overlays .cdr:is(.char-insert, .char-delete)[style*="width:100%"] {
+  background: transparent;
+}
+/* Polish pass F3 (B4.3): focus the app moved by itself (a panel opening, a list's search field) draws no ring until the
+   first key pressed there (lib/quietFocus.ts). */
+:root [data-quiet-focus]:focus-visible,
+:root [data-quiet-root] :focus-visible {
+  box-shadow: none;
+}
+/* A framed field (FIELD_FRAME) darkens its edge while focused: not for that programmatic focus either. */
+:root [data-quiet-root] :has(> input:focus-visible),
+:root :has(> input[data-quiet-focus]:focus-visible) {
+  border-color: var(--octo-field-edge);
+}
+:root [data-quiet-root] :has(> input:focus-visible)::after,
+:root :has(> input[data-quiet-focus]:focus-visible)::after {
+  border-color: var(--octo-field-edge);
+}
+/* ── /polish step 6b: review ── */
+/* cross-part leftovers (after the six polish steps) */
+/* (b) A project row's name takes the room an empty meta leaves. The 24px column comes back only while the sessions chevron
+   shows there (hover, focus, open; always on touch and when narrow: T2), so the chevron never covers the name. A row without
+   the chevron also lets a short meta ("1h") take only its own width. */
+[data-project-row] span:has(> [data-project-meta]:empty) {
+  display: none;
+}
+[data-project-row] [data-project-meta] {
+  min-width: 0;
+}
+/* end cross-part leftovers */
+
+/* audit B: inline code is a whole pixel size (retest3 evenness): 13px in 14px prose, 12px in 13px prose (the compact prose pins
+   12px in Prose.css); a tall popup list fades its scrolling ends by 12px (the data-fade attribute comes from useScrollFade, like fade-y). */
+.octo-prose :not(pre) > code {
+  font-size: 13px;
+}
+.octo-prose .octo-table :not(pre) > code,
+.octo-prose.octo-prose-sm :not(pre) > code {
+  font-size: 12px;
+}
+.octo-popup-fade[data-fade~="start"] {
+  mask-image: linear-gradient(to bottom, transparent, #000 12px);
+}
+.octo-popup-fade[data-fade~="end"] {
+  mask-image: linear-gradient(to top, transparent, #000 12px);
+}
+.octo-popup-fade[data-fade~="start"][data-fade~="end"] {
+  mask-image: linear-gradient(to bottom, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+}
+
+/* audit C: typeface. Inter 4.1 (OFL-1.1, `assets/fonts/LICENSE.txt`), bundled: the app runs offline and the UI never fetches
+   a font from the network. Variable weight (100–900), the text optical size; one woff2 per unicode-range subset (Latin,
+   Latin Extended, Cyrillic, Cyrillic Extended; upright and italic), so a page fetches only the subsets its text uses — the
+   Latin upright file (48 kB) on first paint, which the host preloads. `font-display: swap`: the system stack shows until it
+   arrives, never invisible text. The files are cut from the official release by `assets/fonts/subset.sh`.
+   Features: cv11 (single-storey a) and ss01 (open digits) for a calmer, rounder texture at 12–14px; `calt` and kerning stay
+   on (Inter's defaults); tabular figures come from the existing `tabular-nums` utilities (tnum is kept in the subset).
+   Tracking follows Inter's dynamic metrics: none at 12–14px, slightly negative from the 16px title up. The mono stack is
+   unchanged (Monaco keeps its own font setting). Another host gets all of this by importing `@octo/ui/styles.css`; it may
+   preload `@octo/ui/assets/fonts/inter-latin.woff2` as the desktop host does (apps/desktop/src/main.tsx). */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-latin.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2199, U+21A9, U+21B5,
+    U+21E7, U+2212, U+2215, U+2303, U+2318, U+2325, U+232B, U+238B, U+2713, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-latin-ext.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-cyrillic.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-cyrillic-ext.woff2") format("woff2");
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-italic-latin.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2199, U+21A9, U+21B5,
+    U+21E7, U+2212, U+2215, U+2303, U+2318, U+2325, U+232B, U+238B, U+2713, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-italic-latin-ext.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-italic-cyrillic.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-italic-cyrillic-ext.woff2") format("woff2");
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@layer base {
+  body {
+    font-feature-settings: "cv11", "ss01";
+  }
+  code,
+  kbd,
+  pre,
+  samp {
+    font-feature-settings: normal;
+  }
+}
+@theme {
+  --text-title--letter-spacing: -0.011em;
+  --text-display--letter-spacing: -0.017em;
+  --text-figure--letter-spacing: -0.019em;
+}
+/* end audit C: typeface */
+
+/* round 3: narrow — the composer's control row sheds by the composer's own width (container queries, not the window): the
+   model chip's label truncates first (it shrinks), then goes icon-only; the mode chip goes icon-only before it. "+", the
+   context ring and Send / Stop never shrink. The accessible names keep the labels. */
+[data-composer-row] [data-model-picker] {
+  flex-shrink: 1;
+}
+@container composer (width < 460px) {
+  [data-composer-row] :is([data-chip="mode"], [data-chip="access"]) {
+    width: var(--spacing-ctl-sm);
+    justify-content: center;
+    padding-inline: 0;
+  }
+  [data-composer-row] :is([data-chip="mode"], [data-chip="access"]) [data-chip-label] {
+    display: none;
+  }
+}
+@container composer (width < 380px) {
+  [data-composer-row] [data-model-picker] {
+    flex-shrink: 0;
+    width: var(--spacing-ctl-sm);
+    justify-content: center;
+    padding-inline: 0;
+  }
+  [data-composer-row] [data-model-picker] [data-chip-label] {
+    display: none;
+  }
+}
+/* round 3: words (B8): a table fills its column, a table wider than it fades at the edge that has more (the scrollbar stays),
+   and an unbroken token in a cell breaks instead of stretching the table. */
+.octo-table-frame {
+  width: 100%;
+}
+.octo-table-scroll[data-fade~="end"] {
+  mask-image: linear-gradient(to left, transparent, #000 24px);
+}
+.octo-table-scroll[data-fade~="start"] {
+  mask-image: linear-gradient(to right, transparent, #000 24px);
+}
+.octo-table-scroll[data-fade~="start"][data-fade~="end"] {
+  mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+}
+.octo-table td {
+  overflow-wrap: anywhere;
+}
+.octo-table td code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* ── retest3: evenness ───────────────────────────────────────────────────────────────────────────────────────────────────
+   G7 icon stroke: lucide scales its stroke with the icon (2px of 24 → 1.17px at 14) unless told otherwise, and the
+   `absoluteStrokeWidth` attribute fix reads as 2.57 / 2.25 in computed style. One rule instead: the stroke is `--icon-stroke`
+   in screen pixels (non-scaling) at every size, for every lucide icon whether it comes through Glyph or directly, so no
+   per-use `strokeWidth` can drift. The custom drawings (StateGlyph ring family, ProviderMark initials, ContextRing) draw
+   the same 1.5px in their own 1:1 viewBoxes; vendor logos are filled masks. */
+svg.lucide {
+  stroke-width: var(--icon-stroke);
+}
+svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
+  vector-effect: non-scaling-stroke;
+}
+/* G8 mono is whole pixels, set where it is defined (not here): inline code 13px in 14px prose (`.octo-prose` above), 12px in
+   compact 13px prose (Prose.css); code blocks and tables 12px. Line boxes are the parent's, so the swap from 0.93em changes no
+   height. */
+
+/* retest3: toolcalls (toolpolish) — the inline diff of an edit call and of a turn's changed files. One grid for every row:
+   [old no.][new no.][sign][code], number columns as wide as the diff's largest number (`--diff-digits`, set by DiffPreview),
+   12px inset, 8px between columns, the sign in its own 1ch. Changed rows: a quiet tint on the code, a stronger one on the
+   gutter cell (opaque, so the sticky gutter hides code scrolled under it); only the tint carries the colour (numbers and signs
+   stay fg-3). Code never wraps: the code area scrolls sideways under the fixed gutter and fades at an edge with more. */
+.octo-diff {
+  --diff-gap: 8px;
+  --diff-gutter-w: calc(12px + 1ch + var(--diff-gap));
+  --diff-add: color-mix(in srgb, var(--octo-ok) 14%, transparent);
+  --diff-del: color-mix(in srgb, var(--octo-err) 12%, transparent);
+  --diff-add-gutter: color-mix(in srgb, var(--octo-ok) 22%, var(--octo-code-bg));
+  --diff-del-gutter: color-mix(in srgb, var(--octo-err) 20%, var(--octo-code-bg));
+}
+.octo-diff[data-numbered] {
+  --diff-gutter-w: calc(12px + 2 * var(--diff-digits) + 1ch + 3 * var(--diff-gap));
+}
+.octo-diff:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--octo-focus);
+}
+.octo-diff[data-fade~="end"] {
+  mask-image: linear-gradient(to left, transparent, #000 24px);
+}
+.octo-diff[data-fade~="start"] {
+  mask-image: linear-gradient(to right, #000 var(--diff-gutter-w), transparent var(--diff-gutter-w), #000 calc(var(--diff-gutter-w) + 24px));
+}
+.octo-diff[data-fade~="start"][data-fade~="end"] {
+  mask-image: linear-gradient(
+    to right,
+    #000 var(--diff-gutter-w),
+    transparent var(--diff-gutter-w),
+    #000 calc(var(--diff-gutter-w) + 24px),
+    #000 calc(100% - 24px),
+    transparent
+  );
+}
+.octo-diff-rows {
+  width: max-content;
+  min-width: 100%;
+  padding-block: 4px;
+}
+.octo-diff-row {
+  display: flex;
+}
+.octo-diff-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--diff-gap);
+  padding-inline: 12px var(--diff-gap);
+  background: var(--octo-code-bg);
+  color: var(--octo-fg-3);
+  user-select: none;
+}
+.octo-diff-num {
+  display: inline-flex;
+  justify-content: flex-end;
+  width: var(--diff-digits);
+  font-variant-numeric: tabular-nums;
+}
+.octo-diff-sign {
+  width: 1ch;
+  text-align: center;
+}
+.octo-diff-code {
+  padding-inline-end: 12px;
+  white-space: pre;
+  color: var(--octo-fg);
+}
+.octo-diff-row[data-kind="gap"] .octo-diff-code {
+  color: var(--octo-fg-3);
+}
+.octo-diff-row[data-kind="add"] {
+  background: var(--diff-add);
+}
+.octo-diff-row[data-kind="del"] {
+  background: var(--diff-del);
+}
+.octo-diff-row[data-kind="add"] .octo-diff-gutter {
+  background: var(--diff-add-gutter);
+}
+.octo-diff-row[data-kind="del"] .octo-diff-gutter {
+  background: var(--diff-del-gutter);
+}
+/* A command's output: wrapped like a terminal (`pre-wrap`, long words broken), each line hanging 2ch under its own start. */
+.octo-out-line {
+  display: block;
+  padding-inline-start: 16px;
+  text-indent: -16px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.octo-diff-go {
+  cursor: pointer;
+}
+.octo-diff-go:hover {
+  color: var(--octo-link);
+}
+.octo-diff-go:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--octo-focus);
+}
+/* R2: line numbers are 20px apart: their touch zone (touch-hit, 44px) stays within the row, or each one covered its
+   neighbours' and the action line's. */
+@media (pointer: coarse), (max-width: 767.98px) {
+  .octo-diff-go::after {
+    inset-block: 0;
+  }
+}
+
+/* ============================================================================================================================
+   Direction 7: the phone layout. `OctoApp` sets `data-phone` on the root element from `PHONE_QUERY` (lib/phone.ts); the `phone:`
+   variant and every rule below hang off it, so the desktop and tablet layouts are untouched while it is off. WebKit notes: no
+   `:has`, no container queries and no `dvh` here; `env(safe-area-inset-*)` needs `viewport-fit=cover` in the host's viewport
+   meta (0 without it); the visual-viewport variables come from `app/phone/useVisualViewport` (100vh before it runs). */
+@custom-variant phone (&:where([data-phone], [data-phone] *));
+
+:root[data-phone] {
+  /* Every touch target is at least 44px: the touch row and control size, and the hit area around smaller controls. */
+  --spacing-ctl-lg: 44px;
+  --spacing-touch: 44px;
+  --octo-safe-top: env(safe-area-inset-top, 0px);
+  --octo-safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* The header line under the top inset; Home and Settings leave this much room above their content (`pt-bar`). */
+  --spacing-bar: calc(var(--spacing-ctl-lg) + var(--octo-safe-top));
+  -webkit-tap-highlight-color: transparent;
+}
+/* The keyboard covers the home indicator: no bottom inset while it is up. */
+:root[data-phone][data-keyboard] {
+  --octo-safe-bottom: 0px;
+}
+/* The frame follows the visual viewport: the composer sits right above the on-screen keyboard. */
+:root[data-phone] [data-app-root] {
+  position: fixed;
+  inset-inline: 0;
+  top: var(--octo-vv-top, 0px);
+  height: var(--octo-vvh, 100vh);
+}
+[data-phone] :is(a, button, [role="button"], [role="treeitem"]) {
+  -webkit-touch-callout: none;
+}
+.octo-phone-header {
+  height: var(--spacing-bar);
+  padding-top: var(--octo-safe-top);
+}
+.octo-phone-tip {
+  bottom: calc(var(--octo-kb, 0px) + var(--octo-safe-bottom) + 96px);
+}
+
+/* Sheets (primitives/Sheet): from the bottom, at most 85% of what is visible, above the keyboard; or the whole screen. */
+.octo-sheet[data-sheet="bottom"] {
+  bottom: var(--octo-kb, 0px);
+  max-height: calc(var(--octo-vvh, 100vh) * 0.85);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding-bottom: var(--octo-safe-bottom);
+  box-shadow: var(--octo-shadow-pop);
+  animation: octo-sheet-in var(--motion-slow) var(--ease-out-quint) both;
+}
+.octo-sheet[data-sheet="full"] {
+  top: var(--octo-vv-top, 0px);
+  height: var(--octo-vvh, 100vh);
+  padding-top: var(--octo-safe-top);
+  padding-bottom: var(--octo-safe-bottom);
+  background: var(--octo-window);
+  animation: octo-fade-in var(--motion-base) var(--ease-out-quint) both;
+}
+.octo-sheet[data-state="closed"] {
+  animation: octo-sheet-out var(--motion-fast) ease-out both;
+}
+@keyframes octo-sheet-in {
+  from {
+    opacity: 0;
+    translate: 0 24px;
+  }
+}
+@keyframes octo-sheet-out {
+  to {
+    opacity: 0;
+    translate: 0 16px;
+  }
+}
+
+/* Menus, popovers and pickers (Menu, Popover, Select, Picker, the model and folder pickers) become bottom sheets: one rule for
+   every popup portalled into the body. The scrim is a shadow; `useTouchHelpers` keeps a tap on it from reaching what is
+   under it. The typing menus (slash, mention) stay above the composer, full width. */
+:root[data-phone] body > :is(.octo-overlay, [role="menu"]).fixed:not([data-slash-menu], [data-composer-menu][data-inline]) {
+  inset: auto 0 var(--octo-kb, 0px) 0 !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  max-height: calc(var(--octo-vvh, 100vh) * 0.85) !important;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important;
+  padding-bottom: var(--octo-safe-bottom);
+  box-shadow:
+    0 0 0 100vmax var(--octo-scrim),
+    var(--octo-shadow-pop) !important;
+  animation: octo-sheet-in var(--motion-slow) var(--ease-out-quint) both;
+}
+:root[data-phone] body > :is([data-slash-menu], [data-composer-menu][data-inline]) {
+  left: 8px !important;
+  right: 8px;
+  width: auto !important;
+}
+:root[data-phone] body > [role="menu"].fixed {
+  padding: 8px;
+}
+/* 5a: in the slash menu a command's description is its second line and may take two (it was cut at 390). */
+:root[data-phone] [data-slash-menu] [role="option"] {
+  height: auto;
+  min-height: var(--spacing-ctl-lg);
+  padding-block: 6px;
+}
+:root[data-phone] [data-slash-menu] [role="option"] > span:nth-child(2) > span:last-child:not(:first-child) {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+/* The command palette is a full-screen search. */
+:root[data-phone] [role="dialog"][aria-label="Command palette"] {
+  position: fixed;
+  inset: var(--octo-vv-top, 0px) 0 auto 0;
+  height: var(--octo-vvh, 100vh);
+  max-height: none;
+  max-width: none;
+  border-radius: 0;
+  padding-top: var(--octo-safe-top);
+  padding-bottom: var(--octo-safe-bottom);
+}
+
+/* Conversation: body text 16/24, the column is the measure; no turn rail; code scrolls inside its block. */
+[data-phone] [data-conv] .octo-prose:not(.octo-prose-compact, .octo-prose-sm) {
+  font-size: 16px;
+  line-height: 24px;
+}
+[data-phone] [data-conv] .octo-prose:not(.octo-prose-compact, .octo-prose-sm) :not(pre) > code {
+  font-size: 14px;
+}
+[data-phone] [data-conv] .octo-prose :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+  max-width: none;
+}
+[data-phone] [data-conv] [data-bubble] {
+  font-size: 16px;
+  line-height: 24px;
+}
+[data-phone] [data-conv] [data-rail] {
+  display: none;
+}
+[data-phone] [data-conv] pre {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+/* Tool rows and their bodies: no second indent, the whole column. */
+[data-phone] [data-activity-body] {
+  padding-left: 0;
+}
+/* A3: a one-line step row reads 32px; its button keeps a 44px touch zone (6px over and under), and rows that follow each other
+   sit 12px apart, so the zones meet and never overlap. Two-line (stacked) rows keep their 44. */
+[data-phone] [data-conv] [data-activity-row] > [class~="touch:h-ctl-lg"] {
+  height: var(--spacing-ctl-md);
+}
+[data-phone] [data-conv] [data-activity-row] > [class~="touch:h-ctl-lg"] > [data-row] {
+  position: relative;
+}
+[data-phone] [data-conv] [data-activity-row] > [class~="touch:h-ctl-lg"] > [data-row]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block: calc((var(--spacing-ctl-md) - var(--spacing-touch)) / 2);
+}
+[data-phone] [data-conv] article > :is([data-activity-row], [data-thinking], [data-activity]) + :is([data-activity-row], [data-thinking], [data-activity]) {
+  margin-top: -4px;
+}
+[data-phone] [data-conv] [data-activity-body] > [data-activity-row] + [data-activity-row] {
+  margin-top: 12px;
+}
+/* What a row opens starts under the row's touch zone, and a row's own actions (an agent's Retry and "Open session") stand
+   apart from its text and from each other, so no two targets share a finger's area (A9.6). */
+[data-phone] [data-conv] [data-activity-body] {
+  margin-top: 12px;
+}
+[data-phone] [data-conv] [data-activity-row] [data-row] + span {
+  gap: 20px;
+  padding-left: 12px;
+}
+/* The per-turn footer wraps instead of running out of the column. */
+[data-phone] [data-conv] [data-turn-footer] {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+/* Composer: one line — "+", the field (growing to six lines), the context ring and Send/Stop; a queue chip above it. The
+   control row's own box dissolves into the composer's line (`display: contents`); mode, model and folder are in the "+" sheet. */
+[data-phone] [data-composer] {
+  flex-flow: row wrap;
+  align-items: flex-end;
+  padding: 2px;
+}
+[data-phone] [data-composer] > * {
+  flex-basis: 100%;
+}
+[data-phone] [data-composer] > [data-composer-pad] {
+  order: 2;
+  flex: 1 1 0;
+  min-width: 0;
+  padding-block: 12px;
+}
+[data-phone] [data-composer] [data-composer-row] {
+  display: contents;
+}
+[data-phone] [data-composer-row] > * {
+  order: 3;
+}
+[data-phone] [data-composer-row] > :first-child {
+  order: 1;
+}
+[data-phone] [data-composer-row] > [data-composer-spacer] {
+  display: none;
+}
+[data-phone] :is(button, a).touch-hit:where(.size-ctl-xs, .size-ctl-sm, .size-ctl-md) {
+  width: var(--spacing-ctl-lg);
+  height: var(--spacing-ctl-lg);
+}
+[data-phone] button.touch-hit:where(.h-ctl-xs, .h-ctl-sm, .h-ctl-md) {
+  min-width: var(--spacing-ctl-lg);
+  height: var(--spacing-ctl-lg);
+}
+/* Touch controls sit on the field's baseline with a full 44px box. */
+[data-phone] [data-composer-row] > button {
+  min-width: var(--spacing-ctl-lg);
+  height: var(--spacing-ctl-lg);
+  margin: 0 2px;
+}
+[data-phone] [data-key-hint][class~="max-sm:hidden"] {
+  display: none;
+}
+[data-phone] [data-jump-room] {
+  height: var(--spacing-ctl-lg);
+}
+[data-phone] [data-composer-row] > :is([data-composer-size], [data-composer-note]) {
+  align-self: center;
+}
+[data-phone] [data-composer] .octo-composer-input {
+  padding-inline: 4px;
+  font-size: 16px;
+  line-height: 20px;
+  /* One line is one line: the empty field is as tall as a line of text (was 22, so the second line grew it by 18). */
+  min-height: 20px;
+  /* Six lines, fewer when the keyboard leaves little room: the conversation keeps most of the screen. */
+  max-height: min(120px, calc(var(--octo-vvh, 100vh) * 0.2));
+}
+[data-phone] [data-composer-wrap] {
+  padding-bottom: var(--octo-safe-bottom);
+}
+
+/* Files: the tree is the Files panel itself (the header names it); a file opens as its own screen, its bar reduced to the
+   path and the file's "⋯" (no page switch, no back and forward: the system Back returns to the tree). */
+[data-phone] [data-file-bar="tree"] {
+  display: none;
+}
+[data-phone] [data-file-bar="file"] > button {
+  display: none;
+}
+/* Approval and form cards: the whole column, their buttons 44px. */
+[data-phone] :is([data-v7-approval], [data-v7-form]) button:not([aria-label], [role="radio"], [role="checkbox"]) {
+  min-height: var(--spacing-touch);
+  padding-inline: 16px;
+}
+/* A group row's caption disclosure keeps its text on the row's edge, as `-ml-2` does on the desktop. */
+[data-phone] [data-v7-approval] [data-approval-details] {
+  margin-inline-start: -16px;
+}
+/* The desktop's window row and status bar have no place on the phone: the header and the "⋯" sheet carry what they hold. */
+[data-phone] :is([data-title-bar], header[aria-label="Window"]:not([data-phone-header]), [data-status-bar]) {
+  display: none;
+}
+[data-phone]
+  [data-composer-row]
+  > :not(:first-child, [data-composer-spacer], [data-composer-size], [data-composer-note], [role="status"], [data-context-ring], button[data-action]) {
+  display: none;
+}
+/* An empty field is one line: the placeholder never wraps the composer to two. */
+[data-phone] [data-composer] textarea.octo-composer-input:placeholder-shown {
+  height: 20px;
+  overflow: hidden;
+}
+[data-phone] [data-strip] {
+  display: none;
+}
+/* Home: a lower band, the sentence at title size, the four tiles in two rows of two (A9.5: a sideways row cut its third tile
+   mid-word and hid the fourth), then the list of sessions that need you and that work (the triage list) right under them. */
+[data-phone] [data-home] {
+  --octo-band-h: 32px;
+}
+[data-phone] #home-title {
+  font-size: var(--text-title);
+  line-height: 24px;
+}
+[data-phone] [data-home] [aria-label="Filter projects by state"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+/* Diffs: a compact gutter (the new line's number and the sign; the old number goes), so code gets the width. */
+[data-phone] .octo-diff {
+  --diff-gap: 4px;
+}
+[data-phone] .octo-diff[data-numbered] {
+  --diff-gutter-w: calc(8px + var(--diff-digits) + 1ch + 2 * var(--diff-gap));
+}
+[data-phone] .octo-diff-gutter {
+  padding-inline: 8px var(--diff-gap);
+}
+[data-phone] .octo-diff[data-numbered] .octo-diff-gutter > .octo-diff-num:first-child {
+  display: none;
+}
+/* A7.2: on the phone a diff line wraps instead of scrolling sideways (the change of a long line was cut off at 390): the gutter
+   keeps its column for the whole wrapped row, and a continuation hangs 2ch past the line's own indentation (`--diff-lead`, set
+   per line by DiffPreview; at most 16ch, so deep code keeps its width). */
+[data-phone] .octo-diff-rows {
+  width: auto;
+}
+[data-phone] .octo-diff-code {
+  --diff-hang: calc(min(var(--diff-lead, 0ch), 16ch) + 2ch);
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline-start: var(--diff-hang);
+  text-indent: calc(-1 * var(--diff-hang));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The navigation's tree rows: the row actions (a project's "+" and chevron, a session's "⋯") are always shown on the phone and
+   take their own place at the row's end instead of a padding the title gives up to them. */
+[data-phone] [data-tree-row] {
+  display: flex;
+  align-items: center;
+}
+[data-phone] [data-tree-row] > :first-child {
+  flex: 1 1 0;
+  min-width: 0;
+}
+[data-phone] [data-tree-row] > [data-tree-actions] {
+  position: static;
+  gap: 4px;
+  padding-right: 4px;
+}
+[data-phone] [data-tree-row] [data-row] {
+  padding-right: 8px;
+}
+/* A9.3: in the phone's "⋯" sheet a status item is a row like the others: 44px, its glyph on the rows' glyph column, its text
+   on their text line (in the status bar it is a 24px chip). */
+[data-phone-status] [data-status-item] {
+  width: 100%;
+  min-height: var(--spacing-ctl-lg);
+  justify-content: flex-start;
+  gap: 8px;
+  padding-inline: 8px;
+  font-size: var(--text-sm);
+}
+[data-phone-status] [data-status-item] svg {
+  width: 16px;
+  height: 16px;
+}
+/* A6: the actions have their own place on the phone, so the row's time stays (a project's last activity, a session's). */
+[data-phone] [data-tree-row] [data-tree-meta] {
+  visibility: visible;
+}
+/* Balance pass: the phone header already names the panel (Back, the name, "⋯"), so the panel's own title is said once, to a
+   screen reader only; its (i), count and actions keep their row, on the rows' text edge. A header with nothing else goes. */
+[data-phone] [data-panel-title]:not(:has(> :nth-child(2))),
+[data-phone] [data-panel-title] > span:first-child:not(:only-child) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+[data-phone] [data-panel-title]:not(:has(> :nth-child(2))) + [data-panel-lead] {
+  padding-left: 8px;
+}
+[data-phone] [data-panel-actions] {
+  margin-left: auto;
+}
+[data-phone] [data-panel-header]:not(:has([data-panel-lead]:not(:empty), [data-panel-actions])):has([data-panel-title] > :only-child) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* No hover on a phone: a reply's footer (copy, time, model) is always shown, and wraps (above). */
+[data-phone] [data-conv] [data-turn-footer] {
+  opacity: 1;
+}
+
+/* R2 checkpoints (owner's addition 11 b): "Restore to here" in a reply's footer is the reply's mark when it changed files
+   (shown at all times), and appears on hover or focus under a reply that did not (on the phone: focus only, no hover). */
+article:not(:has(> [data-turn-changes])) [data-restore] {
+  opacity: 0;
+  transition: opacity var(--motion-fast);
+}
+article:not(:has(> [data-turn-changes])):is(:hover, :focus-within) [data-restore] {
+  opacity: 1;
+}
+[data-phone] article:not(:has(> [data-turn-changes])):hover [data-restore]:not(:focus-visible) {
+  opacity: 0;
+}
+
+/* ── R2, owner's addition 10: the request bubble (design study A, variant V1) ─────────────────────────────────────────────
+   Right-aligned, as wide as its text (at most 80 % of the column), at every width (it was a full-width card above 480 px and
+   a bubble below). One line and nothing else (`data-one-line`, Transcript's UserPrompt) is a pill: 40 high on the desktop
+   (22 + 8 + 8 + the 1px edges), 42 on the phone (24); taller keeps radius 18 with 12 / 16 inside. Its meta (From …, Sent while
+   Octo was working) sits above it, its right edge on the text's. Not scoped to `[data-conv]`: a session's transcript in the
+   Sessions tab and Memory draw the same request (it lost its card there when the classes moved here).
+   Owner, 2026-11-18 (E1): the fill is neutral — the raised tone of cards and menus with `fg` text (13.8:1 dark, 15.7:1 light),
+   not teal. Raised against the panel is only 1.14:1 (dark) and 1.11:1 (light), so the 1px edge is the `line` hairline. */
+[data-prompt] {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+[data-prompt] > [data-bubble] {
+  max-width: 80%;
+  border-radius: 18px;
+  padding: 12px 16px;
+  border-color: transparent;
+}
+[data-prompt] > [data-bubble][data-one-line],
+[data-pinned-box] > button[data-one-line] {
+  border-radius: 9999px;
+  padding-block: 8px;
+}
+[data-prompt] > [data-steered],
+[data-prompt] > div.text-xs {
+  padding-inline: 16px;
+}
+/* The pinned copy at the top takes the same shape, right-aligned. */
+[data-pinned-box] {
+  display: flex;
+  justify-content: flex-end;
+}
+[data-pinned-box] > button {
+  width: auto;
+  max-width: 80%;
+  border-radius: 18px;
+  padding: 12px 16px;
+}
+[data-prompt] > [data-bubble],
+[data-pinned-box] > button {
+  border: 1px solid var(--octo-line);
+  background: var(--octo-raised);
+  color: var(--octo-fg);
+}
+@media (forced-colors: active) {
+  [data-prompt] > [data-bubble],
+  [data-pinned-box] > button {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+}
+
+/* Row actions (ListRow; work-surface polish item 5): actions that show on hover or focus take no width. With a fine pointer
+   in a wide window they overlay the row's end on the row's own fill (the list's surface, `--row-surface`, under the row's
+   tint), and the row's tails (the meta, a date marked `data-row-tail`) give way while they show, so a right-hand column
+   lines up across rows and nothing moves on hover. On touch (the `touch` variant's complement) they stay in the flow and
+   always show, as before. */
+.octo-row-actions {
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease-out;
+}
+.group:is(:hover, :focus-within) > .octo-row-actions {
+  opacity: 1;
+}
+@media (pointer: coarse), (max-width: 767.98px) {
+  .octo-row-actions {
+    opacity: 1;
+  }
+}
+@media (min-width: 768px) {
+  @media not (pointer: coarse) {
+    .octo-row-host {
+      position: relative;
+      --row-tint: transparent;
+    }
+    .octo-row-host:hover {
+      --row-tint: var(--octo-hover);
+    }
+    /* The selected (or active) row is the one ListRow fills with `bg-active`. */
+    .octo-row-host.bg-active {
+      --row-tint: var(--octo-active);
+    }
+    .octo-row-actions {
+      position: absolute;
+      inset-block: 0;
+      right: 0;
+      padding-left: 4px;
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      background: linear-gradient(var(--row-tint), var(--row-tint)), var(--row-surface, var(--octo-panel));
+    }
+    .octo-row-host:is(:hover, :focus-within) [data-row-tail] {
+      visibility: hidden;
+    }
+  }
+}
+
+/* G2 (2026-11-18): the file tree's indent guides. A 1px `line` under each ancestor's 24px glyph box (the indent is 12px a
+   level, so one per 12px tile, at its right edge), shown only while the tree is hovered or holds focus. A background on the
+   indent spacer: no layout change. */
+[role="tree"]:is(:hover, :focus-within) .octo-tree-indent {
+  background-image: linear-gradient(to right, transparent 11px, var(--octo-line) 11px, var(--octo-line) 12px, transparent 12px);
+  background-size: 12px 100%;
+}

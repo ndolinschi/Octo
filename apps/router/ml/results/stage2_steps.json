@@ -1,0 +1,141 @@
+{
+ "method": "Stage 2, part B (step level): TwinRouterBench's 336 SWE-bench steps (40 Verified tasks).\n\nLabel: `target_tier` (low / mid / mid_high / high: the cheapest tier that keeps the whole trajectory passing),\ncollapsed onto scheme A's three tiers by the price of TwinRouterBench's tier models\n(deepseek-v3.2 and minimax-m2.7 -> low, gemini-3-flash -> mid, claude-opus-4.6 -> high).\nFeatures available at step time only: step_index, prefix length (messages, characters), tool errors in the prefix\n(non-zero return codes), test runs and edits in the prefix, the last command's kind, TF-IDF of the last message\n(fitted inside each training fold). `total_steps` is never used (it leaks the trajectory's length).\nProtocol: leave-one-TASK-out (40 folds), multinomial logistic regression with a fixed C declared up front.\nBaselines: majority tier of the training fold; step_index alone. Intervals: 1000 bootstraps over tasks.\n",
+ "n_steps": 336,
+ "n_tasks": 40,
+ "label_counts_collapsed": {
+  "low": 127,
+  "mid": 41,
+  "high": 168
+ },
+ "label_counts_raw": {
+  "low": 94,
+  "mid": 33,
+  "mid_high": 41,
+  "high": 168
+ },
+ "share_steps_whose_task_has_one_label": 0.02083,
+ "results": {
+  "majority": {
+   "point": {
+    "accuracy": 0.5,
+    "balanced_accuracy": 0.33333,
+    "log_loss": 0.97722,
+    "under_tier_rate": 0.0
+   },
+   "accuracy_ci": {
+    "mean": 0.50075,
+    "lo": 0.44983,
+    "hi": 0.55032
+   },
+   "balanced_accuracy_ci": {
+    "mean": 0.33333,
+    "lo": 0.33333,
+    "hi": 0.33333
+   },
+   "log_loss_ci": {
+    "mean": 0.97584,
+    "lo": 0.92802,
+    "hi": 1.02664
+   }
+  },
+  "step_index": {
+   "point": {
+    "accuracy": 0.52083,
+    "balanced_accuracy": 0.35491,
+    "log_loss": 0.97733,
+    "under_tier_rate": 0.01786
+   },
+   "accuracy_ci": {
+    "mean": 0.52151,
+    "lo": 0.46522,
+    "hi": 0.57388
+   },
+   "balanced_accuracy_ci": {
+    "mean": 0.35495,
+    "lo": 0.34061,
+    "hi": 0.37169
+   },
+   "log_loss_ci": {
+    "mean": 0.97616,
+    "lo": 0.92738,
+    "hi": 1.0303
+   },
+   "log_loss_minus_majority_ci": {
+    "mean": 0.00045,
+    "lo": -0.00943,
+    "hi": 0.00931
+   },
+   "balanced_acc_minus_step_index_ci": {
+    "mean": 0.0,
+    "lo": 0.0,
+    "hi": 0.0
+   }
+  },
+  "numeric": {
+   "point": {
+    "accuracy": 0.66071,
+    "balanced_accuracy": 0.4962,
+    "log_loss": 0.86842,
+    "under_tier_rate": 0.13988
+   },
+   "accuracy_ci": {
+    "mean": 0.66098,
+    "lo": 0.60174,
+    "hi": 0.71432
+   },
+   "balanced_accuracy_ci": {
+    "mean": 0.4961,
+    "lo": 0.46178,
+    "hi": 0.52777
+   },
+   "log_loss_ci": {
+    "mean": 0.86824,
+    "lo": 0.77751,
+    "hi": 0.96757
+   },
+   "log_loss_minus_majority_ci": {
+    "mean": -0.10818,
+    "lo": -0.17882,
+    "hi": -0.0288
+   },
+   "balanced_acc_minus_step_index_ci": {
+    "mean": 0.14118,
+    "lo": 0.10617,
+    "hi": 0.17144
+   }
+  },
+  "all+tfidf": {
+   "point": {
+    "accuracy": 0.68155,
+    "balanced_accuracy": 0.51009,
+    "log_loss": 0.85689,
+    "under_tier_rate": 0.11905
+   },
+   "accuracy_ci": {
+    "mean": 0.68229,
+    "lo": 0.64102,
+    "hi": 0.72341
+   },
+   "balanced_accuracy_ci": {
+    "mean": 0.5105,
+    "lo": 0.48678,
+    "hi": 0.53372
+   },
+   "log_loss_ci": {
+    "mean": 0.85712,
+    "lo": 0.76181,
+    "hi": 0.95821
+   },
+   "log_loss_minus_majority_ci": {
+    "mean": -0.11874,
+    "lo": -0.19485,
+    "hi": -0.03543
+   },
+   "balanced_acc_minus_step_index_ci": {
+    "mean": 0.15513,
+    "lo": 0.12771,
+    "hi": 0.184
+   }
+  }
+ }
+}

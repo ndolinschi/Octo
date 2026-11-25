@@ -1,0 +1,53 @@
+---
+description: Per-PR and per-file Rust review checklist (types, ownership, errors, async, API, pre-commit)
+globs: "**/*.rs,Cargo.toml"
+alwaysApply: true
+---
+
+# Rust PR / file checklist
+
+Apply to every Rust change before commit or review. Fix or explicitly justify any deviation in the PR.
+
+## Types and data
+
+- Fixed set of values → `enum`, not `String` / `&str`.
+- Strings: literal → `&'static str`, owned → `String`, mixed → `Cow<'static, str>`, shared across threads → `Arc<str>`.
+- Unsigned quantities (sizes, token counts, counters) → `u32` / `u64` / `usize`, not `i64`.
+- Money → integer minor units (cents, micros) or `rust_decimal`; never `f64`.
+- Newtypes for IDs and units: `struct UserId(u64)`, `struct Millis(u64)` — avoid swapped arguments.
+- `Option` only where absence is real; do not use `Option` for sentinel defaults.
+
+## Ownership and borrowing
+
+- Function args: `&str` not `&String`, `&[T]` not `&Vec<T>`, `impl AsRef<Path>` for paths.
+- No gratuitous `.clone()` / `.to_string()`; each must be justified.
+- Struct holding `&'a T`? Prefer owned data or `Arc` unless lifetimes are clearly required.
+- Shared mutable state → `Arc<Mutex<T>>` / `RwLock`; hold locks as briefly as possible and never across `.await`.
+
+## Errors
+
+- No `unwrap()` / `expect()` in production code except provably impossible cases (document why).
+- Libraries → `thiserror`; application binary → `anyhow` where appropriate.
+- Prefer `?` over manual error `match`; add context (`.context("...")`) at boundaries.
+- Do not swallow errors silently; `let _ = ...` only when intentional.
+
+## Async
+
+- No blocking in async (`std::fs`, `thread::sleep`, heavy CPU) → `tokio::fs`, `spawn_blocking`.
+- Do not hold `std::sync::Mutex` across `.await`.
+- Network calls should have timeouts.
+
+## API and structure
+
+- `pub` only for intentional surface; struct fields private by default.
+- Derive `Debug` broadly; `Clone` / `PartialEq` / `Serialize` when needed.
+- Secrets (tokens, keys) must not appear in `Debug` or logs — custom `Debug` or redacting wrappers.
+- Many constructor parameters → builder or config struct.
+
+## Before commit
+
+- `cargo fmt`
+- `cargo check`
+- `cargo clippy --all-targets -- -D warnings`
+- `cargo test`
+- No `todo!()`, `dbg!()`, or commented-out dead code.

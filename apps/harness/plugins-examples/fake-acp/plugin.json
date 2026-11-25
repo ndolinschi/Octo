@@ -1,0 +1,14 @@
+{
+  "name": "fake-acp",
+  "version": "0.1.0",
+  "description": "Scripted ACP agent for demos and tests (no model, no network)",
+  "agents": [
+    {
+      "id": "fake",
+      "label": "Fake ACP agent",
+      "command": "./bin/fakeacp",
+      "args": [],
+      "env": {}
+    }
+  ]
+}

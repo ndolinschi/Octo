@@ -1,0 +1,467 @@
+use std::time::{Duration, Instant};
+
+use crate::history::{blended_cost_micros, LivePrices, PriceTable};
+use crate::providers::openrouter::OpenRouterModels;
+
+use super::jev::Complexity;
+use super::metrics;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RequireParameters {
+    Always,
+    ToolsOnly,
+    Never,
+}
+
+impl RequireParameters {
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "always" => Some(Self::Always),
+            "tools_only" => Some(Self::ToolsOnly),
+            "never" => Some(Self::Never),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Always => "always",
+            Self::ToolsOnly => "tools_only",
+            Self::Never => "never",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BudgetAction {
+    Downgrade,
+    Reject,
+}
+
+impl BudgetAction {
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "downgrade" => Some(Self::Downgrade),
+            "reject" => Some(Self::Reject),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Downgrade => "downgrade",
+            Self::Reject => "reject",
+        }
+    }
+}
+
+const BANDS: [&str; 3] = ["low", "mid", "high"];
+
+pub fn is_band(raw: &str) -> bool {
+    matches!(raw, "low" | "mid" | "high")
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RequestShape {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+}
+
+impl Default for RequestShape {
+    fn default() -> Self {
+        Self {
+            input_tokens: 30_000,
+            output_tokens: 500,
+        }
+    }
+}
+
+pub fn default_strip_fields() -> Vec<String> {
+    vec![
+        "output_config".to_string(),
+        "safeguards".to_string(),
+        "context_management".to_string(),
+    ]
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Tiers {
+    pub small: String,
+    pub low: String,
+    pub mid: String,
+    pub high: String,
+    pub hard_threshold: f64,
+    pub easy_threshold: f64,
+    pub stall_window: u32,
+    pub escalate_turns: u32,
+    pub down_confirm: u32,
+    pub high_allow: Vec<String>,
+    pub session_budget_micros: u64,
+    pub housekeeping_keep_messages: u32,
+    pub provider_order: Vec<String>,
+    pub allow_fallbacks: bool,
+    pub strip_fields: Vec<String>,
+    pub require_parameters: RequireParameters,
+    pub background_by_client_model: bool,
+    pub background_model_patterns: Vec<String>,
+    pub server_tool_mode: String,
+    pub compact_cooldown_requests: u32,
+    pub classifier_failure_tier: String,
+    pub classifier_timeout_ms: u64,
+    pub default_max_tokens: u64,
+    pub retry_after_max_secs: u64,
+    pub session_budget_action: BudgetAction,
+    pub never_pay_more_for_less: bool,
+    /// The live price table: a catalogue refresh is seen by the next decision (each decision reads one snapshot).
+    pub prices: LivePrices,
+    pub route: super::delegate::RoutePolicy,
+    pub delegation: super::delegate::DelegationClassifier,
+}
+
+impl Tiers {
+    pub fn new(low: String, mid: String, high: String) -> Self {
+        Self {
+            small: "qwen2.5-coder:1.5b".to_string(),
+            low,
+            mid,
+            high,
+            hard_threshold: 0.5,
+            easy_threshold: 0.5,
+            stall_window: 6,
+            escalate_turns: 3,
+            down_confirm: 2,
+            high_allow: Vec::new(),
+            session_budget_micros: 0,
+            housekeeping_keep_messages: 6,
+            provider_order: Vec::new(),
+            allow_fallbacks: true,
+            strip_fields: default_strip_fields(),
+            require_parameters: RequireParameters::Always,
+            background_by_client_model: false,
+            background_model_patterns: vec!["haiku".to_string()],
+            server_tool_mode: "passthrough".to_string(),
+            compact_cooldown_requests: 0,
+            classifier_failure_tier: "mid".to_string(),
+            classifier_timeout_ms: 5_000,
+            default_max_tokens: 8192,
+            retry_after_max_secs: 10,
+            session_budget_action: BudgetAction::Downgrade,
+            never_pay_more_for_less: true,
+            prices: LivePrices::default(),
+            route: super::delegate::RoutePolicy::default(),
+            delegation: super::delegate::DelegationClassifier::Jev,
+        }
+    }
+
+    pub fn with_small(mut self, small: String) -> Self {
+        self.small = small;
+        self
+    }
+
+    pub fn blended_cost_micros(&self, band: &str, shape: RequestShape) -> Option<u128> {
+        self.blended_in(&self.prices.snapshot(), band, shape)
+    }
+
+    fn blended_in(&self, prices: &PriceTable, band: &str, shape: RequestShape) -> Option<u128> {
+        let price = prices.get(&self.slug(band))?;
+        if !price.rates_complete || (price.input <= 0.0 && price.output <= 0.0) {
+            return None;
+        }
+        Some(blended_cost_micros(
+            price,
+            shape.input_tokens,
+            shape.output_tokens,
+        ))
+    }
+
+    pub fn cheapest_band(&self, shape: RequestShape) -> Option<&'static str> {
+        let prices = self.prices.snapshot();
+        let costs = [
+            ("low", self.blended_in(&prices, "low", shape)?),
+            ("mid", self.blended_in(&prices, "mid", shape)?),
+            ("high", self.blended_in(&prices, "high", shape)?),
+        ];
+        costs
+            .into_iter()
+            .min_by_key(|(_, cost)| *cost)
+            .map(|(band, _)| band)
+    }
+
+    /// The cheaper tier the price rule serves instead of `decided`: the cheapest priced tier among
+    /// `decided` and every tier above it up to `ceiling` (ties go to the lower tier). `None` when
+    /// the rule is off, `decided` is not a ladder tier or has no price, or nothing is strictly cheaper.
+    pub fn price_swap(
+        &self,
+        decided: &str,
+        ceiling: Option<&str>,
+        shape: RequestShape,
+    ) -> Option<&'static str> {
+        self.price_swap_where(decided, ceiling, shape, |_| true)
+    }
+
+    /// [`Tiers::price_swap`] restricted to target tiers `allow` accepts (the decided tier itself is never filtered).
+    pub fn price_swap_where(
+        &self,
+        decided: &str,
+        ceiling: Option<&str>,
+        shape: RequestShape,
+        allow: impl Fn(&str) -> bool,
+    ) -> Option<&'static str> {
+        if !self.never_pay_more_for_less {
+            return None;
+        }
+        let start = BANDS.iter().position(|band| *band == decided)?;
+        let end = ceiling
+            .and_then(|max| BANDS.iter().position(|band| *band == max))
+            .unwrap_or(BANDS.len() - 1)
+            .max(start);
+        let prices = self.prices.snapshot();
+        let mut best = (start, self.blended_in(&prices, decided, shape)?);
+        for (index, band) in BANDS.iter().enumerate().take(end + 1).skip(start + 1) {
+            if !allow(band) {
+                continue;
+            }
+            if let Some(cost) = self.blended_in(&prices, band, shape) {
+                if cost < best.1 {
+                    best = (index, cost);
+                }
+            }
+        }
+        (best.0 != start).then_some(BANDS[best.0])
+    }
+
+    /// Whether the request (`shape.input_tokens` estimated, `reserve` = its `max_tokens`) fits the tier's model window
+    /// with room to spare (same 75% fill rule as the fill check). Unknown windows count as fitting.
+    pub fn fits_request(
+        &self,
+        models: Option<&crate::providers::openrouter::OpenRouterModels>,
+        band: &str,
+        shape: RequestShape,
+        reserve: u64,
+    ) -> bool {
+        let Some(window) = context_length(models, &self.slug(band)) else {
+            return true;
+        };
+        let usable = metrics::usable_window(window, reserve);
+        usable >= 1024 && (shape.input_tokens as f64) < usable as f64 * metrics::FILL_THRESHOLD
+    }
+
+    /// Whether the price rule may swap `decided` for `target` as far as context windows go: the target holds the
+    /// request, or the decided tier does not either and the target's window is no smaller.
+    pub fn swap_fits_window(
+        &self,
+        models: Option<&crate::providers::openrouter::OpenRouterModels>,
+        decided: &str,
+        target: &str,
+        shape: RequestShape,
+        reserve: u64,
+    ) -> bool {
+        if self.fits_request(models, target, shape, reserve) {
+            return true;
+        }
+        if self.fits_request(models, decided, shape, reserve) {
+            return false;
+        }
+        match (
+            context_length(models, &self.slug(decided)),
+            context_length(models, &self.slug(target)),
+        ) {
+            (Some(from), Some(to)) => to >= from,
+            _ => true,
+        }
+    }
+
+    /// The ladder tier the router really serves for a decided one under the price rule.
+    pub fn served_band(
+        &self,
+        decided: &'static str,
+        ceiling: Option<&str>,
+        shape: RequestShape,
+    ) -> &'static str {
+        self.price_swap(decided, ceiling, shape).unwrap_or(decided)
+    }
+
+    pub fn candidates(&self) -> [&str; 3] {
+        [self.low.as_str(), self.mid.as_str(), self.high.as_str()]
+    }
+
+    pub fn band(&self, model: &str) -> &'static str {
+        if ids_match(model, &self.low) {
+            "low"
+        } else if ids_match(model, &self.mid) {
+            "mid"
+        } else if ids_match(model, &self.high) {
+            "high"
+        } else if !self.small.is_empty() && ids_match(model, &self.small) {
+            "small"
+        } else {
+            "custom"
+        }
+    }
+
+    pub fn slug(&self, band: &str) -> String {
+        match band {
+            "small" => self.small.clone(),
+            "low" => self.low.clone(),
+            "mid" => self.mid.clone(),
+            "high" => self.high.clone(),
+            _ => self.mid.clone(),
+        }
+    }
+
+    pub fn next_up(&self, model: &str) -> Option<String> {
+        match self.band(model) {
+            "low" => Some(self.mid.clone()),
+            "mid" => Some(self.high.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn pick(&self, complexity: Complexity, preferred: Option<&str>) -> String {
+        match complexity {
+            Complexity::Low => self.low.clone(),
+            Complexity::Mid => self.mid.clone(),
+            Complexity::High => match preferred {
+                Some(preferred)
+                    if self.high_allowed(preferred)
+                        && !ids_match(preferred, &self.low)
+                        && !ids_match(preferred, &self.mid) =>
+                {
+                    preferred.to_string()
+                }
+                _ => self.high.clone(),
+            },
+        }
+    }
+
+    fn high_allowed(&self, preferred: &str) -> bool {
+        self.high_allow
+            .iter()
+            .any(|allowed| ids_match(preferred, allowed))
+    }
+}
+
+pub fn band_rank(band: &str) -> u8 {
+    match band {
+        "low" => 0,
+        "mid" => 1,
+        "high" => 2,
+        _ => 1,
+    }
+}
+
+pub fn complexity_band(complexity: Complexity) -> &'static str {
+    match complexity {
+        Complexity::Low => "low",
+        Complexity::Mid => "mid",
+        Complexity::High => "high",
+    }
+}
+
+pub fn bump_band(band: &str) -> &'static str {
+    match band {
+        "low" => "mid",
+        "mid" => "high",
+        _ => "high",
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct CatalogCache {
+    fetched: Option<(Instant, OpenRouterModels)>,
+    ttl: Duration,
+}
+
+impl CatalogCache {
+    pub fn new(ttl: Duration) -> Self {
+        Self { fetched: None, ttl }
+    }
+
+    pub fn fresh(&self) -> Option<OpenRouterModels> {
+        self.fetched
+            .as_ref()
+            .and_then(|(at, models)| (at.elapsed() < self.ttl).then(|| models.clone()))
+    }
+
+    pub fn store(&mut self, models: OpenRouterModels) {
+        self.fetched = Some((Instant::now(), models));
+    }
+}
+
+pub fn bare_id(slug: &str) -> &str {
+    strip_model_marker(slug.trim_start_matches('~'))
+}
+
+pub fn routing_id(slug: &str) -> &str {
+    let bare = bare_id(slug);
+    bare.strip_suffix(":online").unwrap_or(bare)
+}
+
+/// Claude Code appends markers like `[1m]` to model ids; strip before lookup/forward.
+pub fn strip_model_marker(slug: &str) -> &str {
+    match slug.rsplit_once('[') {
+        Some((prefix, rest)) if rest.ends_with(']') && !prefix.is_empty() => prefix,
+        _ => slug,
+    }
+}
+
+pub fn ids_match(left: &str, right: &str) -> bool {
+    left == right || bare_id(left) == bare_id(right) || routing_id(left) == routing_id(right)
+}
+
+pub fn context_length(models: Option<&OpenRouterModels>, slug: &str) -> Option<u64> {
+    lookup(models, slug).and_then(|model| model.context_length)
+}
+
+pub fn max_completion_tokens(models: Option<&OpenRouterModels>, slug: &str) -> Option<u64> {
+    lookup(models, slug).and_then(|model| model.max_completion_tokens)
+}
+
+pub fn supports_reasoning(models: Option<&OpenRouterModels>, slug: &str) -> bool {
+    lookup(models, slug)
+        .map(|model| {
+            model
+                .supported_parameters
+                .iter()
+                .any(|param| param == "reasoning" || param == "include_reasoning")
+        })
+        .unwrap_or(true)
+}
+
+fn lookup<'a>(
+    models: Option<&'a OpenRouterModels>,
+    slug: &str,
+) -> Option<&'a crate::providers::openrouter::OpenRouterModel> {
+    let models = models?;
+    models
+        .free
+        .iter()
+        .chain(models.paid.iter())
+        .find(|model| ids_match(&model.id, slug))
+}
+
+pub struct LargerFit<'a> {
+    pub candidates: &'a [&'a str],
+    pub models: Option<&'a OpenRouterModels>,
+    pub input_tokens: u64,
+    pub max_tokens: u64,
+    pub current: &'a str,
+}
+
+pub fn larger_fit(plan: LargerFit<'_>) -> Option<String> {
+    let current_window = context_length(plan.models, plan.current)?;
+    plan.candidates
+        .iter()
+        .copied()
+        .filter_map(|slug| {
+            if ids_match(slug, plan.current) {
+                return None;
+            }
+            let window = context_length(plan.models, slug)?;
+            let usable = window.saturating_sub(metrics::output_reserve(window, plan.max_tokens));
+            (window > current_window && usable >= plan.input_tokens)
+                .then(|| (window, slug.to_string()))
+        })
+        .min_by_key(|(window, _)| *window)
+        .map(|(_, slug)| slug)
+}

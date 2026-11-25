@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT provider, model, message, input, output, token_hash, status, request_bytes, response_bytes FROM calls",
+  "describe": {
+    "columns": [
+      {
+        "name": "provider",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "model",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "message",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "input",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "output",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "token_hash",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "status",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "request_bytes",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "response_bytes",
+        "ordinal": 8,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "4940a17308d640b5409fed148e22c160f04da759eb7683454f1ab5d1134addc1"
+}

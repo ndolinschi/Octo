@@ -1,0 +1,195 @@
+STAGE 6 - does a delegation brief's text predict the cheapest sufficient tier across a wide range of tasks?
+
+Protocol and gate declared before any data was fetched: fixtures/stage6_protocol.md (committed first).
+
+1. LABELS (scheme A; model outcomes only)
+source         tasks  models l/m/h    mean solved l/m/h   cheapest sufficient l/m/h/none    task mean 10/50/90%
+CanItEdit        105         6/1/2       0.34/0.24/0.69              0.31/0.07/0.38/0.24         0.00/0.44/0.90
+BigCodeBench    1140      29/17/10       0.34/0.42/0.44              0.34/0.12/0.06/0.49         0.00/0.37/0.89
+LiveCodeBench   1055        5/9/10       0.53/0.79/0.64              0.54/0.28/0.01/0.17         0.11/0.74/1.00
+SWE-V            500      12/11/16       0.49/0.61/0.69              0.57/0.10/0.06/0.27         0.02/0.74/0.94
+Share of each tier's label variance between sources (eta^2): {'low': 0.073, 'mid': 0.199, 'high': 0.08}
+Tokens per task assumed for cost: {'canitedit': 2000, 'bigcodebench': 2000, 'livecodebench': 10000, 'swebench_verified': 108591}
+
+Split-half reliability over models (Spearman-Brown; mean [2.5, 97.5] over 200 splits), scheme A:
+  CanItEdit      low: 0.83 [0.78,0.89]  mid: n/a  high: 0.76 [0.76,0.76]  high-low: 0.36 [0.19,0.48]  mid-low: n/a  high-mid: n/a  cheapest_sufficient_kappa: n/a
+  BigCodeBench   low: 0.96 [0.95,0.97]  mid: 0.95 [0.94,0.96]  high: 0.93 [0.91,0.95]  high-low: 0.50 [0.33,0.60]  mid-low: 0.38 [0.21,0.48]  high-mid: 0.18 [-0.10,0.34]  cheapest_sufficient_kappa: 0.69 [0.62,0.73]
+  LiveCodeBench  low: 0.80 [0.67,0.87]  mid: 0.93 [0.91,0.95]  high: 0.93 [0.88,0.95]  high-low: -0.04 [-0.92,0.32]  mid-low: 0.46 [0.08,0.62]  high-mid: 0.60 [0.41,0.70]  cheapest_sufficient_kappa: 0.34 [0.18,0.46]
+  SWE-V          low: 0.90 [0.86,0.92]  mid: 0.92 [0.88,0.94]  high: 0.96 [0.95,0.97]  high-low: 0.53 [0.38,0.63]  mid-low: 0.10 [-0.23,0.28]  high-mid: 0.16 [-0.14,0.32]  cheapest_sufficient_kappa: 0.57 [0.43,0.64]
+  pooled         low: 0.86 [0.73,0.92]  mid: 0.95 [0.94,0.96]  high: 0.93 [0.89,0.94]  high-low: 0.24 [-0.40,0.48]  mid-low: 0.48 [0.01,0.64]  high-mid: 0.65 [0.55,0.71]  cheapest_sufficient_kappa: 0.55 [0.46,0.61]
+
+2. CURVE AREA (cost-quality, normalised; 95 % intervals from 1 000 group bootstraps stratified by source)
+(a) pooled 5-fold CV, all 2800 tasks; best non-learned baseline: length rank (unfitted)
+  fixed-tier mixture                                   area 0.5761 [0.5589, 0.5923]   minus mixture -
+  length rank (unfitted)                               area 0.5785 [0.5616, 0.5952]   minus mixture +0.0024 [+0.0005, +0.0053]
+  router text rule                                     area 0.5761 [0.5589, 0.5924]   minus mixture +0.0000 [+0.0000, +0.0000]
+  M1'                                                  area 0.6031 [0.5855, 0.6196]   minus mixture +0.0271 [+0.0233, +0.0307]
+  prior (global)                                       area 0.5830 [0.5652, 0.6022]   minus mixture +0.0069 [+0.0058, +0.0122]
+  length-only (fitted)                                 area 0.5986 [0.5819, 0.6145]   minus mixture +0.0225 [+0.0185, +0.0267]
+  source-id prior                                      area 0.6104 [0.5927, 0.6270]   minus mixture +0.0344 [+0.0294, +0.0384]
+  source-id + length (fitted)                          area 0.6082 [0.5905, 0.6247]   minus mixture +0.0321 [+0.0277, +0.0356]
+  M2'                                                  area 0.5996 [0.5835, 0.6162]   minus mixture +0.0235 [+0.0211, +0.0276]
+  oracle (true soft labels; optimistic)                area 0.6381 [0.6199, 0.6551]   minus mixture +0.0621 [+0.0572, +0.0664]
+(c) leave-one-source-out, all 2800 tasks; best non-learned baseline: length rank (unfitted)
+  fixed-tier mixture                                   area 0.5761 [0.5589, 0.5923]   minus mixture -
+  length rank (unfitted)                               area 0.5785 [0.5616, 0.5952]   minus mixture +0.0024 [+0.0005, +0.0053]
+  router text rule                                     area 0.5761 [0.5589, 0.5924]   minus mixture +0.0000 [+0.0000, +0.0000]
+  M1'                                                  area 0.5764 [0.5591, 0.5928]   minus mixture +0.0003 [+0.0002, +0.0005]
+  prior (global)                                       area 0.5811 [0.5633, 0.5973]   minus mixture +0.0050 [+0.0039, +0.0052]
+  length-only (fitted)                                 area 0.5891 [0.5723, 0.6044]   minus mixture +0.0131 [+0.0092, +0.0165]
+  M2'                                                  area 0.5803 [0.5623, 0.5979]   minus mixture +0.0042 [+0.0024, +0.0062]
+  oracle (true soft labels; optimistic)                area 0.6381 [0.6199, 0.6551]   minus mixture +0.0621 [+0.0572, +0.0664]
+
+(b) WITHIN each source (pooled-CV predictions scored inside one source); gain over that source's mixture:
+  length rank (unfitted)
+      CanItEdit      +0.0025 [+0.0000, +0.0179]
+      BigCodeBench   +0.0048 [+0.0027, +0.0079]
+      LiveCodeBench  +0.0008 [+0.0005, +0.0013]
+      SWE-V          +0.0021 [+0.0015, +0.0050]
+  router text rule
+      CanItEdit      +0.0000 [+0.0000, +0.0011]
+      BigCodeBench   +0.0000 [+0.0000, +0.0000]
+      LiveCodeBench  +0.0000 [+0.0000, +0.0000]
+      SWE-V          +0.0000 [+0.0000, +0.0017]
+  M1'
+      CanItEdit      +0.0064 [+0.0034, +0.0203]
+      BigCodeBench   +0.0018 [+0.0006, +0.0043]
+      LiveCodeBench  +0.0011 [+0.0007, +0.0017]
+      SWE-V          +0.0006 [+0.0001, +0.0053]
+  prior (global)
+      CanItEdit      +0.0000 [-0.0000, +0.0000]
+      BigCodeBench   +0.0008 [+0.0000, +0.0030]
+      LiveCodeBench  +0.0003 [+0.0000, +0.0007]
+      SWE-V          +0.0006 [+0.0000, +0.0036]
+  length-only (fitted)
+      CanItEdit      +0.0201 [+0.0113, +0.0384]
+      BigCodeBench   +0.0002 [+0.0001, +0.0014]
+      LiveCodeBench  +0.0008 [+0.0004, +0.0018]
+      SWE-V          +0.0012 [+0.0004, +0.0067]
+  source-id prior
+      CanItEdit      +0.0017 [-0.0000, +0.0128]
+      BigCodeBench   +0.0003 [+0.0000, +0.0018]
+      LiveCodeBench  +0.0002 [+0.0000, +0.0005]
+      SWE-V          +0.0005 [+0.0000, +0.0015]
+  source-id + length (fitted)
+      CanItEdit      +0.0051 [+0.0005, +0.0187]
+      BigCodeBench   +0.0033 [+0.0018, +0.0062]
+      LiveCodeBench  +0.0008 [+0.0005, +0.0013]
+      SWE-V          +0.0010 [+0.0003, +0.0034]
+  M2'
+      CanItEdit      +0.0088 [+0.0032, +0.0198]
+      BigCodeBench   +0.0002 [+0.0001, +0.0021]
+      LiveCodeBench  +0.0013 [+0.0010, +0.0018]
+      SWE-V          +0.0003 [+0.0001, +0.0020]
+  M1' trained within the source only
+      CanItEdit      +0.0098 [+0.0018, +0.0272]
+      BigCodeBench   +0.0015 [+0.0002, +0.0043]
+      LiveCodeBench  +0.0013 [+0.0010, +0.0018]
+      SWE-V          +0.0027 [+0.0006, +0.0058]
+  human difficulty tag (NOT available at routing time)
+      LiveCodeBench  +0.0025 [+0.0022, +0.0028]
+      SWE-V          +0.0018 [+0.0012, +0.0064]
+  oracle (true soft labels; optimistic)
+      CanItEdit      +0.1232 [+0.1075, +0.1380]
+      BigCodeBench   +0.0483 [+0.0454, +0.0513]
+      LiveCodeBench  +0.0209 [+0.0175, +0.0243]
+      SWE-V          +0.0470 [+0.0447, +0.0520]
+
+(c) per held-out source (leave-one-source-out), gain over that source's mixture:
+  M1'                      CanItEdit +0.0000 [-0.0000, +0.0045]; BigCodeBench +0.0001 [+0.0000, +0.0015]; LiveCodeBench +0.0001 [+0.0000, +0.0002]; SWE-V +0.0024 [+0.0012, +0.0065]
+  M2'                      CanItEdit +0.0009 [-0.0000, +0.0146]; BigCodeBench +0.0011 [+0.0004, +0.0031]; LiveCodeBench +0.0001 [+0.0000, +0.0004]; SWE-V +0.0014 [+0.0005, +0.0055]
+  length-only (fitted)     CanItEdit +0.0139 [+0.0061, +0.0345]; BigCodeBench +0.0001 [+0.0001, +0.0013]; LiveCodeBench +0.0007 [+0.0004, +0.0014]; SWE-V +0.0012 [+0.0005, +0.0065]
+  length rank (unfitted)   CanItEdit +0.0025 [+0.0000, +0.0179]; BigCodeBench +0.0048 [+0.0027, +0.0079]; LiveCodeBench +0.0008 [+0.0005, +0.0013]; SWE-V +0.0021 [+0.0015, +0.0050]
+  router text rule         CanItEdit +0.0000 [+0.0000, +0.0011]; BigCodeBench +0.0000 [+0.0000, +0.0000]; LiveCodeBench +0.0000 [+0.0000, +0.0000]; SWE-V +0.0000 [+0.0000, +0.0017]
+
+Probability quality (pooled CV; AUROC against the majority label, Brier skill against the training prior):
+  M1'                    CanItEdit      low: AUROC 0.521 BSS 0.003 ECE 0.094  mid: AUROC 0.408 BSS 0.231 ECE 0.207  high: AUROC 0.603 BSS 0.135 ECE 0.081
+  M1'                    BigCodeBench   low: AUROC 0.618 BSS 0.11 ECE 0.039  mid: AUROC 0.594 BSS 0.183 ECE 0.043  high: AUROC 0.615 BSS 0.122 ECE 0.058
+  M1'                    LiveCodeBench  low: AUROC 0.755 BSS 0.318 ECE 0.025  mid: AUROC 0.752 BSS 0.426 ECE 0.032  high: AUROC 0.771 BSS 0.292 ECE 0.039
+  M1'                    SWE-V          low: AUROC 0.497 BSS -0.047 ECE 0.087  mid: AUROC 0.477 BSS -0.108 ECE 0.097  high: AUROC 0.506 BSS 0.011 ECE 0.097
+  M1'                    all            low: AUROC 0.675 BSS 0.161 ECE 0.012  mid: AUROC 0.728 BSS 0.23 ECE 0.021  high: AUROC 0.702 BSS 0.154 ECE 0.034
+  length-only (fitted)   CanItEdit      low: AUROC 0.404 BSS 0.06 ECE 0.06  mid: AUROC 0.467 BSS 0.286 ECE 0.182  high: AUROC 0.276 BSS -0.067 ECE 0.151
+  length-only (fitted)   BigCodeBench   low: AUROC 0.432 BSS 0.012 ECE 0.086  mid: AUROC 0.457 BSS 0.054 ECE 0.11  high: AUROC 0.465 BSS 0.011 ECE 0.12
+  length-only (fitted)   LiveCodeBench  low: AUROC 0.323 BSS -0.003 ECE 0.08  mid: AUROC 0.313 BSS 0.061 ECE 0.172  high: AUROC 0.352 BSS -0.007 ECE 0.066
+  length-only (fitted)   SWE-V          low: AUROC 0.428 BSS -0.011 ECE 0.038  mid: AUROC 0.423 BSS -0.111 ECE 0.103  high: AUROC 0.421 BSS 0.003 ECE 0.121
+  length-only (fitted)   all            low: AUROC 0.517 BSS 0.004 ECE 0.001  mid: AUROC 0.608 BSS 0.05 ECE 0.05  high: AUROC 0.504 BSS 0.0 ECE 0.003
+  source-id prior        CanItEdit      low: AUROC 0.465 BSS 0.11 ECE 0.0  mid: AUROC 0.395 BSS 0.392 ECE 0.0  high: AUROC 0.363 BSS 0.054 ECE 0.07
+  source-id prior        BigCodeBench   low: AUROC 0.48 BSS 0.083 ECE 0.0  mid: AUROC 0.483 BSS 0.164 ECE 0.0  high: AUROC 0.483 BSS 0.1 ECE 0.0
+  source-id prior        LiveCodeBench  low: AUROC 0.483 BSS 0.078 ECE 0.0  mid: AUROC 0.44 BSS 0.278 ECE 0.0  high: AUROC 0.48 BSS 0.042 ECE 0.0
+  source-id prior        SWE-V          low: AUROC 0.441 BSS 0.018 ECE 0.008  mid: AUROC 0.441 BSS -0.005 ECE 0.051  high: AUROC 0.445 BSS 0.093 ECE 0.011
+  source-id prior        all            low: AUROC 0.591 BSS 0.071 ECE 0.001  mid: AUROC 0.693 BSS 0.196 ECE 0.009  high: AUROC 0.613 BSS 0.079 ECE 0.005
+  M2'                    CanItEdit      low: AUROC 0.569 BSS -0.114 ECE 0.134  mid: AUROC 0.564 BSS 0.152 ECE 0.264  high: AUROC 0.565 BSS 0.028 ECE 0.1
+  M2'                    BigCodeBench   low: AUROC 0.635 BSS 0.124 ECE 0.04  mid: AUROC 0.626 BSS 0.2 ECE 0.027  high: AUROC 0.637 BSS 0.151 ECE 0.018
+  M2'                    LiveCodeBench  low: AUROC 0.775 BSS 0.363 ECE 0.018  mid: AUROC 0.783 BSS 0.438 ECE 0.045  high: AUROC 0.789 BSS 0.342 ECE 0.034
+  M2'                    SWE-V          low: AUROC 0.505 BSS -0.066 ECE 0.085  mid: AUROC 0.486 BSS -0.205 ECE 0.141  high: AUROC 0.524 BSS -0.011 ECE 0.115
+  M2'                    all            low: AUROC 0.695 BSS 0.177 ECE 0.015  mid: AUROC 0.728 BSS 0.222 ECE 0.027  high: AUROC 0.719 BSS 0.174 ECE 0.03
+  ECE before calibration (pooled): {"M1'": {'low': 0.025, 'mid': 0.028, 'high': 0.029}, "M2'": {'low': 0.056, 'mid': 0.067, 'high': 0.056}}
+Cheapest sufficient tier, accuracy of p >= 0.5 (pooled) vs majority class per source:
+  M1'                                      {'canitedit': 0.381, 'bigcodebench': 0.365, 'livecodebench': 0.554, 'swebench_verified': 0.176, 'all': 0.403}
+  prior (global)                           {'canitedit': 0.067, 'bigcodebench': 0.115, 'livecodebench': 0.283, 'swebench_verified': 0.096, 'all': 0.173}
+  length-only (fitted)                     {'canitedit': 0.371, 'bigcodebench': 0.099, 'livecodebench': 0.283, 'swebench_verified': 0.098, 'all': 0.179}
+  source-id prior                          {'canitedit': 0.381, 'bigcodebench': 0.489, 'livecodebench': 0.535, 'swebench_verified': 0.096, 'all': 0.432}
+  source-id + length (fitted)              {'canitedit': 0.438, 'bigcodebench': 0.454, 'livecodebench': 0.507, 'swebench_verified': 0.314, 'all': 0.449}
+  M2'                                      {'canitedit': 0.324, 'bigcodebench': 0.453, 'livecodebench': 0.583, 'swebench_verified': 0.222, 'all': 0.456}
+  majority class: {'canitedit': 0.381, 'bigcodebench': 0.489, 'livecodebench': 0.535, 'swebench_verified': 0.572}
+
+3. GATE (declared in advance)
+  M1': LOSO gain over best non-learned (length rank (unfitted)) -0.0021 [-0.0049, -0.0001]; within-source positive in 4 of 4 -> NOT SUPPORTED
+  M2': LOSO gain over best non-learned (length rank (unfitted)) +0.0018 [-0.0019, +0.0044]; within-source positive in 4 of 4 -> NOT SUPPORTED
+
+4. LEAK ABLATION (M1' with one leaky field added as its own feature block; 300 bootstraps)
+  variant                                                      pooled gain over mixture           LOSO gain over mixture
+  none (the final feature set)                               +0.0271 [+0.0232, +0.0308]       +0.0003 [+0.0002, +0.0004]
+  + human difficulty tag (LiveCodeBench, SWE-bench)          +0.0277 [+0.0240, +0.0311]       +0.0001 [+0.0000, +0.0001]
+  + constraints / follow-up section (LiveCodeBench)          +0.0282 [+0.0242, +0.0319]       +0.0003 [+0.0002, +0.0004]
+  + starter code / file to edit (LCB, BCB, CanItEdit)        +0.0276 [+0.0232, +0.0314]       +0.0004 [+0.0002, +0.0007]
+  + platform (LiveCodeBench)                                 +0.0280 [+0.0240, +0.0318]       +0.0005 [+0.0004, +0.0007]
+  + reference solution (BCB, CanItEdit, SWE patch)           +0.0277 [+0.0238, +0.0315]       +0.0009 [+0.0005, +0.0036]
+  + test code (BCB, CanItEdit, SWE test patch)               +0.0269 [+0.0229, +0.0301]       +0.0010 [+0.0008, +0.0012]
+  + source id                                                +0.0271 [+0.0231, +0.0306]       +0.0005 [+0.0003, +0.0006]
+  + all of the above                                         +0.0274 [+0.0240, +0.0316]       +0.0048 [+0.0005, +0.0095]
+  within-source gain over mixture (pooled CV) and AUROC of p_low:
+  none (the final feature set)                         CanItEdit +0.0064 (AUROC 0.521); BigCodeBench +0.0018 (AUROC 0.618); LiveCodeBench +0.0011 (AUROC 0.755); SWE-V +0.0006 (AUROC 0.497)
+  + human difficulty tag (LiveCodeBench, SWE-bench)    CanItEdit +0.0077 (AUROC 0.56); BigCodeBench +0.0022 (AUROC 0.637); LiveCodeBench +0.0026 (AUROC 0.872); SWE-V +0.0008 (AUROC 0.648)
+  + constraints / follow-up section (LiveCodeBench)    CanItEdit +0.0128 (AUROC 0.527); BigCodeBench +0.0032 (AUROC 0.617); LiveCodeBench +0.0018 (AUROC 0.783); SWE-V +0.0007 (AUROC 0.481)
+  + starter code / file to edit (LCB, BCB, CanItEdit)  CanItEdit +0.0108 (AUROC 0.656); BigCodeBench +0.0015 (AUROC 0.63); LiveCodeBench +0.0012 (AUROC 0.747); SWE-V +0.0013 (AUROC 0.521)
+  + platform (LiveCodeBench)                           CanItEdit +0.0115 (AUROC 0.539); BigCodeBench +0.0023 (AUROC 0.622); LiveCodeBench +0.0011 (AUROC 0.75); SWE-V +0.0016 (AUROC 0.483)
+  + reference solution (BCB, CanItEdit, SWE patch)     CanItEdit +0.0040 (AUROC 0.714); BigCodeBench +0.0019 (AUROC 0.682); LiveCodeBench +0.0011 (AUROC 0.759); SWE-V +0.0009 (AUROC 0.646)
+  + test code (BCB, CanItEdit, SWE test patch)         CanItEdit +0.0086 (AUROC 0.588); BigCodeBench +0.0012 (AUROC 0.65); LiveCodeBench +0.0010 (AUROC 0.751); SWE-V +0.0021 (AUROC 0.578)
+  + source id                                          CanItEdit +0.0049 (AUROC 0.576); BigCodeBench +0.0010 (AUROC 0.624); LiveCodeBench +0.0012 (AUROC 0.757); SWE-V +0.0004 (AUROC 0.484)
+  + all of the above                                   CanItEdit +0.0092 (AUROC 0.645); BigCodeBench +0.0020 (AUROC 0.699); LiveCodeBench +0.0031 (AUROC 0.871); SWE-V +0.0023 (AUROC 0.715)
+
+SENSITIVITY: tier scheme B (1 / 5 $/M)
+  pooled: M1' +0.0119 [+0.0077, +0.0162]; source-id prior +0.0193 [+0.0172, +0.0228]; length-only (fitted) +0.0103 [+0.0060, +0.0138]; length rank (unfitted) +0.0000 [+0.0000, +0.0013]
+  loso: M1' +0.0036 [+0.0025, +0.0041]; length-only (fitted) +0.0048 [+0.0039, +0.0052]; length rank (unfitted) +0.0000 [+0.0000, +0.0013]
+  gate: M1': supported for delegation routing (+0.0036 [+0.0025, +0.0041], 4 of 4)
+
+SENSITIVITY: equal tokens per task in every source
+  pooled: M1' +0.0262 [+0.0219, +0.0306]; M2' +0.0266 [+0.0220, +0.0315]; source-id prior +0.0315 [+0.0255, +0.0366]; length-only (fitted) +0.0201 [+0.0163, +0.0240]; length rank (unfitted) +0.0037 [+0.0019, +0.0065]
+  loso: M1' +0.0000 [-0.0000, +0.0000]; M2' +0.0000 [+0.0000, +0.0019]; length-only (fitted) +0.0100 [+0.0067, +0.0137]; length rank (unfitted) +0.0037 [+0.0019, +0.0065]
+  gate: M1': not supported (-0.0037 [-0.0065, -0.0019], 4 of 4); M2': not supported (-0.0037 [-0.0064, -0.0014], 4 of 4)
+
+5. M2' (MiniLM-L6 fine-tuned on CPU)
+  hyper-parameters: {'epochs': 3, 'batch': 16, 'lr': 4e-05, 'lr_head': 0.001, 'wd': 0.01, 'warmup': 0.1, 'max_len': 256, 'dropout': 0.1, 'val_share': 0.1}
+  pooled: 0: 1161 s, T=[1.252, 1.231, 1.532]; 1: 870 s, T=[1.422, 1.654, 1.703]; 2: 795 s, T=[2.448, 2.315, 1.699]; 3: 854 s, T=[1.475, 1.553, 1.792]; 4: 964 s, T=[1.058, 1.193, 1.303]
+  loso: canitedit: 939 s, T=[2.119, 1.697, 1.483]; bigcodebench: 544 s, T=[1.52, 1.494, 0.992]; livecodebench: 688 s, T=[1.071, 1.468, 1.995]; swebench_verified: 896 s, T=[1.378, 1.357, 1.496]
+  final: 22,714,371 parameters; ONNX fp32 90.4 MB, int8 23.0 MB; train 1116 s
+  parity vs PyTorch on 100 texts, fp32: {'max_abs_diff': 2.980232238769531e-07, 'mean_abs_diff': 6.546576969412854e-08, 'same_tier_at_tau_0.5': 1.0, 'same_tier_over_tau_0.05_to_0.95': 1.0, 'latency_ms_short_brief_p50_p99': [5.58, 6.35], 'latency_ms_256_token_brief_p50_p99': [74.22, 90.08]}
+  parity vs PyTorch on 100 texts, int8: {'max_abs_diff': 0.05109900236129761, 'mean_abs_diff': 0.009934303350746632, 'same_tier_at_tau_0.5': 0.96, 'same_tier_over_tau_0.05_to_0.95': 0.9757894736842103, 'latency_ms_short_brief_p50_p99': [2.7, 4.57], 'latency_ms_256_token_brief_p50_p99': [52.33, 67.8]}
+
+6. PROBE (60 hand-written briefs; a sanity probe, NOT evidence of solved rate)
+  M1': Spearman(difficulty, band) 0.303; Spearman(tier, band) 0.0; agreement 0.367; mean p_low by band {'easy': 0.386, 'medium': 0.37, 'hard': 0.359}
+      confusion band x tier at tau 0.5: {'easy': {'low': 0, 'mid': 0, 'high': 20}, 'medium': {'low': 0, 'mid': 2, 'high': 18}, 'hard': {'low': 0, 'mid': 0, 'high': 20}}
+      easy briefs scored hardest: e01 [0.32, 0.395, 0.614] Rename the variable foo to bar in src/utils.ts. Only that fi | e18 [0.341, 0.111, 0.688] Set enable_beta_search to false in flags.yaml. | e13 [0.341, 0.186, 0.575] Add a constant MAX_RETRIES = 3 to src/constants.ts next to t
+      hard briefs scored easiest: h16 [0.406, 0.432, 0.629] Add end-to-end encryption to shared notes: key generation pe | h03 [0.405, 0.401, 0.534] Introduce a plugin system for exporters: a stable interface, | h04 [0.405, 0.401, 0.669] Replace the full re-index on every file save with incrementa
+  length-only (fitted): Spearman(difficulty, band) -0.927; Spearman(tier, band) None; agreement 0.333; mean p_low by band {'easy': 0.391, 'medium': 0.405, 'hard': 0.413}
+      confusion band x tier at tau 0.5: {'easy': {'low': 0, 'mid': 0, 'high': 20}, 'medium': {'low': 0, 'mid': 0, 'high': 20}, 'hard': {'low': 0, 'mid': 0, 'high': 20}}
+      easy briefs scored hardest: e05 [0.382, 0.325, 0.523] Add the line `coverage/` to .gitignore. | e18 [0.385, 0.337, 0.525] Set enable_beta_search to false in flags.yaml. | e03 [0.386, 0.344, 0.526] Bump the version string in package.json from 1.4.2 to 1.4.3.
+      hard briefs scored easiest: h01 [0.418, 0.491, 0.55] Design and implement optimistic concurrency for the sync que | h20 [0.417, 0.482, 0.549] Two scheduler threads occasionally deadlock when a job is ca | h05 [0.415, 0.477, 0.548] Make the API multi-tenant: every table gets a tenant id, eve
+  router text rule (band -> tier): Spearman(difficulty, band) None; Spearman(tier, band) 0.396; agreement 0.483; mean p_low by band None
+      confusion band x tier at tau 0.5: {'easy': {'low': 19, 'mid': 1, 'high': 0}, 'medium': {'low': 11, 'mid': 9, 'high': 0}, 'hard': {'low': 10, 'mid': 9, 'high': 1}}
+  M2' (int8 ONNX): Spearman(difficulty, band) 0.588; Spearman(tier, band) 0.587; agreement 0.567; mean p_low by band {'easy': 0.476, 'medium': 0.328, 'hard': 0.282}
+      confusion band x tier at tau 0.5: {'easy': {'low': 11, 'mid': 1, 'high': 8}, 'medium': {'low': 0, 'mid': 3, 'high': 17}, 'hard': {'low': 0, 'mid': 0, 'high': 20}}
+      easy briefs scored hardest: e13 [0.199, 0.209, 0.346] Add a constant MAX_RETRIES = 3 to src/constants.ts next to t | e15 [0.281, 0.25, 0.42] Sort the list of supported languages in languages.json alpha | e19 [0.323, 0.355, 0.525] Fix the indentation of the else branch in handlers/user.py s
+      hard briefs scored easiest: h12 [0.378, 0.429, 0.579] Move the monorepo build from webpack to vite across all five | h19 [0.361, 0.395, 0.584] Our file watcher misses changes on macOS and floods events o | h04 [0.355, 0.398, 0.555] Replace the full re-index on every file save with incrementa
+

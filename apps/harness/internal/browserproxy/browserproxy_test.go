@@ -1,0 +1,455 @@
+package browserproxy_test
+
+import (
+	"bufio"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"errors"
+	"io"
+	"net"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/ndolinschi/Octo/apps/harness/internal/browserproxy"
+)
+
+func TestOpenBootstrapCookieAndHTMLInjection(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if c, err := r.Cookie("__octo_bp"); err == nil && c.Value != "" {
+			t.Errorf("capability cookie leaked to upstream: %v", c.Value)
+		}
+		switch r.URL.Path {
+		case "/app":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'https://cdn.example'; frame-ancestors 'none'")
+			_, _ = io.WriteString(w, "<!doctype html><html><head><title>Demo</title></head><body><h1>Hello</h1></body></html>")
+		case "/redir":
+			http.Redirect(w, r, "http://"+r.Host+"/app?ok=1", http.StatusFound)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	mgr := browserproxy.NewManager(browserproxy.Options{})
+	defer func() {
+		if err := mgr.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown: %v", err)
+		}
+	}()
+
+	sess, err := mgr.Open(context.Background(), "proj-1", upstream.URL+"/app?tab=1")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if sess.Nonce == "" || sess.ProxyOrigin == "" {
+		t.Fatalf("unexpected session: %+v", sess)
+	}
+
+	// Direct access without cookie is rejected with 403.
+	respNoCookie, err := http.Get(sess.ProxyOrigin + "/app")
+	if err != nil {
+		t.Fatalf("GET without cookie: %v", err)
+	}
+	respNoCookie.Body.Close()
+	if respNoCookie.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 without cookie, got %d", respNoCookie.StatusCode)
+	}
+
+	// Follow one-time bootstrap ticket with a cookie jar.
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookiejar: %v", err)
+	}
+	client := &http.Client{Jar: jar}
+	resp, err := client.Get(sess.FrameURL)
+	if err != nil {
+		t.Fatalf("bootstrap GET: %v", err)
+	}
+	bodyBytes, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 after bootstrap redirect, got %d (%s)", resp.StatusCode, string(bodyBytes))
+	}
+	if got := resp.Header.Get("X-Frame-Options"); got != "" {
+		t.Errorf("X-Frame-Options not stripped: %q", got)
+	}
+	csp := resp.Header.Get("Content-Security-Policy")
+	if strings.Contains(csp, "frame-ancestors") {
+		t.Errorf("CSP still contains frame-ancestors: %q", csp)
+	}
+	if !strings.Contains(csp, "'self'") {
+		t.Errorf("CSP script-src was not widened with 'self': %q", csp)
+	}
+	if !strings.Contains(csp, "'unsafe-inline'") {
+		t.Errorf("CSP style-src was not widened with 'unsafe-inline' for inspector overlay: %q", csp)
+	}
+	if !strings.Contains(csp, "data:") {
+		t.Errorf("CSP img-src was not widened with data: for SVG foreignObject crops: %q", csp)
+	}
+	body := string(bodyBytes)
+	if !strings.Contains(body, `/__octo_browser/inspector.js`) || !strings.Contains(body, sess.Nonce) {
+		t.Errorf("inspector script tag missing from HTML: %s", body)
+	}
+
+	// Reusing the one-time bootstrap ticket fails.
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	replay, err := noFollow.Get(sess.FrameURL)
+	if err != nil {
+		t.Fatalf("replay GET: %v", err)
+	}
+	replay.Body.Close()
+	if replay.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 on ticket replay, got %d", replay.StatusCode)
+	}
+
+	// Inspector JS endpoint serves the script when authenticated.
+	jsResp, err := client.Get(sess.ProxyOrigin + "/__octo_browser/inspector.js")
+	if err != nil {
+		t.Fatalf("inspector.js GET: %v", err)
+	}
+	jsBytes, _ := io.ReadAll(jsResp.Body)
+	jsResp.Body.Close()
+	if jsResp.StatusCode != http.StatusOK || !strings.Contains(string(jsBytes), "octo-browser") {
+		t.Errorf("unexpected inspector.js response: status=%d len=%d", jsResp.StatusCode, len(jsBytes))
+	}
+
+	// Upstream redirects stay on the proxy origin.
+	redirResp, err := client.Get(sess.ProxyOrigin + "/redir")
+	if err != nil {
+		t.Fatalf("redir GET: %v", err)
+	}
+	redirResp.Body.Close()
+	if redirResp.Request.URL.Host != strings.TrimPrefix(sess.ProxyOrigin, "http://") {
+		t.Errorf("redirect escaped proxy origin: %s", redirResp.Request.URL.String())
+	}
+}
+
+func TestWebSocketUpgradePassThrough(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			t.Error("ResponseWriter not hijackable")
+			return
+		}
+		conn, rw, err := hj.Hijack()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = rw.WriteString("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
+		_ = rw.Flush()
+		line, _ := rw.ReadString('\n')
+		_, _ = rw.WriteString("echo:" + line)
+		_ = rw.Flush()
+	}))
+	defer upstream.Close()
+
+	mgr := browserproxy.NewManager(browserproxy.Options{})
+	defer func() { _ = mgr.Shutdown(context.Background()) }()
+
+	sess, err := mgr.Open(context.Background(), "proj-ws", upstream.URL+"/")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	bootResp, err := noFollow.Get(sess.FrameURL)
+	if err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	cookies := bootResp.Cookies()
+	bootResp.Body.Close()
+	if len(cookies) == 0 {
+		t.Fatal("expected capability cookie")
+	}
+
+	u, _ := url.Parse(sess.ProxyOrigin)
+	conn, err := net.DialTimeout("tcp", u.Host, 3*time.Second)
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	defer conn.Close()
+
+	req := "GET /hmr HTTP/1.1\r\n" +
+		"Host: " + u.Host + "\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Cookie: " + cookies[0].Name + "=" + cookies[0].Value + "\r\n\r\n"
+	if _, err := conn.Write([]byte(req)); err != nil {
+		t.Fatalf("write upgrade: %v", err)
+	}
+	br := bufio.NewReader(conn)
+	statusLine, err := br.ReadString('\n')
+	if err != nil || !strings.Contains(statusLine, "101") {
+		t.Fatalf("expected 101 status line, got %q (err=%v)", statusLine, err)
+	}
+	for {
+		line, err := br.ReadString('\n')
+		if err != nil || line == "\r\n" {
+			break
+		}
+	}
+	if _, err := conn.Write([]byte("ping-hmr\n")); err != nil {
+		t.Fatalf("write ws frame: %v", err)
+	}
+	reply, err := br.ReadString('\n')
+	if err != nil || reply != "echo:ping-hmr\n" {
+		t.Fatalf("expected echo:ping-hmr, got %q (err=%v)", reply, err)
+	}
+}
+
+func TestSSRFAndBlockedPortRejection(t *testing.T) {
+	mgr := browserproxy.NewManager(browserproxy.Options{BlockedLoopbackPorts: []int{8790}})
+	defer func() { _ = mgr.Shutdown(context.Background()) }()
+
+	cases := []struct {
+		url  string
+		kind browserproxy.ErrorKind
+	}{
+		{"", browserproxy.KindInvalid},
+		{"javascript:alert(1)", browserproxy.KindInvalid},
+		{"file:///etc/passwd", browserproxy.KindInvalid},
+		{"http://127.0.0.1:8790/v1/config", browserproxy.KindForbidden},
+		{"http://localhost:8790/health", browserproxy.KindForbidden},
+		{"http://169.254.169.254/latest/meta-data/", browserproxy.KindForbidden},
+		{"http://0.0.0.0:3000/", browserproxy.KindForbidden},
+	}
+	for _, tc := range cases {
+		_, err := mgr.Open(context.Background(), "proj-1", tc.url)
+		if err == nil {
+			t.Errorf("expected error for %q, got nil", tc.url)
+			continue
+		}
+		var be *browserproxy.Error
+		if !errors.As(err, &be) || be.Kind != tc.kind {
+			t.Errorf("for %q: got %v, want ErrorKind=%v", tc.url, err, tc.kind)
+		}
+	}
+
+	// Dynamic AddBlockedPort also blocks a port added after construction.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	mgr.AddBlockedPort(port)
+	if _, err := mgr.Open(context.Background(), "proj-1", "http://127.0.0.1:"+strconv.Itoa(port)); err == nil {
+		t.Errorf("expected dynamically blocked port %d to fail", port)
+	}
+}
+
+func TestCrossSiteIframeWithoutCookiesGzipCSPAndOriginRewrite(t *testing.T) {
+	var upstreamURL string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/app":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Set("Content-Security-Policy", "upgrade-insecure-requests; block-all-mixed-content; script-src 'strict-dynamic' https://cdn.example; frame-ancestors *")
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+			_, _ = io.WriteString(gz, `<!doctype html><html><head></head><body><script src="`+upstreamURL+`/main.js"></script></body></html>`)
+			_ = gz.Close()
+			_, _ = w.Write(buf.Bytes())
+		case "/main.js":
+			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+			_, _ = io.WriteString(w, `fetch("`+upstreamURL+`/api/data")`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+	upstreamURL = upstream.URL
+
+	mgr := browserproxy.NewManager(browserproxy.Options{})
+	defer func() { _ = mgr.Shutdown(context.Background()) }()
+
+	sess, err := mgr.Open(context.Background(), "proj-iframe", upstream.URL+"/app")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	// Simulate a cross-site iframe (http://localhost:1420 -> http://127.0.0.1:PORT) that drops SameSite=Lax cookies:
+	// no cookie jar, follow bootstrap redirect manually.
+	noCookieClient := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	bootResp, err := noCookieClient.Get(sess.FrameURL)
+	if err != nil {
+		t.Fatalf("bootstrap GET: %v", err)
+	}
+	bootResp.Body.Close()
+	if bootResp.StatusCode != http.StatusFound {
+		t.Fatalf("expected 302 from bootstrap, got %d", bootResp.StatusCode)
+	}
+	dest := bootResp.Header.Get("Location")
+
+	// Cross-site redirect to dest (carrying parent Origin/Referer/Sec-Fetch-Site: cross-site) succeeds without cookie.
+	req, _ := http.NewRequest(http.MethodGet, sess.ProxyOrigin+dest, nil)
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	req.Header.Set("Referer", "http://localhost:1420/")
+	htmlResp, err := noCookieClient.Do(req)
+	if err != nil {
+		t.Fatalf("cross-site dest GET: %v", err)
+	}
+	htmlBytes, _ := io.ReadAll(htmlResp.Body)
+	htmlResp.Body.Close()
+	if htmlResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 on bootstrapped cross-site iframe dest without cookie, got %d", htmlResp.StatusCode)
+	}
+	csp := htmlResp.Header.Get("Content-Security-Policy")
+	if strings.Contains(csp, "upgrade-insecure-requests") || strings.Contains(csp, "block-all-mixed-content") || strings.Contains(csp, "'strict-dynamic'") {
+		t.Errorf("CSP retained blocking directives: %q", csp)
+	}
+	htmlStr := string(htmlBytes)
+	if !strings.Contains(htmlStr, sess.ProxyOrigin+"/main.js") {
+		t.Errorf("HTML did not rewrite targetOrigin to proxyOrigin: %s", htmlStr)
+	}
+	if !strings.Contains(htmlStr, `data-octo-target-origin="`+upstreamURL+`"`) {
+		t.Errorf("inspector data-octo-target-origin was overwritten: %s", htmlStr)
+	}
+	if !strings.Contains(htmlStr, `/__octo_browser/inspector.js`) {
+		t.Errorf("gzipped HTML missing injected inspector tag: %s", htmlStr)
+	}
+
+	// Same-origin subresource fetch from within the proxied iframe succeeds without cookie.
+	jsReq, _ := http.NewRequest(http.MethodGet, sess.ProxyOrigin+"/main.js", nil)
+	jsReq.Header.Set("Sec-Fetch-Site", "same-origin")
+	jsReq.Header.Set("Referer", sess.ProxyOrigin+"/app")
+	jsResp, err := noCookieClient.Do(jsReq)
+	if err != nil {
+		t.Fatalf("main.js GET: %v", err)
+	}
+	jsBytes, _ := io.ReadAll(jsResp.Body)
+	jsResp.Body.Close()
+	if jsResp.StatusCode != http.StatusOK || !strings.Contains(string(jsBytes), sess.ProxyOrigin+"/api/data") {
+		t.Errorf("unexpected main.js response: status=%d body=%s", jsResp.StatusCode, string(jsBytes))
+	}
+
+	// Foreign Origin and unsolicited cross-site requests remain forbidden.
+	csrfReq, _ := http.NewRequest(http.MethodPost, sess.ProxyOrigin+"/api/data", strings.NewReader("{}"))
+	csrfReq.Header.Set("Origin", "https://evil.example")
+	csrfResp, err := noCookieClient.Do(csrfReq)
+	if err != nil {
+		t.Fatalf("csrf POST: %v", err)
+	}
+	csrfResp.Body.Close()
+	if csrfResp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 for foreign Origin, got %d", csrfResp.StatusCode)
+	}
+
+	unsolicitedReq, _ := http.NewRequest(http.MethodGet, sess.ProxyOrigin+"/other", nil)
+	unsolicitedReq.Header.Set("Sec-Fetch-Site", "cross-site")
+	unsolicitedResp, err := noCookieClient.Do(unsolicitedReq)
+	if err != nil {
+		t.Fatalf("unsolicited GET: %v", err)
+	}
+	unsolicitedResp.Body.Close()
+	if unsolicitedResp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 for unsolicited cross-site GET, got %d", unsolicitedResp.StatusCode)
+	}
+}
+
+// Once an instance is active it accepts cookieless requests with no Origin or Referer (the iframe whose loopback
+// cookie the webview dropped): such a request must at least name the proxy's own loopback host, so a page that
+// rebinds its DNS name to 127.0.0.1 (Host: evil.example) gets nothing (security review finding 10).
+func TestForeignHostIsRefusedEvenWhenActive(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "secret dev data")
+	}))
+	defer upstream.Close()
+	mgr := browserproxy.NewManager(browserproxy.Options{})
+	defer func() { _ = mgr.Shutdown(context.Background()) }()
+	sess, err := mgr.Open(context.Background(), "proj-host", upstream.URL+"/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	boot, err := client.Get(sess.FrameURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boot.Body.Close()
+	var cookie *http.Cookie
+	for _, c := range boot.Cookies() {
+		cookie = c
+	}
+	_, port, _ := net.SplitHostPort(strings.TrimPrefix(sess.ProxyOrigin, "http://"))
+	get := func(host string, withCookie bool) int {
+		req, _ := http.NewRequest(http.MethodGet, sess.ProxyOrigin+"/data", nil)
+		req.Host = host
+		if withCookie && cookie != nil {
+			req.AddCookie(cookie)
+		}
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	for _, h := range []string{"evil.example:" + port, "evil.example", "192.168.1.9:" + port} {
+		if s := get(h, false); s != http.StatusForbidden {
+			t.Errorf("no cookie, Host %s: %d, want 403", h, s)
+		}
+		if s := get(h, true); s != http.StatusForbidden {
+			t.Errorf("with the cookie, Host %s: %d, want 403", h, s)
+		}
+	}
+	for _, h := range []string{"127.0.0.1:" + port, "localhost:" + port} {
+		if s := get(h, false); s != http.StatusOK {
+			t.Errorf("Host %s: %d, want 200", h, s)
+		}
+	}
+}
+
+func TestUnreachableUpstreamPostsAnErrorToTheHost(t *testing.T) {
+	// A port nothing listens on: listen, note the address, close.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := "http://" + ln.Addr().String() + "/"
+	_ = ln.Close()
+
+	mgr := browserproxy.NewManager(browserproxy.Options{})
+	defer func() { _ = mgr.Shutdown(context.Background()) }()
+	sess, err := mgr.Open(context.Background(), "proj-1", target)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	resp, err := client.Get(sess.FrameURL)
+	if err != nil {
+		t.Fatalf("GET frame: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status %d, want 502", resp.StatusCode)
+	}
+	text := string(body)
+	for _, want := range []string{"Upstream server unreachable", `"channel":"octo-browser"`, `"type":"error"`, sess.Nonce} {
+		if !strings.Contains(text, want) {
+			t.Errorf("body lacks %q: %s", want, text)
+		}
+	}
+}

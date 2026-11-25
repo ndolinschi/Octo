@@ -1,0 +1,63 @@
+name: Bug report
+description: Something in Octo does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Octo is early software, so detailed reports help a lot.
+        **Security problems:** do not file them here — see SECURITY.md.
+        Please remove API keys, tokens and private paths from anything you paste.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a project on …
+        2. Send …
+        3. See …
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How do you run Octo?
+      options:
+        - Desktop app built with `pnpm install:app`
+        - "`pnpm dev:all` (browser)"
+        - "`pnpm dev:all -- --mock`"
+        - Harness on its own (`harness serve`)
+        - Phone through Remote access
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider or agent
+      description: e.g. Anthropic API key, Octo router, Claude Code, GitHub Copilot, mock model
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: e.g. Ubuntu 24.04, macOS 15.2
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Octo commit
+      description: Output of `git rev-parse --short HEAD`
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and screenshots
+      description: Relevant log lines (`harness doctor` output helps) or screenshots.
+      render: text

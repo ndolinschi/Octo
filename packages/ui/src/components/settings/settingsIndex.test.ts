@@ -1,0 +1,58 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { SECTIONS, SETTINGS_INDEX, searchSettings, sectionOf } from "./settingsIndex";
+
+test("sectionOf: a known id, else General", () => {
+  assert.equal(sectionOf("providers"), "providers");
+  assert.equal(sectionOf(""), "general");
+  assert.equal(sectionOf(null), "general");
+  assert.equal(sectionOf("nope"), "general");
+  assert.equal(sectionOf("agents"), "providers");
+});
+
+test("searchSettings: every word must match, across sections and keywords", () => {
+  assert.deepEqual(
+    searchSettings("upstream key").map((r) => r.id),
+    ["upstream-key"],
+  );
+  assert.deepEqual(
+    searchSettings("COPILOT").map((r) => r.section),
+    ["providers", "editor"],
+  );
+  assert.ok(searchSettings("dark").some((r) => r.id === "theme"));
+  assert.deepEqual(
+    searchSettings("compact packages").map((r) => r.id),
+    ["compact-folders"],
+  );
+  assert.deepEqual(searchSettings("   "), []);
+  assert.deepEqual(searchSettings("zzz"), []);
+});
+
+test("the index: unique ids, every section has a row", () => {
+  const ids = SETTINGS_INDEX.map((r) => r.id);
+  assert.equal(new Set(ids).size, ids.length);
+  for (const s of SECTIONS)
+    assert.ok(
+      SETTINGS_INDEX.some((r) => r.section === s.id),
+      s.id,
+    );
+});
+
+test("the index: one name for the main model, plain words for the trace (polish step 6a, S6)", () => {
+  assert.equal(searchSettings("default model")[0]?.id, "default-orchestrator");
+  assert.ok(searchSettings("acp").some((r) => r.id === "trace"));
+  assert.ok(!SETTINGS_INDEX.some((r) => /orchestrator|wire trace/i.test(r.title)));
+});
+
+test("searchSettings: the phone leaves out the desktop-only rows (A8: keyboard shortcuts)", () => {
+  assert.ok(searchSettings("shortcuts").some((r) => r.id === "shortcuts"));
+  assert.ok(!searchSettings("shortcuts", { phone: true }).some((r) => r.id === "shortcuts"));
+  assert.ok(searchSettings("theme", { phone: true }).some((r) => r.id === "theme"));
+});
+
+test("searchSettings: finds auto-memory and auto-memory feature flag", () => {
+  const autoMem = searchSettings("auto memory");
+  assert.ok(autoMem.some((r) => r.id === "auto-memory" && r.section === "memory"));
+  assert.ok(autoMem.some((r) => r.id === "feature-auto-memory" && r.section === "privacy"));
+  assert.ok(searchSettings("feature flag").some((r) => r.id === "feature-auto-memory"));
+});

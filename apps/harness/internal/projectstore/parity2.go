@@ -1,0 +1,331 @@
+package projectstore
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"slices"
+)
+
+// Schema 7 additions of parity part 2 (modes, plans, rewind, manual compaction).
+// Columns are listed in columnsAdded; this table is created idempotently.
+const plansSchema = `
+CREATE TABLE IF NOT EXISTS plans (
+	id TEXT PRIMARY KEY,
+	turn_id INTEGER NOT NULL,
+	text TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	created_at TEXT NOT NULL,
+	approved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS plans_created ON plans (created_at);`
+
+// Modes of a project or turn.
+const (
+	ModeAgent = "agent"
+	ModeAsk   = "ask"
+	ModePlan  = "plan"
+)
+
+// ValidMode reports whether m is a mode.
+func ValidMode(m string) bool { return m == ModeAgent || m == ModeAsk || m == ModePlan }
+
+// Plan statuses.
+const (
+	PlanPending  = "pending"
+	PlanApproved = "approved"
+)
+
+// Plan is the result of a turn that ran in plan mode.
+type Plan struct {
+	ID         string  `json:"id"`
+	TurnID     int64   `json:"turn_id"`
+	Text       string  `json:"text"`
+	Status     string  `json:"status"`
+	CreatedAt  string  `json:"created_at"`
+	ApprovedAt *string `json:"approved_at"`
+	// SessionID is the main session whose turn made the plan (schema 15).
+	SessionID string `json:"session_id"`
+}
+
+// AddPlan stores a plan for the turn, in the session of the turn's user message.
+func (d *DB) AddPlan(ctx context.Context, turnID int64, text string) (Plan, error) {
+	p := Plan{ID: NewID("pln"), TurnID: turnID, Text: text, Status: PlanPending, CreatedAt: Now()}
+	_ = d.sql.QueryRowContext(ctx, `SELECT session_id FROM messages WHERE id = ?`, turnID).Scan(&p.SessionID)
+	_, err := d.sql.ExecContext(ctx, `INSERT INTO plans (id, turn_id, text, status, created_at, session_id) VALUES (?, ?, ?, ?, ?, ?)`,
+		p.ID, p.TurnID, p.Text, p.Status, p.CreatedAt, p.SessionID)
+	return p, err
+}
+
+func scanPlan(sc interface{ Scan(...any) error }) (Plan, error) {
+	var p Plan
+	var ap sql.NullString
+	if err := sc.Scan(&p.ID, &p.TurnID, &p.Text, &p.Status, &p.CreatedAt, &ap, &p.SessionID); err != nil {
+		return p, err
+	}
+	if ap.Valid {
+		p.ApprovedAt = &ap.String
+	}
+	return p, nil
+}
+
+const planCols = `id, turn_id, text, status, created_at, approved_at, session_id`
+
+// Plan returns one plan.
+func (d *DB) Plan(ctx context.Context, id string) (Plan, error) {
+	p, err := scanPlan(d.sql.QueryRowContext(ctx, `SELECT `+planCols+` FROM plans WHERE id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return p, ErrNotFound
+	}
+	return p, err
+}
+
+// LatestPlan is the newest plan of the default session; ErrNotFound when there is none.
+func (d *DB) LatestPlan(ctx context.Context) (Plan, error) {
+	return d.LatestSessionPlan(ctx, "")
+}
+
+// LatestSessionPlan is the newest plan of a session ("": the default); ErrNotFound when there is none.
+func (d *DB) LatestSessionPlan(ctx context.Context, sid string) (Plan, error) {
+	sid, err := d.orDefault(ctx, sid)
+	if err != nil {
+		return Plan{}, err
+	}
+	p, err := scanPlan(d.sql.QueryRowContext(ctx, `SELECT `+planCols+` FROM plans WHERE session_id = ? OR session_id = '' ORDER BY created_at DESC, rowid DESC LIMIT 1`, sid))
+	if errors.Is(err, sql.ErrNoRows) {
+		return p, ErrNotFound
+	}
+	return p, err
+}
+
+// ApprovePlan marks a pending plan approved; ErrNotFound for an unknown id and
+// ErrPlanNotPending when it was approved already.
+func (d *DB) ApprovePlan(ctx context.Context, id string) (Plan, error) {
+	res, err := d.sql.ExecContext(ctx, `UPDATE plans SET status = ?, approved_at = ? WHERE id = ? AND status = ?`,
+		PlanApproved, Now(), id, PlanPending)
+	if err != nil {
+		return Plan{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		if _, err := d.Plan(ctx, id); err != nil {
+			return Plan{}, err
+		}
+		return Plan{}, ErrPlanNotPending
+	}
+	return d.Plan(ctx, id)
+}
+
+// ErrPlanNotPending: the plan was approved before.
+var ErrPlanNotPending = errors.New("projectstore: plan is not pending")
+
+// AddManualCompaction stores a summary made on request as covering the
+// agent's messages so far; count is how many messages it replaces.
+func (d *DB) AddManualCompaction(ctx context.Context, agentID, summary string, count int) (Compaction, error) {
+	c, err := d.AddCompaction(ctx, agentID, summary)
+	if err != nil {
+		return c, err
+	}
+	_, err = d.sql.ExecContext(ctx, `UPDATE compactions SET manual = 1, message_count = ? WHERE id = ?`, count, c.ID)
+	c.Manual, c.MessageCount = true, count
+	return c, err
+}
+
+// LastUsage is the newest API usage row of the agent's main thread.
+type LastUsage struct {
+	Input, CacheRead, CacheWrite, Output int64
+	Model                                string
+}
+
+// LastAgentUsage returns the agent's newest main-thread usage row (side
+// questions and other roles never count); ok is false when there is none.
+func (d *DB) LastAgentUsage(ctx context.Context, agentID string) (u LastUsage, ok bool, err error) {
+	err = d.sql.QueryRowContext(ctx,
+		`SELECT model, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens FROM usage
+		 WHERE agent_id = ? AND role IS NULL ORDER BY id DESC LIMIT 1`, agentID).
+		Scan(&u.Model, &u.Input, &u.CacheRead, &u.CacheWrite, &u.Output)
+	if errors.Is(err, sql.ErrNoRows) {
+		return u, false, nil
+	}
+	return u, err == nil, err
+}
+
+// RewindResult is what a rewind cut.
+type RewindResult struct {
+	MessagesCut   int
+	AgentsCut     int
+	TasksDropped  int
+	ChangesPurged int
+}
+
+// Rewind cuts the conversation back to just before message fromID: every
+// message with that id or a later one (of every agent) is soft-deleted (kept
+// on disk with rewound_at), sub-agents created since are hidden the same way,
+// their search documents, the task records and facts of the cut turns, their
+// recorded changes, context receipts, compactions that reach into the cut and
+// plans are removed. The caller has checked and restored the files.
+func (d *DB) Rewind(ctx context.Context, fromID int64) (RewindResult, error) {
+	return d.RewindIn(ctx, "", fromID)
+}
+
+// sessionScope restricts a statement to the agents of one main session ("": every agent).
+const sessionScope = ` AND (? = '' OR agent_id IN (SELECT id FROM agents WHERE session_id = ?))`
+
+// RewindIn is Rewind restricted to one main session ("": the whole project): other sessions' messages, agents,
+// receipts, compactions, plans, changes and tasks are left alone.
+func (d *DB) RewindIn(ctx context.Context, sid string, fromID int64) (RewindResult, error) {
+	var res RewindResult
+	var created string
+	if err := d.sql.QueryRowContext(ctx, `SELECT created_at FROM messages WHERE id = ?`, fromID).Scan(&created); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return res, ErrNotFound
+		}
+		return res, err
+	}
+	tx, err := d.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return res, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	now := Now()
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM messages WHERE id >= ? AND rewound_at IS NULL`+sessionScope, fromID, sid, sid)
+	if err != nil {
+		return res, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return res, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return res, err
+	}
+	for _, id := range ids {
+		if err := delDoc(ctx, tx, DocMessage, itoa(id)); err != nil {
+			return res, err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE messages SET rewound_at = ? WHERE id >= ? AND rewound_at IS NULL`+sessionScope, now, fromID, sid, sid); err != nil {
+		return res, err
+	}
+	res.MessagesCut = len(ids)
+	r, err := tx.ExecContext(ctx, `UPDATE agents SET rewound_at = ? WHERE parent_id IS NOT NULL AND created_at >= ? AND rewound_at IS NULL
+		AND (? = '' OR session_id = ?)`, now, created, sid, sid)
+	if err != nil {
+		return res, err
+	}
+	n, _ := r.RowsAffected()
+	res.AgentsCut = int(n)
+	for _, q := range []string{
+		`DELETE FROM context_receipts WHERE turn_id >= ? AND (? = '' OR turn_id IN (SELECT id FROM messages WHERE session_id = ?))`,
+		`DELETE FROM compactions WHERE upto_message_id >= ?` + sessionScope,
+		`DELETE FROM plans WHERE turn_id >= ? AND (? = '' OR session_id = ? OR session_id = '')`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, fromID, sid, sid); err != nil {
+			return res, err
+		}
+	}
+	r, err = tx.ExecContext(ctx, `DELETE FROM changes WHERE turn_id >= ? AND (? = '' OR session_id = ? OR session_id = '')`, fromID, sid, sid)
+	if err != nil {
+		return res, err
+	}
+	n, _ = r.RowsAffected()
+	res.ChangesPurged = int(n)
+	if err := tx.Commit(); err != nil {
+		return res, err
+	}
+	dropped, err := d.dropTaskRefs(ctx, sid, fromID)
+	res.TasksDropped = dropped
+	if err != nil {
+		return res, err
+	}
+	return res, d.Touch(ctx)
+}
+
+// dropTaskRefs deletes the task records created by the cut turns (every message
+// they reference is cut) and removes the references to cut messages from the
+// others (message ids, quotes, facts).
+func (d *DB) dropTaskRefs(ctx context.Context, sid string, fromID int64) (int, error) {
+	tasks, err := d.Tasks(ctx)
+	if err != nil {
+		return 0, err
+	}
+	dropped := 0
+	for _, t := range tasks {
+		if len(t.MessageIDs) == 0 || (sid != "" && t.SessionID != "" && t.SessionID != sid) {
+			continue
+		}
+		keep := slices.DeleteFunc(slices.Clone(t.MessageIDs), func(id int64) bool { return id >= fromID })
+		if len(keep) == len(t.MessageIDs) {
+			continue
+		}
+		if len(keep) == 0 {
+			if err := d.DeleteTask(ctx, t.ID); err != nil {
+				return dropped, fmt.Errorf("drop task %s: %w", t.ID, err)
+			}
+			dropped++
+			continue
+		}
+		t.MessageIDs = keep
+		t.Quotes = slices.DeleteFunc(t.Quotes, func(q Quote) bool { return q.MessageID >= fromID })
+		t.Facts = slices.DeleteFunc(t.Facts, func(f Fact) bool { return f.MessageID >= fromID })
+		if _, err := d.SaveTask(ctx, t); err != nil {
+			return dropped, err
+		}
+	}
+	return dropped, nil
+}
+
+func orAgentMode(m string) string {
+	if ValidMode(m) {
+		return m
+	}
+	return ModeAgent
+}
+
+// RoutedCutIn lists the router request ids of the sub-agents a rewind of the
+// session sid to fromID would hide (those spawned with tier auto).
+func (d *DB) RoutedCutIn(ctx context.Context, sid string, fromID int64) ([]string, error) {
+	var created string
+	if err := d.sql.QueryRowContext(ctx, `SELECT created_at FROM messages WHERE id = ?`, fromID).Scan(&created); err != nil {
+		return nil, err
+	}
+	rows, err := d.sql.QueryContext(ctx, `SELECT route_request_id FROM agents WHERE parent_id IS NOT NULL AND created_at >= ?
+		AND rewound_at IS NULL AND (? = '' OR session_id = ?) AND route_request_id IS NOT NULL AND route_request_id != ''`, created, sid, sid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// CountCut says how many messages and sub-agents a Rewind to fromID would hide.
+func (d *DB) CountCut(ctx context.Context, fromID int64) (messages, agents int, err error) {
+	return d.CountCutIn(ctx, "", fromID)
+}
+
+// CountCutIn is CountCut restricted to one main session ("": the whole project).
+func (d *DB) CountCutIn(ctx context.Context, sid string, fromID int64) (messages, agents int, err error) {
+	var created string
+	if err = d.sql.QueryRowContext(ctx, `SELECT created_at FROM messages WHERE id = ?`, fromID).Scan(&created); err != nil {
+		return 0, 0, err
+	}
+	if err = d.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE id >= ? AND rewound_at IS NULL`+sessionScope, fromID, sid, sid).Scan(&messages); err != nil {
+		return
+	}
+	err = d.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE parent_id IS NOT NULL AND created_at >= ? AND rewound_at IS NULL AND (? = '' OR session_id = ?)`,
+		created, sid, sid).Scan(&agents)
+	return
+}

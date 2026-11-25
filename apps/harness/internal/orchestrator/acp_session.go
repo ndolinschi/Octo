@@ -1,0 +1,843 @@
+package orchestrator
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"github.com/ndolinschi/Octo/apps/harness/internal/activity"
+	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+	"unicode/utf8"
+
+	"github.com/anthropics/anthropic-sdk-go/v2"
+
+	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
+	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
+	"github.com/ndolinschi/Octo/apps/harness/internal/permission"
+	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/secrets"
+)
+
+const toolNameFallback = "tool"
+
+// acpSession is the acp.Handler for one ACP sub-agent: it turns the agent's
+// updates into events and an SDK-shaped persisted transcript.
+type acpSession struct {
+	rt      *runtime
+	sink    *agentSink
+	agentID string
+	label   string
+	model   string
+	// orchestrator marks the session of an ACP-run orchestrator.
+	orchestrator bool
+
+	mu       sync.Mutex
+	pending  strings.Builder
+	all      []string
+	tail     string
+	open     map[string]bool
+	seen     map[string]bool
+	lastUsed int64
+	// userDenied are the titles of the permission requests the user (or a
+	// denial earlier in the turn) refused (R5-13).
+	userDenied []string
+	// order, titles and claimed let an MCP tool call find the ACP tool_call
+	// row the agent announced for it.
+	order    []string
+	titles   map[string]string
+	claimed  map[string]bool
+	lastCost float64
+	done     bool
+	// preOK counts edits the user allowed through session/request_permission,
+	// by absolute path; preAny those that named no path.
+	// said and acted count what the agent produced: non-blank text, tool calls.
+	said           bool
+	acted          bool
+	compacted      bool
+	compactSummary strings.Builder
+	compactErr     string
+	agentErr       *acp.AgentError
+	// active is set once the agent has done anything in this session handler
+	// (text, a tool call, usage, a permission request, compaction, or agent_error).
+	active bool
+	// flat marks a flat-rate (subscription) agent.
+	flat   bool
+	preOK  map[string]int
+	preAny int
+	// calls keeps what the agent announced for each tool call (session/update
+	// tool_call), to complete a permission request that names only the id.
+	calls map[string]acp.ToolCall
+	// harness maps the harness tools an ACP orchestrator may call (name ->
+	// input schema) so its tool_call rows can be stored under the tool's own name.
+	harness map[string]json.RawMessage
+	mapped  map[string]string // tool call id -> harness tool name
+	rawIn   map[string]json.RawMessage
+	// stream scrubs stored secrets out of the text deltas published while the agent talks.
+	stream *secrets.Stream
+	// thought does the same for the reasoning deltas.
+	thought *secrets.Stream
+	// writtenRunes and thoughtRunes count the text and reasoning streamed this
+	// turn (for the output-token estimate); reported is the usage the agent sent
+	// with the end of its prompt, if any.
+	writtenRunes, thoughtRunes int64
+	reported                   *acp.PromptUsage
+	// since is when this handler (this turn's session of the agent) was made.
+	since string
+	// stopping: the turn was cancelled, so the text flushed at the end is flagged stopped.
+	stopping bool
+	// toolRow is the stored tool_use message of each tool call, toolName its tool name.
+	toolRow  map[string]int64
+	toolName map[string]string
+	// lastEvent is when anything last arrived from the agent; quiet says
+	// agent.activity already reported the silence; waiting that the agent
+	// waits for the user; stopWatch ends the silence watcher.
+	lastEvent time.Time
+	quiet     bool
+	prompting bool // the prompt was sent
+	waiting   bool
+	stopWatch chan struct{}
+}
+
+// quietAfter is the silence after which an ACP agent is reported as quiet.
+const defaultQuietAfter = 10 * time.Second
+
+func newACPSession(rt *runtime, agentID, label, model string) *acpSession {
+	s := &acpSession{
+		rt: rt, sink: &agentSink{rt: rt, agentID: agentID, source: projectstore.SourceACP},
+		agentID: agentID, label: label, model: model,
+		open: map[string]bool{}, seen: map[string]bool{}, titles: map[string]string{}, claimed: map[string]bool{},
+		preOK: map[string]int{}, calls: map[string]acp.ToolCall{}, stream: rt.o.secrets.NewStream(rt.pid()), mapped: map[string]string{}, rawIn: map[string]json.RawMessage{}, toolRow: map[string]int64{}, toolName: map[string]string{},
+		thought: rt.o.secrets.NewStream(rt.pid()), lastEvent: time.Now(), stopWatch: make(chan struct{}), since: projectstore.Now(),
+	}
+	rt.activity(agentID, activity.Thinking, "Starting "+label, "")
+	go s.watchSilence()
+	return s
+}
+
+// touch records a sign of life from the agent.
+func (s *acpSession) touch() {
+	s.lastEvent, s.quiet = time.Now(), false
+}
+
+// watchSilence publishes agent.activity "quiet" once when nothing at all has
+// arrived from the agent for the quiet period (not while it waits for the user,
+// and not while a tool call is open: that stays "tool" with its label).
+func (s *acpSession) watchSilence() {
+	after := s.rt.o.opts.ACPQuietAfter
+	if after <= 0 {
+		after = defaultQuietAfter
+	}
+	tick := time.NewTicker(max(after/4, 5*time.Millisecond))
+	defer tick.Stop()
+	for {
+		select {
+		case <-s.stopWatch:
+			return
+		case <-tick.C:
+		}
+		s.mu.Lock()
+		fire := !s.done && s.prompting && !s.waiting && !s.quiet && len(s.open) == 0 && time.Since(s.lastEvent) >= after
+		if fire {
+			s.quiet = true
+		}
+		s.mu.Unlock()
+		if fire {
+			s.rt.activity(s.agentID, activity.Quiet, s.label, "")
+		}
+	}
+}
+
+// PromptStarted implements acp.PromptStartHandler: the silence the watcher
+// reports is silence during a prompt, so its clock starts when the prompt is
+// sent, not while the process starts and the session opens ("Starting <agent>"
+// covers that).
+func (s *acpSession) PromptStarted(context.Context) {
+	s.mu.Lock()
+	s.prompting = true
+	s.touch()
+	s.mu.Unlock()
+}
+
+// UpdateSeen implements acp.UpdateObserver: every session/update is a sign of life.
+func (s *acpSession) UpdateSeen(_ context.Context, _ string) {
+	s.mu.Lock()
+	s.touch()
+	s.mu.Unlock()
+}
+
+// AgentThought implements acp.ThoughtHandler: the reasoning streams to the UI
+// (secrets scrubbed) and is stored nowhere.
+func (s *acpSession) AgentThought(_ context.Context, text string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done {
+		return
+	}
+	s.active = true
+	s.rt.activity(s.agentID, activity.Thinking, "Thinking", "")
+	s.thoughtRunes += int64(utf8.RuneCountInString(text))
+	if safe := s.thought.Write(text); safe != "" {
+		s.rt.publish(events.ThinkingDelta, map[string]any{"agent_id": s.agentID, "text": safe})
+	}
+}
+
+// flushThoughtLocked publishes what the secret scrubber still holds back.
+func (s *acpSession) flushThoughtLocked() {
+	if rest := s.thought.Flush(); rest != "" {
+		s.rt.publish(events.ThinkingDelta, map[string]any{"agent_id": s.agentID, "text": rest})
+	}
+}
+
+// Plan implements acp.PlanHandler: the agent's whole plan replaces the stored
+// one and is published.
+func (s *acpSession) Plan(ctx context.Context, entries []acp.PlanEntry) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done {
+		return
+	}
+	s.active = true
+	plan := make([]projectstore.PlanEntry, 0, len(entries))
+	for _, e := range entries {
+		e.Content = strings.TrimSpace(s.rt.redact(e.Content))
+		if e.Content == "" {
+			continue
+		}
+		if e.Status == "" {
+			e.Status = "pending"
+		}
+		if e.Priority == "" {
+			e.Priority = "medium"
+		}
+		plan = append(plan, projectstore.PlanEntry{Content: e.Content, Status: e.Status, Priority: e.Priority})
+	}
+	c, cancel := dbCtx(ctx)
+	defer cancel()
+	if _, err := s.rt.db.SetPlan(c, s.agentID, plan); err != nil {
+		s.rt.logErr("store plan", err)
+	}
+	if len(plan) >= 2 {
+		s.rt.turnPlan.Store(true)
+	}
+	s.rt.publish(events.AgentPlan, map[string]any{"agent_id": s.agentID, "entries": plan})
+}
+
+// toolLabelLocked is the activity label of an announced tool call.
+func (s *acpSession) toolLabelLocked(call acp.ToolCall) string {
+	if tool, ok := s.mapped[call.ID]; ok {
+		return activity.ForTool(tool, call.RawInput)
+	}
+	loc := ""
+	if len(call.Locations) > 0 {
+		loc = call.Locations[0].Path
+	}
+	cwd := ""
+	if len(s.rt.folders) > 0 {
+		cwd = s.rt.folders[0].Path
+	}
+	return activity.ForACP(call.Kind, call.Title, loc, cwd)
+}
+
+// Compaction implements acp.CompactionHandler.
+func (s *acpSession) Compaction(_ context.Context, ev acp.CompactionEvent) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done {
+		return
+	}
+	s.active = true
+	if ev.Summary != "" {
+		s.compactSummary.WriteString(ev.Summary)
+	}
+	switch ev.Status {
+	case acp.CompactionInProgress:
+		s.compactErr = ""
+		s.rt.activity(s.agentID, activity.Thinking, "Compacting", "")
+	case acp.CompactionCompleted:
+		s.compacted = true
+		s.compactErr = ""
+	case acp.CompactionFailed:
+		if ev.Error != "" {
+			s.compactErr = ev.Error
+		} else if s.compactErr == "" {
+			s.compactErr = "compaction failed"
+		}
+	}
+}
+
+// AgentError implements acp.ErrorHandler. MessageAbortedError is skipped because
+// cancellation takes precedence over an abort notice.
+func (s *acpSession) AgentError(_ context.Context, err acp.AgentError) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done {
+		return
+	}
+	s.active = true
+	if strings.EqualFold(err.Name, "MessageAbortedError") {
+		return
+	}
+	cp := err
+	s.agentErr = &cp
+}
+
+func (s *acpSession) AgentText(_ context.Context, text string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done {
+		return
+	}
+	s.active = true
+	s.rt.activity(s.agentID, activity.Text, "Writing", "")
+	s.writtenRunes += int64(utf8.RuneCountInString(text))
+	s.flushThoughtLocked()
+	if strings.TrimSpace(text) != "" {
+		s.said = true
+		s.agentErr = nil
+	}
+	s.pending.WriteString(text)
+	if safe := s.stream.Write(text); safe != "" {
+		s.sink.TextDelta(safe)
+	}
+}
+
+func (s *acpSession) ToolCall(ctx context.Context, call acp.ToolCall) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.active, s.acted = true, true
+	s.agentErr = nil
+	if s.done {
+		return
+	}
+	s.flushLocked(ctx)
+	s.startLocked(ctx, call)
+	if call.Status.Terminal() {
+		s.finishToolLocked(ctx, call)
+	}
+}
+
+func (s *acpSession) ToolCallUpdate(ctx context.Context, up acp.ToolCallUpdate) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.active, s.acted = true, true
+	if s.done {
+		return
+	}
+	fresh := !s.seen[up.ID]
+	if fresh {
+		s.flushLocked(ctx)
+		s.startLocked(ctx, up)
+	} else {
+		s.updateToolLocked(ctx, up)
+	}
+	if up.Status.Terminal() && s.open[up.ID] {
+		s.finishToolLocked(ctx, up)
+	}
+}
+
+// updateToolLocked merges a tool_call_update into what was announced and
+// publishes tool.updated with the fields that changed.
+func (s *acpSession) updateToolLocked(ctx context.Context, up acp.ToolCallUpdate) {
+	known := s.calls[up.ID]
+	fields := map[string]any{"agent_id": s.agentID, "tool_use_id": up.ID}
+	if up.Status != "" && up.Status != known.Status {
+		known.Status = up.Status
+		fields["status"] = string(up.Status)
+	}
+	if up.Title != "" && up.Title != known.Title {
+		known.Title = up.Title
+		fields["title"] = s.rt.redact(up.Title)
+	}
+	if up.Kind != "" {
+		known.Kind = up.Kind
+	}
+	if len(up.Locations) > 0 {
+		known.Locations = up.Locations
+		paths := make([]string, 0, len(up.Locations))
+		for _, l := range up.Locations {
+			paths = append(paths, l.Path)
+		}
+		fields["locations"] = paths
+	}
+	if len(up.RawInput) > 0 && string(up.RawInput) != "null" {
+		known.RawInput = up.RawInput
+	}
+	if sum := activity.Clip(s.rt.redact(flattenContent(up.Content)), 300); sum != "" {
+		fields["summary"] = sum
+	}
+	s.calls[up.ID] = known
+	s.touchLocationsLocked(known)
+	inputChanged := len(up.RawInput) > 0 && string(up.RawInput) != "null" || up.Title != ""
+	if inputChanged {
+		s.restoreToolInputLocked(ctx, known)
+	}
+	if len(fields) > 2 {
+		s.rt.publish(events.ToolUpdated, fields)
+	}
+	if s.open[up.ID] && !up.Status.Terminal() {
+		s.rt.activity(s.agentID, activity.Tool, s.toolLabelLocked(known), up.ID)
+	}
+}
+
+// Usage maps a usage_update: the window goes on the agent, the growth in used
+// tokens and the increase in (USD) cost become one usage row.
+func (s *acpSession) Usage(_ context.Context, u acp.Usage) {
+	s.mu.Lock()
+	delta := u.Used - s.lastUsed
+	s.lastUsed = u.Used
+	cost := s.costDeltaLocked(u.Cost)
+	s.mu.Unlock()
+	w := projectstore.ContextWindow{Used: u.Used, Size: u.Size}
+	if delta <= 0 && cost == nil {
+		s.sink.setContext(w)
+		return
+	}
+	u2 := agent.Usage{Model: s.model, InputTokens: max(delta, 0), CostUSD: cost}
+	if s.flat && cost != nil {
+		// A subscription agent's figure is what the usage would cost per token,
+		// not what was paid: kept, flagged, and left out of spend.
+		u2.CostEstimated, u2.FlatRate = true, true
+	}
+	s.sink.record(u2, &w)
+}
+
+// costDeltaLocked converts the cumulative cost of a usage_update into the
+// increase since the previous one. Only USD is understood; a counter that went
+// backwards is taken as restarted.
+func (s *acpSession) costDeltaLocked(c *acp.Cost) *float64 {
+	if c == nil || !strings.EqualFold(c.Currency, "USD") || c.Amount < 0 {
+		return nil
+	}
+	d := c.Amount - s.lastCost
+	if d < 0 {
+		d = c.Amount
+	}
+	s.lastCost = c.Amount
+	if d == 0 {
+		return nil
+	}
+	return &d
+}
+
+// nothing reports whether the agent produced no text and no tool call.
+func (s *acpSession) nothing() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.said && !s.acted
+}
+
+// thoughtOnly reports whether the agent streamed reasoning without producing text or tool calls.
+func (s *acpSession) thoughtOnly() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.said && !s.acted && s.thoughtRunes > 0
+}
+
+func (s *acpSession) compactedDone() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.compacted
+}
+
+func (s *acpSession) compactionSummary() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return strings.TrimSpace(s.compactSummary.String())
+}
+
+func (s *acpSession) compactionError() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.compactErr
+}
+
+func (s *acpSession) midTurnError() *acp.AgentError {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.agentErr == nil {
+		return nil
+	}
+	cp := *s.agentErr
+	return &cp
+}
+
+// idle reports whether the agent has done nothing yet in this handler.
+func (s *acpSession) idle() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.active
+}
+
+func (s *acpSession) RequestPermission(ctx context.Context, req acp.PermissionRequest) string {
+	req.ToolCall = s.completed(req.ToolCall)
+	asks := s.rt.asksACP(ctx, req.ToolCall)
+	s.mu.Lock()
+	s.active = true
+	s.touch()
+	if asks {
+		s.waiting = true
+	}
+	s.mu.Unlock()
+	if asks {
+		s.rt.activity(s.agentID, activity.WaitingApproval, "Waiting for your approval", "")
+		defer func() {
+			s.mu.Lock()
+			s.waiting = false
+			s.touch()
+			s.mu.Unlock()
+			s.rt.activity(s.agentID, activity.Thinking, "Thinking", "")
+		}()
+	}
+	d := permission.Decide(ctx, permission.Request{
+		ProjectID: s.rt.pid(), Agent: s.label, Orchestrator: s.orchestrator, ACP: req,
+		AgentID: s.agentID, TurnID: s.rt.turnID, Policy: approvalPolicy{rt: s.rt},
+	})
+	if d.Allow {
+		s.preapprove(req.ToolCall)
+	} else if asks {
+		s.mu.Lock()
+		s.userDenied = append(s.userDenied, firstNonEmpty(req.ToolCall.Title, req.ToolCall.Kind, "a permission request"))
+		s.mu.Unlock()
+	}
+	return d.OptionID
+}
+
+// withDenials puts the user's refusals in front of a sub-agent's report, so
+// the delegating agent stops instead of re-delegating the same action (R5-13).
+func (s *acpSession) withDenials(report string) string {
+	s.mu.Lock()
+	denied := slices.Compact(slices.Clone(s.userDenied))
+	s.mu.Unlock()
+	if len(denied) == 0 {
+		return report
+	}
+	return "The user denied: " + strings.Join(denied, "; ") + ". It was not done. Do not retry it, another way or through " +
+		"another sub-agent, in this turn; tell the user it was not done.\n\n" + report
+}
+
+// completed fills what a permission request's tool call leaves out (title,
+// kind, locations, raw input) from the tool call the agent announced.
+func (s *acpSession) completed(c acp.ToolCall) acp.ToolCall {
+	s.mu.Lock()
+	known, ok := s.calls[c.ID]
+	s.mu.Unlock()
+	if !ok {
+		return c
+	}
+	if c.Title == "" {
+		c.Title = known.Title
+	}
+	if c.Kind == "" {
+		c.Kind = known.Kind
+	}
+	if len(c.Locations) == 0 {
+		c.Locations = known.Locations
+	}
+	if len(c.RawInput) == 0 || string(c.RawInput) == "null" {
+		c.RawInput = known.RawInput
+	}
+	return c
+}
+
+// preapprove remembers that the user allowed an edit the agent announced, so
+// the fs/write_text_file that carries it out is not asked about a second time.
+func (s *acpSession) preapprove(call acp.ToolCallUpdate) {
+	switch call.Kind {
+	case "edit", "delete", "move":
+	default:
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, l := range call.Locations {
+		s.preOK[filepath.Clean(l.Path)]++
+	}
+	if len(call.Locations) == 0 {
+		s.preAny++
+	}
+}
+
+// consumePreapproval uses up one pre-approval for path (or a path-less one).
+func (s *acpSession) consumePreapproval(path string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p := filepath.Clean(path); s.preOK[p] > 0 {
+		s.preOK[p]--
+		return true
+	}
+	if s.preAny > 0 {
+		s.preAny--
+		return true
+	}
+	return false
+}
+
+// finish flushes trailing text, closes tool calls the agent left open and
+// records the turn's output tokens.
+func (s *acpSession) finish(ctx context.Context, failed bool) {
+	s.mu.Lock()
+	out := s.finishLocked(ctx, failed)
+	s.mu.Unlock()
+	if out == nil {
+		return
+	}
+	// On the turn's last usage row when there is one, else a row of its own.
+	c, cancel := dbCtx(ctx)
+	defer cancel()
+	if found, err := s.rt.db.AddOutputTokens(c, s.agentID, projectstore.SourceACP, s.since, out.OutputTokens, out.TokensEstimated); err != nil {
+		s.rt.logErr("add output tokens", err)
+	} else if !found {
+		s.sink.record(*out, nil)
+	}
+}
+
+// PromptUsage implements acp.PromptUsageHandler: the usage an agent reports
+// with the end of a prompt.
+func (s *acpSession) PromptUsage(_ context.Context, u acp.PromptUsage) {
+	s.mu.Lock()
+	s.reported = &u
+	s.mu.Unlock()
+}
+
+// outputUsageLocked is the usage row of what the agent wrote this turn: the
+// output (and reasoning) tokens it reported with the end of the prompt, else an
+// estimate from the text it streamed (about four characters a token), marked
+// as estimated. nil when there was nothing.
+func (s *acpSession) outputUsageLocked() *agent.Usage {
+	var out int64
+	est := false
+	if s.reported != nil {
+		out = s.reported.OutputTokens + s.reported.ThoughtTokens
+	}
+	if out == 0 {
+		out, est = (s.writtenRunes+s.thoughtRunes+3)/4, true
+	}
+	if out == 0 {
+		return nil
+	}
+	return &agent.Usage{Model: s.model, OutputTokens: out, TokensEstimated: est, FlatRate: s.flat}
+}
+
+func (s *acpSession) finishLocked(ctx context.Context, failed bool) *agent.Usage {
+	if s.done {
+		return nil
+	}
+	// A turn that was cancelled keeps the text it had written, flagged stopped.
+	s.stopping = ctx.Err() != nil
+	s.flushLocked(ctx)
+	s.flushThoughtLocked()
+	close(s.stopWatch)
+	reason := "the agent ended its turn before this tool call finished"
+	if failed {
+		reason = "the agent stopped before this tool call finished"
+	}
+	for id := range s.open {
+		s.resultLocked(ctx, id, reason, true)
+	}
+	s.done = true
+	return s.outputUsageLocked()
+}
+
+// finalText is the last assistant text segment, else all text joined.
+func (s *acpSession) finalText() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if t := strings.TrimSpace(s.tail); t != "" {
+		return t
+	}
+	return strings.TrimSpace(strings.Join(s.all, "\n\n"))
+}
+
+func (s *acpSession) flushLocked(ctx context.Context) {
+	if rest := s.stream.Flush(); rest != "" {
+		s.sink.TextDelta(rest)
+	}
+	text := s.rt.redact(s.pending.String())
+	s.pending.Reset()
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	s.all = append(s.all, text)
+	s.tail = text
+	if _, err := s.sink.store(ctx, "assistant", anthropic.NewAssistantMessage(anthropic.NewTextBlock(text)), s.stopping); err != nil {
+		s.rt.logErr("persist acp message", err)
+	}
+}
+
+// toolUseLocked is the tool name and stored input of an announced call: the
+// harness tool's own name and arguments for a call to one of its tools, else
+// the ACP kind with {title, raw_input, locations}.
+func (s *acpSession) toolUseLocked(call acp.ToolCall) (string, any) {
+	name := call.Kind
+	if name == "" {
+		name = toolNameFallback
+	}
+	input := map[string]any{"title": call.Title}
+	if len(call.RawInput) > 0 && string(call.RawInput) != "null" {
+		input["raw_input"] = json.RawMessage(call.RawInput)
+	}
+	if len(call.Locations) > 0 {
+		input["locations"] = call.Locations
+	}
+	var persistedInput any = input
+	if tool, ok := s.harnessToolOf(call); ok {
+		// A call to one of the harness's own tools: stored as the built-in loop
+		// stores it (the tool's name and its arguments), so it renders the same.
+		name = tool
+		s.mapped[call.ID] = tool
+		s.rawIn[call.ID] = call.RawInput
+		args := json.RawMessage(call.RawInput)
+		if len(args) == 0 || string(args) == "null" {
+			args = json.RawMessage("{}")
+		}
+		persistedInput = args
+	}
+	return name, persistedInput
+}
+
+func (s *acpSession) startLocked(ctx context.Context, call acp.ToolCall) {
+	name, persistedInput := s.toolUseLocked(call)
+	s.seen[call.ID] = true
+	s.calls[call.ID] = call
+	s.order = append(s.order, call.ID)
+	s.titles[call.ID] = call.Title + " " + string(call.RawInput)
+	s.open[call.ID] = true
+	s.tail = ""
+	stored, err := s.sink.store(ctx, "assistant", anthropic.NewAssistantMessage(anthropic.NewToolUseBlock(call.ID, persistedInput, name)), false)
+	if err != nil {
+		s.rt.logErr("persist acp message", err)
+	} else {
+		s.toolRow[call.ID], s.toolName[call.ID] = stored.ID, name
+	}
+	s.sink.ToolStarted(call.ID, name)
+	s.touchLocationsLocked(call)
+	s.flushThoughtLocked()
+	s.rt.activity(s.agentID, activity.Tool, s.toolLabelLocked(call), call.ID)
+}
+
+// restoreToolInputLocked rewrites the stored tool_use row of a call whose input
+// (or title) arrived in a tool_call_update after the call was announced, as ACP
+// agents do: the row is first stored with what the announcement carried, which
+// is often an empty input.
+func (s *acpSession) restoreToolInputLocked(ctx context.Context, merged acp.ToolCall) {
+	id, ok := s.toolRow[merged.ID]
+	if !ok {
+		return
+	}
+	name, input := s.toolUseLocked(merged)
+	if name == s.toolName[merged.ID] && string(s.titles[merged.ID]) == merged.Title+" "+string(merged.RawInput) {
+		return
+	}
+	s.titles[merged.ID] = merged.Title + " " + string(merged.RawInput)
+	body, err := json.Marshal([]any{anthropic.NewToolUseBlock(merged.ID, input, name)})
+	if err != nil {
+		return
+	}
+	body = s.rt.o.secrets.RedactBytes(s.rt.pid(), body)
+	c, cancel := dbCtx(ctx)
+	defer cancel()
+	m, err := s.rt.db.UpdateMessageContent(c, id, body)
+	if err != nil {
+		s.rt.logErr("update tool row", err)
+		return
+	}
+	s.toolName[merged.ID] = name
+	s.rt.publish(events.MessageUpdated, map[string]any{"message": m})
+}
+
+func (s *acpSession) finishToolLocked(ctx context.Context, up acp.ToolCallUpdate) {
+	text := flattenContent(up.Content)
+	if text == "" {
+		text = string(up.Status)
+	}
+	s.resultLocked(ctx, up.ID, text, up.Status == acp.ToolFailed)
+}
+
+func (s *acpSession) resultLocked(ctx context.Context, id, text string, isErr bool) {
+	delete(s.open, id)
+	s.persist(ctx, "user", anthropic.NewUserMessage(anthropic.NewToolResultBlock(id, s.rt.o.opts.Limits.CapResult(text), isErr)))
+	s.sink.ToolFinished(id, isErr)
+	if len(s.open) == 0 {
+		s.rt.activity(s.agentID, activity.Thinking, "Thinking", "")
+	}
+}
+
+func (s *acpSession) persist(ctx context.Context, role string, msg anthropic.MessageParam) {
+	if err := s.sink.Message(ctx, role, msg); err != nil {
+		s.rt.logErr("persist acp message", err)
+	}
+}
+
+// claimToolUse finds the open, not yet claimed tool call the agent announced
+// for an MCP call to the harness tool `name` and claims it, so the sub-agent a
+// spawn_agent call creates links to that transcript row. Rows are matched by
+// the call's arguments against the row's raw input (title, task, tier ...);
+// a row that carries no raw input falls back to its title naming the tool. The
+// agent announces a call before it makes it, but the two travel on different
+// connections, so it retries briefly. "" means no row matched; the call still runs.
+func (s *acpSession) claimToolUse(ctx context.Context, name string, args json.RawMessage) string {
+	for attempt := 0; attempt < 30; attempt++ {
+		s.mu.Lock()
+		for _, id := range s.order {
+			if !s.open[id] || s.claimed[id] {
+				continue
+			}
+			if s.mapped[id] == name && argsMatch(s.rawIn[id], args) || s.mapped[id] == "" && strings.Contains(s.titles[id], name) {
+				s.claimed[id] = true
+				s.mu.Unlock()
+				return id
+			}
+		}
+		s.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ""
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	return ""
+}
+
+// compareKeys are the arguments argsMatch compares.
+var compareKeys = []string{"title", "task", "tier", "role", "agent", "model", "command", "path", "name", "content"}
+
+// argsMatch reports whether an announced raw input and an MCP call's arguments
+// can be the same call: every compared key present in both has the same value.
+// Without a raw input there is nothing to contradict.
+func argsMatch(raw, args json.RawMessage) bool {
+	var a, b map[string]any
+	if json.Unmarshal(raw, &a) != nil || json.Unmarshal(args, &b) != nil {
+		return true
+	}
+	for _, k := range compareKeys {
+		if x, ok := a[k]; ok {
+			if y, ok := b[k]; ok && fmt.Sprint(x) != fmt.Sprint(y) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// touchLocationsLocked remembers the files an ACP tool call that reads or
+// changes files names.
+func (s *acpSession) touchLocationsLocked(call acp.ToolCall) {
+	switch call.Kind {
+	case "read", "edit", "delete", "move":
+		for _, l := range call.Locations {
+			s.rt.touchFile(l.Path)
+		}
+	case "execute":
+		var in struct {
+			Command string `json:"command"`
+		}
+		// Only a command the agent states counts: a title is not one (a ledger entry still shows what changed).
+		if json.Unmarshal(call.RawInput, &in) == nil {
+			s.rt.noteCommand(in.Command)
+		}
+	}
+}

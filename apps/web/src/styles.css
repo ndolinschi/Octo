@@ -1,0 +1,7 @@
+@import "tailwindcss";
+@import "../../../packages/ui/src/styles.css";
+
+/* The phone's notch and home indicator (index.html sets viewport-fit=cover): the app keeps clear of them. */
+#root {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}

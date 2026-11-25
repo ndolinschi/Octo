@@ -1,0 +1,28 @@
+{
+  "model": "mid-m",
+  "max_tokens": 1024,
+  "metadata": {
+    "user_id": "{\"session_id\": \"perm-sess-1\", \"device_id\": \"dev\"}"
+  },
+  "system": [{"type": "text", "text": "You are Claude Code"}],
+  "tools": [{"name": "Bash", "description": "Run shell", "input_schema": {"type": "object", "properties": {}}}],
+  "messages": [
+    {
+      "role": "user",
+      "content": "implement the feature"
+    },
+    {
+      "role": "assistant",
+      "content": [{"type": "text", "text": "I'll run a command."}]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "<transcript>\nuser: run bash\nassistant: needs permission\n</transcript>\n\nClaude Code is asking permission to use Bash.\nErr on the side of blocking when unsure whether the user intended this."
+        }
+      ]
+    }
+  ]
+}

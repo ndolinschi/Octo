@@ -1,0 +1,640 @@
+{
+  "about": "Shared fixture of schema-form answer checks (spec 2026-11-15, criterion 8). Each case posts `values` to the form named by `form`; `errors` lists the property ids the check refuses (empty: accepted). The TS check (packages/ui/src/lib/schemaForm) and Go inputs.CheckAnswer must give the same ids. Messages are not compared.",
+  "forms": {
+    "signin": {
+      "type": "object",
+      "required": ["email", "password"],
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "title": "Email",
+          "x-octo": {
+            "placeholder": "you@example.com"
+          }
+        },
+        "password": {
+          "type": "string",
+          "format": "password",
+          "title": "Password",
+          "minLength": 8
+        },
+        "remember": {
+          "type": "boolean",
+          "title": "Keep me signed in for this project",
+          "default": true
+        }
+      }
+    },
+    "region": {
+      "type": "object",
+      "required": ["region", "env"],
+      "properties": {
+        "region": {
+          "type": "string",
+          "title": "Region",
+          "oneOf": [
+            {
+              "const": "eu-west",
+              "title": "Europe (Ireland)"
+            },
+            {
+              "const": "eu-central",
+              "title": "Europe (Frankfurt)"
+            },
+            {
+              "const": "us-east",
+              "title": "US East (Virginia)"
+            },
+            {
+              "const": "us-west",
+              "title": "US West (Oregon)"
+            },
+            {
+              "const": "ap-south",
+              "title": "Asia Pacific (Mumbai)"
+            },
+            {
+              "const": "ap-east",
+              "title": "Asia Pacific (Tokyo)"
+            }
+          ]
+        },
+        "env": {
+          "type": "string",
+          "title": "Environment",
+          "enum": ["dev", "staging", "prod"],
+          "enumNames": ["Development", "Staging", "Production"]
+        }
+      }
+    },
+    "rollout": {
+      "type": "object",
+      "required": ["replicas", "canary_percent"],
+      "properties": {
+        "replicas": {
+          "type": "integer",
+          "title": "Replicas",
+          "minimum": 1,
+          "maximum": 10,
+          "x-octo": {
+            "step": 1
+          },
+          "default": 2
+        },
+        "window": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Deploy window starts"
+        },
+        "start": {
+          "type": "string",
+          "format": "date",
+          "title": "Freeze ends"
+        },
+        "notes": {
+          "type": "string",
+          "title": "Release notes",
+          "maxLength": 200,
+          "x-octo": {
+            "multiline": true
+          }
+        },
+        "slug": {
+          "type": "string",
+          "title": "Release name",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "canary": {
+          "type": "boolean",
+          "title": "Use a canary"
+        },
+        "canary_percent": {
+          "type": "integer",
+          "title": "Canary traffic (%)",
+          "minimum": 1,
+          "maximum": 50,
+          "x-octo": {
+            "visible_when": {
+              "field": "canary",
+              "equals": true
+            }
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "required": ["checks"],
+      "properties": {
+        "checks": {
+          "type": "array",
+          "title": "Checks",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "anyOf": [
+              {
+                "const": "unit",
+                "title": "Unit tests"
+              },
+              {
+                "const": "lint",
+                "title": "Lint"
+              },
+              {
+                "const": "e2e",
+                "title": "End-to-end"
+              },
+              {
+                "const": "types",
+                "title": "Type check"
+              }
+            ]
+          }
+        },
+        "regions": {
+          "type": "array",
+          "title": "Regions",
+          "items": {
+            "type": "string",
+            "enum": ["eu-west", "eu-central", "us-east", "us-west", "ap-south", "ap-east", "sa-east", "af-south"]
+          }
+        }
+      }
+    },
+    "accept": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "title": "I understand the tests write to staging",
+          "x-octo": {
+            "accept": true
+          }
+        }
+      }
+    },
+    "site": {
+      "type": "object",
+      "required": ["env", "tier"],
+      "properties": {
+        "env": {
+          "type": "string",
+          "title": "Environment",
+          "enum": ["dev", "staging", "prod"]
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "title": "Health check address"
+        },
+        "tier": {
+          "type": "string",
+          "title": "Tier",
+          "enum": ["small", "large"],
+          "x-octo": {
+            "visible_when": {
+              "field": "env",
+              "equals": ["staging", "prod"]
+            }
+          }
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "sign-in accepted",
+      "form": "signin",
+      "values": {
+        "email": "a@b.co",
+        "password": "hunter22",
+        "remember": true
+      },
+      "errors": []
+    },
+    {
+      "name": "bad email and missing password",
+      "form": "signin",
+      "values": {
+        "email": "not-an-email"
+      },
+      "errors": ["email", "password"]
+    },
+    {
+      "name": "nothing given",
+      "form": "signin",
+      "values": {},
+      "errors": ["email", "password"]
+    },
+    {
+      "name": "password under minLength",
+      "form": "signin",
+      "values": {
+        "email": "a@b.co",
+        "password": "abc12"
+      },
+      "errors": ["password"]
+    },
+    {
+      "name": "email with a space",
+      "form": "signin",
+      "values": {
+        "email": "a b@c.co",
+        "password": "hunter22"
+      },
+      "errors": ["email"]
+    },
+    {
+      "name": "email without a dot in the domain",
+      "form": "signin",
+      "values": {
+        "email": "a@b",
+        "password": "hunter22"
+      },
+      "errors": ["email"]
+    },
+    {
+      "name": "email with two @",
+      "form": "signin",
+      "values": {
+        "email": "a@b@c.co",
+        "password": "hunter22"
+      },
+      "errors": ["email"]
+    },
+    {
+      "name": "blank email counts as missing",
+      "form": "signin",
+      "values": {
+        "email": "   ",
+        "password": "hunter22"
+      },
+      "errors": ["email"]
+    },
+    {
+      "name": "boolean given as text",
+      "form": "signin",
+      "values": {
+        "email": "a@b.co",
+        "password": "hunter22",
+        "remember": "yes"
+      },
+      "errors": ["remember"]
+    },
+    {
+      "name": "unknown property",
+      "form": "signin",
+      "values": {
+        "email": "a@b.co",
+        "password": "hunter22",
+        "extra": "x"
+      },
+      "errors": ["extra"]
+    },
+    {
+      "name": "region accepted",
+      "form": "region",
+      "values": {
+        "region": "eu-west",
+        "env": "prod"
+      },
+      "errors": []
+    },
+    {
+      "name": "region not a choice",
+      "form": "region",
+      "values": {
+        "region": "mars",
+        "env": "prod"
+      },
+      "errors": ["region"]
+    },
+    {
+      "name": "environment missing",
+      "form": "region",
+      "values": {
+        "region": "eu-west"
+      },
+      "errors": ["env"]
+    },
+    {
+      "name": "choice given as a number",
+      "form": "region",
+      "values": {
+        "region": 3,
+        "env": "dev"
+      },
+      "errors": ["region"]
+    },
+    {
+      "name": "enumNames are labels, not values",
+      "form": "region",
+      "values": {
+        "region": "eu-west",
+        "env": "Production"
+      },
+      "errors": ["env"]
+    },
+    {
+      "name": "rollout accepted",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "canary": false
+      },
+      "errors": []
+    },
+    {
+      "name": "replicas below minimum",
+      "form": "rollout",
+      "values": {
+        "replicas": 0
+      },
+      "errors": ["replicas"]
+    },
+    {
+      "name": "replicas above maximum",
+      "form": "rollout",
+      "values": {
+        "replicas": 11
+      },
+      "errors": ["replicas"]
+    },
+    {
+      "name": "integer given a fraction",
+      "form": "rollout",
+      "values": {
+        "replicas": 2.5
+      },
+      "errors": ["replicas"]
+    },
+    {
+      "name": "number given as text",
+      "form": "rollout",
+      "values": {
+        "replicas": "3"
+      },
+      "errors": ["replicas"]
+    },
+    {
+      "name": "replicas missing",
+      "form": "rollout",
+      "values": {
+        "canary": false
+      },
+      "errors": ["replicas"]
+    },
+    {
+      "name": "shown condition makes its field required",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "canary": true
+      },
+      "errors": ["canary_percent"]
+    },
+    {
+      "name": "shown conditional field accepted",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "canary": true,
+        "canary_percent": 10
+      },
+      "errors": []
+    },
+    {
+      "name": "hidden field sent is refused",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "canary": false,
+        "canary_percent": 10
+      },
+      "errors": ["canary_percent"]
+    },
+    {
+      "name": "hidden field omitted is not required",
+      "form": "rollout",
+      "values": {
+        "replicas": 3
+      },
+      "errors": []
+    },
+    {
+      "name": "conditional field above its maximum",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "canary": true,
+        "canary_percent": 60
+      },
+      "errors": ["canary_percent"]
+    },
+    {
+      "name": "date-time with offset",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "window": "2026-11-15T14:30:00+01:00"
+      },
+      "errors": []
+    },
+    {
+      "name": "date-time in UTC",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "window": "2026-11-15T14:30:00Z"
+      },
+      "errors": []
+    },
+    {
+      "name": "date-time without offset",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "window": "2026-11-15T14:30"
+      },
+      "errors": ["window"]
+    },
+    {
+      "name": "date that does not exist",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "start": "2026-02-30"
+      },
+      "errors": ["start"]
+    },
+    {
+      "name": "date accepted",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "start": "2026-11-15"
+      },
+      "errors": []
+    },
+    {
+      "name": "text above maxLength",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "notes": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "errors": ["notes"]
+    },
+    {
+      "name": "multi-line text accepted",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "notes": "First line\nSecond line"
+      },
+      "errors": []
+    },
+    {
+      "name": "pattern mismatch",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "slug": "Atlas"
+      },
+      "errors": ["slug"]
+    },
+    {
+      "name": "pattern match",
+      "form": "rollout",
+      "values": {
+        "replicas": 3,
+        "slug": "atlas-api"
+      },
+      "errors": []
+    },
+    {
+      "name": "checks accepted",
+      "form": "checks",
+      "values": {
+        "checks": ["unit", "lint"]
+      },
+      "errors": []
+    },
+    {
+      "name": "empty list for a required many-of",
+      "form": "checks",
+      "values": {
+        "checks": []
+      },
+      "errors": ["checks"]
+    },
+    {
+      "name": "required many-of missing",
+      "form": "checks",
+      "values": {},
+      "errors": ["checks"]
+    },
+    {
+      "name": "more than maxItems",
+      "form": "checks",
+      "values": {
+        "checks": ["unit", "lint", "e2e", "types"]
+      },
+      "errors": ["checks"]
+    },
+    {
+      "name": "a value outside the choices",
+      "form": "checks",
+      "values": {
+        "checks": ["unit", "fuzz"]
+      },
+      "errors": ["checks"]
+    },
+    {
+      "name": "many-of given as text",
+      "form": "checks",
+      "values": {
+        "checks": "unit"
+      },
+      "errors": ["checks"]
+    },
+    {
+      "name": "optional many-of with enum items",
+      "form": "checks",
+      "values": {
+        "checks": ["e2e"],
+        "regions": ["eu-west", "us-east"]
+      },
+      "errors": []
+    },
+    {
+      "name": "accept left unticked",
+      "form": "accept",
+      "values": {
+        "ok": false
+      },
+      "errors": ["ok"]
+    },
+    {
+      "name": "accept ticked",
+      "form": "accept",
+      "values": {
+        "ok": true
+      },
+      "errors": []
+    },
+    {
+      "name": "accept missing",
+      "form": "accept",
+      "values": {},
+      "errors": ["ok"]
+    },
+    {
+      "name": "hidden by a list condition",
+      "form": "site",
+      "values": {
+        "env": "dev"
+      },
+      "errors": []
+    },
+    {
+      "name": "shown by a list condition",
+      "form": "site",
+      "values": {
+        "env": "staging"
+      },
+      "errors": ["tier"]
+    },
+    {
+      "name": "address without a scheme",
+      "form": "site",
+      "values": {
+        "env": "prod",
+        "tier": "large",
+        "url": "atlas.example.com"
+      },
+      "errors": ["url"]
+    },
+    {
+      "name": "address accepted",
+      "form": "site",
+      "values": {
+        "env": "prod",
+        "tier": "large",
+        "url": "https://atlas.example.com/health"
+      },
+      "errors": []
+    },
+    {
+      "name": "hidden by a list condition, sent",
+      "form": "site",
+      "values": {
+        "env": "dev",
+        "tier": "small"
+      },
+      "errors": ["tier"]
+    }
+  ]
+}

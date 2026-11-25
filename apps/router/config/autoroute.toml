@@ -1,0 +1,87 @@
+[autoroute]
+# Dedicated Ollama model used for inline completion (x-octo-tier-hint: small).
+small = "qwen2.5-coder:1.5b"
+# Model slugs used by /autoroute when JEV picks a complexity band.
+# OpenRouter ladder (DeepSWE v1.1 $/score): v4.1-flash → minimax-m3.1 → v4.1-flash-1017.
+low = "deepseek/deepseek-v4.1-flash"
+mid = "minimax/minimax-m3.1-flash"
+high = "deepseek/deepseek-v4.1-flash-1017"
+hard_threshold = 0.5
+easy_threshold = 0.5
+
+# Stall detection looks at the last N non-housekeeping assistant turns / tool_use blocks.
+stall_window = 6
+# After a stall, stay one tier higher for this many subsequent requests.
+escalate_turns = 3
+# Consecutive lower classifications required before stepping the sticky tier down.
+down_confirm = 2
+# Client model is honoured on High only when its slug (tilde-insensitive) is listed here.
+# Empty means always use the configured high slug.
+high_allow = []
+# Session spend cap in USD. 0 = DISABLED (default): no spend limit applies and nothing is ever
+# downgraded or refused, so cost is bounded only by the client. Counts JEV + LLM cost_micros
+# for the session key (or the x-octo-budget-key header value when the client sends one).
+session_budget_usd = 0
+# What happens once spend >= session_budget_usd: "downgrade" routes every request to the
+# CHEAPEST ladder tier by prices.toml (blended estimate for the request shape); "reject"
+# answers 402 (Anthropic error shape, type billing_error) naming the budget and the spend.
+session_budget_action = "downgrade"
+# Never pay more for less: when true, a request decided for tier T is served by the cheapest
+# PRICED tier among T and every tier above it (by the prices.toml blended estimate for the
+# request's shape; ties keep the lower tier). The session still remembers T, only the served
+# model changes. tier-policy ceiling limits the candidates to T..=ceiling; fixed turns the rule off.
+# See docs/autoroute.md (Price rule).
+never_pay_more_for_less = true
+# Keep this many recent messages when trimming housekeeping turns (system + tools always kept).
+housekeeping_keep_messages = 6
+allow_fallbacks = true
+
+# Top-level Anthropic-only keys removed before OpenRouter (Filter by Parameters).
+# Proven against supported_parameters for high-tier models (see experiments in docs/).
+# Empty list disables stripping. Protected keys (tools, tool_choice, system, messages,
+# max_tokens, stop_sequences, metadata) are ignored if listed.
+# With require_parameters=always, narrowing this list can reintroduce OpenRouter 404s.
+strip_fields = ["output_config", "safeguards", "context_management"]
+# OpenRouter provider.require_parameters: always | tools_only | never (invalid values fail config load)
+require_parameters = "always"
+# Observe-only: client model substring match → calls.bg_signal (case-insensitive).
+background_model_patterns = ["haiku"]
+# When true, bg_signal requests (except permission_check) route like housekeeping with
+# trigger background_model. Default false = no routing change.
+background_by_client_model = false
+# Tier used when the JEV classifier call fails on a new session: low | mid | high. The choice is
+# remembered for the session and classification is retried on the next user turn.
+classifier_failure_tier = "mid"
+# max_tokens sent upstream when the client omits it (capped by the model maximum). An explicit
+# client value is respected, still capped by the model maximum.
+default_max_tokens = 8192
+# Upper bound in seconds for honouring an upstream Retry-After before the single retry.
+retry_after_max_secs = 10
+# After a compaction call the client did not apply, compaction stays off for the session until
+# the request shrinks below the fill threshold again. A value N > 0 also re-arms it after N
+# further requests. 0 = re-arm only when the context shrinks.
+compact_cooldown_requests = 0
+# Server tools (web_search / web_fetch / code_execution): passthrough | online_suffix | reject.
+server_tool_mode = "passthrough"
+
+# POST /autoroute/v1/route: which candidate should run a delegated task (see docs/autoroute.md).
+[autoroute.route]
+# Budget for the one classifier call, in milliseconds. On timeout or any failure the band comes
+# from a text rule and the request still succeeds. 0 = never call the classifier.
+classifier_timeout_ms = 2000
+# false: a hard task goes to the deep API tier unless an agent lists "hard" in its strengths.
+# true: an agent without strengths (flat-rate, logged in) may also take hard tasks.
+prefer_flat_rate_for_hard = false
+# Token assumption for the cost estimate of an API candidate (default: the budget-routing shape).
+nominal_input_tokens = 30000
+nominal_output_tokens = 500
+
+# Which classifier decides the band of a delegated task on POST /autoroute/v1/route
+# (see docs/autoroute.md, "Classifier seam"):
+#   "jev"       one Decisions (LLM) call; the heuristic when it cannot run (default, the behaviour so far)
+#   "heuristic" no model call: the deterministic rule on brief length, tools, depth and keywords
+#   "learned"   a trained model; declared, not built: falls back to the heuristic and records why
+[autoroute.delegation]
+classifier = "jev"
+# Model file of the learned classifier. No model runtime is built in yet: a path only changes the recorded reason.
+model_path = ""

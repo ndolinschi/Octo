@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest an idea or an improvement for Octo
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation and why the current behaviour is not enough.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Desktop app / UI
+        - Agents and providers
+        - Harness (project server)
+        - Router
+        - Phone / Remote access
+        - Docs
+        - Other
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
+      description: Screenshots, mockups, links to similar features in other tools.

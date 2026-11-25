@@ -1,0 +1,121 @@
+import type { Bridge, ProjectSummary } from "@octo/agent-client";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { requestTitle } from "../lib/comments";
+import { latestReply } from "../lib/latestReply";
+import { promptText } from "../lib/transcript";
+import { Limiter } from "./activity";
+import { useApp } from "./app";
+import { errorMessage } from "../lib/format";
+
+/** One user message of a project's orchestrator thread. */
+/** `session_id`: the main session the request was made in (parallel sessions), when the harness says. */
+export type Request = { id: number; text: string; created_at: string; session_id?: string };
+
+/** The first line of the orchestrator's latest reply (Home, decision 23). */
+export type Reply = { text: string; at: string };
+
+type Entry = { updatedAt: string; requests: Request[] | null; reply: Reply | null; error: string | null; loading: boolean };
+
+/**
+ * Lazily loaded, cached request lists per project (newest first) and the orchestrator's latest reply, for the
+ * palette and Home. An entry is refetched only when the project's `updated_at` moves on.
+ */
+class RequestStore {
+  private entries = new Map<string, Entry>();
+  private listeners = new Set<() => void>();
+  /** Home asks for every project at once: at most 4 loads in flight. */
+  private limiter = new Limiter(4);
+  constructor(private bridge: Bridge) {}
+
+  subscribe = (l: () => void) => {
+    this.listeners.add(l);
+    return () => {
+      this.listeners.delete(l);
+    };
+  };
+  get = (projectId: string) => this.entries.get(projectId);
+  private changes = 0;
+  version = () => this.changes;
+
+  private set(projectId: string, entry: Entry) {
+    this.entries.set(projectId, entry);
+    this.changes += 1;
+    for (const l of this.listeners) l();
+  }
+
+  ensure(project: ProjectSummary) {
+    const current = this.entries.get(project.id);
+    if (current && (current.updatedAt === project.updated_at || current.loading)) return;
+    this.set(project.id, { updatedAt: project.updated_at, requests: current?.requests ?? null, reply: current?.reply ?? null, error: null, loading: true });
+    void this.load(project);
+  }
+
+  private load(project: ProjectSummary): Promise<void> {
+    return this.limiter.run(() => this.read(project));
+  }
+
+  private async read(project: ProjectSummary) {
+    try {
+      // The default session's root: read each time (it moves when another session becomes the default, decision 96).
+      const orchestrator = (await this.bridge.getProject(project.id)).orchestrator_agent_id;
+      const messages = await this.bridge.listMessages(project.id, orchestrator);
+      const requests = messages
+        .filter((m) => m.role === "user")
+        .map((m) => ({ id: m.id, text: requestTitle(promptText(m)).trim(), created_at: m.created_at, ...(m.session_id ? { session_id: m.session_id } : {}) }))
+        .filter((r) => r.text)
+        .reverse();
+      this.set(project.id, { updatedAt: project.updated_at, requests, reply: latestReply(messages), error: null, loading: false });
+    } catch (e) {
+      const prev = this.entries.get(project.id);
+      this.set(project.id, {
+        updatedAt: "",
+        requests: prev?.requests ?? null,
+        reply: prev?.reply ?? null,
+        error: errorMessage(e),
+        loading: false,
+      });
+    }
+  }
+}
+
+const stores = new WeakMap<Bridge, RequestStore>();
+
+function useRequestStore(): RequestStore {
+  const { bridge } = useApp();
+  return useMemo(() => {
+    let store = stores.get(bridge);
+    if (!store) {
+      store = new RequestStore(bridge);
+      stores.set(bridge, store);
+    }
+    return store;
+  }, [bridge]);
+}
+
+/** Several projects' requests and latest replies at once (Home), loading every one of them; entries are null until loaded. */
+export function useAllRequests(projects: ProjectSummary[] | null): Map<string, { requests: Request[]; reply: Reply | null } | null> {
+  const store = useRequestStore();
+  const version = useSyncExternalStore(store.subscribe, store.version);
+  useEffect(() => {
+    for (const p of projects ?? []) store.ensure(p);
+  }, [projects, store]);
+  return useMemo(() => {
+    void version;
+    return new Map(
+      (projects ?? []).map((p) => {
+        const e = store.get(p.id);
+        return [p.id, e?.requests ? { requests: e.requests, reply: e.reply } : null];
+      }),
+    );
+  }, [projects, store, version]);
+}
+
+/** The project's requests, loading them while `enabled`. Null until the first load finishes. */
+export function useRequests(project: ProjectSummary | undefined, enabled: boolean) {
+  const store = useRequestStore();
+  const entry = useSyncExternalStore(store.subscribe, () => (project ? store.get(project.id) : undefined));
+  useEffect(() => {
+    if (enabled && project) store.ensure(project);
+  }, [enabled, project, store]);
+  return { requests: entry?.requests ?? null };
+}

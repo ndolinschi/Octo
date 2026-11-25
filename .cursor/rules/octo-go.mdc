@@ -1,0 +1,20 @@
+---
+description: Octo harness Go context and quality bar
+globs: "apps/harness/**/*.go,apps/harness/go.mod,apps/harness/go.sum,apps/harness/**/*.yml"
+alwaysApply: false
+---
+
+# Octo — Go harness development
+
+- **App:** `apps/harness/` — module `github.com/ndolinschi/Octo/apps/harness` (Go **1.26+**). CLI entry: `apps/harness/cmd/harness`.
+- **Isolation:** no shared DB, config, or packages with `apps/router/` (Rust). Talk to Octo only over HTTP (Anthropic Messages conventions).
+- **SOLID / layout:** one package = one job. Wire concrete types in `cmd/` (or a thin `internal/app`). Domain packages depend on interfaces they own, not on siblings’ internals. `tools/local` must not import `tools/remote` or `store`; `store`/`cache`/`config` must not import `agent` or the Anthropic SDK.
+- **File size:** keep each `.go` file near **≤250 lines** (soft cap). Split by responsibility when a file grows past that — not by arbitrary helpers that only shorten functions.
+- **Async / safety:** every I/O and SDK call takes `context.Context`. No blocking without respect for cancel/deadline. Shared mutable state uses `sync` primitives or channels; never race on maps/slices across goroutines. Prefer fan-out with `errgroup` when running independent tools; do not invent global mutable singletons.
+- **Extensibility:** hooks and skills load as separate packages (discover → register → invoke). Project roots **`.agency/`** and **`.code/`** (same layout as Anthropic/Claude Code: `skills/*/SKILL.md`, hooks in `settings.json`). Do not hard-code hook logic inside `agent` turn loops — call a hooks port.
+- **SDK:** official `github.com/anthropics/anthropic-sdk-go/v2` only for Messages/tools. No hand-rolled Anthropic HTTP client unless the SDK cannot do the job.
+- **Errors:** return `error`; wrap with `%w` at boundaries. No `panic` in library code. Log with `log/slog`; never log API keys or unbounded prompt bodies.
+- **Comments:** no comments that restate the code. One-line `shortcut:` comments only when a known limit is intentional.
+- **Tests:** `*_test.go` next to the package (Go convention). Table tests for parsers/confinement. Do not apply the Rust “tests live outside source” rule here.
+- **Before finishing Go changes:** from `apps/harness/` run `go test ./...`, `go vet ./...`, and `go build -o /tmp/octo-harness ./cmd/harness`. Fix failures before commit.
+- **Review bar:** `.cursor/rules/go-pr-checklist.mdc`.

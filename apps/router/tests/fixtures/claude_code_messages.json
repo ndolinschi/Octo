@@ -1,0 +1,95 @@
+{
+  "model": "claude-sonnet-4-5",
+  "max_tokens": 64000,
+  "stream": true,
+  "thinking": {
+    "type": "enabled",
+    "budget_tokens": 10000
+  },
+  "metadata": {
+    "user_id": "{\"session_id\": \"sess-fixture-1\", \"device_id\": \"dev\"}"
+  },
+  "system": [
+    {
+      "type": "text",
+      "text": "You are Claude Code"
+    }
+  ],
+  "tools": [
+    {
+      "name": "Bash",
+      "description": "Run shell",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "Read",
+      "description": "Read file",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "Edit",
+      "description": "Edit file",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string"
+          },
+          "old_string": {
+            "type": "string"
+          },
+          "new_string": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "fix the compile error in src/main.rs"
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "redacted-thought"
+        },
+        {
+          "type": "tool_use",
+          "id": "tu1",
+          "name": "Read",
+          "input": {
+            "file_path": "src/main.rs"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "tu1",
+          "content": "fn main() {"
+        }
+      ]
+    }
+  ]
+}

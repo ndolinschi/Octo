@@ -1,0 +1,214 @@
+bridge/attachments.go|writeError|attachment_too_large
+bridge/attachments.go|writeError|invalid_request
+bridge/auth.go|writeError|unauthorized
+bridge/bridge.go|writeError|not_found
+bridge/changes.go|writeError|invalid_request
+bridge/changes.go|writeError|not_found
+bridge/commands.go|writeError|invalid_request
+bridge/files.go|writeError|file_too_large
+bridge/files.go|writeError|invalid_request
+bridge/lsp.go|Error.Message|project has no folders
+bridge/lsp.go|writeError|no_review_workspace
+bridge/lsp.go|writeError|not_found
+bridge/lsp_stream.go|writeError|already_subscribed
+bridge/lsp_stream.go|writeError|internal
+bridge/lsp_stream.go|writeError|invalid_request
+bridge/lsp_stream.go|writeError|message_too_large
+bridge/lsp_stream.go|writeError|not_found
+bridge/lsp_stream.go|writeError|session_closed
+bridge/lsp_stream.go|writeError|shutting_down
+bridge/lsp_stream.go|writeError|too_many_sessions
+bridge/memory.go|writeError|not_found
+bridge/pickfolder.go|writeError|busy
+bridge/pickfolder.go|writeError|invalid_request
+bridge/plans.go|writeError|invalid_request
+bridge/providers.go|writeError|internal
+bridge/providers.go|writeError|invalid_request
+bridge/providers.go|writeError|not_found
+bridge/respond.go|writeError|internal
+bridge/respond.go|writeError|invalid_request
+bridge/review.go|writeError|invalid_request
+bridge/settings.go|writeError|forbidden
+bridge/settings.go|writeError|internal
+bridge/settings.go|writeError|invalid_request
+bridge/sse.go|writeError|internal
+commands/commands.go|conflict|newer_schema
+commands/commands.go|conflict|no_folder
+commands/commands.go|conflict|review_closed
+commands/commands.go|conflict|start_failed
+commands/commands.go|conflict|too_many_runs
+commands/commands.go|conflict|worktree_missing
+commands/commands.go|invalid|invalid_cwd
+commands/commands.go|notFound|command_not_found
+commands/commands.go|notFound|not_found
+commands/commands.go|notFound|review_not_found
+project/approvals.go|invalid|%s
+project/approvals.go|invalid|decision must be allow, allow_for_turn, allow_all_for_turn, allow_always or deny
+project/approvals.go|invalid|note or match is too long
+project/approvals.go|notFound|approval
+project/approvals.go|notFound|approval rule
+project/attachments.go|Error.Message|attachment %s not found; upload it again
+project/attachments.go|Error.Message|only PNG, JPEG, WebP and GIF images can be attached
+project/attachments.go|Error.Message|the image is larger than 5 MB
+project/attachments.go|invalid|at most %d images per message
+project/attachments.go|invalid|attachment %s is listed twice
+project/attachments.go|invalid|attachments: %q is not an attachment id
+project/attachments.go|invalid|the upload is empty
+project/attachments.go|notFound|attachment
+project/attachments.go|notFound|project
+project/changes.go|invalid|path %q is outside the project folder
+project/changes.go|notFound|change
+project/changes.go|notFound|folder
+project/complete.go|notFound|project
+project/conversation.go|invalid|text is required
+project/conversation.go|notFound|agent
+project/conversation.go|notFound|project
+project/errors.go|Error.Message|file is not UTF-8 text
+project/errors.go|Error.Message|the review workspace is read-only: refreshing the review moves its worktree and would discard edits
+project/facts.go|notFound|fact
+project/files.go|fileTooLarge|file exceeds the 2 MiB limit
+project/files.go|invalid|%s
+project/files.go|invalid|expected_mtime must be an RFC 3339 timestamp
+project/files.go|invalid|path is not a regular file
+project/files.go|notFound|folder
+project/files.go|notFound|path
+project/files.go|notFound|project
+project/files.go|notFound|workspace
+project/history.go|invalid|q is required
+project/input.go|invalid|access must be %q, %q or %q
+project/input.go|invalid|budget_usd must be greater than 0, or null to remove the budget
+project/input.go|invalid|duplicate folder label %q
+project/input.go|invalid|folder path %q is not an existing directory
+project/input.go|invalid|folder path %q must be absolute
+project/input.go|invalid|max_depth must be between 1 and %d
+project/input.go|invalid|models.tier_policy must be auto, ceiling or fixed
+project/input.go|invalid|network must be %q or %q
+project/inputs.go|invalid|%s
+project/inputs.go|notFound|form
+project/inputs.go|notFound|secret
+project/memory.go|invalid|%s
+project/memory.go|invalid|limit must be a positive integer
+project/memory.go|notFound|context receipt
+project/memory.go|notFound|memory file
+project/memory_sessions.go|invalid|limit must be a positive integer
+project/notes.go|invalid|%v
+project/notes.go|invalid|a note titled %q exists (%s); pass its id to update it, or choose another title
+project/notes.go|invalid|description is required: one line (at most %d characters) that tells a reader when this note is worth opening
+project/notes.go|invalid|markdown: %v
+project/notes.go|invalid|query is required
+project/notes.go|invalid|title must not be empty
+project/notes.go|notFound|note
+project/notes.go|notFound|note 
+project/notes.go|notFound|project
+project/parallel.go|invalid|from_session_id needs clear: true
+project/parallel.go|invalid|kind must be main
+project/parallel.go|invalid|limit must be an integer from 1 to 200
+project/parallel.go|invalid|memory must be on, read or off
+project/parallel.go|invalid|memory must be project, on, read or off
+project/parallel.go|invalid|memory, model and mode are settings of a main session
+project/parallel.go|invalid|text is required
+project/parallel.go|invalid|workspace.kind must be shared or worktree
+project/parallel.go|notFound|session
+project/plans.go|Error.Message|some files changed outside the harness since their last recorded change; nothing was changed
+project/plans.go|invalid|message_id must be the id of one of this conversation's user requests
+project/plans.go|invalid|mode must be %q, %q or %q
+project/plans.go|notFound|plan
+project/queue.go|invalid|text is required
+project/queue.go|notFound|queued message
+project/service.go|invalid|%s
+project/service.go|invalid|models.%s: %s
+project/service.go|invalid|models.auto_candidates: %q must be fast, balanced, deep or acp:<agent-id>[/<model>]
+project/service.go|invalid|models.auto_candidates: %s
+project/service.go|invalid|models.auto_candidates: duplicate %q
+project/service.go|invalid|models.completion must be a model id, small, ollama:<model>, fast, balanced, deep or off
+project/service.go|invalid|models.completion: inline completion needs a fast Messages API model; an ACP agent answers in seconds, not milliseconds
+project/service.go|invalid|name is required
+project/service.go|invalid|name must not be empty
+project/service.go|notFound|project
+project/sessions.go|invalid|archived must be true, false or all
+project/sessions.go|invalid|each session requires provider and id
+project/sessions.go|invalid|kind must be main or agent
+project/sessions.go|invalid|limit must be an integer from 1 to 200
+project/sessions.go|invalid|send title and/or archived
+project/sessions.go|invalid|sessions is required
+project/sessions.go|invalid|state must be working, waiting, queued, idle, failed or stopped
+project/sessions.go|invalid|text is too long
+project/sessions.go|invalid|text must not be empty
+project/sessions.go|invalid|title is at most 200 characters
+project/sessions.go|invalid|title must not be empty
+project/sessions.go|notFound|importable session 
+project/sessions.go|notFound|session
+project/settings.go|invalid|%s
+project/side.go|invalid|text is required
+project/side.go|notFound|project
+project/slash.go|Error.Message|/
+project/usage.go|invalid|%s must be RFC 3339 or YYYY-MM-DD
+project/usage.go|invalid|from must not be after to
+project/usage.go|invalid|group must be day, model, project or agent
+project/workspaces.go|invalid|invalid branch name %q
+review/branches.go|invalid|invalid_ref
+review/branches.go|invalid|invalid_request
+review/branches.go|invalid|unknown_ref
+review/checkout.go|Error.Message|%d uncommitted change(s) in the working copy; confirm to carry them over to the new branch (nothing is discarded)
+review/checkout.go|Error.Message|the pull request head was not fetched
+review/checkout.go|Error.Message|the review's worktree could not be made
+review/checkout.go|Error.Message|uncommitted changes conflict with the pull request's branch; commit or stash them first (nothing was changed): 
+review/checkout.go|conflict|branch_diverged
+review/checkout.go|conflict|detached_head
+review/checkout.go|conflict|review_closed
+review/checkout.go|invalid|invalid_mode
+review/checkout.go|invalid|not_a_pull_request
+review/comments.go|Error.Message|a comment may be at most 64 KiB
+review/comments.go|conflict|comment_submitted
+review/comments.go|conflict|review_closed
+review/comments.go|invalid|empty_comment
+review/comments.go|invalid|invalid_path
+review/comments.go|invalid|invalid_request
+review/comments.go|invalid|invalid_side
+review/comments.go|invalid|line_not_in_diff
+review/comments.go|invalid|path_not_in_diff
+review/comments.go|notFound|comment
+review/comments.go|notFound|finding
+review/diffapi.go|Error.Message|file is larger than 10 MiB
+review/diffapi.go|invalid|invalid_path
+review/diffapi.go|invalid|invalid_request
+review/diffapi.go|invalid|unknown_ref
+review/diffapi.go|notFound|file
+review/open.go|Error.Message|the base branch was not fetched
+review/open.go|Error.Message|the pull request head was not fetched
+review/open.go|conflict|ambiguous_pr
+review/open.go|conflict|invalid_review
+review/open.go|conflict|no_host
+review/open.go|conflict|pr_not_open
+review/open.go|invalid|invalid_ref
+review/open.go|invalid|invalid_repo
+review/open.go|invalid|invalid_request
+review/open.go|invalid|invalid_source
+review/open.go|invalid|invalid_url
+review/open.go|invalid|repo_mismatch
+review/open.go|invalid|unknown_ref
+review/open.go|notFound|pull request
+review/prlist.go|invalid|invalid_filter
+review/prlist.go|invalid|invalid_repo
+review/prlist.go|invalid|invalid_request
+review/service.go|conflict|no_folder
+review/service.go|conflict|not_a_git_repo
+review/service.go|invalid|unknown_folder
+review/service.go|notFound|project
+review/service.go|notFound|review
+review/submit.go|Error.Message|the review body may be at most 64 KiB
+review/submit.go|conflict|comments_changed
+review/submit.go|conflict|invalid_review
+review/submit.go|conflict|no_host
+review/submit.go|conflict|review_closed
+review/submit.go|conflict|thread_missing
+review/submit.go|invalid|empty_review
+review/submit.go|invalid|invalid_verdict
+review/threads.go|Error.Message|a comment may be at most 64 KiB
+review/threads.go|invalid|empty_comment
+review/threads.go|invalid|invalid_request
+review/threads.go|invalid|unknown_thread
+settings/settings.go|invalid|invalid_request
+settings/settings.go|invalid|invalid_value
+settings/settings.go|invalid|setting_locked
+settings/settings.go|invalid|unknown_setting

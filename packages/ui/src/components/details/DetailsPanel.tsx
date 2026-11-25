@@ -1,0 +1,585 @@
+import type { Agent, ContextBreakdown, ContextOverview, LanguageServerInfo, PluginAgent, Workspace } from "@octo/agent-client";
+import { useQuietOpen } from "../../lib/quietFocus";
+import { roleText } from "../../lib/orchestrator";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "../../lib/cn";
+import { fileName, parentPath } from "../../lib/files";
+import { formatRelative, formatTokens, middleTruncate } from "../../lib/format";
+import { useNow } from "../../lib/hooks";
+import { useDelayedLoading, useRowKeys } from "../../lib/hooksMore";
+import { useApp } from "../../state/app";
+import { useCode } from "../../state/code";
+import { useProject } from "../../state/project";
+import { useSessionScope } from "../../state/session";
+import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { sessionTitle } from "../../lib/sessions/tree";
+import { fileIcon } from "../primitives/fileIcons";
+import { Glyph } from "../primitives/Glyph";
+import { ProviderMark } from "../primitives/ProviderMark";
+import { GLYPH } from "../primitives/glyphs";
+import { Button } from "../primitives/Button";
+import { INFO_ROW, MoreRow } from "../primitives/InfoList";
+import { ListRow } from "../primitives/ListRow";
+import { Notice } from "../primitives/Notice";
+import { Panel, PanelBody } from "../primitives/Panel";
+import { SectionHeader } from "../primitives/SectionHeader";
+import { SkeletonList } from "../primitives/Skeleton";
+import { StatusIcon } from "../primitives/statusMore";
+import { groupWrites, useWrittenFiles } from "./useWrittenFiles";
+import { agentsInSession, latestRoutedAgent, resolveSessionFolders, type SessionFolderItem } from "./sessionDetails";
+import { Server, type LucideIcon } from "lucide-react";
+import { languagesIn } from "../../lib/languages";
+import { CLOCK_MINUTE_MS } from "../../lib/constants";
+import { contextMeter, shareText } from "../../lib/contextMeter";
+import { budgetState, policyLabel, routeLine } from "../../lib/modelsMore";
+import { useModelNames } from "../../state/modelNames";
+import { canRun } from "../../lib/providers/providers";
+import { useProviders } from "../../lib/providers/useProviders";
+import { PanelPurpose } from "../shared/PanelPurpose";
+import { PANEL_COLUMN } from "../../lib/panelColumn";
+
+/** Rows shown before "Show all" / "Show more" (contract v6 decision 17). */
+const PAGE = 8;
+/** Outputs of the latest request shown before "Show more" (decision 38). */
+const OUTPUTS = 5;
+/** B7: the tiers by the one name Settings uses ("Fast tier"), so a person sees the same words in both places. */
+const TIERS = [
+  ["orchestrator", "Session"],
+  ["fast", "Fast tier"],
+  ["balanced", "Balanced tier"],
+  ["deep", "Deep tier"],
+] as const;
+
+const roleOf = (a: Agent) => (a.parent_id === null ? "Session" : roleText(a.role));
+
+function useSessionWorkspaces(): Workspace[] | undefined {
+  const { bridge } = useApp();
+  const { projectId, onEvent } = useProject();
+  const scope = useSessionScope();
+  const needsList = scope?.session?.workspace?.kind === "worktree" && Boolean(bridge.listWorkspaces);
+  const workspaceId = scope?.session?.workspace?.id ?? "";
+  const [loaded, setLoaded] = useState<{ projectId: string; list: Workspace[] } | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(
+    () =>
+      onEvent(
+        (e) =>
+          (e.type === "workspace.updated" || (e.type === "session.updated" && (!scope?.sessionId || e.session_id === scope.sessionId))) &&
+          setTick((n) => n + 1),
+      ),
+    [onEvent, scope?.sessionId],
+  );
+
+  useEffect(() => {
+    if (!needsList || !bridge.listWorkspaces) return;
+    let alive = true;
+    bridge.listWorkspaces(projectId).then(
+      (list) => alive && setLoaded({ projectId, list }),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [bridge, projectId, needsList, workspaceId, tick]);
+
+  return loaded?.projectId === projectId ? loaded.list : undefined;
+}
+
+/**
+ * The Details tab as stacked sections (decision 38), attached to the focused main session: one scroll of plain
+ * sections, each a 12px caption and rows, 16px apart, at most one quiet text action at a caption's right — Workspace
+ * (folders), Context ("N% used", one 3px bar split by part, legend), Agents (models per tier, routing, budget),
+ * Outputs (files this request wrote; "All files" for every file), Integrations in use, Activity. Tokens per agent live
+ * in Usage. Real data only.
+ */
+export function DetailsPanel() {
+  const { project, projectId } = useProject();
+  const scope = useSessionScope();
+  const workspaces = useSessionWorkspaces();
+  const rows = useRef<HTMLDivElement>(null);
+  useRowKeys(rows);
+  // B4.3: focus the dock moves here on opening draws no ring until the first key or press.
+  const quiet = useRef<HTMLDivElement>(null);
+  useQuietOpen(quiet);
+  if (!project) return null;
+  const { folders, workspaceTag } = resolveSessionFolders(project.folders, scope?.session, workspaces);
+  const titleText = scope?.session ? sessionTitle(scope.session) : null;
+  const sessionKey = `${projectId}:${scope?.sessionId ?? ""}`;
+  return (
+    // Rows reaching the fold fade out instead of being cut (the list's scrollbar is hidden, like the sidebar's).
+    <div ref={quiet} data-details className="h-full min-h-0">
+      <Panel
+        name="details"
+        title="Details"
+        lead={
+          <>
+            <PanelPurpose tool="details" />
+            {titleText && (
+              <span className="min-w-0 truncate text-xs text-fg-3" title={titleText}>
+                {titleText}
+              </span>
+            )}
+          </>
+        }
+        column="measure"
+      >
+        <PanelBody fade>
+          <div ref={rows} className={cn("flex flex-col gap-4", PANEL_COLUMN)}>
+            <Folders
+              folders={folders}
+              workspaceTag={workspaceTag}
+              hasSession={Boolean(scope?.session)}
+              isWorktree={scope?.session?.workspace?.kind === "worktree"}
+            />
+            <Context />
+            <Team />
+            <Outputs key={`out:${sessionKey}`} extraFolders={scope?.session?.workspace?.kind === "worktree" ? folders : []} />
+            <PluginsInUse />
+            <Activity key={`act:${sessionKey}`} />
+          </div>
+        </PanelBody>
+      </Panel>
+    </div>
+  );
+}
+
+/** A captioned group of rows: the caption, an optional quiet action at its right, then the rows. */
+function InfoSection(props: { title: string; labelId: string; aside?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section aria-labelledby={props.labelId} className="flex flex-col gap-1">
+      <SectionHeader inset id={props.labelId} as="h3" {...(props.aside ? { aside: props.aside } : {})}>
+        {props.title}
+      </SectionHeader>
+      {props.children}
+    </section>
+  );
+}
+
+/** The 16px leading slot of a row, holding a 14px glyph (every label in the panel starts on one edge). */
+function Slot({ icon }: { icon: LucideIcon }) {
+  return (
+    <span aria-hidden className="grid size-4 shrink-0 place-items-center text-fg-3">
+      <Glyph icon={icon} size={14} />
+    </span>
+  );
+}
+
+function Folders(props: { folders: readonly SessionFolderItem[]; workspaceTag: string | null; hasSession: boolean; isWorktree: boolean }) {
+  const code = useCode();
+  const aside = props.workspaceTag ? (
+    <span
+      className={cn("max-w-[65%] truncate text-xs text-fg-3", props.isWorktree && "font-mono")}
+      title={props.isWorktree ? `Branch: ${props.workspaceTag}` : "Runs on the main project checkout"}
+    >
+      {props.workspaceTag}
+    </span>
+  ) : undefined;
+  return (
+    <InfoSection title={props.hasSession ? "Workspace" : "Project"} labelId="details-folders" aside={aside}>
+      {props.folders.length === 0 && <p className={cn(INFO_ROW, "text-fg-3")}>No folders attached.</p>}
+      {props.folders.map((f) => (
+        <ListRow
+          key={f.id}
+          size="md"
+          leading={<Glyph icon={GLYPH.files} size={14} />}
+          title={f.label}
+          meta={middleTruncate(f.path, 40)}
+          tip={f.path}
+          {...(f.revealable ? { onClick: () => code.revealDir(f.label, "") } : {})}
+        />
+      ))}
+    </InfoSection>
+  );
+}
+
+/** The session's context (decision 38): `GET …/context`, read when the tab opens, on session switch, and after each turn. */
+function useContextBreakdown(): { status: "loading" | "error" | "ok"; value: ContextBreakdown | ContextOverview | null; retry(): void } {
+  const { bridge } = useApp();
+  const { projectId, project, state, onEvent } = useProject();
+  const scope = useSessionScope();
+  const sid = scope?.sessionId ?? "";
+  const root = project && project.orchestrator_agent_id ? state.agents[project.orchestrator_agent_id] : undefined;
+  const sessionKey = `${projectId}:${sid}`;
+  const [tick, setTick] = useState(0);
+  const stamp = `${sessionKey}:${root?.id ?? ""}:${root?.finished_at ?? ""}:${root?.status ?? ""}:${(project && state.compactions[project.orchestrator_agent_id]?.length) ?? 0}:${tick}`;
+  const [load, setLoad] = useState<{ forKey: string; status: "loading" | "error" | "ok"; value: ContextBreakdown | ContextOverview | null }>({
+    forKey: sessionKey,
+    status: "loading",
+    value: null,
+  });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => onEvent((e) => (e.type === "context.updated" || e.type === "conversation.cleared") && setTick((n) => n + 1)), [onEvent]);
+
+  useEffect(() => {
+    let alive = true;
+    bridge.getContext(projectId).then(
+      (value) => alive && setLoad({ forKey: sessionKey, status: "ok", value }),
+      () =>
+        alive &&
+        setLoad((l) =>
+          l.forKey === sessionKey && l.value ? { forKey: sessionKey, status: "ok", value: l.value } : { forKey: sessionKey, status: "error", value: null },
+        ),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [bridge, projectId, sessionKey, stamp, attempt]);
+
+  const current = load.forKey === sessionKey ? { status: load.status, value: load.value } : { status: "loading" as const, value: null };
+  return { ...current, retry: () => setAttempt((n) => n + 1) };
+}
+
+function Context() {
+  const ctx = useContextBreakdown();
+  const slow = useDelayedLoading(ctx.status === "loading");
+  const meter = ctx.value ? contextMeter(ctx.value) : null;
+  return (
+    <InfoSection
+      title="Context"
+      labelId="details-context"
+      aside={
+        meter?.estimated && (
+          <span className="shrink-0" title="Estimated from the saved text, not reported by the model">
+            estimated
+          </span>
+        )
+      }
+    >
+      {ctx.status === "loading" && (
+        <div className={cn(!slow && "opacity-0")}>
+          <SkeletonList count={2} />
+        </div>
+      )}
+      {ctx.status === "error" && (
+        <Notice
+          tone="error"
+          className="px-2"
+          action={
+            <Button variant="link" size="xs" onClick={ctx.retry}>
+              Retry
+            </Button>
+          }
+        >
+          Couldn't read the context.
+        </Notice>
+      )}
+      {meter && (
+        <>
+          <div className={INFO_ROW}>
+            <span className="text-fg">{meter.percent ?? "Context size unknown"}</span>
+            <span className="ml-auto shrink-0 font-mono text-xs text-fg-2 tabular-nums">{meter.amount}</span>
+          </div>
+          {/* One 4px bar: the window's used share, split by part (decision 38, matching UsageLimits). */}
+          <div
+            role="meter"
+            aria-label="Context used"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(meter.fill * 100)}
+            className="mx-2 mb-1 flex h-1 overflow-hidden rounded-full bg-line"
+          >
+            {meter.rows.map((r) => (
+              <span key={r.key} className={`octo-ctx-${r.key} h-full`} style={{ width: `${(meter.fill > 0 ? meter.fill : 1) * r.share * 100}%` }} />
+            ))}
+          </div>
+          {meter.rows.map((r) => (
+            <div key={r.key} data-context-part={r.key} className={INFO_ROW}>
+              <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+                <span className={`octo-ctx-${r.key} size-2 rounded-2xs`} />
+              </span>
+              <span className="min-w-0 truncate text-fg-2">{r.label}</span>
+              <span className="ml-auto shrink-0 font-mono text-xs text-fg-2 tabular-nums">{formatTokens(r.tokens)}</span>
+              <span className="w-10 shrink-0 text-right font-mono text-xs text-fg-3 tabular-nums">{shareText(r.share)}</span>
+            </div>
+          ))}
+        </>
+      )}
+    </InfoSection>
+  );
+}
+
+function Team() {
+  const { project, state } = useProject();
+  const scope = useSessionScope();
+  const { config, bridge } = useApp();
+  const names = useModelNames();
+  const providers = useProviders(bridge);
+  const list = providers.status === "ready" ? providers.list : null;
+  if (!project) return null;
+  const rootId = project.orchestrator_agent_id;
+  const root = rootId ? state.agents[rootId] : undefined;
+  const sessionModel = scope?.session?.model || root?.model || project.models.orchestrator;
+  const budget = budgetState(project.spent_usd, project.budget_usd);
+  // The latest delegation the router placed in this session (tier `auto`): its decision as one quiet line.
+  const sessionAgents = agentsInSession(state.agents, state.agentOrder, scope?.sessionId ?? null, rootId);
+  const routed = latestRoutedAgent(sessionAgents);
+  // UX-14: the line is the last delegation's, not the project's model choice ("Fixed" beside "Chosen automatically" read as a contradiction).
+  const routed1 = routed ? routeLine(routed, config?.acp_orchestrators ?? []) : null;
+  const route = routed1 ? `Last delegation: ${routed1.charAt(0).toLowerCase()}${routed1.slice(1)}` : null;
+  return (
+    <InfoSection title="Agents" labelId="details-models">
+      {TIERS.map(([key, label]) => {
+        const model = key === "orchestrator" ? sessionModel : project.models[key];
+        // The session's row names the model that answered (decision 37), and under it the one it asked for.
+        const served = key === "orchestrator" && root?.served_model ? names.served({ model, served_model: root.served_model }) : null;
+        // A3: a model whose provider is not connected reads in the warn tone with the reason on hover, as the model chips do.
+        const stuck = list !== null && model !== "" && !canRun(list, model);
+        return (
+          <div key={key} className="flex flex-col">
+            <div
+              className={INFO_ROW}
+              title={stuck ? "Cannot run: this model's provider is not connected. Change it in project settings." : served ? served.long : model}
+            >
+              <span className="shrink-0 text-fg-2">{label}</span>
+              {/* N9: the vendor's mark before the model, as on the model chips. */}
+              <span className={cn("ml-auto flex min-w-0 items-center gap-1.5 pl-2", stuck ? "text-warn" : "text-fg")}>
+                {model !== "" && <ProviderMark id={model} label={names.name(model)} size={14} className="text-fg-3" />}
+                <span className="min-w-0 truncate">{served ? served.name : names.name(model)}</span>
+              </span>
+            </div>
+            {served?.asked && <p className="-mt-1 truncate px-2 pb-1 text-right text-xs text-fg-3">asked for {served.asked}</p>}
+            {/* Work-surface polish item 15: the warn tone is never the only sign; the reason in words, as on the model chip. */}
+            {stuck && <p className="-mt-1 truncate px-2 pb-1 text-right text-xs text-fg-3">provider not connected</p>}
+          </div>
+        );
+      })}
+      {config?.router && (
+        <div className={INFO_ROW} title="How Octo picks a model for each task. Change it in project settings.">
+          <span className="shrink-0 text-fg-2">Model choice</span>
+          <span className="ml-auto text-fg">{policyLabel(project.models.tier_policy)}</span>
+        </div>
+      )}
+      {route && (
+        <p data-route-line className="truncate px-2 pt-1 text-xs text-fg-3" title={route}>
+          {route}
+        </p>
+      )}
+      {budget && (
+        <div
+          className={INFO_ROW}
+          title={budget.reached ? "Project budget reached. Raise it in project settings to continue." : "Project spend against the project budget."}
+        >
+          <span className="shrink-0 text-fg-2">Budget</span>
+          <span className={cn("ml-auto font-mono text-xs tabular-nums", budget.tone === "err" ? "text-err" : budget.tone === "warn" ? "text-warn" : "text-fg")}>
+            {budget.text}
+          </span>
+        </div>
+      )}
+    </InfoSection>
+  );
+}
+
+type PluginsLoad = { servers: LanguageServerInfo[]; agents: PluginAgent[] } | null;
+
+/**
+ * What this project can use: the available language servers for the languages its files have (from the Filter-files
+ * index, loaded here) and the available ACP agents.
+ */
+function PluginsInUse() {
+  const { bridge } = useApp();
+  const { projectId } = useProject();
+  const code = useCode();
+  const { indexFiles, fileIndex, loadedFiles } = code;
+  useEffect(() => indexFiles(), [indexFiles]);
+  const languages = useMemo(() => (fileIndex.status === "done" ? languagesIn(loadedFiles.map((f) => f.path)) : null), [fileIndex.status, loadedFiles]);
+  const [load, setLoad] = useState<PluginsLoad>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setLoad(null);
+    setFailed(false);
+    Promise.all([bridge.listLanguageServers(projectId), bridge.listPlugins()]).then(
+      ([servers, plugins]) =>
+        !cancelled && setLoad({ servers: servers.filter((s) => s.available), agents: plugins.flatMap((p) => p.agents).filter((a) => a.available) }),
+      () => !cancelled && setFailed(true),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, projectId]);
+  const servers = load && languages ? load.servers.filter((sv) => sv.languages.some((l) => languages.has(l))) : null;
+  const slow = useDelayedLoading((load === null || languages === null) && !failed);
+  const empty = load !== null && servers !== null && servers.length + load.agents.length === 0;
+  return (
+    <InfoSection title="Integrations in use" labelId="details-plugins">
+      {failed && (
+        <Notice tone="error" className="px-2">
+          Couldn't read the plugins. Reopen this tab to try again.
+        </Notice>
+      )}
+      {(load === null || servers === null) && !failed && (
+        // The skeleton holds its room from the start and shows only once loading is slow (no jump either way).
+        <div className={cn(!slow && "opacity-0")}>
+          <SkeletonList count={2} />
+        </div>
+      )}
+      {empty && <p className={cn(INFO_ROW, "text-fg-3")}>No language help or agents available.</p>}
+      {servers?.map((s) => (
+        <div key={s.id} className={INFO_ROW}>
+          <Slot icon={Server} />
+          <span className="min-w-0 shrink-0 truncate text-fg">{s.label}</span>
+          <span className="ml-auto min-w-0 truncate pl-2 text-xs text-fg-3">{s.languages.join(", ")}</span>
+        </div>
+      ))}
+      {servers &&
+        load?.agents.map((a) => (
+          <div key={a.id} className={INFO_ROW}>
+            <ProviderMark id={a.id} label={a.label} className="text-fg-3" />
+            <span className="min-w-0 shrink-0 truncate text-fg">{a.label}</span>
+            <span className="ml-auto min-w-0 truncate pl-2 text-xs text-fg-3">Agent</span>
+          </div>
+        ))}
+    </InfoSection>
+  );
+}
+
+function Activity() {
+  const { project, state } = useProject();
+  const scope = useSessionScope();
+  const ws = useWorkspace();
+  const [all, setAll] = useState(false);
+  const now = useNow(true, CLOCK_MINUTE_MS);
+  const sid = scope?.sessionId ?? null;
+  const rootId = project?.orchestrator_agent_id;
+  const agents = useMemo(
+    () =>
+      agentsInSession(state.agents, state.agentOrder, sid, rootId)
+        .filter((a) => a.parent_id !== null)
+        .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)),
+    [state.agentOrder, state.agents, sid, rootId],
+  );
+  const shown = all ? agents : agents.slice(0, PAGE);
+  return (
+    <InfoSection title="Activity" labelId="details-activity">
+      {agents.length === 0 && <p className={cn(INFO_ROW, "text-fg-3")}>No agents have run yet.</p>}
+      {shown.map((a) => (
+        <ListRow
+          key={a.id}
+          // P3: the same agents as the Agents tab, at its row height.
+          size="md"
+          leading={<StatusIcon status={a.status} />}
+          title={
+            <>
+              {roleOf(a)}
+              <span className="ml-2 text-xs text-fg-3">{a.title}</span>
+            </>
+          }
+          meta={
+            <time dateTime={a.created_at} className="tabular-nums">
+              {formatRelative(a.created_at, now)}
+            </time>
+          }
+          tip={a.title ? `${roleOf(a)}: ${a.title}` : roleOf(a)}
+          onClick={(e) => ws.openAgent(a.id, { otherSide: e.altKey })}
+        />
+      ))}
+      {agents.length > PAGE && <MoreRow slot label={all ? "Show fewer" : `Show all (${agents.length})`} expanded={all} onClick={() => setAll((x) => !x)} />}
+    </InfoSection>
+  );
+}
+
+/**
+ * Outputs (decision 38): the files the latest request of this session wrote, newest first, 5 then "Show more"; "All
+ * files" at the caption's right switches to every file written, grouped Today / This week / Earlier. When a command
+ * ran in that request, a note says the list may be incomplete (changes made by commands are not tracked yet).
+ */
+function Outputs(props: { extraFolders: readonly { label: string; path: string }[] }) {
+  const writes = useWrittenFiles(props.extraFolders);
+  const code = useCode();
+  const { project, state } = useProject();
+  const now = useNow(true, CLOCK_MINUTE_MS);
+  const [all, setAll] = useState(false);
+  const [more, setMore] = useState(false);
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const root = project && project.orchestrator_agent_id ? state.agents[project.orchestrator_agent_id] : undefined;
+  const since = root?.started_at ? Date.parse(root.started_at) : null;
+  const latest = useMemo(() => {
+    if (!writes || since === null) return [];
+    return groupWrites(
+      writes.files.filter((w) => Date.parse(w.at) >= since),
+      now,
+    ).flatMap((g) => g.files);
+  }, [writes, since, now]);
+  const commandsRan = writes !== null && since !== null && writes.commands.some((t) => Date.parse(t) >= since);
+  const groups = useMemo(() => (writes ? groupWrites(writes.files, now) : null), [writes, now]);
+  const slow = useDelayedLoading(writes === null);
+  const row = (f: { folder: string; path: string; count: number }) => {
+    const dir = parentPath(f.path);
+    return (
+      <ListRow
+        key={`${f.folder}/${f.path}`}
+        size="md"
+        leading={<Glyph icon={fileIcon(f.path)} size={14} />}
+        title={
+          <>
+            {fileName(f.path)}
+            <span className="ml-2 text-xs text-fg-3">{dir ? `${f.folder}/${dir}` : f.folder}</span>
+          </>
+        }
+        meta={
+          f.count > 1 ? (
+            <span className="tabular-nums" aria-label={`written ${f.count} times`}>
+              ×{f.count}
+            </span>
+          ) : undefined
+        }
+        tip={`${f.folder}/${f.path}`}
+        onClick={() => code.openFile(f.folder, f.path)}
+      />
+    );
+  };
+  const toggle = groups && groups.length > 0 && (
+    <Button variant="quiet" size="xs" pressed={all} className="-mr-2" onClick={() => setAll((x) => !x)}>
+      {all ? "This request" : "All files"}
+    </Button>
+  );
+  return (
+    <InfoSection title={all ? "Files written" : "Outputs"} labelId="details-files" aside={toggle}>
+      {groups === null && (
+        <div className={cn(!slow && "opacity-0")}>
+          <SkeletonList count={3} size="md" />
+        </div>
+      )}
+      {!all && writes !== null && (
+        <>
+          {latest.length === 0 && (
+            <p className={cn(INFO_ROW, "text-fg-3")}>{since === null ? "No requests yet." : "No files written in the latest request."}</p>
+          )}
+          {(more ? latest : latest.slice(0, OUTPUTS)).map(row)}
+          {latest.length > OUTPUTS && (
+            <MoreRow slot label={more ? "Show fewer" : `Show ${latest.length - OUTPUTS} more`} expanded={more} onClick={() => setMore((x) => !x)} />
+          )}
+          {commandsRan && (
+            <p data-outputs-note className="px-2 pt-1 text-xs text-fg-3">
+              Files changed by commands are not tracked yet, so this list may be incomplete.
+            </p>
+          )}
+        </>
+      )}
+      {all && groups?.length === 0 && <p className={cn(INFO_ROW, "text-fg-3")}>No files written yet.</p>}
+      {all &&
+        groups?.map((g) => {
+          const shown = open[g.label] ? g.files : g.files.slice(0, PAGE);
+          return (
+            <div key={g.label} role="group" aria-label={g.label} className="flex flex-col">
+              <div className="flex h-ctl-sm items-center px-2 text-xs text-fg-3">
+                <span aria-hidden className="mr-2 size-4 shrink-0" />
+                {g.label}
+              </div>
+              {shown.map(row)}
+              {g.files.length > PAGE && (
+                <MoreRow
+                  slot
+                  label={open[g.label] ? "Show fewer" : `Show ${g.files.length - PAGE} more`}
+                  expanded={Boolean(open[g.label])}
+                  onClick={() => setOpen((o) => ({ ...o, [g.label]: !o[g.label] }))}
+                />
+              )}
+            </div>
+          );
+        })}
+    </InfoSection>
+  );
+}

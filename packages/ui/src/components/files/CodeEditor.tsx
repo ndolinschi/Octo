@@ -1,0 +1,307 @@
+import type * as Monaco from "monaco-editor";
+import { lazy, memo, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { FilePosition } from "../../lib/files";
+import type { OpenFile } from "../../state/code";
+import type { Theme } from "../../lib/theme";
+import { useLatest } from "../../lib/hooks";
+import { monoFont } from "../../lib/monoFont";
+import { browserIdle, saveData } from "../../lib/warmSchedule";
+import { EmptyState } from "../primitives/EmptyState";
+import { EditorContextMenu } from "../shared/EditorContextMenu";
+import { EditorSkeleton } from "./EditorSkeleton";
+import { EditorActionLayer } from "./editor/EditorActionLayer";
+import type { EditorBuffers, MonacoApi } from "../../lib/buffers";
+import { errorMessage } from "../../lib/format";
+import { type FileKey } from "../../lib/files";
+import { editorAriaLabel, ESCAPE_OUT_WHEN, isApple } from "./editorA11y";
+
+type MonacoModule = typeof import("./monaco");
+const InlineCompletion = lazy(() => import("./editor/completion/InlineCompletion"));
+
+let pending: Promise<MonacoModule> | null = null;
+/** How long a file view is on screen before Monaco is warmed for it. */
+const MONACO_WARM_AFTER_MS = 1000;
+
+/** Loads Monaco (and defines the themes) once, on first use. */
+export function loadMonaco(): Promise<MonacoModule> {
+  pending ??= import("./monaco").catch((e: unknown) => {
+    pending = null;
+    throw e;
+  });
+  return pending;
+}
+
+/** Monaco before the first file: on idle once a file view has been on screen for a second (not under Save-Data). Returns a cancel. */
+export function warmMonacoSoon(): () => void {
+  if (saveData()) return () => undefined;
+  let cancel: () => void = () => undefined;
+  const id = window.setTimeout(() => (cancel = browserIdle(() => warmMonacoNow())), MONACO_WARM_AFTER_MS);
+  return () => {
+    window.clearTimeout(id);
+    cancel();
+  };
+}
+
+/** Intent (the pointer over the file view, a press in it): Monaco at once, so a click on a file finds it loading or in. */
+export function warmMonacoNow(): void {
+  // A failure shows where the editor mounts (it loads again then).
+  void loadMonaco().catch(() => undefined);
+}
+
+/**
+ * Selects `at` and scrolls it to the middle; in a hidden tab (no layout yet) it waits for the
+ * first layout, so the position is right once the tab shows.
+ */
+function reveal(editor: Monaco.editor.IStandaloneCodeEditor, at: FilePosition | null) {
+  if (!at) return;
+  const apply = () => {
+    const model = editor.getModel();
+    if (!model) return;
+    const line = Math.min(Math.max(1, at.line), model.getLineCount());
+    const end = Math.min(Math.max(line, at.endLine ?? line), model.getLineCount());
+    const column = at.endLine === undefined ? Math.max(1, at.column ?? 1) : 1;
+    editor.setSelection(
+      at.endLine === undefined
+        ? { startLineNumber: line, startColumn: column, endLineNumber: line, endColumn: column }
+        : { startLineNumber: line, startColumn: 1, endLineNumber: end, endColumn: model.getLineMaxColumn(end) },
+    );
+    editor.revealLinesInCenterIfOutsideViewport(line, end);
+    editor.focus();
+  };
+  if (editor.getLayoutInfo().height > 0) return apply();
+  const sub = editor.onDidLayoutChange((info) => {
+    if (info.height <= 0) return;
+    sub.dispose();
+    apply();
+  });
+}
+
+export type CursorPos = { line: number; column: number };
+
+/**
+ * Thin Monaco wrapper: one editor instance per file view (it outlives every file the view shows; decision 85), swapping
+ * the file's model in (kept in `buffers` so edits outlive this component); view state is saved on a swap and on unmount and restored.
+ */
+export const CodeEditor = memo(function CodeEditor(props: {
+  file: OpenFile | null;
+  buffers: EditorBuffers;
+  theme: Theme;
+  /** Room below the last line (8, or the floating composer's height + 16 so the last line stays reachable). */
+  bottomPadding?: number;
+  onSave(): void;
+  /** Monaco is in: start the editor services that need it (the language-server client). */
+  onMonaco(mod: MonacoModule): void;
+  /** Esc with nothing selected and no widget open: focus leaves the editor (the file's tab). */
+  onEscape?(): void;
+  /** Reports the active caret line and column (used by the file bar's clickable Ln/Col indicator). */
+  onCursor?(pos: CursorPos | null): void;
+  /** Registers a callback to trigger Monaco's Go to Line widget from the file bar. */
+  goToLineRef?: { current: (() => void) | null };
+  /** Read first (a phone, A5): the text can be read and selected, not typed into. */
+  readOnly?: boolean;
+  /** Wrap long lines (a phone reading an SVG's source, A7.1). */
+  wrap?: boolean;
+}) {
+  const { file, buffers, goToLineRef } = props;
+  const [editor, setEditor] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  const host = useRef<HTMLDivElement>(null);
+  const [mod, setMod] = useState<MonacoModule | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  const shownKey = useRef<FileKey | null>(null);
+  const onSave = useLatest(props.onSave);
+  const onMonaco = useLatest(props.onMonaco);
+  const onEscape = useLatest(props.onEscape);
+  const onCursor = useLatest(props.onCursor);
+  const bottomPadding = useLatest(props.bottomPadding ?? 8);
+
+  useEffect(() => {
+    let alive = true;
+    loadMonaco().then(
+      (m) => alive && setMod(m),
+      (e: unknown) => alive && setFailed(errorMessage(e)),
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Create the editor once Monaco is in; dispose it (not the models) on unmount.
+  useEffect(() => {
+    if (!mod || !host.current) return;
+    const monaco: MonacoApi = mod.monaco;
+    buffers.attach(monaco);
+    onMonaco.current(mod);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Hover, suggest and peek widgets live in a layer on <body> above the app (fixed positions), so the
+    // tree column, the breadcrumb row and the panel's clipping can never cut them or slide over them.
+    const overflow = document.createElement("div");
+    overflow.className = "monaco-editor octo-monaco-overflow";
+    document.body.appendChild(overflow);
+    const editor = monaco.editor.create(host.current, {
+      model: null,
+      theme: mod.themeName(props.theme),
+      automaticLayout: true,
+      fontFamily: monoFont(),
+      fontSize: 13,
+      lineHeight: 20,
+      minimap: { enabled: false },
+      rulers: [],
+      scrollBeyondLastLine: false,
+      // No horizontal scrollbar unless a line really is wider than the editor.
+      scrollBeyondLastColumn: 0,
+      padding: { top: 8, bottom: bottomPadding.current },
+      wordWrap: "off",
+      detectIndentation: true,
+      // Gutter (polish step 4, E4): the comment lane (glyph margin, 20), numbers at least 3 digits wide, then a fixed 22px
+      // to the code: 6 for the comment rail and the 16 Monaco adds for the fold chevrons (shown on hover). Steady for any
+      // file up to 999 lines (was 26: Monaco's default 10 + 16).
+      lineNumbersMinChars: 3,
+      lineDecorationsWidth: 6,
+      // The comment "+" has its own lane left of the line numbers, so it never covers code (any indent).
+      glyphMargin: true,
+      folding: true,
+      showFoldingControls: "mouseover",
+      renderLineHighlight: "line",
+      renderLineHighlightOnlyWhenFocus: true,
+      occurrencesHighlight: "singleFile",
+      matchBrackets: "always",
+      stopRenderingLineAfter: 10000,
+      overviewRulerLanes: 0,
+      overviewRulerBorder: false,
+      hideCursorInOverviewRuler: true,
+      stickyScroll: { enabled: false },
+      bracketPairColorization: { enabled: false },
+      guides: { indentation: true, bracketPairs: "active" },
+      // Slim and quiet like the app's other scroll areas: a 4px thumb in an 8px track (styles.css widens it to 6 and
+      // darkens it on hover/drag); none when content fits.
+      scrollbar: {
+        vertical: "auto",
+        // Always shown when a line is wider than the editor (a cut line needs a visible way to it).
+        horizontal: "visible",
+        verticalScrollbarSize: 8,
+        horizontalScrollbarSize: 8,
+        verticalSliderSize: 4,
+        horizontalSliderSize: 4,
+        useShadows: false,
+        alwaysConsumeMouseWheel: false,
+      },
+      smoothScrolling: false,
+      fastScrollSensitivity: 5,
+      cursorBlinking: reduced ? "solid" : "blink",
+      cursorSmoothCaretAnimation: "off",
+      fixedOverflowWidgets: true,
+      overflowWidgetsDomNode: overflow,
+      // Named by the file once a model is in (the swap below).
+      ariaLabel: "Editor",
+      tabFocusMode: false,
+      // The right-click menu is the app's own (EditorContextMenu): Monaco's has no surface in its shadow root.
+      contextmenu: false,
+    });
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSave.current());
+    editor.addCommand(monaco.KeyCode.Escape, () => onEscape.current?.(), ESCAPE_OUT_WHEN);
+    const cursorSub = editor.onDidChangeCursorPosition((e) => onCursor.current?.({ line: e.position.lineNumber, column: e.position.column }));
+    if (goToLineRef) {
+      goToLineRef.current = () => {
+        editor.focus();
+        void editor.getAction("editor.action.gotoLine")?.run();
+      };
+    }
+    editorRef.current = editor;
+    buffers.editors.add(editor);
+    setEditor(editor);
+    return () => {
+      cursorSub.dispose();
+      onCursor.current?.(null);
+      if (goToLineRef) goToLineRef.current = null;
+      setEditor(null);
+      if (shownKey.current) buffers.saveView(shownKey.current, editor.saveViewState());
+      shownKey.current = null;
+      buffers.editors.delete(editor);
+      editor.setModel(null);
+      editor.dispose();
+      overflow.remove();
+      editorRef.current = null;
+    };
+    // Theme changes are applied below without recreating the editor.
+  }, [mod, buffers, bottomPadding, onMonaco, onSave, onEscape, onCursor, goToLineRef]);
+
+  useEffect(() => {
+    // `domReadOnly`: the input element itself is read-only too, so a tap on a phone does not raise the on-screen keyboard (WebKit
+    // focuses a textarea there; Monaco's own read-only alone left it writable).
+    editor?.updateOptions({ readOnly: props.readOnly ?? false, domReadOnly: props.readOnly ?? false, wordWrap: props.wrap ? "on" : "off" });
+  }, [editor, props.readOnly, props.wrap]);
+
+  useEffect(() => {
+    if (mod) mod.monaco.editor.setTheme(mod.themeName(props.theme));
+  }, [mod, props.theme]);
+
+  // Room for the floating composer. Monaco's reveal (arrows, Ctrl/Cmd+End, typing) ignores the bottom
+  // padding, so a caret moved under the composer is scrolled back above it.
+  useEffect(() => {
+    if (!editor) return;
+    const bottom = props.bottomPadding ?? 8;
+    editor.updateOptions({ padding: { top: 8, bottom } });
+    if (bottom <= 8) return;
+    const sub = editor.onDidChangeCursorPosition((e) => {
+      const lineBottom = editor.getBottomForLineNumber(e.position.lineNumber) - editor.getScrollTop();
+      const limit = editor.getLayoutInfo().height - bottom;
+      if (lineBottom > limit) editor.setScrollTop(editor.getScrollTop() + lineBottom - limit);
+    });
+    return () => sub.dispose();
+  }, [editor, props.bottomPadding]);
+
+  // Show the active file's model, saving the previous file's view state. A layout effect: the swap lands in the same frame
+  // as the commit that removes the cover, so the old file's text is never painted for the new one (decision 85).
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    if (!mod || !editor || file?.status !== "ready") return;
+    if (shownKey.current === file.key && editor.getModel()) return;
+    if (shownKey.current && shownKey.current !== file.key) buffers.saveView(shownKey.current, editor.saveViewState());
+    const model = buffers.ensure(file.key, file.folder, file.path, file.content);
+    editor.setModel(model);
+    editor.updateOptions({ ariaLabel: editorAriaLabel(file.path, isApple(navigator.platform)) });
+    const view = buffers.view(file.key);
+    if (view) editor.restoreViewState(view);
+    shownKey.current = file.key;
+    reveal(editor, buffers.takeReveal(file.key));
+    const pos = editor.getPosition();
+    if (pos) onCursor.current?.({ line: pos.lineNumber, column: pos.column });
+  }, [mod, buffers, file, editor, onCursor]);
+
+  // A link, a comment or a definition asked for a position in this file.
+  useEffect(
+    () =>
+      buffers.onReveal((key) => {
+        const editor = editorRef.current;
+        if (key === file?.key && editor && shownKey.current === key && editor.getModel()) reveal(editor, buffers.takeReveal(key));
+      }),
+    [buffers, file],
+  );
+
+  if (failed) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <EmptyState tone="err" title="The editor couldn't load">
+          {failed}. Reload the window to try again.
+        </EmptyState>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-full min-h-0 min-w-0 overflow-clip" data-editor-chat={file ? "" : undefined}>
+      {/* Decision 60: grey lines in the editor's own box until Monaco is in, shown at once (no empty frame, no late spinner). */}
+      {!editor && !failed && <EditorSkeleton />}
+      <div ref={host} className="h-full min-h-0 min-w-0" data-testid="code-editor" />
+      {editor && file && <EditorContextMenu editor={editor} path={file.path} />}
+      {mod && editor && file && <EditorActionLayer editor={editor} monaco={mod.monaco} path={file.path} readOnly={props.readOnly ?? false} />}
+      {mod && editor && file && <mod.EditorComments editor={editor} monaco={mod.monaco} buffers={buffers} folder={file.folder} path={file.path} />}
+      {mod && editor && file && (
+        <Suspense fallback={null}>
+          <InlineCompletion editor={editor} monaco={mod.monaco} fileKey={file.key} folder={file.folder} path={file.path} />
+        </Suspense>
+      )}
+    </div>
+  );
+});

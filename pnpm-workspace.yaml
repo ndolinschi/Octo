@@ -1,0 +1,8 @@
+packages:
+  - "packages/*"
+  - "apps/desktop"
+  - "apps/web"
+
+# monaco-editor pins dompurify 3.4.15 (5 low advisories, fixed in 3.4.17); same minor, same API.
+overrides:
+  dompurify: 3.4.18

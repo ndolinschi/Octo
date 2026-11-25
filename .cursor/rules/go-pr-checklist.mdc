@@ -1,0 +1,49 @@
+---
+description: Per-PR / per-file checklist for Go harness changes
+globs: "apps/harness/**/*.go,apps/harness/go.mod"
+alwaysApply: false
+---
+
+# Go PR / file checklist
+
+Apply to every Go change under `apps/harness/` before commit or review.
+
+## Types and data
+
+- Fixed set of values → `enum`-like `type` + constants, not free strings at trust boundaries.
+- Prefer `[]byte` / `string` as the platform gives them; no needless conversions.
+- Money and token counts: integer units, not `float64`.
+- `context.Context` is the first parameter of any function that does I/O or waits.
+
+## APIs and packages
+
+- Exported surface is intentional; keep most code under `internal/`.
+- No package import cycles. No “utils” grab-bag — name the job.
+- Interfaces defined where they are **consumed**, implemented where produced.
+- One concrete wiring site (`cmd/`): constructors take deps explicitly.
+
+## Concurrency
+
+- No data races (`go test -race` when touching shared state).
+- Do not hold locks across network/SDK calls.
+- Cancel child work when the parent context cancels.
+
+## Errors and security
+
+- Check every `error`. No silent `_, _ =`.
+- Path/tool inputs from the model are untrusted: confine workspace paths; document that `bash` is a full shell.
+- Secrets never in `fmt`/slog default fields.
+
+## Size and lean
+
+- File ~≤250 lines; split by responsibility if larger.
+- No dependency for a few lines of stdlib.
+- Delete dead code in the same PR when you replace it.
+
+## Before commit
+
+- `gofmt` / `goimports` clean
+- `go test ./...`
+- `go vet ./...`
+- `go build ./cmd/harness`
+- No `TODO` that blocks the claimed behavior

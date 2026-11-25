@@ -1,0 +1,363 @@
+import { BridgeError, type Agent, type ProjectSession, type ProjectSessionState } from "@octo/agent-client";
+import type { GlyphState } from "../stateGlyph";
+import { isStructured } from "../errors/plain";
+import { errorMessage, structuredError } from "../format";
+import { formatDay, formatWhen } from "../memory/dates";
+import { exchangeCount } from "../memory/sessions";
+import { isDefaultSession, isWorking, sessionWorkspaceLabel, startedMs } from "./current";
+
+export { canMoveToWorktree, currentTitle, isDefaultSession, isWorking, sessionWorkspaceLabel, transcriptSession } from "./current";
+
+/** The Sessions tab's filters (decision 5): everything, what works now, the conversations, the agents, the archive. */
+export type SessionFilter = "all" | "working" | "mine" | "agents" | "archived";
+
+export const FILTERS: readonly { id: SessionFilter; label: string; title: string }[] = [
+  { id: "all", label: "All", title: "All sessions" },
+  { id: "working", label: "Working", title: "Sessions that are working or waiting for you" },
+  { id: "mine", label: "Mine", title: "Sessions you started" },
+  { id: "agents", label: "Agents", title: "Running agent sessions" },
+  { id: "archived", label: "Archived", title: "Archived sessions" },
+];
+
+/** A main session with the agent sessions it started (oldest first), or one agent session on its own (`children` empty). */
+export type SessionNode = { session: ProjectSession; children: ProjectSession[] };
+
+const newest = (a: ProjectSession, b: ProjectSession): number => startedMs(b) - startedMs(a);
+const oldest = (a: ProjectSession, b: ProjectSession): number => startedMs(a) - startedMs(b);
+
+/**
+ * "Delete" is offered on a session that is not the current one and has nothing running (itself or, for a main session,
+ * an agent session it started). The harness refuses the rest with `current_session` / `session_running`.
+ */
+export function canDelete(list: readonly ProjectSession[], s: ProjectSession): boolean {
+  if (isDefaultSession(s)) return false;
+  if (isRunning(s)) return false;
+  return s.kind === "agent" || !list.some((x) => x.kind === "agent" && x.parent_session_id === s.id && isRunning(x));
+}
+
+/** A turn of it runs (working, or waiting for the person inside a turn); one waiting for a slot does not run yet. */
+export const isRunning = (s: Pick<ProjectSession, "state">): boolean => s.state === "working" || s.state === "waiting";
+
+function slugifyBranchPart(raw: string): string {
+  let out = "";
+  let prevDash = true;
+  for (const ch of raw.trim().toLowerCase()) {
+    const code = ch.charCodeAt(0);
+    if (code <= 127 && ((code >= 97 && code <= 122) || (code >= 48 && code <= 57))) {
+      out += ch;
+      prevDash = false;
+      if (out.length >= 28) break;
+      continue;
+    }
+    if (!prevDash && out.length > 0) {
+      out += "-";
+      prevDash = true;
+    }
+  }
+  return out.replace(/^-+|-+$/g, "");
+}
+
+/** Default git branch name pre-filled in MoveToWorktreeDialog, matching the harness default. */
+export function defaultWorktreeBranch(s: Pick<ProjectSession, "id" | "title">): string {
+  const slug = slugifyBranchPart(s.title);
+  const short = s.id.replace(/^ses_/, "").slice(0, 6);
+  if (!slug || slug === "new-session") return short ? `octo/${short}` : "octo/worktree";
+  return short ? `octo/${slug}-${short}` : `octo/${slug}`;
+}
+
+/** The confirmation before a delete: what goes, and what stays (decision 95 c). Memory's entries are not deleted with a session. */
+export function deleteCopy(s: Pick<ProjectSession, "kind">): { title: string; description: string } {
+  return s.kind === "main"
+    ? {
+        title: "Delete this session?",
+        description:
+          "Its transcript and its agents' sessions are deleted. What the project remembered stays, marked as from a deleted session. This can't be undone.",
+      }
+    : {
+        title: "Delete this agent session?",
+        description: "This agent's transcript is deleted. Your conversation and what the project remembered stay as they are. This cannot be undone.",
+      };
+}
+
+/** A main session that nobody has asked anything yet (a new one, or one just made by `/clear`): idle with no exchange. */
+export const hasNoRequests = (s: Pick<ProjectSession, "kind" | "state" | "exchanges">): boolean => s.kind === "main" && s.state === "idle" && s.exchanges === 0;
+
+function childrenOf(list: readonly ProjectSession[], main: ProjectSession, keep: (s: ProjectSession) => boolean): ProjectSession[] {
+  return list.filter((s) => s.kind === "agent" && s.parent_session_id === main.id && keep(s)).sort(oldest);
+}
+
+/** An empty idle main session with no queued messages or live child agents (e.g. a project's untouched default session). */
+function isEmptyMain(list: readonly ProjectSession[], s: ProjectSession): boolean {
+  return (
+    hasNoRequests(s) &&
+    (s.queued ?? 0) === 0 &&
+    !s.needs_you &&
+    s.children === 0 &&
+    !list.some((x) => x.kind === "agent" && x.parent_session_id === s.id && !x.archived)
+  );
+}
+
+/**
+ * What a filter shows, in order. `all`: the main sessions newest first, each with its agent sessions; `working`: the main
+ * sessions that work or wait, and a main session that is idle but has a working agent shows just those agents; `mine`: the
+ * main sessions alone; `agents`: running agent sessions on their own, newest first (only those of main session `agentsOf`
+ * when given); `archived`: archived sessions of both kinds.
+ */
+export function visibleNodes(list: readonly ProjectSession[], filter: SessionFilter, agentsOf: string | null = null): SessionNode[] {
+  const live = (s: ProjectSession) => !s.archived;
+  const mains = list.filter((s) => s.kind === "main");
+  switch (filter) {
+    case "all":
+      return mains
+        .filter((m) => live(m) && !isEmptyMain(list, m))
+        .sort(newest)
+        .map((m) => ({ session: m, children: childrenOf(list, m, live) }));
+    case "mine":
+      return mains
+        .filter((m) => live(m) && !isEmptyMain(list, m))
+        .sort(newest)
+        .map((m) => ({ session: m, children: [] }));
+    case "agents":
+      return list
+        .filter((s) => s.kind === "agent" && live(s) && isWorking(s) && (agentsOf === null || s.parent_session_id === agentsOf))
+        .sort(newest)
+        .map((a) => ({ session: a, children: [] }));
+    case "archived":
+      return list
+        .filter((s) => s.archived)
+        .sort(newest)
+        .map((s) => ({ session: s, children: [] }));
+    case "working": {
+      const nodes: SessionNode[] = [];
+      for (const m of mains.filter(live).sort(newest)) {
+        const children = childrenOf(list, m, (s) => live(s) && isWorking(s));
+        if (isWorking(m) || children.length > 0) nodes.push({ session: m, children });
+      }
+      return nodes;
+    }
+  }
+}
+
+/** The dim number after each filter: how many rows it lists (sessions of any kind for Working and Archived). */
+export function filterCounts(list: readonly ProjectSession[]): Record<SessionFilter, number> {
+  const live = list.filter((s) => !s.archived);
+  const liveMains = live.filter((s) => s.kind === "main" && !isEmptyMain(list, s));
+  return {
+    all: liveMains.length,
+    working: live.filter(isWorking).length,
+    mine: liveMains.length,
+    agents: live.filter((s) => s.kind === "agent" && isWorking(s)).length,
+    archived: list.length - live.length,
+  };
+}
+
+/** The glyph of a session's state: the ring family of decision 29. A stopped session rests like an idle one; `queued` (waiting for a free slot) is the dashed ring. */
+export function glyphOf(state: ProjectSessionState): GlyphState {
+  return state === "working"
+    ? "working"
+    : state === "waiting"
+      ? "needs"
+      : state === "failed"
+        ? "failed"
+        : state === "queued"
+          ? "queued"
+          : state === "stopped"
+            ? "stopped"
+            : "idle";
+}
+
+const STATE_WORD: Record<ProjectSessionState, string> = {
+  working: "Working",
+  waiting: "Waiting for you",
+  queued: "Waiting to start",
+  idle: "Idle",
+  failed: "Failed",
+  stopped: "Stopped",
+};
+export const stateWord = (state: ProjectSessionState): string => STATE_WORD[state];
+
+/** The state in words for a session: "No requests yet" for an empty one (it is idle, not working), else the state's word. */
+export const sessionStateWord = (s: Pick<ProjectSession, "kind" | "state" | "exchanges">): string =>
+  hasNoRequests(s) ? "No requests yet" : stateWord(s.state);
+
+const exchangesOf = (s: ProjectSession): string => (s.exchanges > 0 ? exchangeCount(s.exchanges) : isWorking(s) ? "First request running" : "No requests yet");
+
+/** What a row says: state glyph, title, "Nov 12 · 5 exchanges · Opus 5.5" and, at the right, "current" or the last activity. */
+export type SessionRowModel = { id: string; glyph: GlyphState; state: string; title: string; description: string; tail: string; current: boolean };
+
+export type AgentRowMeta = {
+  role?: string | null | undefined;
+  statusText?: string | null | undefined;
+  glyph?: GlyphState | null | undefined;
+  tail?: string | null | undefined;
+};
+
+export function sessionRow(s: ProjectSession, now: number, modelName: (value: string) => string, agentMeta?: AgentRowMeta): SessionRowModel {
+  // P3 (polish step 5): the count first, then the model; the date is the tail at the right (the last activity), and the day
+  // the session started is in its detail. In a 280px column the line gives way at the model, not in the middle of the count.
+  const parts: string[] = [];
+  const state = (s.kind === "agent" && agentMeta?.statusText?.trim()) || sessionStateWord(s);
+  if (s.kind === "main") {
+    parts.push(exchangesOf(s));
+  } else {
+    const role = agentMeta?.role?.trim();
+    if (role && role !== "Agent") parts.push(role);
+    parts.push(state);
+  }
+  if (s.model !== "") parts.push(modelName(s.model));
+  const ws = s.kind === "main" ? sessionWorkspaceLabel(s) : null;
+  if (ws) parts.push(`Worktree: ${ws}`);
+  return {
+    id: s.id,
+    glyph: (s.kind === "agent" && agentMeta?.glyph) || glyphOf(s.state),
+    state,
+    title: s.title.trim() === "" ? (s.kind === "main" ? "New session" : "Agent session") : s.title,
+    description: parts.length > 0 ? parts.join(" · ") : formatDay(s.started_at, now),
+    tail: isDefaultSession(s) ? "default" : (s.kind === "agent" && agentMeta?.tail) || formatWhen(s.last_activity_at, now),
+    current: isDefaultSession(s),
+  };
+}
+
+/** The line under a session's title in its detail: the day, size, model and, for a main session, how many agents it started. */
+export function detailLine(s: ProjectSession, now: number, modelName: (value: string) => string): string {
+  const parts = [formatDay(s.started_at, now)];
+  if (s.kind === "main") parts.push(exchangesOf(s));
+  if (s.kind === "main" && s.children > 0) parts.push(`${s.children} ${s.children === 1 ? "agent" : "agents"}`);
+  const ws = s.kind === "main" ? sessionWorkspaceLabel(s) : null;
+  if (ws) parts.push(`Worktree: ${ws}`);
+  if (s.model !== "") parts.push(modelName(s.model));
+  if (s.archived) parts.push("archived");
+  return parts.join(" · ");
+}
+
+/** The main session an agent session belongs to, when it is in the list. */
+export function parentOf(list: readonly ProjectSession[], s: ProjectSession): ProjectSession | undefined {
+  return s.parent_session_id === undefined ? undefined : list.find((x) => x.id === s.parent_session_id);
+}
+
+/** The five most recent main sessions (not archived) for the sidebar, and whether more exist. */
+export const SIDEBAR_SESSIONS = 5;
+export function sidebarSessions(list: readonly ProjectSession[]): { shown: ProjectSession[]; more: boolean } {
+  const mains = list.filter((s) => s.kind === "main" && !s.archived).sort(newest);
+  return { shown: mains.slice(0, SIDEBAR_SESSIONS), more: mains.length > SIDEBAR_SESSIONS };
+}
+
+/** A project "has more than one session" (and gets an expander in the sidebar) when two main sessions exist. */
+export const hasSeveral = (list: readonly ProjectSession[]): boolean => list.filter((s) => s.kind === "main" && !s.archived).length > 1;
+
+const BLOCKED: Record<string, string> = {
+  not_current: "Resume this session to continue it.",
+  steer_unsupported: "This agent can't take a message while it works. Continue it when it finishes.",
+  not_running: "This agent has finished and can't be continued.",
+  not_continuable: "This agent can't be continued: its session was not kept.",
+  builtin_loop_unavailable: "Octo has no API key, so this agent can't continue.",
+};
+
+/**
+ * The text under a disabled composer: the harness's own sentence when it sent one, else the reason by code. A session that
+ * can be messaged has none.
+ */
+export function blockedText(s: Pick<ProjectSession, "can_message" | "message_blocked">): string | null {
+  if (s.can_message) return null;
+  const b = s.message_blocked;
+  if (!b) return "This session can't take a message now.";
+  const text = b.message.trim();
+  return text !== "" ? (/[.!?]$/.test(text) ? text : `${text}.`) : (BLOCKED[b.code] ?? "This session can't take a message now.");
+}
+
+/** Plain words for the 409s of the sessions routes (`apps/harness/docs/sessions.md`); any other code keeps the harness's message. */
+const ERRORS: Record<string, string> = {
+  turn_in_progress: "Wait for the current request to finish, or stop it.",
+  current_session: "This is the project's default session. Make another one the default first.",
+  session_running: "This session is still working. Stop it first.",
+  not_continuable: "This agent can't be continued: its conversation was not kept. Ask Octo to start a new one.",
+  steer_unsupported: "This agent can't take a message while it works. Wait until it finishes, then continue it.",
+  not_running: "This session is not working, so there is nothing to stop.",
+  not_main_session: "Only a session with Octo can be the default.",
+  queue_full: "This session already has 20 messages waiting. Wait for some to go, or remove one.",
+  not_agent_session: "Messages to Octo go through the project's default session.",
+  builtin_loop_unavailable: "Octo has no API key, so this agent can't continue.",
+  not_found: "This session no longer exists. It may have been deleted.",
+  workspace_in_use: "Stop this session before moving it to a worktree.",
+  workspace_already_worktree: "This session already works in a worktree.",
+  worktree_unavailable: "A git worktree can't be created for this project.",
+};
+export function sessionErrorText(code: string, message: string): string {
+  const text = message.trim();
+  return ERRORS[code] ?? (text === "" ? "That did not work. Try again." : /[.!?]$/.test(text) ? text : `${text}. Try again.`);
+}
+
+/**
+ * A refusal in plain words. A harness of decision 94b sends `message` (and `hint`) itself: those win. The fixed texts by code
+ * (`sessions.md`) are only the fallback for an older harness; anything else is the shared error text.
+ */
+export function failureText(e: unknown): string {
+  if (!(e instanceof BridgeError)) return `${errorMessage(e)} Try again.`;
+  const fields = structuredError(e);
+  if (isStructured(fields)) {
+    const sentence = /[.!?]$/.test(fields.message) ? fields.message : `${fields.message}.`;
+    return fields.hint ? `${sentence} ${fields.hint.replace(/`/g, "")}` : sentence;
+  }
+  return sessionErrorText(e.code, e.message);
+}
+
+/** What a message to an agent session did, as one quiet line. */
+export function outcomeText(outcome: "steered" | "continued"): string {
+  return outcome === "steered" ? "Sent: the agent reads it at its next step." : "Continued: the agent is working on it again.";
+}
+
+const AGENT_STATUS: Record<ProjectSessionState, Agent["status"]> = {
+  working: "running",
+  waiting: "running",
+  queued: "idle",
+  idle: "completed",
+  failed: "failed",
+  stopped: "cancelled",
+};
+
+/**
+ * An agent row for a transcript whose agent the project state does not hold (a session of an agent that is no longer in the
+ * list, read through `getSessionTranscript`). Only what the conversation components show is filled in.
+ */
+export function placeholderAgent(s: ProjectSession, projectId: string, task = ""): Agent {
+  return {
+    id: s.agent_id ?? s.id,
+    project_id: projectId,
+    parent_id: s.kind === "main" ? null : (s.parent_session_id ?? "parent"),
+    depth: s.kind === "main" ? 0 : 1,
+    role: s.kind === "main" ? "orchestrator" : "agent",
+    title: s.title,
+    task,
+    model: s.model,
+    tier: null,
+    status: AGENT_STATUS[s.state],
+    result: null,
+    error: null,
+    spawn_tool_use_id: null,
+    input_tokens: 0,
+    output_tokens: 0,
+    created_at: s.started_at,
+    started_at: s.started_at,
+    finished_at: s.state === "working" || s.state === "waiting" ? null : s.last_activity_at,
+  };
+}
+
+/** A detail pane narrower than this cannot hold the conversation at its own scale (the chat's floor): the transcript goes compact. */
+export const COMPACT_BELOW = 420;
+export const isCompact = (width: number): boolean => width > 0 && width < COMPACT_BELOW;
+
+/**
+ * The title after "New session · earlier:" at the top of a main session: the harness's own boundary marker when it sent one
+ * (`conversations[]` of the session's transcript), else the main session started just before this one. null for the first one.
+ */
+export function earlierSession(list: readonly ProjectSession[], s: ProjectSession, markerTitle?: string): { id: string | null; title: string } | null {
+  const before = list.filter((x) => x.kind === "main" && x.id !== s.id && startedMs(x) < startedMs(s)).sort(newest)[0];
+  const title = markerTitle?.trim() || before?.title.trim() || "";
+  if (!before && title === "") return null;
+  return { id: before?.id ?? null, title: title === "" ? "an earlier session" : title };
+}
+
+/** One open row at a time: choosing the open one closes it, choosing another replaces it. */
+export function toggleOpen(current: string | null, id: string): string | null {
+  return current === id ? null : id;
+}

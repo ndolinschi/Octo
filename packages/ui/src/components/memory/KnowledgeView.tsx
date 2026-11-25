@@ -1,0 +1,114 @@
+import type { Task, TaskStatus } from "@octo/agent-client";
+import { useMemo, useRef, useState } from "react";
+import { CLOCK_MINUTE_MS } from "../../lib/constants";
+import { useListStops } from "../../lib/listStops";
+import { useNow } from "../../lib/hooks";
+import type { Load } from "../../lib/memory/load";
+import { filterCounts, rememberedItems, TASK_FILTERS } from "../../lib/memory/tasks";
+import { useApp } from "../../state/app";
+import { FilterTabs } from "../primitives/FilterTabs";
+import { PanelEmpty, PanelFilters } from "../primitives/Panel";
+import { ScrollArea } from "../primitives/ScrollArea";
+import { SectionHeader } from "../primitives/SectionHeader";
+import { SkeletonList } from "../primitives/Skeleton";
+import { Button } from "../primitives/Button";
+import { FloatRoom } from "../primitives/floatRoom";
+import { MemoryError, PaneEmpty } from "./parts";
+import { AddFact, RememberedHeader, RememberedList } from "./Remembered";
+import { TaskList } from "./TaskList";
+
+/** What a search hit asks Knowledge to show: a task, or one remembered item (`taskId/factId`). */
+export type KnowledgeFocus = { task: string | null; fact: string | null };
+
+/**
+ * Knowledge (decision 93 e): what the project remembers (items, newest first, with who kept each and when) and its
+ * tasks (Open, Done, Dropped). One column at every width; rows open in place.
+ */
+export function KnowledgeView(props: {
+  load: Load<Task[]>;
+  reload(): void;
+  focus: KnowledgeFocus;
+  onOpenMessage?: ((id: number) => void) | undefined;
+  onOpenFile?: ((path: string) => void) | undefined;
+}) {
+  const { bridge } = useApp();
+  const now = useNow(false, CLOCK_MINUTE_MS);
+  const tasks = props.load.status === "ok" ? props.load.value : null;
+  const items = useMemo(() => (tasks ? rememberedItems(tasks) : []), [tasks]);
+  const counts = useMemo(() => (tasks ? filterCounts(tasks) : null), [tasks]);
+  const [adding, setAdding] = useState(false);
+  const focusTask = tasks?.find((t) => t.id === props.focus.task) ?? null;
+  const [status, setStatus] = useState<TaskStatus>(focusTask?.status ?? "open");
+  // Item 9 (polish pass F3): both lists are one Tab stop (↑/↓/Home/End between the rows); an item's "⋯" is the pointer's way,
+  // Shift+F10 on the row the keyboard's.
+  const rows = useRef<HTMLDivElement>(null);
+  useListStops(rows);
+
+  if (props.load.status === "error") return <MemoryError message={props.load.message} onRetry={props.reload} />;
+  if (props.load.status === "loading")
+    return (
+      <div className="px-pane pt-1">
+        <SkeletonList count={6} size="md" twoLine />
+      </div>
+    );
+  const canAdd = bridge.rememberFact !== undefined;
+  if (tasks?.length === 0 && items.length === 0 && !adding) {
+    return (
+      <div className="h-full px-pane">
+        <PaneEmpty
+          title="Nothing remembered yet"
+          {...(canAdd
+            ? {
+                actions: (
+                  <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
+                    Remember something
+                  </Button>
+                ),
+              }
+            : {})}
+        >
+          Decisions, preferences and facts Octo keeps appear here, grouped by task.
+        </PaneEmpty>
+      </div>
+    );
+  }
+  return (
+    <ScrollArea className="h-full min-h-0 px-pane pt-1 pb-4">
+      {/* R2: a list under the panel's full-width search runs the full width (one right edge with the search and the header). */}
+      <div ref={rows}>
+        <section aria-label="Remembered">
+          <RememberedHeader count={items.length} onAdd={canAdd && !adding ? () => setAdding(true) : undefined} />
+          {adding && <AddFact onDone={() => setAdding(false)} onKept={props.reload} />}
+          {items.length === 0 && !adding ? (
+            <PanelEmpty>Nothing yet. Add what every request should know.</PanelEmpty>
+          ) : (
+            <RememberedList items={items} now={now} focus={props.focus.fact} onOpenMessage={props.onOpenMessage} onForgotten={props.reload} />
+          )}
+        </section>
+        <section aria-label="Tasks" className="pt-5">
+          <SectionHeader inset>Tasks</SectionHeader>
+          <PanelFilters flush>
+            <FilterTabs<TaskStatus>
+              bare
+              label="Task status"
+              options={TASK_FILTERS.map((f) => ({ id: f.id, label: f.label, count: counts?.[f.id] ?? 0 }))}
+              value={status}
+              onChange={setStatus}
+            />
+          </PanelFilters>
+          <TaskList
+            // Another status is another list: its open row and fold start over.
+            key={status}
+            tasks={tasks ?? []}
+            status={status}
+            now={now}
+            focus={props.focus.task}
+            onOpenMessage={props.onOpenMessage}
+            onOpenFile={props.onOpenFile}
+          />
+        </section>
+      </div>
+      <FloatRoom />
+    </ScrollArea>
+  );
+}

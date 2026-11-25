@@ -1,0 +1,197 @@
+package events
+
+import (
+	"encoding/json"
+	"log/slog"
+	"sync"
+)
+
+const (
+	AgentCreated   = "agent.created"
+	AgentUpdated   = "agent.updated"
+	MessageCreated = "message.created"
+	MessageDelta   = "message.delta"
+	// MessageUpdated carries a stored message that changed (a tool call whose input arrived late).
+	MessageUpdated = "message.updated"
+	ToolStarted    = "tool.started"
+	ToolFinished   = "tool.finished"
+	NoteChanged    = "note.changed"
+	FileChanged    = "file.changed"
+	ProjectUpdated = "project.updated"
+	TurnFinished   = "turn.finished"
+	AgentCompacted = "agent.compacted"
+	// ChangeRecorded carries one recorded file change (v7 changes).
+	ChangeRecorded = "change.recorded"
+	// ProjectAttention says how many approvals and forms wait for the user.
+	ProjectAttention = "project.attention"
+	// QueueUpdated carries the whole message queue and whether it is paused.
+	QueueUpdated = "queue.updated"
+	// SecretsChanged carries the names (never values) of secrets that were stored or deleted.
+	SecretsChanged = "secrets.changed"
+	// AgentActivity says what an agent is doing now (kind, label, tool id).
+	AgentActivity = "agent.activity"
+	// ThinkingDelta streams an ACP agent's reasoning; it is never stored.
+	ThinkingDelta = "message.thinking_delta"
+	// AgentPlan carries an ACP agent's whole current plan.
+	AgentPlan = "agent.plan"
+	// ToolUpdated carries what an ACP tool_call_update changed on a tool row.
+	ToolUpdated = "tool.updated"
+	SideDelta   = "side.delta"
+	SideDone    = "side.done"
+	SideError   = "side.error"
+	// SideThinking, SideActivity and SideTool are the live activity of a side
+	// answer, like thinking.delta, agent.activity and tool.* of a turn.
+	SideThinking = "side.thinking"
+	SideActivity = "side.activity"
+	SideTool     = "side.tool"
+	// SettingsChanged carries the ids of settings a PUT /v1/settings changed
+	// (never values). It is delivered on every project stream.
+	SettingsChanged = "settings.changed"
+	// ApprovalRuleCreated carries a rule an "allow always" answer saved;
+	// ApprovalRuleDeleted the id of one that was deleted.
+	ApprovalRuleCreated = "approval_rule.created"
+	ApprovalRuleDeleted = "approval_rule.deleted"
+	// PlanCreated carries the plan a plan-mode turn produced; PlanApproved the plan that was approved.
+	PlanCreated  = "plan.created"
+	PlanApproved = "plan.approved"
+	// ConversationRewound says the conversation was cut back to a request.
+	ConversationRewound = "conversation.rewound"
+	// ConversationCleared says a new conversation started (POST /clear).
+	ConversationCleared = "conversation.cleared"
+	// SessionCreated, SessionUpdated and SessionCurrent are the project sessions' events: a session appeared, its
+	// fields changed (state, title, archive, exchanges), or another main session became current.
+	SessionCreated = "session.created"
+	SessionUpdated = "session.updated"
+	SessionCurrent = "session.current"
+	// SessionDefault says another main session became the project's default (published before SessionCurrent,
+	// its old name, which carries the same fields).
+	SessionDefault = "session.default"
+	// WorkspaceUpdated says a project workspace was created, updated, or removed.
+	WorkspaceUpdated = "workspace.updated"
+	// SlashCommandsUpdated says the ACP agent's slash commands (or their pending state) changed:
+	// refetch GET /slash-commands.
+	SlashCommandsUpdated = "slash_commands.updated"
+	// MessageSteered says a queued message was injected into the running turn.
+	MessageSteered = "message.steered"
+	// ContextUpdated says the project's context report changed: refetch GET /context.
+	ContextUpdated = "context.updated"
+	// ProvidersUpdated says what can run a model changed (a login probe result,
+	// a key, a router, the advertised models). Delivered on every project
+	// stream; a client refetches GET /v1/providers.
+	ProvidersUpdated = "providers.updated"
+)
+
+// Sources of a file.changed event.
+const (
+	SourceUser  = "user"
+	SourceAgent = "agent"
+)
+
+const subBuffer = 2048
+
+// Event is one serialized BridgeEvent: Data already contains type and seq.
+type Event struct {
+	Seq  int64
+	Type string
+	Data []byte
+}
+
+// Hub fans events out to per-project subscribers, stamping a per-project seq.
+type Hub struct {
+	mu       sync.Mutex
+	projects map[string]*stream
+}
+
+type stream struct {
+	seq  int64
+	subs map[chan Event]struct{}
+}
+
+func NewHub() *Hub {
+	return &Hub{projects: make(map[string]*stream)}
+}
+
+// Publish stamps and delivers an event. fields are merged beside type and seq.
+// A subscriber that falls too far behind is closed so its client refetches.
+func (h *Hub) Publish(projectID, typ string, fields map[string]any) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s := h.stream(projectID)
+	s.seq++
+	payload := make(map[string]any, len(fields)+2)
+	for k, v := range fields {
+		payload[k] = v
+	}
+	payload["type"] = typ
+	payload["seq"] = s.seq
+	data, err := json.Marshal(payload)
+	if err != nil {
+		slog.Error("event marshal", "type", typ, "err", err)
+		return
+	}
+	ev := Event{Seq: s.seq, Type: typ, Data: data}
+	for ch := range s.subs {
+		select {
+		case ch <- ev:
+		default:
+			delete(s.subs, ch)
+			close(ch)
+		}
+	}
+}
+
+// PublishAll delivers an event that belongs to no project (settings.changed) on
+// every project stream that exists, each stamped with its own seq. There is no
+// global stream: a client watching any project hears it.
+func (h *Hub) PublishAll(typ string, fields map[string]any) {
+	h.mu.Lock()
+	ids := make([]string, 0, len(h.projects))
+	for id := range h.projects {
+		ids = append(ids, id)
+	}
+	h.mu.Unlock()
+	for _, id := range ids {
+		h.Publish(id, typ, fields)
+	}
+}
+
+// Subscribe returns a channel of future events and a cancel func. The channel
+// is closed when the subscriber is dropped for lagging or cancelled.
+func (h *Hub) Subscribe(projectID string) (<-chan Event, func()) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s := h.stream(projectID)
+	ch := make(chan Event, subBuffer)
+	s.subs[ch] = struct{}{}
+	cancel := func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		if _, ok := s.subs[ch]; ok {
+			delete(s.subs, ch)
+			close(ch)
+		}
+	}
+	return ch, cancel
+}
+
+// Forget drops a deleted project's stream, closing its subscribers.
+func (h *Hub) Forget(projectID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if s, ok := h.projects[projectID]; ok {
+		for ch := range s.subs {
+			delete(s.subs, ch)
+			close(ch)
+		}
+		delete(h.projects, projectID)
+	}
+}
+
+func (h *Hub) stream(id string) *stream {
+	s, ok := h.projects[id]
+	if !ok {
+		s = &stream{subs: make(map[chan Event]struct{})}
+		h.projects[id] = s
+	}
+	return s
+}

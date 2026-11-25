@@ -1,0 +1,28 @@
+{
+  "name": "octo-monorepo",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r --filter \"./packages/*\" --filter \"@octo/desktop\" --filter \"@octo/web\" run build",
+    "test": "pnpm -r --filter \"./packages/*\" --filter \"@octo/desktop\" --filter \"@octo/web\" run test && pnpm test:scripts",
+    "lint": "pnpm -r run lint && node scripts/check-cycles.mjs",
+    "test:scripts": "node --test scripts/eslint/*.test.mjs scripts/*.test.mjs",
+    "format:check": "pnpm -r run format:check",
+    "format": "pnpm -r run format",
+    "check:bundle": "node scripts/check-bundle-size.mjs",
+    "dev:all": "bash scripts/dev.sh",
+    "install:app": "bash scripts/install.sh",
+    "test:dev-sh": "bash scripts/test-dev-sh.sh"
+  },
+  "packageManager": "pnpm@10.33.4",
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
+    "prettier": "^3.9.10",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "typescript-eslint": "^8.72.2"
+  }
+}

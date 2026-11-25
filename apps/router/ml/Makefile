@@ -1,0 +1,97 @@
+# One target per stage; `make all` rebuilds everything from the pinned revisions in src/routerml/config.py.
+PY := .venv/bin/python
+RUN := PYTHONPATH=src $(PY) -m
+
+.PHONY: all venv fetch build features evaluate quick onnx figures test stage2 ceiling cascade traj-fetch trajectories steps bandit stage3 audit steps3 gencost triples stage4 ladder workload controller stage5 xbench-fetch xbench stage6 stage6-fetch stage6-labels stage6-m2 stage6-eval stage6-probe stage6-report
+
+all: fetch build features test evaluate onnx figures
+
+venv:
+	python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+
+fetch:      ## raw sources at pinned revisions -> data/
+	$(RUN) routerml.fetch
+build:      ## outcomes, models.csv, tiers, label + cost tables -> results/
+	$(RUN) routerml.build
+features:   ## text statistics, MiniLM embeddings
+	$(RUN) routerml.features
+evaluate:   ## M1 + baselines, 3 splits, bootstrap, ablations -> results/metrics.json (~30-40 min on 4 CPUs)
+	$(RUN) routerml.evaluate
+quick:      ## headline splits only -> results/metrics_quick.json (~5 min)
+	$(RUN) routerml.evaluate --quick
+onnx:       ## final M1 -> models/m1_joint.onnx + onnxruntime check
+	$(RUN) routerml.export_onnx
+figures:
+	$(RUN) routerml.figures
+test:
+	$(PY) -m pytest -q
+
+# ---- stage 2: where is the signal? (results/stage2_*.json, figures/stage2_*.png, results/stage2_report.txt)
+stage2: ceiling cascade trajectories steps bandit
+
+ceiling:    ## A: split-half reliability of labels and advantages, cross-fitted oracle (~30 s)
+	$(RUN) routerml.ceiling
+cascade:    ## B: post-hoc failure detector (api_calls, cost) + matrix-level cascade (~15 min)
+	$(RUN) routerml.cascade
+traj-fetch: ## B: mini-SWE-agent trajectories of 9 low-tier submissions from the public S3 bucket (~1.6 GB)
+	$(RUN) routerml.traj_fetch
+trajectories: traj-fetch ## B: early features at K = 5/10/20 steps, early detector, early cascade (~5 min)
+	$(RUN) routerml.trajectories
+steps:      ## B: TwinRouterBench step-level check, leave-one-task-out (~1 min)
+	$(RUN) routerml.steps
+bandit:     ## C: online adaptation with bandit feedback, 200 streams
+	$(RUN) routerml.bandit
+
+# ---- stage 3: ceiling audit, step-level cost-quality, concrete-model triples (results/stage3_*.json, results/stage3_report.txt)
+stage3: audit steps3 gencost triples
+
+audit:      ## 1: replay stage 2's 200 splits, exact area, symmetric ceiling; same-model run-to-run agreement (~20 s)
+	$(RUN) routerml.stage3_audit
+steps3:     ## 3: TwinRouterBench, all 970 steps, its own v2 metric and tokenizers (needs tiktoken; HF tokenizer download) (~25 min)
+	$(RUN) routerml.stage3_steps
+	$(RUN) routerml.stage3_steps_swe
+gencost:    ## 3: cost estimate of generating more step labels with the benchmark's algorithm and prices (no API calls)
+	$(RUN) routerml.stage3_gencost
+triples:    ## 2: concrete cheap/mid/dear model triples (fetches haiku-4.5 trajectories, ~400 MB, if missing)
+	$(RUN) routerml.traj_fetch 20260217_mini-v2.0.0_claude-4-5-haiku-high
+	$(RUN) routerml.stage3_triples
+
+# ---- stage 4: the three learned parts L1-L3 (results/stage4_*.json, figures/stage4_*.png, results/stage4_report.txt)
+stage4: ladder controller workload
+
+ladder:     ## L1: a ladder that learns itself - bandits over 33 concrete models, 3 stream orders x 200 streams (~3 min)
+	$(RUN) routerml.stage4_ladder
+controller: ## L3: quality controller (lower-confidence-bound) vs the offline mixture tuned on a held-out half (~3 min)
+	$(RUN) routerml.stage4_controller
+workload:   ## L2: workload classifier from the first request only + per-workload tier policy, TwinRouterBench metric (~3 min)
+	$(RUN) routerml.stage4_workload
+
+# ---- stage 5: cross-benchmark transfer - does a learned ladder beat a leaderboard ladder when the router's work differs?
+# (results/stage5_xbench.json, figures/stage5_*.png, results/stage5_report.txt)
+stage5: xbench-fetch xbench
+
+xbench-fetch: ## Terminal-Bench 2 leaderboard summaries + per-trial cost of matched systems (~12k small files, ~10 min), Multilingual lists
+	$(RUN) routerml.xbench_fetch index multilingual
+	$(RUN) routerml.xbench_fetch trials
+xbench:     ## transfer of rankings Verified -> TB2 / Multilingual, leaderboard ladder vs learners on the target, reverse control, break-even
+	$(RUN) routerml.stage5
+
+# ---- stage 6: does a delegation brief's text predict the cheapest sufficient tier across a wide range of tasks?
+# (results/stage6_*.json, results/stage6_report.txt, figures/stage6_*.png, models/m2_delegation.onnx)
+# Needs torch (CPU) + transformers + sentence-transformers on top of requirements.txt (see requirements-stage6.txt).
+stage6: stage6-fetch stage6-labels stage6-m2 stage6-eval stage6-probe stage6-report
+
+stage6-fetch:  ## LiveCodeBench (streams 4.5 GB, keeps ~2 MB), BigCodeBench, CanItEdit, SWE-bench Verified text, LiteLLM, MiniLM (~10 min)
+	$(RUN) routerml.stage6_fetch
+stage6-labels: ## label table, split-half reliability per source, schemes A and B (~3 min)
+	$(RUN) routerml.stage6_labels
+stage6-m2:     ## M2': MiniLM fine-tuned on CPU, 5 pooled + 4 LOSO folds + final model, ONNX int8 export, parity, latency (~2-3 h)
+	$(RUN) routerml.stage6_m2 --folds pooled,loso --final
+stage6-eval:   ## M1', baselines, gate, leak ablation (scheme A); sensitivity: scheme B, equal tokens (~40 min)
+	$(RUN) routerml.stage6_eval
+	$(RUN) routerml.stage6_eval --scheme B --no-leak --n-boot 300
+	$(RUN) routerml.stage6_eval --tokens equal --no-leak --n-boot 300
+stage6-probe:  ## the 60 hand-written briefs scored by M1', M2', length, the router's rule
+	$(RUN) routerml.stage6_probe
+stage6-report:
+	$(RUN) routerml.stage6_report

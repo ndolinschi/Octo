@@ -1,0 +1,78 @@
+// Package budget knows what a project has spent so far: from the Octo router's
+// last report when one is in the path, and from the project's own usage rows
+// (reported costs plus price-table estimates). Nothing here talks to a model.
+package budget
+
+import (
+	"context"
+
+	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
+	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/router"
+)
+
+// Meter measures project spend. The zero value measures from usage rows with
+// no prices, so nothing but reported costs counts.
+type Meter struct {
+	Prices prices.Table
+	Router *router.Router
+}
+
+// Spent returns the project's spend in USD; known is false when nothing in the
+// project has a cost yet (never zero by guess). With a router that tracks
+// budgets it is the highest spend the router reported for the project
+// (x-octo-spent-usd) and never a sum of rows; until it has reported one, the
+// costs the router itself reported on the rows.
+func (m Meter) Spent(ctx context.Context, db *projectstore.DB) (usd float64, known bool, err error) {
+	rows, err := db.UsageRows(ctx, "0000", "9999", projectstore.GroupProject)
+	if err != nil {
+		return 0, false, err
+	}
+	// With a router that tracks budgets, its figure is the authority: the rows
+	// contribute only costs the router itself reported, never a price-table
+	// estimate (which would make the harness stop at a number the router
+	// does not share). A flat-rate agent's figure is never spend.
+	routed := m.Router.Has(router.CapBudgetKey)
+	if routed {
+		// One number: the router's own, which also holds what the harness never
+		// sees (its classifier calls). Summing rows would give a second, smaller one.
+		if v, ok := m.Router.Spent(db.ID()); ok {
+			return v, true, nil
+		}
+	}
+	for _, r := range rows {
+		switch {
+		case r.Flat:
+			// a flat-rate agent's figure is not money spent
+		case r.Reported:
+			usd += r.ReportedCostUSD
+			known = true
+		case routed:
+		case r.Source == projectstore.SourceAPI:
+			est, ok := m.Prices.Estimate(r.Model, prices.Tokens{
+				Input: r.InputTokens, Output: r.OutputTokens, CacheRead: r.CacheReadTokens, CacheWrite: r.CacheWriteTokens,
+			})
+			if ok {
+				usd += est
+				known = true
+			}
+		}
+	}
+	if v, ok := m.Router.Spent(db.ID()); ok && (!known || v > usd) {
+		usd, known = v, true // a router that does not track budgets, but reported
+	}
+	return usd, known, nil
+}
+
+// Reached reports whether spend has reached the budget. A project without a
+// budget or without a known spend never has.
+func (m Meter) Reached(ctx context.Context, db *projectstore.DB, budgetUSD *float64) (*router.BudgetError, error) {
+	if budgetUSD == nil {
+		return nil, nil
+	}
+	spent, known, err := m.Spent(ctx, db)
+	if err != nil || !known || spent < *budgetUSD {
+		return nil, err
+	}
+	return &router.BudgetError{Spent: spent, Budget: *budgetUSD}, nil
+}

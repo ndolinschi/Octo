@@ -1,0 +1,97 @@
+import { type FileKey } from "../lib/files";
+/**
+ * The seam between the lazily loaded LSP client (in the editor chunk) and the always-loaded
+ * editor chrome (status, problems popover). The client writes per-file snapshots here; the
+ * File tab header reads them with `useSyncExternalStore`. No Monaco or LSP code lives here.
+ */
+
+export type LspState = "starting" | "ready" | "failed" | "stopped";
+export type LspStatus = { label: string; state: LspState; error: string | null };
+export type ProblemSeverity = "error" | "warning" | "info" | "hint";
+export type Problem = { severity: ProblemSeverity; message: string; source: string | null; line: number; column: number };
+
+export type FileIntel = { status: LspStatus | null; problems: Problem[]; notice: string | null };
+
+/** What the hub needs from the running client. */
+export type IntelClient = { retry(fileKey: FileKey): void; dispose(): void };
+
+const EMPTY: FileIntel = { status: null, problems: [], notice: null };
+const NOTICE_MS = 4_000;
+
+export type KeyedProblem = { key: FileKey; problem: Problem };
+
+export class EditorIntel {
+  private files = new Map<string, FileIntel>();
+  private listeners = new Set<() => void>();
+  private noticeTimers = new Map<string, number>();
+  private client: IntelClient | null = null;
+  private problemsCache: readonly KeyedProblem[] | null = null;
+
+  subscribe = (cb: () => void) => {
+    this.listeners.add(cb);
+    return () => void this.listeners.delete(cb);
+  };
+
+  get(key: FileKey): FileIntel {
+    return this.files.get(key) ?? EMPTY;
+  }
+
+  /** All diagnostics across open files (stable array reference between updates, for `useSyncExternalStore`). */
+  allProblems(): readonly KeyedProblem[] {
+    return (this.problemsCache ??= [...this.files].flatMap(([k, v]) => v.problems.map((problem) => ({ key: k as FileKey, problem }))));
+  }
+
+  /** Starts the client once (the editor chunk calls this with its factory when Monaco is in). */
+  start(create: () => IntelClient): void {
+    this.client ??= create();
+  }
+
+  retry(key: FileKey): void {
+    this.client?.retry(key);
+  }
+
+  setStatus(key: FileKey, status: LspStatus | null): void {
+    this.patch(key, { status });
+  }
+
+  setProblems(key: FileKey, problems: Problem[]): void {
+    this.patch(key, { problems });
+  }
+
+  /** A short-lived, quiet message in the file's header (e.g. a definition outside the project). */
+  notify(key: FileKey, notice: string): void {
+    window.clearTimeout(this.noticeTimers.get(key));
+    this.patch(key, { notice });
+    this.noticeTimers.set(
+      key,
+      window.setTimeout(() => this.patch(key, { notice: null }), NOTICE_MS),
+    );
+  }
+
+  /** Forgets a closed file. */
+  clear(key: FileKey): void {
+    window.clearTimeout(this.noticeTimers.get(key));
+    if (this.files.delete(key)) this.emit();
+  }
+
+  /** Stops the client and forgets every file (a later `start` begins afresh). */
+  dispose(): void {
+    this.client?.dispose();
+    this.client = null;
+    this.noticeTimers.forEach((t) => window.clearTimeout(t));
+    this.files.clear();
+    this.emit();
+  }
+
+  private patch(key: FileKey, next: Partial<FileIntel>) {
+    const prev = this.get(key);
+    if (Object.entries(next).every(([k, v]) => prev[k as keyof FileIntel] === v)) return;
+    this.files.set(key, { ...prev, ...next });
+    this.emit();
+  }
+
+  private emit() {
+    this.problemsCache = null;
+    this.listeners.forEach((cb) => cb());
+  }
+}

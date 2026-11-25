@@ -1,0 +1,215 @@
+use std::time::Duration;
+
+use reqwest::Client;
+use serde_json::Value;
+
+use crate::history::{DecisionRow, History};
+
+use super::super::body;
+use super::super::catalog::Tiers;
+use super::super::jev;
+use super::super::Auto;
+
+pub(super) struct ClassifyCtx<'a> {
+    pub auto: &'a Auto,
+    pub history: &'a History,
+    pub session_id: Option<String>,
+    pub budget_key: Option<String>,
+    pub client: &'a Client,
+    pub decisions_url: &'a str,
+    pub api_key: &'a str,
+    pub body: &'a Value,
+    pub all_tools: &'a [String],
+    pub tiers: &'a Tiers,
+    pub current_tier: &'a str,
+    pub task: Option<&'a str>,
+}
+
+pub(super) struct ClassifyTurn<'a> {
+    pub ctx: &'a ClassifyCtx<'a>,
+    pub preferred: Option<&'a str>,
+    pub current: &'a [String],
+    pub purpose: &'a str,
+}
+
+pub(super) struct ClassifiedPick {
+    pub complexity: jev::Complexity,
+    pub model: String,
+    pub tools: Vec<String>,
+}
+
+pub(super) async fn fresh(
+    ctx: &ClassifyCtx<'_>,
+    preferred: Option<&str>,
+) -> Option<ClassifiedPick> {
+    turn(ClassifyTurn {
+        ctx,
+        preferred,
+        current: &[],
+        purpose: "classify",
+    })
+    .await
+}
+
+pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<ClassifiedPick> {
+    if plan.ctx.api_key.is_empty() {
+        return None;
+    }
+    let timeout_ms = plan.ctx.tiers.classifier_timeout_ms;
+    if timeout_ms == 0 {
+        return None;
+    }
+    let user_text = body::question_text(plan.ctx.body);
+    let facts = jev::inspect(plan.ctx.body, &user_text);
+    let with_task = match plan.ctx.task {
+        Some(task) => format!("Task: {task}\n\n{user_text}"),
+        None => user_text.clone(),
+    };
+    let classifier_text = body::cap_classifier_text(&with_task);
+    let asked = match tokio::time::timeout(
+        Duration::from_millis(timeout_ms),
+        jev::classify(jev::ClassifyRequest {
+            client: plan.ctx.client,
+            decisions_url: plan.ctx.decisions_url,
+            api_key: plan.ctx.api_key,
+            user_text: &classifier_text,
+            tool_names: plan.ctx.all_tools,
+            current_tools: plan.current,
+            facts: &facts,
+            current_tier: plan.ctx.current_tier,
+            thresholds: jev::Thresholds {
+                hard: plan.ctx.tiers.hard_threshold,
+                easy: plan.ctx.tiers.easy_threshold,
+            },
+        }),
+    )
+    .await
+    {
+        Ok(asked) => asked,
+        Err(_) => {
+            tracing::warn!(
+                timeout_ms,
+                purpose = plan.purpose,
+                session_id = plan.ctx.session_id.as_deref().unwrap_or(""),
+                "autoroute classifier timed out; falling back"
+            );
+            return None;
+        }
+    };
+    record(RecordPlan {
+        auto: plan.ctx.auto,
+        history: plan.ctx.history,
+        session_id: plan.ctx.session_id.clone(),
+        budget_key: plan.ctx.budget_key.clone(),
+        purpose: plan.purpose,
+        asked: &asked,
+    });
+    let classified = asked.parsed?;
+    let complexity =
+        bump_tool_inspection_off_easy(classified.complexity, plan.ctx.all_tools, &user_text);
+    let model = plan.ctx.tiers.pick(complexity, plan.preferred);
+    let tools = jev::needed_tools(jev::ToolNeed {
+        all: plan.ctx.all_tools,
+        current: plan.current,
+        enough: classified.tools_enough,
+        missing: &classified.missing_tools,
+    });
+    Some(ClassifiedPick {
+        complexity,
+        model,
+        tools,
+    })
+}
+
+pub(in crate::auto) fn bump_tool_inspection_off_easy(
+    complexity: jev::Complexity,
+    tools: &[String],
+    user_text: &str,
+) -> jev::Complexity {
+    if !matches!(complexity, jev::Complexity::Low) || tools.is_empty() {
+        return complexity;
+    }
+    if jev::asks_file_or_repo_inspection(user_text) {
+        jev::Complexity::Mid
+    } else {
+        complexity
+    }
+}
+
+pub(in crate::auto) struct RecordPlan<'a> {
+    pub auto: &'a Auto,
+    pub history: &'a History,
+    pub session_id: Option<String>,
+    pub budget_key: Option<String>,
+    pub purpose: &'a str,
+    pub asked: &'a jev::Asked,
+}
+
+pub(in crate::auto) struct Recorded {
+    pub cost: Option<crate::history::CostMicros>,
+    pub cost_source: &'static str,
+}
+
+pub(in crate::auto) fn record(plan: RecordPlan<'_>) -> Recorded {
+    let parsed = plan.asked.parsed.as_ref();
+    let usage = crate::history::usage_from_output(&plan.asked.response_body);
+    let resolved =
+        crate::history::resolve_cost(&usage, Some("typesafe/jev-1.13"), &plan.history.prices());
+    let cost = resolved.cost.or(plan.asked.cost);
+    let cost_source = if resolved.cost.is_none() && plan.asked.cost.is_some() {
+        "reported"
+    } else {
+        crate::providers::utils::cost_source_label(resolved.source)
+    };
+    if let Some(cost) = cost {
+        if plan.session_id.is_some() || plan.budget_key.is_some() {
+            plan.auto.charge(
+                plan.history,
+                plan.session_id.as_deref(),
+                plan.budget_key.as_deref(),
+                cost.0,
+            );
+        }
+    }
+    plan.history.record_decision(DecisionRow {
+        session_id: plan.session_id,
+        purpose: plan.purpose.to_string(),
+        model: "typesafe/jev-1.13".to_string(),
+        status: plan.asked.status,
+        latency_ms: plan.asked.latency_ms,
+        user_text: body::cap_decision_text(&user_text_from_request(&plan.asked.request_body)),
+        is_hard: parsed.and_then(|row| row.is_hard),
+        is_easy: parsed.and_then(|row| row.is_easy),
+        is_hard_score: parsed.and_then(|row| row.is_hard_score),
+        is_easy_score: parsed.and_then(|row| row.is_easy_score),
+        tools_enough: parsed.and_then(|row| row.tools_enough_raw.clone()),
+        complexity: parsed.map(|row| match row.complexity {
+            jev::Complexity::Low => "low",
+            jev::Complexity::Mid => "mid",
+            jev::Complexity::High => "high",
+        }),
+        choice_rule: plan.asked.choice_rule.to_string(),
+        missing_tools: parsed.map(|row| row.missing_tools.join(",")),
+        request_payload: plan.asked.request_body.clone(),
+        response_payload: plan.asked.response_body.clone(),
+        cost,
+        or_cost: resolved.or_cost,
+        upstream_cost: resolved.upstream_cost,
+        estimated_cost: resolved.estimated_cost,
+        cost_source: resolved.source.as_str().to_string(),
+    });
+    Recorded { cost, cost_source }
+}
+
+fn user_text_from_request(body: &str) -> String {
+    serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("state")
+                .and_then(|state| state.get("user_text"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
+}

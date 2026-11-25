@@ -1,0 +1,3 @@
+ALTER TABLE calls ADD COLUMN cost_micros INTEGER;
+UPDATE calls SET cost_micros = CAST(ROUND(cost * 1000000) AS INTEGER) WHERE cost IS NOT NULL;
+ALTER TABLE calls DROP COLUMN cost;

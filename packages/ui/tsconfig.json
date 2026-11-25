@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "paths": {
+      "@octo/agent-client": ["../agent-client/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

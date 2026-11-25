@@ -1,0 +1,396 @@
+// Package plugins loads plugin manifests (language servers, ACP agents, tool
+// servers) from disk into an immutable registry. It never executes anything.
+package plugins
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"regexp"
+	"slices"
+	"strings"
+)
+
+// ManifestName is the file a plugin directory must contain.
+const ManifestName = "plugin.json"
+
+var (
+	namePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+	idPattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+	// ModelPattern is what a model id may look like: it ends up in process
+	// arguments and records, so it must not start with a dash or hold spaces.
+	// Beyond that any printable, non-space character is allowed (a vendor's
+	// alias may carry brackets or an equals sign, such as "opus[1m]").
+	ModelPattern = regexp.MustCompile(`^[A-Za-z0-9][^\s\p{C}]{0,99}$`)
+)
+
+// ModelPlaceholder is replaced by the model id in a modelArg template.
+const ModelPlaceholder = "{model}"
+
+// ModelArgsPlaceholder is an args element replaced by the expanded modelArg.
+const ModelArgsPlaceholder = "{modelArgs}"
+
+type manifest struct {
+	Name            string           `json:"name"`
+	Version         string           `json:"version"`
+	Description     string           `json:"description"`
+	LanguageServers []manifestServer `json:"languageServers"`
+	Agents          []manifestAgent  `json:"agents"`
+	ToolServers     []ToolServer     `json:"toolServers"`
+}
+
+type manifestServer struct {
+	manifestCommand
+	Languages []string `json:"languages"`
+}
+
+type manifestAgent struct {
+	manifestCommand
+	Models       []string `json:"models"`
+	DefaultModel string   `json:"defaultModel"`
+	ModelArg     []string `json:"modelArg"`
+	// ModelLabels maps a model id of Models to the label shown in pickers.
+	ModelLabels map[string]string `json:"modelLabels"`
+	// ModelsNote is one line shown beside the agent's models (where the manifest's
+	// list comes from, how far to trust it).
+	ModelsNote string `json:"modelsNote"`
+	// Roles are default models for the tiers: {"fast": "haiku", ...}.
+	Roles map[string]string `json:"roles"`
+	// ModelsCommand is a command that prints the agent's models.
+	ModelsCommand *manifestModelsCommand `json:"modelsCommand"`
+	Auth          *manifestAuth          `json:"auth"`
+	// FlatRate says the agent runs on a flat-rate subscription (no per-token
+	// charge at the margin); absent means false. Strengths lists the difficulty
+	// bands (easy, medium, hard) the agent suits, for automatic routing.
+	FlatRate  *bool    `json:"flatRate"`
+	Strengths []string `json:"strengths"`
+	// BillingEnv lists environment variables that, when set (non-empty) in the
+	// environment the agent is started with, switch a flat-rate agent to per-token
+	// billing: an API key forwarded to it (XAI_API_KEY for Grok).
+	BillingEnv []string `json:"billingEnv"`
+	// Requires lists commands that must be on PATH (besides the agent's own
+	// command) for the agent to count as available: for an adapter run through
+	// npx that drives a separately installed CLI.
+	Requires []string `json:"requires"`
+	// Install is a one-line instruction for installing what the agent needs,
+	// shown when it is not available.
+	Install string `json:"install"`
+	// Verified says the owner has run this launch command with Octo; absent
+	// means false, and the agent is listed as experimental. VerifiedNote says
+	// how far (copilot: only the logged-out path).
+	Verified     *bool  `json:"verified"`
+	VerifiedNote string `json:"verifiedNote"`
+	// Unsupported, when set, says why the agent cannot work with Octo (its CLI
+	// has no ACP mode): it is listed with state not_supported and that reason,
+	// is never probed, started, offered or routed to, and `acp:<id>` is refused
+	// (422 model_unavailable). Its install hint is kept.
+	Unsupported string `json:"unsupported"`
+	// StartHint is added to the message of a start-up failure caused by rejected
+	// launch arguments (what version or flag the CLI needs).
+	StartHint string `json:"startHint"`
+	// Version, when set, is a command that prints the CLI's version and the
+	// lowest version the launch command works with: an older CLI is listed as
+	// not available with that reason before anything starts it.
+	Version *manifestVersion `json:"version"`
+	// MCPTransport is "stdio" (always hand the tool server over the stdio
+	// relay) or empty / "auto" (HTTP when the agent advertises it).
+	MCPTransport string `json:"mcpTransport"`
+	// SearchPaths are extra folders (absolute or starting with "~/") where the
+	// agent's command is looked for when it is not on PATH: the vendor's
+	// default install folder, which an app started from the Dock may not have.
+	SearchPaths []string `json:"searchPaths"`
+}
+
+// manifestModelsCommand runs a command and reads model ids from its output:
+// Pattern is applied to every output line and its first capture group is the
+// model id; LabelGroup (optional, 1-based) is the group holding a label.
+type manifestModelsCommand struct {
+	Command    []string `json:"command"`
+	Pattern    string   `json:"pattern"`
+	LabelGroup int      `json:"labelGroup"`
+}
+
+func (c manifestModelsCommand) validate() error {
+	if len(c.Command) == 0 || strings.TrimSpace(c.Command[0]) == "" {
+		return fmt.Errorf("modelsCommand.command must name a command")
+	}
+	re, err := regexp.Compile(c.Pattern)
+	if err != nil {
+		return fmt.Errorf("modelsCommand.pattern: %w", err)
+	}
+	switch {
+	case re.NumSubexp() < 1:
+		return fmt.Errorf("modelsCommand.pattern needs a capture group for the model id")
+	case c.LabelGroup < 0 || c.LabelGroup > re.NumSubexp():
+		return fmt.Errorf("modelsCommand.labelGroup %d is not a group of the pattern (it has %d)", c.LabelGroup, re.NumSubexp())
+	}
+	return nil
+}
+
+// Tier names a role is set for.
+var roleTiers = []string{"fast", "balanced", "deep"}
+
+// RoleTiers are the tiers an agent can have a model for.
+func RoleTiers() []string { return slices.Clone(roleTiers) }
+
+// ValidateRoles checks a roles map: tier names fast, balanced or deep, each a
+// valid model name or "" (the agent's own default).
+func ValidateRoles(roles map[string]string) error {
+	for tier, m := range roles {
+		switch {
+		case !slices.Contains(roleTiers, tier):
+			return fmt.Errorf("roles: %q must be one of fast, balanced, deep", tier)
+		case m != "" && !ModelPattern.MatchString(m):
+			return fmt.Errorf("roles.%s: %q is not a valid model name", tier, m)
+		}
+	}
+	return nil
+}
+
+// Strength values a manifest may list.
+var validStrengths = []string{"easy", "medium", "hard"}
+
+func validateStrengths(in []string) error {
+	seen := map[string]bool{}
+	for _, s := range in {
+		switch {
+		case !slices.Contains(validStrengths, s):
+			return fmt.Errorf("strengths: %q must be one of easy, medium, hard", s)
+		case seen[s]:
+			return fmt.Errorf("strengths: duplicate %q", s)
+		}
+		seen[s] = true
+	}
+	return nil
+}
+
+// manifestAuth describes how to tell whether an agent's CLI is logged in:
+// Probe exits 0 when it is (it must never log in or start a session) and Hint
+// is the one-line instruction shown when it is not.
+//
+// Methods lists the ACP auth method ids to try, in preference order (each a
+// string or {"id", "requiresEnv"}); Skip lists ids never to try.
+type manifestAuth struct {
+	Probe []string `json:"probe"`
+	// NotLoggedInPattern is an optional regular expression: when the probe exits
+	// non-zero and its output (stdout or stderr) matches it, the agent counts as
+	// logged out. A probe that exits 0 is logged in whatever it prints (the
+	// login probe is advisory, never a lock; exit 0 always wins).
+	NotLoggedInPattern string `json:"notLoggedInPattern"`
+	// NotLoggedInExit lists probe exit statuses that mean "logged out". Without
+	// it only the pattern can say so: a failing probe leaves the login unchecked.
+	NotLoggedInExit []int  `json:"notLoggedInExit"`
+	Hint            string `json:"hint"`
+	// Command is the terminal command that logs the CLI in ("claude auth login"); shown copyable.
+	Command string          `json:"command"`
+	Methods []AuthMethodRef `json:"methods"`
+	Skip    []string        `json:"skip"`
+}
+
+// AuthMethodRef names an ACP auth method. RequiresEnv, when set, makes the
+// method eligible only while that variable is set in the agent's environment.
+type AuthMethodRef struct {
+	ID          string `json:"id"`
+	RequiresEnv string `json:"requiresEnv,omitempty"`
+}
+
+// UnmarshalJSON accepts "id" or {"id": "...", "requiresEnv": "NAME"}.
+func (r *AuthMethodRef) UnmarshalJSON(data []byte) error {
+	var id string
+	if err := json.Unmarshal(data, &id); err == nil {
+		*r = AuthMethodRef{ID: id}
+		return nil
+	}
+	type plain AuthMethodRef
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return fmt.Errorf("auth method must be a string or an object with id and requiresEnv: %w", err)
+	}
+	*r = AuthMethodRef(p)
+	return nil
+}
+
+type manifestCommand struct {
+	ID      string            `json:"id"`
+	Label   string            `json:"label"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Env     map[string]string `json:"env"`
+}
+
+func parseManifest(data []byte) (manifest, error) {
+	var m manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return manifest{}, fmt.Errorf("invalid JSON: %w", err)
+	}
+	return m, nil
+}
+
+// validate checks the plugin-level fields; any failure disables the plugin.
+func (m manifest) validate() error {
+	switch {
+	case m.Name == "":
+		return fmt.Errorf("name is required")
+	case !namePattern.MatchString(m.Name):
+		return fmt.Errorf("name %q must match [a-z0-9] words joined by '-'", m.Name)
+	case strings.TrimSpace(m.Version) == "":
+		return fmt.Errorf("version is required")
+	}
+	return nil
+}
+
+func (s manifestServer) validate() error {
+	if err := s.manifestCommand.validate(); err != nil {
+		return err
+	}
+	if len(s.Languages) == 0 || slices.Contains(s.Languages, "") {
+		return fmt.Errorf("languages must list at least one language id")
+	}
+	return nil
+}
+
+func (a manifestAgent) validate() error {
+	if err := a.manifestCommand.validate(); err != nil {
+		return err
+	}
+	if err := validateModels(a.Models, a.DefaultModel); err != nil {
+		return err
+	}
+	for id := range a.ModelLabels {
+		if !slices.Contains(a.Models, id) {
+			return fmt.Errorf("modelLabels: %q is not in models", id)
+		}
+	}
+	if err := ValidateRoles(a.Roles); err != nil {
+		return err
+	}
+	if a.ModelsCommand != nil {
+		if err := a.ModelsCommand.validate(); err != nil {
+			return err
+		}
+	}
+	if err := validateStrengths(a.Strengths); err != nil {
+		return err
+	}
+	if slices.ContainsFunc(a.Requires, func(r string) bool { return strings.TrimSpace(r) == "" }) {
+		return fmt.Errorf("requires must list command names")
+	}
+	if len(a.ModelArg) > 0 && !slices.ContainsFunc(a.ModelArg, func(s string) bool { return strings.Contains(s, ModelPlaceholder) }) {
+		return fmt.Errorf("modelArg must contain %s", ModelPlaceholder)
+	}
+	if a.Version != nil {
+		if err := a.Version.validate(); err != nil {
+			return err
+		}
+	}
+	switch a.MCPTransport {
+	case "", "auto", MCPTransportStdio:
+	default:
+		return fmt.Errorf("mcpTransport %q must be auto or stdio", a.MCPTransport)
+	}
+	for _, p := range a.SearchPaths {
+		if !strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "~/") && !isWindowsAbs(p) {
+			return fmt.Errorf("searchPaths: %q must be an absolute folder or start with ~/", p)
+		}
+	}
+	switch n := countOf(a.Args, ModelArgsPlaceholder); {
+	case n > 1:
+		return fmt.Errorf("args may contain %s only once", ModelArgsPlaceholder)
+	case n == 1 && len(a.ModelArg) == 0:
+		return fmt.Errorf("args contains %s but modelArg is not set", ModelArgsPlaceholder)
+	}
+	if a.Auth != nil {
+		if len(a.Auth.Probe) == 0 && strings.TrimSpace(a.Auth.Hint) == "" {
+			return fmt.Errorf("auth needs a probe, a hint or both")
+		}
+		if a.Auth.NotLoggedInPattern != "" {
+			if len(a.Auth.Probe) == 0 {
+				return fmt.Errorf("auth.notLoggedInPattern needs a probe")
+			}
+			if _, err := regexp.Compile(a.Auth.NotLoggedInPattern); err != nil {
+				return fmt.Errorf("auth.notLoggedInPattern: %w", err)
+			}
+		}
+		if len(a.Auth.NotLoggedInExit) > 0 && len(a.Auth.Probe) == 0 {
+			return fmt.Errorf("auth.notLoggedInExit needs a probe")
+		}
+		if len(a.Auth.Probe) > 0 && strings.TrimSpace(a.Auth.Probe[0]) == "" {
+			return fmt.Errorf("auth.probe[0] must be a command")
+		}
+		if err := a.Auth.validateMethods(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateModels(models []string, def string) error {
+	seen := map[string]bool{}
+	for _, m := range models {
+		switch {
+		case !ModelPattern.MatchString(m):
+			return fmt.Errorf("model %q must match %s", m, ModelPattern)
+		case seen[m]:
+			return fmt.Errorf("duplicate model %q", m)
+		}
+		seen[m] = true
+	}
+	switch {
+	case def == "":
+	case !ModelPattern.MatchString(def):
+		return fmt.Errorf("defaultModel %q must match %s", def, ModelPattern)
+	case len(models) > 0 && !seen[def]:
+		return fmt.Errorf("defaultModel %q is not in models", def)
+	}
+	return nil
+}
+
+func (c manifestCommand) validate() error {
+	switch {
+	case c.ID == "":
+		return fmt.Errorf("id is required")
+	case !idPattern.MatchString(c.ID):
+		return fmt.Errorf("id %q must match %s", c.ID, idPattern)
+	case strings.TrimSpace(c.Command) == "":
+		return fmt.Errorf("command is required")
+	}
+	return validateEnv(c.Env)
+}
+
+func (s ToolServer) validate() error {
+	u, err := url.Parse(s.URL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("url %q must be an http(s) URL", s.URL)
+	}
+	return nil
+}
+
+func (a manifestAuth) validateMethods() error {
+	seen := map[string]bool{}
+	for _, m := range a.Methods {
+		switch {
+		case strings.TrimSpace(m.ID) == "":
+			return fmt.Errorf("auth.methods: id is required")
+		case seen[m.ID]:
+			return fmt.Errorf("auth.methods: duplicate id %q", m.ID)
+		case m.RequiresEnv != "" && !envKeyPat.MatchString(m.RequiresEnv):
+			return fmt.Errorf("auth.methods %q: requiresEnv %q is not a valid variable name", m.ID, m.RequiresEnv)
+		}
+		seen[m.ID] = true
+	}
+	if slices.Contains(a.Skip, "") {
+		return fmt.Errorf("auth.skip: ids must not be empty")
+	}
+	return nil
+}
+
+func countOf(list []string, v string) int {
+	n := 0
+	for _, s := range list {
+		if s == v {
+			n++
+		}
+	}
+	return n
+}

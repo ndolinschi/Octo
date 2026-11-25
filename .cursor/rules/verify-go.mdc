@@ -1,0 +1,17 @@
+---
+description: After harness Go changes, run go test and go vet
+globs: "apps/harness/**"
+alwaysApply: false
+---
+
+# Go verify before you finish
+
+After changing code under `apps/harness/`, from that directory run:
+
+```bash
+go test ./...
+go vet ./...
+go build -o /tmp/octo-harness ./cmd/harness
+```
+
+Fix every failure. Prefer `go test -race ./...` when the change touches goroutines, shared maps, or store concurrency.

@@ -1,0 +1,99 @@
+# USD-per-1M-token rates per model.
+#
+# Since 2026-11-14 the router refreshes prices from the OpenRouter catalogue itself
+# (https://openrouter.ai/api/v1/models; at start, then every 6 h; cached beside the history
+# database). Precedence per model: a row marked `source = "manual"` > the catalogue > a row
+# without the marker (a fallback, used when the catalogue has no price or is off) > none.
+# See docs/prices.md.
+#
+# Refresh settings (all optional; uncomment to change):
+# [prices]
+# refresh = "catalogue"          # or "off"; default: on when every OpenRouter URL is openrouter.ai,
+#                                # off for a mock/proxy upstream. OCTO_PRICES_REFRESH=off|catalogue wins.
+# refresh_interval_secs = 21600  # jittered by +-10%
+# cache_file = ""                # default: prices-catalogue.json beside history.database_path
+#
+# A manual override (always wins over the catalogue):
+# [prices."vendor/model"]
+# source = "manual"
+# input = 1.0
+# cache_read = 0.1
+# cache_write = 0.0
+# output = 2.0
+#
+# Estimate is used only when ALL four rates (input, cache_read, cache_write, output)
+# are present AND at least one rate is > 0. All-zero rows skip estimate and fall through
+# to upstream / OpenRouter / none. Partial rows also fall through.
+# Fallback rows below were last copied from https://openrouter.ai/api/v1/models on 2026-11-14 (see docs/ladder-cost-check.md).
+# cache_write stays 0.0 where the catalogue publishes no cache-write price.
+# billed_as maps Octo/OpenRouter slug -> provider invoice name for reconcile_costs.py.
+
+# Small cheap tool-calling models; rates from https://openrouter.ai/api/v1/models on 2026-11-13.
+[prices."meta-llama/llama-3.1-8b-instruct"]
+input = 0.02
+cache_read = 0.0
+cache_write = 0.0
+output = 0.04
+# billed_as = "llama-3.1-8b-instruct"
+
+# Catalogue 2026-11-14: cache_write 0.038 (was 0.0). Prompts of 32k+ tokens are billed higher (0.10 / 0.40); the base rate is kept.
+[prices."qwen/qwen3.7-flash"]
+input = 0.03
+cache_read = 0.006
+cache_write = 0.038
+output = 0.13
+# billed_as = "qwen3.7-flash"
+
+[prices."qwen/qwen3-32b"]
+input = 0.08
+cache_read = 0.0
+cache_write = 0.0
+output = 0.28
+# billed_as = "qwen3-32b"
+
+[prices."google/gemma-4-26b-a4b-it"]
+input = 0.0675
+cache_read = 0.0375
+cache_write = 0.0
+output = 0.225
+# billed_as = "gemma-4-26b-a4b-it"
+
+# Catalogue 2026-11-14 (was 0.091 / 0.0182 / 0.182).
+[prices."deepseek/deepseek-v4-flash"]
+input = 0.09
+cache_read = 0.018
+cache_write = 0.0
+output = 0.18
+# billed_as = "deepseek-v4-flash"
+
+# Ladder low. Catalogue 2026-11-14 (fetched by the agent): 0.0507 / 0.001014 / 0.2028 (was 0.051 / 0.018 / 0.567, owner-reported 2026-11-11).
+[prices."deepseek/deepseek-v4.1-flash"]
+input = 0.0507
+cache_read = 0.001014
+cache_write = 0.0
+output = 0.2028
+# billed_as = "deepseek-v4.1-flash"
+
+# Ladder mid. Catalogue 2026-11-14 unchanged: 0.075/0.30 off-peak (UTC 15:00-01:00) and 0.15/0.60 peak; the peak rate is
+# kept as the conservative estimate (the catalogue refresh does the same: it takes the highest time window).
+[prices."minimax/minimax-m3.1-flash"]
+input = 0.15
+cache_read = 0.015
+cache_write = 0.0
+output = 0.60
+
+# Ladder high. Catalogue 2026-11-14: 0.038 / 0.01 / 0.50 (was 0.006 / 0.005 / 0.50).
+[prices."deepseek/deepseek-v4.1-flash-1017"]
+input = 0.038
+cache_read = 0.01
+cache_write = 0.0
+output = 0.50
+# billed_as = "deepseek-v4.1-flash-1017"
+
+# Coding-agent model; rates from https://openrouter.ai/api/v1/models on 2026-11-13.
+[prices."qwen/qwen3-coder-next"]
+input = 0.12
+cache_read = 0.07
+cache_write = 0.0
+output = 0.80
+# billed_as = "qwen3-coder-next"

@@ -1,0 +1,527 @@
+import { Check, ChevronRight, Clock, MessageSquarePlus, X } from "lucide-react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import type { Approval, ApprovalAnswer, ApprovalOption, AutoMemoryMode } from "@octo/agent-client";
+import { cn } from "../../lib/cn";
+import { errorMessage } from "../../lib/format";
+import { useNow } from "../../lib/hooks";
+import { mayGrantBeyondOnce } from "../../lib/remoteDevice";
+import { settingsHref } from "../../lib/route";
+import { useHost } from "../../state/host";
+import {
+  APPROVAL_TIMEOUT_MS,
+  APPROVAL_URGENT_MS,
+  approvalCaption,
+  approvalDeadline,
+  formatCountdown,
+  isAllowOption,
+  resolutionLabel,
+  turnScopeLabel,
+  type ApprovalAction,
+  type Resolution,
+} from "../../lib/v7/approval";
+import { alwaysLabel, canAlwaysAllow } from "../../lib/v7/rules";
+import { Button } from "../primitives/Button";
+import { TextArea } from "../primitives/TextField";
+import { Glyph } from "../primitives/Glyph";
+import { Card } from "../primitives/Card";
+import { Notice } from "../primitives/Notice";
+import { ApprovalSubject } from "./ApprovalSubject";
+import { focusOnMount, LineCounts } from "./parts";
+import { RequestCard } from "../shared/RequestCard";
+import { useApprovalCard, type Busy } from "./useApprovalCard";
+
+/** Opens on a click only, so it stays out of the entry chunk (bundle budget). */
+const AlwaysPanel = lazy(() => import("./ApprovalExtras").then((m) => ({ default: m.AlwaysPanel })));
+const PatchView = lazy(() => import("./ApprovalExtras").then((m) => ({ default: m.PatchView })));
+
+export type ApprovalCardProps = {
+  approval: Approval;
+  /** Set once the request is answered (here, by the timer, a cancel or another window): the card is one line. */
+  resolution: Resolution | null;
+  /** `HARNESS_APPROVAL_TIMEOUT` when the host knows it; 0 = never. */
+  timeoutMs?: number;
+  /** Take focus when it appears unless the user is typing (the newest pending card). */
+  focusOnArrival?: boolean;
+  /** Project's current auto-memory mode (`off` | `review` | `allow` | `blocked`) for `memory` approvals. */
+  memoryMode?: AutoMemoryMode | undefined;
+  /** Persist a new `memory.auto_memory` setting for the project before resolving a `memory` approval. */
+  onSetAutoMemory?(mode: AutoMemoryMode): Promise<void>;
+  onResolve(id: string, answer: ApprovalAnswer): Promise<void>;
+  /** The card's own answer, the timer running out, or a 404 (answered elsewhere): the owner keeps it as resolved. */
+  onResolved(id: string, resolution: Resolution): void;
+  /** Opens the requesting agent's tab (the role is a link when given). */
+  onOpenAgent?(agentId: string): void;
+  /** One row of a group of requests: compact (title, the command on one line, quiet actions, details fold). */
+  compact?: boolean;
+  /** A compact row names its agent at its end (the group has more than one agent asking). */
+  showAgent?: boolean;
+  /** A compact row tells its group when its "Always allow" panel opens or closes (the panel's save is then the one primary). */
+  onAlwaysOpen?(id: string, open: boolean): void;
+};
+
+/** The countdown text of a pending approval; null when it never times out. */
+export function useApprovalLeft(createdAt: string | null, timeoutMs: number | undefined, active: boolean): number | null {
+  const deadline = createdAt === null ? null : approvalDeadline(createdAt, timeoutMs ?? APPROVAL_TIMEOUT_MS);
+  const now = useNow(active && deadline !== null);
+  return deadline === null ? null : deadline - now;
+}
+
+export function Countdown({ left }: { left: number }) {
+  return (
+    <span className={cn(left < APPROVAL_URGENT_MS ? "text-warn" : "text-fg-3")} title="Unanswered requests are denied automatically">
+      <span className="@max-[360px]/v7:hidden">Auto-deny in </span>
+      {formatCountdown(left)}
+    </span>
+  );
+}
+
+/** A pending approval in the conversation (v7 §3, decision 46): what will run, the answers, keys, the countdown. */
+export function ApprovalCard(props: ApprovalCardProps) {
+  const { approval } = props;
+  const left = useApprovalLeft(approval.created_at, props.timeoutMs, props.resolution === null);
+  if (props.resolution) return <ResolvedApproval approval={approval} resolution={props.resolution} />;
+  if (left !== null && left <= 0) return <ResolvedApproval approval={approval} resolution={{ decision: "deny", by: "timeout" }} />;
+  if (approval.kind === "memory" && !props.compact) return <MemoryApprovalCard {...props} left={left} />;
+  return props.compact ? <CompactApproval {...props} /> : <PendingApproval {...props} left={left} />;
+}
+
+/** The agent's name, a link to its tab when the host can open it. */
+function Asks({ approval, onOpenAgent }: { approval: Approval; onOpenAgent: ((id: string) => void) | undefined }) {
+  if (!onOpenAgent) return <>{approval.agent_label}</>;
+  return (
+    <Button variant="link" tone="quiet" size="xs" onClick={() => onOpenAgent(approval.agent_id)}>
+      {approval.agent_label}
+    </Button>
+  );
+}
+
+/** The three answers in the one order of decision 91c: primary, quiet alternatives, deny last. */
+function useAnswers(approval: Approval, c: ReturnType<typeof useApprovalCard>, compact = false) {
+  // While the "Always allow" panel is open its "Save rule and allow" is the primary; the plain allow steps back.
+  const quiet = compact || c.alwaysOpen;
+  // A paired phone answers once (the harness refuses more): no "for this request", no agent "always" option.
+  const once = !mayGrantBeyondOnce(useHost().remoteDevice);
+  const options = (approval.detail.options ?? []).filter((o) => !once || !o.kind.endsWith("_always"));
+  const disabled = c.busy !== null;
+  const scope = once ? null : turnScopeLabel(approval);
+  if (options.length > 0) {
+    const allows = options.filter(isAllowOption);
+    const others = options.filter((o) => !isAllowOption(o));
+    return {
+      primary: allows[0] ? <OptionButton option={allows[0]} primary={!quiet} busy={c.busy} onClick={() => c.choose(allows[0] as ApprovalOption)} /> : null,
+      alternatives: allows.slice(1).map((o) => <OptionButton key={o.id} option={o} primary={false} busy={c.busy} onClick={() => c.choose(o)} />),
+      destructive: others.map((o) => <OptionButton key={o.id} option={o} primary={false} busy={c.busy} onClick={() => c.choose(o)} />),
+    };
+  }
+  return {
+    primary: (
+      <ActionButton variant={quiet ? "secondary" : "primary"} busy={c.busy} action="allow" disabled={disabled} onClick={() => c.act("allow")} shortcut="A">
+        Allow once
+      </ActionButton>
+    ),
+    // The label names what the harness remembers for the turn (one kind, from this agent), never more.
+    alternatives: scope ? (
+      <ActionButton
+        variant="quiet"
+        busy={c.busy}
+        action="allow_for_turn"
+        disabled={disabled}
+        hint={`Allows ${approval.agent_label}'s ${scope} until this request finishes; anything else still asks.`}
+        onClick={() => c.act("allow_for_turn")}
+      >
+        {`Allow ${scope} for this request`}
+      </ActionButton>
+    ) : null,
+    destructive: (
+      <ActionButton variant="danger" busy={c.busy} action="deny" disabled={disabled} onClick={() => c.act("deny")} shortcut="D">
+        Deny
+      </ActionButton>
+    ),
+  };
+}
+
+function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
+  const { approval, left } = props;
+  const card = useRef<HTMLElement>(null);
+  const c = useApprovalCard({
+    approval,
+    card,
+    focusOnArrival: props.focusOnArrival ?? false,
+    onResolve: props.onResolve,
+    onResolved: (r) => props.onResolved(approval.id, r),
+  });
+  const disabled = c.busy !== null;
+  const device = useHost().remoteDevice;
+  const rule = canAlwaysAllow(approval) && mayGrantBeyondOnce(device) ? approval.suggested_rule : undefined;
+  const noteId = `v7-note-${approval.id}`;
+  const answers = useAnswers(approval, c);
+  return (
+    <RequestCard
+      ref={card}
+      tabIndex={0}
+      aria-label={`${approval.agent_label} asks: ${approval.title}. A to allow, D to deny.`}
+      aria-keyshortcuts="A D Enter"
+      onKeyDown={c.onKeyDown}
+      data-v7-approval={approval.id}
+      title={approvalCaption(approval)}
+      asks={<Asks approval={approval} onOpenAgent={props.onOpenAgent} />}
+      meta={left !== null ? <Countdown left={left} /> : undefined}
+      primary={answers.primary}
+      alternatives={
+        <>
+          {answers.alternatives}
+          {rule && (
+            <Button variant="quiet" size="sm" disabled={disabled} aria-expanded={c.alwaysOpen} onClick={() => c.setAlwaysOpen(!c.alwaysOpen)}>
+              {alwaysLabel(rule)}
+            </Button>
+          )}
+          <Button
+            variant="quiet"
+            size="sm"
+            icon={MessageSquarePlus}
+            aria-expanded={c.noteOpen}
+            aria-controls={c.noteOpen ? noteId : undefined}
+            data-note-toggle=""
+            onClick={() => c.setNoteOpen(!c.noteOpen)}
+          >
+            {c.noteOpen ? "No note" : "Add note"}
+          </Button>
+        </>
+      }
+      destructive={answers.destructive}
+      error={c.error}
+    >
+      <ApprovalSubject approval={approval} />
+      {c.alwaysOpen && rule && (
+        <Suspense fallback={<div className="h-24" />}>
+          <AlwaysPanel
+            rule={rule}
+            busy={c.busy === "allow_always"}
+            disabled={disabled}
+            onSave={() => c.act("allow_always")}
+            onCancel={() => c.setAlwaysOpen(false)}
+          />
+        </Suspense>
+      )}
+      {c.noteOpen && (
+        <TextArea
+          id={noteId}
+          aria-label="Note for the agent"
+          placeholder="Why, or what to do instead (sent with a denial)"
+          rows={2}
+          value={c.note}
+          onChange={(e) => c.setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            // Esc closes the field (the text stays) and hands focus back to "Add note".
+            e.stopPropagation();
+            c.setNoteOpen(false);
+            card.current?.querySelector<HTMLElement>("[data-note-toggle]")?.focus();
+          }}
+          ref={focusOnMount}
+        />
+      )}
+    </RequestCard>
+  );
+}
+
+function MemoryApprovalCard(props: ApprovalCardProps & { left: number | null }) {
+  const { approval, left } = props;
+  const card = useRef<HTMLElement>(null);
+  const c = useApprovalCard({
+    approval,
+    card,
+    focusOnArrival: props.focusOnArrival ?? false,
+    onResolve: props.onResolve,
+    onResolved: (r) => props.onResolved(approval.id, r),
+  });
+  const [reviewing, setReviewing] = useState(props.memoryMode === "review");
+  const [modeBusy, setModeBusy] = useState<"allow" | "review" | "blocked" | null>(null);
+  const [modeError, setModeError] = useState<string | null>(null);
+  const disabled = c.busy !== null || modeBusy !== null;
+
+  const setAndResolve = async (mode: AutoMemoryMode, answer: ApprovalAnswer, resolution: Resolution) => {
+    setModeError(null);
+    setModeBusy(mode === "allow" ? "allow" : "blocked");
+    try {
+      await props.onSetAutoMemory?.(mode);
+      await props.onResolve(approval.id, answer);
+      props.onResolved(approval.id, resolution);
+    } catch (e) {
+      setModeError(errorMessage(e));
+    } finally {
+      setModeBusy(null);
+    }
+  };
+
+  const enterReview = async () => {
+    setModeError(null);
+    setModeBusy("review");
+    try {
+      await props.onSetAutoMemory?.("review");
+      setReviewing(true);
+    } catch (e) {
+      setModeError(errorMessage(e));
+    } finally {
+      setModeBusy(null);
+    }
+  };
+
+  return (
+    <RequestCard
+      ref={card}
+      tabIndex={0}
+      aria-label={`${approval.agent_label} asks: ${reviewing ? "Review memory item" : "Enable auto memory?"}. A to allow, D to deny.`}
+      aria-keyshortcuts="A D Enter"
+      onKeyDown={c.onKeyDown}
+      data-v7-approval={approval.id}
+      data-v7-memory-approval=""
+      title={reviewing ? "Review memory item" : "Enable auto memory?"}
+      asks={<Asks approval={approval} onOpenAgent={props.onOpenAgent} />}
+      meta={left !== null ? <Countdown left={left} /> : undefined}
+      primary={
+        reviewing ? (
+          <ActionButton variant="primary" busy={c.busy} action="allow" disabled={disabled} onClick={() => c.act("allow")} shortcut="A">
+            Save
+          </ActionButton>
+        ) : (
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={disabled}
+            loading={modeBusy === "allow"}
+            onClick={() => void setAndResolve("allow", { decision: "allow" }, { decision: "allow", by: "you" })}
+          >
+            Allow
+          </Button>
+        )
+      }
+      alternatives={
+        reviewing ? (
+          <>
+            <Button
+              variant="quiet"
+              size="sm"
+              disabled={disabled}
+              loading={modeBusy === "allow"}
+              onClick={() => void setAndResolve("allow", { decision: "allow" }, { decision: "allow", by: "you" })}
+            >
+              Allow all
+            </Button>
+            <Button
+              variant="quiet"
+              size="sm"
+              disabled={disabled}
+              loading={modeBusy === "blocked"}
+              onClick={() => void setAndResolve("blocked", { decision: "deny", note: "Memory is disabled for this project." }, { decision: "deny", by: "you" })}
+            >
+              Block
+            </Button>
+            <Button variant="quiet" size="sm" onClick={() => (window.location.hash = settingsHref("memory"))}>
+              Settings
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="secondary" size="sm" disabled={disabled} loading={modeBusy === "review"} onClick={() => void enterReview()}>
+              Review
+            </Button>
+            <Button variant="quiet" size="sm" onClick={() => (window.location.hash = settingsHref("memory"))}>
+              Settings
+            </Button>
+          </>
+        )
+      }
+      destructive={
+        reviewing ? (
+          <ActionButton variant="danger" busy={c.busy} action="deny" disabled={disabled} onClick={() => c.act("deny")} shortcut="D">
+            Skip
+          </ActionButton>
+        ) : (
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={disabled}
+            loading={modeBusy === "blocked"}
+            onClick={() => void setAndResolve("blocked", { decision: "deny", note: "Memory is disabled for this project." }, { decision: "deny", by: "you" })}
+          >
+            Block
+          </Button>
+        )
+      }
+      error={modeError ?? c.error}
+    >
+      <p className="text-sm text-fg-2">
+        {reviewing
+          ? "Approve or skip saving this memory item for this project."
+          : "Memory is off by default. Enable auto memory for this project, review each item, or block memory for this project."}
+      </p>
+      <ApprovalSubject approval={approval} />
+    </RequestCard>
+  );
+}
+
+/** The one mono line of a request: the command, the path or the host. */
+export function subjectLine(a: Approval): string {
+  return a.detail.command ?? a.detail.path ?? a.detail.url ?? a.detail.memory_text ?? a.detail.memory_path ?? a.title;
+}
+
+/**
+ * A row inside a group: its caption line (what · the command, the path or the host) is the Details disclosure, then the
+ * answers in the one order — Allow once · the scope · Always · Deny. An edit opens straight onto its changes (the path is
+ * already on the caption line), so it has one disclosure, not "Details" and then "Show changes".
+ */
+function CompactApproval(props: ApprovalCardProps) {
+  const { approval } = props;
+  const card = useRef<HTMLElement>(null);
+  const c = useApprovalCard({
+    approval,
+    card,
+    focusOnArrival: props.focusOnArrival ?? false,
+    onResolve: props.onResolve,
+    onResolved: (r) => props.onResolved(approval.id, r),
+  });
+  const answers = useAnswers(approval, c, true);
+  const device = useHost().remoteDevice;
+  const rule = canAlwaysAllow(approval) && mayGrantBeyondOnce(device) ? approval.suggested_rule : undefined;
+  const [open, setOpen] = useState(false);
+  const detailsId = `v7-details-${approval.id}`;
+  const { patch, diff } = approval.detail;
+  const { onAlwaysOpen } = props;
+  const alwaysOpen = c.alwaysOpen;
+  useEffect(() => {
+    onAlwaysOpen?.(approval.id, alwaysOpen);
+    return () => onAlwaysOpen?.(approval.id, false);
+  }, [onAlwaysOpen, approval.id, alwaysOpen]);
+  return (
+    <section
+      ref={card}
+      tabIndex={0}
+      aria-label={`${approval.agent_label} asks: ${approval.title}. A to allow, D to deny.`}
+      aria-keyshortcuts="A D Enter"
+      onKeyDown={c.onKeyDown}
+      data-v7-approval={approval.id}
+      className="@container/v7 flex min-w-0 flex-col gap-1 rounded-sm px-card py-2 focus-visible:not-data-quiet-focus:shadow-[0_0_0_2px_var(--octo-focus)]"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <Button
+          variant="quiet"
+          size="sm"
+          aria-expanded={open}
+          aria-controls={open ? detailsId : undefined}
+          title={open ? "Hide details" : "Show details"}
+          data-approval-details=""
+          onClick={() => setOpen((o) => !o)}
+          className="-ml-2 max-w-full"
+        >
+          <span className="shrink-0 text-fg">{approvalCaption(approval)}</span>
+          <span data-allow-truncate className="min-w-0 truncate font-mono text-xs text-fg-2">
+            {subjectLine(approval)}
+          </span>
+          {diff && <LineCounts added={diff.added} removed={diff.removed} />}
+          <Glyph icon={ChevronRight} size={14} className={cn("shrink-0 text-fg-3 transition-transform duration-base", open && "rotate-90")} />
+        </Button>
+        {props.showAgent && <span className="ml-auto shrink-0 text-xs text-fg-3">{approval.agent_label}</span>}
+      </div>
+      {open && (
+        <div id={detailsId} className="flex flex-col gap-2 pb-1">
+          {patch ? (
+            <Suspense fallback={<div className="h-ctl-xs" />}>
+              <PatchView patch={patch} open />
+            </Suspense>
+          ) : (
+            <ApprovalSubject approval={approval} />
+          )}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {answers.primary}
+        {answers.alternatives}
+        {rule && (
+          <Button variant="quiet" size="sm" disabled={c.busy !== null} aria-expanded={c.alwaysOpen} onClick={() => c.setAlwaysOpen(!c.alwaysOpen)}>
+            {alwaysLabel(rule)}
+          </Button>
+        )}
+        {answers.destructive}
+      </div>
+      {c.alwaysOpen && rule && (
+        <Suspense fallback={<div className="h-24" />}>
+          <AlwaysPanel
+            rule={rule}
+            busy={c.busy === "allow_always"}
+            disabled={c.busy !== null}
+            onSave={() => c.act("allow_always")}
+            onCancel={() => c.setAlwaysOpen(false)}
+          />
+        </Suspense>
+      )}
+      {c.error && <Notice tone="error">{c.error}</Notice>}
+    </section>
+  );
+}
+
+function ActionButton(props: {
+  variant: "primary" | "secondary" | "quiet" | "danger";
+  action: ApprovalAction;
+  busy: Busy;
+  disabled: boolean;
+  shortcut?: string;
+  /** The tooltip: what the answer covers. */
+  hint?: string;
+  onClick(): void;
+  children: string;
+}) {
+  const mine = props.busy === props.action;
+  return (
+    <Button
+      variant={props.variant}
+      size="sm"
+      disabled={props.disabled}
+      loading={mine}
+      aria-keyshortcuts={props.shortcut}
+      title={props.hint ?? (props.shortcut ? `${props.children} (${props.shortcut})` : undefined)}
+      onClick={props.onClick}
+    >
+      {props.children}
+    </Button>
+  );
+}
+
+function OptionButton({ option, primary, busy, onClick }: { option: ApprovalOption; primary: boolean; busy: Busy; onClick(): void }) {
+  const mine = busy === `option:${option.id}`;
+  const allow = isAllowOption(option);
+  return (
+    <Button variant={primary ? "primary" : allow ? "quiet" : "danger"} size="sm" disabled={busy !== null} loading={mine} onClick={onClick}>
+      {option.label}
+    </Button>
+  );
+}
+
+/** One line once answered: what happened, to what, by whom; the note in the tooltip. */
+function ResolvedApproval({ approval, resolution }: { approval: Approval; resolution: Resolution }) {
+  const allowed = resolution.decision !== "deny";
+  const icon = resolution.by === "timeout" ? Clock : allowed ? Check : X;
+  return (
+    <div
+      role="group"
+      aria-label={`${resolutionLabel(resolution, approval)}: ${approval.title}`}
+      data-v7-approval={approval.id}
+      data-resolved=""
+      className="@container/v7 text-sm"
+    >
+      <Card padding="none">
+        <div className="flex h-ctl-md min-w-0 items-center gap-2 px-3" title={resolution.note ? `Note: ${resolution.note}` : undefined}>
+          <Glyph icon={icon} size={14} className={cn("shrink-0", allowed ? "text-ok" : resolution.by === "timeout" ? "text-warn" : "text-err")} />
+          <span className="shrink-0 text-fg-2">{resolutionLabel(resolution, approval)}</span>
+          <span
+            className="min-w-0 truncate font-mono text-xs text-fg-3"
+            title={resolution.rule ? `Rule saved: ${resolution.rule}. Remove it in the project's settings.` : undefined}
+          >
+            {subjectLine(approval)}
+          </span>
+          <span className="ml-auto shrink-0 text-xs text-fg-3 @max-[360px]/v7:hidden">{approval.agent_label}</span>
+        </div>
+      </Card>
+    </div>
+  );
+}

@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No DOM: the client takes fetch / EventSource through options and must type-check without browser globals.
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src"]
+}

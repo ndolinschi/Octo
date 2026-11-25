@@ -1,0 +1,64 @@
+/* Compact prose for panes (decision 93 g). Two classes of specificity so it wins over `.octo-prose` in styles.css without
+   touching it; every value is on the spacing scale (2 4 8 12 20). Body 13/20, every heading 13 semibold, code 12. */
+.octo-prose.octo-prose-compact {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--octo-fg);
+}
+.octo-prose.octo-prose-compact p,
+.octo-prose.octo-prose-compact ul,
+.octo-prose.octo-prose-compact ol,
+.octo-prose.octo-prose-compact blockquote {
+  margin: 0 0 8px;
+}
+.octo-prose.octo-prose-compact h1,
+.octo-prose.octo-prose-compact h2,
+.octo-prose.octo-prose-compact h3,
+.octo-prose.octo-prose-compact h4,
+.octo-prose.octo-prose-compact h5,
+.octo-prose.octo-prose-compact h6 {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  margin: 12px 0 4px;
+}
+.octo-prose.octo-prose-compact ul,
+.octo-prose.octo-prose-compact ol {
+  padding-left: 20px;
+}
+.octo-prose.octo-prose-compact li {
+  margin: 2px 0 0;
+  padding-left: 0;
+}
+.octo-prose.octo-prose-compact li > ul,
+.octo-prose.octo-prose-compact li > ol {
+  margin: 2px 0 0;
+}
+.octo-prose.octo-prose-compact hr {
+  margin: 12px 0;
+}
+.octo-prose.octo-prose-compact :not(pre) > code {
+  font-size: 12px;
+  padding: 0 4px;
+}
+/* The fenced block's card (a div around `pre`, 12px margin and padding in Markdown): tighter in a pane. */
+.octo-prose.octo-prose-compact > div:has(> pre) {
+  margin: 8px 0;
+}
+.octo-prose.octo-prose-compact pre,
+.octo-prose.octo-prose-compact pre code {
+  font-size: 12px;
+  line-height: 16px;
+}
+/* Tables scroll inside their own frame (decision 44); 28px rows here. */
+.octo-prose.octo-prose-compact .octo-table {
+  font-size: 12px;
+  line-height: 16px;
+}
+.octo-prose.octo-prose-compact .octo-table th,
+.octo-prose.octo-prose-compact .octo-table td {
+  padding: 6px 8px;
+}
+.octo-prose.octo-prose-compact .octo-table-frame {
+  margin: 0 0 8px;
+}
