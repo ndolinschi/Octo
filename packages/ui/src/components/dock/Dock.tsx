@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, memo, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../state/app";
 import { BackdropProvider, type Backdrop } from "../primitives/backdrop";
 import { StreakLayer } from "../primitives/StreakLayer";
@@ -7,7 +7,7 @@ import { cn } from "../../lib/cn";
 import { allTabs, focusedGroup, parseTab, type Group, type TabId } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { panelClass } from "../shell/Panel";
-import { useDrag } from "./drag";
+import { useIsDragging } from "./drag";
 import { GroupProvider } from "../../state/workspace/group";
 import { domId } from "../../state/workspace/ids";
 import { TabStrip } from "./TabStrip";
@@ -37,7 +37,7 @@ function groupName(index: number, count: number): string {
 /** The area right of the sidebar: tab groups in one row with resize dividers between them. */
 export function Dock() {
   const ws = useWorkspace();
-  const dragging = useDrag() !== null;
+  const dragging = useIsDragging();
   const ref = useRef<HTMLDivElement>(null);
   const { setDockWidth } = ws;
 
@@ -47,11 +47,23 @@ export function Dock() {
     const el = ref.current;
     if (!el) return;
     setDockWidth(el.clientWidth);
+    let raf = 0;
+    let pendingWidth = el.clientWidth;
     const ro = new ResizeObserver(([entry]) => {
-      if (entry) setDockWidth(Math.round(entry.contentRect.width));
+      if (!entry) return;
+      pendingWidth = Math.round(entry.contentRect.width);
+      if (raf === 0) {
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          setDockWidth(pendingWidth);
+        });
+      }
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      if (raf !== 0) cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
   }, [setDockWidth]);
 
   // A divider drag shows the new widths on the groups' own elements, one write per frame, and changes the layout (a render
@@ -143,7 +155,7 @@ function useFileShellTab(group: Group, visited: Set<string>): TabId | null {
 }
 
 /** `maximised`: this group has the whole dock; `stepAside`: another one has (hidden, not unmounted: scroll, drafts and widths stay). */
-function GroupView(props: {
+const GroupView = memo(function GroupView(props: {
   group: Group;
   name: string;
   first: boolean;
@@ -241,4 +253,4 @@ function GroupView(props: {
       </GroupProvider>
     </section>
   );
-}
+});

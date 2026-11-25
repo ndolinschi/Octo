@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { errorMessage } from "../../lib/format";
-import { OCTO_FALLBACK } from "../../lib/slash";
+import { OCTO_FALLBACK } from "../../lib/slashCommands";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { useTabFlags } from "../../state/tabFlags";

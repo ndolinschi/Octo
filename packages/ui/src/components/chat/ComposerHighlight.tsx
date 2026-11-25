@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from "react";
 import { composerSpans, hasHighlights, type HighlightKind } from "../../lib/mentions";
 import { highlightable } from "../../lib/composerInput";
 import { useOptionalCode } from "../../state/code";
@@ -21,7 +21,7 @@ const KIND_CLASS: Record<HighlightKind, string> = {
  * It repeats the same characters in the same box (same font, wrapping, padding, scroll position) with metric-safe color/tint
  * only: nothing moves, so the caret, selection, IME composition and undo stay the browser's own, and typing never shifts a line.
  */
-export function ComposerHighlight({
+export const ComposerHighlight = memo(function ComposerHighlight({
   text,
   area,
   commands,
@@ -63,6 +63,7 @@ export function ComposerHighlight({
 
   // Both boxes reserve the scrollbar's width (`scrollbar-gutter: stable` on `.octo-composer-input`), so wrapping matches; the layer only follows the scroll.
   useLayoutEffect(() => {
+    if (!active) return;
     const ta = area.current;
     const el = layer.current;
     if (!ta || !el) return;
@@ -71,9 +72,9 @@ export function ComposerHighlight({
       el.scrollLeft = ta.scrollLeft;
     };
     sync();
-    ta.addEventListener("scroll", sync);
+    ta.addEventListener("scroll", sync, { passive: true });
     return () => ta.removeEventListener("scroll", sync);
-  }, [area, text, active]);
+  }, [area, active]);
 
   if (!spans) return null;
 
@@ -97,4 +98,4 @@ export function ComposerHighlight({
       {text.endsWith("\n") ? "​" : null}
     </div>
   );
-}
+});

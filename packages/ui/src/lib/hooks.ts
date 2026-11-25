@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { CLOCK_IDLE_MS, COPY_FEEDBACK_MS, NOW_ACTIVE_MS } from "./constants";
+import { CLOCK_IDLE_MS, NOW_ACTIVE_MS } from "./constants";
 import { clockNow, onClockOffset } from "./clock";
 import { isScrollKey, stickDecision } from "./stickDecision";
 
@@ -261,23 +261,6 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
   );
 
   return { ref, atBottom, onScroll, scrollToBottom, release, restick };
-}
-
-export function useCopy(timeoutMs = COPY_FEEDBACK_MS): [boolean, (text: string) => void] {
-  const [copied, setCopied] = useState(false);
-  const copy = useCallback(
-    (text: string) => {
-      void navigator.clipboard?.writeText(text).then(
-        () => {
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), timeoutMs);
-        },
-        () => undefined,
-      );
-    },
-    [timeoutMs],
-  );
-  return [copied, copy];
 }
 
 /** Calls `onEscape` for Escape presses that nothing inside the page already handled. */

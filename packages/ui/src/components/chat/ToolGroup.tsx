@@ -1,4 +1,4 @@
-import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "../../lib/cn";
 import { locateInProject } from "../../lib/toolsMore";
@@ -37,6 +37,22 @@ type Item = { use: ToolUse; state: StepState; row: CallRow };
 const ROW_STATE: Record<StepState, ActivityState> = { running: "running", error: "failed", stopped: "stopped", done: "done" };
 const WORD: Partial<Record<StepState, string>> = { error: "failed", stopped: "stopped" };
 
+const editCountsCache = new WeakMap<object, { text: string; counts: { added: number; removed: number } | null }>();
+
+function cachedEditCounts(use: ToolUse, resultText: string): { added: number; removed: number } | null {
+  const input = use.input;
+  if (input && typeof input === "object") {
+    const hit = editCountsCache.get(input);
+    if (hit && hit.text === resultText) return hit.counts;
+    const view = editView(use.name, input, resultText);
+    const counts = view ? { added: view.added, removed: view.removed } : null;
+    editCountsCache.set(input, { text: resultText, counts });
+    return counts;
+  }
+  const view = editView(use.name, input, resultText);
+  return view ? { added: view.added, removed: view.removed } : null;
+}
+
 /** A run's "+N −M" (G2: the size of the change is on the row, before it is opened); null for anything but finished edits. */
 function EditCounts({ uses }: { uses: readonly ToolUse[] }) {
   const ctx = useTranscript();
@@ -45,10 +61,10 @@ function EditCounts({ uses }: { uses: readonly ToolUse[] }) {
   for (const use of uses) {
     const result = ctx.results.get(use.id);
     if (result?.is_error || toolKind(use.name, use.input) !== "edit") return null;
-    const view = editView(use.name, use.input, typeof result?.content === "string" ? result.content : "");
-    if (!view) return null;
-    added += view.added;
-    removed += view.removed;
+    const counts = cachedEditCounts(use, typeof result?.content === "string" ? result.content : "");
+    if (!counts) return null;
+    added += counts.added;
+    removed += counts.removed;
   }
   if (added === 0 && removed === 0) return null;
   return (
@@ -98,7 +114,7 @@ function tipOf(run: readonly Item[]): string {
  * problems as a quiet suffix; its glyph shows the worst state only when every call ended that way (`groupState`).
  * `end`: how the turn ended (a stop's call reads "stopped"); `interrupted`: a restart cut the turn (its calls read "interrupted").
  */
-export function ToolGroup({ uses, end = null, interrupted = false }: { uses: ToolUse[]; end?: TurnEnd; interrupted?: boolean }) {
+export const ToolGroup = memo(function ToolGroup({ uses, end = null, interrupted = false }: { uses: ToolUse[]; end?: TurnEnd; interrupted?: boolean }) {
   const ctx = useTranscript();
   const code = useOptionalCode();
   const locate = useMemo(() => (code ? (p: string) => locateInProject(code.folders, p) : () => null), [code]);
@@ -126,12 +142,13 @@ export function ToolGroup({ uses, end = null, interrupted = false }: { uses: Too
   if (runs.length === 1 && only) return <ToolRow run={only} folder={folder} end={end} interrupted={interrupted} verbose={verbose} />;
   const states = items.map((it) => it.state);
   const problems = groupProblems(states, interrupted ? "interrupted" : "stopped");
+  const summary = groupSummary(uses);
   return (
     <ActivityRow
       state={ROW_STATE[groupState(states)]}
       // One truncating line (the problems are part of it, dim) so a narrow column cuts it with an ellipsis before the chevron.
-      verb={<GroupSummary long={groupSummary(uses)} short={groupShortSummary(uses)} problems={problems} />}
-      tip={[groupSummary(uses), problems].filter(Boolean).join(" · ")}
+      verb={<GroupSummary long={summary} short={groupShortSummary(uses)} problems={problems} />}
+      tip={[summary, problems].filter(Boolean).join(" · ")}
       open={groupOpen ?? verbose}
       onOpenChange={setGroupOpen}
     >
@@ -140,7 +157,7 @@ export function ToolGroup({ uses, end = null, interrupted = false }: { uses: Too
       ))}
     </ActivityRow>
   );
-}
+});
 
 /** Room the step row keeps beside its words: the glyph column (16 + 8) and the chevron (4 + 14), with a little slack. */
 const ROW_RESERVED_PX = 48;

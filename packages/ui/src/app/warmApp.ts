@@ -3,27 +3,31 @@ import { warmDrag } from "../components/dock/drag";
 import { transcriptPart } from "../components/chat/transcriptPart";
 import { emptyTitlePart, projectBarPart } from "../components/chat/ConversationView";
 import { approvalsPart, queuePart } from "./ProjectWorkspace";
+import { registerWarm } from "../lib/warm";
 import { browserIdle, installIntentWarming, warmOnIdle } from "../lib/warmSchedule";
 
+registerWarm("monaco", () => import("../components/files/monaco"));
+
 /**
- * Idle warm-up order (`lib/warm`), most likely first: the palette, the model list, Settings, then the tool tabs the "+" picker
- * offers. Each key's chunk is registered next to its lazy component; one key per idle slot.
+ * Idle warm-up order (`lib/warm`), most likely first: the palette, the model list, Settings, coding tools (files, changes,
+ * terminal), then the remaining tools and Monaco at the tail. Each key's chunk is registered next to its lazy component.
  */
 const IDLE_WARM = [
   "palette",
   "model",
   "settings",
+  "tool:files",
+  "tool:changes",
+  "tool:terminal",
   "tab-picker",
   "project-dialog",
-  "tool:files",
-  "tool:terminal",
   "tool:review",
   "tool:browser",
   "tool:processes",
-  "tool:changes",
+  "monaco",
 ];
 /** Idle warming starts this long after the shell mounts (the project's first load has the main thread before that). */
-const SHELL_SETTLES_MS = 1500;
+const SHELL_SETTLES_MS = 1200;
 
 /** The chunks the first minutes most likely need: the first assistant message must not flash as plain text before Markdown. */
 function warmFirstPaint() {

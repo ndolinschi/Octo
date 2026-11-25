@@ -16,7 +16,8 @@ export type SessionIndex = {
   loaded: boolean;
 };
 
-const byActivity = (a: GlobalSession, b: GlobalSession) => b.last_activity_at.localeCompare(a.last_activity_at) || a.id.localeCompare(b.id);
+const byActivity = (a: GlobalSession, b: GlobalSession) =>
+  a.last_activity_at < b.last_activity_at ? 1 : a.last_activity_at > b.last_activity_at ? -1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 
 /**
  * Parallel sessions (decision 96): the sessions the sidebar, Home and the palette list. Rows of projects that are not open
@@ -66,7 +67,12 @@ export function useSessionIndex(projects: readonly ProjectSummary[] | null): Ses
     void version;
     const names = new Map((projects ?? []).map((p) => [p.id, p.name]));
     const byProject = new Map<string, GlobalSession[]>();
-    for (const s of read ?? []) if (names.has(s.project_id)) byProject.set(s.project_id, [...(byProject.get(s.project_id) ?? []), s]);
+    for (const s of read ?? []) {
+      if (!names.has(s.project_id)) continue;
+      let list = byProject.get(s.project_id);
+      if (!list) byProject.set(s.project_id, (list = []));
+      list.push(s);
+    }
     for (const [id, name] of names) {
       const live = store.liveSessions(id);
       if (live)

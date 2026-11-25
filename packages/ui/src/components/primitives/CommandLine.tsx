@@ -1,5 +1,5 @@
 import { Check, Copy } from "lucide-react";
-import { useCopy } from "../../lib/hooks";
+import { useCopy } from "../../lib/hooksMore";
 import { IconButton } from "./IconButton";
 
 /** A command to run in a terminal, in mono, with a copy button (decision 53: "the exact command"). */

@@ -3,7 +3,8 @@ import { useLayoutEffect, useRef } from "react";
 import { cn } from "../../lib/cn";
 import { durationText, stripAnsi } from "../../lib/commands/format";
 import { extractLocalUrls } from "../../lib/commands/urls";
-import { useCopy, useNow } from "../../lib/hooks";
+import { useNow } from "../../lib/hooks";
+import { useCopy } from "../../lib/hooksMore";
 import { DETAIL_COLUMN } from "../../lib/panelColumn";
 import {
   canRestartProcess,

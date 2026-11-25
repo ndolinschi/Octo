@@ -1,5 +1,5 @@
 import type { Agent, FileSearchMatch } from "@octo/agent-client";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { formatRelative } from "../../lib/format";
 import { fieldScore, rankMatches } from "../../lib/match";
@@ -30,7 +30,7 @@ import { SectionHeader } from "../primitives/SectionHeader";
 import { Skeleton } from "../primitives/Skeleton";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { agentGlyph, orchestratorGlyph, type GlyphState } from "../../lib/stateGlyph";
-import { projectRowLines } from "../../lib/orchestrator";
+import { projectRowLines } from "../../lib/orchestratorMore";
 import { isPending, useOrchestrators } from "../../state/orchestrators";
 import { useSessionIndex } from "../../state/sessionIndex";
 import { mainSessions, sessionGlyph, sessionMeta, sessionsBesideTabs, sessionTitle } from "../../lib/sessions/tree";
@@ -125,6 +125,7 @@ export function CommandPalette(props: {
   const gate = useRef(createPointerGate());
   const fromPointer = useRef(false);
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [selected, setSelected] = useState(0);
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [fileMatches, setFileMatches] = useState<FileSearchMatch[]>([]);
@@ -132,10 +133,10 @@ export function CommandPalette(props: {
   const baseId = useId();
   const filesOnly = props.initialMode === "files" && props.openProjectId !== null;
   const openProject = projects?.find((p) => p.id === props.openProjectId);
-  const orchestrators = useOrchestrators(projects);
-  const sessionIndex = useSessionIndex(projects);
+  const orchestrators = useOrchestrators(filesOnly ? null : projects);
+  const sessionIndex = useSessionIndex(filesOnly ? null : projects);
   const { requests } = useRequests(openProject, !filesOnly);
-  const pastHits = useRequestSearch(filesOnly ? "" : query);
+  const pastHits = useRequestSearch(filesOnly ? "" : deferredQuery);
   const { onClose } = props;
   const state = usePresence();
   // The workspace's tabs and tab actions, as they are when the palette opens.
@@ -152,12 +153,15 @@ export function CommandPalette(props: {
   // first: its effect is declared above). A command that moves focus itself (a tool tab, a file, a dialog, the Files tree's
   // filter) keeps it; one that moves nothing leaves focus on the opener (decision 95b).
   const pending = useRef<(() => void) | null>(null);
-  useEffect(() => {
-    if (state !== "closed") return;
+  const flushPending = useCallback(() => {
     const run = pending.current;
     pending.current = null;
     run?.();
-  }, [state]);
+  }, []);
+  useEffect(() => {
+    if (state === "closed") flushPending();
+  }, [state, flushPending]);
+  useEffect(() => flushPending, [flushPending]);
   const runAfterClose = useCallback(
     (fn: () => void) => () => {
       pending.current = fn;
@@ -228,9 +232,32 @@ export function CommandPalette(props: {
   }, [bridge, openId, filesOnly, contentOnly, searchNeedle, fileSearchActive]);
 
   const groups = useMemo<Group[]>(() => {
-    const now = Date.now();
     const go = runAfterClose;
-    const q = query.trim();
+    const activeFileMatches = fileSearchActive && !contentOnly ? fileMatches : [];
+    const activeContentMatches = fileSearchActive && searchNeedle.length >= 2 ? contentMatches : [];
+    const fileRows: Item[] = activeFileMatches.map((m) => ({
+      id: `f:${m.folder}:${m.path}`,
+      label: m.path,
+      detail: openProject && openProject.folder_count > 1 ? m.folder : undefined,
+      filePath: m.path,
+      run: go(() => workspace?.api.openFile?.(m.folder, m.path)),
+    }));
+    const contentRows: Item[] = activeContentMatches.map((m, idx) => ({
+      id: `fc:${m.folder}:${m.path}:${m.line ?? 0}:${idx}`,
+      label: `${m.path}${m.line ? `:${m.line}` : ""}`,
+      detail: m.preview,
+      filePath: m.path,
+      run: go(() => workspace?.api.openFile?.(m.folder, m.path, m.line)),
+    }));
+    if (filesOnly) {
+      const only: Group[] = [
+        { title: "Files", items: fileRows },
+        { title: "Matches in files", items: contentRows },
+      ];
+      return only.filter((g) => g.items.length);
+    }
+    const now = Date.now();
+    const q = deferredQuery.trim();
     const pid = openId;
     const seen = new Set<string>();
     // The same request text of the same project is listed once (a repeated prompt is six rows otherwise).
@@ -391,29 +418,6 @@ export function CommandPalette(props: {
           navigate(h.project_id);
         }),
       }));
-    const activeFileMatches = fileSearchActive && !contentOnly ? fileMatches : [];
-    const activeContentMatches = fileSearchActive && searchNeedle.length >= 2 ? contentMatches : [];
-    const fileRows: Item[] = activeFileMatches.map((m) => ({
-      id: `f:${m.folder}:${m.path}`,
-      label: m.path,
-      detail: openProject && openProject.folder_count > 1 ? m.folder : undefined,
-      filePath: m.path,
-      run: go(() => workspace?.api.openFile?.(m.folder, m.path)),
-    }));
-    const contentRows: Item[] = activeContentMatches.map((m, idx) => ({
-      id: `fc:${m.folder}:${m.path}:${m.line ?? 0}:${idx}`,
-      label: `${m.path}${m.line ? `:${m.line}` : ""}`,
-      detail: m.preview,
-      filePath: m.path,
-      run: go(() => workspace?.api.openFile?.(m.folder, m.path, m.line)),
-    }));
-    if (filesOnly) {
-      const only: Group[] = [
-        { title: "Files", items: fileRows },
-        { title: "Matches in files", items: contentRows },
-      ];
-      return only.filter((g) => g.items.length);
-    }
     // Past requests come after the actions that match: a typed query that names an action finds the action first.
     const all: Group[] = q
       ? [
@@ -434,12 +438,12 @@ export function CommandPalette(props: {
         ];
     // Groups follow the quality of their best match (lib/match.ts: word-start before mid-word before loose).
     return rankGroups(
-      query,
+      deferredQuery,
       all.filter((g) => g.items.length),
       (g) => g.items.map((i) => `${i.label} ${i.search ?? i.detail ?? ""}`),
     );
   }, [
-    query,
+    deferredQuery,
     projects,
     openProject,
     orchestrators,
@@ -484,18 +488,18 @@ export function CommandPalette(props: {
   };
   useEffect(() => {
     // Focus comes in the mount's effects, before the render with the typed query: wait for the rows of that text.
-    if (typedEnter.current === null || typedEnter.current !== query) return;
+    if (typedEnter.current === null || typedEnter.current !== deferredQuery) return;
     typedEnter.current = null;
     flat[current]?.run();
-  });
+  }, [deferredQuery, flat, current]);
 
   useEffect(() => {
     if (fromPointer.current) {
       fromPointer.current = false;
       return;
     }
-    list.current?.querySelector(`#${CSS.escape(optionId(current))}`)?.scrollIntoView({ block: "nearest" });
-  });
+    list.current?.querySelector(`#${CSS.escape(`${baseId}-opt-${current}`)}`)?.scrollIntoView({ block: "nearest" });
+  }, [current, baseId]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (!flat.length) return;

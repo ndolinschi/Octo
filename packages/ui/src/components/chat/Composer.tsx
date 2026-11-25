@@ -41,7 +41,7 @@ import type { FileInputHandle } from "../primitives/FileInput";
 import { useAgentName } from "./agentName";
 import { errorCode as errorCodeOf, structuredError } from "../../lib/format";
 import type { SlashMenuHandle } from "./SlashMenu";
-import { argsOptional, disabledSlashCommands, OCTO_COMMAND_NAMES, octoCommandFor, slashQuery, type SlashRow } from "../../lib/slash";
+import { argsOptional, disabledSlashCommands, OCTO_COMMAND_NAMES, slashQuery, type SlashRow } from "../../lib/slash";
 import { preloadSlashRunner, useSlashCommands, useSlashRunner } from "./useSlash";
 import { pendingLine } from "../../lib/slashPending";
 import { useComposerText, type ComposerDraft } from "./useComposerText";
@@ -224,18 +224,19 @@ const ComposerView = forwardRef<ComposerHandle, ComposerProps>(function Composer
   };
 
   const modeChoose = props.mode?.choose;
+  const addAttachedFiles = attach.add;
   useImperativeHandle(
     handle,
     () => ({
       focus: () => area.current?.focus(),
       fill: (value) => place(value),
-      addFiles: (files) => attach.add(files),
+      addFiles: (files) => addAttachedFiles(files),
       refinePlan: () => {
         modeChoose?.("plan");
         area.current?.focus();
       },
     }),
-    [area, place, modeChoose, attach],
+    [area, place, modeChoose, addAttachedFiles],
   );
 
   const overlay = menu !== null || slash !== null || commentsOpen || chipOpen > 0 || sub !== null;
@@ -313,7 +314,9 @@ const ComposerView = forwardRef<ComposerHandle, ComposerProps>(function Composer
   const submit = async () => {
     if (!canSend) return;
     // An Octo command typed out in full runs here; an agent's is sent as typed (B11).
-    const octo = octoCommandFor(text, slashCommands, disabledSlash);
+    const octo = text.trimStart().startsWith("/")
+      ? await import("../../lib/slashCommands").then((m) => m.octoCommandFor(text, slashCommands, disabledSlash))
+      : null;
     if (octo?.command.name === "new") return runNew(octo.args, text);
     setStarted(null);
     if (octo && attach.files.length === 0) {

@@ -1,5 +1,4 @@
 import type { Agent, ProjectAttentionKind, ProjectState } from "@octo/agent-client";
-import { formatRelative, timeAgo } from "./format";
 
 /**
  * The project orchestrator's state as the sidebar, the header and Home show it (contract decision 23), derived
@@ -17,7 +16,7 @@ export type OrchestratorState =
 /** What waits for the user: the summary's `pending_approvals` / `pending_inputs`, or the live `project.attention` counts. */
 export type Waiting = { approvals: number; inputs: number };
 
-const byStart = (a: Agent, b: Agent) => Date.parse(a.started_at ?? a.created_at) - Date.parse(b.started_at ?? b.created_at) || a.id.localeCompare(b.id);
+export const byStart = (a: Agent, b: Agent) => Date.parse(a.started_at ?? a.created_at) - Date.parse(b.started_at ?? b.created_at) || a.id.localeCompare(b.id);
 
 /** Running sub-agents, oldest first (the order they were delegated). */
 export function runningAgents(agents: readonly Agent[]): Agent[] {
@@ -70,69 +69,6 @@ export function liveOrchestratorState(state: ProjectState, projectStatus: "idle"
     approvals: state.attention.approvals,
     inputs: state.attention.inputs,
   });
-}
-
-/** "Waiting for your approval", "Waiting for your answer" (a form), "Failed". */
-function needsLine(s: Extract<OrchestratorState, { kind: "needs" }>): string {
-  if (s.waiting === "approval") return "Waiting for your approval";
-  if (s.waiting === "input") return "Waiting for your answer";
-  return "Failed";
-}
-
-/**
- * The time a project row shows (B6: the sidebar and Home show the same one): since the orchestrator's last turn, else since the
- * project changed (`fallbackAt`, its `updated_at`); "new" for a project never started; null while it works.
- */
-export function projectWhen(s: OrchestratorState, now: number, fallbackAt?: string): string | null {
-  if (s.kind === "working") return null;
-  if (s.kind === "new") return "new";
-  const at = s.at ?? fallbackAt;
-  return at ? formatRelative(at, now) : null;
-}
-
-/**
- * One line: "Working, 3 agents", "Working", "Waiting for your approval", "Waiting for your answer", "Failed", "Idle, 2h ago",
- * "No requests yet" (no "·" joiners: craft rule). A failed turn says "Failed" (decision 53): the project is still in the
- * "Needs you" triage group, its ring the alert.
- */
-export function stateLine(s: OrchestratorState, now: number, fallbackAt?: string): string {
-  switch (s.kind) {
-    case "working":
-      return s.agents.length === 0 ? "Working" : `Working, ${s.agents.length} ${s.agents.length === 1 ? "agent" : "agents"}`;
-    case "needs":
-      return needsLine(s);
-    case "idle": {
-      const at = s.at ?? fallbackAt;
-      return at ? `Idle, ${timeAgo(at, now)}` : "Idle";
-    }
-    case "new":
-      return "No requests yet";
-  }
-}
-
-/**
- * The sidebar's project row (polish step 2, F1): every row is ONE line — state glyph, name, right-aligned meta — and the
- * meta says the one thing worth saying: idle → the time since its last turn ("1h"); working → "2 agents" when it has agents,
- * else nothing (the turning glyph says working); needs you (a failed turn, an approval or a form waiting) → the time; never
- * started → "new" (`projectWhen`, Home's time too). `full` is the whole sentence ("Working, 2 agents", "Waiting for your
- * approval", "Failed", "Idle, 1h ago", "No requests yet") for the tooltip and the accessible name;
- * the tone is carried once, by the glyph (decision 91k).
- */
-export function projectRowLines(s: OrchestratorState, now: number, fallbackAt?: string): { meta: string | null; full: string } {
-  const full = stateLine(s, now, fallbackAt);
-  if (s.kind === "working") return { meta: s.agents.length ? `${s.agents.length} ${s.agents.length === 1 ? "agent" : "agents"}` : null, full };
-  return { meta: projectWhen(s, now, fallbackAt), full };
-}
-
-/**
- * The agents of the orchestrator's latest turn (decision 34's team line): every sub-agent that started at or after the
- * orchestrator's last turn began, in start order. Empty before the first turn.
- */
-export function lastTeam(agents: readonly Agent[]): Agent[] {
-  const root = agents.find((a) => a.parent_id === null);
-  const since = root?.started_at ? Date.parse(root.started_at) : NaN;
-  if (Number.isNaN(since)) return [];
-  return agents.filter((a) => a.parent_id !== null && Date.parse(a.started_at ?? a.created_at) >= since).sort(byStart);
 }
 
 /** A role as people read it: the project's agent is always "Octo" (the harness stores "orchestrator"; the dictionary's name). */

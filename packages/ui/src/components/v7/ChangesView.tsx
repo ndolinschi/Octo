@@ -83,7 +83,8 @@ export function ChangesView(props: ChangesViewProps) {
     setShowDiff(true);
   };
   const sel = c.selected;
-  const commented = useMemo(() => (sel && props.commentsFor ? props.commentsFor(sel.file.folder, sel.file.path) : NONE), [sel, props]);
+  const commentsFor = props.commentsFor;
+  const commented = useMemo(() => (sel && commentsFor ? commentsFor(sel.file.folder, sel.file.path) : NONE), [sel, commentsFor]);
   const allKeys = useMemo(() => c.all.map((s) => rowKey(s.turnId, s.file)), [c.all]);
   const keptCount = useMemo(() => allKeys.filter((k) => kept.has(k)).length, [allKeys, kept]);
   const selKey = sel ? rowKey(sel.turnId, sel.file) : null;

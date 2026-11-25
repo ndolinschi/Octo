@@ -19,12 +19,17 @@ type FileViewValue = {
   focusTree(groupId?: string): void;
   /** True once for a focus request made in the last second: a tree column mounted by it takes focus. */
   takeFocusRequest(): boolean;
+};
+
+type FileFilterValue = {
   /** The Filter files text, shared by the project's file views (kept when the Files tab turns into a file's tab). */
   filter: string;
   setFilter(text: string): void;
 };
 
 export const { Provider: FileViewContextProvider, useRequired: useFileView } = createRequiredContext<FileViewValue>("useFileView");
+const { Provider: FileFilterContextProvider, useRequired: useFileFilter } = createRequiredContext<FileFilterValue>("useFileFilter");
+export { useFileFilter };
 
 /**
  * File-view preferences. Group ids are new on every load, so the per-group column state lives in memory for the session and
@@ -67,8 +72,13 @@ export function FileViewProvider({ projectId, children }: { projectId: string; c
     return fresh;
   }, []);
   const value = useMemo(
-    () => ({ column, setColumnOpen, setColumnWidth, focusTreeTick, focusTree, takeFocusRequest, filter, setFilter }),
-    [column, setColumnOpen, setColumnWidth, focusTreeTick, focusTree, takeFocusRequest, filter],
+    () => ({ column, setColumnOpen, setColumnWidth, focusTreeTick, focusTree, takeFocusRequest }),
+    [column, setColumnOpen, setColumnWidth, focusTreeTick, focusTree, takeFocusRequest],
   );
-  return <FileViewContextProvider value={value}>{children}</FileViewContextProvider>;
+  const filterValue = useMemo(() => ({ filter, setFilter }), [filter]);
+  return (
+    <FileViewContextProvider value={value}>
+      <FileFilterContextProvider value={filterValue}>{children}</FileFilterContextProvider>
+    </FileViewContextProvider>
+  );
 }

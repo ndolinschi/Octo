@@ -3,7 +3,7 @@ import { SETTING_IDS } from "@octo/agent-client";
 import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
 import { errorMessage, structuredError } from "../../lib/format";
-import { useCopy } from "../../lib/hooks";
+import { useCopy } from "../../lib/hooksMore";
 import { useActivity } from "../../state/activity";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";

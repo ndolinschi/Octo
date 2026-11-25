@@ -301,8 +301,7 @@ export function TabStrip(props: {
                 dragging={!drag ? null : drag.tab === tab ? (drag.attached ? "self-attached" : "self-detached") : "other"}
                 onPress={(e) => {
                   if (e.button !== 0) return;
-                  // Rendered before the drag measures anything: activating can widen an icon-only tab.
-                  flushSync(() => ws.activate(tab));
+                  ws.activate(tab);
                   pressTab(e, ws, tab, info.label);
                 }}
                 onClose={() => ws.requestClose([tab])}

@@ -1,9 +1,9 @@
 import { usePhone } from "../../lib/phone";
 import { quietFocus } from "../../lib/quietFocus";
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { cn } from "../../lib/cn";
 import { useCode } from "../../state/code";
-import { TREE_DEFAULT, TREE_MAX, TREE_MIN, useFileView } from "../../state/fileView";
+import { TREE_DEFAULT, TREE_MAX, TREE_MIN, useFileFilter, useFileView } from "../../state/fileView";
 import type { TabId } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { PanelFilters } from "../primitives/Panel";
@@ -19,7 +19,7 @@ import { FileTree, type FileTreeHandle } from "./FileTree";
  * The column resizes from its right edge (pointer, or ←/→ by 16 and Shift by 64 on the focused handle; double-click resets
  * to the default, 40% of the view: `lib/treeLayout`); width and shown/hidden are kept per group (`state/fileView`). Filtering walks the folders breadth-first (`indexFiles`).
  */
-export function TreeColumn(props: {
+export const TreeColumn = memo(function TreeColumn(props: {
   id: string;
   tab: TabId;
   groupId: string;
@@ -31,8 +31,10 @@ export function TreeColumn(props: {
 }) {
   const code = useCode();
   const fv = useFileView();
+  const { filter, setFilter } = useFileFilter();
+  const deferredFilter = useDeferredValue(filter);
   const ws = useWorkspace();
-  const { filter, setFilter } = fv;
+  const aside = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const tree = useRef<FileTreeHandle>(null);
   const { indexFiles, fileIndex } = code;
@@ -52,22 +54,24 @@ export function TreeColumn(props: {
     if (shown && ws.isVisible(props.tab) && takeFocusRequest() && !phone) quietFocus(input.current);
   }, [fv.focusTreeTick, ws, props.tab, takeFocusRequest, shown, phone]);
 
-  const onInputKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+  const onInputKey = useCallback((e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       tree.current?.focusFirst();
     }
-  };
+  }, []);
+  const onExitTop = useCallback(() => input.current?.focus(), []);
 
   return (
     <aside
+      ref={aside}
       id={props.id}
       aria-label="File tree"
       style={page ? undefined : { width }}
       inert={!shown}
       className={cn("flex flex-col bg-panel", page ? cn("absolute inset-0", !shown && "invisible") : "relative shrink-0 border-r border-line")}
     >
-      {!page && <ColumnHandle groupId={props.groupId} width={width} max={props.maxWidth} />}
+      {!page && <ColumnHandle groupId={props.groupId} width={width} max={props.maxWidth} aside={aside} />}
       <PanelFilters>
         <SearchField
           ref={input}
@@ -89,21 +93,22 @@ export function TreeColumn(props: {
             Searching folders…
           </p>
         )}
-        <FileTree ref={tree} folders={code.folders} filter={filter} onOpenFile={props.onOpenFile} onExitTop={() => input.current?.focus()} />
+        <FileTree ref={tree} folders={code.folders} filter={deferredFilter} onOpenFile={props.onOpenFile} onExitTop={onExitTop} />
       </div>
     </aside>
   );
-}
+});
 
 /**
  * 8px-wide handle centred on the column's right hairline: the shared `ResizeHandle` (drag, ←/→ 16, Shift 64). Double-click
  * goes back to the default, which follows the view's width (`lib/treeLayout`).
  */
-function ColumnHandle({ groupId, width, max }: { groupId: string; width: number; max: number }) {
+function ColumnHandle({ groupId, width, max, aside }: { groupId: string; width: number; max: number; aside: RefObject<HTMLElement | null> }) {
   const fv = useFileView();
   const start = useRef(width);
   const next = useRef(width);
-  const set = (w: number) => fv.setColumnWidth(groupId, Math.min(max, w));
+  const clamp = (w: number) => Math.max(TREE_MIN, Math.min(Math.min(max, TREE_MAX), Math.round(w)));
+  const commit = (w: number) => fv.setColumnWidth(groupId, clamp(w));
   return (
     <ResizeHandle
       label="Resize file tree"
@@ -116,11 +121,14 @@ function ColumnHandle({ groupId, width, max }: { groupId: string; width: number;
         next.current = width;
       }}
       onDrag={(_dx, total) => {
-        next.current = start.current + total;
+        next.current = clamp(start.current + total);
       }}
-      onFrame={() => set(next.current)}
-      onDragEnd={() => set(next.current)}
-      onKey={(dx) => set(width + dx)}
+      // Preview directly on the aside's inline width so dragging never re-renders WorkspaceProvider/Dock every frame.
+      onFrame={() => {
+        if (aside.current) aside.current.style.width = `${next.current}px`;
+      }}
+      onDragEnd={() => commit(next.current)}
+      onKey={(dx) => commit(width + dx)}
       onReset={() => fv.setColumnWidth(groupId, TREE_DEFAULT)}
       className="group/handle absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none focus-visible:shadow-none"
     >

@@ -290,15 +290,14 @@ export function WorkspaceProvider({
   const [runStatuses, setRunStatuses] = useState<WorkspaceValue["runStatuses"]>({});
 
   const narrow = !docked || !dockFits(layout.groups, dockWidth);
-  const fv = useFileView();
-  const { focusTree } = fv;
+  const { column: treeColumn, focusTree } = useFileView();
   const floors = useMemo(
     () =>
       groupFloors(layout.groups, dockWidth, (id) => {
-        const c = fv.column(id);
+        const c = treeColumn(id);
         return c.open ? Math.max(TREE_MIN, c.width) : 0;
       }),
-    [layout.groups, dockWidth, fv],
+    [layout.groups, dockWidth, treeColumn],
   );
   const floorsRef = useLatest(floors);
   const narrowRef = useLatest(narrow);
@@ -659,7 +658,7 @@ export function WorkspaceProvider({
         const known = state.sessions.list.find((x) => x.id === sessionId);
         if (known?.kind === "agent") {
           const from = L.groupOf(current, L.toolTab("sessions")) ?? L.chatGroupOf(current);
-          const room = !narrowRef.current && current.groups.length === 1 && dockWidth >= dockNeeds([...current.groups, { tabs: [] }]);
+          const room = !narrowRef.current && current.groups.length === 1 && widthRef.current >= dockNeeds([...current.groups, { tabs: [] }]);
           if (room) return commit(L.open(current, tab, { newAfter: from.id, size: from.size / 2 }));
           return commit(L.open(current, tab, { group: from.id }));
         }
@@ -709,7 +708,7 @@ export function WorkspaceProvider({
       },
       canSplitRight: (tab) => {
         const g = L.groupOf(layout, tab);
-        return !narrow && !!g && L.canSplit(layout, tab, g.id) && dockWidth >= dockNeeds([...layout.groups, { tabs: [] }]);
+        return !narrow && !!g && L.canSplit(layout, tab, g.id) && widthRef.current >= dockNeeds([...layout.groups, { tabs: [] }]);
       },
       splitRight: (tab) => {
         const g = L.groupOf(layoutRef.current, tab);
@@ -724,7 +723,7 @@ export function WorkspaceProvider({
         if (target.kind === "strip") return true;
         return (
           L.canSplit(layout, tab, target.group) &&
-          (from.tabs.length === 1 && from.id !== target.group ? true : dockWidth >= dockNeeds([...layoutRef.current.groups, { tabs: [] }]))
+          (from.tabs.length === 1 && from.id !== target.group ? true : widthRef.current >= dockNeeds([...layoutRef.current.groups, { tabs: [] }]))
         );
       },
       // A dropped tab keeps focus on its own button (the drag moved it: its old button is gone).
@@ -868,7 +867,6 @@ export function WorkspaceProvider({
     narrow,
     floors,
     floorsRef,
-    dockWidth,
     lastConversation,
     focusRequest,
     maximised,

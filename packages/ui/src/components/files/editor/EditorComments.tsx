@@ -1,7 +1,7 @@
 import { Plus } from "lucide-react";
 import { Glyph } from "../../primitives/Glyph";
 import type * as Monaco from "monaco-editor";
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useComments } from "../../../state/comments";
 import { linesLabel } from "../../../lib/comments";
@@ -56,7 +56,7 @@ export const EditorComments = memo(function EditorComments(props: {
 }) {
   const { editor, monaco, buffers, folder, path } = props;
   const store = useComments();
-  const comments = store.forFile(folder, path);
+  const comments = useMemo(() => store.forFile(folder, path), [store, folder, path]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [hoverLine, setHoverLine] = useState<number | null>(null);
   const hoverLineRef = useLatest(hoverLine);

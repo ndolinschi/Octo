@@ -49,6 +49,11 @@ export function useDrag(): DragState {
   return useSyncExternalStore(subscribe, () => current);
 }
 
+/** Boolean selector so containers (Dock) re-render only on drag start/end, not every pointermove. */
+export function useIsDragging(): boolean {
+  return useSyncExternalStore(subscribe, () => current !== null);
+}
+
 /** After a drop or a cancel, where the dragged tab was drawn, so its strip can let it settle into its slot. */
 let settle: { tab: TabId; left: number; ms: number } | null = null;
 export const setSettle = (s: { tab: TabId; left: number; ms: number }) => {

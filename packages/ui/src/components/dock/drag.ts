@@ -7,7 +7,7 @@ import type { WorkspaceValue } from "../../state/workspace/WorkspaceProvider";
  * `[data-tab-wrapper]` (`data-pinned` on the Orchestrator tab) and `[data-dock-body]`) is its own chunk, warmed after
  * the first paint and loaded by the first press at the latest.
  */
-export { dragStep, takeSettle, useDrag } from "./dragStore";
+export { dragStep, takeSettle, useDrag, useIsDragging } from "./dragStore";
 
 /**
  * Starts tracking a press on a tab: the pointer's data is read now, the tracking starts once its chunk is in. A press

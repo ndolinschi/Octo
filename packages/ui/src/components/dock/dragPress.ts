@@ -144,6 +144,9 @@ export function trackPress(p: Press, ws: WorkspaceValue, tab: TabId, label: stri
     document.documentElement.dataset.dragging = "";
     window.getSelection()?.removeAllRanges();
   };
+  let moveRaf = 0;
+  let pendingX = 0;
+  let pendingY = 0;
   const move = (ev: PointerEvent) => {
     if (ev.pointerId !== pointerId) return;
     if (!dragging) {
@@ -154,9 +157,20 @@ export function trackPress(p: Press, ws: WorkspaceValue, tab: TabId, label: stri
       begin();
     }
     ev.preventDefault();
-    update(ev.clientX, ev.clientY);
+    pendingX = ev.clientX;
+    pendingY = ev.clientY;
+    if (moveRaf === 0) {
+      moveRaf = requestAnimationFrame(() => {
+        moveRaf = 0;
+        update(pendingX, pendingY);
+      });
+    }
   };
   const end = (drop: boolean) => {
+    if (moveRaf !== 0) {
+      cancelAnimationFrame(moveRaf);
+      moveRaf = 0;
+    }
     window.removeEventListener("pointermove", move, true);
     window.removeEventListener("pointerup", up, true);
     window.removeEventListener("pointercancel", cancel, true);

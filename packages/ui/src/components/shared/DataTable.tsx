@@ -1,7 +1,8 @@
 import { Check, Copy } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { useCopy, useScrollFade } from "../../lib/hooks";
+import { useScrollFade } from "../../lib/hooks";
+import { useCopy } from "../../lib/hooksMore";
 import { FOLD_ROWS, numericColumns, toCsv, toMarkdown, type Table } from "../../lib/table";
 import { Button } from "../primitives/Button";
 import { Menu } from "../primitives/Menu";

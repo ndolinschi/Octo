@@ -1,7 +1,7 @@
 import type { RemoteStatus } from "@octo/agent-client";
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
-import { useCopy } from "../../lib/hooks";
+import { useCopy } from "../../lib/hooksMore";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { Notice } from "../primitives/Notice";

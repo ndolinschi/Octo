@@ -159,6 +159,7 @@ const MAX_ANSWERED_INPUTS = 200;
 const MAX_TURN_OUTCOMES = 200;
 
 function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  if (!(key in record)) return record;
   const { [key]: _removed, ...rest } = record;
   return rest;
 }
@@ -166,21 +167,23 @@ function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
 function omitKeys<T>(record: Record<string, T>, keys: ReadonlySet<string>): Record<string, T> {
   if (keys.size === 0) return record;
   const out: Record<string, T> = {};
+  let changed = false;
   for (const [k, v] of Object.entries(record)) {
-    if (!keys.has(k)) out[k] = v;
+    if (keys.has(k)) changed = true;
+    else out[k] = v;
   }
-  return out;
+  return changed ? out : record;
 }
 
 function capRecord<T>(record: Record<string, T>, max: number): Record<string, T> {
+  if (Object.keys(record).length <= max) return record;
   const entries = Object.entries(record);
-  if (entries.length <= max) return record;
   return Object.fromEntries(entries.slice(entries.length - max));
 }
 
 function capNumRecord<T>(record: Record<number, T>, max: number): Record<number, T> {
+  if (Object.keys(record).length <= max) return record;
   const entries = Object.entries(record);
-  if (entries.length <= max) return record;
   return Object.fromEntries(entries.slice(entries.length - max));
 }
 
@@ -206,7 +209,8 @@ function mergeMessages(existing: Message[], incoming: Message[]): Message[] {
 
 function addMessage(state: ProjectState, message: Message): ProjectState {
   const list = state.messages[message.agent_id] ?? [];
-  const next = list.some((m) => m.id === message.id) ? list : mergeMessages(list, [message]);
+  const last = list[list.length - 1];
+  const next = last === undefined || message.id > last.id ? [...list, message] : list.some((m) => m.id === message.id) ? list : mergeMessages(list, [message]);
   const streaming = message.role === "assistant" ? omitKey(state.streaming, message.agent_id) : state.streaming;
   return { ...state, messages: { ...state.messages, [message.agent_id]: next }, streaming };
 }

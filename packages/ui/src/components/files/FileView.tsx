@@ -1,12 +1,25 @@
 import { ArrowLeft, ArrowRight, ChevronRight, CodeXml, Ellipsis, PanelLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  Fragment,
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { cn } from "../../lib/cn";
 import { fileKey as fileKeyOf, splitKey, type FileKey } from "../../lib/files";
 import { middleTruncate } from "../../lib/format";
 import { crumbFloor, crumbName, fitCrumbs } from "../../lib/crumbs";
-import { useCopy } from "../../lib/hooks";
-import { useDelayedLoading } from "../../lib/hooksMore";
+import { useCopy, useDelayedLoading } from "../../lib/hooksMore";
 import { usePhone } from "../../lib/phone";
 import { useQuietOpen } from "../../lib/quietFocus";
 import { useApp } from "../../state/app";
@@ -39,6 +52,48 @@ import { useTreeShell } from "./useTreeShell";
 import { choiceCodec, PREFS, usePersistentState } from "../../lib/storage";
 import { slot } from "../../state/workspace/tabMemory";
 import { useTabMemory } from "../../state/workspace/useTabMemory";
+
+type CursorBus = {
+  get(): CursorPos | null;
+  set(pos: CursorPos | null): void;
+  subscribe(listener: () => void): () => void;
+};
+
+function createCursorBus(): CursorBus {
+  let current: CursorPos | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => current,
+    set: (pos) => {
+      if (current?.line === pos?.line && current?.column === pos?.column) return;
+      current = pos;
+      for (const l of listeners) l();
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+}
+
+const CursorPosButton = memo(function CursorPosButton({ bus, onGoToLine }: { bus: CursorBus; onGoToLine(): void }) {
+  const cursor = useSyncExternalStore(bus.subscribe, bus.get, bus.get);
+  if (!cursor) return null;
+  return (
+    <Button
+      variant="quiet"
+      size="xs"
+      data-cursor-pos
+      title="Go to line"
+      onClick={onGoToLine}
+      className="shrink-0 font-mono text-xs text-fg-3 tabular-nums hover:text-fg"
+    >
+      Ln {cursor.line}, Col {cursor.column}
+    </Button>
+  );
+});
 
 const autoSaveCodec = choiceCodec(["on", "off"] as const, "off");
 const AUTO_SAVE_DELAY_MS = 800;
@@ -209,11 +264,10 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
       />
     );
   }
-  const [cursor, setCursor] = useState<CursorPos | null>(null);
+  const [cursorBus] = useState(createCursorBus);
   const goToLineRef = useRef<(() => void) | null>(null);
-  const onCursor = useCallback((pos: CursorPos | null) => {
-    setCursor((prev) => (prev?.line === pos?.line && prev?.column === pos?.column ? prev : pos));
-  }, []);
+  const onCursor = useCallback((pos: CursorPos | null) => cursorBus.set(pos), [cursorBus]);
+  const onGoToLine = useCallback(() => goToLineRef.current?.(), []);
   const body = (
     <div className="relative h-full min-h-0">
       {fileKey !== null && (
@@ -287,18 +341,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
           )}
           {file?.modified && !saving && <span className={narrow ? "sr-only" : "shrink-0"}>Unsaved</span>}
         </span>
-        {fileKey && !narrow && cover === null && cursor && (
-          <Button
-            variant="quiet"
-            size="xs"
-            data-cursor-pos
-            title="Go to line"
-            onClick={() => goToLineRef.current?.()}
-            className="shrink-0 font-mono text-xs text-fg-3 tabular-nums hover:text-fg"
-          >
-            Ln {cursor.line}, Col {cursor.column}
-          </Button>
-        )}
+        {fileKey && !narrow && cover === null && <CursorPosButton bus={cursorBus} onGoToLine={onGoToLine} />}
         {fileKey && (
           <EditorStatus
             compact={compact}
@@ -429,7 +472,7 @@ const FILE_CHROME = CRUMB_PAD + 14 + 8;
  * `… › file`; the "…" crumb is a menu of what it hides. The file name is shortened once (in the middle) only when it
  * alone does not fit. The crumbs take the room the status and the buttons leave; they never push into them.
  */
-function Crumbs({ folder, path }: { folder: string; path: string }) {
+const Crumbs = memo(function Crumbs({ folder, path }: { folder: string; path: string }) {
   const code = useCode();
   const nav = useRef<HTMLElement>(null);
   const [room, setRoom] = useState<{ width: number; font: string } | null>(null);
@@ -520,7 +563,7 @@ function Crumbs({ folder, path }: { folder: string; path: string }) {
       </span>
     </nav>
   );
-}
+});
 
 /** The "…" crumb: a menu of the directories it stands for (each reveals itself in the tree). */
 function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string; path: string }[] }) {

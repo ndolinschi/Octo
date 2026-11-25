@@ -1,6 +1,7 @@
 import type { SlashCommands } from "@octo/agent-client";
 import { matchScore } from "./match";
-import { octoCommands, type SlashGroup, type SlashRow } from "./slash";
+import type { SlashGroup, SlashRow } from "./slash";
+import { octoCommands } from "./slashCommands";
 
 /** The menu's two groups (Octo commands, then the agent's under its name), filtered and ranked by `query`; unavailable rows stay, dimmed. */
 export function slashGroups(cmds: SlashCommands | null, query: string, disabled?: ReadonlySet<string>): { groups: SlashGroup[]; rows: SlashRow[] } {

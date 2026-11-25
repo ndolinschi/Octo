@@ -93,9 +93,46 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
     return () => cancelAnimationFrame(id);
   }, [theme]);
 
+  const applyProjects = useCallback((next: ProjectSummary[]) => {
+    setProjects((prev) => {
+      if (
+        prev &&
+        prev.length === next.length &&
+        prev.every((p, i) => {
+          const q = next[i];
+          return (
+            q !== undefined &&
+            p.id === q.id &&
+            p.name === q.name &&
+            p.description === q.description &&
+            p.status === q.status &&
+            p.folder_count === q.folder_count &&
+            p.agent_count === q.agent_count &&
+            p.updated_at === q.updated_at &&
+            p.needs_you === q.needs_you &&
+            p.pending_approvals === q.pending_approvals &&
+            p.pending_inputs === q.pending_inputs &&
+            p.attention === q.attention &&
+            p.sessions?.total === q.sessions?.total &&
+            p.sessions?.running === q.sessions?.running &&
+            p.sessions?.queued === q.sessions?.queued &&
+            p.sessions?.needs_you === q.sessions?.needs_you &&
+            p.sessions?.failed === q.sessions?.failed &&
+            p.error?.message === q.error?.message &&
+            p.error?.hint === q.error?.hint &&
+            p.error?.action === q.error?.action
+          );
+        })
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
+
   const refreshProjects = useCallback(async () => {
     try {
-      setProjects(await withDeadline(bridge.listProjects()));
+      applyProjects(await withDeadline(bridge.listProjects()));
     } catch (e) {
       // Health polling reports connectivity; a refused token or an unreadable list only shows here (`/health` needs no token).
       // P2-4: the health loop then checks again at once and keeps retrying with backoff until the list reads.
@@ -107,7 +144,7 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
         setAttempt((n) => n + 1);
       }
     }
-  }, [bridge]);
+  }, [bridge, applyProjects]);
 
   const refreshConfig = useCallback(async () => {
     try {
@@ -141,7 +178,7 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
         if (first) {
           const [list, cfg] = await first;
           if (cancelled) return;
-          setProjects(list);
+          applyProjects(list);
           setConfig(cfg);
         }
         failures.current = 0;

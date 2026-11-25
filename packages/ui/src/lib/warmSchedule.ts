@@ -1,4 +1,4 @@
-import { warm } from "./warm";
+import { hasUnwarmed, warm } from "./warm";
 
 /**
  * When the lazy surfaces' chunks are warmed (`lib/warm` holds what they are): on idle once the shell has settled, one per idle
@@ -23,8 +23,8 @@ export const browserIdle = (run: () => void, timeout = 4000): (() => void) => {
     const id = window.requestIdleCallback(run, { timeout });
     return () => window.cancelIdleCallback(id);
   }
-  // WebKit has no idle callback: a timer long enough to land after the first paint's work.
-  const id = window.setTimeout(run, 300);
+  // WebKit has no idle callback: short yield between already-settled idle chunks (shell wait handles first paint).
+  const id = window.setTimeout(run, timeout <= 500 ? 120 : 60);
   return () => window.clearTimeout(id);
 };
 
@@ -61,6 +61,7 @@ function intentKey(target: EventTarget | null): string | undefined {
  */
 export function installIntentWarming(doc: Document): () => void {
   const onIntent = (e: Event) => {
+    if (!hasUnwarmed()) return;
     const key = intentKey(e.target);
     if (key) void warm(key);
   };

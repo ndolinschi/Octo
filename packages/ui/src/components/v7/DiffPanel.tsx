@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, ChevronDown, ChevronUp, CornerDownRight, ExternalLink, Pilcrow, Undo2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { memo, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { kindLabel, kindLetter, splitPath, type DiffLayout } from "../../lib/v7/changes";
@@ -22,7 +22,7 @@ const KIND_TONE = { A: "text-ok", M: "text-fg-3", D: "text-err" } as const;
  * The right side of the changes view: a 40px row like the file view's breadcrumb (back on narrow panes, the file,
  * counts, prev / next, whitespace, Open file, Keep, Revert), any revert outcome, then the diff or why there is none.
  */
-export function DiffPanel(props: {
+export const DiffPanel = memo(function DiffPanel(props: {
   selection: Selection;
   diff: DiffState;
   row: RowState | undefined;
@@ -186,7 +186,7 @@ export function DiffPanel(props: {
       </div>
     </div>
   );
-}
+});
 
 function Banner({ tone, action, children }: { tone: "ok" | "err"; action?: ReactNode; children: ReactNode }) {
   return (

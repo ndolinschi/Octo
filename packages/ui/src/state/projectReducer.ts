@@ -28,6 +28,7 @@ import {
 
 export type Action =
   | { type: "event"; event: BridgeEvent }
+  | { type: "events"; events: readonly BridgeEvent[] }
   | { type: "agents"; agents: Agent[] }
   | { type: "messages"; agentId: string; messages: Message[] }
   | { type: "notes"; notes: Note[] }
@@ -51,6 +52,11 @@ export function projectReducer(state: ProjectState, action: Action): ProjectStat
   switch (action.type) {
     case "event":
       return applyEvent(state, action.event);
+    case "events": {
+      let next = state;
+      for (const e of action.events) next = applyEvent(next, e);
+      return next;
+    }
     case "agents":
       return withAgents(state, action.agents);
     case "messages":
@@ -59,7 +65,11 @@ export function projectReducer(state: ProjectState, action: Action): ProjectStat
       return withNotes(state, action.notes);
     case "waits": {
       // Merged with what events brought while the lists were read (one asked meanwhile is not dropped).
-      const merge = <T extends { id: string }>(read: T[], live: readonly T[]) => [...read, ...live.filter((x) => !read.some((r) => r.id === x.id))];
+      const merge = <T extends { id: string }>(read: T[], live: readonly T[]) => {
+        if (!live.length) return read;
+        const ids = new Set(read.map((r) => r.id));
+        return [...read, ...live.filter((x) => !ids.has(x.id))];
+      };
       const a = action.approvals ? withApprovals(state, merge(action.approvals, state.approvals)) : state;
       return action.inputs ? withInputs(a, merge(action.inputs, a.inputs)) : a;
     }

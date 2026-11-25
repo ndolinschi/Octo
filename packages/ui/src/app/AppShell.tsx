@@ -13,7 +13,6 @@ import { useApp } from "../state/app";
 import { useHost } from "../state/host";
 import { NavProvider, useNav } from "../state/nav";
 import { ProjectProvider } from "../state/project";
-import { RequestsProvider } from "../state/requests";
 import { ShellContext } from "../state/shell";
 import { useTabFlags } from "../state/tabFlags";
 import { Presence } from "../components/primitives/Presence";
@@ -86,11 +85,9 @@ const PhoneChrome = lazy(() => import("./phone/PhoneChrome"));
 export function AppShell() {
   return (
     <NavProvider>
-      <RequestsProvider>
-        <ActivityProvider>
-          <Shell />
-        </ActivityProvider>
-      </RequestsProvider>
+      <ActivityProvider>
+        <Shell />
+      </ActivityProvider>
     </NavProvider>
   );
 }
@@ -359,18 +356,25 @@ function Shell() {
     tree,
   };
 
-  const actions: PaletteAction[] = [
-    { id: "home", label: "Go to Home", run: () => navigate(null) },
-    { id: "new", label: "New project", run: newProject },
-    { id: "settings", label: "Open settings", run: () => openSettings() },
-    { id: "integrations", label: "Open integrations", run: () => openSettings("integrations") },
-    { id: "providers", label: "Connect a provider", run: () => openSettings("providers") },
-    { id: "sidebar", label: "Toggle sidebar", run: toggleSidebar },
-  ];
+  const actions = useMemo<PaletteAction[]>(
+    () => [
+      { id: "home", label: "Go to Home", run: () => navigate(null) },
+      { id: "new", label: "New project", run: newProject },
+      { id: "settings", label: "Open settings", run: () => openSettings() },
+      { id: "integrations", label: "Open integrations", run: () => openSettings("integrations") },
+      { id: "providers", label: "Connect a provider", run: () => openSettings("providers") },
+      { id: "sidebar", label: "Toggle sidebar", run: toggleSidebar },
+    ],
+    // Stable handlers derived from setters/refs within Shell.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [drawerMode, drawerOpen],
+  );
+  const shellValue = useMemo(() => ({ sidebarOpen, toggleSidebar, openConnect }), [sidebarOpen, drawerMode, drawerOpen]);
+  const statusSlotsValue = useMemo(() => ({ start: statusStart, end: statusEnd }), [statusStart, statusEnd]);
 
   return (
-    <ShellContext.Provider value={{ sidebarOpen, toggleSidebar, openConnect }}>
-      <StatusSlotsContext.Provider value={{ start: statusStart, end: statusEnd }}>
+    <ShellContext.Provider value={shellValue}>
+      <StatusSlotsContext.Provider value={statusSlotsValue}>
         <div data-app-root data-offline={health === "offline" || undefined} className="relative flex h-full flex-col overflow-clip bg-window text-fg">
           {/* Decision 67: the top row is the window's, 40px across it: the controls float over its left corner and, with a project
             open, the tab strips of the dock groups are the row. Home and Settings have the bare row (and Settings its title). */}

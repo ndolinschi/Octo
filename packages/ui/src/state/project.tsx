@@ -219,6 +219,38 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
 
   useEffect(() => {
     let opened = false;
+    // Observer-only events leave `ProjectState` unchanged (`reduce` returns `state`): skipping `dispatch` avoids
+    // cloning `ProjectState` and re-rendering the entire workspace on `command.output`, `file.changed`, etc.
+    const OBSERVER_ONLY = new Set<BridgeEvent["type"]>([
+      "project.updated",
+      "workspace.updated",
+      "file.changed",
+      "review.updated",
+      "review.list_updated",
+      "review.workspace",
+      "command.started",
+      "command.output",
+      "command.finished",
+      "settings.changed",
+      "context.updated",
+      "side.tool",
+    ]);
+    // Coalesce high-frequency streaming deltas into one reducer pass per animation frame.
+    let pending: BridgeEvent[] = [];
+    let raf = 0;
+    const flush = () => {
+      if (raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+      if (!pending.length) return;
+      const batch = pending;
+      pending = [];
+      dispatch({ type: "events", events: batch });
+    };
+    const isStreamDelta = (t: BridgeEvent["type"]) =>
+      t === "message.delta" || t === "message.thinking_delta" || t === "side.delta" || t === "side.thinking" || t === "agent.activity" || t === "tool.updated";
+
     const unsubscribe = bridge.subscribe(projectId, {
       onOpen: () => {
         setLive("live");
@@ -232,7 +264,15 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
         probe();
       },
       onEvent: (event) => {
-        dispatch({ type: "event", event });
+        if (!OBSERVER_ONLY.has(event.type)) {
+          if (isStreamDelta(event.type)) {
+            pending.push(event);
+            if (!raf) raf = requestAnimationFrame(flush);
+          } else {
+            flush();
+            dispatch({ type: "event", event });
+          }
+        }
         if (event.type === "project.updated") setProject(event.project);
         if (event.type === "message.steered") setSteered((s) => [...s, event.text]);
         if (event.type === "conversation.rewound") {
@@ -259,7 +299,11 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       },
     });
     void syncAll();
-    return unsubscribe;
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      pending = [];
+      unsubscribe();
+    };
     // `epoch`: a new subscription (and a full re-read) when the polled summary and the stream disagree.
   }, [bridge, projectId, syncAll, refreshProjects, refreshConfig, showSession, probe, epoch, stateRef]);
 
@@ -293,6 +337,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
 
   const orchestrator = project ? state.agents[project.orchestrator_agent_id] : undefined;
   const running = orchestrator?.status === "running" || (project?.status === "running" && !orchestrator);
+  const runningRef = useLatest(running);
   const parallel = hasParallelSessions(state);
   // Any session at work (the polled summary's `running` means that since parallel sessions).
   const anyRunning = parallel ? Object.values(state.agents).some((a) => a.parent_id === null && a.status === "running") || running : running;
@@ -308,6 +353,121 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
     return () => window.clearTimeout(id);
   }, [disagree]);
 
+  // Stable action callbacks: kept out of `value`'s volatile `state` deps so `onEvent`, `ensureMessages`, `send`,
+  // `cancel`, `update`, etc. keep referential identity across streaming tokens (preventing effect churn and HTTP storms).
+  const ensureMessages = useCallback(
+    (agentId: string) => {
+      if (!loaded.current.has(agentId)) void fetchMessages(agentId);
+    },
+    [fetchMessages],
+  );
+  const send = useCallback<ProjectValue["send"]>(
+    async (text, opts) => {
+      const busy = runningRef.current;
+      // While a turn runs the harness queues the message (`queue.updated` shows it); `sendMessage` would refuse it.
+      // A message with its own mode goes the same way: only `sendOrQueueMessage` carries one.
+      if ((busy || opts) && bridge.sendOrQueueMessage) {
+        if (!busy) dispatch({ type: "clearTurn" });
+        const sent = await bridge.sendOrQueueMessage(projectId, text, opts);
+        if (sent.message) dispatch({ type: "messages", agentId: sent.message.agent_id, messages: [sent.message] });
+        if (!busy) void refreshProjects();
+        return;
+      }
+      dispatch({ type: "clearTurn" });
+      const message = await bridge.sendMessage(projectId, text);
+      dispatch({ type: "messages", agentId: message.agent_id, messages: [message] });
+      void refreshProjects();
+    },
+    [bridge, projectId, refreshProjects, runningRef],
+  );
+  const cancel = useCallback(() => bridge.cancelTurn(projectId), [bridge, projectId]);
+  const sendIn = useCallback<ProjectValue["sendIn"]>(
+    async (sessionId, text, opts) => {
+      const cur = stateRef.current;
+      const root = sessionRoot(cur, sessionId);
+      const busy = root !== "" && cur.agents[root]?.status === "running";
+      if (!busy) dispatch({ type: "clearTurn", sessionId });
+      const sent = await bridge.sendSessionMessage(projectId, sessionId, text, opts);
+      if (sent.message) dispatch({ type: "messages", agentId: sent.message.agent_id, messages: [sent.message] });
+      if (!busy) void refreshProjects();
+      return sent;
+    },
+    [bridge, projectId, refreshProjects, stateRef],
+  );
+  const cancelIn = useCallback<ProjectValue["cancelIn"]>(
+    async (sessionId) => {
+      await bridge.stopSession(projectId, sessionId);
+    },
+    [bridge, projectId],
+  );
+  const applyRewind = useCallback<ProjectValue["applyRewind"]>(
+    (messageId, label, root) => dispatch({ type: "rewound", messageId, label, at: new Date().toISOString(), ...(root ? { root } : {}) }),
+    [],
+  );
+  const update = useCallback<ProjectValue["update"]>(
+    async (patch) => {
+      const next = await bridge.updateProject(projectId, patch);
+      setProject(next);
+      void refreshProjects();
+      return next;
+    },
+    [bridge, projectId, refreshProjects],
+  );
+  const createNote = useCallback<ProjectValue["createNote"]>(
+    async (input) => {
+      const doc = await bridge.createNote(projectId, input);
+      dispatch({ type: "notes", notes: [...stateRef.current.notes.filter((n) => n.id !== doc.id), listed(doc)] });
+      return doc;
+    },
+    [bridge, projectId, stateRef],
+  );
+  const updateNote = useCallback<ProjectValue["updateNote"]>(
+    async (id, patch) => {
+      const doc = await bridge.updateNote(projectId, id, patch);
+      dispatch({ type: "notes", notes: stateRef.current.notes.map((n) => (n.id === id ? listed(doc) : n)) });
+      return doc;
+    },
+    [bridge, projectId, stateRef],
+  );
+  const deleteNote = useCallback<ProjectValue["deleteNote"]>(
+    async (id) => {
+      await bridge.deleteNote(projectId, id);
+      dispatch({ type: "notes", notes: stateRef.current.notes.filter((n) => n.id !== id) });
+    },
+    [bridge, projectId, stateRef],
+  );
+  const askSide = useCallback<ProjectValue["askSide"]>(
+    async (text) => {
+      dispatch({ type: "sideAsked", started: await bridge.askSide(projectId, text) });
+    },
+    [bridge, projectId],
+  );
+  const loadSide = useCallback<ProjectValue["loadSide"]>(async () => {
+    dispatch({ type: "side", messages: await bridge.listSide(projectId) });
+  }, [bridge, projectId]);
+  const clearSide = useCallback<ProjectValue["clearSide"]>(async () => {
+    await bridge.clearSide(projectId);
+    dispatch({ type: "sideCleared" });
+  }, [bridge, projectId]);
+  const applySession = useCallback<ProjectValue["applySession"]>(
+    (change) => {
+      if (change.kind === "upsert") dispatch({ type: "event", event: { type: "session.updated", seq: 0, session: change.session } });
+      else if (change.kind === "remove")
+        for (const id of change.ids) dispatch({ type: "event", event: { type: "session.updated", seq: 0, session_id: id, deleted: true } });
+      else {
+        dispatch({ type: "event", event: { type: "session.current", seq: 0, session_id: change.id, previous_session_id: change.previous } });
+        showSession(change.id);
+      }
+    },
+    [showSession],
+  );
+  const onEvent = useCallback<ProjectValue["onEvent"]>((listener) => {
+    observers.current.add(listener);
+    return () => {
+      observers.current.delete(listener);
+    };
+  }, []);
+
   const value = useMemo<ProjectValue>(
     () => ({
       projectId,
@@ -320,87 +480,52 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       running,
       parallel,
       reload: syncAll,
-      ensureMessages: (agentId) => {
-        if (!loaded.current.has(agentId)) void fetchMessages(agentId);
-      },
-      send: async (text, opts) => {
-        // While a turn runs the harness queues the message (`queue.updated` shows it); `sendMessage` would refuse it.
-        // A message with its own mode goes the same way: only `sendOrQueueMessage` carries one.
-        if ((running || opts) && bridge.sendOrQueueMessage) {
-          if (!running) dispatch({ type: "clearTurn" });
-          const sent = await bridge.sendOrQueueMessage(projectId, text, opts);
-          if (sent.message) dispatch({ type: "messages", agentId: sent.message.agent_id, messages: [sent.message] });
-          if (!running) void refreshProjects();
-          return;
-        }
-        dispatch({ type: "clearTurn" });
-        const message = await bridge.sendMessage(projectId, text);
-        dispatch({ type: "messages", agentId: message.agent_id, messages: [message] });
-        void refreshProjects();
-      },
-      cancel: () => bridge.cancelTurn(projectId),
-      sendIn: async (sessionId, text, opts) => {
-        const root = sessionRoot(state, sessionId);
-        const busy = root !== "" && state.agents[root]?.status === "running";
-        if (!busy) dispatch({ type: "clearTurn", sessionId });
-        const sent = await bridge.sendSessionMessage(projectId, sessionId, text, opts);
-        if (sent.message) dispatch({ type: "messages", agentId: sent.message.agent_id, messages: [sent.message] });
-        if (!busy) void refreshProjects();
-        return sent;
-      },
-      cancelIn: async (sessionId) => {
-        await bridge.stopSession(projectId, sessionId);
-      },
+      ensureMessages,
+      send,
+      cancel,
+      sendIn,
+      cancelIn,
       steered,
-      applyRewind: (messageId, label, root) => dispatch({ type: "rewound", messageId, label, at: new Date().toISOString(), ...(root ? { root } : {}) }),
-      update: async (patch) => {
-        const next = await bridge.updateProject(projectId, patch);
-        setProject(next);
-        void refreshProjects();
-        return next;
-      },
-      createNote: async (input) => {
-        const doc = await bridge.createNote(projectId, input);
-        dispatch({ type: "notes", notes: [...state.notes.filter((n) => n.id !== doc.id), listed(doc)] });
-        return doc;
-      },
-      updateNote: async (id, patch) => {
-        const doc = await bridge.updateNote(projectId, id, patch);
-        dispatch({ type: "notes", notes: state.notes.map((n) => (n.id === id ? listed(doc) : n)) });
-        return doc;
-      },
-      deleteNote: async (id) => {
-        await bridge.deleteNote(projectId, id);
-        dispatch({ type: "notes", notes: state.notes.filter((n) => n.id !== id) });
-      },
-      askSide: async (text) => {
-        dispatch({ type: "sideAsked", started: await bridge.askSide(projectId, text) });
-      },
-      loadSide: async () => {
-        dispatch({ type: "side", messages: await bridge.listSide(projectId) });
-      },
-      clearSide: async () => {
-        await bridge.clearSide(projectId);
-        dispatch({ type: "sideCleared" });
-      },
-      applySession: (change) => {
-        if (change.kind === "upsert") dispatch({ type: "event", event: { type: "session.updated", seq: 0, session: change.session } });
-        else if (change.kind === "remove")
-          for (const id of change.ids) dispatch({ type: "event", event: { type: "session.updated", seq: 0, session_id: id, deleted: true } });
-        else {
-          dispatch({ type: "event", event: { type: "session.current", seq: 0, session_id: change.id, previous_session_id: change.previous } });
-          showSession(change.id);
-        }
-      },
-      onEvent: (listener) => {
-        observers.current.add(listener);
-        return () => {
-          observers.current.delete(listener);
-        };
-      },
+      applyRewind,
+      update,
+      createNote,
+      updateNote,
+      deleteNote,
+      askSide,
+      loadSide,
+      clearSide,
+      applySession,
+      onEvent,
       kept: reads,
     }),
-    [projectId, project, loadFailures, synced, state, live, running, parallel, syncAll, fetchMessages, bridge, steered, showSession, refreshProjects, reads],
+    [
+      projectId,
+      project,
+      loadFailures,
+      synced,
+      state,
+      live,
+      running,
+      parallel,
+      syncAll,
+      ensureMessages,
+      send,
+      cancel,
+      sendIn,
+      cancelIn,
+      steered,
+      applyRewind,
+      update,
+      createNote,
+      updateNote,
+      deleteNote,
+      askSide,
+      loadSide,
+      clearSide,
+      applySession,
+      onEvent,
+      reads,
+    ],
   );
 
   return <ProjectContextProvider value={value}>{children}</ProjectContextProvider>;

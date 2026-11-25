@@ -1,6 +1,6 @@
 import { ArrowUp, MessageSquare, Sparkles, X } from "lucide-react";
 import type * as Monaco from "monaco-editor";
-import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { chatMention, selectedLines } from "../../../lib/chatMention";
 import { visibleComposer } from "../../../lib/focus";
 import { useLatest } from "../../../lib/hooks";
@@ -44,7 +44,12 @@ function anchorFor(editor: Monaco.editor.IStandaloneCodeEditor, line: number, co
  * - `Mod+G`: triggers Monaco's Go to Line widget on both macOS and Linux/Windows.
  * - Floating selection pill above non-empty selections (`Add to chat`, `Edit`, `Comment`).
  */
-export function EditorActionLayer(props: { editor: Monaco.editor.IStandaloneCodeEditor; monaco: MonacoApi; path: string; readOnly?: boolean }) {
+export const EditorActionLayer = memo(function EditorActionLayer(props: {
+  editor: Monaco.editor.IStandaloneCodeEditor;
+  monaco: MonacoApi;
+  path: string;
+  readOnly?: boolean;
+}) {
   const { editor, monaco, path, readOnly = false } = props;
   const [selectionBar, setSelectionBar] = useState<{ mention: string; anchor: Anchor } | null>(null);
   const [inlineEdit, setInlineEdit] = useState<InlineEditTarget | null>(null);
@@ -136,16 +141,23 @@ export function EditorActionLayer(props: { editor: Monaco.editor.IStandaloneCode
 
   // Track non-empty selection to position the subtle floating pill above it.
   useEffect(() => {
-    const update = () => {
+    let hasSelection = false;
+    let raf = 0;
+    const clearBar = () => setSelectionBar((prev) => (prev === null ? prev : null));
+    const compute = () => {
+      raf = 0;
       if (inlineOpenRef.current) {
-        setSelectionBar(null);
+        hasSelection = false;
+        clearBar();
         return;
       }
       const sel = editor.getSelection();
       if (!sel || sel.isEmpty() || (!canAddToChat() && (readOnlyRef.current || !canSubmitToChat()))) {
-        setSelectionBar(null);
+        hasSelection = false;
+        clearBar();
         return;
       }
+      hasSelection = true;
       const lines = selectedLines({
         startLine: sel.startLineNumber,
         startColumn: sel.startColumn,
@@ -154,22 +166,41 @@ export function EditorActionLayer(props: { editor: Monaco.editor.IStandaloneCode
       });
       const anchor = anchorFor(editor, sel.startLineNumber, sel.startColumn, BAR_HEIGHT, 240);
       if (!anchor) {
-        setSelectionBar(null);
+        clearBar();
         return;
       }
-      setSelectionBar({ mention: chatMention(pathRef.current, lines), anchor });
+      const mention = chatMention(pathRef.current, lines);
+      setSelectionBar((prev) =>
+        prev && prev.mention === mention && prev.anchor.top === anchor.top && prev.anchor.left === anchor.left ? prev : { mention, anchor },
+      );
     };
-    const subSel = editor.onDidChangeCursorSelection(update);
-    const subScroll = editor.onDidScrollChange(update);
+    const schedule = () => {
+      if (raf === 0) raf = requestAnimationFrame(compute);
+    };
+    const subSel = editor.onDidChangeCursorSelection(schedule);
+    const subScroll = editor.onDidScrollChange(() => {
+      if (hasSelection) schedule();
+    });
     const subModel = editor.onDidChangeModel(() => {
-      setSelectionBar(null);
+      hasSelection = false;
+      if (raf !== 0) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+      clearBar();
       setInlineEdit(null);
     });
     const subBlur = editor.onDidBlurEditorText(() => {
+      hasSelection = false;
+      if (raf !== 0) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
       // Allow clicking the pill buttons (which preventDefault on mousedown) without flicker.
-      setSelectionBar(null);
+      clearBar();
     });
     return () => {
+      if (raf !== 0) cancelAnimationFrame(raf);
       subSel.dispose();
       subScroll.dispose();
       subModel.dispose();
@@ -281,4 +312,4 @@ export function EditorActionLayer(props: { editor: Monaco.editor.IStandaloneCode
       )}
     </>
   );
-}
+});

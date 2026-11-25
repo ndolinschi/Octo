@@ -4,7 +4,8 @@ import { recheckAgent } from "../../lib/providers/recheck";
 import { startFailureOf } from "../../lib/startFailure";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
-import { providerIdOf, useAgentName, useLoginHint } from "./agentName";
+import { useAgentName } from "./agentName";
+import { providerIdOf, useLoginHint } from "./loginHint";
 import { TurnBanner } from "./Transcript";
 
 /**

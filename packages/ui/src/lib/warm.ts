@@ -16,6 +16,11 @@ export function registerWarm(key: string, load: Loader): void {
   else loaders.set(key, [load]);
 }
 
+/** Whether any registered warm key has not yet been started (lets pointerover skip DOM traversal once warmed). */
+export function hasUnwarmed(): boolean {
+  return started.size < loaders.size;
+}
+
 /** Starts `key`'s loaders once; a failed load is forgotten so the next intent (or the real open) tries again. */
 export function warm(key: string): Promise<unknown> {
   const list = loaders.get(key);

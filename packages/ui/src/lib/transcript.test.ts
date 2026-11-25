@@ -3,7 +3,8 @@ import type { ContentBlock, Message } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SPAWN_TOOL } from "./tools";
-import { buildTurns, latestReply, promptText, requestSummaries, showRail } from "./transcript";
+import { buildTurns, promptText, requestSummaries, showRail } from "./transcript";
+import { latestReply } from "./latestReply";
 import {
   turnDurationMs,
   compactionSlots,

@@ -65,23 +65,31 @@ function Scoped(props: { sessionId: string | null; keyed: boolean; onFollow?: ((
   const scopedApp = useMemo(() => (active ? { ...app, bridge: scopedBridge } : app), [active, app, scopedBridge]);
   const scopedState = useMemo(() => (active ? scopeState(state, sid) : state), [active, state, sid]);
   const { sendIn, cancelIn, onEvent, applyRewind } = base;
+  const scopedProject = useMemo(() => (project ? { ...project, orchestrator_agent_id: root } : null), [project, root]);
+  const scopedSend = useMemo(
+    () => async (text: string, opts?: Parameters<typeof base.send>[1]) => {
+      await sendIn(sid, text, opts);
+    },
+    [sendIn, sid],
+  );
+  const scopedCancel = useMemo(() => () => cancelIn(sid), [cancelIn, sid]);
+  const scopedRewind = useMemo(() => (messageId: number, label: string) => applyRewind(messageId, label, root || undefined), [applyRewind, root]);
+  const scopedOnEvent = useMemo(() => (listener: Parameters<typeof base.onEvent>[0]) => onEvent((e) => eventInSession(e, sid) && listener(e)), [onEvent, sid]);
   const value = useMemo(
     () =>
       !active
         ? base
         : {
             ...base,
-            project: project ? { ...project, orchestrator_agent_id: root } : null,
+            project: scopedProject,
             state: scopedState,
             running,
-            send: async (text: string, opts?: Parameters<typeof base.send>[1]) => {
-              await sendIn(sid, text, opts);
-            },
-            cancel: () => cancelIn(sid),
-            applyRewind: (messageId: number, label: string) => applyRewind(messageId, label, root || undefined),
-            onEvent: (listener: Parameters<typeof base.onEvent>[0]) => onEvent((e) => eventInSession(e, sid) && listener(e)),
+            send: scopedSend,
+            cancel: scopedCancel,
+            applyRewind: scopedRewind,
+            onEvent: scopedOnEvent,
           },
-    [active, base, project, root, scopedState, running, sendIn, cancelIn, applyRewind, onEvent, sid],
+    [active, base, scopedProject, scopedState, running, scopedSend, scopedCancel, scopedRewind, scopedOnEvent],
   );
   const keyed = props.keyed;
   const scope = useMemo<SessionScopeValue | null>(

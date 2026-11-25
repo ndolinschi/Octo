@@ -89,11 +89,15 @@ export function trackScrollAnchor(scroller: HTMLElement, itemSelector: string): 
     return { top: r.top, bottom: r.bottom, empty: r.width === 0 && r.height === 0 };
   };
   const remember = () => {
+    atEnd = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 2;
+    if (atEnd) {
+      anchor = null;
+      return;
+    }
     const edge = top();
     items ??= [...scroller.querySelectorAll(itemSelector)];
     const el = pickAnchor(items, boxOf, edge, (a, b) => a.contains(b), parentOf);
     anchor = el ? { el, offset: el.getBoundingClientRect().top - edge } : null;
-    atEnd = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 2;
   };
   remember();
   let settleUntil = 0;

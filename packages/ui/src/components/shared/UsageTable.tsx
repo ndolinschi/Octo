@@ -2,7 +2,7 @@ import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { formatTokens } from "../../lib/format";
-import { useCopy } from "../../lib/hooks";
+import { useCopy } from "../../lib/hooksMore";
 import { costCellShort } from "../../lib/usage/costCell";
 import { costCellText, usageCsv, usageTotals, type RoleRow, type UsageRow, type UsageTotals } from "../../lib/usage/model";
 import { Button } from "../primitives/Button";

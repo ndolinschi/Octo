@@ -1,11 +1,11 @@
 import type { Bridge, ProjectSummary } from "@octo/agent-client";
-import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { requestTitle } from "../lib/comments";
-import { latestReply, promptText } from "../lib/transcript";
+import { latestReply } from "../lib/latestReply";
+import { promptText } from "../lib/transcript";
 import { Limiter } from "./activity";
 import { useApp } from "./app";
 import { errorMessage } from "../lib/format";
-import { createRequiredContext } from "../lib/context";
 
 /** One user message of a project's orchestrator thread. */
 /** `session_id`: the main session the request was made in (parallel sessions), when the harness says. */
@@ -78,12 +78,18 @@ class RequestStore {
   }
 }
 
-const { Provider: RequestsContextProvider, useRequired: useRequestStore } = createRequiredContext<RequestStore>("useRequestStore");
+const stores = new WeakMap<Bridge, RequestStore>();
 
-export function RequestsProvider({ children }: { children: ReactNode }) {
+function useRequestStore(): RequestStore {
   const { bridge } = useApp();
-  const store = useMemo(() => new RequestStore(bridge), [bridge]);
-  return <RequestsContextProvider value={store}>{children}</RequestsContextProvider>;
+  return useMemo(() => {
+    let store = stores.get(bridge);
+    if (!store) {
+      store = new RequestStore(bridge);
+      stores.set(bridge, store);
+    }
+    return store;
+  }, [bridge]);
 }
 
 /** Several projects' requests and latest replies at once (Home), loading every one of them; entries are null until loaded. */

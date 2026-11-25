@@ -3,7 +3,8 @@ import { Button } from "../primitives/Button";
 import { memo, Suspense, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useCopy, useScrollFade } from "../../lib/hooks";
+import { useScrollFade } from "../../lib/hooks";
+import { useCopy } from "../../lib/hooksMore";
 import { isShellLang, queueTerminalCommand } from "../../state/terminalRun";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { InlineCode } from "./FileLink";
@@ -92,8 +93,9 @@ function CodeBlock({ children }: { children?: ReactNode }) {
     check();
     const ro = new ResizeObserver(check);
     ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => ro.disconnect();
-  }, [code]);
+  }, []);
   useEffect(() => {
     if (!sent) return;
     const id = window.setTimeout(() => setSent(false), 1500);
@@ -111,6 +113,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
               size="xs"
               icon={sent ? Check : Play}
               data-run-code
+              data-warm="tool:terminal"
               title="Run in terminal"
               onClick={() => {
                 queueTerminalCommand(code);
@@ -157,13 +160,15 @@ function rehypeNumericColumns() {
       if (n.type === "element" && n.tagName === "table") {
         const rows = [...elements(n, "thead"), ...elements(n, "tbody")].flatMap((g) => elements(g, "tr"));
         const body = elements(n, "tbody").flatMap((g) => elements(g, "tr"));
-        const width = Math.max(0, ...rows.map((r) => [...elements(r, "td"), ...elements(r, "th")].length));
+        const rowCells = rows.map((r) => [...elements(r, "th"), ...elements(r, "td")]);
+        const bodyCells = body.map((r) => elements(r, "td"));
+        const width = Math.max(0, ...rowCells.map((c) => c.length));
         for (let col = 0; col < width; col++) {
-          const cells = body.map((r) => elements(r, "td")[col]).filter((c): c is HastNode => c !== undefined);
+          const cells = bodyCells.map((r) => r[col]).filter((c): c is HastNode => c !== undefined);
           const texts = cells.map((c) => hastText(c).trim());
           if (!texts.some((t) => /\d/.test(t)) || !texts.every((t) => NUMERIC_CELL.test(t))) continue;
-          for (const r of rows) {
-            const cell = [...elements(r, "th"), ...elements(r, "td")][col];
+          for (const rc of rowCells) {
+            const cell = rc[col];
             if (cell) cell.properties = { ...cell.properties, className: [...((cell.properties?.className as string[] | undefined) ?? []), "octo-num"] };
           }
         }

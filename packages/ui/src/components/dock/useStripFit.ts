@@ -48,11 +48,15 @@ export function useStripFit(list: RefObject<HTMLElement | null>, room: number, s
         return next;
       });
     };
-    // Also when the list's own box changes: fonts arriving and a tab's title changing both move the natural widths.
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
+    // Natural widths depend on tab titles (`signature`) and loaded fonts, not the strip's container width.
     measure();
-    return () => ro.disconnect();
+    let alive = true;
+    void document.fonts?.ready.then(() => {
+      if (alive) measure();
+    });
+    return () => {
+      alive = false;
+    };
   }, [list, signature]);
   // What every tab would take unconstrained (gaps included); 0 until each has been measured once.
   let wanted = 0;

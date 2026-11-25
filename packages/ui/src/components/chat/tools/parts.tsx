@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { cn } from "../../../lib/cn";
 import { resolveFolder, type FilePosition } from "../../../lib/files";
-import { useCopy } from "../../../lib/hooks";
+import { useCopy } from "../../../lib/hooksMore";
 import { locateInProject } from "../../../lib/toolsMore";
 import { callTimes } from "../../../lib/toolView";
 import type { ToolUse } from "../../../lib/transcript";

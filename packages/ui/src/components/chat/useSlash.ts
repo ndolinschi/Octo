@@ -13,6 +13,7 @@ import { useInlineNotes } from "./notesContext";
 export function preloadSlashRunner(): void {
   // A failed fetch is retried by the real `import()` when a command runs, which reports it.
   void import("./slashRun").catch(() => undefined);
+  void import("../../lib/slashCommands").catch(() => undefined);
 }
 
 /** The commands of the open project (`getSlashCommands`), refetched on `slash_commands.updated`; null until known or without the endpoint. */

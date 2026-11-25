@@ -1,4 +1,5 @@
 import { Check, Undo2 } from "lucide-react";
+import { memo } from "react";
 import type { FileChangeSummary, TurnChanges } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { filesChanged, kindLabel, kindLetter, rowKey, sourceLabel, splitPath } from "../../lib/v7/changes";
@@ -17,7 +18,7 @@ const KIND_TONE = { A: "text-ok", M: "text-fg-3", D: "text-err" } as const;
  * "Revert turn", then one 32px `ListRow` per file — kind letter, name, muted folder path, source, `+a −r`. The selected
  * row is `aria-current`.
  */
-export function TurnFiles(props: {
+export const TurnFiles = memo(function TurnFiles(props: {
   turn: TurnChanges;
   label: string;
   selectedKey: string | null;
@@ -78,9 +79,9 @@ export function TurnFiles(props: {
       </ul>
     </section>
   );
-}
+});
 
-function FileRow({
+const FileRow = memo(function FileRow({
   file,
   selected,
   kept,
@@ -136,4 +137,4 @@ function FileRow({
       }
     />
   );
-}
+});

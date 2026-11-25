@@ -61,9 +61,11 @@ export function useComposerText(draft: ComposerDraft | undefined) {
     if (!el || SIZED_BY_CSS) return;
     el.style.height = "0px";
     const cs = getComputedStyle(el);
-    el.style.height = `${fitHeight(el.scrollHeight, cs.lineHeight, cs.minHeight, cs.maxHeight)}px`;
+    const raw = el.scrollHeight;
+    const h = fitHeight(raw, cs.lineHeight, cs.minHeight, cs.maxHeight);
+    el.style.height = `${h}px`;
     // Scrolls once the text is taller than the box it got (the phone caps it lower than ten lines: CSS max-height).
-    el.style.overflowY = el.scrollHeight > el.clientHeight + 1 ? "auto" : "hidden";
+    el.style.overflowY = raw > h + 1 ? "auto" : "hidden";
   }, []);
   useLayoutEffect(fit, [text, fit]);
   useEffect(() => {

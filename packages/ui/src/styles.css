@@ -482,7 +482,7 @@
 
 /* Pressed state for rows and tabs: the hover tint layered over whatever fill the row has. */
 @utility press-row {
-  transition-property: background-color, color, box-shadow;
+  transition-property: background-color, color;
   transition-duration: var(--motion-fast);
   transition-timing-function: ease-out;
   -webkit-tap-highlight-color: transparent;
@@ -570,15 +570,9 @@
   }
 }
 
-/* T2: an idle project row shows its time where the sessions chevron appears (hover, focus, open, touch): the time gives way. */
-[data-project-row]:has(> [data-sessions-toggle]):is(:hover, :focus-within) [data-project-meta],
-[data-project-row]:has(> [data-sessions-toggle][aria-expanded="true"]) [data-project-meta] {
-  visibility: hidden;
-}
-@media (pointer: coarse), (max-width: 767.98px) {
-  [data-project-row]:has(> [data-sessions-toggle]) [data-project-meta] {
-    visibility: hidden;
-  }
+/* Isolate layout and style recalculation per file-tree row for snappy filtering and selection. */
+[role="tree"] > [role="treeitem"] {
+  contain: layout style;
 }
 
 /* Decision 96: the sidebar tree's row actions (a project's "+" and chevron, a session's "⋯") appear on hover and focus, where
@@ -883,6 +877,10 @@
   color: var(--octo-fg);
   overflow-wrap: anywhere;
   text-wrap: pretty;
+}
+/* Pause multi-line optimal wrapping while tokens stream in; snaps to pretty once streaming finishes. */
+.octo-prose[data-streaming] {
+  text-wrap: wrap;
 }
 .octo-prose > :first-child {
   margin-top: 0;
@@ -1259,50 +1257,7 @@
   contain: strict;
   transform: translateZ(0);
 }
-.octo-card {
-  isolation: isolate;
-}
-/* Surfaces over the streak (Home cards, the project list): the panel at 85% (decision 32 asks 72%; see below; light 80%) with a 12px
-   blur and a little saturation, so the band reads through; a 1px `line-strong` edge and a 1px inner top highlight.
-   Opaque panel where backdrop filters are unsupported and under forced colours. */
-.octo-card {
-  background: var(--octo-panel);
-  border: 1px solid var(--octo-line-strong);
-  box-shadow: inset 0 1px 0 var(--octo-card-highlight);
-}
-:root,
-:root:not([data-theme="light"]) {
-  /* 72% (decision 32) left 12px fg-3 at 3.4–3.6:1 where the core passes behind a card: raised to 85% (measured
-     ≥ 4.5 at the worst pixel; decision 21b: raise the surface before dimming the band). */
-  --octo-card-alpha: 85%;
-  --octo-card-highlight: rgb(255 255 255 / 0.06);
-}
-:root[data-theme="light"] {
-  /* 80% left the Activity card's 12px fg-3 caption at 4.27:1 (1440) / 1.95:1 (1920) once Home's band ran full width
-     (live test 7): raised to 90%; the band still reads through every gap around the cards. */
-  --octo-card-alpha: 90%;
-  --octo-card-highlight: rgb(255 255 255 / 0.7);
-}
-/* Add. 8d: Safari before 18 knows only the prefixed property; both are in the condition and the rule (written by hand: the
-   build's prefixing is not relied on here). */
-@supports (backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px)) {
-  .octo-card {
-    background: color-mix(in srgb, var(--octo-panel) var(--octo-card-alpha), transparent);
-    -webkit-backdrop-filter: blur(12px) saturate(1.2);
-    backdrop-filter: blur(12px) saturate(1.2);
-  }
-}
-/* The project list holds the densest small text (12px fg-3 second lines): raised locally to 86% so it keeps ≥ 4.5:1
-   where the core passes behind it (decision 36; the band is never dimmed). */
-.octo-card-dense {
-  --octo-card-alpha: 88%;
-}
 @media (forced-colors: active) {
-  .octo-card {
-    background: Canvas;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
   /* The heat map, token bars and day charts keep their tones (they are data, not decoration). */
   [class*="octo-heat-"],
   [data-day] > span,
@@ -1982,16 +1937,7 @@
 [data-project-row] span:has(> [data-project-meta]:empty) {
   display: none;
 }
-[data-project-row]:has(> [data-sessions-toggle]):is(:hover, :focus-within) span:has(> [data-project-meta]:empty),
-[data-project-row]:has(> [data-sessions-toggle][aria-expanded="true"]) span:has(> [data-project-meta]:empty) {
-  display: block;
-}
-@media (pointer: coarse), (max-width: 767.98px) {
-  [data-project-row]:has(> [data-sessions-toggle]) span:has(> [data-project-meta]:empty) {
-    display: block;
-  }
-}
-[data-project-row]:not(:has(> [data-sessions-toggle])) [data-project-meta] {
+[data-project-row] [data-project-meta] {
   min-width: 0;
 }
 /* end cross-part leftovers */
@@ -2681,14 +2627,14 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 
 /* R2 checkpoints (owner's addition 11 b): "Restore to here" in a reply's footer is the reply's mark when it changed files
    (shown at all times), and appears on hover or focus under a reply that did not (on the phone: focus only, no hover). */
-article:not(:has([data-turn-changes])) [data-restore] {
+article:not(:has(> [data-turn-changes])) [data-restore] {
   opacity: 0;
   transition: opacity var(--motion-fast);
 }
-article:not(:has([data-turn-changes])):is(:hover, :focus-within) [data-restore] {
+article:not(:has(> [data-turn-changes])):is(:hover, :focus-within) [data-restore] {
   opacity: 1;
 }
-[data-phone] article:not(:has([data-turn-changes])):hover [data-restore]:not(:focus-visible) {
+[data-phone] article:not(:has(> [data-turn-changes])):hover [data-restore]:not(:focus-visible) {
   opacity: 0;
 }
 

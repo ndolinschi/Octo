@@ -1,5 +1,5 @@
 import { Check, FileDiff } from "lucide-react";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { requestChangesFocus } from "../../lib/changesFocus";
 import { filesChanged, rowKey } from "../../lib/v7/changes";
 import { useApp } from "../../state/app";
@@ -17,18 +17,19 @@ const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1) || p;
  * shows file count, `+a −r` totals, top filenames, "Review" (opens the Changes tab on that turn), and "Keep"
  * (marks the turn's files reviewed/kept and dismisses the bar). Lazy-loaded so it adds nothing to the entry bundle.
  */
-export function PendingChangesBar() {
+export const PendingChangesBar = memo(function PendingChangesBar() {
   const { bridge } = useApp();
   const { projectId, onEvent, reload } = useProject();
   const ws = useOptionalWorkspace();
   const entry = useMemo(() => turnChangesEntry(bridge, projectId), [bridge, projectId]);
-  const turns = useSyncExternalStore(
-    (l) => {
+  const subscribeEntry = useCallback(
+    (l: () => void) => {
       entry.listeners.add(l);
       return () => entry.listeners.delete(l);
     },
-    () => entry.data,
+    [entry],
   );
+  const turns = useSyncExternalStore(subscribeEntry, () => entry.data);
   const kept = useSyncExternalStore(subscribeKeptChanges, () => keptChangesSnapshot(projectId));
 
   useEffect(() => void loadTurnChanges(bridge, projectId, entry, reload), [bridge, projectId, entry, reload]);
@@ -75,6 +76,7 @@ export function PendingChangesBar() {
           <Button
             variant="quiet"
             size="xs"
+            data-warm="tool:changes"
             onClick={() => {
               requestChangesFocus({ turnId: latest.turn_id });
               ws?.openTool("changes");
@@ -89,4 +91,4 @@ export function PendingChangesBar() {
       </span>
     </div>
   );
-}
+});

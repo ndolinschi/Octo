@@ -1,5 +1,5 @@
 import type * as Monaco from "monaco-editor";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { MonacoApi } from "../../lib/buffers";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
@@ -23,7 +23,7 @@ let uriSeq = 0;
  * Monaco's diff editor for one change (v7 §1): read-only, unchanged regions folded, split or one column, whitespace
  * toggle. Changed lines flash their tone once per `flashKey` (decision 46). The modified side takes line comments.
  */
-export function DiffEditor(props: {
+export const DiffEditor = memo(function DiffEditor(props: {
   loadMonaco(): Promise<DiffMonaco>;
   theme: Theme;
   path: string;
@@ -54,6 +54,7 @@ export function DiffEditor(props: {
   const loading = useDelayedLoading(!failed && (!mod || diffing));
   const shownTexts = useRef<{ before: string; after: string } | null>(null);
   const { loadMonaco } = props;
+  const pathRef = useLatest(props.path);
   const firstLine = useLatest(props.onFirstLine);
   const goToLine = useLatest(props.onGoToLine);
   const phone = usePhone();
@@ -113,9 +114,15 @@ export function DiffEditor(props: {
     if (!editor) return;
     editor.updateOptions({ renderSideBySide: props.layout === "split", ignoreTrimWhitespace: props.ignoreWhitespace });
     // 7d: after the diff editor's own options (it hands each side its label again, empty, on every update).
+    editor.getOriginalEditor().updateOptions({ ariaLabel: `${pathRef.current}, before` });
+    editor.getModifiedEditor().updateOptions({ ariaLabel: `${pathRef.current}, after` });
+  }, [editor, props.layout, props.ignoreWhitespace, pathRef]);
+
+  useEffect(() => {
+    if (!editor) return;
     editor.getOriginalEditor().updateOptions({ ariaLabel: `${props.path}, before` });
     editor.getModifiedEditor().updateOptions({ ariaLabel: `${props.path}, after` });
-  }, [editor, props.layout, props.ignoreWhitespace, props.path]);
+  }, [editor, props.path]);
 
   // Models per shown text; URIs carry the path so Monaco picks the language from the extension.
   useEffect(() => {
@@ -206,4 +213,4 @@ export function DiffEditor(props: {
       )}
     </div>
   );
-}
+});

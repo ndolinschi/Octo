@@ -54,7 +54,10 @@ export function DiffComments(props: {
   useEffect(() => {
     const side = editor.getModifiedEditor();
     const hover = side.createDecorationsCollection([]);
-    const showPlus = (line: number | null) =>
+    let lastLine: number | null = null;
+    const showPlus = (line: number | null) => {
+      if (line === lastLine) return;
+      lastLine = line;
       hover.set(
         line === null
           ? []
@@ -65,6 +68,7 @@ export function DiffComments(props: {
               },
             ],
       );
+    };
     const move = side.onMouseMove((e) => showPlus(e.target.position?.lineNumber ?? null));
     const leave = side.onMouseLeave(() => showPlus(null));
     const down = side.onMouseDown((e) => {

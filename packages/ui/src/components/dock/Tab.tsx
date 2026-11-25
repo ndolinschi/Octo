@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
+import { memo, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import { cn } from "../../lib/cn";
 import { closable, type TabId } from "../../state/workspace/layout";
 import { domId } from "../../state/workspace/ids";
@@ -20,7 +20,7 @@ import type { TabInfo } from "./tabInfo";
  * is reserved, so hover and state changes never move anything; decision 90: in a short strip an inactive tab gives the place up
  * and its close button shows over the end of the title on hover and focus, still without a width change.
  */
-export function Tab(props: {
+export const Tab = memo(function Tab(props: {
   tab: TabId;
   info: TabInfo;
   selected: boolean;
@@ -157,4 +157,4 @@ export function Tab(props: {
       )}
     </div>
   );
-}
+});

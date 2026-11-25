@@ -1,8 +1,25 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
-import { LOADING_MIN_SHOWN_MS, LOADING_SHOW_AFTER_MS } from "./constants";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { COPY_FEEDBACK_MS, LOADING_MIN_SHOWN_MS, LOADING_SHOW_AFTER_MS } from "./constants";
 import { moveInList } from "./focus";
 
-/* Hooks only lazily loaded views use (lists, loading states): kept out of `hooks.ts`, which the entry chunk carries whole. */
+/* Hooks only lazily loaded views use (lists, loading states, copy feedback): kept out of `hooks.ts`, which the entry chunk carries whole. */
+
+export function useCopy(timeoutMs = COPY_FEEDBACK_MS): [boolean, (text: string) => void] {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback(
+    (text: string) => {
+      void navigator.clipboard?.writeText(text).then(
+        () => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), timeoutMs);
+        },
+        () => undefined,
+      );
+    },
+    [timeoutMs],
+  );
+  return [copied, copy];
+}
 
 /**
  * Whether to show a loading indicator for `loading`: never for loads under 200ms (no flash), and

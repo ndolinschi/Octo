@@ -1,5 +1,5 @@
 import { sessionRoot } from "@octo/agent-client";
-import { lazy, Suspense, useCallback, useState, type ComponentType } from "react";
+import { lazy, memo, Suspense, useCallback, useState, type ComponentType } from "react";
 import { readyLazy } from "../../lib/readyLazy";
 import { registerWarm } from "../../lib/warm";
 import { resolveSessionRoute } from "../../lib/route";
@@ -116,7 +116,7 @@ function ScopedDetailsPanel() {
 }
 
 /** The view behind a tab. The Files tab is the file view with no file open yet. */
-export function TabView({ tab }: { tab: TabId }) {
+export const TabView = memo(function TabView({ tab }: { tab: TabId }) {
   const { project } = useProject();
   const tabFlags = useTabFlags();
   const ref = parseTab(tab);
@@ -222,7 +222,7 @@ export function TabView({ tab }: { tab: TabId }) {
         </ToolView>
       );
   }
-}
+});
 
 function SessionsToolTab() {
   const ws = useOptionalWorkspace();

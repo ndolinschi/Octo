@@ -1,6 +1,6 @@
 import type { FileChangeSummary, TurnChanges as TurnChangeList } from "@octo/agent-client";
 import { FileDiff } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { chipKeyTarget } from "../../lib/chipKeys";
 import { useRovingRows } from "../../lib/rovingRows";
 import { errorMessage } from "../../lib/format";
@@ -28,13 +28,14 @@ function useTurnChanges(turnId: number): TurnChangeList | null {
   // `reload`: one per project view (a project shown again reads its changes again, painting what it had meanwhile).
   const { projectId, onEvent, reload } = useProject();
   const e = turnChangesEntry(bridge, projectId);
-  const data = useSyncExternalStore(
-    (l) => {
+  const subscribe = useCallback(
+    (l: () => void) => {
       e.listeners.add(l);
       return () => e.listeners.delete(l);
     },
-    () => e.data,
+    [e],
   );
+  const data = useSyncExternalStore(subscribe, () => e.data);
   useEffect(() => void loadTurnChanges(bridge, projectId, e, reload), [bridge, projectId, e, reload]);
   useEffect(
     () =>
@@ -79,7 +80,7 @@ const NAMED = 3;
 
 const VERB: Record<FileChangeSummary["kind"], string> = { created: "Added", deleted: "Deleted", modified: "Edited" };
 
-export function TurnChanges({ turnId }: { turnId: number }) {
+export const TurnChanges = memo(function TurnChanges({ turnId }: { turnId: number }) {
   const turn = useTurnChanges(turnId);
   const openChanges = useOpenChanges();
   const code = useOptionalCode();
@@ -169,9 +170,11 @@ export function TurnChanges({ turnId }: { turnId: number }) {
               {listed ? "Collapse all" : "Expand all"}
             </TextAction>
             {openChanges && (
-              <TextAction onClick={() => openChanges(turn.turn_id)} title="Open these changes; revert a file or all of them there">
-                Open changes
-              </TextAction>
+              <span data-warm="tool:changes" className="contents">
+                <TextAction onClick={() => openChanges(turn.turn_id)} title="Open these changes; revert a file or all of them there">
+                  Open changes
+                </TextAction>
+              </span>
             )}
           </span>
         </div>
@@ -205,7 +208,7 @@ export function TurnChanges({ turnId }: { turnId: number }) {
       )}
     </div>
   );
-}
+});
 
 const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1) || path;
 
@@ -235,7 +238,11 @@ function FileChange(props: { turnId: number; file: FileChangeSummary }) {
       }
       actions={
         <>
-          {openChanges && <TextAction onClick={() => openChanges(props.turnId, { folder: file.folder, path: file.path })}>Open diff</TextAction>}
+          {openChanges && (
+            <span data-warm="tool:changes" className="contents">
+              <TextAction onClick={() => openChanges(props.turnId, { folder: file.folder, path: file.path })}>Open diff</TextAction>
+            </span>
+          )}
           {goto && line !== null && <TextAction onClick={() => goto(line)}>Go to line {line}</TextAction>}
         </>
       }

@@ -8,6 +8,12 @@ const PresenceContext = createContext<PresenceState>("open");
 /** Every overlay exit in styles.css is `--motion-fast`. */
 const EXIT_MS = MOTION_FAST_MS;
 
+function instantExit(): boolean {
+  if (typeof document === "undefined") return false;
+  if (document.documentElement.dataset.input === "keyboard") return true;
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 /**
  * Keeps an overlay mounted for its exit animation. While `show` is false the last children stay
  * rendered for `exitMs` with `usePresence()` = "closed" (overlays set `data-state` and `inert` from
@@ -20,7 +26,7 @@ export function Presence({ show, children, exitMs = EXIT_MS }: { show: boolean; 
   // Derived from the previous render's `show`, so the exit starts in the same render (no unmount gap).
   if (show !== prevShow) {
     setPrevShow(show);
-    setLeaving(!show);
+    setLeaving(!show && exitMs > 0 && !instantExit());
   }
   if (show) last.current = children;
 

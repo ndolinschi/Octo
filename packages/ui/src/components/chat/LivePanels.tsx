@@ -1,5 +1,5 @@
 import type { PlanEntry } from "@octo/agent-client";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useTranscriptView } from "../../lib/transcriptView";
 import { ActivityRow } from "./ActivityRow";
 
@@ -9,7 +9,7 @@ import { ActivityRow } from "./ActivityRow";
  * `after`: a tool call or text already follows it, so it is done (no spinner) even while reasoning keeps streaming.
  * It is never stored: when the turn ends it goes, unless it was open (then the text read so far stays until closed).
  */
-export function ThinkingRow({ text, after = false }: { text: string; after?: boolean }) {
+export const ThinkingRow = memo(function ThinkingRow({ text, after = false }: { text: string; after?: boolean }) {
   const viewMode = useTranscriptView();
   const autoOpen = viewMode === "thinking" || viewMode === "verbose";
   const [override, setOverride] = useState<boolean | null>(null);
@@ -19,12 +19,21 @@ export function ThinkingRow({ text, after = false }: { text: string; after?: boo
     setOverride(null);
   }
   const open = override ?? autoOpen;
+  // Remember the last non-empty reasoning text only when the user kept the panel open after the turn ended.
   const [kept, setKept] = useState("");
-  if (open && text && kept !== text) setKept(text);
   const shown = text || (open ? kept : "");
+  const toggleOpen = (next: boolean) => {
+    if (next && text) setKept(text);
+    setOverride(next);
+  };
   if (!shown) return null;
   const running = Boolean(text) && !after;
-  const tail = shown.trimEnd().split("\n").pop() ?? "";
+  let tail = "";
+  if (!open) {
+    const trimmed = shown.trimEnd();
+    const nl = trimmed.lastIndexOf("\n");
+    tail = nl >= 0 ? trimmed.slice(nl + 1) : trimmed;
+  }
   return (
     <div data-thinking>
       <ActivityRow
@@ -32,13 +41,13 @@ export function ThinkingRow({ text, after = false }: { text: string; after?: boo
         verb={running ? "Thinking" : "Thought"}
         detail={open ? undefined : <span className="octo-thinking-tail">{tail}</span>}
         open={open}
-        onOpenChange={setOverride}
+        onOpenChange={toggleOpen}
       >
         <div className="max-h-60 overflow-y-auto overscroll-contain text-sm leading-5 whitespace-pre-wrap text-fg-3">{shown}</div>
       </ActivityRow>
     </div>
   );
-}
+});
 
 const DONE = (e: PlanEntry) => e.status === "completed";
 
