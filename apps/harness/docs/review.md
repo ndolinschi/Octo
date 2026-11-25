@@ -1,6 +1,6 @@
 # Pull-request review (RV1, harness)
 
-Contract: [`docs/superpowers/specs/2026-11-11-pr-review-design.md`](../../../docs/superpowers/specs/2026-11-11-pr-review-design.md). This page is what the harness does, with the exact API. Client types: `@octo/agent-client` (`review.ts`; every `Bridge` member is optional, HTTP bridge only). RV1 has no AI pass: findings can be stored and served but nothing produces them yet (RV3). RV1.5 adds the all-pull-requests list, existing threads, check out, project commands and the per-project review configuration (sections below and [`commands.md`](./commands.md)).
+This page is what the harness does, with the exact API. Client types: `@octo/agent-client` (`review.ts`; every `Bridge` member is optional, HTTP bridge only). RV1 has no AI pass: findings can be stored and served but nothing produces them yet (RV3). RV1.5 adds the all-pull-requests list, existing threads, check out, project commands and the per-project review configuration (sections below and [`commands.md`](./commands.md)).
 
 Code: `internal/review` (service), `internal/codehost` (interface and the `gh` adapter), `internal/gitx` (git runner, diff parsing), `internal/projectstore/reviews.go` + `migrate_v6_reviews.go` (tables), `internal/bridge/review.go` (routes), `internal/review/reviewtest` (test fixtures: a repository in a path with spaces and Cyrillic, a fake `gh`).
 

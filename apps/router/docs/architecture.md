@@ -47,7 +47,7 @@ flowchart TB
 src/
 ├── main.rs                 tracing + proxy::run (or export-delegations)
 ├── cli.rs                  --version, --help
-├── export.rs               octo export-delegations: delegation records as JSON lines for ml/
+├── export.rs               octo export-delegations: delegation records as JSON lines for export
 ├── lib.rs                  crate modules
 ├── config.rs               TOML merge
 ├── state.rs                AppState

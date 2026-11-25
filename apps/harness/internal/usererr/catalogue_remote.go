@@ -1,6 +1,6 @@
 package usererr
 
-// Remote access (docs/superpowers/specs/2026-11-14-remote-access-mobile-design.md): what the computer and a paired
+// Remote access (apps/harness/docs/remote-access.md): what the computer and a paired
 // phone are told. Codes are stable; the web client keys its "pair again" screen on the device_* ones.
 
 // CloudflaredMissing: remote access needs the cloudflared program and it is not on PATH (or the configured path).

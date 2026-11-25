@@ -6,8 +6,7 @@ independent**: it has its own root agent, conversation, turn slot, queue, approv
 several main sessions of one project can run turns at the same time, within the running caps. Exactly one main session is the
 **default**: it takes what is sent to the project without a session (`POST /messages` and the other project routes below).
 
-Specs: `docs/superpowers/specs/2026-11-12-project-sessions-design.md` (sessions as records) and
-`docs/superpowers/specs/2026-11-14-parallel-sessions-design.md` (parallel sessions; phase 1 is built, and a session can be moved into a new git worktree (`POST /sessions/{sid}/worktree`; its body is `{base_ref, carry_changes}`); no
+Parallel sessions and worktrees (phase 1 built; a session can be moved into a new git worktree (`POST /sessions/{sid}/worktree`; its body is `{base_ref, carry_changes}`); no
 coordination tools, every session's memory mode is `on`). Code: `internal/projectstore/{project_sessions,
 migrate_v13_sessions,migrate_v15_parallel_sessions,queue,session_settings}.go`, `internal/orchestrator/{orchestrator,queue,slots,
 sessions,clear,recover}.go`, `internal/project/{sessions,parallel}.go`, `internal/bridge/sessions.go`.

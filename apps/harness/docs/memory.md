@@ -1,6 +1,6 @@
 # Orchestrator memory (M1, M2, M4)
 
-Design: [`docs/superpowers/specs/2026-11-11-orchestrator-memory-design.md`](../../../docs/superpowers/specs/2026-11-11-orchestrator-memory-design.md). M1 is the store, the tools, the search and the API; M2 (below) is how the orchestrator's context is built from it, off by default (`memory.context: "full"`).
+M1 is the store, the tools, the search and the API; M2 (below) is how the orchestrator's context is built from it, off by default (`memory.context: "full"`).
 
 Code: `internal/memory` (service: limits, redaction, tools, digest, search shaping), `internal/projectstore/{tasks,search,memory_testing}.go` (SQL, FTS5), `internal/orchestrator/memory_tools.go` (tools, post-turn digest), `internal/project/memory.go` and `internal/bridge/memory.go` (API).
 
@@ -115,7 +115,7 @@ changed; the rest as "N more notes — use search_notes"), plus pinned notes who
 Tools: `read_note {id}`, `search_notes {query, limit?}`, `write_note {id?, title, description, body, tags?}` (refused in ask
 and plan modes). API: `GET/POST /v1/projects/{id}/notes`, `GET/PATCH/DELETE .../notes/{nid}`, `GET .../notes/{nid}/export`;
 create and update take fields or `markdown`; a parse error is a 400 with the line. Full contract: the M5 section of
-`docs/superpowers/specs/2026-11-11-orchestrator-memory-design.md`.
+this page.
 ## Sessions: what was asked and what was answered (M4)
 
 Code: `internal/projectstore/{sessions,migrate_v12_sessions}.go` (SQL, schema 12), `internal/memory/sessions.go` (service), `internal/orchestrator/exchanges.go` (the post-turn write), `internal/bridge/memory_sessions.go` (API).

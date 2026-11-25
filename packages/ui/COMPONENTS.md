@@ -3,7 +3,7 @@
 The component library as it is in `src/components/primitives` and `src/components/shared`, the design tokens of
 `src/styles.css`, the anatomy every tool tab follows, the UI decisions that bind how components are used, and how to add a
 tool tab or a card. Layers and import rules: [`ARCHITECTURE.md`](./ARCHITECTURE.md). Decisions in full:
-[`docs/superpowers/specs/2026-11-10-project-harness-ui.md`](../../docs/superpowers/specs/2026-11-10-project-harness-ui.md).
+`packages/ui/ARCHITECTURE.md` and this file.
 
 Built on 2026-11-22 from the source: the list of files, each file's header comment, and an import graph of
 `packages/ui/src`, `packages/agent-client/src`, `apps/desktop/src` and `apps/web/src` (a script that resolves every `import`,

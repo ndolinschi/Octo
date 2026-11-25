@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end check of the parity features (docs/superpowers/specs/2026-11-12-parity-backlog.md, B1-B7) against a
+# End-to-end check of the parity features (apps/harness/docs/parity.md, B1-B7) against a
 # real `harness serve`, driven only with curl: instruction files (B1), the edit / glob / web_fetch tools (B2) and
 # saved approval rules (B4). Mock model + scripted ACP agent + a local HTTP server; no network, no third-party agent CLI.
 # Needs Go and python3. Not part of CI.

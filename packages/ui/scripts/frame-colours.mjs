@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Frame-colour audit (contract: docs/superpowers/specs/2026-11-10-project-harness-ui.md, decision 81).
+ * Frame-colour audit (packages/ui/COMPONENTS.md tokens).
  *
  * A card that waits for the person has the neutral border of any card. In the demo states below (an approval, a form, a plan, a
  * queue, a failed turn, the review screens) no visible element may have a border, outline or ring whose colour is the warn, danger or accent token,

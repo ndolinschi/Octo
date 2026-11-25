@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Spacing audit (contract: docs/superpowers/specs/2026-11-10-project-harness-ui.md, "v6", decisions 1 and 2).
+ * Spacing audit (design tokens in packages/ui/COMPONENTS.md).
  *
  * Drives the running UI (demo data) with Playwright, walks the visible DOM and reports violations of the spacing
  * system. Exit code 1 when there are violations (or skipped states with --strict), 0 otherwise.

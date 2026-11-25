@@ -1,7 +1,7 @@
 # `@octo/web` — the phone's client
 
 The shared UI (`@octo/ui`) built as a static web app that the harness serves to a **paired phone** through remote access
-(spec: [`docs/superpowers/specs/2026-11-14-remote-access-mobile-design.md`](../../docs/superpowers/specs/2026-11-14-remote-access-mobile-design.md);
+(see [`../harness/docs/remote-access.md`](../harness/docs/remote-access.md);
 harness side: [`apps/harness/docs/remote-access.md`](../harness/docs/remote-access.md)). Wiring only; no Tauri.
 
 - `src/App.tsx`: the pairing screen until the computer allows this device, then `OctoApp` (`shell="web"`) on a bridge to

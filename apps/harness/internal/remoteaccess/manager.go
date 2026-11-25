@@ -1,5 +1,5 @@
 // Package remoteaccess is the harness's remote door for a paired phone
-// (docs/superpowers/specs/2026-11-14-remote-access-mobile-design.md): it runs Cloudflare's `cloudflared` quick
+// (see apps/harness/docs/remote-access.md): it runs Cloudflare's `cloudflared` quick
 // tunnel to a second, loopback-only listener, serves the mobile web app and pairing there, and lets requests that
 // carry an active device token through to the bridge API by an allow-list. The computer controls it through the
 // local routes of ControlHandler. Off after every start.

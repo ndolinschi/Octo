@@ -15,7 +15,7 @@ paths:
 Applies to `packages/ui`, `packages/agent-client`, `apps/desktop`. Architecture and the list of known debt:
 [`packages/ui/ARCHITECTURE.md`](../../packages/ui/ARCHITECTURE.md). Existing code breaks some of these rules; do not
 add new violations, and fix the ones in code you touch when the fix is small. Design rules (tokens, spacing,
-motion) are in `docs/superpowers/specs/2026-11-10-project-harness-ui.md` and are not repeated here.
+motion) are in `packages/ui/COMPONENTS.md` and `packages/ui/ARCHITECTURE.md` and are not repeated here.
 
 ## Module boundaries
 

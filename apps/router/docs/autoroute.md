@@ -186,7 +186,7 @@ flowchart TD
 
 ## Harness integration
 
-Integration I1 of [`docs/superpowers/specs/2026-11-11-router-harness-integration.md`](../../../docs/superpowers/specs/2026-11-11-router-harness-integration.md). The harness detects the router with `GET /health`, tells it what a request is for (hint headers), and reads back what the router did (result headers, the calls endpoint). Everything here applies to `/autoroute/v1/messages`; the hint headers are also read on `/autoroute/v1/chat/completions`.
+Harness integration (see [`../../harness/docs/architecture.md`](../../../apps/harness/docs/architecture.md#router-integration)). The harness detects the router with `GET /health`, tells it what a request is for (hint headers), and reads back what the router did (result headers, the calls endpoint). Everything here applies to `/autoroute/v1/messages`; the hint headers are also read on `/autoroute/v1/chat/completions`.
 
 ### Detection
 

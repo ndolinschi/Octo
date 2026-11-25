@@ -56,7 +56,7 @@ Upserted from last-user `tool_result` blocks that look like cargo / pytest / uni
 
 ## Delegation records
 
-Why: the learned-router thesis (`docs/superpowers/specs/2026-11-13-learned-router-design.md`) moves the routing decision to the delegation boundary, where a fresh context starts and nothing cached is lost. Training and evaluating a model for that decision needs, for every delegation, what was asked, what was chosen, what it cost and whether it worked. These two tables are that record; the router stores, the harness reports over HTTP ([autoroute.md](./autoroute.md#delegation-record-and-outcome)).
+Why: recording at the delegation boundary moves the routing decision to the delegation boundary, where a fresh context starts and nothing cached is lost. Training and evaluating a model for that decision needs, for every delegation, what was asked, what was chosen, what it cost and whether it worked. These two tables are that record; the router stores, the harness reports over HTTP ([autoroute.md](./autoroute.md#delegation-record-and-outcome)).
 
 ### `delegations` (one row per `POST /autoroute/v1/route` decision)
 
@@ -119,7 +119,7 @@ Known noise (none of it measured; all of it is why the label carries a rule and 
 
 ### Delegation export
 
-`octo export-delegations --out FILE.jsonl [--db PATH] [--redact]` (from `apps/router`, or the installed binary) opens the history database **read-only** (default: `history.database_path` of the configuration in `$OCTO_CONFIG` or `./config`) and writes one JSON line per delegation, oldest first. The label is recomputed at export time with the rule above. `--redact` writes `null` for the title and brief and keeps every derived feature. This file is what the ML pipeline in `apps/router/ml` reads. Schema `octo.delegation.v1`:
+`octo export-delegations --out FILE.jsonl [--db PATH] [--redact]` (from `apps/router`, or the installed binary) opens the history database **read-only** (default: `history.database_path` of the configuration in `$OCTO_CONFIG` or `./config`) and writes one JSON line per delegation, oldest first. The label is recomputed at export time with the rule above. `--redact` writes `null` for the title and brief and keeps every derived feature. This file is for offline analysis and was used during router research; nothing in the router binary loads a model from it. Schema `octo.delegation.v1`:
 
 ```json
 {

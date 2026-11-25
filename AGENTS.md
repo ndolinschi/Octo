@@ -23,10 +23,9 @@ This repository is an **apps-directory monorepo**. Applications live under `apps
   pnpm-workspace.yaml
   AGENTS.md               # this file
   ARCHITECTURE.md         # pointer to the architecture docs
-  docs/ARCHITECTURE.md    # the system overview: processes, parts, flows, module map, rules, env vars, status, specs index
+  docs/ARCHITECTURE.md    # the system overview: processes, parts, flows, module map, rules, env vars, status
   docs/SYSTEM.md          # the runtime view: start-up, failure modes, API by area, data model, limits, diagnostics
   docs/user-guide/        # end-user guide: install, first run, projects, approvals, remote access, privacy, troubleshooting, shortcuts
-  docs/superpowers/specs/ # design specs with "As built" notes
   apps/router/            # Octo proxy
   apps/harness/           # Go agent harness (own go.mod); scripts/ has the e2e scripts
   apps/desktop/           # Vite host + Tauri shell; src-tauri/sidecar is the octo-sidecar crate
@@ -90,7 +89,7 @@ the table in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md#environment-variabl
 
 ## Desktop + UI (pnpm)
 
-Design: [`docs/superpowers/specs/2026-11-10-project-harness-design.md`](./docs/superpowers/specs/2026-11-10-project-harness-design.md) (projects, bridge API) and [`2026-11-10-project-harness-ui.md`](./docs/superpowers/specs/2026-11-10-project-harness-ui.md) (UI). Rules: `.cursor/rules/octo-frontend.mdc`, `.cursor/rules/octo-typescript.mdc` (the same text for Claude: `.claude/rules/typescript.md`).
+Design: [`apps/harness/docs/architecture.md`](./apps/harness/docs/architecture.md) (harness bridge), [`packages/ui/ARCHITECTURE.md`](./packages/ui/ARCHITECTURE.md) and [`packages/ui/COMPONENTS.md`](./packages/ui/COMPONENTS.md) (UI). Rules: `.cursor/rules/octo-frontend.mdc`, `.cursor/rules/octo-typescript.mdc` (the same text for Claude: `.claude/rules/typescript.md`).
 
 Per-module instructions: [`packages/ui/AGENTS.md`](./packages/ui/AGENTS.md) (architecture: [`packages/ui/ARCHITECTURE.md`](./packages/ui/ARCHITECTURE.md)), [`packages/agent-client/AGENTS.md`](./packages/agent-client/AGENTS.md), [`apps/desktop/AGENTS.md`](./apps/desktop/AGENTS.md).
 
@@ -113,7 +112,7 @@ node packages/ui/scripts/spacing-audit.mjs --url http://localhost:1420   # needs
 
 The desktop app bundles the harness and the Octo router as Tauri sidecars and starts them itself (router first, only when
 switched on in `harness.env`; free loopback ports, login-shell `PATH`, `/health` waits, harness then router stopped on quit); see [`apps/desktop/AGENTS.md`](./apps/desktop/AGENTS.md). Packaging design:
-[`docs/superpowers/specs/2026-11-11-packaging-design.md`](./docs/superpowers/specs/2026-11-11-packaging-design.md).
+[`docs/user-guide/install.md`](./docs/user-guide/install.md) and [`apps/desktop/AGENTS.md`](./apps/desktop/AGENTS.md).
 
 The UI talks only to the harness bridge (`harness serve`, default `http://127.0.0.1:8790`; override with `VITE_HARNESS_BRIDGE_URL`). Open the app with `?demo=1` to run against the in-memory demo bridge with no backend.
 
@@ -121,16 +120,10 @@ The UI talks only to the harness bridge (`harness serve`, default `http://127.0.
 
 Do not share SQLite/config between harness, router, and desktop.
 
-## Docs, specs and working rules
+## Docs and working rules
 
-- `docs/ARCHITECTURE.md` is the overview and carries the specs index and the status table.
-- Specs (`docs/superpowers/specs/`) are contracts with numbered acceptance criteria; each ends with "As built" notes that say what
-  was verified and what was not. Current ones beyond the UI and harness design: `2026-11-10-subscription-agents-design.md`
-  (ACP agents, orchestrator on a subscription), `2026-11-10-v7-changes-queue-approvals.md`, `2026-11-11-router-harness-integration.md`,
-  `2026-11-11-packaging-design.md` (settings, sidecars, installer, R1), `2026-11-11-orchestrator-memory-design.md`,
-  `2026-11-11-inline-completion-design.md` (built on both sides: harness endpoint, editor provider; not verified with a real model), `2026-11-11-pr-review-design.md` (RV1 harness built; UI not built), `2026-11-11-bots-design.md` (draft).
-- A change that alters behaviour updates the spec's "As built" section (and the feature's page in `apps/harness/docs/` or the
-  app's docs) in the same commit. State what was run and what was not; "not verified" is a valid entry.
+- `docs/ARCHITECTURE.md` is the overview and carries the status table.
+- A change that alters behaviour updates the feature's page in `apps/harness/docs/`, `apps/router/docs/`, or the user guide in the same commit when the behaviour is user-visible.
 - No third-party agent CLI (Claude Code, Copilot, Grok, ...) and no provider key exists in the build environment: tests use the mock
   model (`examples/mockllm`), the scripted ACP agent (`examples/fakeacp`) and the fake router; anything that needs the real thing
   needs a manual live run.
