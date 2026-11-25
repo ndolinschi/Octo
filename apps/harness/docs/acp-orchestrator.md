@@ -2,7 +2,7 @@
 
 A project's orchestrator normally runs the harness's own Messages-API loop. It can instead run as an
 [ACP](https://agentclientprotocol.com) agent, for example Claude Code on a subscription through its ACP adapter. Design:
-[`../../../docs/superpowers/specs/2026-11-10-subscription-agents-design.md`](../../../docs/superpowers/specs/2026-11-10-subscription-agents-design.md) (section S2).
+[`providers.md`](./providers.md) and [`../plugins-examples/subscription-agents/README.md`](../plugins-examples/subscription-agents/README.md) (ACP agents).
 
 ## Set it
 

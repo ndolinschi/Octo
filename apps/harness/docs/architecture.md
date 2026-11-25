@@ -133,7 +133,7 @@ the module map of [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md#module-
 
 ## Project server
 
-Spec and HTTP/SSE contract: [`docs/superpowers/specs/2026-11-10-project-harness-design.md`](../../../docs/superpowers/specs/2026-11-10-project-harness-design.md).
+The HTTP/SSE bridge contract is described on this page and in [`../../packages/agent-client/AGENTS.md`](../../../packages/agent-client/AGENTS.md).
 
 ```mermaid
 flowchart LR
@@ -158,7 +158,7 @@ flowchart LR
 
 ### Plugins and ACP agents
 
-Specs: [`2026-11-10-workspace-plugins-acp-design.md`](../../../docs/superpowers/specs/2026-11-10-workspace-plugins-acp-design.md) §1-2. Examples and the manifest reference: [`plugins-examples/README.md`](../plugins-examples/README.md).
+See [`plugins-examples/README.md`](../plugins-examples/README.md). Examples and the manifest reference: [`plugins-examples/README.md`](../plugins-examples/README.md).
 
 Manifests are read once at startup from `{data-dir}/plugins/*/plugin.json` and every `--plugins-dir` / `HARNESS_PLUGINS_DIR` entry (a plugin directory, or a directory of them), then the embedded `subscription-agents` manifest (`plugins-examples/subscription-agents/embed.go`, `go:embed` of `plugin.json`; `Plugin.Builtin`, `"builtin": true`) unless `--no-builtin-plugins`: a directory plugin of the same name replaces it and an agent id already taken is skipped silently. `plugins.Load` validates names, required fields and ids (first plugin wins; later duplicates are listed in that plugin's `errors`), resolves commands (absolute as is, path separator = relative to the plugin dir, else `PATH`) and sets `available`. A broken manifest becomes an entry with `errors` and no capabilities. `toolServers` are registered on the shared remote registry (sub-agents only); a failure is logged and recorded in `errors`. `GET /v1/plugins` returns `{"plugins": [...]}` (commands, args and env are never exposed); there is no write endpoint. `languageServers` are parsed and exposed (`Registry.LanguageServers`, `LanguageServer(id)`); they are started by the language-server relay below.
 
@@ -201,7 +201,7 @@ and per project `shadow/` and `secrets.json`. Each database is opened with WAL, 
 
 ### File API
 
-Design: [`docs/superpowers/specs/2026-11-10-code-pane-design.md`](../../../docs/superpowers/specs/2026-11-10-code-pane-design.md). `folder` is a folder label, `path` is relative to it (`""` = root, forward slashes). Paths are confined exactly like the agents' file tools: traversal, absolute paths and symlink escape give `400 invalid_request`; an unknown project or folder gives `404 not_found`.
+`folder` is a folder label, `path` is relative to it (`""` = root, forward slashes). Paths are confined exactly like the agents' file tools: traversal, absolute paths and symlink escape give `400 invalid_request`; an unknown project or folder gives `404 not_found`.
 
 | Method | Path | Result |
 | --- | --- | --- |
@@ -295,7 +295,7 @@ Set `ANTHROPIC_API_KEY` to the key the upstream expects (OpenRouter bearer or An
 
 ### Working with the Octo router
 
-Spec: [`2026-11-11-router-harness-integration.md`](../../../docs/superpowers/specs/2026-11-11-router-harness-integration.md) (I1). Code: `internal/router` (detection, hint headers, result headers, call records, spend), `internal/agent/route.go` and `compact.go` (the request path), `internal/budget` (spend), `internal/orchestrator/route.go` (hints, budget gate). Tests use `internal/fakerouter`, a contract-level fake; `scripts/e2e-router.sh` runs the same flows against a real router and a mock upstream.
+Code: `internal/router` (detection, hint headers, result headers, call records, spend), `internal/agent/route.go` and `compact.go` (the request path), `internal/budget` (spend), `internal/orchestrator/route.go` (hints, budget gate). Tests use `internal/fakerouter`, a contract-level fake; `scripts/e2e-router.sh` runs the same flows against a real router and a mock upstream.
 
 **Detection.** At start-up `GET {origin of --base-url}/health` (2 s timeout, no `x-octo-key`). `"service":"octo"` turns the integration on and `GET /v1/config` reports `router: true` and `router_capabilities`. When the probe fails the integration stays off and is re-probed in the background at most once a minute (the check runs when `Enabled()` is next asked, never on the request path), so a router started after the harness is found within a minute. Any other service, an error status or an unreachable host leaves the harness exactly as it was without the router: no `x-octo-*` request header is sent (except `x-octo-key` when you configured one) and nothing below applies. Use the router's autoroute path as base URL (`--base-url http://127.0.0.1:8080/autoroute`): the hints and result headers are only on `/autoroute/v1/messages`.
 
@@ -359,7 +359,7 @@ Common flags: `--workspace` (`run`), `--base-url`, `--model` (`run`), `--data-di
 
 ### Language servers
 
-Spec: [`2026-11-10-workspace-plugins-acp-design.md`](../../../docs/superpowers/specs/2026-11-10-workspace-plugins-acp-design.md) §3. Requests go by POST, server messages come by SSE; no WebSocket.
+Requests go by POST, server messages come by SSE; no WebSocket.
 
 | Method | Path | Result |
 | --- | --- | --- |
@@ -377,7 +377,6 @@ Limits: 8 live sessions per project (finished processes do not count), 4 MiB per
 
 ### Usage, cost and limits
 
-Spec: [`2026-11-10-usage-design.md`](../../../docs/superpowers/specs/2026-11-10-usage-design.md) (Phase A contract).
 
 - **Storage.** `projectstore` opens every project database through `migrate`, which is idempotent: `CREATE TABLE IF NOT EXISTS` for the new `usage` table and an `ALTER TABLE agents ADD COLUMN` for `context_used` / `context_size` only when `pragma_table_info` lacks them. `DB.RecordUsage` writes the usage row and adds input/output tokens to the agent totals in one transaction (cache tokens live only in `usage`; the totals are unchanged). Rows: one per model response (`source = "api"`, model = the requested model, cache tokens from `cache_read_input_tokens` / `cache_creation_input_tokens`) or per ACP `usage_update` (`source = "acp"`, token delta approximate as before, `cost_usd` = increase of the USD cost since the previous update; other currencies are ignored; the same transaction stores `context_used` / `context_size`).
 - **Aggregation.** `project.Service.Usage` asks each project database for sums grouped by key, model, source and "has reported cost" (`DB.UsageRows`), then merges across projects and applies `prices.Table` to API rows without a reported cost. Handlers only pass the raw query parameters.
@@ -398,7 +397,7 @@ Spec: [`2026-11-10-usage-design.md`](../../../docs/superpowers/specs/2026-11-10-
 
 ## Live run 2 (harness)
 
-Changes from the owner's second live run (findings and decisions: `docs/superpowers/specs/2026-11-11-router-harness-integration.md`).
+Router integration behaviour matches [`apps/router/docs/autoroute.md`](../../../apps/router/docs/autoroute.md) and the harness `internal/router` package.
 
 - **One spend number.** With a router that tracks budgets, a project's spend is the highest `x-octo-spent-usd` seen for its budget key (`Router.NoteSpent` keeps the maximum, so two calls that finish out of order cannot lower it); it is never a sum of usage rows, which miss what the router charges for classifying. The header excludes the response it comes with, so after a call the harness uses the call record's `spent_after_usd` (the router sets it for every call charged to a budget key, the key's spend once the call was charged, classifier cost included), else, with an older router, header plus the call's own cost, which can lag by that call's classifier cost until the next call's header. The fake router mirrors the real one (`spent_after_usd` always; `NoSpentAfter` reproduces an older router; `ClassifierUSD` and `DelayFor` make calls overlap and finish out of order); three overlapping calls with classifier cost end with the harness and the router at the same micro-USD (`TestRouterSpendAfterConcurrentCallsFinishingOutOfOrder`). Before the router has reported anything for a key, the reported costs of the rows count.
 - **Usage contract.** Every bucket of `GET /v1/usage` has `flat_rate` (the bucket holds flat-rate usage and nothing else), `cost_usd` (money spent: **0, never null, for flat-rate usage**; null only when an API request has no known cost), `subscription_equivalent_usd` (what the flat-rate usage would have cost per token; null when none), and `tokens_estimated`. The real shapes are fixtures, written by the harness's contract test (`TestUsageContract`, `OCTO_UPDATE_FIXTURES=1` regenerates): `packages/agent-client/src/fixtures/usage.api.json`, `usage.flat.json`, `usage.mixed.json`.

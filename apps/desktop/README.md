@@ -1,7 +1,7 @@
 # Octo Desktop
 
 Tauri 2 shell for the shared UI (`@octo/ui`). The UI talks only to the harness bridge (`harness serve`).
-UI design: [`docs/superpowers/specs/2026-11-10-project-harness-ui.md`](../../docs/superpowers/specs/2026-11-10-project-harness-ui.md).
+UI: [`packages/ui/COMPONENTS.md`](../../packages/ui/COMPONENTS.md).
 Architecture: [docs/architecture.md](./docs/architecture.md).
 
 ## Prerequisites

@@ -1,6 +1,5 @@
 # Parity features (B1–B7)
 
-Contract: [`docs/superpowers/specs/2026-11-12-parity-backlog.md`](../../../docs/superpowers/specs/2026-11-12-parity-backlog.md).
 Scripted check: `bash apps/harness/scripts/e2e-parity.sh` (mock model, scripted ACP agent, a local HTTP server; not part of CI).
 
 ## B1 — instruction files
@@ -274,7 +273,7 @@ counts the delegation note (that is `agents`). Order: system, instructions, tool
 
 ## B11 — slash commands, ours and the agent's
 
-Spec: `docs/superpowers/specs/2026-11-12-parity-backlog.md` (B11 and its revision "/clear tidies, it does not forget").
+B11 and its revision "/clear tidies, it does not forget" (see sections above).
 
 ### `GET /v1/projects/{id}/slash-commands`
 

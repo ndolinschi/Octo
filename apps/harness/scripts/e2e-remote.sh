@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end check of remote access (docs/superpowers/specs/2026-11-14-remote-access-mobile-design.md) against a real
+# End-to-end check of remote access (apps/harness/docs/remote-access.md) against a real
 # `harness serve`, driven with curl: turn it on with a FAKE cloudflared (internal/remoteaccess/testdata/fake-cloudflared,
 # which prints what a quick tunnel prints and never touches the network), pair a device, confirm it on the "computer",
 # call the API with the device token through the second listener (no tunnel: the listener is on loopback), check the

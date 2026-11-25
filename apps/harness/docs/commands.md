@@ -1,6 +1,6 @@
 # Project commands and working processes (harness)
 
-UI decision 68 (`docs/superpowers/specs/2026-11-10-project-harness-ui.md`) and the **Processes** workspace tab (`tool:processes`). A project has named shell commands ("Dev server", "Tests"), ad-hoc user processes, and harness-managed worker subprocesses (language servers and ACP agent CLIs); the user inspects output, stops (`SIGTERM`), force-kills (`SIGKILL`), or restarts them. Client types: `@octo/agent-client` (`commands.ts`; every `Bridge` member is optional, HTTP bridge and demo).
+The **Processes** workspace tab (`tool:processes`). A project has named shell commands ("Dev server", "Tests"), ad-hoc user processes, and harness-managed worker subprocesses (language servers and ACP agent CLIs); the user inspects output, stops (`SIGTERM`), force-kills (`SIGKILL`), or restarts them. Client types: `@octo/agent-client` (`commands.ts`; every `Bridge` member is optional, HTTP bridge and demo).
 
 Code: `internal/projcfg` (the `Command` shape and its validation), `internal/project/settings.go` (the project field), `internal/commands` (`commands.go`, `manage.go`, `suggestions.go`), `internal/bridge/commands.go` and `internal/bridge/processes.go` (routes), `internal/lsp` (`ListProject`, `Restart`, 16 KiB `StderrTail`), `internal/orchestrator/processes.go` (`WorkerProcesses`, `StopWorkerProcess`), `internal/projectstore/command_runs.go` (run history).
 

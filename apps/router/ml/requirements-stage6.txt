@@ -1,7 +1,0 @@
-# Stage 6 only (M2' fine-tuning and ONNX export), on top of requirements.txt; versions this stage was run with (2026-11-20).
-# torch CPU wheel: pip install --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
--r requirements.txt
-torch==2.15.0
-transformers==5.23.0
-sentence-transformers==6.3.0
-safetensors==0.8.0

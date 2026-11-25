@@ -5,7 +5,7 @@ Shared React UI (React 19, Tailwind 4, Monaco). Read first:
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — layers, allowed imports, providers, lazy boundary, known debt.
 - [`COMPONENTS.md`](./COMPONENTS.md) — the component library (primitives and shared composites, who uses each), design tokens, the tool-tab anatomy, how to add a tool tab or a card, what each check script verifies.
 - [`.cursor/rules/octo-typescript.mdc`](../../.cursor/rules/octo-typescript.mdc) — how to write TS/TSX here.
-- [`docs/superpowers/specs/2026-11-10-project-harness-ui.md`](../../docs/superpowers/specs/2026-11-10-project-harness-ui.md) — design decisions; the v6 section at the top is current.
+- [`ARCHITECTURE.md`](./ARCHITECTURE.md) and [`COMPONENTS.md`](./COMPONENTS.md) — layout and component library.
 
 ## Commands
 

@@ -1,9 +1,8 @@
 # Remote access (a paired phone through Cloudflare)
 
-Spec: [`docs/superpowers/specs/2026-11-14-remote-access-mobile-design.md`](../../../docs/superpowers/specs/2026-11-14-remote-access-mobile-design.md).
 Code: `internal/remoteaccess` (wired in `cmd/harness/remote.go`), errors in `internal/usererr/catalogue_remote.go`.
 
-Remote access is **off after every start**. When the owner turns it on, the harness opens a second listener on
+Remote access is **off after every start**. When you turn it on in Settings, the harness opens a second listener on
 loopback (`HARNESS_REMOTE_ADDR`, default a free port on `127.0.0.1`) and runs Cloudflare's
 `cloudflared tunnel --no-autoupdate --url http://127.0.0.1:<that port>` (a *quick tunnel*: no account, a random
 `https://<words>.trycloudflare.com` URL that changes on every start). Only that listener is reachable through the

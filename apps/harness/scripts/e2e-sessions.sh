@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end check of parallel sessions, phase 1 (spec docs/superpowers/specs/2026-11-14-parallel-sessions-design.md),
+# End-to-end check of parallel sessions, phase 1 (apps/harness/docs/sessions.md),
 # against a real `harness serve`, driven only with curl: two sessions of one project streaming at once (the mock
 # model's [hold:NAME] marker keeps a reply open until POST /v1/mock/release), a message to a busy session queues only
 # there, stopping one session, the project's running cap (waiting_for "slot"), the default-session aliases

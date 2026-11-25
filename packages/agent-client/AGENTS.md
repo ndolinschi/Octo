@@ -20,7 +20,7 @@ reducer, a message-port bridge for embedded hosts, and language-server sessions.
 | `index.ts`                                                                        | The public API                                                                                             |
 
 The API contract is the harness spec:
-[`docs/superpowers/specs/2026-11-10-project-harness-design.md`](../../docs/superpowers/specs/2026-11-10-project-harness-design.md)
+[`../../apps/harness/docs/architecture.md`](../../apps/harness/docs/architecture.md)
 and the specs that extend it (code pane, workspace/plugins/ACP, usage, subscription agents, v7, router integration,
 packaging, memory), with the exact HTTP shapes in `apps/harness/docs/` (`v7.md`, `memory.md`, `settings.md`,
 `acp-orchestrator.md`). Types here mirror the Go JSON exactly. System overview: [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md).

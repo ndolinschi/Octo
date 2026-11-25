@@ -10,7 +10,7 @@ package sits in the system: [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md#
 2026-11-22 (import graph, file counts); sizes: 723 source files, about 85,000 lines.
 
 Design decisions (tokens, spacing, motion, every screen) live in
-[`docs/superpowers/specs/2026-11-10-project-harness-ui.md`](../../docs/superpowers/specs/2026-11-10-project-harness-ui.md).
+[`COMPONENTS.md`](./COMPONENTS.md).
 Coding rules: [`.cursor/rules/octo-typescript.mdc`](../../.cursor/rules/octo-typescript.mdc) (same text for Claude
 in `.claude/rules/typescript.md`). This file describes structure: what lives where and which way imports go.
 

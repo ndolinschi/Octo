@@ -13,8 +13,14 @@ apps/router/experiments/**
 .env.*
 !/.env.example
 !/apps/router/.env.example
-!/config/*.env.example
 !/apps/router/config/*.env.example
+tour/
+gallery-shots/
+playwright-report/
+test-results/
+__pycache__/
+*.pyc
+.pytest_cache/
 apps/harness/octo-harness
 apps/harness/octo-mockllm
 node_modules/
