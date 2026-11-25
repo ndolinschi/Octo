@@ -62,6 +62,7 @@ func samples() map[string]*Error {
 		"Generic":              Generic("a_code_nobody_listed", "boom: a: b: c"),
 		"NameRequired":         NameRequired(),
 		"FolderInvalid":        FolderInvalid("/nope", "not a directory"),
+		"PathAlreadyExists":    PathAlreadyExists(),
 		"NoteTitleTaken":       NoteTitleTaken("Plan", "n1"),
 		"GitPathRefused":       GitPathRefused(".git/config"),
 		"BudgetReached":        BudgetReached(4.2, 5),

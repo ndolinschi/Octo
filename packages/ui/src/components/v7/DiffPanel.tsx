@@ -74,18 +74,22 @@ export const DiffPanel = memo(function DiffPanel(props: {
           <span className="min-w-0 truncate text-xs text-fg-3 @max-md/diff:hidden">{dir ? `${file.folder}/${dir}` : file.folder}</span>
         </span>
         <LineCounts added={file.added} removed={file.removed} className="ml-2 shrink-0 @max-md/diff:hidden" />
-        <span className="hidden shrink-0 items-center gap-1 @max-[480px]/diff:flex">
+        <span className="hidden shrink-0 items-center gap-1 phone:flex">
           <IconMenu label="More actions for this file" items={moreItems} />
-          <IconButton
-            icon={Undo2}
+          <Button
+            variant="secondary"
             size="sm"
-            label={reverted ? "Reverted" : "Revert"}
+            icon={Undo2}
+            title={reverted ? "Reverted" : "Revert"}
             disabled={reverted || reverting}
-            aria-busy={reverting}
+            loading={reverting}
             onClick={props.onRevert}
-          />
+            className="shrink-0 phone:min-h-ctl-lg"
+          >
+            {reverted ? "Reverted" : "Revert"}
+          </Button>
         </span>
-        <span className="flex shrink-0 items-center gap-1 @max-[480px]/diff:hidden">
+        <span className="flex shrink-0 items-center gap-1 phone:hidden">
           <IconButton icon={ChevronUp} label="Previous file" shortcut="Alt+[" disabled={!props.onPrev} onClick={() => props.onPrev?.()} />
           <IconButton icon={ChevronDown} label="Next file" shortcut="Alt+]" disabled={!props.onNext} onClick={() => props.onNext?.()} />
           <span className="contents @max-lg/diff:hidden">

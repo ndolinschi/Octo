@@ -330,7 +330,7 @@ func fileErr(err error) error {
 	case errors.Is(err, files.ErrNotFound):
 		return notFound("path")
 	case errors.Is(err, files.ErrExists):
-		return &Error{Kind: KindConflict, Code: "already_exists", Message: "a file or folder already exists at that path"}
+		return of(KindConflict, usererr.PathAlreadyExists())
 	case errors.Is(err, files.ErrGitPath):
 		return of(KindInvalid, usererr.GitPathRefused(err.Error()))
 	case errors.Is(err, files.ErrInvalidPath):

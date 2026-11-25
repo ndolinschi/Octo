@@ -2067,6 +2067,10 @@
 [data-composer-row] [data-model-picker] {
   flex-shrink: 1;
 }
+[data-composer-row] > :is(button, [data-composer-chip], [data-model-picker] > button) {
+  height: var(--spacing-ctl-md);
+  min-height: var(--spacing-ctl-md);
+}
 @container composer (width < 460px) {
   [data-composer-row] :is([data-chip="mode"], [data-chip="access"]) {
     width: var(--spacing-ctl-sm);

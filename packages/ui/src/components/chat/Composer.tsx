@@ -25,6 +25,7 @@ import { useChatSlots } from "../../state/chatSlots";
 import { errorMessage } from "../../lib/format";
 import { canForce, refusedProvider } from "../../lib/providers/refusal";
 import { Button } from "../primitives/Button";
+import type { ControlSize } from "../../lib/controls";
 import { IconButton } from "../primitives/IconButton";
 import { Presence } from "../primitives/Presence";
 import { withAttachments } from "./attachments";
@@ -735,10 +736,11 @@ const ComposerView = forwardRef<ComposerHandle, ComposerProps>(function Composer
               />
             </div>
           </div>
-          <div data-composer-row className="box-content flex h-7 min-w-0 items-center gap-1 px-1.5 pb-2">
+          <div data-composer-row className="box-content flex h-ctl-md min-w-0 items-center gap-1 px-1.5 pb-2 phone:h-auto">
             <IconButton
               ref={plus}
               icon={Plus}
+              size={phone ? "lg" : "md"}
               label="Attach, mention or run"
               title="Attach, mention or run ( / or @ )"
               aria-haspopup="listbox"
@@ -773,6 +775,7 @@ const ComposerView = forwardRef<ComposerHandle, ComposerProps>(function Composer
             {deviceMay(host.remoteDevice, action === "stop" ? "stop" : "send") ? (
               <SendButton
                 action={action}
+                size={phone ? "lg" : "md"}
                 stopping={stopping !== null}
                 enabled={action === "stop" ? !disabled && stopping === null : canSend && !size?.over}
                 onStop={stop}
@@ -858,7 +861,19 @@ const SEND = {
 const STOPPING_LABEL = "Stopping… waiting for the current step to finish";
 
 /** One 28px round button: Send (dim while empty), Stop while working, Queue while working with text (decision 62). */
-function SendButton({ action, enabled, stopping, onStop }: { action: "send" | "queue" | "stop"; enabled: boolean; stopping: boolean; onStop(): void }) {
+function SendButton({
+  action,
+  enabled,
+  stopping,
+  size = "sm",
+  onStop,
+}: {
+  action: "send" | "queue" | "stop";
+  enabled: boolean;
+  stopping: boolean;
+  size?: ControlSize;
+  onStop(): void;
+}) {
   const { icon } = SEND[action];
   // A phone has no Esc key or Enter shortcut to name.
   const phone = usePhone();
@@ -869,6 +884,7 @@ function SendButton({ action, enabled, stopping, onStop }: { action: "send" | "q
     <IconButton
       icon={icon}
       label={label}
+      size={size}
       round
       variant={solid ? "primary" : "quiet"}
       type={action === "stop" ? "button" : "submit"}

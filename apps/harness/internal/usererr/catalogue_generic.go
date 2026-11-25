@@ -157,6 +157,14 @@ func GitPathRefused(path string) *Error {
 	}
 }
 
+// PathAlreadyExists: mkdir or rename would clobber an existing file or folder.
+func PathAlreadyExists() *Error {
+	return &Error{
+		Code: "already_exists", Message: "A file or folder already exists at that path.",
+		Hint: "Choose a different name, or remove or rename what is already there.",
+	}
+}
+
 // NoteTitleTaken: another note has the title already.
 func NoteTitleTaken(title, id string) *Error {
 	return &Error{

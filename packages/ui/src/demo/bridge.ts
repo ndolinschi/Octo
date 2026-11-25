@@ -46,6 +46,7 @@ import { withDemoParity } from "./parity";
 import { withDemoV7 } from "./v7";
 import { withDemoSlash } from "./slash";
 import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
+import { seedTourState } from "./tour";
 import { acpOrchestratorHistory, routeAgents, tablesTurn } from "./routed";
 import { act, Interrupted, say, sleep, turn, type Ctx } from "./runtime";
 import { clone, emit, newId, orchestratorOf, type ProjectRecord } from "./store";
@@ -472,6 +473,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
   const failedOnce = new Set<string>();
   const records = new Map<string, ProjectRecord>();
   for (const rec of SEEDERS[options.seed ?? "full"]()) records.set(rec.project.id, rec);
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tour") === "1") seedTourState(records);
 
   const delay = () => new Promise((r) => setTimeout(r, LATENCY_MS));
   const sides: { project: string; message: SideMessage }[] = [];
