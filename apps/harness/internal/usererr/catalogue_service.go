@@ -158,7 +158,12 @@ func BudgetReached(spent, budget float64) *Error {
 		Code: CodeBudgetReached, Message: "This project's budget is used up.",
 		Hint: "Raise the budget in the project's settings to go on.", Action: ActionOpenSettings,
 	}
-	if spent >= 0 && budget >= 0 {
+	switch {
+	case spent >= 0 && budget >= 0 && spent < budget:
+		// R6-3: the router refuses a request whose cost could pass what is left (it checks before sending); "used up"
+		// beside "$2.03 of $3.00" read as a wrong number.
+		e.Message = fmt.Sprintf("This project's budget is nearly used up (%s of %s): what is left does not cover the next request.", usd(spent), usd(budget))
+	case spent >= 0 && budget >= 0:
 		e.Message = fmt.Sprintf("This project's budget is used up (%s of %s).", usd(spent), usd(budget))
 	}
 	return e
@@ -173,6 +178,19 @@ func BudgetCut(spent, budget float64) *Error {
 		e.Message = fmt.Sprintf("This project's budget ran out during this request (%s of %s); the answer was stopped mid-request.", usd(spent), usd(budget))
 	}
 	e.Hint = "What it had written is kept. Raise the budget in the project's settings to go on."
+	return e
+}
+
+// BudgetTooSmall: what is left of the project's budget cannot pay even for the
+// next request's input (need, USD, estimated), so the request was not sent.
+func BudgetTooSmall(spent, budget, need float64) *Error {
+	e := BudgetReached(spent, budget)
+	if spent >= 0 && budget >= 0 {
+		e.Message = fmt.Sprintf("This project's budget is too small for the next request: %s of %s is left, the request needs about %s.", usd(max(budget-spent, 0)), usd(budget), usd(need))
+	} else {
+		e.Message = "This project's budget is too small for the next request."
+	}
+	e.Hint = "Nothing was sent. Raise the budget in the project's settings to go on."
 	return e
 }
 

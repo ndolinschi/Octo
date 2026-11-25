@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { connectionText, workingText } from "../../lib/statusBar";
+import { connectionText, projectCounts, waitingText, workingText } from "../../lib/statusBar";
 import { useApp } from "../../state/app";
 import { navigate } from "../../lib/route";
 import { Spinner } from "../primitives/Status";
@@ -15,9 +15,11 @@ import { StatusButton } from "./StatusButton";
  */
 export function StatusBar(props: { home: boolean; startRef(el: HTMLElement | null): void; endRef(el: HTMLElement | null): void }) {
   const { projects, health, retry, cause } = useApp();
-  const running = useMemo(() => projects?.filter((p) => p.status === "running").length ?? 0, [projects]);
+  // UX-03: a project waiting for the person is counted as waiting, not working (waiting wins).
+  const counts = useMemo(() => projectCounts(projects), [projects]);
   // Home lists the projects at work itself (its tiles): the item would only repeat it.
-  const working = props.home ? null : workingText(running);
+  const working = props.home ? null : workingText(counts.working);
+  const waiting = props.home ? null : waitingText(counts.waiting);
   const connection = connectionText(health, cause);
   return (
     <footer
@@ -29,6 +31,12 @@ export function StatusBar(props: { home: boolean; startRef(el: HTMLElement | nul
     >
       <div ref={props.startRef} className="flex min-w-0 items-center gap-1 empty:hidden" />
       <div className="ml-auto flex shrink-0 items-center gap-1">
+        {waiting && (
+          <StatusButton title="An agent waits for you. Show the projects." onClick={() => navigate(null)}>
+            <StateGlyph state="needs" />
+            {waiting}
+          </StatusButton>
+        )}
         {working && (
           <StatusButton title="Agents are working. Show the projects." onClick={() => navigate(null)}>
             <StateGlyph state="working" />

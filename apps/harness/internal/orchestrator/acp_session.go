@@ -7,6 +7,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/activity"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +42,9 @@ type acpSession struct {
 	open     map[string]bool
 	seen     map[string]bool
 	lastUsed int64
+	// userDenied are the titles of the permission requests the user (or a
+	// denial earlier in the turn) refused (R5-13).
+	userDenied []string
 	// order, titles and claimed let an MCP tool call find the ACP tool_call
 	// row the agent announced for it.
 	order    []string
@@ -494,8 +498,25 @@ func (s *acpSession) RequestPermission(ctx context.Context, req acp.PermissionRe
 	})
 	if d.Allow {
 		s.preapprove(req.ToolCall)
+	} else if asks {
+		s.mu.Lock()
+		s.userDenied = append(s.userDenied, firstNonEmpty(req.ToolCall.Title, req.ToolCall.Kind, "a permission request"))
+		s.mu.Unlock()
 	}
 	return d.OptionID
+}
+
+// withDenials puts the user's refusals in front of a sub-agent's report, so
+// the delegating agent stops instead of re-delegating the same action (R5-13).
+func (s *acpSession) withDenials(report string) string {
+	s.mu.Lock()
+	denied := slices.Compact(slices.Clone(s.userDenied))
+	s.mu.Unlock()
+	if len(denied) == 0 {
+		return report
+	}
+	return "The user denied: " + strings.Join(denied, "; ") + ". It was not done. Do not retry it, another way or through " +
+		"another sub-agent, in this turn; tell the user it was not done.\n\n" + report
 }
 
 // completed fills what a permission request's tool call leaves out (title,

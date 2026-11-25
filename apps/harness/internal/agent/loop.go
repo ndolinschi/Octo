@@ -64,6 +64,10 @@ type Loop struct {
 	// loop: its text is stored cut short and BudgetCut's error is returned.
 	OutputCap func(ctx context.Context, inputTokens func() int64) int64
 	BudgetCut func(ctx context.Context) error
+	// Afford, when set, is asked before every request whether the budget left
+	// can pay for the request's input at all (P2-11); its error stops the loop
+	// without sending the request.
+	Afford func(ctx context.Context, inputTokens func() int64) error
 }
 
 // Run continues history (which must end with a user message already persisted
@@ -125,6 +129,11 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 			// Marked on a copy: the breakpoint moves every turn and must never
 			// reach the stored history.
 			send.Messages = withMessageBreakpoint(messages)
+		}
+		if l.Afford != nil {
+			if err := l.Afford(ctx, func() int64 { return estimateInput(send) }); err != nil {
+				return res, err
+			}
 		}
 		capped := false
 		if l.OutputCap != nil && l.BudgetCut != nil {

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { EXPERIMENTAL_TIP, stateText, type Tone } from "../../lib/providers";
+import { EXPERIMENTAL_TIP, providerStateText, stateText, type Tone } from "../../lib/providers";
 import { modelName } from "../../lib/models";
 import { Button } from "../primitives/Button";
 import type { Provider } from "@octo/agent-client";
@@ -31,7 +31,7 @@ export function ProviderTitle({ provider, tone, stateLabel }: { provider: Provid
       <span className="flex shrink-0 items-center gap-2 text-sm text-fg-2">
         <ToneDot tone={tone} />
         <span>
-          {stateLabel ?? stateText(provider.state)}
+          {stateLabel ?? providerStateText(provider)}
           {provider.experimental && (
             <span title={EXPERIMENTAL_TIP} className="text-fg-3">
               {" · Experimental"}

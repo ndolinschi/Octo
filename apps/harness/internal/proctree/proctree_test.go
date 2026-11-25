@@ -63,7 +63,6 @@ func TestKillSessionStopsBackgroundJobsAndDescendants(t *testing.T) {
 			t.Fatalf("job %d not running", p)
 		}
 	}
-	go func() { _ = cmd.Wait() }()
 	KillSession(cmd.Process.Pid, time.Second)
 	deadline := time.Now().Add(3 * time.Second)
 	for _, p := range jobs {
@@ -96,7 +95,6 @@ func TestKillSessionAfterLeaderExited(t *testing.T) {
 func TestLedgerReapsOnlyMatchingLeftovers(t *testing.T) {
 	dir := t.TempDir()
 	cmd, jobs := startSession(t)
-	go func() { _ = cmd.Wait() }()
 	old := OpenLedger(dir)
 	old.Add(cmd.Process.Pid, "terminal", "bash")
 	other := exec.Command("sleep", "60")

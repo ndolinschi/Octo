@@ -12,7 +12,7 @@ import { useCopy } from "../../lib/hooksMore";
 import { splitComments } from "../../lib/comments";
 import { splitDesignNotes } from "../../lib/browser/designNotes";
 import { buildTurns, promptText, type Turn, type TurnEnd } from "../../lib/transcript";
-import { compactionSlots, stepState, turnDurationMs, turnFailureText, turnHead, turnWarning, type StoredEnding } from "../../lib/turnEnding";
+import { compactionSlots, keepsEmptyTurn, stepState, turnDurationMs, turnFailureText, turnHead, turnWarning, type StoredEnding } from "../../lib/turnEnding";
 import type { StoredEndingLookup } from "../../lib/storedEndings";
 import { useStopping } from "../../lib/stopping";
 import { hasLongWord } from "../../lib/composerInput";
@@ -31,6 +31,7 @@ import { turnSig, useTurnWindow } from "./useTurnWindow";
 /** The failed or stopped turn's notice: its own chunk (error mapping, notice, retry), warmed after first paint. */
 const turnBanner = readyLazy(() => import("./TurnBanner").then((m) => m.TurnBanner));
 export const TurnBanner = turnBanner.Component;
+import { Notice } from "../primitives/Notice";
 const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
 const PlanList = lazy(() => import("./LivePanels").then((m) => ({ default: m.PlanList })));
 const ThinkingRow = lazy(() => import("./LivePanels").then((m) => ({ default: m.ThinkingRow })));
@@ -379,9 +380,10 @@ export const Transcript = memo(function Transcript(props: {
         )}
         {failure?.status === "cancelled" && !running && (
           // C5: the head already says "Stopped after 8s"; the notice keeps only what to do next.
-          <p data-turn-outcome="cancelled" className="octo-fade text-sm text-fg-3">
-            Send a message to continue.
-          </p>
+          // UX-26: a status line (glyph, 12px, role=status), not body text that reads like part of the answer.
+          <div data-turn-outcome="cancelled" className="octo-fade">
+            <Notice tone="info">Send a message to continue.</Notice>
+          </div>
         )}
         {failure?.status === "failed" && !running && (
           <Suspense fallback={null}>
@@ -594,7 +596,9 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   // one that mounts as it is (a turn scrolled into view) does not.
   const [firstHead] = useState(() => head?.label ?? null);
   const headChanged = head !== null && head.label !== firstHead;
-  if (empty && !live) return null;
+  // R5-3: a turn stopped (or failed) before it wrote anything keeps its head after a reload ("Stopped after 9s"): the
+  // harness stores no message for it, only its exchange, so without this the turn vanished and its duration with it.
+  if (empty && !live && !keepsEmptyTurn(head)) return null;
   const reply = turn.items.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n\n");
   // The newest step row above, when it already says what the activity line would: a streaming thinking row (nothing after it), a running tool group.
   const lastItem = turn.items[turn.items.length - 1];

@@ -206,7 +206,8 @@ export default function ProcessesTab() {
         actions={
           <>
             <IconButton icon={RefreshCw} size="sm" label="Refresh processes" onClick={() => void refreshWorkers()} />
-            {canManage && (
+            {/* UX-35: with no processes the empty state's "Start a process" is the one call to action. */}
+            {canManage && allItems.length > 0 && (
               <Button variant="quiet" size="sm" icon={Plus} data-new-process onClick={() => setStarting(true)}>
                 New process
               </Button>

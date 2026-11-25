@@ -24,6 +24,8 @@ const (
 	MarkerDieInCommand = "[die-in-command]"
 	// MarkerDieSilent: the agent works 1.5 s without sending anything, then its process dies.
 	MarkerDieSilent = "[die-silent]"
+	// MarkerDieAtOnce: the agent's process dies as soon as the prompt arrives, before it sends anything.
+	MarkerDieAtOnce = "[die-at-once]"
 	// DieSilentLog is the file in the working folder MarkerDieSilent appends each request it got to.
 	DieSilentLog  = ".fakeacp-die-silent.log"
 	MarkerHang    = "[hang]"
@@ -193,6 +195,9 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 	}
 	a.say("I'll look at the project first. ")
 	switch {
+	case has(MarkerDieAtOnce):
+		a.exit(137) // killed before it did anything with the request
+		return "end_turn"
 	case has(MarkerDieInCommand):
 		a.update(map[string]any{
 			"sessionUpdate": "tool_call", "toolCallId": "call-cmd", "title": "Run go test ./...", "kind": "execute",

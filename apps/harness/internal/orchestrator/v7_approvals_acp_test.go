@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/approval"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
@@ -289,5 +290,49 @@ func TestACPAllowAllForTurnCoversTheNextPromptOfAnotherKind(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// R5-13: a sub-agent whose request the user denied reports it first, so the
+// delegating agent is told not to retry or re-delegate it in the turn.
+func TestACPDenyIsReportedToTheDelegatingAgent(t *testing.T) {
+	r := newACPRig(t, mockllm.New(0), fakeAgent("fake", true))
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# demo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pid := r.supervisedProject(t, dir, "")
+	cards := 0
+	r.approver(t, pid, func(approval.Approval) approval.Resolution {
+		cards++
+		return approval.Resolution{Decision: approval.Deny}
+	})
+	r.runCollect(t, pid, "[acp] summarize", nil)
+	child := r.acpChild(t, pid)
+	if child.Result == nil || !strings.HasPrefix(*child.Result, "The user denied: ") || !strings.Contains(*child.Result, "Do not retry it") {
+		t.Fatalf("agent result = %v", child.Result)
+	}
+	if cards != 1 {
+		t.Fatalf("cards = %d, want 1", cards)
+	}
+}
+
+// UX-02: the time an approval waits for the user is not work: the turn's stored
+// duration ("Worked for") leaves it out.
+func TestWorkedForLeavesOutTheWaitForAnApproval(t *testing.T) {
+	r := newACPRig(t, mockllm.New(0), fakeAgent("fake", true))
+	pid := r.supervisedProject(t, t.TempDir(), "acp:fake")
+	r.approver(t, pid, func(approval.Approval) approval.Resolution {
+		time.Sleep(2500 * time.Millisecond) // the user reads the card
+		return approval.Resolution{Decision: approval.Allow}
+	})
+	start := time.Now()
+	if got := r.runCollect(t, pid, "[perm] run the tests", nil); got.status != "completed" {
+		t.Fatalf("turn = %s", got.status)
+	}
+	wall := time.Since(start)
+	x := onlyExchange(t, r, pid)
+	if wall < 2500*time.Millisecond || time.Duration(x.DurationMS)*time.Millisecond > wall-2*time.Second {
+		t.Fatalf("stored duration %dms of a %v turn that waited 2.5s for the user", x.DurationMS, wall)
 	}
 }

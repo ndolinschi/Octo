@@ -93,7 +93,8 @@ export function routeLine(
   if (!a.route_choice) return null;
   const tiers: Record<string, string> = { fast: "the fast tier", balanced: "the balanced tier", deep: "the deep tier" };
   const choice = tiers[a.route_choice] ?? modelName(a.route_choice, acp);
-  const band = a.route_band ? `${a.route_band} task; ` : "";
   const reason = a.route_reason?.trim();
+  // UX-14: a reason that already names the band ("Medium task; …") is not preceded by it again.
+  const band = a.route_band && !reason?.toLowerCase().startsWith(`${a.route_band.toLowerCase()} task`) ? `${a.route_band} task; ` : "";
   return `Chosen automatically: ${band}${reason ?? choice}${reason && !reason.toLowerCase().includes(choice.toLowerCase()) ? ` (${choice})` : ""}`;
 }

@@ -262,33 +262,7 @@ func (s *orchSession) applyMode(ctx context.Context, rt *runtime, client *acp.Cl
 	s.mu.Lock()
 	modes, cur, base := s.modes, s.curMode, s.baseMode
 	s.mu.Unlock()
-	target := ""
-	if rt.readOnlyMode() {
-		target = pickSessionMode(modes, rt.mode)
-	} else if base != "" {
-		target = base
-		// A supervised project answers every write itself: an agent that starts in
-		// a mode approving its own edits (Antigravity's auto, accept-edits) would
-		// never ask, so its asking mode is used instead. Under accept_edits, keep
-		// an accept-edits mode or switch away from yolo/auto to askingMode so
-		// commands still ask via the harness.
-		switch rt.accessMode(ctx) {
-		case projectstore.AccessSupervised:
-			if selfApproving(base) {
-				if d := askingMode(modes); d != "" {
-					target = d
-				}
-			}
-		case projectstore.AccessAcceptEdits:
-			if selfApproving(base) && !acceptsOnlyEdits(base) {
-				if m := acceptEditsMode(modes); m != "" {
-					target = m
-				} else if d := askingMode(modes); d != "" {
-					target = d
-				}
-			}
-		}
-	}
+	target := sessionModeTarget(rt.readOnlyMode(), rt.mode, func() string { return rt.accessMode(ctx) }, modes, base)
 	if target == "" || target == cur {
 		return
 	}
@@ -299,6 +273,49 @@ func (s *orchSession) applyMode(ctx context.Context, rt *runtime, client *acp.Cl
 	s.mu.Lock()
 	s.curMode = target
 	s.mu.Unlock()
+}
+
+// sessionModeTarget is the agent mode a live ACP session should be in for a
+// turn ("": leave it as it is). Ask/plan turns map to the agent's own read-only
+// or plan mode; otherwise the session keeps the mode it started in (base),
+// except that a supervised project answers every write itself: an agent that
+// starts in a mode approving its own edits or commands (Claude Code's or
+// Antigravity's auto, accept-edits, bypassPermissions) would never ask, so its
+// asking mode is used instead. Under accept_edits the asking mode is used as
+// well (the harness approves the edits itself), falling back to the agent's
+// accept-edits mode, so commands still ask via the harness. access is
+// read only when needed. Used by the ACP orchestrator (applyMode) and by ACP
+// sub-agents (runACP, UX-45).
+func sessionModeTarget(readOnly bool, turnMode string, access func() string, modes []acp.SessionMode, base string) string {
+	if readOnly {
+		return pickSessionMode(modes, turnMode)
+	}
+	if base == "" {
+		return ""
+	}
+	target := base
+	switch access() {
+	case projectstore.AccessSupervised:
+		if selfApproving(base) {
+			if d := askingMode(modes); d != "" {
+				target = d
+			}
+		}
+	case projectstore.AccessAcceptEdits:
+		// The harness approves edits itself under accept_edits (asksACP) and asks
+		// for everything else. An agent's own accept-edits mode may approve more
+		// than edits (Claude Code's acceptEdits also runs filesystem commands such
+		// as `echo hi > f`, mkdir, mv without asking), so the asking mode is
+		// preferred; the agent's accept-edits mode only when it has no asking one.
+		if selfApproving(base) {
+			if d := askingMode(modes); d != "" {
+				target = d
+			} else if m := acceptEditsMode(modes); m != "" {
+				target = m
+			}
+		}
+	}
+	return target
 }
 
 // --- plans -------------------------------------------------------------------

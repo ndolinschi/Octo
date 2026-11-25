@@ -153,3 +153,10 @@ test("modelsPatchForSessionChoice aligns all tiers and stale side override to th
     { orchestrator: "claude-sonnet-5-5" },
   );
 });
+
+test("UX-14: routeLine does not repeat a band the reason already names", () => {
+  assert.equal(
+    routeLine({ route_choice: "fast", route_band: "medium", route_reason: "Medium task; the fast tier was able to do it" }),
+    "Chosen automatically: Medium task; the fast tier was able to do it",
+  );
+});

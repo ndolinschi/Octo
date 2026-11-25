@@ -48,7 +48,9 @@ func (c *capLog) handler() http.Handler {
 // stopped mid-request, and what it had written is kept, flagged cut short.
 func TestBudgetCapsTheRequestAndStopsMidRequest(t *testing.T) {
 	model := config.BuiltinModels().Orchestrator
-	tab, err := prices.Parse(fmt.Sprintf("[models.%q]\ninput = 3\noutput = 15\n", model)) // $3 / $15 per million
+	// Input nearly free so the request is affordable (P2-11 refuses one whose input alone is over the budget);
+	// $15 per million output.
+	tab, err := prices.Parse(fmt.Sprintf("[models.%q]\ninput = 0.0001\noutput = 15\n", model))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,3 +131,47 @@ func TestBudgetCapScalesWithWhatIsLeft(t *testing.T) {
 }
 
 func usdPtr(v float64) *float64 { return &v }
+
+// P2-11 (retest 5, D3: $0.0021 spent of $0.0005): a request whose input alone
+// costs more than the budget has left is not sent; the turn fails with the
+// budget error, and a budget that covers the input still sends it.
+func TestBudgetRefusesARequestItCannotPayTheInputOf(t *testing.T) {
+	model := config.BuiltinModels().Orchestrator
+	// $300 per million input tokens: the orchestrator's first request (system
+	// prompt and tools, thousands of tokens) costs well over $0.0005.
+	tab, err := prices.Parse(fmt.Sprintf("[models.%q]\ninput = 300\noutput = 15\n", model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		budget float64
+		status string
+		sent   int
+	}{
+		{"input over the budget", 0.0005, "failed", 0},
+		{"budget covers the input", 100, "completed", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &capLog{full: 1}
+			r := newRigWith(t, c.handler(), orchestrator.Options{Prices: tab})
+			pid := r.project(t, 1)
+			r.update(t, pid, budgetInput(tc.budget))
+			if st := r.run(t, pid, "write a long essay", nil); st != tc.status {
+				t.Fatalf("turn = %s, want %s", st, tc.status)
+			}
+			c.mu.Lock()
+			sent := len(c.max)
+			c.mu.Unlock()
+			if sent != tc.sent {
+				t.Fatalf("requests sent = %d, want %d", sent, tc.sent)
+			}
+			if tc.status == "failed" {
+				x := onlyExchange(t, r, pid)
+				if x.Error == nil || x.Error.Code != usererr.CodeBudgetReached || !strings.Contains(x.Error.Message, "too small for the next request") {
+					t.Fatalf("exchange error = %+v", x.Error)
+				}
+			}
+		})
+	}
+}

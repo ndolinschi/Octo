@@ -306,6 +306,11 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Remote:          remoteReg.All(),
 		Agents:          pluginReg.Agents(),
 		AgentSource:     provSvc.Agents,
+		OnAgentLogin: func(id string, ok bool) {
+			if pluginReg.SeenLogin(id, ok) {
+				provSvc.Refresh()
+			}
+		},
 		Router:          octo,
 		Prices:          priceTable,
 		Windows:         cfg.ContextWindows,

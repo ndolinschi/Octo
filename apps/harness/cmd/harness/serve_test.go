@@ -14,7 +14,9 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
 
-// emptyEnv clears everything the harness reads, and hides every agent CLI.
+// emptyEnv clears everything the harness reads, and hides every agent CLI:
+// PATH and HOME (agents are also found in ~/.local/bin and similar, so a CLI
+// installed on the test machine must not leak in).
 func emptyEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
@@ -26,6 +28,7 @@ func emptyEnv(t *testing.T) {
 		_ = os.Unsetenv(k)
 	}
 	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
 }
 
 func freeAddr(t *testing.T) string {

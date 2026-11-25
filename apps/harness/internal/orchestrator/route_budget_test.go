@@ -14,7 +14,8 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 )
 
-var budgetMessage = regexp.MustCompile(`^This project's budget is used up \(\$\d+\.\d+ of \$0\.01\)\.$`)
+// R6-3: a 402 with the spend under the budget (the router's check before a request) says what is left does not cover it.
+var budgetMessage = regexp.MustCompile(`^This project's budget is (used up \(\$\d+\.\d+ of \$0\.01\)\.|nearly used up \(\$\d+\.\d+ of \$0\.01\): what is left does not cover the next request\.)$`)
 
 // pricey makes one request cost far more than a cent.
 var pricey = map[string][2]float64{"low": {3000, 15000}, "mid": {3000, 15000}, "high": {3000, 15000}}
@@ -77,7 +78,8 @@ func TestRouter402StopsTheTurnFromASubAgent(t *testing.T) {
 	if n := fr.UpstreamCalls(); n != 1 {
 		t.Fatalf("upstream calls = %d, want 1", n)
 	}
-	want := regexp.MustCompile(`^This project's budget is used up \(\$\d+\.\d+ of \$1000\.00\)\.$`)
+	// R6-3: spend under the budget, so the message says what is left does not cover the request (not "used up").
+	want := regexp.MustCompile(`^This project's budget is nearly used up \(\$\d+\.\d+ of \$1000\.00\): what is left does not cover the next request\.$`)
 	failed := 0
 	for _, a := range r.agents(t, pid) {
 		if a.ParentID != nil && a.Status == "failed" && a.Error != nil && want.MatchString(*a.Error) {
@@ -114,7 +116,9 @@ func TestSpawnRefusedOnceSpendReachesBudget(t *testing.T) {
 }
 
 func TestNoRouterBudgetEnforcedFromUsageRows(t *testing.T) {
-	tab, err := prices.Parse("[models.\"claude-sonnet-5-5\"]\ninput = 3000000\noutput = 15000000\n")
+	// The input is cheap enough for the first request to go out (P2-11 refuses a
+	// request whose input alone is over the budget); its output spends the budget.
+	tab, err := prices.Parse("[models.\"claude-sonnet-5-5\"]\ninput = 1\noutput = 15000000\n")
 	if err != nil {
 		t.Fatal(err)
 	}

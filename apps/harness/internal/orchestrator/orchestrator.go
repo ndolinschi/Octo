@@ -63,6 +63,10 @@ type Options struct {
 	// AgentSource, when set, supplies the agents (with their current login
 	// state) in place of Agents each time one is needed.
 	AgentSource func() []plugins.Agent
+	// OnAgentLogin, when set, is told what a real session of an ACP agent found
+	// about its login (R5-4): ok=false when it refused for a missing login,
+	// ok=true when a turn of it ended without that refusal.
+	OnAgentLogin func(agentID string, ok bool)
 	// BuiltinUnavailable, when non-empty, says the built-in Messages-API loop
 	// cannot run (no key, no router); it is the error every agent, sub-agent
 	// and side question that needs it ends with, and no request is sent.
@@ -631,4 +635,21 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 	rt.publishSession(rt.sessionID, false)
 	o.settleTurn(rt, orch.ID, status, res.Text)
 	return status, finished
+}
+
+// noteLogin passes what an ACP agent's run showed about its login to
+// OnAgentLogin: a "not logged in" failure marks it logged out; a run that
+// ended otherwise (done, or failed for another reason after it started) marks
+// it logged in only when it succeeded.
+func (o *Orchestrator) noteLogin(agentID string, err error) {
+	if o.opts.OnAgentLogin == nil || agentID == "" {
+		return
+	}
+	var ue *usererr.Error
+	switch {
+	case err == nil:
+		o.opts.OnAgentLogin(agentID, true)
+	case errors.As(err, &ue) && ue.Code == usererr.CodeAgentNotLoggedIn:
+		o.opts.OnAgentLogin(agentID, false)
+	}
 }

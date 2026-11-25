@@ -125,3 +125,32 @@ func (rt *runtime) budgetCut(ctx context.Context) error {
 	}
 	return usererr.BudgetCut(spent, budget).Caused(&router.BudgetError{Spent: spent, Budget: budget})
 }
+
+// afford is the loop's Afford (P2-11): under a budget, a request whose input
+// alone (price-table estimate) costs more than the budget has left is not sent:
+// it would overshoot the budget whatever the answer, and a tiny budget was
+// otherwise spent several times over by the turn's first request. Unknown
+// prices or spend never block.
+func (rt *runtime) afford(model string) func(context.Context, func() int64) error {
+	return func(ctx context.Context, inputTokens func() int64) error {
+		c, cancel := dbCtx(ctx)
+		defer cancel()
+		info, err := rt.db.Info(c)
+		if err != nil || info.BudgetUSD == nil {
+			return nil
+		}
+		m := rt.meter()
+		in, ok := m.Prices.Estimate(model, prices.Tokens{Input: inputTokens()})
+		if !ok || in <= 0 {
+			return nil
+		}
+		spent, _, err := m.Spent(c, rt.db)
+		if err != nil {
+			return nil
+		}
+		if left := *info.BudgetUSD - spent; in > left {
+			return usererr.BudgetTooSmall(spent, *info.BudgetUSD, in).Caused(&router.BudgetError{Spent: spent, Budget: *info.BudgetUSD})
+		}
+		return nil
+	}
+}

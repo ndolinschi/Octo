@@ -375,7 +375,7 @@ func TestAutoBudgetReachedFromRouter(t *testing.T) {
 		t.Fatalf("turn = %s, want failed on the router's 402", a.status)
 	}
 	c := a.child
-	if c.Status != projectstore.StatusFailed || c.Error == nil || !strings.HasPrefix(*c.Error, "This project's budget is used up") {
+	if c.Status != projectstore.StatusFailed || c.Error == nil || !strings.HasPrefix(*c.Error, "This project's budget is") || !strings.Contains(*c.Error, "used up") {
 		t.Fatalf("child = %+v", c)
 	}
 	if str(c.RouteReason) != "router: project budget reached" {

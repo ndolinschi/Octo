@@ -2,7 +2,7 @@ import type { Provider } from "@octo/agent-client";
 import { useState } from "react";
 import { cn } from "../../../lib/cn";
 import { errorMessage } from "../../../lib/format";
-import { isReady, plainReason, recheckAgent, stateText, stateTone } from "../../../lib/providers";
+import { isReady, plainReason, providerStateText, recheckAgent, stateText, stateTone } from "../../../lib/providers";
 import { useApp } from "../../../state/app";
 import { Button } from "../../primitives/Button";
 import { Notice } from "../../primitives/Notice";
@@ -47,7 +47,7 @@ export function ConnectDetail({ provider: p, framed = true }: { provider: Provid
         <h2 className="min-w-0 flex-1 truncate text-title text-fg">{p.label}</h2>
         <span className="flex shrink-0 items-center gap-2 text-sm text-fg-3">
           <ToneDot tone={stateTone(p)} />
-          {stateText(p.state)}
+          {providerStateText(p)}
         </span>
       </div>
       <p className="text-sm text-fg-2">{describe(p)}</p>

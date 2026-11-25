@@ -1,6 +1,6 @@
 import type { Provider, ProviderModel, ProviderState } from "@octo/agent-client";
 import { timeAgo } from "../format";
-import { stateText } from "./providersMore";
+import { loginUnchecked, providerStateText } from "./providersMore";
 import { plainReason } from "./reasons";
 
 // Decision 89: Settings → Providers is a list and a detail. Everything the page decides is here, React-free.
@@ -36,14 +36,15 @@ const TONE: Record<ProviderState, Tone> = {
   not_connected: "muted",
   not_supported: "muted",
 };
-export const stateTone = (p: Pick<Provider, "state">): Tone => TONE[p.state];
+export const stateTone = (p: Pick<Provider, "state"> & Partial<Pick<Provider, "kind" | "login">>): Tone => (loginUnchecked(p) ? "warn" : TONE[p.state]);
 
 const count = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
 /** The one dim line under a row's name: "Ready · 16 models", "Not logged in", "Not installed", "Not set up". */
-export function rowStatus(p: Pick<Provider, "state" | "models">): string {
-  if (p.state === "ready" && p.models.length > 0) return `Ready · ${count(p.models.length, "model")}`;
-  return stateText(p.state);
+export function rowStatus(p: Pick<Provider, "state" | "models"> & Partial<Pick<Provider, "kind" | "login">>): string {
+  const word = providerStateText(p);
+  if (p.state === "ready" && p.models.length > 0) return `${word} · ${count(p.models.length, "model")}`;
+  return word;
 }
 
 export type ProviderRowView = { id: string; label: string; status: string; tone: Tone; experimental: boolean };

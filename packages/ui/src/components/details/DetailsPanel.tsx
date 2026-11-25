@@ -315,7 +315,9 @@ function Team() {
   // The latest delegation the router placed in this session (tier `auto`): its decision as one quiet line.
   const sessionAgents = agentsInSession(state.agents, state.agentOrder, scope?.sessionId ?? null, rootId);
   const routed = latestRoutedAgent(sessionAgents);
-  const route = routed ? routeLine(routed, config?.acp_orchestrators ?? []) : null;
+  // UX-14: the line is the last delegation's, not the project's model choice ("Fixed" beside "Chosen automatically" read as a contradiction).
+  const routed1 = routed ? routeLine(routed, config?.acp_orchestrators ?? []) : null;
+  const route = routed1 ? `Last delegation: ${routed1.charAt(0).toLowerCase()}${routed1.slice(1)}` : null;
   return (
     <InfoSection title="Agents" labelId="details-models">
       {TIERS.map(([key, label]) => {

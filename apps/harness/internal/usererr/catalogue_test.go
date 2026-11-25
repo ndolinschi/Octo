@@ -66,6 +66,7 @@ func samples() map[string]*Error {
 		"GitPathRefused":       GitPathRefused(".git/config"),
 		"BudgetReached":        BudgetReached(4.2, 5),
 		"BudgetCut":            BudgetCut(0.0011, 0.0005),
+		"BudgetTooSmall":       BudgetTooSmall(0, 0.0005, 0.0021),
 		"TurnInProgress":       TurnInProgress(),
 		"TurnInterrupted":      TurnInterrupted(true),
 		"TurnInterruptedEmpty": TurnInterrupted(false),

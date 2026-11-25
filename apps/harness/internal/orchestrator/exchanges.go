@@ -52,7 +52,7 @@ func (o *Orchestrator) recordExchangeEnded(rt *runtime, orchID, status, replyTex
 		}
 	}
 	in := memory.ExchangeInput{
-		TurnID: rt.turnID, MessageID: answerID, Request: request, Answer: answer, StartedAt: begin, Duration: max(end.Sub(begin), 0),
+		TurnID: rt.turnID, MessageID: answerID, Request: request, Answer: answer, StartedAt: begin, Duration: max(end.Sub(begin)-o.approvals.TakeWaited(rt.pid(), rt.turnID), 0),
 		Status: status, TaskID: rt.currentTask(), Files: []string{}, Agents: []string{}, Interrupted: interrupted,
 	}
 	if problem != nil && status == projectstore.ExchangeFailed {

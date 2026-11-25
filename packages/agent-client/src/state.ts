@@ -258,6 +258,27 @@ function isDefault(state: ProjectState, sid: string | null | undefined): boolean
 }
 
 /** Applies `fn` to the slice of `sid` (made when missing); nothing when no session is named. */
+/** UX-03: `project.attention`'s per-session counts applied to the main sessions of the list (a session not named waits for nothing). */
+function withSessionNeeds(
+  sessions: SessionsState,
+  needs: readonly { session_id: string; needs_you: boolean; approvals: number; inputs: number }[],
+): SessionsState {
+  const by = new Map(needs.map((n) => [n.session_id, n]));
+  let changed = false;
+  const list = sessions.list.map((s) => {
+    if (s.kind !== "main") return s;
+    const n = by.get(s.id);
+    const needsYou = n?.needs_you ?? false;
+    const state = s.state === "working" && needsYou ? "waiting" : s.state === "waiting" && !needsYou ? "working" : s.state;
+    const approvals = n?.approvals ?? 0;
+    const inputs = n?.inputs ?? 0;
+    if (state === s.state && (s.needs_you ?? false) === needsYou && (s.pending_approvals ?? 0) === approvals && (s.pending_inputs ?? 0) === inputs) return s;
+    changed = true;
+    return { ...s, state, needs_you: needsYou, pending_approvals: approvals, pending_inputs: inputs };
+  });
+  return changed ? { ...sessions, list } : sessions;
+}
+
 function withSlice(sessions: SessionsState, sid: string | null | undefined, fn: (slice: SessionSlice) => SessionSlice): SessionsState {
   if (sid === null || sid === undefined) return sessions;
   return { ...sessions, byId: { ...sessions.byId, [sid]: fn(sessions.byId[sid] ?? emptySlice()) } };
@@ -504,9 +525,12 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
     case "project.attention": {
       const sid = event.session_id ?? null;
       const attention = nextAttention(state.attention, event);
+      // UX-03: the per-session counts move the session rows too (a working session that waits for the person reads
+      // "waiting", and back), so the sidebar's "Needs you" does not wait for the next list read.
+      const listed = event.sessions !== undefined ? withSessionNeeds(state.sessions, event.sessions) : state.sessions;
       // A session's failed state goes to its slice; the project-wide counts (no `session_id`) stay the project's.
-      if (sid === null) return { ...state, attention };
-      const sessions = withSlice(state.sessions, sid, (x) => ({ ...x, attention: nextAttention(x.attention, event) }));
+      if (sid === null) return { ...state, attention, sessions: listed };
+      const sessions = withSlice(listed, sid, (x) => ({ ...x, attention: nextAttention(x.attention, event) }));
       return { ...state, ...(isDefault(state, sid) ? { attention } : {}), sessions };
     }
     case "providers.updated":

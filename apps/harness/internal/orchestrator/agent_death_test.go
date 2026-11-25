@@ -81,3 +81,32 @@ func TestSessionStateAfterTheTurnSaysItEnded(t *testing.T) {
 		t.Fatalf("session states after turn.finished = %v, want the turn's end", after)
 	}
 }
+
+// NEW-10 (D5): an ACP orchestrator killed as soon as the request reached it is
+// started again once; when that restart fails too, the turn reads as the agent
+// stopping in the middle of the request, not "stopped while starting".
+func TestAgentKilledAtOnceWithAFailedRestartIsACrash(t *testing.T) {
+	ag := fakeAgent("fake", true)
+	dir := t.TempDir()
+	marker := filepath.Join(t.TempDir(), "launched")
+	wrapper := filepath.Join(t.TempDir(), "agent.sh")
+	// The first launch runs the fake agent; every later launch exits at once.
+	script := "#!/bin/sh\nif [ -e " + marker + " ]; then exit 1; fi\n: > " + marker + "\nexec \"" + os.Args[0] + "\" \"$@\"\n"
+	if err := os.WriteFile(wrapper, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ag.Launch.Command = wrapper
+	r := newACPRig(t, mockllm.New(0), ag)
+	pid := r.supervisedProject(t, dir, "acp:fake")
+	if st := r.runCollect(t, pid, "[live] go", nil).status; st != "completed" {
+		t.Fatalf("first turn = %s", st)
+	}
+	got := r.runCollect(t, pid, "[die-at-once] run the suite", nil)
+	if got.status != "failed" {
+		t.Fatalf("turn = %s", got.status)
+	}
+	msg, _ := got.of(events.TurnFinished)[0]["error"].(string)
+	if strings.Contains(msg, "while starting") || !strings.Contains(msg, "stopped in the middle of the request") {
+		t.Fatalf("error = %q", msg)
+	}
+}

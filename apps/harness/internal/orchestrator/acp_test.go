@@ -38,6 +38,12 @@ func fakeAgent(id string, available bool) plugins.Agent {
 
 func newACPRig(t *testing.T, llm http.Handler, agents ...plugins.Agent) *rig {
 	t.Helper()
+	return newACPRigOpts(t, llm, nil, agents...)
+}
+
+// newACPRigOpts is newACPRig with extra orchestrator options set by mut.
+func newACPRigOpts(t *testing.T, llm http.Handler, mut func(*orchestrator.Options), agents ...plugins.Agent) *rig {
+	t.Helper()
 	srv := httptest.NewServer(llm)
 	t.Cleanup(srv.Close)
 	store, err := projectstore.Open(t.TempDir())
@@ -47,9 +53,13 @@ func newACPRig(t *testing.T, llm http.Handler, agents ...plugins.Agent) *rig {
 	t.Cleanup(func() { _ = store.Close() })
 	hub := events.NewHub()
 	notes := project.NewNotes(store, hub)
-	orch := orchestrator.New(store, hub, notes, orchestrator.Options{
+	opts := orchestrator.Options{
 		Client: anthropicclient.New("k", srv.URL, ""), MaxTurns: 10, Agents: agents,
-	})
+	}
+	if mut != nil {
+		mut(&opts)
+	}
+	orch := orchestrator.New(store, hub, notes, opts)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

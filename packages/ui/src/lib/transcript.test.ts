@@ -12,6 +12,7 @@ import {
   isInterruption,
   stepState,
   turnHead,
+  keepsEmptyTurn,
   isRestartInterruption,
   RESTART_INTERRUPTION,
   spawnStatus,
@@ -339,4 +340,11 @@ test("3: in a turn a restart interrupted, the calls its interruption closed read
   assert.equal(stepState(undefined, false, "failed", true), "stopped");
   assert.equal(spawnStatus(undefined, closed, false, "failed", true), "cancelled");
   assert.equal(spawnStatus(undefined, closed, false, "failed"), "failed");
+});
+
+test("keepsEmptyTurn (R5-3): a turn stopped or failed before writing anything keeps its head after a reload", () => {
+  assert.equal(keepsEmptyTurn(turnHead("cancelled", 9_000)), true);
+  assert.equal(keepsEmptyTurn(turnHead("failed", 9_000)), true);
+  assert.equal(keepsEmptyTurn(turnHead("completed", 9_000)), false);
+  assert.equal(keepsEmptyTurn(null), false);
 });

@@ -201,3 +201,27 @@ test("workspaces: listWorkspaces, moveSessionToWorktree, and file workspace quer
   await r.bridge.writeFile("p", { folder: "web", path: "a.ts", content: "x", workspace_id: "wrk_1" });
   assert.deepEqual(r.calls[0]?.body, { folder: "web", path: "a.ts", content: "x", workspace_id: "wrk_1" });
 });
+
+test("UX-03: project.attention's per-session counts move a working session to waiting and back", () => {
+  let s = withSessions(emptyProjectState(), [session({ id: "ses_a", state: "working", current: true }), session({ id: "ses_b", state: "working" })]);
+  s = applyEvent(s, {
+    type: "project.attention",
+    seq: 1,
+    needs_you: true,
+    approvals: 1,
+    inputs: 0,
+    sessions: [{ session_id: "ses_a", needs_you: true, approvals: 1, inputs: 0, failed: false }],
+  });
+  const a = s.sessions.list.find((x) => x.id === "ses_a");
+  assert.equal(a?.state, "waiting");
+  assert.equal(a?.needs_you, true);
+  assert.equal(a?.pending_approvals, 1);
+  assert.equal(s.sessions.list.find((x) => x.id === "ses_b")?.state, "working");
+  s = applyEvent(s, { type: "project.attention", seq: 2, needs_you: false, approvals: 0, inputs: 0, sessions: [] });
+  const a2 = s.sessions.list.find((x) => x.id === "ses_a");
+  assert.equal(a2?.state, "working");
+  assert.equal(a2?.needs_you, false);
+  const before = s.sessions;
+  s = applyEvent(s, { type: "project.attention", seq: 3, needs_you: false, approvals: 0, inputs: 0, sessions: [] });
+  assert.equal(s.sessions.list, before.list);
+});

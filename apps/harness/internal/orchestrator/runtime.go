@@ -39,6 +39,8 @@ type runtime struct {
 	turnPlan     atomic.Bool
 	// remembered counts the items the turn's agents kept with the remember tool.
 	remembered atomic.Int32
+	// memAsk lets one memory-save card at a time be open, so parallel saves see the answer to the first (UX-01).
+	memAsk sync.Mutex
 	touchMu    sync.Mutex
 	touched    []string
 	o          *Orchestrator
@@ -272,7 +274,11 @@ func (rt *runtime) baseRegistry(a projectstore.Agent) (*tools.Registry, error) {
 
 func (rt *runtime) runOrchestrator(ctx context.Context, orch projectstore.Agent) (agent.Result, error) {
 	if rt.isACPOrchestrator() {
-		return rt.runACPOrchestrator(ctx, orch)
+		res, err := rt.runACPOrchestrator(ctx, orch)
+		if t, terr := rt.acpOrchestratorTarget(); terr == nil {
+			rt.o.noteLogin(t.agent.ID, err)
+		}
+		return res, err
 	}
 	history, err := rt.orchestratorHistory(ctx, orch, true)
 	if err != nil {
@@ -305,6 +311,7 @@ func (rt *runtime) runAgent(ctx context.Context, a projectstore.Agent, history [
 		Gate:            rt.loopGate(),
 		OutputCap:       rt.outputCap(a.Model),
 		BudgetCut:       rt.budgetCut,
+		Afford:          rt.afford(a.Model),
 	}
 	if a.ParentID != nil {
 		loop.Steer = rt.o.steerTextsOf(a.ID) // a message the user sent to this sub-agent's session

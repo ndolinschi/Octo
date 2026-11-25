@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 	"time"
 )
 
@@ -15,6 +16,41 @@ type Registry struct {
 	probes  *prober
 	// versions caches the version checks of agents whose manifest has one.
 	versions *versioner
+	// seenOut holds the agents a real session found not logged in (R5-4): an
+	// agent without a reliable login probe (Copilot has none; Grok's lists
+	// models without a login) otherwise keeps reading ready.
+	seenMu  sync.Mutex
+	seenOut map[string]bool
+}
+
+// SeenLogin records what a real session of the agent found: ok=false (it
+// refused for a missing login) shows the agent not logged in until a later
+// session starts fine or its login is checked again (Recheck). It reports
+// whether the recorded state changed.
+func (r *Registry) SeenLogin(id string, ok bool) bool {
+	if r == nil {
+		return false
+	}
+	r.seenMu.Lock()
+	defer r.seenMu.Unlock()
+	if r.seenOut[id] == !ok {
+		return false
+	}
+	if ok {
+		delete(r.seenOut, id)
+	} else {
+		if r.seenOut == nil {
+			r.seenOut = map[string]bool{}
+		}
+		r.seenOut[id] = true
+	}
+	return true
+}
+
+func (r *Registry) seenLoggedOut(id string) bool {
+	r.seenMu.Lock()
+	defer r.seenMu.Unlock()
+	return r.seenOut[id]
 }
 
 // StartProbes turns on background login probing until ctx ends: every agent
@@ -58,6 +94,7 @@ func (r *Registry) OnProbeChange(f func()) {
 // with the fresh result. The second value is false for an
 // unknown id.
 func (r *Registry) Recheck(ctx context.Context, id string) (Agent, bool) {
+	r.SeenLogin(id, true) // the user asks again: the probe (or, without one, the next session) decides
 	if r != nil && r.versions != nil {
 		if raw, ok := r.agents[id]; ok {
 			r.versions.sync(ctx, raw)
@@ -70,6 +107,7 @@ func (r *Registry) Recheck(ctx context.Context, id string) (Agent, bool) {
 // probes again unless a probe started less than FreshProbeAge ago, so a user who
 // has just logged in is not turned away by an older result.
 func (r *Registry) Fresh(ctx context.Context, id string) (Agent, bool) {
+	r.SeenLogin(id, true) // a new attempt: the probe and that session decide again
 	return r.probeNow(ctx, id, FreshProbeAge)
 }
 
@@ -115,6 +153,10 @@ func (r *Registry) withState(a Agent) Agent {
 			a.VersionTooOld, a.Available = true, false
 			a.UnavailableReason = fmt.Sprintf("%s %s is installed; Octo needs %s or newer", baseName(a.Command), a.Version.Version, a.MinVersion)
 		}
+	}
+	if a.Available && r.seenLoggedOut(a.ID) {
+		f := false
+		a.LoggedIn = &f
 	}
 	// An API key forwarded to a subscription agent makes it bill per token.
 	a.FlatRate = a.FlatRateIn(a.ResolvedEnv())

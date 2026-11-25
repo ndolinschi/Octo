@@ -17,6 +17,30 @@ export function workingText(projectsRunning: number): string | null {
   return projectsRunning > 0 ? `${projectsRunning} ${projectsRunning === 1 ? "project" : "projects"} working` : null;
 }
 
+/** UX-03: a project whose agent waits for the person (an approval, a form) counts as waiting, not working: waiting wins. */
+export function projectCounts(projects: readonly { status: string; needs_you?: boolean; attention?: string }[] | null | undefined): {
+  working: number;
+  waiting: number;
+} {
+  let working = 0;
+  let waiting = 0;
+  for (const p of projects ?? []) {
+    if (p.needs_you === true || p.attention === "needs_you") waiting++;
+    else if (p.status === "running") working++;
+  }
+  return { working, waiting };
+}
+
+/** UX-03: "1 project needs you" / "2 projects need you"; null when none. */
+export function waitingText(projectsWaiting: number): string | null {
+  return projectsWaiting > 0 ? `${projectsWaiting} ${projectsWaiting === 1 ? "project needs" : "projects need"} you` : null;
+}
+
+/** UX-03: the window title says when the open project waits for the person, ahead of its name. */
+export function windowTitle(title: string, needsYou: boolean): string {
+  return `${needsYou ? "Needs you · " : ""}${title} · Octo`;
+}
+
 /** The connection item: only when the bridge is not fine, and what to do. */
 export function connectionText(
   health: "checking" | "online" | "offline",

@@ -21,6 +21,8 @@ export function RunBar() {
   // B2 (polish pass F3): the header has one Run menu; the pinned commands lead it instead of standing beside it as buttons.
   const ordered = [...r.offered.filter((c) => c.pinned), ...r.offered.filter((c) => !c.pinned)];
   const items: MenuItem[] = [
+    // UX-31: an empty menu says so before offering to add commands.
+    ...(ordered.length === 0 ? [{ id: "none", caption: "No commands yet. Add some:" } as const] : []),
     ...ordered.map((c): MenuItem => {
       const busy = r.running.has(c.name.toLowerCase());
       return {

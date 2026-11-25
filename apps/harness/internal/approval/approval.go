@@ -145,6 +145,20 @@ type Manager struct {
 	mu      sync.Mutex
 	pending map[string]map[string]*item // project -> id -> item
 	grants  map[string]map[grantKey]bool
+	// denials are the actions the user denied in a turn (R5-13), by DenialKey:
+	// the same action asked again in that turn, by any agent, is refused
+	// without another card.
+	denials map[string]map[grantKey]bool
+	// waits is how long each turn waited for the user's answers (UX-02): the
+	// time with at least one of its approvals open, so "Worked for" can leave it out.
+	waits map[string]map[int64]*wait
+	now   func() time.Time
+}
+
+type wait struct {
+	open  int
+	since time.Time
+	total time.Duration
 }
 
 // New makes a manager. publish delivers events; changed (optional) is called
@@ -155,7 +169,8 @@ func New(publish func(pid, typ string, fields map[string]any), changed func(pid 
 	}
 	return &Manager{
 		publish: publish, changed: changed, timeout: timeout,
-		pending: map[string]map[string]*item{}, grants: map[string]map[grantKey]bool{},
+		pending: map[string]map[string]*item{}, grants: map[string]map[grantKey]bool{}, denials: map[string]map[grantKey]bool{},
+		waits: map[string]map[int64]*wait{}, now: time.Now,
 	}
 }
 
@@ -174,7 +189,9 @@ func (m *Manager) Request(ctx context.Context, pid string, a Approval) Resolutio
 		m.pending[pid] = map[string]*item{}
 	}
 	m.pending[pid][a.ID] = it
+	m.startWaitLocked(pid, a.TurnID)
 	m.mu.Unlock()
+	defer m.endWait(pid, a.TurnID)
 	m.publish(pid, "approval.requested", map[string]any{"approval": a})
 	m.notify(pid)
 
@@ -315,7 +332,37 @@ func (m *Manager) Remember(pid string, turn int64, agent, key, decision string) 
 	}
 }
 
-// EndTurn forgets the turn's grants.
+// DenialKey identifies an action for RememberDenial: the tool and what it
+// acts on (command, path), or its title when it names neither.
+func DenialKey(tool string, d Detail, title string) string {
+	if d.Command == "" && d.Path == "" {
+		return tool + "\x00title\x00" + title
+	}
+	return tool + "\x00" + d.Command + "\x00" + d.Folder + "\x00" + d.Path
+}
+
+// RememberDenial records that the user denied key in the turn. An empty key
+// records nothing.
+func (m *Manager) RememberDenial(pid string, turn int64, key string) {
+	if key == "" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.denials[pid] == nil {
+		m.denials[pid] = map[grantKey]bool{}
+	}
+	m.denials[pid][grantKey{turn: turn, key: key}] = true
+}
+
+// DeniedInTurn reports whether the user already denied key in the turn.
+func (m *Manager) DeniedInTurn(pid string, turn int64, key string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return key != "" && m.denials[pid][grantKey{turn: turn, key: key}]
+}
+
+// EndTurn forgets the turn's grants and denials.
 func (m *Manager) EndTurn(pid string, turn int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -324,6 +371,55 @@ func (m *Manager) EndTurn(pid string, turn int64) {
 			delete(m.grants[pid], k)
 		}
 	}
+	for k := range m.denials[pid] {
+		if k.turn == turn {
+			delete(m.denials[pid], k)
+		}
+	}
+}
+
+func (m *Manager) startWaitLocked(pid string, turn int64) {
+	if m.waits[pid] == nil {
+		m.waits[pid] = map[int64]*wait{}
+	}
+	w := m.waits[pid][turn]
+	if w == nil {
+		w = &wait{}
+		m.waits[pid][turn] = w
+	}
+	if w.open == 0 {
+		w.since = m.now()
+	}
+	w.open++
+}
+
+func (m *Manager) endWait(pid string, turn int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w := m.waits[pid][turn]
+	if w == nil || w.open == 0 {
+		return
+	}
+	if w.open--; w.open == 0 {
+		w.total += m.now().Sub(w.since)
+	}
+}
+
+// TakeWaited returns how long the turn waited for the user's answers (approvals
+// open, overlapping ones counted once, one still open up to now) and forgets it.
+func (m *Manager) TakeWaited(pid string, turn int64) time.Duration {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w := m.waits[pid][turn]
+	if w == nil {
+		return 0
+	}
+	total := w.total
+	if w.open > 0 {
+		total += m.now().Sub(w.since)
+	}
+	delete(m.waits[pid], turn)
+	return total
 }
 
 // Forget drops a deleted project's state.
@@ -332,6 +428,8 @@ func (m *Manager) Forget(pid string) {
 	defer m.mu.Unlock()
 	delete(m.pending, pid)
 	delete(m.grants, pid)
+	delete(m.denials, pid)
+	delete(m.waits, pid)
 }
 
 func (m *Manager) notify(pid string) {

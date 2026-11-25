@@ -294,7 +294,9 @@ func (rt *runtime) runSpawned(ctx context.Context, parent projectstore.Agent, in
 // runChild runs the child through the built-in loop, or through ext when set.
 func (rt *runtime) runChild(ctx context.Context, child projectstore.Agent, task anthropic.MessageParam, ext *acpTarget) (string, error) {
 	if ext != nil {
-		return rt.runACP(ctx, child, *ext)
+		text, err := rt.runACP(ctx, child, *ext)
+		rt.o.noteLogin(ext.agent.ID, err)
+		return text, err
 	}
 	res, err := rt.runAgent(ctx, child, []anthropic.MessageParam{task})
 	return res.Text, err

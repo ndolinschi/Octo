@@ -31,6 +31,19 @@ export function stateText(state: ProviderState): string {
 }
 
 /**
+ * R5-4: an agent whose login Octo cannot check (no probe: Copilot) is usable but not known to be logged in, so it does not
+ * read "Ready" (a first request may still answer "not logged in"). An agent a session found logged out reads `not_logged_in`.
+ */
+export function loginUnchecked(p: Pick<Provider, "state"> & Partial<Pick<Provider, "kind" | "login">>): boolean {
+  return p.kind === "agent" && p.state === "ready" && p.login === "unchecked";
+}
+
+/** `stateText` for a provider: "Login not checked" for a ready agent whose login is unknown. */
+export function providerStateText(p: Pick<Provider, "state"> & Partial<Pick<Provider, "kind" | "login">>): string {
+  return loginUnchecked(p) ? "Login not checked" : stateText(p.state);
+}
+
+/**
  * The button a provider row shows (decision 53): Connect when it never worked, Reconnect when it did and stopped. An agent
  * that was never set up (not installed, not logged in) has nothing to press: its sheet lists the commands, so "How to connect".
  */

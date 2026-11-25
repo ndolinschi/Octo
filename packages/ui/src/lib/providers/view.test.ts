@@ -12,6 +12,7 @@ import {
   providerGroups,
   reasonLine,
   rowStatus,
+  stateTone,
 } from "./view";
 
 const models = (n: number): ProviderModel[] => Array.from({ length: n }, (_, i) => ({ id: `m${i}`, label: `m${i}`, source: "manifest" }));
@@ -58,6 +59,16 @@ test("rowStatus: one short line per state", () => {
   assert.equal(rowStatus(at(2)), "Not logged in");
   assert.equal(rowStatus(at(4)), "Not installed");
   assert.equal(rowStatus(at(0)), "Not set up");
+});
+
+test("rowStatus/stateTone (R5-4): a ready agent whose login is not checked does not read Ready", () => {
+  const copilot = p("copilot", "ready", { login: "unchecked", models: models(3) });
+  assert.equal(rowStatus(copilot), "Login not checked · 3 models");
+  assert.equal(rowStatus(p("copilot", "ready", { login: "unchecked" })), "Login not checked");
+  assert.equal(stateTone(copilot), "warn");
+  assert.equal(rowStatus(p("claude", "ready", { login: "ok", models: models(2) })), "Ready · 2 models");
+  assert.equal(stateTone(p("claude", "ready", { login: "ok" })), "ok");
+  assert.equal(rowStatus(p("api", "ready", { kind: "api", login: "unchecked" })), "Ready");
 });
 
 test("providerGroups: fixed order, empty groups omitted, 'Not set up' folded to one row when something is connected", () => {

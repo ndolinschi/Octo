@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { sessionTitle } from "../lib/sessions/title";
 import { usePhone } from "../lib/phone";
+import { windowTitle } from "../lib/statusBar";
 import { CodeProvider, useCode } from "../state/code";
 import { CommentsProvider } from "../state/comments";
 import { FileViewProvider } from "../state/fileView";
@@ -109,10 +110,11 @@ function WorkspaceTitle({ phone }: { phone: boolean }) {
   const sid = ws.focusedSessionId ?? state.sessions.defaultId ?? null;
   const session = sid !== null ? state.sessions.list.find((x) => x.id === sid) : undefined;
   const title = project ? (session ? `${project.name} — ${sessionTitle(session)}` : project.name) : "";
+  const needsYou = state.attention.needs_you;
   useEffect(() => {
     if (!title) return;
-    document.title = `${title} · Octo`;
-  }, [title]);
+    document.title = windowTitle(title, needsYou);
+  }, [title, needsYou]);
   if (phone || !title) return null;
   return (
     <h1 data-page-title tabIndex={-1} className="sr-only">

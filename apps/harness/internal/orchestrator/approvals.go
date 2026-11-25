@@ -169,6 +169,12 @@ func (rt *runtime) featureEnabled(id string) bool {
 	return rt.o.opts.Features.Enabled(id)
 }
 
+// memoryDenialKey is the denial a declined memory save leaves for the rest of the request (UX-01).
+const memoryDenialKey = "memory:save"
+
+// memoryDeclinedAgain is what a memory save gets after the user declined one in the same request.
+const memoryDeclinedAgain = "Not saved: the user declined saving memory in this request. Do not try again with another tool; go on with the task."
+
 // approveMemory checks the auto_memory feature flag and the project's auto_memory setting before saving memory.
 // When "allow", it returns allowed immediately. When "blocked" or disabled by feature flag, it refuses without prompting.
 // When "off" or "review", it raises a KindMemory approval card (even in access="full" projects).
@@ -183,8 +189,15 @@ func (rt *runtime) approveMemory(ctx context.Context, agentID, label, title stri
 		return false, "Auto-memory is disabled by feature flag."
 	}
 	m := rt.o.approvals
+	rt.memAsk.Lock()
+	defer rt.memAsk.Unlock()
 	if m.Granted(rt.pid(), rt.turnID, agentID, approval.KindMemory) {
 		return true, "" // "Allow all for this request" earlier in the turn
+	}
+	// UX-01: a memory save the user declined is not asked again in the request (by this or another agent): the
+	// agent retrying through another memory tool raised a second card.
+	if m.DeniedInTurn(rt.pid(), rt.turnID, memoryDenialKey) {
+		return false, memoryDeclinedAgain
 	}
 	ap := approval.Approval{
 		AgentID: agentID, AgentLabel: label, TurnID: rt.turnID, SessionID: rt.sessionID,
@@ -199,6 +212,7 @@ func (rt *runtime) approveMemory(ctx context.Context, agentID, label, title stri
 	if res.Decision != approval.Deny {
 		return true, ""
 	}
+	m.RememberDenial(rt.pid(), rt.turnID, memoryDenialKey)
 	if rt.memoryMode(ctx) == memory.AutoMemoryBlocked {
 		return false, "Memory was blocked for this project."
 	}
@@ -290,6 +304,9 @@ func (rt *runtime) savedRuleAllows(ctx context.Context, tool string, d approval.
 	return ok
 }
 
+// deniedAgain is the refusal of an action the user already denied in the turn.
+const deniedAgain = "Already denied by the user in this turn. Do not retry it, another way or through another agent; tell the user it was not done."
+
 // denied is the error result a tool returns when the user said no: the
 // agent is told why when the user said so.
 func denied(note string) string {
@@ -372,12 +389,22 @@ func (p approvalPolicy) Decide(ctx context.Context, req permission.Request) perm
 	if p.rt.savedRuleAllows(ctx, tool, detail) {
 		return p.pick(req, approval.Allow, "", "")
 	}
+	// R5-13: an action the user already denied in this turn is refused again
+	// without a new card, whichever agent (a re-delegated sub-agent) asks.
+	title := firstNonEmpty(call.Title, call.Kind, "Permission request")
+	denialKey := approval.DenialKey(tool, detail, title)
+	if m.DeniedInTurn(pid, req.TurnID, denialKey) {
+		return p.pick(req, approval.Deny, "", deniedAgain)
+	}
 	// SessionID as in ask: without it GET /approvals?session= (a client's reload) and the session's needs_you miss the card.
 	res := m.Request(ctx, pid, approval.Approval{
 		AgentID: req.AgentID, AgentLabel: req.Agent, TurnID: req.TurnID, SessionID: p.rt.sessionID, Kind: approval.KindACP, Tool: tool,
-		Title: firstNonEmpty(call.Title, call.Kind, "Permission request"), Detail: detail,
+		Title: title, Detail: detail,
 	})
 	m.Remember(pid, req.TurnID, req.AgentID, key, res.Decision)
+	if res.Decision == approval.Deny {
+		m.RememberDenial(pid, req.TurnID, denialKey)
+	}
 	return p.pick(req, res.Decision, res.OptionID, res.Note)
 }
 

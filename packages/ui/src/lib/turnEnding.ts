@@ -100,6 +100,11 @@ export function turnHead(
   return { state: "done", label: `Worked for ${time}` };
 }
 
+/** R5-3: whether a finished turn with nothing written still shows (its head): only a stopped or failed one with a duration. */
+export function keepsEmptyTurn(head: { state: "done" | "failed" | "stopped" } | null): boolean {
+  return head !== null && head.state !== "done";
+}
+
 /**
  * How a request ended as the harness stored it (its exchange): status, start and duration (`lib/storedEndings`); a failed one
  * carries the failure as a live one does (`error` the sentence, `fields` its hint and action, `code` the catalogue's code); one

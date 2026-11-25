@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { changedFileCount, changedText, connectionText, workingText } from "./statusBar";
+import { changedFileCount, changedText, connectionText, projectCounts, waitingText, windowTitle, workingText } from "./statusBar";
 
 test("a file changed in several turns counts once, the same path in another folder counts again", () => {
   const turns = [
@@ -35,4 +35,22 @@ test("texts", () => {
   assert.equal(connectionText("offline", "unreadable")?.text, "Unreadable answer");
   assert.equal(connectionText("offline", "unanswered")?.text, "Not answering");
   assert.equal(connectionText("online", "refused"), null);
+});
+
+test("UX-03: a running project that waits for the person counts as waiting, not working", () => {
+  const c = projectCounts([
+    { status: "running", needs_you: true, attention: "needs_you" },
+    { status: "running", attention: "none" },
+    { status: "idle", attention: "failed" },
+  ]);
+  assert.deepEqual(c, { working: 1, waiting: 1 });
+  assert.equal(waitingText(c.waiting), "1 project needs you");
+  assert.equal(waitingText(2), "2 projects need you");
+  assert.equal(waitingText(0), null);
+  assert.deepEqual(projectCounts(null), { working: 0, waiting: 0 });
+});
+
+test("UX-03: Needs you goes ahead of the window title", () => {
+  assert.equal(windowTitle("Atlas — Fix tests", true), "Needs you · Atlas — Fix tests · Octo");
+  assert.equal(windowTitle("Atlas — Fix tests", false), "Atlas — Fix tests · Octo");
 });
