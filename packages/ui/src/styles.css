@@ -2694,6 +2694,14 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   overflow: hidden;
   clip-path: inset(50%);
 }
+/* G1 removed [data-panel-title] and A4 hides PanelPurpose on phone: drop the 44px bar completely when nothing visible remains. */
+[data-phone] [data-panel-bar]:not(:has([data-panel-header] > :not(:empty))) {
+  display: none;
+}
+/* PanelFilters holds 44px touch fields on phone: keep the same 4px vertical breathing room as desktop's 28px-in-36px row. */
+[data-phone] [data-panel-filters] {
+  padding-block: 4px;
+}
 
 /* No hover on a phone: a reply's footer (copy, time, model) is always shown, and wraps (above). */
 [data-phone] [data-conv] [data-turn-footer] {
