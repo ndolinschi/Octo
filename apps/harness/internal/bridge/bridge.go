@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"github.com/ndolinschi/Octo/apps/harness/internal/accounts"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -51,6 +52,7 @@ type Server struct {
 	builtinOff  string // reason the built-in loop is unavailable; "" = available
 	builtinFn   func() (bool, string)
 	providers   ProviderSource
+	accounts    *accounts.Service
 	picker      picker
 	defaultOrch func() string   // the orchestrator a project without a choice runs now
 	apiToken    string          // required on /v1 routes when set (WithAPIToken)
@@ -137,6 +139,10 @@ func (s *Server) routes() *http.ServeMux {
 			mux.HandleFunc("PUT /v1/providers/{id}/custom-models", s.putCustomModels)
 			mux.HandleFunc("PUT /v1/providers/{id}/prefs", s.putProviderPrefs)
 			mux.HandleFunc("POST /v1/providers/{id}/recheck", s.recheckProvider)
+		}
+		if s.accounts != nil {
+			mux.HandleFunc("POST /v1/providers/{id}/accounts", s.addAccount)
+			mux.HandleFunc("DELETE /v1/providers/{id}/accounts/{account}", s.removeAccount)
 		}
 	}
 	if s.diagnostics != nil {

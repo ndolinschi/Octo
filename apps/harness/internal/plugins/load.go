@@ -206,6 +206,9 @@ func (b *builder) populate(p *Plugin, m manifest) {
 			ag.MCPTransport = ""
 		}
 		ag.SearchPaths = slices.Clone(a.SearchPaths)
+		if a.Accounts != nil && ag.Unsupported == "" {
+			ag.AccountEnv, ag.AccountDefault = a.Accounts.Env, strings.TrimSpace(a.Accounts.Default)
+		}
 		if v := a.Version; v != nil {
 			ag.VersionCommand, _ = resolveCommandIn(v.Command[0], p.Dir, a.SearchPaths)
 			ag.VersionArgs, ag.MinVersion = slices.Clone(v.Command[1:]), strings.TrimSpace(v.Min)

@@ -6,6 +6,10 @@
     {
       "id": "claude-code",
       "label": "Claude Code",
+      "accounts": {
+        "env": "CLAUDE_CONFIG_DIR",
+        "default": "~/.claude"
+      },
       "verified": true,
       "flatRate": true,
       "billingEnv": [
@@ -124,6 +128,10 @@
     {
       "id": "codex",
       "label": "Codex",
+      "accounts": {
+        "env": "CODEX_HOME",
+        "default": "~/.codex"
+      },
       "flatRate": true,
       "strengths": [
         "easy",
@@ -311,6 +319,9 @@
     {
       "id": "omp",
       "label": "Oh My Pi",
+      "accounts": {
+        "env": "PI_CODING_AGENT_DIR"
+      },
       "flatRate": false,
       "command": "omp",
       "args": [

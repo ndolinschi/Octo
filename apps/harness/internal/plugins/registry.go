@@ -21,6 +21,10 @@ type Registry struct {
 	// models without a login) otherwise keeps reading ready.
 	seenMu  sync.Mutex
 	seenOut map[string]bool
+	// accounts lists the user's extra agent accounts (SetAccounts); each is
+	// served as an agent of its own, "<agent>@<account>".
+	acctMu   sync.RWMutex
+	accounts func() []Account
 }
 
 // SeenLogin records what a real session of the agent found: ok=false (it
@@ -68,7 +72,7 @@ func (r *Registry) StartProbes(ctx context.Context) {
 		r.versions.mu.Lock()
 		r.versions.ctx = ctx
 		r.versions.mu.Unlock()
-		r.versions.refresh(r.allAgents())
+		r.versions.refresh(r.baseAgents())
 	}
 }
 
@@ -96,7 +100,7 @@ func (r *Registry) OnProbeChange(f func()) {
 func (r *Registry) Recheck(ctx context.Context, id string) (Agent, bool) {
 	r.SeenLogin(id, true) // the user asks again: the probe (or, without one, the next session) decides
 	if r != nil && r.versions != nil {
-		if raw, ok := r.agents[id]; ok {
+		if raw, ok := r.agents[versionKey(id)]; ok {
 			r.versions.sync(ctx, raw)
 		}
 	}
@@ -129,16 +133,29 @@ func (r *Registry) refreshAll() {
 		r.probes.refresh(r.allAgents())
 	}
 	if r.versions != nil {
-		r.versions.refresh(r.allAgents())
+		r.versions.refresh(r.baseAgents())
 	}
 }
 
-func (r *Registry) allAgents() []Agent {
+// allAgents is every agent with the agents of the user's accounts.
+func (r *Registry) allAgents() []Agent { return r.withAccounts(r.baseAgents()) }
+
+// baseAgents is every agent of the manifests, without accounts.
+func (r *Registry) baseAgents() []Agent {
 	var out []Agent
 	for _, p := range r.plugins {
 		out = append(out, p.Agents...)
 	}
 	return out
+}
+
+// versionKey is the agent whose version check id uses: an account runs its
+// base agent's program, checked once for both.
+func versionKey(id string) string {
+	if base, _, ok := SplitAccountID(id); ok {
+		return base
+	}
+	return id
 }
 
 func (r *Registry) withState(a Agent) Agent {
@@ -148,7 +165,7 @@ func (r *Registry) withState(a Agent) Agent {
 		a.LastReport = r.probes.lastReport(a.ID)
 	}
 	if r.versions != nil && a.HasVersionCheck() {
-		a.Version = r.versions.report(a.ID)
+		a.Version = r.versions.report(versionKey(a.ID))
 		if a.Version.TooOld && a.Available {
 			a.VersionTooOld, a.Available = true, false
 			a.UnavailableReason = fmt.Sprintf("%s %s is installed; Octo needs %s or newer", baseName(a.Command), a.Version.Version, a.MinVersion)
@@ -171,7 +188,7 @@ func (r *Registry) Plugins() []Plugin {
 	r.refreshAll()
 	out := slices.Clone(r.plugins)
 	for i := range out {
-		out[i].Agents = r.agentsWithState(out[i].Agents)
+		out[i].Agents = r.agentsWithState(r.withAccounts(out[i].Agents))
 	}
 	return out
 }
@@ -193,7 +210,7 @@ func (r *Registry) Agents() []Agent {
 	}
 	r.refreshAll()
 	for _, p := range r.plugins {
-		out = append(out, r.agentsWithState(p.Agents)...)
+		out = append(out, r.agentsWithState(r.withAccounts(p.Agents))...)
 	}
 	return out
 }
@@ -204,6 +221,11 @@ func (r *Registry) Agent(id string) (Agent, bool) {
 		return Agent{}, false
 	}
 	a, ok := r.agents[id]
+	if !ok {
+		if a, ok = r.accountAgent(id); !ok {
+			return Agent{}, false
+		}
+	}
 	return r.withState(a), ok
 }
 

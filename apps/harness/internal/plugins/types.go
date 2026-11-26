@@ -122,6 +122,19 @@ type Agent struct {
 	// agent's program is looked for when it is not on PATH.
 	SearchPaths []string `json:"-"`
 
+	// AccountEnv is the variable that gives the agent's CLI another config and
+	// login folder (manifest accounts.env); "" when the agent has no accounts.
+	// AccountDefault is the folder the CLI uses when it is not set.
+	AccountEnv     string `json:"account_env,omitempty"`
+	AccountDefault string `json:"account_default,omitempty"`
+	// AccountOf is set on an agent that is one of the user's extra accounts of
+	// another: the base agent's id. AccountID and AccountLabel name the account,
+	// AccountDir is its folder (the value of the base's AccountEnv).
+	AccountOf    string `json:"account_of,omitempty"`
+	AccountID    string `json:"account_id,omitempty"`
+	AccountLabel string `json:"account_label,omitempty"`
+	AccountDir   string `json:"account_dir,omitempty"`
+
 	// commandFound: the agent's own program was found at load (Available may
 	// later turn false for a CLI that is too old; the check must still rerun).
 	commandFound bool
