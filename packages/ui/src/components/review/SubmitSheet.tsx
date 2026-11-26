@@ -166,7 +166,7 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
           </Notice>
         )}
         <section aria-label="What will be posted" className="flex flex-col gap-2">
-          <h3 className="text-heading text-fg">{review.kind === "local" ? "What will be recorded" : "What will be posted"}</h3>
+          <h3 className="text-sm text-fg-2">{review.kind === "local" ? "What will be recorded" : "What will be posted"}</h3>
           {preview.status === "loading" && (
             <p className="flex items-center gap-2 text-sm text-fg-3">
               <Spinner /> Preparing the preview…

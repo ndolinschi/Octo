@@ -55,11 +55,11 @@ export function ApprovalRules({ projectId }: { projectId: string }) {
   };
   return (
     <div data-approval-rules>
-      <Button variant="quiet" iconEnd={open ? ChevronDown : ChevronRight} aria-expanded={open} onClick={() => setOpen((o) => !o)} className="-ml-3">
+      <Button variant="quiet" iconEnd={open ? ChevronDown : ChevronRight} aria-expanded={open} onClick={() => setOpen((o) => !o)} className="-my-1.5 -ml-3">
         Always allowed
       </Button>
       {open && (
-        <div className="mt-2 flex flex-col gap-1 text-sm">
+        <div className="mt-3 flex flex-col gap-1 text-sm">
           {load.kind === "loading" && <SkeletonList count={2} size="sm" />}
           {load.kind === "error" && <Notice tone="error">{load.message}</Notice>}
           {load.kind === "ready" && load.rules.length === 0 && (

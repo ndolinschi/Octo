@@ -1,10 +1,12 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { SlashCommands } from "@octo/agent-client";
+import { cn } from "../../lib/cn";
 import { disabledSlashCommands, type SlashRow } from "../../lib/slash";
 import { slashGroups } from "../../lib/slashRows";
 import type { PickerSection } from "../../lib/picker";
 import { useTabFlags } from "../../state/tabFlags";
+import { Highlight } from "../primitives/Highlight";
 import { PopupList, popupOptionId, POPUP_PANEL } from "../primitives/PopupList";
 import { popupMove } from "../primitives/popupNav";
 import { useCloseOnScroll } from "../primitives/popupScroll";
@@ -45,7 +47,8 @@ export const SlashMenu = forwardRef<
   }
 >(function SlashMenu(props, handle) {
   const tabFlags = useTabFlags();
-  const { groups, rows } = slashGroups(props.commands, props.query, disabledSlashCommands(tabFlags));
+  const disabled = disabledSlashCommands(tabFlags);
+  const { groups, rows } = slashGroups(props.commands, props.query, disabled);
   const [selected, setSelected] = useState<string | null>(null);
   const [pos, setPos] = useState<{ left: number; bottom?: number; top?: number; width: number; maxHeight: number } | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -82,21 +85,45 @@ export const SlashMenu = forwardRef<
   const { onActive, listId } = props;
   const activeId = activeRow?.id ?? null;
   useEffect(() => onActive(activeId === null ? null : popupOptionId(listId, activeId)), [activeId, onActive, listId]);
+  const allGroups = props.query ? slashGroups(props.commands, "", disabled).groups : groups;
   // A name that both Octo and the agent offer says whose it is on the agent's row ("/review · Claude Code").
-  const octoNames = new Set(groups.filter((g) => g.rows[0]?.group === "octo").flatMap((g) => g.rows.map((r) => r.name)));
+  const octoNames = new Set(allGroups.filter((g) => g.rows[0]?.group === "octo").flatMap((g) => g.rows.map((r) => r.name)));
+  const labelFor = (row: SlashRow, group: string) => (row.group === "agent" && octoNames.has(row.name) ? `/${row.name} · ${group}` : `/${row.name}`);
+  const maxName = allGroups.reduce((m, g) => g.rows.reduce((n, r) => Math.max(n, labelFor(r, g.label).length), m), 0);
+  const nameCol = `min(${Math.min(18, Math.max(8, maxName))}ch, 35%)`;
   // 5a: on the phone the description is a second line (styles.css lets it take two) and the argument hint goes: it repeated the
   // description ("Choose Agent, Ask or Plan" · "Agent, Ask or Plan") and both were cut at 390.
   const phone = usePhone();
   const sections: PickerSection[] = groups.map((g) => ({
     title: g.label,
-    rows: g.rows.map((row) => ({
-      id: row.id,
-      label: row.group === "agent" && octoNames.has(row.name) ? `/${row.name} · ${g.label}` : `/${row.name}`,
-      ...(phone ? { sub: describe(row) } : { detail: describe(row) }),
-      ...(row.args && !phone ? { hint: argsText(row.args) } : {}),
-      disabled: !row.available,
-      run: () => props.onChoose(row, "run"),
-    })),
+    rows: g.rows.map((row) => {
+      const label = labelFor(row, g.label);
+      const detail = describe(row);
+      const hint = row.args && !phone ? argsText(row.args) : undefined;
+      const muted = activeId === row.id ? "text-fg-2" : "text-fg-3";
+      return {
+        id: row.id,
+        label,
+        ...(phone
+          ? { sub: detail }
+          : {
+              content: (
+                <span
+                  className="grid min-w-0 flex-1 items-center gap-3"
+                  style={{ gridTemplateColumns: hint ? `${nameCol} minmax(0, 1fr) auto` : `${nameCol} minmax(0, 1fr)` }}
+                >
+                  <span className="truncate">
+                    <Highlight text={label} query={props.query} />
+                  </span>
+                  <span className={cn("min-w-0 truncate text-xs", muted)}>{detail}</span>
+                  {hint && <span className={cn("max-w-40 truncate text-xs", muted)}>{hint}</span>}
+                </span>
+              ),
+            }),
+        disabled: !row.available,
+        run: () => props.onChoose(row, "run"),
+      };
+    }),
   }));
   useImperativeHandle(
     handle,

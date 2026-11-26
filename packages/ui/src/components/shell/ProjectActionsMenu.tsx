@@ -69,7 +69,7 @@ export default function ProjectActionsMenu(props: {
         }),
         ...(toolItems.length > 0 ? [{ id: "sep-tools", separator: true as const }, ...toolItems] : []),
         { id: "sep-view", separator: true },
-        { id: "view-caption", caption: "Transcript view (Ctrl+O)" },
+        { id: "view-caption", caption: "Transcript view", shortcut: "Ctrl+O" },
         ...TRANSCRIPT_VIEWS.map((v) => ({
           id: `view:${v}`,
           label: TRANSCRIPT_VIEW_LABEL[v],

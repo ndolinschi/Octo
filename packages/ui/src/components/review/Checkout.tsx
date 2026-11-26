@@ -90,7 +90,6 @@ export function DirtyDialog({ checkout }: { checkout: Checkout }) {
       {files && (
         <Dialog
           title="Your folder has uncommitted changes"
-          description="Checking out the review branch carries them along. Nothing is discarded or overwritten."
           onClose={checkout.closeDirty}
           footer={
             <>
@@ -104,6 +103,7 @@ export function DirtyDialog({ checkout }: { checkout: Checkout }) {
           }
         >
           <div className="flex flex-col gap-3 text-sm">
+            <p className="text-fg-2">Checking out the review branch carries them along. Nothing is discarded or overwritten.</p>
             <ul aria-label="Uncommitted files" className="flex flex-col gap-1">
               {shown.map((f) => (
                 <li key={f.path} className="flex items-baseline gap-3">

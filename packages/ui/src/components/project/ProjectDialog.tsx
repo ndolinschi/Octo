@@ -240,9 +240,9 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
         )
       }
     >
-      <form id={id} onSubmit={submit} noValidate className="@container flex flex-col gap-5">
+      <form id={id} onSubmit={submit} noValidate className="@container flex flex-col gap-6">
         {hadDraft && (
-          <p className="-mb-2 flex flex-wrap items-center gap-1.5 text-xs text-fg-3">
+          <p className="-mb-3 flex flex-wrap items-center gap-1.5 text-xs text-fg-3">
             Your earlier draft is back.
             <Button variant="link" tone="quiet" onClick={clearDraft}>
               Discard draft
@@ -339,7 +339,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
               size="sm"
               variant="quiet"
               icon={Plus}
-              className="-ml-3 w-fit"
+              className="-mb-1 -ml-2 w-fit"
               onClick={() =>
                 setFolders((rows) => {
                   const key = Math.max(...rows.map((r) => r.key)) + 1;
@@ -359,7 +359,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
             iconEnd={advanced ? ChevronDown : ChevronRight}
             aria-expanded={advanced}
             onClick={() => setAdvanced((a) => !a)}
-            className="-ml-3"
+            className="-mt-1.5 -ml-3"
           >
             Models and agents
           </Button>
@@ -572,8 +572,8 @@ function AddFolder(props: { first: boolean; current: string[]; onChoose(path: st
         icon={Plus}
         aria-haspopup="dialog"
         aria-expanded={open}
-        // The glyph of the first button sits on the fields' left edge (C3): its 12px padding is pulled out.
-        className={props.first ? "-ml-3" : "text-fg-2"}
+        // The glyph of the first button sits on the fields' left edge (C3): its 8px padding is pulled out.
+        className={props.first ? "-mb-1 -ml-2" : "text-fg-2"}
         onClick={() => setOpen((o) => !o)}
       >
         {props.first ? "Choose a folder…" : "Add folder"}
