@@ -204,6 +204,7 @@ function ReplaceSecret(props: { name: string; label: string; onReplace(name: str
       </label>
       <TextField
         id={id}
+        size="sm"
         name="secret"
         type="password"
         autoComplete="off"

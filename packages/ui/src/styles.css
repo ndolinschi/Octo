@@ -817,13 +817,13 @@
   position: absolute;
   inset-block: 0;
   left: 0;
-  width: 28%;
+  width: 16%;
   border-radius: inherit;
   background: var(--octo-accent);
 }
 @media (prefers-reduced-motion: no-preference) {
   .octo-run-indeterminate::after {
-    animation: octo-run-travel calc(var(--motion-slow) * 7) var(--ease-out-quint) infinite alternate;
+    animation: octo-run-travel calc(var(--motion-slow) * 7) ease-in-out infinite alternate;
   }
 }
 :root[data-motion="reduced"] .octo-run-indeterminate::after {
@@ -834,7 +834,7 @@
     translate: 0;
   }
   to {
-    translate: 257%;
+    translate: 525%;
   }
 }
 /* Decision 101 f: the run card's actions take a 44px target on a coarse pointer (the app's touch-hit is 40). */

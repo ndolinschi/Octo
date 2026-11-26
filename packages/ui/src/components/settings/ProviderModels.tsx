@@ -62,7 +62,7 @@ export function ProviderModels({ provider: p }: { provider: Provider }) {
                   // name too, not at the far edge of the row.
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="min-w-0 truncate">{agentModelLabel(m)}</span>
-                    {m.id === p.default_model && <span className="shrink-0 rounded-xs bg-hover px-1.5 text-xs leading-4 text-fg-3">default</span>}
+                    {m.id === p.default_model && <span className="shrink-0 rounded-xs bg-hover px-1.5 py-0.5 text-xs leading-4 text-fg-3">Default</span>}
                     {m.stale && <span className="shrink-0 text-xs text-fg-3">not listed last time</span>}
                   </span>
                 ) : (

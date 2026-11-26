@@ -62,10 +62,17 @@ export function ProviderRows(props: {
             <Row key={r.id} row={r} selected={r.id === props.selectedId} onSelect={() => props.onSelect(r.id)} />
           ))}
           {g.foldedLabel && (
-            <ListRow size="lg" tone="quiet" leading={<Glyph icon={ChevronRight} size={14} />} title={g.foldedLabel} onClick={() => props.onExpand(true)} />
+            <ListRow
+              size="lg"
+              tone="quiet"
+              expanded={false}
+              title={g.foldedLabel}
+              meta={<Glyph icon={ChevronRight} size={14} />}
+              onClick={() => props.onExpand(true)}
+            />
           )}
           {g.foldable && (
-            <ListRow size="lg" tone="quiet" leading={<Glyph icon={ChevronDown} size={14} />} title="Show fewer" onClick={() => props.onExpand(false)} />
+            <ListRow size="lg" tone="quiet" expanded title="Show fewer" meta={<Glyph icon={ChevronDown} size={14} />} onClick={() => props.onExpand(false)} />
           )}
         </div>
       ))}

@@ -127,7 +127,7 @@ export const RunCardView = memo(function RunCardView(p: {
         </p>
       )}
       {/* Waiting for the person is not progress: the mark stands still until they answer. */}
-      <Progress progress={progress} still={p.wait !== null} />
+      <Progress progress={progress} still={p.wait !== null} hasSteps={steps.some((s) => s.state !== "running")} />
       {!p.header && (
         <RunSteps
           steps={steps}
@@ -150,8 +150,8 @@ function MetaPart({ first = false, children }: { first?: boolean; children: Reac
 
 const SEGMENT: Record<"done" | "current" | "pending", string> = { done: "bg-fg-3", current: "bg-accent", pending: "bg-line-strong" };
 
-/** Decision 101 b: a plan's segments, or a count with an indeterminate mark (never a made-up total). */
-function Progress({ progress, still = false }: { progress: RunProgress; still?: boolean }) {
+/** Decision 101 b: a plan's segments, or a count with an indeterminate mark once a step finishes (0 steps shows no bar). */
+function Progress({ progress, still = false, hasSteps = true }: { progress: RunProgress; still?: boolean; hasSteps?: boolean }) {
   if (progress.kind === "none") return null;
   return (
     <div data-run-progress={progress.kind} className="flex min-w-0 items-center gap-3">
@@ -162,7 +162,7 @@ function Progress({ progress, still = false }: { progress: RunProgress; still?: 
             <span key={i} className={cn("h-full min-w-0 flex-1 rounded-full", SEGMENT[s])} />
           ))}
         </span>
-      ) : progress.live ? (
+      ) : progress.live && hasSteps ? (
         <span aria-hidden className={cn(!still && "octo-run-indeterminate", "relative h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-line-strong")} />
       ) : null}
     </div>

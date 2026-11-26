@@ -24,6 +24,7 @@ export const APPROVALS: Record<"command" | "write" | "acp" | "urgent", Approval>
     kind: "command",
     title: "pnpm --filter @octo/ui test",
     detail: { command: "pnpm --filter @octo/ui test && git commit -am 'Fold unchanged regions in the diff'" },
+    no_turn_grant: true,
     created_at: ago(2 * MIN + 14_000),
   },
   write: {
@@ -51,6 +52,7 @@ export const APPROVALS: Record<"command" | "write" | "acp" | "urgent", Approval>
         { id: "reject", label: "Reject", kind: "reject_once" },
       ],
     },
+    no_turn_grant: true,
     created_at: ago(5 * MIN),
   },
   urgent: {
@@ -61,6 +63,7 @@ export const APPROVALS: Record<"command" | "write" | "acp" | "urgent", Approval>
     kind: "command",
     title: "rm -rf node_modules",
     detail: { command: "rm -rf node_modules && pnpm install" },
+    no_turn_grant: true,
     created_at: ago(29 * MIN + 20_000),
   },
 };

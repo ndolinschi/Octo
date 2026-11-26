@@ -69,7 +69,7 @@ export function SettingsGroup(props: {
 
 /**
  * S2: one anatomy for every settings row. The label (content, 14px) and one explanation line under it (meta, 12px `fg-3`) on
- * the left; the control at the right, centred on the label's first line, its right edge the row's edge; the save status
+ * the left; the control at the right, vertically centred in the row, its right edge the row's edge; the save status
  * ("Saving…", "Saved", a restart, an error) in the control line just left of the control, so a save never changes the row's
  * height. 60px for a label and one explanation line; a row with no explanation keeps 60 and centres its one line.
  */
@@ -87,16 +87,19 @@ export function SettingsRow(props: {
   /** Anchor for search results (`#row-<id>`). */
   rowId?: string;
   leading?: ReactNode;
+  /** Vertical alignment of the right-side control: vertically centred in the row by default, or centred on the title row (`"start"`). */
+  align?: "center" | "start";
   className?: string;
 }) {
   const one = props.description === undefined || props.description === null || props.description === "";
+  const titleAligned = props.align === "start" && !one;
   return (
     <div
       id={props.rowId ? `row-${props.rowId}` : undefined}
       data-settings-row
       className={cn(
         "flex min-h-settings-row scroll-mt-6 gap-4 px-settings-inset py-3 max-settings:flex-col max-settings:items-stretch max-settings:gap-2",
-        one ? "items-center" : "items-start",
+        titleAligned ? "items-start" : "items-center",
         props.className,
       )}
     >
@@ -120,7 +123,13 @@ export function SettingsRow(props: {
         </div>
       </div>
       {(props.control || props.status) && (
-        <div data-settings-control className="flex min-h-5 shrink-0 flex-wrap items-center justify-end gap-3 max-settings:justify-start">
+        <div
+          data-settings-control
+          className={cn(
+            "flex min-h-ctl-sm shrink-0 flex-wrap items-center justify-end gap-3 max-settings:justify-start",
+            titleAligned && "-my-1 max-settings:my-0",
+          )}
+        >
           {props.status && <span className="flex min-w-0 items-center empty:hidden max-settings:order-last">{props.status}</span>}
           {props.control}
         </div>

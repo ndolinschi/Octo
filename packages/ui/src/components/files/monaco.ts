@@ -172,7 +172,7 @@ function diffColors(chrome: Chrome, p: Palette): Record<string, string> {
     "diffEditor.insertedTextBorder": none,
     "diffEditor.removedTextBorder": none,
     "diffEditor.border": p.tint("17"),
-    "diffEditor.diagonalFill": p.tint("14"),
+    "diffEditor.diagonalFill": p.tint("0c"),
     "diffEditorOverview.insertedForeground": `${chrome.ok}99`,
     "diffEditorOverview.removedForeground": `${chrome.err}99`,
     "diffEditor.unchangedRegionBackground": p.raised,

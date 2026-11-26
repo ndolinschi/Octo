@@ -59,10 +59,88 @@ export type ResolvedBy = "you" | "timeout" | "cancelled" | "elsewhere";
 /** `rule`: the code of the rule an "always allow" saved (parity B4), shown in the resolved line. */
 export type Resolution = { decision: ApprovalDecision; by: ResolvedBy; note?: string; option?: string; rule?: string };
 
-/** The program "allow for this request" remembers for a command: its first word, without a directory (harness `program`). */
-function commandProgram(command: string): string {
-  const first = command.trim().split(/\s+/)[0] ?? "";
-  return first.slice(first.lastIndexOf("/") + 1);
+/** True for a POSIX shell variable name (`[A-Za-z_][A-Za-z0-9_]*`), mirroring harness `approval.isName`. */
+function isShellName(s: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(s);
+}
+
+/**
+ * Splits a shell command into words only when it is a single simple command, mirroring `apps/harness/internal/approval`
+ * `Tokens` (`rules.go`). Returns null for separators (`&& || ; | &`, newlines), redirections (`< >`), subshells or
+ * substitutions (`( )`, `$(...)`, backticks), expansions (`$VAR`), comments (`#`), leading `VAR=val` assignments,
+ * unterminated quotes, or empty input — so a turn grant is never offered for a compound command even without `no_turn_grant`.
+ */
+function simpleCommandTokens(command: string): string[] | null {
+  const words: string[] = [];
+  let cur = "";
+  let have = false;
+  const flush = () => {
+    if (!have) return;
+    words.push(cur);
+    cur = "";
+    have = false;
+  };
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i];
+    if (c === undefined) break;
+    if (c === "'") {
+      const end = command.indexOf("'", i + 1);
+      if (end < 0) return null;
+      cur += command.slice(i + 1, end);
+      have = true;
+      i = end;
+    } else if (c === '"') {
+      let j = i + 1;
+      for (; j < command.length && command[j] !== '"'; j++) {
+        const ch = command[j];
+        if (ch === "$" || ch === "`") return null;
+        if (ch === "\\") {
+          const next = command[j + 1];
+          if (next !== undefined && '"\\$`\n'.includes(next)) {
+            if (next === "\n" || next === "$" || next === "`") return null;
+            j++;
+            cur += next;
+            continue;
+          }
+        }
+        cur += ch ?? "";
+      }
+      if (j >= command.length) return null;
+      have = true;
+      i = j;
+    } else if (c === "\\") {
+      const next = command[i + 1];
+      if (next === undefined || next === "\n") return null;
+      i++;
+      cur += next;
+      have = true;
+    } else if (c === " " || c === "\t") {
+      flush();
+    } else if (";&|<>()`$\n\r".includes(c)) {
+      return null;
+    } else if (c === "#" && !have) {
+      return null;
+    } else {
+      cur += c;
+      have = true;
+    }
+  }
+  flush();
+  const first = words[0];
+  if (!first) return null;
+  const eq = first.indexOf("=");
+  if (eq > 0 && isShellName(first.slice(0, eq))) return null;
+  return words;
+}
+
+/** The program "allow for this request" remembers for a simple command: its first word's basename (harness `CommandGrantKey`). */
+function simpleCommandProgram(command: string): string | null {
+  const words = simpleCommandTokens(command);
+  const first = words?.[0];
+  if (!first) return null;
+  const normalized = first.replaceAll("\\", "/").replace(/\/+$/, "");
+  const base = normalized.slice(normalized.lastIndexOf("/") + 1);
+  return base || null;
 }
 
 function hostOf(url: string): string {
@@ -95,8 +173,8 @@ export function turnScopeLabel(a: Approval): string | null {
     case "write":
       return "edits";
     case "command": {
-      const program = commandProgram(a.detail.command ?? "");
-      return program ? `${program} commands` : "commands";
+      const program = simpleCommandProgram(a.detail.command ?? "");
+      return program ? `${program} commands` : null;
     }
     case "network": {
       const host = hostOf(a.detail.url ?? "");

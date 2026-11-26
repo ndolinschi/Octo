@@ -343,6 +343,7 @@ function MemoryApprovalCard(props: ApprovalCardProps & { left: number | null }) 
             size="sm"
             disabled={disabled}
             loading={modeBusy === "blocked"}
+            className="px-2"
             onClick={() => void setAndResolve("blocked", { decision: "deny", note: "Memory is disabled for this project." }, { decision: "deny", by: "you" })}
           >
             Block
@@ -434,7 +435,7 @@ function CompactApproval(props: ApprovalCardProps) {
           )}
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         {answers.primary}
         {answers.alternatives}
         {rule && (
@@ -480,6 +481,8 @@ function ActionButton(props: {
       loading={mine}
       aria-keyshortcuts={props.shortcut}
       title={props.hint ?? (props.shortcut ? `${props.children} (${props.shortcut})` : undefined)}
+      // Match quiet buttons' horizontal padding in the single action row so gaps stay even.
+      className={cn(props.variant === "danger" && "px-2")}
       onClick={props.onClick}
     >
       {props.children}
@@ -491,7 +494,14 @@ function OptionButton({ option, primary, busy, onClick }: { option: ApprovalOpti
   const mine = busy === `option:${option.id}`;
   const allow = isAllowOption(option);
   return (
-    <Button variant={primary ? "primary" : allow ? "quiet" : "danger"} size="sm" disabled={busy !== null} loading={mine} onClick={onClick}>
+    <Button
+      variant={primary ? "primary" : allow ? "quiet" : "danger"}
+      size="sm"
+      disabled={busy !== null}
+      loading={mine}
+      className={cn(!primary && !allow && "px-2")}
+      onClick={onClick}
+    >
       {option.label}
     </Button>
   );

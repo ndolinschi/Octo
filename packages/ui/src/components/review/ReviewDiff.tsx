@@ -87,6 +87,7 @@ export function ReviewDiff(props: {
   useEffect(() => {
     if (!mod || !host.current) return;
     const ed = mod.monaco.editor.createDiffEditor(host.current, {
+      renderSideBySide: latest.current.split,
       readOnly: true,
       originalEditable: false,
       automaticLayout: true,
@@ -130,7 +131,7 @@ export function ReviewDiff(props: {
       model?.original.dispose();
       model?.modified.dispose();
     };
-  }, [mod]);
+  }, [mod, latest]);
 
   useEffect(() => {
     if (mod) mod.monaco.editor.setTheme(mod.themeName(props.theme));
@@ -143,11 +144,15 @@ export function ReviewDiff(props: {
   }, [editor, phone]);
 
   useEffect(() => {
-    editor?.updateOptions({
+    if (!editor) return;
+    editor.updateOptions({
       renderSideBySide: props.split,
       ignoreTrimWhitespace: props.ignoreWhitespace,
       hideUnchangedRegions: { enabled: !props.expanded, contextLineCount: 3, minimumLineCount: 4, revealLineCount: 20 },
     });
+    // Monaco sets `wordWrapOverride2: "off"` on the original editor in inline mode and never clears it when switching back to
+    // split, so the old side clipped long lines the new side wraps.
+    editor.getOriginalEditor().updateOptions({ wordWrapOverride2: props.split ? "inherit" : "off" });
   }, [editor, props.split, props.ignoreWhitespace, props.expanded]);
 
   // Models per shown text; URIs carry the path so Monaco picks the language from the extension.
