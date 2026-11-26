@@ -2461,7 +2461,8 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] [data-composer] {
   flex-flow: row wrap;
   align-items: flex-end;
-  padding: 2px;
+  padding: 4px;
+  column-gap: 4px;
 }
 [data-phone] [data-composer] > * {
   flex-basis: 100%;
@@ -2516,7 +2517,7 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] [data-composer-row] > button {
   min-width: var(--spacing-ctl-lg);
   height: var(--spacing-ctl-lg);
-  margin: 0 2px;
+  margin: 0;
 }
 [data-phone] [data-key-hint][class~="max-sm:hidden"] {
   display: none;
