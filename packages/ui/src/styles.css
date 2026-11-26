@@ -2488,9 +2488,13 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   width: var(--spacing-ctl-lg);
   height: var(--spacing-ctl-lg);
 }
-[data-phone] button.touch-hit:where(.h-ctl-xs, .h-ctl-sm, .h-ctl-md) {
+[data-phone] button.touch-hit:where(.h-ctl-xs, .h-ctl-sm, .h-ctl-md):not([role="switch"]) {
   min-width: var(--spacing-ctl-lg);
   height: var(--spacing-ctl-lg);
+}
+/* Switch keeps its 40x24 pill geometry so the 20px knob stays centred; its touch-hit ::after keeps the 44px target. */
+[data-phone] button[role="switch"] {
+  width: 40px;
 }
 /* Touch controls sit on the field's baseline with a full 44px box. */
 [data-phone] [data-composer-row] > button {
