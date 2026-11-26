@@ -171,8 +171,16 @@ function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
         <>
           {answers.alternatives}
           {rule && (
-            <Button variant="quiet" size="sm" disabled={disabled} aria-expanded={c.alwaysOpen} onClick={() => c.setAlwaysOpen(!c.alwaysOpen)}>
-              {alwaysLabel(rule)}
+            <Button
+              variant="quiet"
+              size="sm"
+              disabled={disabled}
+              aria-expanded={c.alwaysOpen}
+              title={alwaysLabel(rule)}
+              className="max-w-full min-w-0"
+              onClick={() => c.setAlwaysOpen(!c.alwaysOpen)}
+            >
+              <span className="min-w-0 truncate">{alwaysLabel(rule)}</span>
             </Button>
           )}
           <Button
@@ -182,9 +190,10 @@ function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
             aria-expanded={c.noteOpen}
             aria-controls={c.noteOpen ? noteId : undefined}
             data-note-toggle=""
+            className="max-w-full min-w-0"
             onClick={() => c.setNoteOpen(!c.noteOpen)}
           >
-            {c.noteOpen ? "No note" : "Add note"}
+            <span className="min-w-0 truncate">{c.noteOpen ? "No note" : "Add note"}</span>
           </Button>
         </>
       }
@@ -435,12 +444,20 @@ function CompactApproval(props: ApprovalCardProps) {
           )}
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div data-approval-actions="" className="flex flex-wrap items-center gap-1.5">
         {answers.primary}
         {answers.alternatives}
         {rule && (
-          <Button variant="quiet" size="sm" disabled={c.busy !== null} aria-expanded={c.alwaysOpen} onClick={() => c.setAlwaysOpen(!c.alwaysOpen)}>
-            {alwaysLabel(rule)}
+          <Button
+            variant="quiet"
+            size="sm"
+            disabled={c.busy !== null}
+            aria-expanded={c.alwaysOpen}
+            title={alwaysLabel(rule)}
+            className="max-w-full min-w-0"
+            onClick={() => c.setAlwaysOpen(!c.alwaysOpen)}
+          >
+            <span className="min-w-0 truncate">{alwaysLabel(rule)}</span>
           </Button>
         )}
         {answers.destructive}
@@ -480,12 +497,12 @@ function ActionButton(props: {
       disabled={props.disabled}
       loading={mine}
       aria-keyshortcuts={props.shortcut}
-      title={props.hint ?? (props.shortcut ? `${props.children} (${props.shortcut})` : undefined)}
+      title={props.hint ?? (props.shortcut ? `${props.children} (${props.shortcut})` : props.children)}
       // Match quiet buttons' horizontal padding in the single action row so gaps stay even.
-      className={cn(props.variant === "danger" && "px-2")}
+      className={cn("max-w-full min-w-0", props.variant === "danger" && "px-2")}
       onClick={props.onClick}
     >
-      {props.children}
+      <span className="min-w-0 truncate">{props.children}</span>
     </Button>
   );
 }
@@ -499,10 +516,11 @@ function OptionButton({ option, primary, busy, onClick }: { option: ApprovalOpti
       size="sm"
       disabled={busy !== null}
       loading={mine}
-      className={cn(!primary && !allow && "px-2")}
+      title={option.label}
+      className={cn("max-w-full min-w-0", !primary && !allow && "px-2")}
       onClick={onClick}
     >
-      {option.label}
+      <span className="min-w-0 truncate">{option.label}</span>
     </Button>
   );
 }

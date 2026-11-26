@@ -74,9 +74,11 @@ function SchemaCard(props: InputFormCardProps & { form: NormalForm }) {
         }
         error={f.error}
       >
-        {request.reason && <p className="[overflow-wrap:anywhere] text-fg-2">{request.reason}</p>}
-        <SchemaForm form={form} state={f} idPrefix={`v7-${request.id}`} />
-        <SentNote secret={hasSecret} />
+        <div className="flex flex-col gap-4">
+          {request.reason && <p className="[overflow-wrap:anywhere] text-fg-2">{request.reason}</p>}
+          <SchemaForm form={form} state={f} idPrefix={`v7-${request.id}`} />
+          <SentNote secret={hasSecret} />
+        </div>
       </RequestCard>
     </form>
   );

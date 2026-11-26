@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import type { Approval, ApprovalAnswer } from "@octo/agent-client";
+import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
 import { mayGrantBeyondOnce } from "../../lib/remoteDevice";
 import { APPROVAL_TIMEOUT_MS, answerFor, approvalDeadline, type Resolution } from "../../lib/v7/approval";
@@ -84,15 +85,16 @@ export function ApprovalGroup(props: {
             loading={busy}
             disabled={busy}
             title="Allows these and every further request until this request finishes, from any agent; the next request asks again."
+            className="max-w-full min-w-0"
             onClick={() => void allowAll()}
           >
-            Allow all for this request
+            <span className="min-w-0 truncate">Allow all for this request</span>
           </Button>
         )
       }
       error={error}
     >
-      <div className="-mx-card flex flex-col divide-y divide-line">
+      <div className={cn("-mx-card -mt-card flex flex-col divide-y divide-line", !allowAllOffered && !error && "-mb-card")}>
         {approvals.map((a) => (
           <ApprovalCard
             key={a.id}

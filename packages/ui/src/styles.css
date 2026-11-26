@@ -1672,6 +1672,22 @@
 .monaco-diff-editor .delete-sign {
   justify-content: center;
 }
+/* Narrow approval cards: stack options full width in one column with Deny last; long labels truncate inside their button. */
+@container v7 (width < 480px) {
+  [data-v7-approval] :is([data-approval-actions], [data-request-actions]) {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+  [data-v7-approval] :is([data-approval-actions], [data-request-actions]) > button {
+    width: 100%;
+    justify-content: flex-start;
+    padding-inline: 12px;
+  }
+  [data-v7-approval-group] [data-request-actions] > button {
+    width: 100%;
+  }
+}
 /* completion */
 /* Inline completion (inline completion design, decision 7). Ghost text in the line-number tone (a step below comments, so a
    suggestion does not read as code), never italic. */
@@ -2506,6 +2522,18 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 /* A group row's caption disclosure keeps its text on the row's edge, as `-ml-2` does on the desktop. */
 [data-phone] [data-v7-approval] [data-approval-details] {
   margin-inline-start: -16px;
+}
+[data-phone] [data-v7-approval] :is([data-approval-actions], [data-request-actions]) {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+[data-phone] [data-v7-approval] :is([data-approval-actions], [data-request-actions]) > button {
+  width: 100%;
+  justify-content: flex-start;
+}
+[data-phone] [data-v7-approval-group] [data-request-actions] > button {
+  width: 100%;
 }
 /* The desktop's window row and status bar have no place on the phone: the header and the "⋯" sheet carry what they hold. */
 [data-phone] :is([data-title-bar], header[aria-label="Window"]:not([data-phone-header]), [data-status-bar]) {
