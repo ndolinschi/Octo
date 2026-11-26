@@ -84,7 +84,9 @@ export function FloatingComposer({ onHeight, rest = false }: { onHeight?(px: num
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => report(Math.round(el.getBoundingClientRect().height)));
+    const measure = () => report(Math.round(el.getBoundingClientRect().height));
+    measure();
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => {
       ro.disconnect();

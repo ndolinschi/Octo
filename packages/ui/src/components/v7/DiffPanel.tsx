@@ -70,10 +70,10 @@ export const DiffPanel = memo(function DiffPanel(props: {
           <span className="sr-only">{kindLabel(file.kind)}</span>
         </span>
         <span className="flex min-w-0 flex-1 items-baseline gap-2 pl-1" title={file.path}>
-          <MiddleText text={name} className="text-sm text-fg" />
-          <span className="min-w-0 truncate text-xs text-fg-3 @max-md/diff:hidden">{dir ? `${file.folder}/${dir}` : file.folder}</span>
+          <MiddleText text={name} className="max-w-full text-sm text-fg" />
+          <span className="min-w-0 flex-1 truncate text-xs text-fg-3 @max-[560px]/diff:hidden">{dir ? `${file.folder}/${dir}` : file.folder}</span>
         </span>
-        <LineCounts added={file.added} removed={file.removed} className="ml-2 shrink-0 @max-md/diff:hidden" />
+        <LineCounts added={file.added} removed={file.removed} className="ml-2 shrink-0 @max-[520px]/diff:hidden" />
         <span className="hidden shrink-0 items-center gap-1 @max-[480px]/diff:flex">
           <IconMenu label="More actions for this file" items={moreItems} />
           <IconButton
@@ -88,12 +88,12 @@ export const DiffPanel = memo(function DiffPanel(props: {
         <span className="flex shrink-0 items-center gap-1 @max-[480px]/diff:hidden">
           <IconButton icon={ChevronUp} label="Previous file" shortcut="Alt+[" disabled={!props.onPrev} onClick={() => props.onPrev?.()} />
           <IconButton icon={ChevronDown} label="Next file" shortcut="Alt+]" disabled={!props.onNext} onClick={() => props.onNext?.()} />
-          <span className="contents @max-lg/diff:hidden">
+          <span className="contents @max-[760px]/diff:hidden">
             <Button variant="quiet" size="sm" pressed={props.ignoreWhitespace} title="Hide changes that are only whitespace" onClick={props.onToggleWhitespace}>
               Ignore whitespace
             </Button>
           </span>
-          <span className="hidden @max-lg/diff:contents">
+          <span className="hidden @max-[760px]/diff:contents">
             <IconButton icon={Pilcrow} label="Ignore whitespace" pressed={props.ignoreWhitespace} onClick={props.onToggleWhitespace} />
           </span>
           {props.onOpenFile && file.kind !== "deleted" && firstLine !== null && (
@@ -101,29 +101,48 @@ export const DiffPanel = memo(function DiffPanel(props: {
           )}
           {props.onOpenFile && file.kind !== "deleted" && <IconButton icon={ExternalLink} label="Open file" onClick={() => props.onOpenFile?.()} />}
           {props.onToggleKept && !reverted && (
-            <Button
-              variant={props.kept ? "quiet" : "secondary"}
-              size="sm"
-              icon={Check}
-              pressed={Boolean(props.kept)}
-              title={props.kept ? "Marked kept (click to undo)" : "Mark file reviewed & keep changes"}
-              onClick={props.onToggleKept}
-              className={cn(props.kept && "text-ok")}
-            >
-              <span className="@max-md/diff:sr-only">{props.kept ? "Kept" : "Keep"}</span>
-            </Button>
+            <>
+              <span className="contents @max-[620px]/diff:hidden">
+                <Button
+                  variant={props.kept ? "quiet" : "secondary"}
+                  size="sm"
+                  icon={Check}
+                  pressed={Boolean(props.kept)}
+                  title={props.kept ? "Marked kept (click to undo)" : "Mark file reviewed & keep changes"}
+                  onClick={props.onToggleKept}
+                  className={cn(props.kept && "text-ok")}
+                >
+                  {props.kept ? "Kept" : "Keep"}
+                </Button>
+              </span>
+              <span className="hidden @max-[620px]/diff:contents">
+                <IconButton
+                  icon={Check}
+                  label={props.kept ? "Kept" : "Keep"}
+                  title={props.kept ? "Marked kept (click to undo)" : "Mark file reviewed & keep changes"}
+                  pressed={Boolean(props.kept)}
+                  onClick={props.onToggleKept}
+                  className={cn(props.kept && "text-ok")}
+                />
+              </span>
+            </>
           )}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={Undo2}
-            title={reverted ? "Reverted" : "Revert"}
-            disabled={reverted || reverting}
-            loading={reverting}
-            onClick={props.onRevert}
-          >
-            <span className="@max-md/diff:sr-only">{reverted ? "Reverted" : "Revert"}</span>
-          </Button>
+          <span className="contents @max-[620px]/diff:hidden">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Undo2}
+              title={reverted ? "Reverted" : "Revert"}
+              disabled={reverted || reverting}
+              loading={reverting}
+              onClick={props.onRevert}
+            >
+              {reverted ? "Reverted" : "Revert"}
+            </Button>
+          </span>
+          <span className="hidden @max-[620px]/diff:contents">
+            <IconButton icon={Undo2} label={reverted ? "Reverted" : "Revert"} disabled={reverted || reverting} aria-busy={reverting} onClick={props.onRevert} />
+          </span>
         </span>
       </div>
       {reverted && <Banner tone="ok">Reverted. The file is back to its content from before this request.</Banner>}

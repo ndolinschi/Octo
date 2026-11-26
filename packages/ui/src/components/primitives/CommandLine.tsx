@@ -7,7 +7,7 @@ export function CommandLine({ command, label }: { command: string; label?: strin
   const [copied, copy] = useCopy();
   return (
     <div className="octo-code-surface flex min-h-ctl-md min-w-0 items-center gap-2 py-0.5 pr-0.5 pl-3">
-      <code className="min-w-0 flex-1 font-mono text-xs break-all text-fg">{command}</code>
+      <code className="min-w-0 flex-1 font-mono text-xs wrap-anywhere text-fg">{command}</code>
       <IconButton icon={copied ? Check : Copy} label={copied ? "Copied" : `Copy ${label ?? "command"}`} onClick={() => copy(command)} />
     </div>
   );

@@ -1469,7 +1469,8 @@
     overflow-wrap: anywhere;
   }
   [data-conv] .octo-prose :not(pre) > code {
-    word-break: break-all;
+    overflow-wrap: anywhere;
+    word-break: normal;
   }
   [data-conv] .octo-prose ul,
   [data-conv] .octo-prose ol {
@@ -1665,6 +1666,11 @@
   width: 2px !important;
   margin-left: 3px;
   background: var(--octo-accent);
+}
+/* Centre diff +/− markers horizontally in their 26px decoration lane (ReviewDiff, DiffEditor) so both sides keep ≥ 8px clear. */
+.monaco-diff-editor .insert-sign,
+.monaco-diff-editor .delete-sign {
+  justify-content: center;
 }
 /* completion */
 /* Inline completion (inline completion design, decision 7). Ghost text in the line-number tone (a step below comments, so a

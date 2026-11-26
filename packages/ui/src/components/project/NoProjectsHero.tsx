@@ -16,10 +16,10 @@ export function NoProjectsHero({ onCreate }: { onCreate(): void }) {
       <div data-start-scroll className="relative grid min-h-0 flex-1 place-items-center overflow-x-hidden overflow-y-auto overscroll-none px-6">
         <div className="w-full max-w-[440px] pb-8 text-center">
           {/* Decision 28: the lead-in muted, the statement in fg — one sentence. */}
-          <h1 id="hero-title" className="text-display text-fg">
+          <h1 id="hero-title" className="text-display text-balance text-fg">
             <span className="octo-lead">No projects yet.</span> Create one to get started.
           </h1>
-          <p className="mt-2 text-sm text-fg-2">A project has its own conversation, folders and notes.</p>
+          <p className="mt-2 text-sm text-pretty text-fg-2">A project has its own conversation, folders and notes.</p>
           <Button variant="primary" icon={Plus} onClick={onCreate} className="mt-6">
             Create project
           </Button>

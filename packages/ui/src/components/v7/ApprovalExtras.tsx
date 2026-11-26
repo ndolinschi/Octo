@@ -64,7 +64,7 @@ export function AlwaysPanel(props: { rule: ApprovalRuleSpec; busy: boolean; disa
       <p className="text-fg-2">
         From now on, allow <span className="text-fg">{v.sentence}</span> in this project without asking:
       </p>
-      <pre className="octo-code max-h-24 overflow-auto overscroll-contain font-mono text-xs break-all whitespace-pre-wrap">
+      <pre className="octo-code max-h-24 overflow-auto overscroll-contain font-mono text-xs wrap-anywhere whitespace-pre-wrap">
         <span className="font-sans text-fg-3 select-none">{v.subject}: </span>
         {v.code}
       </pre>

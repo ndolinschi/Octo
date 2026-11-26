@@ -33,10 +33,10 @@ export function ConnectScreen() {
       <div data-start-scroll className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
         <div className="@container mx-auto flex w-full max-w-connect flex-col gap-5 px-6 pt-2 pb-8 max-sm:px-4">
           <div className="flex flex-col gap-2 text-center">
-            <h1 id="connect-title" className="text-display text-fg">
+            <h1 id="connect-title" className="text-display text-balance text-fg">
               <span className="octo-lead">Connect a provider</span> to start.
             </h1>
-            <p className="text-sm text-fg-2">{connectSubtitle(all)}</p>
+            <p className="text-sm text-pretty text-fg-2">{connectSubtitle(all)}</p>
           </div>
           {providers.status === "loading" && <SkeletonList count={4} size="lg" twoLine />}
           {providers.status === "error" && !list && (

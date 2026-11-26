@@ -1,7 +1,8 @@
-import { useRef, type HTMLAttributes, type Ref } from "react";
+import { useContext, useRef, type HTMLAttributes, type Ref } from "react";
 import { cn } from "../../lib/cn";
 import { useScrollFade } from "../../lib/hooks";
 import { mergeRefs } from "../../lib/refs";
+import { FloatRoomContext } from "./floatRoom";
 
 type Axis = "y" | "x" | "both";
 type Gutter = "none" | "stable" | "both";
@@ -34,14 +35,18 @@ export function ScrollArea({
   fade = false,
   contain = true,
   className,
+  style,
   ref,
   ...rest
 }: HTMLAttributes<HTMLDivElement> & { axis?: Axis; gutter?: Gutter; fade?: boolean; contain?: boolean; ref?: Ref<HTMLDivElement> }) {
   const own = useRef<HTMLDivElement>(null);
+  const room = useContext(FloatRoomContext);
   useScrollFade(fade ? own : NO_REF, axis === "x" ? "x" : "y");
+  const scrollStyle = axis !== "x" && room > 0 && style?.scrollPaddingBottom === undefined ? { ...style, scrollPaddingBottom: room } : style;
   return (
     <div
       ref={mergeRefs(own, ref)}
+      {...(scrollStyle !== undefined ? { style: scrollStyle } : {})}
       className={cn(AXIS[axis], contain && "overscroll-contain", GUTTER[gutter], fade && (axis === "x" ? "fade-x" : "fade-y"), className)}
       {...rest}
     />

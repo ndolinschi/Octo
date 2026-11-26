@@ -101,7 +101,8 @@ export function ReviewDiff(props: {
       hideUnchangedRegions: { enabled: true, contextLineCount: 3, minimumLineCount: 4, revealLineCount: 20 },
       glyphMargin: true,
       lineNumbersMinChars: 3,
-      lineDecorationsWidth: 6,
+      // Diff +/− markers sit centred in this lane (styles.css); 26px leaves ≥ 8px on both sides of the 11px codicon.
+      lineDecorationsWidth: 26,
       folding: false,
       renderLineHighlight: "none",
       stickyScroll: { enabled: false },

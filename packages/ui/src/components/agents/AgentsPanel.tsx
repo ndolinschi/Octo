@@ -128,7 +128,7 @@ export function AgentsPanel() {
               </Button>
             }
           >
-            They appear here while Octo has sub-agents working.
+            They appear here while Octo has sub&#8209;agents working.
           </PanelEmpty>
         ) : (
           <PanelBody ref={scroller} onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)}>

@@ -86,6 +86,8 @@ export const DiffEditor = memo(function DiffEditor(props: {
       hideUnchangedRegions: { enabled: true, contextLineCount: 3, minimumLineCount: 4, revealLineCount: 20 },
       glyphMargin: true,
       lineNumbersMinChars: 3,
+      // Match ReviewDiff: 26px keeps ≥ 8px clear on both sides of the centred +/− marker (folding is off here).
+      lineDecorationsWidth: 26,
       folding: false,
       renderLineHighlight: "none",
       stickyScroll: { enabled: false },

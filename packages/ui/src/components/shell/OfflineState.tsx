@@ -21,10 +21,10 @@ export function OfflineState() {
     return (
       <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6 max-sm:px-4">
         <div className="w-full max-w-[440px] min-w-0">
-          <h1 id="offline-title" className="text-title text-fg">
+          <h1 id="offline-title" className="text-title text-balance text-fg">
             {cause === "unreadable" ? "Octo's local service sent a reply Octo can't read" : "Octo's local service didn't answer in time"}
           </h1>
-          <p className="mt-1 text-sm text-fg-2">
+          <p className="mt-1 text-sm text-pretty text-fg-2">
             {cause === "unreadable" ? "It's running, but its reply was not valid." : "It took the request but sent nothing back."} Octo keeps trying by itself;
             if it keeps happening, restart Octo.
           </p>
@@ -45,15 +45,15 @@ export function OfflineState() {
     return (
       <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6 max-sm:px-4">
         <div className="w-full max-w-[440px] min-w-0">
-          <h1 id="offline-title" className="text-title text-fg">
+          <h1 id="offline-title" className="text-title text-balance text-fg">
             Octo's local service didn't accept this window
           </h1>
           {host.managesHarness ? (
-            <p className="mt-1 text-sm text-fg-2">
+            <p className="mt-1 text-sm text-pretty text-fg-2">
               It's running, but it restarted with a new access key that this window doesn't have. Restart Octo to connect again.
             </p>
           ) : (
-            <p className="mt-1 text-sm text-fg-2">
+            <p className="mt-1 text-sm text-pretty text-fg-2">
               It answers at <code className="font-mono text-xs text-fg">{bridgeUrl}</code> but refuses this page's API token: it restarted with a new one.
               Reload the page, or start the dev server with the service's token (<code className="font-mono text-xs">VITE_HARNESS_API_TOKEN</code>; the service
               keeps it in <code className="font-mono text-xs">api-token</code> in its data directory).
@@ -82,10 +82,10 @@ export function OfflineState() {
     return (
       <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6 max-sm:px-4">
         <div className="w-full max-w-[440px] min-w-0">
-          <h1 id="offline-title" className="text-title text-fg">
+          <h1 id="offline-title" className="text-title text-balance text-fg">
             Octo's local service isn't running.
           </h1>
-          <p className="mt-1 text-sm text-fg-2">Octo starts it for you. Try again, or restart Octo if it keeps failing.</p>
+          <p className="mt-1 text-sm text-pretty text-fg-2">Octo starts it for you. Try again, or restart Octo if it keeps failing.</p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Button variant="primary" size="sm" onClick={retry} disabled={health === "checking"}>
               {health === "checking" ? "Checking…" : "Retry"}
@@ -104,10 +104,10 @@ export function OfflineState() {
     <section aria-labelledby="offline-title" className="grid h-full place-items-center overflow-y-auto px-6 py-6 max-sm:px-4">
       {/* B56: a grid item may shrink under its content (the command line), so the block fits a 390px window. */}
       <div className="w-full max-w-[440px] min-w-0">
-        <h1 id="offline-title" className="text-title text-fg">
+        <h1 id="offline-title" className="text-title text-balance text-fg">
           Octo's local service isn't answering
         </h1>
-        <p className="mt-1 text-sm text-fg-2">
+        <p className="mt-1 text-sm text-pretty text-fg-2">
           Nothing answered at <code className="font-mono text-xs text-fg">{bridgeUrl}</code>. Start it with this command, then retry.
         </p>
         <div className="mt-4">
