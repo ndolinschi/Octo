@@ -114,6 +114,7 @@ import type {
   PickFolderResult,
   Provider,
   ProviderPrefs,
+  AgentAccountInput,
   ProvidersResponse,
   SettingsUpdate,
   SettingsView,
@@ -371,6 +372,14 @@ export interface Bridge {
    * Answers the updated provider entry. Optional.
    */
   setProviderPrefs?(id: string, prefs: ProviderPrefs): Promise<Provider | null>;
+  /**
+   * `POST /v1/providers/{id}/accounts`: adds an account of an agent whose entry has `account_env` (another login, kept in
+   * its own folder). Answers the account's own entry (`<id>@<account>`), its login checked. Octo stores only the name and
+   * the folder; the user logs the folder in with the command in its `login_hint`. Optional.
+   */
+  addAgentAccount?(agentId: string, account: AgentAccountInput): Promise<Provider | null>;
+  /** `DELETE /v1/providers/{id}/accounts/{account}`: forgets an account; its folder and the login in it stay. Optional. */
+  removeAgentAccount?(agentId: string, accountId: string): Promise<void>;
   /**
    * Folder picker. `path` is a directory path or a prefix of one (`~` is the home directory, empty is home): the
    * child directories of its directory whose names start with the last segment (case-insensitive, hidden ones only
@@ -806,7 +815,19 @@ function parseEvent(data: unknown): BridgeEvent | undefined {
 
 /** What {@link createHttpBridge} returns: every method is implemented, the optional ones included. */
 export type HttpBridge = Bridge &
-  Required<Pick<Bridge, "getSettings" | "putSettings" | "listProviders" | "refreshProviderModels" | "recheckProvider" | "setProviderCustomModels">>;
+  Required<
+    Pick<
+      Bridge,
+      | "getSettings"
+      | "putSettings"
+      | "listProviders"
+      | "refreshProviderModels"
+      | "recheckProvider"
+      | "setProviderCustomModels"
+      | "addAgentAccount"
+      | "removeAgentAccount"
+    >
+  >;
 
 export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   const base = options.baseUrl.replace(/\/+$/, "");
@@ -936,6 +957,13 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     recheckProvider: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/recheck`), id),
     setProviderCustomModels: async (id, models) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/custom-models`, { models }), id),
     setProviderPrefs: async (id, prefs) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/prefs`, prefs), id),
+    addAgentAccount: async (agentId, account) => {
+      const body = await request("POST", `/v1/providers/${encodeURIComponent(agentId)}/accounts`, account);
+      return isRecord(body) && typeof body.id === "string" ? asProvider(body, body.id) : null;
+    },
+    removeAgentAccount: async (agentId, accountId) => {
+      await request("DELETE", `/v1/providers/${encodeURIComponent(agentId)}/accounts/${encodeURIComponent(accountId)}`);
+    },
     // Only the editor and terminal tab open SSE sessions: each session module is its own lazy chunk.
     openLanguageServer: async (id, serverId, opts) =>
       (await import("./lspSession")).openLspSession(

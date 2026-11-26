@@ -60,13 +60,14 @@ export function markKeyOf(id: string): string | null {
   if (lower.startsWith("acp:")) {
     const rest = lower.slice(4);
     const slash = rest.indexOf("/");
-    const agentId = slash >= 0 ? rest.slice(0, slash) : rest;
+    // An account of an agent ("claude-code@work") has the agent's mark.
+    const agentId = baseAgent(slash >= 0 ? rest.slice(0, slash) : rest);
     const modelId = slash >= 0 ? rest.slice(slash + 1) : "";
     if (agentId && PROVIDERS[agentId]) return PROVIDERS[agentId];
     if (modelId) return markKeyOf(modelId);
     return null;
   }
-  const provider = PROVIDERS[lower];
+  const provider = PROVIDERS[lower] ?? PROVIDERS[baseAgent(lower)];
   if (provider) return provider;
   const slash = lower.indexOf("/");
   if (slash > 0) {
@@ -76,4 +77,10 @@ export function markKeyOf(id: string): string | null {
   const name = slash >= 0 ? lower.slice(slash + 1) : lower;
   for (const [re, key] of MODEL_NAME) if (re.test(name)) return key;
   return null;
+}
+
+/** The agent of an account id ("claude-code@work" is "claude-code"); any other id as it is. */
+function baseAgent(id: string): string {
+  const at = id.indexOf("@");
+  return at > 0 ? id.slice(0, at) : id;
 }

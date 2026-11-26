@@ -850,7 +850,23 @@ export type Provider = {
   roles?: ProviderRoles;
   /** Agents: with `experimental`, what is known: the launch command comes from the agent's documentation and has not been run with Octo. */
   experimental_note?: string;
+  /**
+   * Agents that take more accounts (manifest `accounts`): the variable that points the CLI at another config and login
+   * folder (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`). Absent for an agent without accounts and on an account's own entry.
+   */
+  account_env?: string;
+  /** With `account_env`: the folder the agent's own entry uses (`~/.claude`); absent when the manifest does not say. */
+  account_default?: string;
+  /** An account's own entry (id `<agent>@<account>`): the agent it is an account of. */
+  account_of?: string;
+  /** With `account_of`: the account's id, name and folder (the value of the agent's `account_env`). */
+  account_id?: string;
+  account_label?: string;
+  account_dir?: string;
 };
+
+/** `POST /v1/providers/{id}/accounts`: a name and the folder the CLI keeps this login in; `id` is made from the name when absent. */
+export type AgentAccountInput = { label: string; config_dir: string; id?: string };
 
 /** The model an agent uses for a delegation decided fast / balanced / deep; "" means the agent's own default. */
 export type ProviderRoles = { fast: string; balanced: string; deep: string };

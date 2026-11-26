@@ -81,7 +81,15 @@ export function ProvidersSection() {
                       Providers
                     </Button>
                   </div>
-                  <ProviderDetail key={selected.id} provider={selected} onRouter={openRouter} />
+                  <ProviderDetail
+                    key={selected.id}
+                    provider={selected}
+                    onRouter={openRouter}
+                    onSelect={(id) => {
+                      setPicked(id);
+                      setDetailOpen(true);
+                    }}
+                  />
                 </div>
               )}
             </div>

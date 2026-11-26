@@ -13,6 +13,7 @@ import {
   type SettingsView,
 } from "@octo/agent-client";
 import { ownerProviders } from "./providersOwner";
+import { accountSlug } from "../lib/providers/accounts";
 
 /**
  * Demo providers, settings and diagnostics (decisions 53, 59; R1.5). Default: Claude Code ready, GitHub Copilot not
@@ -175,6 +176,30 @@ function noneFromUrl(): boolean {
 
 const delay = () => new Promise((r) => setTimeout(r, 120));
 
+type DemoAccount = { agent: string; id: string; label: string; dir: string };
+
+/** The login command of each demo agent that takes accounts, run with its folder (the harness's `login_hint`). */
+const ACCOUNT_LOGIN: Record<string, string> = { "claude-code": "claude auth login", codex: "codex login" };
+
+/** An account's own entry, as the harness lists it: the agent's models and billing, its own id, label, login and state. */
+function accountEntry(agent: Provider, a: DemoAccount, ready: boolean): Provider {
+  const id = `${agent.id}@${a.id}`;
+  const login = `${agent.account_env ?? ""}=${a.dir} ${ACCOUNT_LOGIN[agent.id] ?? ""}`.trim();
+  const { account_env: _env, account_default: _default, ...rest } = agent;
+  return {
+    ...rest,
+    id,
+    label: `${agent.label} · ${a.label}`,
+    state: ready ? "ready" : "not_logged_in",
+    reason: ready ? "" : "not logged in",
+    login_hint: `Log this account in once: run \`${login}\` in a terminal. Its login stays in ${a.dir}.`,
+    account_of: agent.id,
+    account_id: a.id,
+    account_label: a.label,
+    account_dir: a.dir,
+  };
+}
+
 export function demoProviders(options: DemoProvidersOptions = {}): Required<
   Pick<
     Bridge,
@@ -183,6 +208,8 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
     | "recheckProvider"
     | "setProviderCustomModels"
     | "setProviderPrefs"
+    | "addAgentAccount"
+    | "removeAgentAccount"
     | "getSettings"
     | "putSettings"
     | "getDiagnostics"
@@ -206,6 +233,9 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
   const failed = new Map<string, string>();
   /** Per agent: preferred model and role models saved through `setProviderPrefs`. */
   const prefs = new Map<string, ProviderPrefs>();
+  /** Agent accounts added through `addAgentAccount`; `?accounts=work` starts with a logged-in Claude Code "Work" account. */
+  const accounts: DemoAccount[] = knob("accounts") === "work" ? [{ agent: "claude-code", id: "work", label: "Work", dir: "~/.claude-work" }] : [];
+  if (knob("accounts") === "work") loggedIn.add("claude-code@work");
   const claudeEmpty = knob("claude") === "empty";
   const owner = knob("providers") === "owner";
   const trace = (event: string, detail: unknown) => console.debug(`[octo demo] ${event}`, JSON.stringify(detail));
@@ -250,6 +280,8 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
             reason: none ? "not logged in" : "",
             install_hint: CLAUDE_INSTALL,
             login_hint: CLAUDE_LOGIN,
+            account_env: "CLAUDE_CONFIG_DIR",
+            account_default: "~/.claude",
             models: claudeEmpty
               ? []
               : [
@@ -270,6 +302,8 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
             reason: none ? "not logged in" : "",
             install_hint: "Install the Codex CLI: `npm install -g @openai/codex`",
             login_hint: "Log in once: run `codex login`.",
+            account_env: "CODEX_HOME",
+            account_default: "~/.codex",
             models: [],
             default_model: "",
             flat_rate: true,
@@ -366,6 +400,9 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
         ...(error ? { models_error: error, models_problem: { message: error, hint: "Check again in a moment.", action: "recheck_provider" as const } } : {}),
       };
     };
+    // Each account is an agent of its own, listed right after its agent (the harness's order).
+    const all = list.flatMap((p) => [p, ...accounts.filter((a) => a.agent === p.id).map((a) => accountEntry(p, a, loggedIn.has(`${p.id}@${a.id}`)))]);
+    list.splice(0, list.length, ...all);
     const connected = list.filter((p) => p.state === "ready").length;
     const agent = !apiReady && !none ? "acp:claude-code" : null;
     const m = (id: string) => agent ?? (typeof file.get(id) === "string" ? String(file.get(id)) : (BUILTIN[id] ?? ""));
@@ -435,6 +472,37 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
       });
       trace("prefs", { id, change });
       return providers().providers.find((x) => x.id === id) ?? null;
+    },
+    addAgentAccount: async (agentId, input) => {
+      await delay();
+      const agent = providers().providers.find((x) => x.id === agentId);
+      if (!agent) throw new BridgeError(404, "not_found", `no agent ${agentId}`);
+      if (!agent.account_env)
+        throw Object.assign(new BridgeError(400, "invalid_request", `${agent.label} cannot have more than one account in Octo.`), {
+          hint: "Add accounts to Claude Code or Codex instead.",
+        });
+      const label = input.label.trim();
+      const id = input.id ?? accountSlug(label);
+      const dir = input.config_dir.trim();
+      if (!label) throw new BridgeError(400, "invalid_request", "An account needs a short name.");
+      if (!dir.startsWith("/") && !dir.startsWith("~/"))
+        throw Object.assign(new BridgeError(400, "invalid_request", "That folder cannot hold this account's login."), {
+          hint: "Use a full path or one that starts with ~/, without $ signs, and not the agent's default folder.",
+        });
+      if (accounts.some((a) => a.agent === agentId && (a.id === id || a.dir === dir)))
+        throw Object.assign(new BridgeError(409, "conflict", "This agent has an account with that name or folder already."), {
+          hint: "Choose another name and another folder.",
+        });
+      accounts.push({ agent: agentId, id, label, dir });
+      trace("add-account", { agentId, id });
+      return providers().providers.find((x) => x.id === `${agentId}@${id}`) ?? null;
+    },
+    removeAgentAccount: async (agentId, accountId) => {
+      await delay();
+      const at = accounts.findIndex((a) => a.agent === agentId && a.id === accountId);
+      if (at < 0) throw new BridgeError(404, "not_found", "That account no longer exists.");
+      accounts.splice(at, 1);
+      trace("remove-account", { agentId, accountId });
     },
     setProviderCustomModels: async (id, models) => {
       await delay();
