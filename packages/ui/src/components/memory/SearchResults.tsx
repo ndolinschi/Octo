@@ -50,7 +50,7 @@ export function SearchResults(props: { state: SearchState; query: string; canOpe
       <div role="region" aria-label="Results" onKeyDown={moveInList} className="flex flex-col gap-3">
         {state.groups.map((g) => (
           <section key={g.id} aria-label={g.label} className="flex flex-col gap-1.5">
-            <SectionHeader inset className="pr-8" aside={<span className="tabular-nums">{g.hits.length}</span>}>
+            <SectionHeader inset aside={<span className="tabular-nums">{g.hits.length}</span>}>
               {g.label}
             </SectionHeader>
             {g.hits.map((h) => (
