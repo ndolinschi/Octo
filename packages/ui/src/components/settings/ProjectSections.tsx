@@ -196,7 +196,7 @@ export function EditorSection({ projectId }: { projectId: string | null }) {
               title="Ollama small-tier model"
               description="Ollama model tag used for inline completions."
               placeholder="qwen2.5-coder:1.5b"
-              widthClass={CONTROL_W.md}
+              widthClass={CONTROL_W.lg}
             />
             <HarnessTextRow
               settingId={SETTING_IDS.ollamaBaseUrl}
@@ -459,24 +459,26 @@ function BudgetRow({ project: p, update, usage }: { project: Project; update: Up
       description={invalid ? <Notice tone="error">A positive amount in USD, or empty for no budget.</Notice> : spendText(p.spent_usd, usage, stored)}
       status={<SaveStatus state={saved} />}
       control={
-        <TextField
-          size="sm"
-          id={id}
-          inputMode="decimal"
-          value={value}
-          leading="$"
-          placeholder="No budget"
-          aria-label={`Budget for ${p.name}, in USD`}
-          aria-invalid={invalid || undefined}
-          onChange={(e) => {
-            // B11: an edit takes back the last "Saved", so it never sits beside a new validation error.
-            clear();
-            setDraft(e.target.value);
-          }}
-          onBlur={commit}
-          onKeyDown={(e) => e.key === "Enter" && commit()}
-          className={`${CONTROL_W.sm} tabular-nums`}
-        />
+        <div className={CONTROL_W.sm}>
+          <TextField
+            size="sm"
+            id={id}
+            inputMode="decimal"
+            value={value}
+            leading="$"
+            placeholder="No budget"
+            aria-label={`Budget for ${p.name}, in USD`}
+            aria-invalid={invalid || undefined}
+            onChange={(e) => {
+              // B11: an edit takes back the last "Saved", so it never sits beside a new validation error.
+              clear();
+              setDraft(e.target.value);
+            }}
+            onBlur={commit}
+            onKeyDown={(e) => e.key === "Enter" && commit()}
+            className="tabular-nums"
+          />
+        </div>
       }
     />
   );
