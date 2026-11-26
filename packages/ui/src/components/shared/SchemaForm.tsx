@@ -52,7 +52,7 @@ function FieldView({ field, domId, state }: ViewProps) {
 
   if (widget === "checkbox") {
     return (
-      <div data-schema-field={field.id} className="flex flex-col gap-1.5">
+      <div data-schema-field={field.id} className="flex flex-col gap-1">
         <Checkbox
           ref={state.registerControl(field.id)}
           id={domId}
@@ -69,7 +69,7 @@ function FieldView({ field, domId, state }: ViewProps) {
   }
 
   return (
-    <div data-schema-field={field.id} className="flex flex-col gap-1.5">
+    <div data-schema-field={field.id} className="flex flex-col gap-1">
       <div className="flex flex-col gap-0.5">
         {groupLabel ? (
           <span id={labelId} className="flex items-baseline gap-1.5 text-sm text-fg-2">

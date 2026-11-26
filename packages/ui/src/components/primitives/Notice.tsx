@@ -43,16 +43,18 @@ export function Notice(props: {
   const role = props.tone === "error" ? "alert" : "status";
   if (props.form === "block") {
     return (
-      <div role={role} className={cn("octo-in-card flex min-w-0 flex-col gap-2 rounded-md bg-raised p-card text-sm", props.className)}>
-        <div className="flex min-w-0 items-start gap-2">
-          <Glyph icon={tone.icon} size={16} className={cn("mt-0.5 shrink-0", tone.glyph)} />
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            {props.title && <p className={cn("text-heading", tone.text)}>{props.title}</p>}
-            {props.children && <div className="break-words text-fg-2">{props.children}</div>}
-          </div>
+      <div role={role} className={cn("octo-in-card flex min-w-0 items-start gap-2 rounded-md bg-raised p-card text-sm", props.className)}>
+        <Glyph icon={tone.icon} size={16} className={cn("mt-0.5 shrink-0", tone.glyph)} />
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          {(props.title || props.children) && (
+            <div className="flex min-w-0 flex-col gap-1">
+              {props.title && <p className={cn("text-heading", tone.text)}>{props.title}</p>}
+              {props.children && <div className="break-words text-fg-2">{props.children}</div>}
+            </div>
+          )}
+          {props.command && <CommandLine command={props.command} />}
+          {props.actions && <div className="flex flex-wrap items-center gap-2">{props.actions}</div>}
         </div>
-        {props.command && <CommandLine command={props.command} />}
-        {props.actions && <div className="flex flex-wrap items-center gap-2">{props.actions}</div>}
       </div>
     );
   }

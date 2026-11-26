@@ -293,7 +293,8 @@ function ToolView({ tab, children }: { tab: TabId; children: React.ReactNode }) 
   const countForms = useCallback((delta: 1 | -1) => setForms((n) => n + delta), []);
   const floating = useFloatingHere(tab) && forms === 0;
   const [height, setHeight] = useState(0);
-  const room = floating && height > 0 ? height + 16 : 0;
+  // FloatingComposer sits bottom-4 (16px) off the edge; reserve its full reach plus 12px clearance above it.
+  const room = floating && height > 0 ? height + 16 + 12 : 0;
   return (
     <FloatingBlockContext.Provider value={countForms}>
       <FloatRoomContext.Provider value={room}>

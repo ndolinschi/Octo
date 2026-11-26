@@ -817,13 +817,13 @@
   position: absolute;
   inset-block: 0;
   left: 0;
-  width: 28%;
+  width: 16%;
   border-radius: inherit;
   background: var(--octo-accent);
 }
 @media (prefers-reduced-motion: no-preference) {
   .octo-run-indeterminate::after {
-    animation: octo-run-travel calc(var(--motion-slow) * 7) var(--ease-out-quint) infinite alternate;
+    animation: octo-run-travel calc(var(--motion-slow) * 7) ease-in-out infinite alternate;
   }
 }
 :root[data-motion="reduced"] .octo-run-indeterminate::after {
@@ -834,7 +834,7 @@
     translate: 0;
   }
   to {
-    translate: 257%;
+    translate: 525%;
   }
 }
 /* Decision 101 f: the run card's actions take a 44px target on a coarse pointer (the app's touch-hit is 40). */
@@ -1469,7 +1469,8 @@
     overflow-wrap: anywhere;
   }
   [data-conv] .octo-prose :not(pre) > code {
-    word-break: break-all;
+    overflow-wrap: anywhere;
+    word-break: normal;
   }
   [data-conv] .octo-prose ul,
   [data-conv] .octo-prose ol {
@@ -1665,6 +1666,27 @@
   width: 2px !important;
   margin-left: 3px;
   background: var(--octo-accent);
+}
+/* Centre diff +/− markers horizontally in their 26px decoration lane (ReviewDiff, DiffEditor) so both sides keep ≥ 8px clear. */
+.monaco-diff-editor .insert-sign,
+.monaco-diff-editor .delete-sign {
+  justify-content: center;
+}
+/* Narrow approval cards: stack options full width in one column with Deny last; long labels truncate inside their button. */
+@container v7 (width < 480px) {
+  [data-v7-approval] :is([data-approval-actions], [data-request-actions]) {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+  [data-v7-approval] :is([data-approval-actions], [data-request-actions]) > button {
+    width: 100%;
+    justify-content: flex-start;
+    padding-inline: 12px;
+  }
+  [data-v7-approval-group] [data-request-actions] > button {
+    width: 100%;
+  }
 }
 /* completion */
 /* Inline completion (inline completion design, decision 7). Ghost text in the line-number tone (a step below comments, so a
@@ -2500,6 +2522,18 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 /* A group row's caption disclosure keeps its text on the row's edge, as `-ml-2` does on the desktop. */
 [data-phone] [data-v7-approval] [data-approval-details] {
   margin-inline-start: -16px;
+}
+[data-phone] [data-v7-approval] :is([data-approval-actions], [data-request-actions]) {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+[data-phone] [data-v7-approval] :is([data-approval-actions], [data-request-actions]) > button {
+  width: 100%;
+  justify-content: flex-start;
+}
+[data-phone] [data-v7-approval-group] [data-request-actions] > button {
+  width: 100%;
 }
 /* The desktop's window row and status bar have no place on the phone: the header and the "⋯" sheet carry what they hold. */
 [data-phone] :is([data-title-bar], header[aria-label="Window"]:not([data-phone-header]), [data-status-bar]) {

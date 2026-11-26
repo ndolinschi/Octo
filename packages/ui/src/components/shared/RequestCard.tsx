@@ -50,7 +50,7 @@ export const RequestCard = forwardRef<HTMLElement, RequestCardProps>(function Re
       <div className="flex flex-col gap-2">
         {children}
         {hasActions && (
-          <div data-request-actions className="flex flex-wrap items-center gap-2 pt-1">
+          <div data-request-actions className="flex flex-wrap items-center gap-1.5 pt-1">
             {primary}
             {alternatives}
             {destructive}

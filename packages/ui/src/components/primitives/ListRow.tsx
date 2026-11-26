@@ -98,11 +98,11 @@ export function ListRow(props: {
   );
   const title =
     typeof props.title === "string" && props.truncate === "middle" ? (
-      <span id={`${ids}t`} className="flex min-w-0">
+      <span id={`${ids}t`} className={cn("flex min-w-0", !props.metaYields && "flex-1")}>
         <MiddleText text={props.title} />
       </span>
     ) : (
-      <span id={`${ids}t`} className="min-w-0 truncate">
+      <span id={`${ids}t`} className={cn("min-w-0 truncate", !props.metaYields && "flex-1")}>
         {props.title}
       </span>
     );

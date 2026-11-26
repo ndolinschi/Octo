@@ -1,5 +1,5 @@
 import type { FileChangeSummary, TurnChanges as TurnChangeList } from "@octo/agent-client";
-import { FileDiff } from "lucide-react";
+import { ArrowUpRight, ChevronsDownUp, ChevronsUpDown, FileDiff } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { chipKeyTarget } from "../../lib/chipKeys";
 import { useRovingRows } from "../../lib/rovingRows";
@@ -12,6 +12,7 @@ import { useProject } from "../../state/project";
 import { loadTurnChanges, turnChangesEntry } from "../../state/turnChanges";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
+import { IconButton } from "../primitives/IconButton";
 import { ActivityRow } from "./ActivityRow";
 import { DiffPreview, diffMore } from "./tools/DiffPreview";
 import { BodyFrame, Counts, Disclosure, TextAction, useOpenAt, useOpenChanges } from "./tools/parts";
@@ -104,12 +105,17 @@ export const TurnChanges = memo(function TurnChanges({ turnId }: { turnId: numbe
     });
   const named = turn.files.slice(0, NAMED);
   const rest = turn.files.length - named.length;
+  const expandLabel = listed ? "Collapse all" : "Expand all";
+  const toggleAll = () => {
+    setListed(!listed);
+    setOpen(listed ? new Set() : new Set(keys));
+  };
   return (
     // R2: on touch 8px more below, so the file names' touch zones stay off the reply's Copy under them.
     <div data-turn-changes className="-mt-2 flex min-w-0 flex-col touch:mb-3">
-      {/* One line when it fits; in a narrow column the names take a line of their own on the text edge. */}
+      {/* One line when it fits; in a narrow column the names take a line of their own on the text edge, and actions collapse to icons instead of wrapping. */}
       <div className="@container/changes min-w-0">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-fg-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-fg-3 @min-xl/changes:flex-nowrap">
           {/* The glyph sits in the 16px lead slot of an activity row, so the text starts on the rows' text edge. */}
           <span className="flex h-6 w-4 shrink-0 items-center justify-center">
             <Glyph icon={FileDiff} size={14} />
@@ -160,20 +166,29 @@ export const TurnChanges = memo(function TurnChanges({ turnId }: { turnId: numbe
               </span>
             )}
           </span>
-          <span className="ml-auto flex h-6 shrink-0 items-center gap-4 pl-2">
-            <TextAction
-              onClick={() => {
-                setListed(!listed);
-                setOpen(listed ? new Set() : new Set(keys));
-              }}
-            >
-              {listed ? "Collapse all" : "Expand all"}
-            </TextAction>
+          <span className="ml-auto flex h-6 shrink-0 items-center gap-1 pl-2 @min-[25rem]/changes:gap-4">
+            <span className="hidden @min-[25rem]/changes:contents">
+              <TextAction onClick={toggleAll}>{expandLabel}</TextAction>
+            </span>
+            <span className="contents @min-[25rem]/changes:hidden">
+              <IconButton icon={listed ? ChevronsDownUp : ChevronsUpDown} label={expandLabel} size="xs" aria-expanded={listed} onClick={toggleAll} />
+            </span>
             {openChanges && (
               <span data-warm="tool:changes" className="contents">
-                <TextAction onClick={() => openChanges(turn.turn_id)} title="Open these changes; revert a file or all of them there">
-                  Open changes
-                </TextAction>
+                <span className="hidden @min-[25rem]/changes:contents">
+                  <TextAction onClick={() => openChanges(turn.turn_id)} title="Open these changes; revert a file or all of them there">
+                    Open changes
+                  </TextAction>
+                </span>
+                <span className="contents @min-[25rem]/changes:hidden">
+                  <IconButton
+                    icon={ArrowUpRight}
+                    label="Open changes"
+                    title="Open these changes; revert a file or all of them there"
+                    size="xs"
+                    onClick={() => openChanges(turn.turn_id)}
+                  />
+                </span>
               </span>
             )}
           </span>

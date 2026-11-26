@@ -19,7 +19,7 @@ export function ApprovalSubject({ approval }: { approval: Approval }) {
       {approval.kind === "network" && <NetworkSubject approval={approval} />}
       {approval.kind === "memory" && <MemorySubject approval={approval} />}
       {detail.command !== undefined && (
-        <pre className="octo-code octo-code-surface max-h-40 overflow-auto px-3 py-2 font-mono text-xs leading-5 break-all whitespace-pre-wrap">
+        <pre className="octo-code octo-code-surface max-h-40 overflow-auto px-3 py-2 font-mono text-xs leading-5 wrap-anywhere whitespace-pre-wrap">
           <span className="text-fg-3 select-none">$ </span>
           {detail.command}
         </pre>
@@ -63,7 +63,7 @@ function NetworkSubject({ approval }: { approval: Approval }) {
         </span>
       </p>
       {url && (
-        <pre className="octo-code octo-code-surface max-h-24 overflow-auto px-3 py-2 font-mono text-xs leading-5 break-all whitespace-pre-wrap">{url}</pre>
+        <pre className="octo-code octo-code-surface max-h-24 overflow-auto px-3 py-2 font-mono text-xs leading-5 wrap-anywhere whitespace-pre-wrap">{url}</pre>
       )}
       {why && <p className="min-w-0 [overflow-wrap:anywhere] text-fg-2">{why}</p>}
     </div>

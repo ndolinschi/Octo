@@ -134,6 +134,7 @@ function seed(rec: ProjectRecord): V7 {
     kind: "command",
     title: "pnpm --filter @octo/ui test",
     detail: { command: "pnpm --filter @octo/ui test && git commit -am 'Handle zero and negative sizes'" },
+    no_turn_grant: true,
     created_at: iso(40_000),
   });
   v.inputs.push({

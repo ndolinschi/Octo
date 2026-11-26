@@ -41,6 +41,9 @@
   font-size: 12px;
   padding: 0 4px;
 }
+.octo-prose.octo-prose-compact .octo-file-link > code {
+  padding-left: 24px;
+}
 /* The fenced block's card (a div around `pre`, 12px margin and padding in Markdown): tighter in a pane. */
 .octo-prose.octo-prose-compact > div:has(> pre) {
   margin: 8px 0;

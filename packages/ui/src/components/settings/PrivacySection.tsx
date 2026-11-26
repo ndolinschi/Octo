@@ -172,6 +172,8 @@ function DeleteAllSessionsRow() {
             <Button
               size="sm"
               variant="danger"
+              // Same neutral frame and right edge as sibling action buttons ("Import…") without a coloured border (decision 81).
+              className="border border-line-strong"
               onClick={() => {
                 setError(null);
                 setConfirm(true);
@@ -268,6 +270,7 @@ function DataDirRow({ dir }: { dir: string | null }) {
   return (
     <SettingsRow
       rowId="data-dir"
+      align="start"
       title="Data folder"
       description={dir ? <code className="font-mono text-xs break-all">{dir}</code> : "Known once Octo's local service reports it."}
       control={

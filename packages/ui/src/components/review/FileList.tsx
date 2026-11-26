@@ -105,31 +105,35 @@ function FileRow(props: { file: ReviewFile; selected: boolean; onSelect(path: st
         </span>
       }
       title={
-        // B28: the marks sit in the title, so the meta holds only the line counts (the meta stops at 40% of the row and clips
-        // what is wider): the path gives way first (the directory, then the name from its middle), the marks and counts never shrink.
+        // B28: marks stay in a shrink-0 trailing cluster before the line counts, so the directory truncates cleanly
+        // left-to-right before them (never colliding into "…ices changed"), then the file name from its middle.
         <span className="flex min-w-0 items-center gap-2">
-          <MiddleText text={name} className={cn(f.viewed && !f.changed_since_viewed && "text-fg-3")} />
-          <span className="min-w-0 flex-1 truncate text-xs text-fg-3" dir="rtl">
-            <bdi>{dir}</bdi>
+          <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+            <MiddleText text={name} className={cn(f.viewed && !f.changed_since_viewed && "text-fg-3")} />
+            {dir && <span className="min-w-0 flex-1 truncate text-xs text-fg-3">{dir}</span>}
           </span>
-          {f.changed_since_viewed && (
-            <span className="shrink-0 text-xs text-warn" title="Changed since you viewed it">
-              changed
-            </span>
-          )}
-          {(f.threads ?? 0) > 0 && (
-            <span
-              className={cn("flex shrink-0 items-center gap-0.5 text-xs", unresolved > 0 ? "text-fg" : "text-fg-3")}
-              title={threadCountText(f.threads ?? 0, unresolved)}
-            >
-              <Glyph icon={MessageCircle} size={14} />
-              {unresolved > 0 ? unresolved : f.threads}
-            </span>
-          )}
-          {f.pending_comments > 0 && (
-            <span className="flex shrink-0 items-center gap-0.5 text-xs text-fg-2" title={`${f.pending_comments} pending comments`}>
-              <Glyph icon={MessageSquare} size={14} />
-              {f.pending_comments}
+          {(f.changed_since_viewed || (f.threads ?? 0) > 0 || f.pending_comments > 0) && (
+            <span className="flex shrink-0 items-center gap-1.5">
+              {f.changed_since_viewed && (
+                <span className="shrink-0 rounded-xs bg-hover px-1.5 text-xs leading-4 text-warn" title="Changed since you viewed it">
+                  changed
+                </span>
+              )}
+              {(f.threads ?? 0) > 0 && (
+                <span
+                  className={cn("flex shrink-0 items-center gap-0.5 text-xs tabular-nums", unresolved > 0 ? "text-fg" : "text-fg-3")}
+                  title={threadCountText(f.threads ?? 0, unresolved)}
+                >
+                  <Glyph icon={MessageCircle} size={14} />
+                  {unresolved > 0 ? unresolved : f.threads}
+                </span>
+              )}
+              {f.pending_comments > 0 && (
+                <span className="flex shrink-0 items-center gap-0.5 text-xs text-fg-2 tabular-nums" title={`${f.pending_comments} pending comments`}>
+                  <Glyph icon={MessageSquare} size={14} />
+                  {f.pending_comments}
+                </span>
+              )}
             </span>
           )}
         </span>

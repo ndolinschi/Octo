@@ -22,7 +22,7 @@ export type MenuItem =
     }
   | { id: string; separator: true }
   /** A line of plain dim text on the label's left edge: not a row, not focusable (a count, a total). */
-  | { id: string; caption: string; title?: string };
+  | { id: string; caption: string; shortcut?: string; title?: string };
 
 const isAction = (item: MenuItem): item is Extract<MenuItem, { run(): void }> => !("separator" in item) && !("caption" in item);
 
@@ -222,6 +222,11 @@ export function Menu(props: {
             {item.detail && <span className="shrink-0 pl-4 text-xs text-fg-3 group-focus/item:text-fg-2">{item.detail}</span>}
             {item.shortcut && <kbd className={cn("shrink-0 pl-4 font-sans text-xs", item.disabled ? "text-fg-3" : "text-fg-2")}>{item.shortcut}</kbd>}
           </div>
+        ) : "caption" in item && item.shortcut ? (
+          <p key={item.id} title={item.title} className={cn("flex items-center justify-between gap-2 px-2 py-1 text-xs text-fg-3", hasLeading && "pl-8")}>
+            <span className="min-w-0 truncate">{item.caption}</span>
+            <kbd className="shrink-0 pl-4 font-sans text-xs text-fg-2">{item.shortcut}</kbd>
+          </p>
         ) : "caption" in item ? (
           <p key={item.id} title={item.title} className={cn("px-2 py-1 text-xs text-fg-3", hasLeading && "pl-8")}>
             {item.caption}

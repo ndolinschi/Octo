@@ -1,6 +1,6 @@
 import { Check } from "lucide-react";
 import { PanelBody, PanelEmpty } from "../primitives/Panel";
-import { useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import { useContext, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import type { TurnChanges } from "@octo/agent-client";
 import { useMediaQuery } from "../../lib/hooks";
 import { useHistoryLayer } from "../../lib/historyLayer";
@@ -11,7 +11,7 @@ import { useOptionalProject } from "../../state/project";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { SkeletonList } from "../primitives/Skeleton";
-import { FloatRoom } from "../primitives/floatRoom";
+import { FloatRoom, FloatRoomContext } from "../primitives/floatRoom";
 import { Presence } from "../primitives/Presence";
 import type { DiffMonaco } from "./DiffEditor";
 import { DiffPanel } from "./DiffPanel";
@@ -51,6 +51,7 @@ const NONE: readonly { start: number; end: number }[] = [];
 /** The changes view (v7 §1, decision 47): per-turn file lists beside a diff, revert with a confirm, line comments. */
 export function ChangesView(props: ChangesViewProps) {
   const box = useRef<HTMLDivElement>(null);
+  const floatRoom = useContext(FloatRoomContext);
   const width = useWidth(box);
   const wideWindow = useMediaQuery(`(min-width: ${DIFF_SPLIT_MIN}px)`);
   const projectId = useOptionalProject()?.projectId ?? "default";
@@ -211,6 +212,7 @@ export function ChangesView(props: ChangesViewProps) {
           <>
             <nav
               aria-label="Changed files"
+              {...(floatRoom > 0 ? { style: { scrollPaddingBottom: floatRoom } } : {})}
               className="@container/list flex w-[clamp(17.5rem,30%,22.5rem)] shrink-0 flex-col gap-2 overflow-y-auto border-r border-line px-pane pt-1 pb-4"
             >
               {reviewHeader}
@@ -222,7 +224,11 @@ export function ChangesView(props: ChangesViewProps) {
         ) : showDiff && diff ? (
           diff
         ) : (
-          <nav aria-label="Changed files" className="@container/list flex min-w-0 flex-1 flex-col gap-2 overflow-y-auto px-pane pt-1 pb-4">
+          <nav
+            aria-label="Changed files"
+            {...(floatRoom > 0 ? { style: { scrollPaddingBottom: floatRoom } } : {})}
+            className="@container/list flex min-w-0 flex-1 flex-col gap-2 overflow-y-auto px-pane pt-1 pb-4"
+          >
             {reviewHeader}
             {list}
             <FloatRoom />

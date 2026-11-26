@@ -122,7 +122,7 @@ export function ActivityRow(props: {
   const meta = (
     <span data-row-meta={overlay || undefined} className="flex min-w-0 items-center gap-1.5 tabular-nums">
       {props.aside !== undefined && props.aside !== null && <span className="min-w-0 truncate">{props.aside}</span>}
-      {props.duration !== undefined && props.duration !== null && <span>{(props.formatDuration ?? formatDuration)(props.duration)}</span>}
+      {props.duration !== undefined && props.duration !== null && <span className="shrink-0">{(props.formatDuration ?? formatDuration)(props.duration)}</span>}
     </span>
   );
   const showMeta = (props.duration !== undefined && props.duration !== null) || (props.aside !== undefined && props.aside !== null);
@@ -135,10 +135,12 @@ export function ActivityRow(props: {
         leading={leading}
         title={
           <span className="flex min-w-0 items-center gap-1">
-            <span className="flex min-w-0 items-baseline gap-1.5">
+            <span className={cn("flex min-w-0 items-baseline gap-1.5", !expandable && "flex-1")}>
               <span className={props.detail === undefined || props.detail === null || props.stacked ? "min-w-0 truncate" : "shrink-0"}>{props.verb}</span>
               {!props.stacked && props.detail !== undefined && props.detail !== null && (
-                <span className={cn("min-w-0 truncate text-fg-3", clickable && "transition-colors group-hover:text-fg-2")}>{props.detail}</span>
+                <span className={cn("min-w-0 truncate text-fg-3", !expandable && "flex-1", clickable && "transition-colors group-hover:text-fg-2")}>
+                  {props.detail}
+                </span>
               )}
             </span>
             {expandable && (

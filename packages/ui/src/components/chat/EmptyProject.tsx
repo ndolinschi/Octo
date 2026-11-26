@@ -29,16 +29,16 @@ export function EmptyTitle({ project, agent }: { project: Project; agent: Agent 
     <div className="relative mx-auto w-full max-w-float px-0.5 [&>*]:px-3">
       {/* Decision 28: one sentence in two tones — the lead-in muted, the statement in fg. */}
       {/* P2-10: a long name without spaces wraps anywhere and the sentence stops at two lines; the tooltip has it all. */}
-      <h1 className="relative line-clamp-2 text-display wrap-anywhere text-fg" title={`${project.name}. What should we work on?`}>
+      <h1 className="relative line-clamp-2 text-display text-balance wrap-anywhere text-fg" title={`${project.name}. What should we work on?`}>
         <span className="octo-lead">{project.name}.</span> What should we work on?
       </h1>
       {(stuck ?? noFolder) && (
-        <p data-notice className="relative mt-2 text-sm text-fg-2">
+        <p data-notice className="relative mt-2 text-sm text-pretty text-fg-2">
           {[stuck, noFolder].filter(Boolean).join(" ")}
         </p>
       )}
       {noKey && (
-        <p data-nokey className="relative mt-2 text-sm text-fg-2" title={config.builtin_loop?.reason}>
+        <p data-nokey className="relative mt-2 text-sm text-pretty text-fg-2" title={config.builtin_loop?.reason}>
           No API key yet. Pick a coding agent in the model menu below, or add a key in Settings.
         </p>
       )}
