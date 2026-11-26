@@ -87,6 +87,29 @@ same notice. Models come only from agy's own model picker (its session config op
 so the fast, balanced and deep tiers on Antigravity use agy's own default until the user sets roles (`PUT /v1/providers/antigravity/prefs`).
 Details: `acp-orchestrator.md`, "Antigravity (`agy`)".
 
+### Agent accounts (2026-11-26)
+
+More than one login of the same agent, modelled on T3 Code's provider instances (one `CLAUDE_CONFIG_DIR` / `CODEX_HOME`
+per account). An agent whose manifest has `accounts: {"env": "CLAUDE_CONFIG_DIR", "default": "~/.claude"}` lists
+`account_env` and `account_default`; the built-in manifest gives it to `claude-code` (`CLAUDE_CONFIG_DIR`), `codex`
+(`CODEX_HOME`) and `omp` (`PI_CODING_AGENT_DIR`). Copilot, Grok, Cursor and Antigravity have none: no documented variable
+moves their login folder.
+
+- `POST /v1/providers/{id}/accounts` `{"label", "config_dir", "id"?}` stores a name and a folder (absolute or `~/`, no
+  `$`, not the agent's default, at most 20 per agent; `id` is made from the name) in `{data-dir}/agent-accounts.json`
+  (mode 0600), creates the folder (0700) when it is missing, and answers 201 with the account's own entry, its login
+  probe already run. `DELETE /v1/providers/{id}/accounts/{account}` forgets it (204); the folder and the login in it stay.
+  Refusals are catalogue cases (`AccountNameInvalid`, `AccountFolderInvalid`, `AccountTaken`, `AccountsFull`,
+  `AccountsNotSupported`, `AccountGone`).
+- Each account is an agent of its own, `<agent>@<account>` (`claude-code@work`), listed right after its agent with
+  `account_of`, `account_id`, `account_label` and `account_dir`. It is the agent's manifest entry with the variable set
+  to the folder in its environment, so its login probe, model listing, sessions and delegations all use that login, and
+  it is chosen like any agent: `acp:claude-code@work/opus` as a project's orchestrator or tier, a session's model, or a
+  `spawn_agent` target. Its login hint is the agent's login command with the variable in front
+  (`CLAUDE_CONFIG_DIR=/home/me/.claude-work claude auth login`).
+- Octo stores no token and never reads the folder: the user logs it in with the CLI. Skills of an account are looked
+  for where its agent's are.
+
 ### Agent models
 
 `models` is, in this order and each id once (the first source wins): the manifest's `models` (`source: "manifest"`, with the manifest's `modelLabels`), what the manifest's `modelsCommand` printed (`"command"`), every model the agent advertised in a session the harness opened or discovered (`"advertised"`) and the names typed by the user (`"custom"`). `seen_at` is when a session last advertised a model. `stale: true` flags an **advertised** model the agent's latest session did not advertise; it is kept, never dropped (a manifest alias is the CLI's own name and is never flagged). `default_model` is the manifest's `defaultModel`, else the model the agent reported as current.

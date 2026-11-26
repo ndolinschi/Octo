@@ -100,6 +100,17 @@ type manifestAgent struct {
 	// agent's command is looked for when it is not on PATH: the vendor's
 	// default install folder, which an app started from the Dock may not have.
 	SearchPaths []string `json:"searchPaths"`
+	// Accounts, when set, lets the user add more logins of the agent: each
+	// account starts the agent with Accounts.Env pointing at its own folder
+	// (CLAUDE_CONFIG_DIR, CODEX_HOME), where the CLI keeps that login.
+	Accounts *manifestAccounts `json:"accounts"`
+}
+
+// manifestAccounts names the variable that moves the CLI's config and login
+// folder; Default is the folder used when it is not set (shown, not used).
+type manifestAccounts struct {
+	Env     string `json:"env"`
+	Default string `json:"default"`
 }
 
 // manifestModelsCommand runs a command and reads model ids from its output:
@@ -283,6 +294,9 @@ func (a manifestAgent) validate() error {
 		if err := a.Version.validate(); err != nil {
 			return err
 		}
+	}
+	if a.Accounts != nil && !envKeyPat.MatchString(a.Accounts.Env) {
+		return fmt.Errorf("accounts.env %q is not a valid variable name", a.Accounts.Env)
 	}
 	switch a.MCPTransport {
 	case "", "auto", MCPTransportStdio:

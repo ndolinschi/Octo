@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -22,6 +23,10 @@ func discoverAgentSkills(agentID string, folders []projectstore.Folder, home str
 	id := strings.ToLower(strings.TrimSpace(agentID))
 	if id == "" {
 		return nil
+	}
+	// An account of an agent ("claude-code@work") reads the agent's own skill folders.
+	if base, _, ok := plugins.SplitAccountID(id); ok {
+		id = base
 	}
 	var sources []skillSource
 	for _, f := range folders {

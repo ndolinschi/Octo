@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/ndolinschi/Octo/apps/harness/internal/accounts"
 	"io"
 	"io/fs"
 	"log"
@@ -247,6 +248,10 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	}
 
 	pluginReg := loadPlugins(ctx, cfg, remoteReg)
+	// The user's extra agent accounts (agent-accounts.json): each is listed and
+	// started as an agent of its own, "<agent>@<account>".
+	accountStore := accounts.Open(cfg.DataDir)
+	pluginReg.SetAccounts(accountStore.List)
 
 	priceTable, err := prices.Load(filepath.Join(cfg.DataDir, prices.File))
 	if err != nil {
@@ -294,6 +299,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	})
 	featureStore := features.NewStore(os.LookupEnv)
 	pluginReg.OnProbeChange(provSvc.Refresh)
+	accountSvc := &accounts.Service{Store: accountStore, Agent: pluginReg.Agent, Recheck: provSvc.Recheck, Refresh: provSvc.Refresh}
 	pluginReg.StartProbes(ctx)
 	notes := project.NewNotes(store, hub)
 	orch := orchestrator.New(store, hub, notes, orchestrator.Options{
@@ -399,7 +405,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	files := project.NewFiles(store, hub)
 	bridgeOpts := []bridge.Option{
 		bridge.WithReviews(reviews), bridge.WithCommands(cmds), bridge.WithBrowserProxy(browserMgr), bridge.WithWorkerProcesses(orch),
-		bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithTerminals(termMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo), bridge.WithFeatures(featureStore),
+		bridge.WithPlugins(pluginReg), bridge.WithAccounts(accountSvc), bridge.WithLSP(pluginReg, lspMgr), bridge.WithTerminals(termMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo), bridge.WithFeatures(featureStore),
 		bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
 		bridge.WithDiagnostics(func() any {
 			ok, why := builtin()

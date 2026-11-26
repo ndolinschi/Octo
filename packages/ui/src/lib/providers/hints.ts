@@ -18,9 +18,12 @@ export function commandsIn(hint: string | undefined): string[] {
   return out;
 }
 
-/** A backtick span that is a command, not a flag, file or variable name (`/login` is typed inside the agent). */
+/**
+ * A backtick span that is a command, not a flag, file or variable name (`/login` is typed inside the agent). Variables set
+ * in front of it count (an agent account's `CLAUDE_CONFIG_DIR=~/.claude-work claude auth login`).
+ */
 function looksLikeCommand(s: string): boolean {
-  const t = s.trim();
+  const t = s.trim().replace(/^(?:[A-Z_][A-Z0-9_]*=(?:'[^']*'|[^\s']+)\s+)+/, "");
   return /^[a-z][\w.-]*(\s|$)/.test(t) && !/^[A-Z_]+$/.test(t);
 }
 

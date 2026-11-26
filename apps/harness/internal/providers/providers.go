@@ -148,6 +148,16 @@ type Provider struct {
 	Problem *usererr.Error `json:"problem,omitempty"`
 	// ModelsProblem is ModelsError in structured form (ModelsError is its plain message).
 	ModelsProblem *usererr.Error `json:"models_problem,omitempty"`
+	// Accounts (agents). AccountEnv: the agent takes more accounts, each a
+	// folder this variable points at (AccountDefault is the folder the agent's
+	// own entry uses). AccountOf: this entry is one of those accounts, of the
+	// agent with that id; AccountID, AccountLabel and AccountDir describe it.
+	AccountEnv     string `json:"account_env,omitempty"`
+	AccountDefault string `json:"account_default,omitempty"`
+	AccountOf      string `json:"account_of,omitempty"`
+	AccountID      string `json:"account_id,omitempty"`
+	AccountLabel   string `json:"account_label,omitempty"`
+	AccountDir     string `json:"account_dir,omitempty"`
 }
 
 // Roles is the model per tier of one agent ("" = the agent's own default).
@@ -397,16 +407,25 @@ func apiDefault(d config.Models) string {
 func orderAgents(in []plugins.Agent) []plugins.Agent {
 	out := make([]plugins.Agent, 0, len(in))
 	used := make([]bool, len(in))
-	for _, id := range listFirst {
-		for i, a := range in {
-			if a.ID == id && !used[i] {
-				out, used[i] = append(out, a), true
+	// An agent's accounts follow it wherever it is listed.
+	take := func(i int) {
+		out, used[i] = append(out, in[i]), true
+		for j, b := range in {
+			if b.AccountOf == in[i].ID && !used[j] {
+				out, used[j] = append(out, b), true
 			}
 		}
 	}
-	for i, a := range in {
+	for _, id := range listFirst {
+		for i, a := range in {
+			if a.ID == id && !used[i] {
+				take(i)
+			}
+		}
+	}
+	for i := range in {
 		if !used[i] {
-			out = append(out, a)
+			take(i)
 		}
 	}
 	return out
@@ -417,6 +436,8 @@ func (s *Service) agentProvider(a plugins.Agent) Provider {
 		ID: a.ID, Kind: KindAgent, Label: a.Label, InstallHint: a.InstallHint, LoginHint: a.Hint,
 		DefaultModel: a.DefaultModel, FlatRate: a.FlatRate, ModelsNote: a.ModelsNote, AcceptsCustomModel: true,
 		Experimental: !a.Verified, ExperimentalNote: a.VerifiedNote,
+		AccountEnv: a.AccountEnv, AccountDefault: a.AccountDefault,
+		AccountOf: a.AccountOf, AccountID: a.AccountID, AccountLabel: a.AccountLabel, AccountDir: a.AccountDir,
 	}
 	if p.Label == "" {
 		p.Label = a.ID

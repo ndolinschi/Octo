@@ -3,6 +3,7 @@ package bridge_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/ndolinschi/Octo/apps/harness/internal/accounts"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -63,6 +64,8 @@ func newProvEnv(t *testing.T, key string, agents ...map[string]any) *provEnv {
 		writeManifest(t, data, "agents", map[string]any{"name": "agents", "version": "1", "agents": agents})
 	}
 	reg := plugins.Load(context.Background(), data, nil, nil)
+	acctStore := accounts.Open(data)
+	reg.SetAccounts(acctStore.List)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
@@ -131,7 +134,8 @@ func newProvEnv(t *testing.T, key string, agents ...map[string]any) *provEnv {
 	})
 	srv := httptest.NewServer(bridge.New(svc, notes, project.NewFiles(store, hub),
 		bridge.WithPlugins(reg), bridge.WithSettings(mgr, true), bridge.WithProviders(prov),
-		bridge.WithBuiltinLoopFunc(builtin)))
+		bridge.WithBuiltinLoopFunc(builtin),
+		bridge.WithAccounts(&accounts.Service{Store: acctStore, Agent: reg.Agent, Recheck: prov.Recheck, Refresh: prov.Refresh})))
 	t.Cleanup(srv.Close)
 	prov.Refresh() // the baseline the first change is measured against
 

@@ -21,6 +21,12 @@ func samples() map[string]*Error {
 	const long = "exit status 1: acp initialize: JSON-RPC session/new failed (stderr: boom)"
 	return map[string]*Error{
 		"AgentNotLoggedIn":       AgentNotLoggedIn("GitHub Copilot", "copilot login", long),
+		"AccountsNotSupported":   AccountsNotSupported("GitHub Copilot"),
+		"AccountNameInvalid":     AccountNameInvalid(40),
+		"AccountFolderInvalid":   AccountFolderInvalid(),
+		"AccountTaken":           AccountTaken(),
+		"AccountsFull":           AccountsFull(20),
+		"AccountGone":            AccountGone(),
 		"AgentNotInstalled":      AgentNotInstalled("GitHub Copilot", "npm install -g @github/copilot", long),
 		"AgentLaunchRejected":    AgentLaunchRejected("Antigravity", "agy", "unexpected argument 'acp'", "Update agy."),
 		"AgentTooOld":            AgentTooOld("Antigravity", "1.4.12", "1.5.0", "curl -fsSL https://antigravity.google/cli/install.sh | bash", long),

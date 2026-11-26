@@ -24,3 +24,13 @@ test("commandsIn: prose without a command, variable names and empty hints give n
   assert.deepEqual(commandsIn("   "), []);
   assert.deepEqual(commandsIn("run `grok login` or `grok login`"), ["grok login"]);
 });
+
+test("commandsIn: an agent account's login command keeps its variable in front", () => {
+  assert.deepEqual(
+    commandsIn("Log this account in once: run `CLAUDE_CONFIG_DIR=~/.claude-work claude auth login` in a terminal. Its login stays in ~/.claude-work."),
+    ["CLAUDE_CONFIG_DIR=~/.claude-work claude auth login"],
+  );
+  assert.deepEqual(commandsIn("run `CODEX_HOME='/a b/codex' codex login`"), ["CODEX_HOME='/a b/codex' codex login"]);
+  // A bare assignment is not a command.
+  assert.deepEqual(commandsIn("Set `CLAUDE_CONFIG_DIR=~/.x` first."), []);
+});

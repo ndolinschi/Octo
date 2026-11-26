@@ -41,3 +41,9 @@ test("ids with no vendor mark, and our own router, have none", () => {
   assert.equal(markKeyOf(""), null);
   assert.equal(markKeyOf("o"), null);
 });
+
+test("an account of an agent has the agent's mark", () => {
+  assert.equal(markKeyOf("claude-code@work"), "claude-code");
+  assert.equal(markKeyOf("acp:claude-code@work/opus"), "claude-code");
+  assert.equal(markKeyOf("acp:codex@personal"), "codex");
+});
