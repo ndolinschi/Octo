@@ -2708,6 +2708,11 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] [data-panel-filters] {
   padding-block: 4px;
 }
+/* Memory RememberedHeader reserves a 24px slot for desktop's xs `+`; match the 44px touch button so it aligns with the rows' `—¯` column. */
+[data-phone] [data-memory] span.size-6:has(> button.touch-hit) {
+  width: var(--spacing-ctl-lg);
+  height: var(--spacing-ctl-lg);
+}
 
 /* No hover on a phone: a reply's footer (copy, time, model) is always shown, and wraps (above). */
 [data-phone] [data-conv] [data-turn-footer] {
