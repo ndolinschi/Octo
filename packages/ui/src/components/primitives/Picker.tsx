@@ -1,10 +1,17 @@
 import { Search } from "lucide-react";
-import { useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useLatest } from "../../lib/hooks";
 import type { PickerRow, PickerSection } from "../../lib/picker";
 import { popupMove } from "./popupNav";
 import { Glyph } from "./Glyph";
 import { PopupList, popupOptionId } from "./PopupList";
 import { Popover } from "./Popover";
+
+const EDGE = 8;
+const DEFAULT_GAP = 6;
+const HEADER_AND_PAD = 48; // 40px search header + 8px list vertical padding
+const DEFAULT_ROWS = 9;
+const MIN_ROWS = 3;
 
 export type { PickerRow, PickerSection } from "../../lib/picker";
 
@@ -50,7 +57,20 @@ export function Picker(props: {
   const current = enabled.find((r) => r.id === active) ?? enabled[0] ?? null;
   const ownSearch = useRef<HTMLInputElement>(null);
   const search = props.searchRef ?? ownSearch;
+  const edge = useLatest(props.edge);
+  const gap = props.gap ?? DEFAULT_GAP;
   const baseId = useId();
+  // Cap visible rows to the larger side of the anchor so shorter viewports never clamp the popover over its own trigger.
+  useLayoutEffect(() => {
+    const v = (edge.current?.() ?? props.anchor.current)?.getBoundingClientRect();
+    const box = document.getElementById(`${baseId}-list`);
+    if (!v || !box) return;
+    const room = Math.max(v.top - gap - EDGE, window.innerHeight - v.bottom - gap - EDGE);
+    const rowH = window.matchMedia("(pointer: coarse), (max-width: 767.98px)").matches ? 40 : 28;
+    const fit = Math.max(MIN_ROWS, Math.floor((room - HEADER_AND_PAD) / rowH));
+    if (fit < DEFAULT_ROWS) box.style.setProperty("--popup-rows", String(fit));
+    else box.style.removeProperty("--popup-rows");
+  }, [props.anchor, edge, gap, baseId]);
   const optionId = (id: string) => popupOptionId(`${baseId}-list`, id);
 
   const run = (id: string | undefined) => {

@@ -5,13 +5,12 @@ import type { PickerRow, PickerSection } from "../../lib/picker";
 import { Highlight } from "./Highlight";
 import { createPointerGate } from "./popupNav";
 
-/** Rows visible before the list scrolls. */
-const VISIBLE = 9;
 /**
- * The list's height: whole rows of the row token in force (28px, 40px under `touch:`) plus the list's 4px padding top and
- * bottom. Computed by CSS from the same tokens as the rows' `h-row` / `touch:h-ctl-lg`, so a narrow window shows whole rows.
+ * The list's height: whole rows (9 by default via `--popup-rows`) of the row token in force (28px, 40px under `touch:`)
+ * plus the list's 4px padding top and bottom. Computed by CSS from the same tokens as the rows' `h-row` / `touch:h-ctl-lg`,
+ * so a narrow window shows whole rows.
  */
-const MAX_HEIGHT = "max-h-[calc(var(--spacing-ctl-sm)*var(--popup-rows)+8px)] touch:max-h-[calc(var(--spacing-ctl-lg)*var(--popup-rows)+8px)]";
+const MAX_HEIGHT = "max-h-[calc(var(--spacing-ctl-sm)*var(--popup-rows,9)+8px)] touch:max-h-[calc(var(--spacing-ctl-lg)*var(--popup-rows,9)+8px)]";
 
 /**
  * `tall` (audit B4): up to 480px, but never past the window, still whole rows (CSS `round`). 88px is the popover's margins
@@ -109,7 +108,7 @@ export function PopupList(props: {
         if (row && !row.disabled) props.onChoose(row);
       }}
       className={cn("min-h-0 overflow-y-auto overscroll-contain p-1", props.tall ? cn(TALL_HEIGHT, "octo-popup-fade") : MAX_HEIGHT, props.className)}
-      style={{ "--popup-rows": props.maxRows ?? VISIBLE } as CSSProperties}
+      {...(props.maxRows !== undefined ? { style: { "--popup-rows": props.maxRows } as CSSProperties } : {})}
     >
       {props.sections.map((s) =>
         s.rows.length === 0 ? null : (
