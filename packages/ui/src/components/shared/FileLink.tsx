@@ -1,5 +1,5 @@
 import { memo, useEffect, type ReactNode } from "react";
-import { fileLookup, looksLikePath, resolveFileRef } from "../../lib/fileLinks";
+import { fileLookup, looksLikePath, resolveFileRef, type FileRef } from "../../lib/fileLinks";
 import { useOptionalCode } from "../../state/code";
 import { useOptionalProject } from "../../state/project";
 import { fileIcon } from "../primitives/fileIcons";
@@ -21,14 +21,11 @@ function cachedKeptFiles(map: Map<string, readonly string[]>): FlatFile[] {
 }
 
 /**
- * Inline code in assistant prose that names a project file becomes a link to it (decision 19): the file
- * glyph inside the same mono chip, `link` colour on hover only; `path:12` / `path:12-20` selects the lines.
- * Resolution uses the file index of Filter files, loaded lazily (the first path-like code asks for it) and
- * never blocking: until it is in, or when nothing matches, the code stays plain.
+ * Resolves a path-like string against the project's lazily loaded file index (decision 19).
+ * Returns its resolved target, tooltip, and opener, or null until the index loads / when nothing matches.
  */
-export const InlineCode = memo(function InlineCode({ children }: { children?: ReactNode }) {
+export function useFileRef(text: string | null): { ref: FileRef; title: string; open(): void } | null {
   const code = useOptionalCode();
-  const text = typeof children === "string" ? children : Array.isArray(children) && children.every((c) => typeof c === "string") ? children.join("") : null;
   const candidate = text !== null && looksLikePath(text);
   const status = code?.fileIndex.status;
   const indexFiles = code?.indexFiles;
@@ -42,19 +39,30 @@ export const InlineCode = memo(function InlineCode({ children }: { children?: Re
   const loaded = code?.loadedFiles;
   const files = !done && kept?.files.size ? cachedKeptFiles(kept.files) : loaded;
   const ref = candidate && code && text && files ? resolveFileRef(text, fileLookup(files)) : null;
-  if (!ref || !code) return <code>{children}</code>;
+  if (!ref || !code) return null;
   const where = ref.start ? (ref.end ? `, lines ${ref.start}–${ref.end}` : `, line ${ref.start}`) : "";
+  return {
+    ref,
+    title: `Open ${ref.folder}/${ref.path}${where}`,
+    open: () => code.openFile(ref.folder, ref.path, ref.start ? { line: ref.start, ...(ref.end ? { endLine: ref.end } : {}) } : undefined),
+  };
+}
+
+/**
+ * Inline code in assistant prose that names a project file becomes a link to it (decision 19): the file
+ * glyph inside the same mono chip, `link` colour on hover only; `path:12` / `path:12-20` selects the lines.
+ * Resolution uses the file index of Filter files, loaded lazily (the first path-like code asks for it) and
+ * never blocking: until it is in, or when nothing matches, the code stays plain.
+ */
+export const InlineCode = memo(function InlineCode({ children }: { children?: ReactNode }) {
+  const text = typeof children === "string" ? children : Array.isArray(children) && children.every((c) => typeof c === "string") ? children.join("") : null;
+  const hit = useFileRef(text);
+  if (!hit) return <code>{children}</code>;
   return (
     // Inline, not a <button>: an atomic inline never breaks and pulled the "(" before it onto the chip's line.
-    <InlineButton
-      data-file-link=""
-      data-warm="tool:files"
-      className="octo-file-link"
-      title={`Open ${ref.folder}/${ref.path}${where}`}
-      onPress={() => code.openFile(ref.folder, ref.path, ref.start ? { line: ref.start, ...(ref.end ? { endLine: ref.end } : {}) } : undefined)}
-    >
+    <InlineButton data-file-link="" data-warm="tool:files" className="octo-file-link" title={hit.title} onPress={hit.open}>
       <code>
-        <Glyph icon={fileIcon(ref.path)} size={14} />
+        <Glyph icon={fileIcon(hit.ref.path)} size={14} />
         {text}
       </code>
     </InlineButton>

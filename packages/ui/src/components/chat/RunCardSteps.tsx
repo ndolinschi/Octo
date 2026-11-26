@@ -3,7 +3,11 @@ import { cn } from "../../lib/cn";
 import { formatStepDuration } from "../../lib/duration";
 import { useNow } from "../../lib/hooks";
 import { Button } from "../primitives/Button";
-import { InlineCode } from "../shared/FileLink";
+import { fileIcon } from "../primitives/fileIcons";
+import { Glyph } from "../primitives/Glyph";
+import { InlineButton } from "../primitives/InlineButton";
+import { MiddleText } from "../primitives/MiddleText";
+import { useFileRef } from "../shared/FileLink";
 import { ActivityRow, type ActivityState } from "./ActivityRow";
 import { labelParts } from "./activity";
 import { visibleSteps, type RunStep } from "./runCard";
@@ -57,26 +61,76 @@ export function RunSteps(props: { steps: readonly RunStep[]; current: { label: s
 
 type StepText = { verb: string; object: string; path: string; mono: boolean; qualifier: string };
 
-/** The step's object: a file is the FileLink chip (decision 19), a command or pattern mono, a phrase in the UI face. */
-function Detail({ object, path, mono, qualifier }: Omit<StepText, "verb">) {
+const CODE_CHIP = "inline-flex min-w-0 items-baseline rounded-xs bg-active px-1 py-0.5 font-mono text-xs text-fg-2";
+const FILE_CHIP = "relative inline-flex max-w-full min-w-0 items-baseline rounded-xs bg-active py-0.5 pr-1 pl-6 font-mono text-xs text-fg-2";
+// A middle-cut path keeps its first letter and the ellipsis ("s…eue.ts") instead of collapsing the head to nothing.
+const KEEP_HEAD = "[&_.octo-mid>:first-child]:min-w-[2ch]!";
+const FILE_ICON = "pointer-events-none absolute top-1/2 left-1 -translate-y-1/2 text-fg-3";
+
+const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1) || path;
+
+/** A file path chip: always shows its file glyph (resolved or not) and opens the file when it belongs to the project. */
+function FileChip({ path }: { path: string }) {
+  const hit = useFileRef(path);
+  const icon = fileIcon(basename(hit ? hit.ref.path : path));
+  const label = <MiddleText text={path} />;
+  if (!hit) {
+    return (
+      <span data-allow-truncate="" className={cn(FILE_CHIP, KEEP_HEAD)}>
+        <Glyph icon={icon} size={14} className={FILE_ICON} />
+        {label}
+      </span>
+    );
+  }
+  return (
+    <InlineButton
+      data-file-link=""
+      data-warm="tool:files"
+      data-allow-truncate=""
+      title={hit.title}
+      onPress={hit.open}
+      className={cn(FILE_CHIP, KEEP_HEAD, "group/chip cursor-pointer transition-colors duration-fast hover:text-link focus-visible:text-link")}
+    >
+      <Glyph icon={icon} size={14} className={cn(FILE_ICON, "transition-colors duration-fast group-hover/chip:text-link group-focus-visible/chip:text-link")} />
+      {label}
+    </InlineButton>
+  );
+}
+
+/** The step's object: file paths get a file chip with glyph, search query and scope path get inline-code chips (query keeps priority). */
+function Detail({ verb, object, path, mono, qualifier }: StepText) {
   if (!object && !qualifier) return null;
+  const isSearch = verb === "Searched for";
+  const inPath = qualifier.startsWith("in ") ? qualifier.slice(3) : "";
   return (
     <span className="flex min-w-0 items-baseline gap-1.5">
       {object &&
         (path ? (
-          // The chip's look comes from the prose rules; its line is cut on an element of its own, because `.octo-prose`'s
-          // `text-wrap: pretty` (unlayered) would beat `truncate` on the same element and break a long path mid-name.
-          <span className="octo-prose octo-prose-sm flex min-w-0 text-fg-2">
-            <span data-allow-truncate className="min-w-0 truncate">
-              <InlineCode>{object}</InlineCode>
+          <FileChip path={object} />
+        ) : isSearch && mono ? (
+          <span className={cn(CODE_CHIP, inPath ? "max-w-[calc(100%-6.5rem)]" : "max-w-full")}>
+            <span data-allow-truncate="" className="min-w-0 truncate">
+              {object}
             </span>
           </span>
         ) : (
-          <span data-allow-truncate className={cn("min-w-0 truncate", mono ? "font-mono text-xs" : "font-sans text-sm")}>
+          <span
+            data-allow-truncate=""
+            className={cn("min-w-0 truncate", inPath && "max-w-[calc(100%-6.5rem)]", mono ? "font-mono text-xs" : "font-sans text-sm")}
+          >
             {object}
           </span>
         ))}
-      {qualifier && <span className="shrink-0">{qualifier}</span>}
+      {inPath ? (
+        <>
+          <span className="shrink-0">in</span>
+          <span data-allow-truncate="" className={cn(CODE_CHIP, KEEP_HEAD, "min-w-auto shrink-8")}>
+            <MiddleText text={inPath} />
+          </span>
+        </>
+      ) : (
+        qualifier && <span className="shrink-0">{qualifier}</span>
+      )}
     </span>
   );
 }
@@ -89,7 +143,7 @@ const SettledStep = memo(function SettledStep(p: StepText & { state: Exclude<Run
     <ActivityRow
       state={STATE[p.state]}
       verb={p.verb}
-      detail={<Detail object={p.object} path={p.path} mono={p.mono} qualifier={p.qualifier} />}
+      detail={<Detail verb={p.verb} object={p.object} path={p.path} mono={p.mono} qualifier={p.qualifier} />}
       duration={p.durationMs}
       formatDuration={formatStepDuration}
       tip={p.reason ? `${tipOf(p)}\n\n${p.reason}` : tipOf(p)}
