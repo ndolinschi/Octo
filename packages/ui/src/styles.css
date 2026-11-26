@@ -2496,6 +2496,16 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] button[role="switch"] {
   width: 40px;
 }
+/* Provider key links (openrouter.ai, console.anthropic.com) keep inline text styling while gaining a 44px touch target. */
+[data-phone] :is([data-connect-detail], [data-provider-detail]) a {
+  position: relative;
+}
+[data-phone] :is([data-connect-detail], [data-provider-detail]) a::after {
+  content: "";
+  position: absolute;
+  inset-block: min(0px, calc((100% - var(--spacing-touch)) / 2));
+  inset-inline: min(0px, calc((100% - var(--spacing-touch)) / 2));
+}
 /* Touch controls sit on the field's baseline with a full 44px box. */
 [data-phone] [data-composer-row] > button {
   min-width: var(--spacing-ctl-lg);
