@@ -271,16 +271,18 @@ function Picker(props: {
                   ...(ready ? { count: counts[f.id] } : {}),
                 }))}
               />
-              <IconButton
-                ref={searchButton}
-                icon={Search}
-                label="Search pull requests"
-                onClick={() => {
-                  flushSync(() => setSearchOpen(true));
-                  searchInput.current?.focus();
-                }}
-                className={cn("ml-auto shrink-0 @min-[420px]:hidden", searchShown && "hidden")}
-              />
+              {!searchShown && (
+                <IconButton
+                  ref={searchButton}
+                  icon={Search}
+                  label="Search pull requests"
+                  onClick={() => {
+                    flushSync(() => setSearchOpen(true));
+                    searchInput.current?.focus();
+                  }}
+                  className="ml-auto shrink-0 @min-[420px]:hidden"
+                />
+              )}
               <SearchField
                 ref={searchInput}
                 label="Search pull requests, or paste an address or a number"
