@@ -2151,8 +2151,8 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 /* retest3: toolcalls (toolpolish) — the inline diff of an edit call and of a turn's changed files. One grid for every row:
    [old no.][new no.][sign][code], number columns as wide as the diff's largest number (`--diff-digits`, set by DiffPreview),
    12px inset, 8px between columns, the sign in its own 1ch. Changed rows: a quiet tint on the code, a stronger one on the
-   gutter cell (opaque, so the sticky gutter hides code scrolled under it); only the tint carries the colour (numbers and signs
-   stay fg-3). Code never wraps: the code area scrolls sideways under the fixed gutter and fades at an edge with more. */
+   gutter cell (opaque, so the sticky gutter hides code scrolled under it); only the tint carries the colour (unchanged gutters
+   stay fg-3; tinted gutters step up to fg-2 for AA contrast). Code never wraps: the code area scrolls sideways under the fixed gutter and fades at an edge with more. */
 .octo-diff {
   --diff-gap: 8px;
   --diff-gutter-w: calc(12px + 1ch + var(--diff-gap));
@@ -2230,9 +2230,11 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 }
 .octo-diff-row[data-kind="add"] .octo-diff-gutter {
   background: var(--diff-add-gutter);
+  color: var(--octo-fg-2);
 }
 .octo-diff-row[data-kind="del"] .octo-diff-gutter {
   background: var(--diff-del-gutter);
+  color: var(--octo-fg-2);
 }
 /* A command's output: wrapped like a terminal (`pre-wrap`, long words broken), each line hanging 2ch under its own start. */
 .octo-out-line {
