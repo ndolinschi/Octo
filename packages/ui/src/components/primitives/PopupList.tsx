@@ -141,7 +141,7 @@ export function PopupList(props: {
                     props.onActive(r.id);
                   }}
                   className={cn(
-                    "group flex min-w-0 items-center gap-2 rounded-md px-2 press-row touch:h-ctl-lg",
+                    "group flex min-w-0 items-center gap-2 rounded-md px-2 press-row has-[input:focus]:bg-panel has-[input:focus]:outline-1 has-[input:focus]:-outline-offset-1 has-[input:focus]:outline-fg touch:h-ctl-lg",
                     r.sub ? "min-h-ctl-lg py-1" : "h-ctl-sm",
                     r.disabled ? "text-fg-3" : on ? "bg-active text-fg" : "text-fg hover:bg-hover/50",
                   )}
