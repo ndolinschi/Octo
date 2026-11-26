@@ -768,10 +768,19 @@ function TurnFooter({
       className="-mt-2 -ml-1 flex h-6 min-w-0 items-center gap-1.5 text-xs text-fg-3"
     >
       <IconButton icon={copied ? Check : Copy} label={copied ? "Copied" : "Copy reply"} size="xs" className="shrink-0" onClick={() => copy(reply)} />
-      <time dateTime={at} title={when} className="shrink-0 whitespace-nowrap tabular-nums">
-        {timeAgo(at, now)}
-      </time>
-      {usage && !compact && <span className="min-w-0 truncate whitespace-nowrap tabular-nums">· {usage}</span>}
+      <span data-turn-meta className="flex min-w-0 items-center gap-1.5">
+        <time dateTime={at} title={when} className="shrink-0 whitespace-nowrap tabular-nums">
+          {timeAgo(at, now)}
+        </time>
+        {usage && !compact && (
+          <span className="min-w-0 truncate whitespace-nowrap tabular-nums">
+            <span aria-hidden data-turn-sep>
+              {"· "}
+            </span>
+            {usage}
+          </span>
+        )}
+      </span>
       {restore && (
         // R2 checkpoints: at the reply's right, its text on the "Open changes" edge above (-mr-2). Always shown under a reply
         // that changed files, on hover or focus under one that did not (styles.css, `[data-restore]`). While Octo works the
