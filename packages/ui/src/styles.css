@@ -2549,6 +2549,12 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] [data-file-bar="file"] > button {
   display: none;
 }
+/* A phone segmented track is 48px (44px options + 2px padding); bars that host one grow with a 4px inset instead of clipping it. */
+[data-phone] :is([data-file-bar="file"], [data-image-preview] + div, div:has(+ [data-image-preview])):has([role="radiogroup"]) {
+  height: auto;
+  min-height: var(--spacing-ctl-lg);
+  padding-block: 4px;
+}
 /* Approval and form cards: the whole column, their buttons 44px. */
 [data-phone] :is([data-v7-approval], [data-v7-form]) button:not([aria-label], [role="radio"], [role="checkbox"]) {
   min-height: var(--spacing-touch);

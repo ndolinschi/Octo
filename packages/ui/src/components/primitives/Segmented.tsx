@@ -44,7 +44,7 @@ export function Segmented<T extends string | number>(props: {
       onKeyDown={onKeyDown}
       // On the phone every segmented option is a 44px touch target without relying on pseudo-element overlap. 6e: with nothing chosen yet
       // each segment is its own outlined tile, 2px apart, so the row reads as options to pick, not as three words on a plate.
-      className={cn("flex h-ctl-sm w-fit shrink-0 rounded-md bg-seg-track p-0.5 phone:h-ctl-lg", !chosen && "gap-0.5", props.className)}
+      className={cn("flex h-ctl-sm w-fit shrink-0 rounded-md bg-seg-track p-0.5 phone:h-auto", !chosen && "gap-0.5", props.className)}
     >
       {props.options.map((o) => {
         const on = o.id === props.value;
@@ -58,7 +58,7 @@ export function Segmented<T extends string | number>(props: {
             title={o.title}
             onClick={() => props.onChange(o.id)}
             className={cn(
-              "touch-hit shrink-0 rounded-sm px-2 text-sm whitespace-nowrap press-row focus-inset phone:min-w-ctl-lg",
+              "touch-hit shrink-0 rounded-sm px-2 text-sm whitespace-nowrap press-row focus-inset phone:h-ctl-lg phone:min-w-ctl-lg",
               on
                 ? // 6d: forced colours flatten the tones; the chosen segment is the system's highlight there.
                   "bg-seg-on text-fg shadow-seg forced-colors:bg-[Highlight] forced-colors:text-[HighlightText] forced-colors:forced-color-adjust-none"
