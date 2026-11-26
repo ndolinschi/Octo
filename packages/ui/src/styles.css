@@ -2506,6 +2506,12 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   inset-block: min(0px, calc((100% - var(--spacing-touch)) / 2));
   inset-inline: min(0px, calc((100% - var(--spacing-touch)) / 2));
 }
+/* SecretForm stacks its key input above Save below 420px; `flex-1` sets flex-basis to 0 vertically and squashes the 44px input. */
+@media (width < 420px) {
+  [data-phone] input[name="octo-provider-key"] {
+    flex: none;
+  }
+}
 /* Touch controls sit on the field's baseline with a full 44px box. */
 [data-phone] [data-composer-row] > button {
   min-width: var(--spacing-ctl-lg);
