@@ -54,6 +54,12 @@ export function familyOf(providers: readonly Provider[], baseId: string): Provid
 /** The name the agent's own login reads as in its Accounts list: the name the user gave it, else "Default". */
 export const defaultAccountName = (agent: Pick<Provider, "account_default_label">): string => agent.account_default_label ?? "Default";
 
+/** The agent's own name without its default login's label (`"Claude Code · Personal"` -> `"Claude Code"`). */
+export function agentBaseLabel(agent: Pick<Provider, "label" | "account_default_label">): string {
+  const suffix = agent.account_default_label ? ` · ${agent.account_default_label}` : "";
+  return suffix && agent.label.endsWith(suffix) ? agent.label.slice(0, -suffix.length) : agent.label;
+}
+
 /** "15:00": a clock time in the person's zone, 24 hours. */
 function clock(ms: number): string {
   const d = new Date(ms);

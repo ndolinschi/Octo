@@ -15,6 +15,7 @@ export { extraReason, plainReason } from "./reasons";
 export {
   accountStatus,
   accountSwitchOffer,
+  agentBaseLabel,
   baseIdOf,
   defaultAccountName,
   familyOf,

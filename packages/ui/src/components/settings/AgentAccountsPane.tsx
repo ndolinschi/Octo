@@ -1,6 +1,6 @@
 import type { Provider } from "@octo/agent-client";
 import { useId, useState } from "react";
-import { accountBase, accountsOf, defaultAccountName, refreshProviders, suggestedAccountDir, useProviders } from "../../lib/providers";
+import { accountBase, accountsOf, agentBaseLabel, defaultAccountName, refreshProviders, suggestedAccountDir, useProviders } from "../../lib/providers";
 import { errorMessage, structuredError } from "../../lib/format";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
@@ -92,7 +92,7 @@ export function AgentAccounts({ agent, onOpen }: { agent: Provider; onOpen?: (id
                 ),
               },
             ]}
-            hint={`Octo starts ${agent.label} with ${env} set to this folder, so the account keeps its own login there. Octo stores only the name and the folder.`}
+            hint={`Octo starts ${agentBaseLabel(agent)} with ${env} set to this folder, so the account keeps its own login there. Octo stores only the name and the folder.`}
           />
           <div className="flex flex-wrap items-center gap-3">
             <Button size="sm" aria-busy={busy} onClick={() => void add()}>
@@ -146,7 +146,7 @@ export function AccountFacts({ account, onRemoved }: { account: Provider; onRemo
     <section aria-label="Account" className="flex flex-col gap-1">
       <SectionTitle>Account</SectionTitle>
       <p className="text-sm text-fg-2">
-        {`An account of ${agent?.label ?? account.account_of ?? "this agent"}. Its login is kept in `}
+        {`An account of ${agent ? agentBaseLabel(agent) : (account.account_of ?? "this agent")}. Its login is kept in `}
         <code className="font-mono text-fg">{account.account_dir}</code>
         {agent?.account_env ? ` (${agent.account_env}).` : "."}
       </p>

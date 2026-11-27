@@ -346,6 +346,7 @@ export const Transcript = memo(function Transcript(props: {
                     retryCommand={turn.prompt?.command}
                     fields={errorFieldsOf(ended)}
                     agent={agentName}
+                    historical
                   />
                 </Suspense>
               )}

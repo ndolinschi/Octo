@@ -55,6 +55,8 @@ export function TurnBanner(props: {
   flush?: boolean;
   /** Re-reads the agent's login; true when it is ready now (the failed request is then sent again). */
   onCheck?: (() => Promise<boolean>) | undefined;
+  /** Earlier turn in the transcript (already superseded by a newer turn): keep the failure text without switching accounts. */
+  historical?: boolean;
 }) {
   const { bridge } = useApp();
   const { projectId, send, running } = useProject();
@@ -90,7 +92,7 @@ export function TurnBanner(props: {
   }
   const structured = { message: (props.error ?? "").trim(), ...fields };
   const legacy = splitHint(props.error, fields?.hint);
-  const limit = fields?.action === "switch_account";
+  const limit = fields?.action === "switch_account" && !props.historical && !running;
   const extra: ReactNode = (
     <>
       {limit && (

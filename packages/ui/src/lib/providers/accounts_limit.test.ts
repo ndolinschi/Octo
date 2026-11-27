@@ -4,6 +4,7 @@ import type { Provider } from "@octo/agent-client";
 import {
   accountSwitchOffer,
   accountStatus,
+  agentBaseLabel,
   defaultAccountName,
   familyOf,
   groupSiblings,
@@ -215,4 +216,6 @@ test("the family of an agent and the default account's name", () => {
   );
   assert.equal(defaultAccountName({ account_default_label: "Personal" }), "Personal");
   assert.equal(defaultAccountName({}), "Default");
+  assert.equal(agentBaseLabel({ label: "Claude Code · Personal", account_default_label: "Personal" }), "Claude Code");
+  assert.equal(agentBaseLabel({ label: "Claude Code" }), "Claude Code");
 });
