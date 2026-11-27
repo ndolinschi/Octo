@@ -252,6 +252,13 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 	client, err := acp.Start(ctx, acp.Spec{
 		Command: ag.Command, Args: ag.ArgsFor(t.model), Env: ag.ResolvedEnv(), Dir: cwd, Name: ag.ID, Redact: rt.redact,
 		OnCommands: rt.o.commandsCallback(s, ag.ID),
+		OnMode: func(sessionID, modeID string) {
+			s.mu.Lock()
+			if s.sessID == "" || s.sessID == sessionID {
+				s.curMode = modeID
+			}
+			s.mu.Unlock()
+		},
 	})
 	if err != nil {
 		return false, startFailure(t, err)

@@ -37,6 +37,7 @@ type Client struct {
 	caps        Capabilities
 
 	onCommands func([]Command)
+	onMode     func(sessionID, modeID string)
 
 	mu         sync.Mutex
 	active     *run
@@ -75,7 +76,7 @@ func Start(ctx context.Context, spec Spec) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{proc: p, name: spec.Name, onCommands: spec.OnCommands}
+	c := &Client{proc: p, name: spec.Name, onCommands: spec.OnCommands, onMode: spec.OnMode}
 	c.conn = newConn(p.stdout, p.stdin, c)
 	c.conn.tr = p.trace
 	go c.conn.serve(context.Background(), func(readErr error) error {

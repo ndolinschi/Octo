@@ -19,14 +19,35 @@ func (c *Client) notify(_ context.Context, method string, params json.RawMessage
 		return
 	}
 	var n sessionNotification
-	if c.onCommands != nil && json.Unmarshal(params, &n) == nil {
+	if (c.onCommands != nil || c.onMode != nil) && json.Unmarshal(params, &n) == nil {
 		var head updateHeader
-		if json.Unmarshal(n.Update, &head) == nil && head.SessionUpdate == "available_commands_update" {
-			var u struct {
-				Commands json.RawMessage `json:"availableCommands"`
-			}
-			if json.Unmarshal(n.Update, &u) == nil {
-				c.onCommands(ParseCommands(u.Commands))
+		if json.Unmarshal(n.Update, &head) == nil {
+			switch head.SessionUpdate {
+			case "available_commands_update":
+				if c.onCommands != nil {
+					var u struct {
+						Commands json.RawMessage `json:"availableCommands"`
+					}
+					if json.Unmarshal(n.Update, &u) == nil {
+						c.onCommands(ParseCommands(u.Commands))
+					}
+				}
+			case "current_mode_update":
+				if c.onMode != nil {
+					var u struct {
+						CurrentModeID string `json:"currentModeId"`
+						ModeID        string `json:"modeId"`
+					}
+					if json.Unmarshal(n.Update, &u) == nil {
+						id := u.CurrentModeID
+						if id == "" {
+							id = u.ModeID
+						}
+						if id != "" {
+							c.onMode(n.SessionID, id)
+						}
+					}
+				}
 			}
 		}
 	}

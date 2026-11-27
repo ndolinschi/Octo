@@ -5,6 +5,7 @@ import { agentDisplayName } from "../../lib/orchestratorMore";
 import { approvalDeadline, approvalItems, resolutionCause, type ApprovalItem, type Resolution } from "../../lib/v7/approval";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
+import { useSessionScope } from "../../state/session";
 import { ApprovalCard } from "./ApprovalCard";
 import { ApprovalGroup } from "./ApprovalGroup";
 import { InputFormCard } from "./InputFormCard";
@@ -145,8 +146,10 @@ export type ApprovalsSlotProps = {
  */
 export function ApprovalsSlot(props: ApprovalsSlotProps) {
   const { bridge } = useApp();
+  const { projectId } = useProject();
+  const scope = useSessionScope();
   if (!bridge.resolveApproval || !bridge.submitInput) return null;
-  return <Live {...props} />;
+  return <Live key={`${projectId}:${scope?.sessionId ?? ""}`} {...props} />;
 }
 
 function Live({ onOpenAgent }: ApprovalsSlotProps) {
