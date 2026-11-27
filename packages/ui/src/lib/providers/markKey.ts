@@ -1,3 +1,5 @@
+import { splitAgentId } from "@octo/agent-client";
+
 /**
  * Which vendor mark (a file in `assets/providers/`) an id gets, or null when it has none. Two kinds of id share one table:
  * a provider or agent id ("claude-code", "api") gets that provider's own mark; a model id ("claude-sonnet-5-5",
@@ -55,6 +57,9 @@ const MODEL_NAME: readonly (readonly [RegExp, string])[] = [
   [/^glm/, "zhipu"],
 ];
 
+/** An account of an agent (`claude-code@work`) keeps its agent's mark: the lookup uses the base id. */
+const agentKey = (agentId: string): string | undefined => PROVIDERS[splitAgentId(agentId).base];
+
 export function markKeyOf(id: string): string | null {
   const lower = id.trim().toLowerCase();
   if (lower.startsWith("acp:")) {
@@ -62,11 +67,12 @@ export function markKeyOf(id: string): string | null {
     const slash = rest.indexOf("/");
     const agentId = slash >= 0 ? rest.slice(0, slash) : rest;
     const modelId = slash >= 0 ? rest.slice(slash + 1) : "";
-    if (agentId && PROVIDERS[agentId]) return PROVIDERS[agentId];
+    const agent = agentId ? agentKey(agentId) : undefined;
+    if (agent) return agent;
     if (modelId) return markKeyOf(modelId);
     return null;
   }
-  const provider = PROVIDERS[lower];
+  const provider = lower.includes("/") ? PROVIDERS[lower] : agentKey(lower);
   if (provider) return provider;
   const slash = lower.indexOf("/");
   if (slash > 0) {

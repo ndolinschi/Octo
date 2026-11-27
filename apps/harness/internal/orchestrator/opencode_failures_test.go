@@ -191,11 +191,12 @@ func TestOpenCodeErrorThoughtOnlyAndStderrModes(t *testing.T) {
 		wantDetails []string
 	}{
 		{
+			// A bare 429 is a rate limit: the user is offered another model (this agent keeps one login).
 			name:        "mid-turn agent_error",
 			ask:         fakeacp.MarkerAgentError + " hi",
-			wantMessage: "could not finish the request",
-			wantHint:    "Try again",
-			wantAction:  "retry",
+			wantMessage: "is being rate limited",
+			wantHint:    "Retry in a moment, or pick another model.",
+			wantAction:  "switch_account",
 			wantDetails: []string{"APIError", "Upstream provider rate limit reached"},
 		},
 		{

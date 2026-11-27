@@ -21,7 +21,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/accounts"
 	"github.com/ndolinschi/Octo/apps/harness/internal/acptrace"
+	"github.com/ndolinschi/Octo/apps/harness/internal/agentlogin"
 	"github.com/ndolinschi/Octo/apps/harness/internal/anthropicclient"
 	"github.com/ndolinschi/Octo/apps/harness/internal/apitoken"
 	"github.com/ndolinschi/Octo/apps/harness/internal/bridge"
@@ -293,6 +295,12 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Publish: func(n int) { hub.PublishAll(events.ProvidersUpdated, map[string]any{"connected": n}) },
 	})
 	featureStore := features.NewStore(os.LookupEnv)
+	// Agent accounts expand into the registry before the first probe and before the orchestrator reads the agents.
+	accountSvc, err := accounts.Open(cfg.DataDir, pluginReg, provSvc.Refresh)
+	if err != nil {
+		slog.Warn("agent accounts are off: the accounts file cannot be read", "err", err)
+		accountSvc = nil
+	}
 	pluginReg.OnProbeChange(provSvc.Refresh)
 	pluginReg.StartProbes(ctx)
 	notes := project.NewNotes(store, hub)
@@ -308,6 +316,11 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		AgentSource:     provSvc.Agents,
 		OnAgentLogin: func(id string, ok bool) {
 			if pluginReg.SeenLogin(id, ok) {
+				provSvc.Refresh()
+			}
+		},
+		OnAgentLimit: func(id string, resetsAt *time.Time, reached bool) {
+			if pluginReg.SeenLimit(id, resetsAt, reached) {
 				provSvc.Refresh()
 			}
 		},
@@ -354,6 +367,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 
 	lspMgr := lsp.NewManager(lsp.Options{})
 	termMgr := terminal.NewManager(terminal.Options{Children: children})
+	loginSvc := agentlogin.New(ctx, pluginReg, termMgr, agentlogin.Options{})
 	// PR review (RV1): the `gh` adapter; worktrees of finished reviews are swept at start and every 6 hours.
 	reviews := review.New(store, hub, review.Options{Host: codehost.NewGH()})
 	go reviews.Run(ctx, 6*time.Hour)
@@ -407,6 +421,10 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 			c.APIKey = keys.Get() // the key the settings screen may have changed, for the model probe
 			return diagnostics(c, pluginReg, octo, ok, why, logRing, nil)
 		}),
+	}
+	bridgeOpts = append(bridgeOpts, bridge.WithAgentLogins(loginSvc))
+	if accountSvc != nil {
+		bridgeOpts = append(bridgeOpts, bridge.WithAccounts(accountSvc))
 	}
 	// Remote access (spec 2026-11-14-remote-access-mobile-design.md): off at every start; its control routes live
 	// on this bridge behind the local token, its own listener opens only when the owner turns it on.

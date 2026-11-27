@@ -29,7 +29,7 @@ func TestDiscoverAgentSkillsClaudeCode(t *testing.T) {
 	// Duplicate of project skill "deploy" in home should be ignored in favor of project.
 	writeSkillFile(t, filepath.Join(home, ".claude", "skills", "deploy", "SKILL.md"), "---\nname: deploy\ndescription: Home deploy\n---\n")
 
-	got := discoverAgentSkills("claude-code", []projectstore.Folder{{Path: proj}}, home)
+	got := discoverAgentSkills("claude-code", nil, []projectstore.Folder{{Path: proj}}, home)
 	if len(got) != 3 {
 		t.Fatalf("got %d skills: %+v", len(got), got)
 	}
@@ -68,19 +68,19 @@ func TestDiscoverAgentSkillsOtherProviders(t *testing.T) {
 	writeSkillFile(t, filepath.Join(proj, ".agent", "skills", "plan", "SKILL.md"), "---\ndescription: Plan work\n---\n")
 	writeSkillFile(t, filepath.Join(proj, ".agents", "skills", "shared", "SKILL.md"), "---\ndescription: Shared skill\n---\n")
 
-	codex := discoverAgentSkills("codex", []projectstore.Folder{{Path: proj}}, home)
+	codex := discoverAgentSkills("codex", nil, []projectstore.Folder{{Path: proj}}, home)
 	if len(codex) != 2 || codex[0].Name != "fix-ci" || codex[1].Name != "shared" {
 		t.Fatalf("codex = %+v", codex)
 	}
-	cursor := discoverAgentSkills("cursor", []projectstore.Folder{{Path: proj}}, home)
+	cursor := discoverAgentSkills("cursor", nil, []projectstore.Folder{{Path: proj}}, home)
 	if len(cursor) != 2 || cursor[0].Name != "polish" || cursor[1].Name != "shared" {
 		t.Fatalf("cursor = %+v", cursor)
 	}
-	opencode := discoverAgentSkills("opencode", []projectstore.Folder{{Path: proj}}, home)
+	opencode := discoverAgentSkills("opencode", nil, []projectstore.Folder{{Path: proj}}, home)
 	if len(opencode) != 2 || opencode[0].Name != "audit" || opencode[1].Name != "shared" {
 		t.Fatalf("opencode = %+v", opencode)
 	}
-	agy := discoverAgentSkills("antigravity", []projectstore.Folder{{Path: proj}}, home)
+	agy := discoverAgentSkills("antigravity", nil, []projectstore.Folder{{Path: proj}}, home)
 	if len(agy) != 2 || agy[0].Name != "plan" || agy[1].Name != "shared" {
 		t.Fatalf("antigravity = %+v", agy)
 	}

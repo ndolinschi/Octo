@@ -1,5 +1,6 @@
 import type { Provider, ProviderList, ProviderModel, ProviderModelSource, ProviderRoles } from "@octo/agent-client";
-import { agentModelLabel, modelLabel, parseAcp } from "../models";
+import { agentModelLabel, joinAgentModel, modelLabel, parseAcp } from "../models";
+import { groupSiblings, limitText } from "./accounts";
 import { jsonCodec, type Codec } from "../storage";
 import { isReady } from "./providers";
 import { canUseAnyway, connectAction, stateText } from "./providersMore";
@@ -39,6 +40,8 @@ export type PickerRow =
       detail?: string;
       /** The agent's launch command has not been run with Octo: a dim "experimental" after the label. */
       experimental?: boolean;
+      /** This account reached its plan limit: "limit reached", or "limit reached until 15:00" (dim, under the name). */
+      limit?: string;
     }
   | {
       /** Second level, first row: no model named, the agent decides (`acp:<agent>`). */
@@ -104,6 +107,8 @@ export type PickerOptions = {
   current?: string;
   /** Names the user typed for an agent (this browser's memory; the harness's own list wins when it has the name too). */
   custom?: Readonly<Record<string, readonly string[]>>;
+  /** The clock for "limit reached until 15:00" (tests); default now. */
+  now?: number;
   /** Preferred model per agent kept in this browser, for a harness that cannot store preferences (the harness's own wins). */
   localPrefs?: Readonly<Record<string, AgentPrefsLocal>>;
 };
@@ -223,7 +228,8 @@ export function pickerView(list: ProviderList, opts: PickerOptions = {}): Picker
   const groups: PickerGroup[] = [];
   const agents: PickerRow[] = [];
   const unavailable: PickerRow[] = [];
-  for (const p of list.providers) {
+  // Accounts of one agent sit together ("Claude Code · Personal", "Claude Code · Work"); one account per agent changes nothing.
+  for (const p of groupSiblings(list.providers)) {
     if (p.kind === "ollama") continue;
     if (!isReady(p)) {
       if (matches(words, `${p.label} ${p.id}`))
@@ -260,6 +266,7 @@ export function pickerView(list: ProviderList, opts: PickerOptions = {}): Picker
           providerId: p.id,
           ...(detail ? { detail } : {}),
           ...(p.experimental ? { experimental: true } : {}),
+          ...(p.limit ? { limit: limitText(p.limit, opts.now) } : {}),
         });
       // Decision 58: "copilot gpt" finds the model one level down — shown flat while searching.
       if (words.length > 0) for (const m of models) if (matches(words, `${p.label} ${p.id} ${m.label} ${m.id}`)) agents.push(agentModelRow(p, m, true));
@@ -329,7 +336,8 @@ export function choosable(list: ProviderList, hidden?: ReadonlySet<string>): { g
       const def = p.models.find((m) => m.id === p.default_model);
       out.push({ group: p.label, value: `acp:${p.id}`, label: def ? `${p.label} (default: ${modelLabel(def)})` : p.label });
       for (const m of agentModels(p))
-        if (!hidden?.has(`acp:${p.id}/${m.id}`)) out.push({ group: p.label, value: `acp:${p.id}/${m.id}`, label: `${p.label} · ${agentModelLabel(m)}` });
+        if (!hidden?.has(`acp:${p.id}/${m.id}`))
+          out.push({ group: p.label, value: `acp:${p.id}/${m.id}`, label: joinAgentModel(p.label, agentModelLabel(m), p.id) });
     } else {
       for (const m of p.models) if (!hidden?.has(m.id)) out.push({ group: p.label, value: m.id, label: modelLabel(m) });
     }

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
+	subscriptionagents "github.com/ndolinschi/Octo/apps/harness/plugins-examples/subscription-agents"
 )
 
 func TestShippedExamplesLoadCleanly(t *testing.T) {
@@ -14,7 +15,7 @@ func TestShippedExamplesLoadCleanly(t *testing.T) {
 		dir  string
 		want []string
 	}{
-		{"subscription-agents", []string{"claude-code", "copilot", "grok", "codex", "cursor", "opencode", "antigravity", "devin", "droid", "omp", "pi"}},
+		{"subscription-agents", []string{"claude-code", "copilot", "grok", "codex", "cursor", "opencode", "antigravity", "gemini", "devin", "droid", "omp", "pi"}},
 		{"acp-agents", []string{"gemini"}},
 		{"fake-acp", []string{"fake"}},
 	}
@@ -37,21 +38,25 @@ func TestShippedExamplesLoadCleanly(t *testing.T) {
 }
 
 func TestShippedAgentsAreConsistent(t *testing.T) {
+	// The acp-agents example is a gemini entry kept as a copyable template; the
+	// built-in subscription-agents has its own gemini entry (experimental, with
+	// accounts), and a copied manifest of the same id replaces it.
 	dirs := []string{"subscription-agents", "acp-agents"}
 	seen := map[string]string{}
 	for _, d := range dirs {
 		reg := plugins.Load(context.Background(), t.TempDir(), []string{filepath.Join("..", "..", "plugins-examples", d)}, nil)
 		for _, a := range reg.Agents() {
-			if prev, dup := seen[a.ID]; dup {
+			if prev, dup := seen[a.ID]; dup && a.ID != "gemini" {
 				t.Errorf("agent id %q is in both %s and %s", a.ID, prev, d)
 			}
 			seen[a.ID] = d
 		}
 	}
-	// Loading both together must not produce clash errors either.
+	// The harness carries subscription-agents built in; loading the other example
+	// next to it must not produce clash errors (a same-id entry replaces the built-in one).
 	reg := plugins.Load(context.Background(), t.TempDir(), []string{
-		filepath.Join("..", "..", "plugins-examples", "subscription-agents"), filepath.Join("..", "..", "plugins-examples", "acp-agents"),
-	}, nil)
+		filepath.Join("..", "..", "plugins-examples", "acp-agents"),
+	}, nil, plugins.WithBuiltin(subscriptionagents.Manifest))
 	for _, p := range reg.Plugins() {
 		if len(p.Errors) != 0 {
 			t.Errorf("plugin %s: %v", p.Name, p.Errors)

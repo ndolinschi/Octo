@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
+	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -17,9 +18,12 @@ type skillSource struct {
 }
 
 // discoverAgentSkills scans the project's folders and the user's home directory for
-// skills and slash-command files belonging to the selected ACP agent.
-func discoverAgentSkills(agentID string, folders []projectstore.Folder, home string) []acp.Command {
-	id := strings.ToLower(strings.TrimSpace(agentID))
+// skills and slash-command files belonging to the selected ACP agent. An account
+// of an agent ("codex@work") reads its base agent's places; env is that agent's
+// resolved environment, where an account's own CLI home is set.
+func discoverAgentSkills(agentID string, env map[string]string, folders []projectstore.Folder, home string) []acp.Command {
+	base, slug := plugins.SplitID(strings.ToLower(strings.TrimSpace(agentID)))
+	id := base
 	if id == "" {
 		return nil
 	}
@@ -32,7 +36,11 @@ func discoverAgentSkills(agentID string, folders []projectstore.Folder, home str
 		sources = append(sources, projectSkillSources(id, root)...)
 	}
 	if home != "" && id != "scripted" {
-		sources = append(sources, homeSkillSources(id, home)...)
+		var account map[string]string
+		if slug != "" {
+			account = env
+		}
+		sources = append(sources, homeSkillSources(id, home, account)...)
 	}
 
 	var out []acp.Command
@@ -113,7 +121,10 @@ func projectSkillSources(id, root string) []skillSource {
 	}
 }
 
-func homeSkillSources(id, home string) []skillSource {
+// homeSkillSources lists the skill folders under the user's home; account is
+// the environment of a non-default account (nil for the default one), whose
+// own CLI home replaces the harness's.
+func homeSkillSources(id, home string, account map[string]string) []skillSource {
 	switch id {
 	case "claude-code", "claude":
 		return []skillSource{
@@ -123,7 +134,10 @@ func homeSkillSources(id, home string) []skillSource {
 		}
 	case "codex":
 		codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
-		if codexHome == "" {
+		if account != nil {
+			codexHome = strings.TrimSpace(account["CODEX_HOME"])
+		}
+		if codexHome == "" && account == nil {
 			codexHome = strings.TrimSpace(os.Getenv("OCTO_CODEX_HOME"))
 		}
 		if codexHome == "" {

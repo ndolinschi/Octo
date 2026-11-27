@@ -406,3 +406,21 @@ func TestOllamaProviderAndCheck(t *testing.T) {
 		t.Fatalf("ollama provider = %+v", ol)
 	}
 }
+
+// An agent whose manifest says experimental is listed (and says so) but is
+// never suggested as the default of a new project.
+func TestAnExperimentalAgentIsNeverSuggested(t *testing.T) {
+	r := newRig(t, agent("gemini", func(a *plugins.Agent) { a.Experimental, a.Verified = true, true }))
+	got := r.svc.Snapshot()
+	g := byID(t, got, "gemini")
+	if g.State != "ready" || !g.Experimental {
+		t.Fatalf("gemini = %+v", g)
+	}
+	if got.Connected != 1 || got.Suggested != (providers.Suggested{}) {
+		t.Fatalf("an experimental agent was suggested: %+v", got.Suggested)
+	}
+	r = newRig(t, agent("gemini", func(a *plugins.Agent) { a.Experimental = true }), agent("zed", nil))
+	if got := r.svc.Snapshot().Suggested.Orchestrator; got != "acp:zed" {
+		t.Fatalf("suggested = %q, want acp:zed", got)
+	}
+}

@@ -42,6 +42,8 @@ from everywhere lock the code until you make a new one.
 | Stop a running turn | Write files, revert changes, rewind, compact, `/clear`, edit memory or notes, delete rules or sessions |
 | | Open the terminal or the Browser tab, switch branches, or post a review |
 
+Agent accounts ([First run](first-run.md#more-than-one-account-of-an-agent)) are also computer-only: a phone cannot add, rename or remove an account, log one in, or switch to another when a limit is reached.
+
 What a phone may do beyond reading can be narrowed: each device has a **read-only** switch in Settings → Remote access, and
 `HARNESS_REMOTE_ALLOW` (default `send,answer,stop`) sets the default for every device (`none` = read only).
 

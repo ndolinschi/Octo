@@ -12,14 +12,18 @@ const KNOWN: Record<string, string> = {
   goose: "Goose",
   cursor: "Cursor",
 };
-export function agentLabelOf(id: string): string {
-  const known = KNOWN[id];
-  if (known) return known;
-  return id
+const titled = (text: string): string =>
+  text
     .split(/[-_\s]+/)
     .filter(Boolean)
     .map((w) => `${w.charAt(0).toUpperCase()}${w.slice(1)}`)
     .join(" ");
+
+/** An account of an agent (`claude-code@work`) reads "Claude Code · Work" when no provider entry names it. */
+export function agentLabelOf(id: string): string {
+  const at = id.indexOf("@");
+  if (at > 0) return `${agentLabelOf(id.slice(0, at))} · ${titled(id.slice(at + 1))}`;
+  return KNOWN[id] ?? titled(id);
 }
 
 /**

@@ -1,5 +1,5 @@
 import type { ErrorFields } from "@octo/agent-client";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
 import { loginSteps, withLoginSteps, type LoginSteps } from "../../lib/errors/login";
@@ -11,6 +11,9 @@ import { useProject } from "../../state/project";
 import { Notice } from "../primitives/Notice";
 import { ErrorNotice } from "../shared/ErrorNotice";
 import { isCompactRetry, runRetry, splitHint } from "./outcome";
+
+/** A reached plan limit's buttons (other account, other model) load only when such a failure is shown. */
+const LimitChooser = lazy(() => import("./LimitChooser").then((m) => ({ default: m.LimitChooser })));
 
 /** The login command of the agent `id` from the plugin list, while it is not logged in (an agent row keeps no `command`). */
 function useLoginSteps(id: string | undefined, wanted: boolean): LoginSteps | null {
@@ -87,6 +90,17 @@ export function TurnBanner(props: {
   }
   const structured = { message: (props.error ?? "").trim(), ...fields };
   const legacy = splitHint(props.error, fields?.hint);
+  const limit = fields?.action === "switch_account";
+  const extra: ReactNode = (
+    <>
+      {limit && (
+        <Suspense fallback={null}>
+          <LimitChooser failedId={props.providerId} onRetry={canRetry ? retry : undefined} />
+        </Suspense>
+      )}
+      {retryError ? <Notice tone="error">Retry failed: {plainError(retryError, { agent: props.agent }).sentence}</Notice> : null}
+    </>
+  );
   const check = props.onCheck
     ? async () => {
         const ready = await props.onCheck?.();
@@ -105,7 +119,7 @@ export function TurnBanner(props: {
         hideChecked={retryError !== null}
         onRetry={canRetry ? () => void retry() : undefined}
         retrying={busy}
-        actions={retryError ? <Notice tone="error">Retry failed: {plainError(retryError, { agent: props.agent }).sentence}</Notice> : undefined}
+        actions={limit || retryError ? extra : undefined}
       />
     </div>
   );

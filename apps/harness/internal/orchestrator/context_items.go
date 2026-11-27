@@ -298,7 +298,7 @@ func (rt *runtime) agentWeights() []itemW {
 	}
 	var ws []itemW
 	used := 0
-	for _, ag := range rt.acpAgents() {
+	for _, ag := range rt.offeredAgents() {
 		n := len(ag.ID) + len(ag.Label) + 5
 		used += n
 		ws = append(ws, itemW{ContextItem: ContextItem{ID: "agent:" + ag.ID, Label: pluginAgentName(ag), Group: "External agents", Loaded: true}, chars: n})

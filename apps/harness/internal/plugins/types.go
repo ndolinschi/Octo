@@ -70,8 +70,24 @@ type Agent struct {
 	// Unsupported is why the agent cannot work with Octo (manifest unsupported);
 	// Available is false for it and nothing ever starts or probes it.
 	Unsupported string `json:"unsupported,omitempty"`
+	// Experimental (manifest experimental): never picked automatically; only
+	// offered to the orchestrator when the project's models name the agent.
+	Experimental bool `json:"experimental,omitempty"`
 	// StartHint is the manifest's remark for a launch rejected by the CLI.
 	StartHint string `json:"-"`
+	// BaseID is the manifest agent this entry runs: its own id, or for an
+	// account (a derived agent "claude-code@work") the part before "@".
+	BaseID string `json:"base_id"`
+	// Account is the login this entry stands for; nil when the base agent
+	// cannot keep more than one. Accounts (base agents only) says whether it can.
+	Account  *AccountInfo     `json:"account,omitempty"`
+	Accounts *AccountsSupport `json:"accounts_support,omitempty"`
+	// Logins are the manifest's interactive login commands (auth.login).
+	Logins []LoginMethod `json:"login_methods,omitempty"`
+	// Limit is the usage limit a real session last ran into (filled by the registry).
+	Limit *LimitState `json:"limit,omitempty"`
+	// LimitPatterns mark an agent error message as a usage limit (manifest limitPatterns).
+	LimitPatterns []*regexp.Regexp `json:"-"`
 	Launch
 
 	// Requires are the manifest's extra commands (server-side; diagnostics).
@@ -125,6 +141,9 @@ type Agent struct {
 	// commandFound: the agent's own program was found at load (Available may
 	// later turn false for a CLI that is too old; the check must still rerun).
 	commandFound bool
+	// accountEnv is the manifest's accounts.env ({dir} not yet replaced); nil
+	// when the agent cannot keep accounts apart.
+	accountEnv map[string]string
 }
 
 // MCPTransportStdio is the `mcpTransport` value that forces the stdio relay.

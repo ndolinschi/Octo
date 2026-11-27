@@ -172,6 +172,11 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 	}
 
 	switch {
+	case has(MarkerLimitRPC):
+		return stopLimitRPC
+	case has(MarkerLimitAgentError):
+		a.limitAgentError()
+		return "end_turn"
 	case has(MarkerSilent):
 		return "end_turn" // says nothing, calls nothing: what a CLI that is not logged in can do
 	case has(MarkerRefuse):
@@ -386,7 +391,7 @@ func (a *agent) defaultScript(ctx context.Context, cwd, extra, currency string) 
 	if model := a.currentModel(); model != "" {
 		extra += " Model in use: " + model + "."
 	}
-	extra += a.envReport()
+	extra += a.envReport() + reportValues()
 	a.say("Summary: " + summary + "; I wrote " + NoteFile + " with a short note." + extra)
 	return "end_turn"
 }

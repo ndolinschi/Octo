@@ -11,5 +11,8 @@ func (s *Server) listPlugins(w http.ResponseWriter, r *http.Request) {
 	if s.plugins != nil {
 		list = s.plugins.Plugins()
 	}
+	if !s.localRequest(r) {
+		list = pluginsForDevice(list)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"plugins": list})
 }

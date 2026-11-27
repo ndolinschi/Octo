@@ -132,6 +132,10 @@ import type {
   BrowserProxySession,
   TerminalOpenOptions,
   TerminalSession,
+  AgentAccountRemoved,
+  AgentAccountResult,
+  AgentLoginOptions,
+  AgentLoginSession,
 } from "./types";
 
 /** A `Blob` without the DOM lib (this package type-checks without browser globals): what `new Blob(...)` returns where one exists. */
@@ -640,6 +644,14 @@ export interface Bridge {
   openLanguageServer(projectId: string, serverId: string, opts?: { workspace?: "review" }): Promise<LanguageServerSession>;
   /** Opens a live interactive PTY shell in a project folder (HTTP bridge only). */
   openTerminal?(projectId: string, options?: TerminalOpenOptions): Promise<TerminalSession>;
+  /** `POST /v1/providers/{agentId}/accounts`: adds an account for an agent (HTTP only). `dir` is its isolation folder; omitted, the harness makes one. */
+  addAgentAccount?(agentId: string, input: { name: string; dir?: string }): Promise<AgentAccountResult>;
+  /** `PATCH /v1/providers/{id}/account`: renames an account; a base id renames the default one (HTTP only). */
+  renameAgentAccount?(providerId: string, name: string): Promise<AgentAccountResult>;
+  /** `DELETE /v1/providers/{id}/account?delete_data=`: removes an account; the default one cannot be removed (HTTP only). */
+  removeAgentAccount?(providerId: string, opts: { deleteData: boolean }): Promise<AgentAccountRemoved>;
+  /** `POST /v1/providers/{id}/login`: opens the agent's login in a PTY (HTTP only). */
+  startAgentLogin?(providerId: string, opts?: AgentLoginOptions): Promise<AgentLoginSession>;
   subscribe(projectId: string, handlers: SubscribeHandlers): () => void;
 }
 
@@ -733,14 +745,7 @@ function parseJson(text: string): unknown {
   }
 }
 
-/** The answer of a provider call: the provider itself, or the whole list it sits in; null when the body says neither. */
-function asProvider(body: unknown, id: string): Provider | null {
-  if (!isRecord(body)) return null;
-  if (Array.isArray(body.providers)) return (body.providers.find((p) => isRecord(p) && p.id === id) as Provider | undefined) ?? null;
-  return typeof body.id === "string" && Array.isArray(body.models) ? (body as Provider) : null;
-}
-
-const ERROR_ACTIONS: readonly string[] = ["recheck_provider", "connect_provider", "retry", "open_settings", "update_agent", "use_worktree"];
+const ERROR_ACTIONS: readonly string[] = ["recheck_provider", "connect_provider", "retry", "open_settings", "update_agent", "use_worktree", "switch_account"];
 
 /** Whether a wire value is an action this client knows (others are dropped). */
 export function isErrorAction(v: unknown): v is ErrorAction {
@@ -806,7 +811,21 @@ function parseEvent(data: unknown): BridgeEvent | undefined {
 
 /** What {@link createHttpBridge} returns: every method is implemented, the optional ones included. */
 export type HttpBridge = Bridge &
-  Required<Pick<Bridge, "getSettings" | "putSettings" | "listProviders" | "refreshProviderModels" | "recheckProvider" | "setProviderCustomModels">>;
+  Required<
+    Pick<
+      Bridge,
+      | "getSettings"
+      | "putSettings"
+      | "listProviders"
+      | "refreshProviderModels"
+      | "recheckProvider"
+      | "setProviderCustomModels"
+      | "addAgentAccount"
+      | "renameAgentAccount"
+      | "removeAgentAccount"
+      | "startAgentLogin"
+    >
+  >;
 
 export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   const base = options.baseUrl.replace(/\/+$/, "");
@@ -862,6 +881,8 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   const fileQuery = (folder: string, path: string, opts?: { workspaceId?: string }) =>
     `folder=${encodeURIComponent(folder)}&path=${encodeURIComponent(path)}${opts?.workspaceId && opts.workspaceId !== "shared" ? `&workspace=${encodeURIComponent(opts.workspaceId)}` : ""}`;
 
+  const sessionDeps = () => ({ request, openStream: (path: string) => new (options.EventSource ?? globalEventSource())(streamUrl(path)) });
+
   let rare: Promise<Pick<Bridge, RareMethod>> | undefined;
   const loadRare = () => {
     rare ??= import("./rare").then((m) =>
@@ -877,6 +898,7 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
         sendTimeout: options.sendTimeoutMs,
         binaryFetch: () => abortingReads(options.fetchBinary ?? globalBinaryFetch()),
         fail: toBridgeError,
+        sessionDeps,
       }),
     );
     // A failed chunk load must not stick: the next call tries again.
@@ -890,7 +912,20 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
 
   return {
     // The keys come from RARE_METHODS and `createRareMethods` returns exactly that Pick, so each forwarder has its method's type.
-    ...(forwarded as Pick<Bridge, RareMethod>),
+    ...(forwarded as Pick<Bridge, RareMethod> &
+      Required<
+        Pick<
+          Bridge,
+          | "addAgentAccount"
+          | "renameAgentAccount"
+          | "removeAgentAccount"
+          | "startAgentLogin"
+          | "refreshProviderModels"
+          | "recheckProvider"
+          | "setProviderCustomModels"
+          | "setProviderPrefs"
+        >
+      >),
     health: () => request("GET", "/health") as Promise<HealthResponse>,
     clockOffset: () => offset,
     getConfig: () => request("GET", "/v1/config") as Promise<BridgeConfig>,
@@ -932,24 +967,9 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
     listProviders: () => request("GET", "/v1/providers") as Promise<ProvidersResponse>,
     remoteAccess: async () => (await import("./remoteAccess")).remoteAccessApi(request),
-    refreshProviderModels: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/refresh-models`), id),
-    recheckProvider: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/recheck`), id),
-    setProviderCustomModels: async (id, models) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/custom-models`, { models }), id),
-    setProviderPrefs: async (id, prefs) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/prefs`, prefs), id),
     // Only the editor and terminal tab open SSE sessions: each session module is its own lazy chunk.
-    openLanguageServer: async (id, serverId, opts) =>
-      (await import("./lspSession")).openLspSession(
-        { request, openStream: (path) => new (options.EventSource ?? globalEventSource())(streamUrl(path)) },
-        p(id),
-        serverId,
-        opts,
-      ),
-    openTerminal: async (id, opts) =>
-      (await import("./terminalSession")).openTerminalSession(
-        { request, openStream: (path) => new (options.EventSource ?? globalEventSource())(streamUrl(path)) },
-        p(id),
-        opts,
-      ),
+    openLanguageServer: async (id, serverId, opts) => (await import("./lspSession")).openLspSession(sessionDeps(), p(id), serverId, opts),
+    openTerminal: async (id, opts) => (await import("./terminalSession")).openTerminalSession(sessionDeps(), p(id), opts),
     /**
      * The project's events. EventSource retries a dropped connection itself; the watchdog (`watchStream`) also reopens
      * a refused one (closed for good after an HTTP error) with backoff, and a half-open one: nothing at all, not even

@@ -214,7 +214,7 @@ func agentList(agents []plugins.Agent) string {
 }
 
 func (rt *runtime) acpPrompt() string {
-	agents := rt.acpAgents()
+	agents := rt.offeredAgents()
 	if len(agents) == 0 || len(rt.folders) == 0 {
 		return ""
 	}

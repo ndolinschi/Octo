@@ -42,6 +42,8 @@ type Server struct {
 	browser   BrowserProxy
 	workers   WorkerProcesses
 	terminals TerminalSessions
+	accounts  AccountEditor
+	logins    AgentLogins
 
 	settings         SettingsStore
 	settingsLoopback bool
@@ -139,6 +141,8 @@ func (s *Server) routes() *http.ServeMux {
 			mux.HandleFunc("POST /v1/providers/{id}/recheck", s.recheckProvider)
 		}
 	}
+	s.accountRoutes(mux)
+	s.agentLoginRoutes(mux)
 	if s.diagnostics != nil {
 		mux.HandleFunc("GET /v1/diagnostics", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, s.diagnostics()) })
 	}

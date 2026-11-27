@@ -43,6 +43,8 @@ type AgentReport struct {
 	// Version is the CLI's version check, for an agent whose manifest has one
 	// (nil otherwise): the version read, the lowest that works, too_old.
 	Version *plugins.VersionReport `json:"version,omitempty"`
+	// Account is the login this entry stands for, set when its agent can keep several (name and folder, never env values).
+	Account *plugins.AccountInfo `json:"account,omitempty"`
 }
 
 // Requirement is one command an agent needs on PATH and whether it was found.
@@ -232,7 +234,7 @@ func Build(in Inputs) Report {
 	for _, a := range in.Agents {
 		ar := AgentReport{
 			ID: a.ID, Label: a.Label, Available: a.Available, UnavailableReason: a.UnavailableReason,
-			LoginHint: a.Hint, InstallHint: a.InstallHint, FlatRate: a.FlatRate, Experimental: !a.Verified, Unsupported: a.Unsupported, Requires: []Requirement{}, Command: "not found",
+			LoginHint: a.Hint, InstallHint: a.InstallHint, FlatRate: a.FlatRate, Experimental: !a.Verified, Unsupported: a.Unsupported, Account: a.Account, Requires: []Requirement{}, Command: "not found",
 		}
 		if a.Available {
 			ar.Command = a.Command
@@ -390,6 +392,9 @@ func (r Report) Text() string {
 		fmt.Fprintf(&b, "- %s (%s): %s\n    command: %s\n    probe: %s\n", a.ID, a.Label, state, a.Command, a.Probe.Reason)
 		if a.Experimental {
 			fmt.Fprintf(&b, "    experimental: the launch command comes from the agent's documentation and has not been run with Octo\n")
+		}
+		if ac := a.Account; ac != nil && !ac.Default {
+			fmt.Fprintf(&b, "    account: %s (folder: %s)\n", ac.Name, ac.Dir)
 		}
 		if a.Probe.Rule != "" && a.Probe.Rule != plugins.RuleNone {
 			status := "none (no exit)"

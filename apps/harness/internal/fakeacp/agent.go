@@ -34,6 +34,9 @@ func Main() int {
 			return code
 		}
 	}
+	if code, done := cliCommand(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr); done {
+		return code
+	}
 	opts := optionsFromEnv(os.Args[1:])
 	a := &agent{in: os.Stdin, out: os.Stdout, log: os.Stderr, exit: os.Exit, pending: map[int64]chan reply{},
 		opts: opts, model: opts.initialModel()}
@@ -57,6 +60,7 @@ type message struct {
 type rpcError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
 }
 
 type reply struct {
@@ -304,6 +308,13 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 			if stop == stopAuthRequired {
 				// What a CLI that is not logged in answers to session/prompt.
 				a.respondError(m.ID, -32000, "Authentication required")
+				return
+			}
+			if stop == stopLimitRPC {
+				// What the Claude adapter answers when the account is out of usage.
+				if err := a.send(map[string]any{"jsonrpc": "2.0", "id": m.ID, "error": limitRPCError()}); err != nil {
+					fmt.Fprintln(a.log, "respond:", err)
+				}
 				return
 			}
 			res := map[string]any{"stopReason": stop}

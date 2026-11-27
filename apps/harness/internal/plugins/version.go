@@ -166,6 +166,7 @@ type versioner struct {
 	ctx      context.Context
 	state    map[string]*versionState
 	onChange func()
+	alive    func(id string) bool // as prober.alive
 }
 
 type versionState struct {
@@ -207,7 +208,7 @@ func (v *versioner) refresh(agents []Agent) {
 		return
 	}
 	for _, a := range agents {
-		if !checkable(a) {
+		if !checkable(a) || (v.alive != nil && !v.alive(a.ID)) {
 			continue
 		}
 		st := v.stateOf(a.ID)
@@ -239,6 +240,10 @@ func (v *versioner) sync(ctx context.Context, a Agent) {
 		return
 	}
 	v.mu.Lock()
+	if v.alive != nil && !v.alive(a.ID) {
+		v.mu.Unlock()
+		return
+	}
 	st := v.stateOf(a.ID)
 	if st.running {
 		w := st.wait

@@ -189,3 +189,21 @@ func TestProbeEnvironmentIsScrubbed(t *testing.T) {
 		t.Fatalf("probe = %v, want logged in (scrubbed, declared key kept)", deref(got))
 	}
 }
+
+// A probe or version check for an id that no longer exists (an account removed
+// while a refresh still held the old agent list) starts nothing and leaves no state.
+func TestProbesAndVersionChecksSkipRemovedIDs(t *testing.T) {
+	ctx := context.Background()
+	gone := Agent{ID: "cc@gone", Available: true, ProbeCommand: "sh", VersionCommand: "sh", VersionArgs: []string{"-c", "true"}, commandFound: true}
+	p := newProber()
+	p.ctx, p.alive = ctx, func(string) bool { return false }
+	p.refresh([]Agent{gone})
+	p.sync(ctx, gone, 0)
+	v := newVersioner()
+	v.ctx, v.alive = ctx, func(string) bool { return false }
+	v.refresh([]Agent{gone})
+	v.sync(ctx, gone)
+	if len(p.state) != 0 || len(v.state) != 0 {
+		t.Fatalf("state made for a removed id: %v %v", p.state, v.state)
+	}
+}

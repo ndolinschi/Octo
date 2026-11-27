@@ -149,7 +149,7 @@ func (rt *runtime) autoCandidates() []autoCand {
 	for _, c := range rt.apiCandidates() {
 		add(c, true)
 	}
-	for _, a := range agents {
+	for _, a := range offeredAgents(agents, rt.models) {
 		add(rt.agentCandidate(a, ""))
 	}
 	return out

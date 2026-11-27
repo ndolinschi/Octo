@@ -1,6 +1,6 @@
 import { Check, ChevronLeft, ChevronRight, RefreshCw, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
-import { parseAcp } from "../../lib/models";
+import { joinAgentModel, parseAcp } from "../../lib/models";
 import {
   USE_ANYWAY_NOTE,
   cleanModelName,
@@ -296,13 +296,15 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         trailing: <Glyph icon={ChevronRight} size={14} className="-mr-0.5 shrink-0 text-fg-3" />,
         // With the "experimental" tag beside the name there is no room for the default model on the same line: it is the second line.
         ...(r.experimental ? { detail: "experimental" } : {}),
-        ...(r.detail ? (r.experimental ? { sub: r.detail } : { hint: r.detail }) : {}),
+        // An account at its plan limit says so under its name (dim); its chosen model then stays on the right.
+        ...(r.limit ? { sub: r.experimental && r.detail ? `${r.detail} · ${r.limit}` : r.limit } : {}),
+        ...(r.detail ? (r.experimental ? (r.limit ? {} : { sub: r.detail }) : { hint: r.detail }) : {}),
       };
     const lead = isCurrent(r) ? <Glyph icon={Check} size={14} className="text-fg" /> : null;
     if (r.kind === "default") return { ...base, label: r.label, lead, ...(r.detail ? { hint: r.detail } : {}) };
     return {
       ...base,
-      label: r.agentLabel ? `${r.agentLabel} · ${r.label}` : r.label,
+      label: r.agentLabel ? joinAgentModel(r.agentLabel, r.label, r.providerId) : r.label,
       lead,
       quiet: r.stale === true,
       ...(r.isDefault ? { detail: "default" } : {}),

@@ -2,6 +2,7 @@ package acp
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -41,10 +42,33 @@ func TestParseAgentErrorShapes(t *testing.T) {
 			if ok != tc.ok {
 				t.Fatalf("ok = %v, want %v (got %+v)", ok, tc.ok, got)
 			}
-			if got != tc.want {
+			data := got.Data
+			got.Data = nil
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("got %+v, want %+v", got, tc.want)
 			}
+			if tc.ok && tc.want.Name != "" && !json.Valid(data) {
+				t.Fatalf("data = %q, want the error object", data)
+			}
 		})
+	}
+}
+
+func TestParseAgentErrorKeepsData(t *testing.T) {
+	ae, ok := parseAgentError(json.RawMessage(`{"sessionUpdate":"agent_error","error":{"message":"Limit","data":{"errorKind":"rate_limit","rateLimit":{"resetsAt":1767225600}}}}`))
+	if !ok || ae.Message != "Limit" {
+		t.Fatalf("parse = %+v, %v", ae, ok)
+	}
+	var obj struct {
+		Data struct {
+			ErrorKind string `json:"errorKind"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(ae.Data, &obj); err != nil || obj.Data.ErrorKind != "rate_limit" {
+		t.Fatalf("data = %s (%v)", ae.Data, err)
+	}
+	if ae, _ := parseAgentError(json.RawMessage(`{"sessionUpdate":"agent_error","error":"plain"}`)); ae.Data != nil {
+		t.Fatalf("a string payload has no data: %s", ae.Data)
 	}
 }
 

@@ -8,7 +8,8 @@ import (
 	"time"
 )
 
-// Registry is the immutable result of Load; safe for concurrent reads.
+// Registry is the result of Load; safe for concurrent use. The manifest agents
+// are fixed; the accounts derived from them change with SetAccounts.
 type Registry struct {
 	plugins []Plugin
 	agents  map[string]Agent
@@ -21,6 +22,11 @@ type Registry struct {
 	// models without a login) otherwise keeps reading ready.
 	seenMu  sync.Mutex
 	seenOut map[string]bool
+	// limits holds the usage limits real sessions ran into (SeenLimit), under seenMu.
+	limits map[string]LimitState
+
+	accMu sync.RWMutex
+	acc   accountView
 }
 
 // SeenLogin records what a real session of the agent found: ok=false (it
@@ -33,6 +39,9 @@ func (r *Registry) SeenLogin(id string, ok bool) bool {
 	}
 	r.seenMu.Lock()
 	defer r.seenMu.Unlock()
+	if !ok && !r.has(id) {
+		return false // the agent (an account removed meanwhile) is gone: record nothing
+	}
 	if r.seenOut[id] == !ok {
 		return false
 	}
@@ -95,8 +104,9 @@ func (r *Registry) OnProbeChange(f func()) {
 // unknown id.
 func (r *Registry) Recheck(ctx context.Context, id string) (Agent, bool) {
 	r.SeenLogin(id, true) // the user asks again: the probe (or, without one, the next session) decides
+	r.SeenLimit(id, nil, false)
 	if r != nil && r.versions != nil {
-		if raw, ok := r.agents[id]; ok {
+		if raw, ok := r.raw(id); ok {
 			r.versions.sync(ctx, raw)
 		}
 	}
@@ -134,9 +144,10 @@ func (r *Registry) refreshAll() {
 }
 
 func (r *Registry) allAgents() []Agent {
+	v := r.view()
 	var out []Agent
 	for _, p := range r.plugins {
-		out = append(out, p.Agents...)
+		out = append(out, v.expand(p.Agents)...)
 	}
 	return out
 }
@@ -160,6 +171,7 @@ func (r *Registry) withState(a Agent) Agent {
 	}
 	// An API key forwarded to a subscription agent makes it bill per token.
 	a.FlatRate = a.FlatRateIn(a.ResolvedEnv())
+	a.Limit = r.limitOf(a.ID)
 	return a
 }
 
@@ -169,9 +181,10 @@ func (r *Registry) Plugins() []Plugin {
 		return []Plugin{}
 	}
 	r.refreshAll()
+	v := r.view()
 	out := slices.Clone(r.plugins)
 	for i := range out {
-		out[i].Agents = r.agentsWithState(out[i].Agents)
+		out[i].Agents = r.agentsWithState(v.expand(out[i].Agents))
 	}
 	return out
 }
@@ -192,8 +205,9 @@ func (r *Registry) Agents() []Agent {
 		return out
 	}
 	r.refreshAll()
+	v := r.view()
 	for _, p := range r.plugins {
-		out = append(out, r.agentsWithState(p.Agents)...)
+		out = append(out, r.agentsWithState(v.expand(p.Agents))...)
 	}
 	return out
 }
@@ -203,7 +217,7 @@ func (r *Registry) Agent(id string) (Agent, bool) {
 	if r == nil {
 		return Agent{}, false
 	}
-	a, ok := r.agents[id]
+	a, ok := r.raw(id)
 	return r.withState(a), ok
 }
 

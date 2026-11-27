@@ -40,15 +40,15 @@ type runtime struct {
 	// remembered counts the items the turn's agents kept with the remember tool.
 	remembered atomic.Int32
 	// memAsk lets one memory-save card at a time be open, so parallel saves see the answer to the first (UX-01).
-	memAsk sync.Mutex
-	touchMu    sync.Mutex
-	touched    []string
-	o          *Orchestrator
-	db         *projectstore.DB
-	info       projectstore.Project
-	models     config.Models
-	folders    []projectstore.Folder
-	notes      []projectstore.Note
+	memAsk  sync.Mutex
+	touchMu sync.Mutex
+	touched []string
+	o       *Orchestrator
+	db      *projectstore.DB
+	info    projectstore.Project
+	models  config.Models
+	folders []projectstore.Folder
+	notes   []projectstore.Note
 	// turnID is the id of the user message that started the turn (0 outside a turn).
 	turnID int64
 	// sessionID is the main session the turn runs in; workspaceID is its active workspace ("shared" or worktree id);

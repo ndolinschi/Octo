@@ -1,7 +1,7 @@
 import { BridgeError } from "./client";
 import { isExitInfo } from "./lspChannel";
 import type { LspTransport } from "./lspSession";
-import type { TerminalExit, TerminalOpenOptions, TerminalSession } from "./types";
+import type { AgentLoginOptions, AgentLoginSession, AgentLoginState, TerminalExit, TerminalOpenOptions, TerminalSession } from "./types";
 
 export const MAX_TERMINAL_QUEUE = 1024;
 
@@ -43,6 +43,14 @@ function parseFrame(data: unknown): unknown {
   }
 }
 
+function parseLoginCreated(body: unknown): { sessionId: string; command: string; pid: number } {
+  const r = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+  if (typeof r.session_id !== "string" || typeof r.pid !== "number") {
+    throw new BridgeError(0, "invalid_response", "malformed login session response");
+  }
+  return { sessionId: r.session_id, command: typeof r.command === "string" ? r.command : "", pid: r.pid };
+}
+
 function parseCreated(body: unknown): {
   sessionId: string;
   folder: string;
@@ -71,9 +79,21 @@ async function deleteSession(t: LspTransport, path: string): Promise<void> {
   }
 }
 
-export async function openTerminalSession(t: LspTransport, projectPath: string, options?: TerminalOpenOptions): Promise<TerminalSession> {
-  const created = parseCreated(await t.request("POST", `${projectPath}/terminals`, options ?? {}));
-  const sessionPath = `${projectPath}/terminals/${encodeURIComponent(created.sessionId)}`;
+type PtyCreated = { sessionId: string; pid: number };
+type PtyCore<C extends PtyCreated> = {
+  created: C;
+  session: Omit<TerminalSession, "folder" | "cwd" | "shell">;
+  /** The event stream, so a caller can listen for frames of its own (a login's `login`). */
+  source: ReturnType<LspTransport["openStream"]>;
+};
+
+/**
+ * What terminals and logins share: POST `collectionPath`, then the session's SSE `/events` (`output`, `exit`),
+ * `/input`, `/resize` and DELETE. `parse` validates the start response.
+ */
+async function openPtySession<C extends PtyCreated>(t: LspTransport, collectionPath: string, body: unknown, parse: (body: unknown) => C): Promise<PtyCore<C>> {
+  const created = parse(await t.request("POST", collectionPath, body));
+  const sessionPath = `${collectionPath}/${encodeURIComponent(created.sessionId)}`;
 
   const outputListeners = new Set<(data: Uint8Array) => void>();
   const exitListeners = new Set<(info: TerminalExit) => void>();
@@ -133,11 +153,8 @@ export async function openTerminalSession(t: LspTransport, projectPath: string, 
     }
   };
 
-  return {
+  const session: Omit<TerminalSession, "folder" | "cwd" | "shell"> = {
     sessionId: created.sessionId,
-    folder: created.folder,
-    cwd: created.cwd,
-    shell: created.shell,
     pid: created.pid,
     async write(data) {
       if (closing || exited) throw new BridgeError(0, "session_closed", "terminal session closed");
@@ -171,6 +188,35 @@ export async function openTerminalSession(t: LspTransport, projectPath: string, 
         closing = deleteSession(t, sessionPath);
       }
       return closing;
+    },
+  };
+  return { created, session, source };
+}
+
+export async function openTerminalSession(t: LspTransport, projectPath: string, options?: TerminalOpenOptions): Promise<TerminalSession> {
+  const { created, session } = await openPtySession(t, `${projectPath}/terminals`, options ?? {}, parseCreated);
+  return { ...session, folder: created.folder, cwd: created.cwd, shell: created.shell };
+}
+
+/** `POST /v1/providers/{id}/login`: a PTY that logs an agent account in; `login` frames carry the recheck's result. */
+export async function openLoginSession(t: LspTransport, providerId: string, options?: AgentLoginOptions): Promise<AgentLoginSession> {
+  const { created, session, source } = await openPtySession(t, `/v1/providers/${encodeURIComponent(providerId)}/login`, options ?? {}, parseLoginCreated);
+  const loginListeners = new Set<(state: AgentLoginState) => void>();
+  let last: AgentLoginState | undefined;
+  source.addEventListener("login", (ev) => {
+    const parsed = parseFrame(ev.data);
+    const state = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>).state : undefined;
+    if (state !== "ok" && state !== "not_logged_in" && state !== "unchecked") return;
+    last = state;
+    loginListeners.forEach((cb) => cb(state));
+  });
+  return {
+    ...session,
+    command: created.command,
+    onLogin(cb) {
+      loginListeners.add(cb);
+      if (last !== undefined) cb(last);
+      return () => void loginListeners.delete(cb);
     },
   };
 }

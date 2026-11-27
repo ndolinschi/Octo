@@ -1,5 +1,5 @@
 import type { DemoNote } from "./notes";
-import type { Agent, BridgeEvent, Message, Project, SubscribeHandlers } from "@octo/agent-client";
+import type { Agent, BridgeEvent, ErrorAction, Message, Project, SubscribeHandlers } from "@octo/agent-client";
 
 type EventBody = BridgeEvent extends infer E ? (E extends BridgeEvent ? Omit<E, "seq"> : never) : never;
 
@@ -42,7 +42,7 @@ export type ProjectRecord = {
     status: "completed" | "failed" | "stopped";
     started_at: string;
     duration_ms: number;
-    error?: { code: string; message: string; hint?: string };
+    error?: { code: string; message: string; hint?: string; action?: ErrorAction };
     interrupted?: boolean;
     kept_text?: boolean;
   }[];

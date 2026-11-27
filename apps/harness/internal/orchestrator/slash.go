@@ -144,9 +144,10 @@ func (o *Orchestrator) SlashCommands(ctx context.Context, pid string) (SlashRepo
 	var agent *AgentCommands
 	if id, _, ok := plugins.ParseACPRef(rt.models.Orchestrator); ok && rt.isACPOrchestrator() {
 		agent = &AgentCommands{ID: id, Label: id, Commands: []acp.Command{}}
+		var env map[string]string
 		for _, a := range o.agents() {
 			if a.ID == id {
-				agent.Label = a.Label
+				agent.Label, env = a.Label, a.ResolvedEnv()
 			}
 		}
 		sid, _ := db.DefaultSessionID(ctx)
@@ -156,7 +157,7 @@ func (o *Orchestrator) SlashCommands(ctx context.Context, pid string) (SlashRepo
 			agent.Commands = cmds
 		}
 		home, _ := os.UserHomeDir()
-		if skills := discoverAgentSkills(id, rt.folders, home); len(skills) > 0 {
+		if skills := discoverAgentSkills(id, env, rt.folders, home); len(skills) > 0 {
 			seen := make(map[string]bool, len(agent.Commands))
 			for _, c := range agent.Commands {
 				seen[strings.ToLower(c.Name)] = true

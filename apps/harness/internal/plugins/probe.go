@@ -28,6 +28,9 @@ type prober struct {
 	ctx      context.Context // nil until StartProbes; background probing is off before that
 	state    map[string]*probeState
 	onChange func() // called, unlocked, when a probe's outcome differs from the last one
+	// alive says whether an agent id still exists (nil: always). A probe is
+	// never started for a removed account, so no state is made for its id again.
+	alive func(id string) bool
 }
 
 type probeState struct {
@@ -106,7 +109,7 @@ func (p *prober) refresh(agents []Agent) {
 		return
 	}
 	for _, a := range agents {
-		if !a.probeable() {
+		if !a.probeable() || (p.alive != nil && !p.alive(a.ID)) {
 			continue
 		}
 		st := p.stateOf(a.ID)
@@ -146,6 +149,10 @@ func (p *prober) sync(ctx context.Context, a Agent, minAge time.Duration) {
 		return
 	}
 	p.mu.Lock()
+	if p.alive != nil && !p.alive(a.ID) {
+		p.mu.Unlock()
+		return
+	}
 	st := p.stateOf(a.ID)
 	if st.running {
 		w := st.wait

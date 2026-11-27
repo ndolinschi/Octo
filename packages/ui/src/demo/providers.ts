@@ -3,6 +3,7 @@ import {
   type Bridge,
   type ModelIssue,
   type Models,
+  type AgentAccount,
   type Diagnostics,
   type Provider,
   type ProviderModel,
@@ -12,6 +13,7 @@ import {
   type SettingsUpdate,
   type SettingsView,
 } from "@octo/agent-client";
+import { demoAccounts } from "./accounts";
 import { ownerProviders } from "./providersOwner";
 
 /**
@@ -23,7 +25,13 @@ import { ownerProviders } from "./providersOwner";
  * empty project then show the calm "log in later or choose another model" notice). A create or patch is never refused for an unready
  * agent; the project lists it in `models_unavailable`.
  */
-export type DemoProvidersOptions = { none?: boolean };
+export type DemoProvidersOptions = {
+  none?: boolean;
+  /** `?accounts=claude|all`: Claude Code gets a second account "Work" (logged out), `all` adds Codex's "Second"; the default accounts are named "Personal". */
+  accounts?: string | null;
+  /** `?limit=<provider id>`: that account has reached its plan limit (its provider shows `limit`; a turn on it fails with `switch_account`). */
+  limit?: string | null;
+};
 
 const knob = (name: string): string | null => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get(name));
 
@@ -186,8 +194,14 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
     | "getSettings"
     | "putSettings"
     | "getDiagnostics"
+    | "addAgentAccount"
+    | "renameAgentAccount"
+    | "removeAgentAccount"
+    | "startAgentLogin"
   >
 > & {
+  /** The provider an orchestrator setting (`acp:<id>[/<model>]`) runs on when it has reached its plan limit (`?limit=`), else null. */
+  limited(value: string): Provider | null;
   /** The stored models that cannot run now, as a project lists them (`models_unavailable`); a create or patch is never refused for them. */
   unusable(models: Partial<Models>): ModelIssue[];
   /** Live process-wide feature flags derived from settings. */
@@ -202,6 +216,11 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
   const refreshed = new Set<string>();
   /** Agents that passed a "Check again" (their login probe now says yes). */
   const loggedIn = new Set<string>();
+  const accounts = demoAccounts({
+    accounts: options.accounts !== undefined ? options.accounts : knob("accounts"),
+    limit: options.limit !== undefined ? options.limit : knob("limit"),
+    loggedIn,
+  });
   let ollamaStarted = false;
   const failed = new Map<string, string>();
   /** Per agent: preferred model and role models saved through `setProviderPrefs`. */
@@ -227,79 +246,81 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
   const providers = (): ProvidersResponse => {
     const apiReady = file.has("ANTHROPIC_API_KEY");
     // The router is listed only while one is detected (`?router=on`, below).
-    const list: Provider[] = owner
-      ? ownerProviders(apiReady)
-      : [
-          {
-            id: "api",
-            kind: "api",
-            label: "Anthropic API",
-            state: apiReady ? "ready" : "not_connected",
-            reason: apiReady ? "" : "No API key",
-            install_hint: "",
-            login_hint: "Add an API key in Settings (ANTHROPIC_API_KEY).",
-            models: API_MODELS,
-            default_model: "claude-sonnet-5-5",
-            flat_rate: false,
-          },
-          {
-            id: "claude-code",
-            kind: "agent",
-            label: "Claude Code",
-            state: none ? "not_logged_in" : "ready",
-            reason: none ? "not logged in" : "",
-            install_hint: CLAUDE_INSTALL,
-            login_hint: CLAUDE_LOGIN,
-            models: claudeEmpty
-              ? []
-              : [
-                  manifest("claude-sonnet-5-5"),
-                  manifest("claude-opus-5-5"),
-                  manifest("claude-haiku-5-5"),
-                  { id: "claude-opus-4-1", label: "claude-opus-4-1", source: "advertised", seen_at: SEEN_AT, stale: true },
-                ],
-            default_model: claudeEmpty ? "" : "claude-sonnet-5-5",
-            flat_rate: true,
-          },
-          {
-            // Ready, but it lists no model (the harness found none): the picker's second level is Default + "Other model…".
-            id: "codex",
-            kind: "agent",
-            label: "Codex",
-            state: none ? "not_logged_in" : "ready",
-            reason: none ? "not logged in" : "",
-            install_hint: "Install the Codex CLI: `npm install -g @openai/codex`",
-            login_hint: "Log in once: run `codex login`.",
-            models: [],
-            default_model: "",
-            flat_rate: true,
-          },
-          {
-            id: "copilot",
-            kind: "agent",
-            label: "GitHub Copilot",
-            state: loggedIn.has("copilot") ? "ready" : "not_logged_in",
-            reason: loggedIn.has("copilot") ? "" : "not logged in",
-            install_hint: COPILOT_INSTALL,
-            login_hint: COPILOT_LOGIN,
-            models: [manifest("gpt-5"), manifest("claude-sonnet-5-5")],
-            default_model: "gpt-5",
-            flat_rate: true,
-          },
-          {
-            id: "grok",
-            kind: "agent",
-            label: "Grok",
-            state: "not_installed",
-            reason: "Grok is not installed.",
-            problem: { message: "Grok is not installed.", hint: "Install it, then check again.", details: "grok: command not found on PATH" },
-            install_hint: GROK_INSTALL,
-            login_hint: GROK_LOGIN,
-            models: [],
-            default_model: "",
-            flat_rate: true,
-          },
-        ];
+    const list: Provider[] = accounts.decorate(
+      owner
+        ? ownerProviders(apiReady)
+        : [
+            {
+              id: "api",
+              kind: "api",
+              label: "Anthropic API",
+              state: apiReady ? "ready" : "not_connected",
+              reason: apiReady ? "" : "No API key",
+              install_hint: "",
+              login_hint: "Add an API key in Settings (ANTHROPIC_API_KEY).",
+              models: API_MODELS,
+              default_model: "claude-sonnet-5-5",
+              flat_rate: false,
+            },
+            {
+              id: "claude-code",
+              kind: "agent",
+              label: "Claude Code",
+              state: none ? "not_logged_in" : "ready",
+              reason: none ? "not logged in" : "",
+              install_hint: CLAUDE_INSTALL,
+              login_hint: CLAUDE_LOGIN,
+              models: claudeEmpty
+                ? []
+                : [
+                    manifest("claude-sonnet-5-5"),
+                    manifest("claude-opus-5-5"),
+                    manifest("claude-haiku-5-5"),
+                    { id: "claude-opus-4-1", label: "claude-opus-4-1", source: "advertised", seen_at: SEEN_AT, stale: true },
+                  ],
+              default_model: claudeEmpty ? "" : "claude-sonnet-5-5",
+              flat_rate: true,
+            },
+            {
+              // Ready, but it lists no model (the harness found none): the picker's second level is Default + "Other model…".
+              id: "codex",
+              kind: "agent",
+              label: "Codex",
+              state: none ? "not_logged_in" : "ready",
+              reason: none ? "not logged in" : "",
+              install_hint: "Install the Codex CLI: `npm install -g @openai/codex`",
+              login_hint: "Log in once: run `codex login`.",
+              models: [],
+              default_model: "",
+              flat_rate: true,
+            },
+            {
+              id: "copilot",
+              kind: "agent",
+              label: "GitHub Copilot",
+              state: loggedIn.has("copilot") ? "ready" : "not_logged_in",
+              reason: loggedIn.has("copilot") ? "" : "not logged in",
+              install_hint: COPILOT_INSTALL,
+              login_hint: COPILOT_LOGIN,
+              models: [manifest("gpt-5"), manifest("claude-sonnet-5-5")],
+              default_model: "gpt-5",
+              flat_rate: true,
+            },
+            {
+              id: "grok",
+              kind: "agent",
+              label: "Grok",
+              state: "not_installed",
+              reason: "Grok is not installed.",
+              problem: { message: "Grok is not installed.", hint: "Install it, then check again.", details: "grok: command not found on PATH" },
+              install_hint: GROK_INSTALL,
+              login_hint: GROK_LOGIN,
+              models: [],
+              default_model: "",
+              flat_rate: true,
+            },
+          ],
+    );
     // R2: `?router=on` — an Octo router is detected (and switched on in the settings), so Settings → Providers lists it and
     // its detail can be seen; with `?providers=owner` too.
     if (routerOn()) list.unshift(ROUTER_PROVIDER);
@@ -381,7 +402,44 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
     };
   };
 
+  const find = (id: string): Provider | undefined => providers().providers.find((x) => x.id === id && x.kind === "agent");
+  const result = (id: string, account: AgentAccount): { account: AgentAccount; provider: Provider } => {
+    const provider = find(id);
+    if (!provider) throw new BridgeError(404, "not_found", `no agent ${id}`);
+    return { account, provider };
+  };
+
   return {
+    limited: (value) => {
+      const id = value.startsWith("acp:") ? value.slice(4).split("/")[0] : undefined;
+      return id !== undefined && accounts.limitedId() === id ? (find(id) ?? null) : null;
+    },
+    addAgentAccount: async (agentId, input) => {
+      await delay();
+      if (!find(agentId)) throw new BridgeError(404, "not_found", `no agent ${agentId}`);
+      const account = accounts.add(agentId, input);
+      trace("account-add", { agentId, name: account.name });
+      return result(`${agentId}@${account.id}`, account);
+    },
+    renameAgentAccount: async (id, name) => {
+      await delay();
+      if (!find(id)) throw new BridgeError(404, "not_found", `no agent ${id}`);
+      const account = accounts.rename(id, name);
+      trace("account-rename", { id });
+      return result(id, account);
+    },
+    removeAgentAccount: async (id, opts) => {
+      await delay();
+      if (!find(id)) throw new BridgeError(404, "not_found", `no agent ${id}`);
+      trace("account-remove", { id });
+      return accounts.remove(id, opts.deleteData);
+    },
+    startAgentLogin: async (id, opts) => {
+      await delay();
+      if (!find(id)) throw new BridgeError(404, "not_found", `no agent ${id}`);
+      trace("login", { id });
+      return accounts.login(id, opts);
+    },
     listProviders: async () => (await delay(), providers()),
     refreshProviderModels: async (id) => {
       await new Promise((r) => setTimeout(r, 700));

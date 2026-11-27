@@ -59,5 +59,6 @@ jobs:
       - run: bash apps/harness/scripts/e2e-acp-orchestrator.sh
       - run: bash apps/harness/scripts/e2e-router.sh
       - run: bash apps/harness/scripts/e2e-v7.sh
+      - run: bash apps/harness/scripts/e2e-accounts.sh
       - run: pnpm test:dev-sh
       - run: pnpm test:dev-sh -- --router --mock

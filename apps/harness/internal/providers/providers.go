@@ -141,6 +141,8 @@ type Provider struct {
 	// Experimental (agents): the launch command comes from the agent's
 	// documentation and has not been run with Octo (manifest verified: false).
 	// ExperimentalNote says what is known.
+	// It is also set for an agent whose manifest says experimental, which Octo
+	// never picks on its own (ManualOnly).
 	Experimental     bool   `json:"experimental,omitempty"`
 	ExperimentalNote string `json:"experimental_note,omitempty"`
 	// Problem is Reason in structured form while the provider is not ready:
@@ -148,6 +150,22 @@ type Provider struct {
 	Problem *usererr.Error `json:"problem,omitempty"`
 	// ModelsProblem is ModelsError in structured form (ModelsError is its plain message).
 	ModelsProblem *usererr.Error `json:"models_problem,omitempty"`
+	// BaseID (agents) is the manifest agent the entry runs: its own id, or the
+	// base of an account ("claude-code" for "claude-code@work").
+	BaseID string `json:"base_id,omitempty"`
+	// Account is the login the entry stands for, set whenever the base agent can
+	// keep several; AccountsSupport (base agents) says whether it can.
+	Account         *plugins.AccountInfo     `json:"account,omitempty"`
+	AccountsSupport *plugins.AccountsSupport `json:"accounts_support,omitempty"`
+	// LoginMethods are the agent's interactive login commands; LoginCommand is
+	// the terminal command that logs it in (an account's with its folder set).
+	LoginMethods []plugins.LoginMethod `json:"login_methods,omitempty"`
+	LoginCommand string                `json:"login_command,omitempty"`
+	// Limit is the usage limit a real session last ran into.
+	Limit *plugins.LimitState `json:"limit,omitempty"`
+
+	// manualOnly: the manifest says experimental; never suggested as a default.
+	manualOnly bool
 }
 
 // Roles is the model per tier of one agent ("" = the agent's own default).
@@ -394,29 +412,45 @@ func apiDefault(d config.Models) string {
 	return config.BuiltinModels().Balanced
 }
 
+// orderAgents lists the agents of listFirst first, then the rest in manifest
+// order; the accounts of an agent follow it directly.
 func orderAgents(in []plugins.Agent) []plugins.Agent {
-	out := make([]plugins.Agent, 0, len(in))
-	used := make([]bool, len(in))
-	for _, id := range listFirst {
-		for i, a := range in {
-			if a.ID == id && !used[i] {
-				out, used[i] = append(out, a), true
-			}
+	var bases []string
+	groups := map[string][]plugins.Agent{}
+	for _, a := range in {
+		b := baseOf(a)
+		if _, seen := groups[b]; !seen {
+			bases = append(bases, b)
 		}
+		groups[b] = append(groups[b], a)
 	}
-	for i, a := range in {
-		if !used[i] {
-			out = append(out, a)
-		}
+	out := make([]plugins.Agent, 0, len(in))
+	for _, id := range listFirst {
+		out = append(out, groups[id]...)
+		delete(groups, id)
+	}
+	for _, b := range bases {
+		out = append(out, groups[b]...)
 	}
 	return out
+}
+
+// baseOf is the manifest agent a runs.
+func baseOf(a plugins.Agent) string {
+	if a.BaseID != "" {
+		return a.BaseID
+	}
+	base, _ := plugins.SplitID(a.ID)
+	return base
 }
 
 func (s *Service) agentProvider(a plugins.Agent) Provider {
 	p := Provider{
 		ID: a.ID, Kind: KindAgent, Label: a.Label, InstallHint: a.InstallHint, LoginHint: a.Hint,
 		DefaultModel: a.DefaultModel, FlatRate: a.FlatRate, ModelsNote: a.ModelsNote, AcceptsCustomModel: true,
-		Experimental: !a.Verified, ExperimentalNote: a.VerifiedNote,
+		Experimental: !a.Verified || a.Experimental, manualOnly: a.Experimental, ExperimentalNote: a.VerifiedNote,
+		BaseID: baseOf(a), Account: a.Account, AccountsSupport: a.Accounts, LoginMethods: a.Logins,
+		LoginCommand: a.LoginCmd(), Limit: a.Limit,
 	}
 	if p.Label == "" {
 		p.Label = a.ID
@@ -428,10 +462,10 @@ func (s *Service) agentProvider(a plugins.Agent) Provider {
 	case a.VersionTooOld:
 		// Installed, but older than the launch command needs: not startable until updated.
 		p.State = StateNotInstalled
-		p.Problem = usererr.AgentTooOld(p.Label, a.Version.Version, a.MinVersion, a.InstallCmd(), a.TooOldDetails())
+		p.Problem = AgentMissing(a)
 	case !a.Available:
 		p.State = StateNotInstalled
-		p.Problem = usererr.AgentNotInstalled(p.Label, a.InstallCmd(), strings.TrimSpace(a.UnavailableReason+" "+a.InstallHint))
+		p.Problem = AgentMissing(a)
 	case a.LoggedIn != nil && !*a.LoggedIn:
 		p.State = StateNotLoggedIn
 		p.Problem = usererr.AgentNotLoggedIn(p.Label, a.LoginCmd(), a.Hint)
@@ -538,7 +572,8 @@ func suggest(list []Provider, d config.Models) Suggested {
 	}
 	var readyAgents []string
 	for _, p := range list {
-		if p.Kind == KindAgent && p.State == StateReady {
+		// Another account of an agent (other billing) and an experimental agent are never suggested.
+		if p.Kind == KindAgent && p.State == StateReady && !p.manualOnly && (p.Account == nil || p.Account.Default) {
 			readyAgents = append(readyAgents, p.ID)
 		}
 	}

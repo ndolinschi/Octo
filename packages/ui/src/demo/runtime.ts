@@ -1,6 +1,6 @@
 import { autoDescription, charCount } from "../lib/notes";
 import { listed, newDemoNote } from "./notes";
-import type { Agent, ContentBlock, Message, Note, PlanEntry, Tier } from "@octo/agent-client";
+import { isErrorAction, type Agent, type ContentBlock, type ErrorAction, type Message, type Note, type PlanEntry, type Tier } from "@octo/agent-client";
 import { agentById, clone, emit, newId, orchestratorOf, writeDemoFile, type ProjectRecord } from "./store";
 import { errorMessage } from "../lib/format";
 
@@ -358,6 +358,7 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
   let error: string | null = null;
   let hint: string | undefined;
   let code = "agent_failed";
+  let action: ErrorAction | undefined;
   let interrupted = false;
   try {
     await body(ctx, orch.id);
@@ -366,6 +367,7 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
     error = e === CANCELLED ? null : errorMessage(e);
     if (e instanceof Error && "hint" in e && typeof e.hint === "string") hint = e.hint;
     if (e instanceof Error && "code" in e && typeof e.code === "string") code = e.code;
+    if (e instanceof Error && "action" in e && isErrorAction(e.action)) action = e.action;
     if (e instanceof Interrupted) {
       interrupted = true;
       code = "turn_interrupted";
@@ -398,7 +400,7 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
       status: status === "cancelled" ? "stopped" : status,
       started_at: asked.created_at,
       duration_ms: Math.max(0, ctx.t - Date.parse(asked.created_at)),
-      ...(status === "failed" && error ? { error: { code, message: error, ...(hint ? { hint } : {}) } } : {}),
+      ...(status === "failed" && error ? { error: { code, message: error, ...(hint ? { hint } : {}), ...(action ? { action } : {}) } } : {}),
       ...(interrupted ? { interrupted: true } : {}),
       ...(status !== "completed" ? { kept_text: kept } : {}),
     });
@@ -409,7 +411,7 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
     status,
     error,
     ...(hint ? { hint } : {}),
-    ...(interrupted ? { action: "retry" as const } : {}),
+    ...(interrupted ? { action: "retry" as const } : action ? { action } : {}),
     ...scoped,
     agent_id: orch.id,
   });

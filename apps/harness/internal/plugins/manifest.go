@@ -81,6 +81,12 @@ type manifestAgent struct {
 	// how far (copilot: only the logged-out path).
 	Verified     *bool  `json:"verified"`
 	VerifiedNote string `json:"verifiedNote"`
+	// Experimental marks an agent Octo never picks on its own: it is not offered
+	// to the orchestrator's agent list, spawn_agent, automatic routing or the
+	// no-key fallback orchestrator unless the project's models name it. It is
+	// still listed and can be chosen by hand. Absent means false; it cannot be
+	// combined with unsupported.
+	Experimental bool `json:"experimental"`
 	// Unsupported, when set, says why the agent cannot work with Octo (its CLI
 	// has no ACP mode): it is listed with state not_supported and that reason,
 	// is never probed, started, offered or routed to, and `acp:<id>` is refused
@@ -100,6 +106,10 @@ type manifestAgent struct {
 	// agent's command is looked for when it is not on PATH: the vendor's
 	// default install folder, which an app started from the Dock may not have.
 	SearchPaths []string `json:"searchPaths"`
+	// Accounts says how a second login of the CLI is kept apart (manifest_accounts.go).
+	Accounts *manifestAccounts `json:"accounts"`
+	// LimitPatterns are regular expressions that mark an agent error message as a usage limit.
+	LimitPatterns []string `json:"limitPatterns"`
 }
 
 // manifestModelsCommand runs a command and reads model ids from its output:
@@ -186,6 +196,8 @@ type manifestAuth struct {
 	Command string          `json:"command"`
 	Methods []AuthMethodRef `json:"methods"`
 	Skip    []string        `json:"skip"`
+	// Login lists interactive login commands ({id, label, args}).
+	Login []manifestLogin `json:"login"`
 }
 
 // AuthMethodRef names an ACP auth method. RequiresEnv, when set, makes the
@@ -301,8 +313,8 @@ func (a manifestAgent) validate() error {
 		return fmt.Errorf("args contains %s but modelArg is not set", ModelArgsPlaceholder)
 	}
 	if a.Auth != nil {
-		if len(a.Auth.Probe) == 0 && strings.TrimSpace(a.Auth.Hint) == "" {
-			return fmt.Errorf("auth needs a probe, a hint or both")
+		if len(a.Auth.Probe) == 0 && strings.TrimSpace(a.Auth.Hint) == "" && len(a.Auth.Login) == 0 {
+			return fmt.Errorf("auth needs a probe, a hint, a login command or more")
 		}
 		if a.Auth.NotLoggedInPattern != "" {
 			if len(a.Auth.Probe) == 0 {
@@ -322,7 +334,10 @@ func (a manifestAgent) validate() error {
 			return err
 		}
 	}
-	return nil
+	if a.Experimental && strings.TrimSpace(a.Unsupported) != "" {
+		return fmt.Errorf("experimental and unsupported exclude each other")
+	}
+	return a.validateAccountFields()
 }
 
 func validateModels(models []string, def string) error {

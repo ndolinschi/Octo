@@ -94,16 +94,18 @@ func (o *Orchestrator) EffectiveOrchestrator(model string) string {
 }
 
 // readyAgent is the first available, logged-in agent in the order claude-code,
-// codex, copilot, rest.
+// codex, copilot, rest. Only default accounts of agents that are not
+// experimental are considered: nothing names the agent, so another account
+// (other billing) or an experimental agent is never picked.
 func (o *Orchestrator) readyAgent() (plugins.Agent, bool) {
 	var ready []plugins.Agent
 	for _, a := range o.agents() {
-		if a.Available && loggedIn(a) {
+		if a.Available && loggedIn(a) && !isAccount(a) && !a.Experimental {
 			ready = append(ready, a)
 		}
 	}
 	for _, id := range preferredAgents {
-		if i := slices.IndexFunc(ready, func(a plugins.Agent) bool { return a.ID == id }); i >= 0 {
+		if i := slices.IndexFunc(ready, func(a plugins.Agent) bool { return baseOf(a) == id }); i >= 0 {
 			return ready[i], true
 		}
 	}

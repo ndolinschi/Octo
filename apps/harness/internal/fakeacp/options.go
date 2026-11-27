@@ -44,6 +44,10 @@ const (
 	// EnvReportEnv is a comma-separated list of variable names; the final
 	// summary says for each whether the agent's environment has it set.
 	EnvReportEnv = "OCTO_FAKEACP_REPORT_ENV"
+	// EnvReportValues is a comma-separated list of variable names; the final
+	// summary says for each its value ("unset" when missing), so a turn on a
+	// second account shows the folder it saw.
+	EnvReportValues = "OCTO_FAKEACP_REPORT_VALUES"
 	// EnvLoadSession=1 advertises agentCapabilities.loadSession and serves
 	// session/load (replaying a short history as session/update first).
 	EnvLoadSession = "OCTO_FAKEACP_LOAD_SESSION"

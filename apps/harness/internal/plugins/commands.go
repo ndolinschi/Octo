@@ -12,7 +12,8 @@ var (
 
 // LoginCmd is the terminal command that logs the agent's CLI in: the
 // manifest's auth.command, else the first command in backticks of its login
-// hint that says "login". "" when neither names one.
+// hint that says "login", else its first auth.login command. "" when none
+// names one. An account's LoginCommand carries its folder variables.
 func (a Agent) LoginCmd() string {
 	if a.LoginCommand != "" {
 		return a.LoginCommand
@@ -21,6 +22,9 @@ func (a Agent) LoginCmd() string {
 		if strings.Contains(m[1], "login") {
 			return m[1]
 		}
+	}
+	if len(a.Logins) > 0 {
+		return shellJoin(a.Logins[0].Args)
 	}
 	return ""
 }

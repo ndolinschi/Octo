@@ -19,7 +19,8 @@ export function settingsSectionFor(code: string | null | undefined): string {
  * mapped by `lib/errors/plain.ts`. `details` never shows outside the fold.
  *
  * action: recheck_provider -> "Check again" (`onCheck`); connect_provider -> opens the connect sheet for `providerId`;
- * retry -> `onRetry`; open_settings -> the section of `code`; update_agent -> only the command and hint.
+ * retry -> `onRetry`; open_settings -> the section of `code`; update_agent -> only the command and hint; switch_account ->
+ * the plain Retry here, and the caller's `actions` slot holds "Use another account" and "Choose another model" (the turn banner).
  */
 export function ErrorNotice(props: {
   /** The structured failure the harness sent; wins over `raw`. */

@@ -136,6 +136,17 @@ func samples() map[string]*Error {
 
 		"FormAnswerRefused":    FormAnswerRefused(2, "email: Enter an email address like name@example.com; password: Required"),
 		"FormAnswerRefusedOne": FormAnswerRefused(1, "email: Required"),
+
+		"AgentLimitReached":           AgentLimitReached("Claude Code · Work", "rate_limit: You've hit your weekly limit", true),
+		"AgentLimitReachedNoAccounts": AgentLimitReached("Grok", "rate_limit: You've hit your weekly limit", false),
+		"AgentRateLimited":            AgentRateLimited("Claude Code · Work", "APIError: Upstream provider rate limit reached", true),
+		"AgentRateLimitedNoAccounts":  AgentRateLimited("OpenCode", "APIError: Upstream provider rate limit reached", false),
+		"AccountsFileUnusable":        AccountsFileUnusable("agent-accounts.json", "the file does not parse"),
+		"AccountsUnsupported":         AccountsUnsupported("Antigravity", "one OS keyring entry is shared by app, CLI and IDE"),
+		"AccountNameTaken":            AccountNameTaken("Work"),
+		"AccountDefault":              AccountDefault("Claude Code"),
+		"AccountInvalid":              AccountInvalid("dir \"rel/x\" is not an absolute path"),
+		"LoginUnavailable":            LoginUnavailable("Grok", "grok login", "the manifest lists no auth.login command"),
 	}
 }
 

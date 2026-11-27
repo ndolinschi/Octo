@@ -26,6 +26,7 @@ Settings → Privacy and data → **Data folder** shows the exact path and copie
 | `harness/remote/devices.json` | Paired phones (a hash of each token, never the token) |
 | `harness/traces/` | The wire trace, only while you have it switched on |
 | `harness/agent-models.json`, `harness/children.json` | Models agents advertised; terminals and runs currently open |
+| `harness/agent-accounts.json`, `harness/accounts/<agent>/<id>/` | Names, short ids and folders of extra agent accounts; and the folders Octo made for them, where the agent keeps its own login ([below](#agent-accounts)) |
 | `router/` | The optional router's configuration and `history.sqlite` |
 | Review checkouts, worktrees | Under `harness/projects/<id>/` (`review/`, `worktrees/`) |
 
@@ -48,6 +49,22 @@ Run from the repository (`pnpm dev:all`), the data folder is `./data/harness` in
 - With the **router** on, the router also stores the text of requests and answers it proxies, in `router/history.sqlite`, and call
   records for 30 days. This is the router's default (`store_payloads = true`) and the app does not change it; whether it should
   is an open decision for the owner.
+
+## Agent accounts
+
+When you add a second account of an agent ([First run](first-run.md#more-than-one-account-of-an-agent)), Octo stores the account's
+name, short id and folder in `harness/agent-accounts.json`: no password, token or key. The agent writes its own login
+into the account's folder (by default `harness/accounts/<agent>/<id>/`; the file names are the agent's, for example `auth.json`
+for Codex). **Octo never reads those files.** Two consequences:
+
+- A backup or copy of the data folder contains those logins; whoever has the copy can use the accounts. Deleting the data
+  folder signs those accounts out.
+- Some agents (Claude Code on macOS, for one) may save the login in the system keychain instead of a file. Octo does not make or
+  read that entry, and removing the account does not remove it. A login you added with **Use an existing folder** stays in that
+  folder, which Octo never deletes.
+
+The login terminal's output (links, codes) is shown to you and not written to Octo's logs or stored. **Remove** with **Also delete
+its login folder** deletes only a folder Octo made.
 
 ## How files are protected
 
@@ -101,6 +118,7 @@ sharing it.
   worktrees, the worktree folders go with the project's data, but your repository may still list them: run `git worktree prune`
   there **(not verified whether Octo does this itself)**.
 - **A secret or the API key:** Settings → Providers → API key → **Remove key**. The key is removed from `harness.env`.
+- **An agent account:** Settings → Providers → the agent → **Remove** on the account; tick **Also delete its login folder** to delete the folder Octo made (a keychain entry stays).
 - **A paired phone:** Settings → Remote access → **Remove**.
 - **The router's history:** quit Octo and delete `router/history.sqlite` (and its `.key`).
 - **Everything:** quit Octo and delete `<app data>`. Uninstalling the app does not do it.

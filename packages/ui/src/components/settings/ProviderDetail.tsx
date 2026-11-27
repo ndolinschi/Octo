@@ -8,6 +8,7 @@ import { Button } from "../primitives/Button";
 import { CommandLine } from "../primitives/CommandLine";
 import { Rich } from "../shared/providers/ConnectSteps";
 import { Notice } from "../primitives/Notice";
+import { AccountsSection, LoginButton } from "./accounts/AccountsSection";
 import { AgentPrefs } from "./AgentPrefsPane";
 import { ProviderKey } from "./ProviderKey";
 import { ProviderModels } from "./ProviderModels";
@@ -72,6 +73,7 @@ export function ProviderDetail({ provider: p, onRouter }: { provider: Provider; 
       </div>
       <div className={cn("flex max-w-measure min-w-0 flex-col gap-6", CONTROL_CAP)}>
         {reason && <Reason provider={p} text={reason} />}
+        {p.kind === "agent" && <AccountsSection provider={p} loginBlock={loginInReason(p, reason)} />}
         {p.kind === "api" && <ProviderKey />}
         {(p.models.length > 0 || p.state === "ready") && p.kind !== "router" && <ProviderModels provider={p} />}
         {p.kind === "agent" && p.state === "ready" && <AgentPrefs agent={p} />}
@@ -84,6 +86,21 @@ export function ProviderDetail({ provider: p, onRouter }: { provider: Provider; 
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Whether the "Log in" step under the reason carries the agent's one Log in button: an agent that is installed and has no
+ * accounts of its own to list (one account only, or an older harness). An agent with accounts logs in from each account's row.
+ */
+function loginInReason(p: Provider, reason: string): boolean {
+  return (
+    Boolean(reason) &&
+    p.kind === "agent" &&
+    p.state !== "error" &&
+    p.state !== "not_installed" &&
+    p.accounts_support?.supported !== true &&
+    p.account === undefined
   );
 }
 
@@ -150,6 +167,11 @@ function Reason({ provider: p, text }: { provider: Provider; text: string }) {
                   {commands.length > 1 ? "Run one of these in a terminal" : "Run this in a terminal"}
                   {slash && s.title === "Log in" ? `, then type ${slash} and follow the steps` : ""}.
                 </p>
+              )}
+              {s.title === "Log in" && loginInReason(p, text) && (
+                <div className="flex pt-1">
+                  <LoginButton provider={p} />
+                </div>
               )}
               {commands.length === 0 && (
                 <p className="text-sm text-fg-2">{s.hint ? <HintProse text={s.hint} /> : "No setup steps are available; see the agent's documentation."}</p>

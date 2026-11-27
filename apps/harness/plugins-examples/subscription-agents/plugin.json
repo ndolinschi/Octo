@@ -1,7 +1,7 @@
 {
   "name": "subscription-agents",
-  "version": "0.4.0",
-  "description": "Ten coding-agent CLIs as sub-agents, on the subscriptions their own CLIs are logged in to. Only the scripted agent has been run against this harness; the commands for cursor, opencode, antigravity, devin, droid, omp and pi come from vendor docs, the ACP registry and secondary sources and are unverified.",
+  "version": "0.5.0",
+  "description": "Eleven coding-agent CLIs as sub-agents, on the subscriptions their own CLIs are logged in to. Only the scripted agent has been run against this harness; the commands for cursor, opencode, antigravity, gemini, devin, droid, omp and pi come from vendor docs, the ACP registry and secondary sources and are unverified.",
   "agents": [
     {
       "id": "claude-code",
@@ -32,6 +32,28 @@
         "hint": "Log in once: run `claude` and type /login (or run `claude auth login`). The harness hides its own ANTHROPIC_API_KEY from the agent so the subscription is used; to bill per token on purpose, add env {\"ANTHROPIC_API_KEY\": \"${ANTHROPIC_API_KEY}\"} to this entry.",
         "notLoggedInExit": [
           1
+        ],
+        "login": [
+          {
+            "id": "claudeai",
+            "label": "Claude subscription",
+            "args": [
+              "claude",
+              "auth",
+              "login",
+              "--claudeai"
+            ]
+          },
+          {
+            "id": "console",
+            "label": "Anthropic Console",
+            "args": [
+              "claude",
+              "auth",
+              "login",
+              "--console"
+            ]
+          }
         ]
       },
       "install": "Install Node.js (the adapter runs through npx) and the Claude Code CLI: npm install -g @anthropic-ai/claude-code",
@@ -50,7 +72,15 @@
         "fast": "haiku",
         "balanced": "sonnet",
         "deep": "opus"
-      }
+      },
+      "accounts": {
+        "env": {
+          "CLAUDE_CONFIG_DIR": "{dir}"
+        }
+      },
+      "limitPatterns": [
+        "(?i)you['’]ve hit your (session limit|weekly limit|opus limit)"
+      ]
     },
     {
       "id": "copilot",
@@ -71,9 +101,22 @@
       },
       "auth": {
         "command": "copilot login",
-        "hint": "Log in once: run `copilot` and type /login, or start the harness with COPILOT_GITHUB_TOKEN set to a fine-grained token that has the \"Copilot Requests\" permission. The harness has no non-interactive Copilot login check, so its login state shows as unknown."
+        "hint": "Log in once: run `copilot` and type /login, or start the harness with COPILOT_GITHUB_TOKEN set to a fine-grained token that has the \"Copilot Requests\" permission. The harness has no non-interactive Copilot login check, so its login state shows as unknown.",
+        "login": [
+          {
+            "id": "login",
+            "label": "GitHub account",
+            "args": [
+              "copilot",
+              "login"
+            ]
+          }
+        ]
       },
-      "install": "Install the GitHub Copilot CLI so that `copilot` is on PATH: npm install -g @github/copilot (needs Node.js 22 or newer and a Copilot plan)"
+      "install": "Install the GitHub Copilot CLI so that `copilot` is on PATH: npm install -g @github/copilot (needs Node.js 22 or newer and a Copilot plan)",
+      "accounts": {
+        "unsupported": "Octo has not yet confirmed how to keep a second GitHub Copilot sign-in apart. The Copilot CLI has its own account switch: run /user switch inside it."
+      }
     },
     {
       "id": "grok",
@@ -110,7 +153,17 @@
           "cached_token"
         ],
         "command": "grok login",
-        "hint": "Log in once: run `grok login` (browser), or `grok login --device-auth` on a machine without a browser. An XAI_API_KEY in the harness environment is forwarded to Grok and switches it to per-token billing: unset it to stay on the subscription."
+        "hint": "Log in once: run `grok login` (browser), or `grok login --device-auth` on a machine without a browser. An XAI_API_KEY in the harness environment is forwarded to Grok and switches it to per-token billing: unset it to stay on the subscription.",
+        "login": [
+          {
+            "id": "login",
+            "label": "xAI account",
+            "args": [
+              "grok",
+              "login"
+            ]
+          }
+        ]
       },
       "install": "Install the Grok CLI so that `grok` is on PATH: npm install -g @xai-official/grok (verified against Grok CLI 1.0.77). For scripts its documentation recommends `--no-auto-update` for `grok agent stdio`; it is not in this entry's args because its placement is unverified: add it to a copied manifest if wanted.",
       "modelsCommand": {
@@ -119,6 +172,9 @@
           "models"
         ],
         "pattern": "^\\s*(?:[-*•]\\s*)?([A-Za-z][A-Za-z0-9._/@+]*-[A-Za-z0-9._:/@+-]*|[A-Za-z]+[0-9][A-Za-z0-9._:/@+-]*)(?:\\s.*)?$"
+      },
+      "accounts": {
+        "unsupported": "Octo could not confirm where Grok keeps its sign-in, so a second one cannot be kept apart."
       }
     },
     {
@@ -148,12 +204,39 @@
         "hint": "Log in with the Codex CLI (codex login, or codex login --device-auth on a headless machine); with OCTO_CODEX_HOME set, log in with CODEX_HOME pointing at the same folder.",
         "notLoggedInExit": [
           1
+        ],
+        "login": [
+          {
+            "id": "browser",
+            "label": "Browser sign-in",
+            "args": [
+              "codex",
+              "login"
+            ]
+          },
+          {
+            "id": "device",
+            "label": "Device code",
+            "args": [
+              "codex",
+              "login",
+              "--device-auth"
+            ]
+          }
         ]
       },
       "requires": [
         "codex"
       ],
-      "install": "Install the Codex CLI so that `codex` is on PATH: npm install -g @openai/codex (the ACP adapter @agentclientprotocol/codex-acp is fetched by npx and drives it; the entry is available only when `codex` is found)"
+      "install": "Install the Codex CLI so that `codex` is on PATH: npm install -g @openai/codex (the ACP adapter @agentclientprotocol/codex-acp is fetched by npx and drives it; the entry is available only when `codex` is found)",
+      "accounts": {
+        "env": {
+          "CODEX_HOME": "{dir}"
+        }
+      },
+      "limitPatterns": [
+        "(?i)you['’]ve hit your usage limit"
+      ]
     },
     {
       "id": "cursor",
@@ -182,7 +265,20 @@
         "hint": "Run cursor-agent login once (browser), or start the harness with CURSOR_API_KEY set. Some installs name the binary agent.",
         "notLoggedInExit": [
           1
+        ],
+        "login": [
+          {
+            "id": "login",
+            "label": "Cursor account",
+            "args": [
+              "cursor-agent",
+              "login"
+            ]
+          }
         ]
+      },
+      "accounts": {
+        "unsupported": "Octo has not yet confirmed how to keep a second Cursor sign-in apart; on a Mac it lives in the system keychain."
       }
     },
     {
@@ -196,6 +292,9 @@
       "env": {},
       "auth": {
         "hint": "Start opencode once and connect a model provider with /connect; models are named provider/model. Provider keys in the harness environment are not forwarded: set them in OpenCode's own config or add them to this entry's env."
+      },
+      "accounts": {
+        "unsupported": "Octo has not yet confirmed how to keep a second OpenCode sign-in apart."
       }
     },
     {
@@ -237,9 +336,58 @@
           "terminal-login"
         ],
         "command": "agy acp --login",
-        "hint": "Sign in once in a terminal: run `agy` and sign in with Google, or run `agy acp --login` (paste a code; works over SSH). agy acp reuses that saved sign-in. The harness hides GEMINI_API_KEY from agy so the subscription is used; to bill a Gemini API key per token on purpose, add env {\"GEMINI_API_KEY\": \"${GEMINI_API_KEY}\"} to a copy of this entry."
+        "hint": "Sign in once in a terminal: run `agy` and sign in with Google, or run `agy acp --login` (paste a code; works over SSH). agy acp reuses that saved sign-in. The harness hides GEMINI_API_KEY from agy so the subscription is used; to bill a Gemini API key per token on purpose, add env {\"GEMINI_API_KEY\": \"${GEMINI_API_KEY}\"} to a copy of this entry.",
+        "login": [
+          {
+            "id": "login",
+            "label": "Google account",
+            "args": [
+              "agy",
+              "acp",
+              "--login"
+            ]
+          }
+        ]
       },
-      "install": "Install the Antigravity CLI 1.5.0 or newer so that `agy` is on PATH (default folder ~/.local/bin): `curl -fsSL https://antigravity.google/cli/install.sh | bash` (macOS and Linux; run it again to update)."
+      "install": "Install the Antigravity CLI 1.5.0 or newer so that `agy` is on PATH (default folder ~/.local/bin): `curl -fsSL https://antigravity.google/cli/install.sh | bash` (macOS and Linux; run it again to update).",
+      "accounts": {
+        "unsupported": "Antigravity keeps one sign-in in the system keyring, shared by its app, its command line and its editor, so a second one cannot be kept apart."
+      }
+    },
+    {
+      "id": "gemini",
+      "label": "Gemini CLI (experimental)",
+      "experimental": true,
+      "flatRate": true,
+      "billingEnv": [
+        "GEMINI_API_KEY"
+      ],
+      "command": "gemini",
+      "args": [
+        "--acp"
+      ],
+      "env": {},
+      "accounts": {
+        "env": {
+          "GEMINI_CLI_HOME": "{dir}",
+          "GEMINI_FORCE_FILE_STORAGE": "true"
+        },
+        "note": "Logins are kept as files in the account folder, not in the system keychain."
+      },
+      "auth": {
+        "login": [
+          {
+            "id": "google",
+            "label": "Google account (sign in inside gemini, then quit it)",
+            "args": [
+              "gemini"
+            ]
+          }
+        ],
+        "command": "gemini",
+        "hint": "Experimental. Run gemini once in a terminal and sign in with Google, then quit it. The login state shows as unknown because Gemini has no login check Octo can run. The harness hides GEMINI_API_KEY from gemini so the Google sign-in is used; to bill a Gemini API key per token on purpose, add env {\"GEMINI_API_KEY\": \"${GEMINI_API_KEY}\"} to a copy of this entry."
+      },
+      "install": "Install the Gemini CLI so that `gemini` is on PATH (see the Gemini CLI's own documentation); the entry runs `gemini --acp`."
     },
     {
       "id": "devin",
@@ -273,7 +421,24 @@
         "hint": "Run devin auth login (add --force-manual-token-flow over SSH), or set WINDSURF_API_KEY. List models with devin models list --format json.",
         "notLoggedInExit": [
           1
+        ],
+        "login": [
+          {
+            "id": "login",
+            "label": "Devin account",
+            "args": [
+              "devin",
+              "auth",
+              "login"
+            ]
+          }
         ]
+      },
+      "accounts": {
+        "env": {
+          "XDG_DATA_HOME": "{dir}"
+        },
+        "note": "Devin keeps all of its data in the account folder, not only the login."
       }
     },
     {
@@ -306,6 +471,9 @@
           "device-pairing"
         ],
         "hint": "Start the harness with FACTORY_API_KEY set (needed on headless machines); the browser device pairing of droid cannot be completed by the harness."
+      },
+      "accounts": {
+        "unsupported": "Factory Droid signs in with an API key, and Octo does not store keys."
       }
     },
     {
@@ -321,6 +489,9 @@
       },
       "auth": {
         "hint": "Run omp once and sign in (credentials in ~/.omp); omp models --json must list at least one model. Set OCTO_OMP_DIR to use a separate profile folder."
+      },
+      "accounts": {
+        "unsupported": "Octo has not looked into keeping a second sign-in of this CLI apart."
       }
     },
     {
@@ -338,6 +509,9 @@
       "env": {},
       "auth": {
         "hint": "Needs pi on PATH. Run pi and /login (or set a provider API key in pi's own config) first. pi-acp is a third-party MVP adapter and offers only a terminal login."
+      },
+      "accounts": {
+        "unsupported": "Octo has not looked into keeping a second sign-in of this CLI apart."
       }
     }
   ]

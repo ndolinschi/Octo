@@ -15,7 +15,7 @@ apply at once; those that need Octo's local service to restart (an API key, the 
 
 ## Models and agents
 
-- **Providers.** The list from [First run](first-run.md): connect an API key, check an agent, add model names you type yourself,
+- **Providers.** The list from [First run](first-run.md): connect an API key, check an agent, add a second account of an agent and log in to it ([More than one account](first-run.md#more-than-one-account-of-an-agent)), add model names you type yourself,
   and for each agent a preferred model and which model it uses for the fast, balanced and deep roles. Any model name can be
   chosen; if the agent refuses it, the turn says which models it does offer.
 - **Models.** The models new projects start with, in two scopes (for new projects, and for the open project). The orchestrator
