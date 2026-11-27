@@ -75,7 +75,7 @@ export function MarkdownPreview({ file, bottomRoom, onOpen }: { file: OpenFile; 
   }, [file.folder, file.path, onOpen]);
 
   return (
-    <div ref={root} data-md-preview data-file-focus tabIndex={-1} className="h-full min-h-0 overflow-y-auto focus-inset scroll-quiet">
+    <div ref={root} data-md-preview data-file-focus tabIndex={-1} className="h-full min-h-0 overflow-y-auto focus-inset contain-strict scroll-quiet">
       <div className="px-6">
         <article aria-label={`Preview of ${file.name}`} className="mx-auto w-full max-w-measure py-8">
           {front && front.fields.length > 0 && (

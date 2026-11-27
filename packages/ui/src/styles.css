@@ -917,7 +917,11 @@
   line-height: var(--text-heading--line-height);
 }
 /* Document prose (the Markdown preview): a three-step heading scale, 20 / 16 / 14, so a file's h1 and
-   h2 are told apart (the chat keeps its two-step scale). */
+   h2 are told apart (the chat keeps its two-step scale). Skip multi-line optimal wrapping (`pretty`)
+   on long files so WebKit/Chromium scroll smoothly. */
+.octo-prose.octo-doc {
+  text-wrap: wrap;
+}
 .octo-prose.octo-doc h1 {
   font-size: var(--text-display);
   line-height: var(--text-display--line-height);
@@ -927,6 +931,28 @@
   font-size: var(--text-title);
   line-height: var(--text-title--line-height);
   letter-spacing: var(--text-title--letter-spacing);
+}
+/* Long Markdown documents are grouped into sections so off-screen blocks skip layout and paint while scrolling. */
+.octo-prose .octo-md-section {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 320px;
+}
+.octo-prose .octo-md-section > :first-child {
+  margin-top: 0;
+}
+.octo-prose .octo-md-section > :last-child {
+  margin-bottom: 0;
+}
+.octo-prose .octo-md-section + .octo-md-section {
+  margin-top: var(--octo-prose-gap);
+}
+.octo-prose .octo-md-section + .octo-md-section > :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: calc(var(--octo-prose-heading-top) - var(--octo-prose-gap));
+}
+.octo-prose.octo-doc > .octo-code-surface,
+.octo-prose.octo-doc > .octo-table-frame {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 180px;
 }
 /* Compact prose (notes, task briefs): UI size, secondary colour. */
 .octo-prose.octo-prose-sm {

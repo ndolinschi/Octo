@@ -273,7 +273,8 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
     <div className="relative h-full min-h-0">
       {fileKey !== null && (
         // `isolate`: Monaco's own layers (its scrollbars are z 11) stay inside this box, under the cover (finding B20).
-        <div className="absolute inset-0 isolate" inert={cover !== null}>
+        // Hide while covered so Monaco's GPU layers do not composite behind MarkdownPreview while scrolling.
+        <div className={cn("absolute inset-0 isolate", cover !== null && "invisible [&_.scrollbar]:invisible!")} inert={cover !== null}>
           <CodeEditor
             file={shown}
             buffers={code.buffers}
