@@ -84,18 +84,8 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   const code = textOf(children).replace(/\n$/, "");
   const canRun = Boolean(ws?.toolEnabled("terminal") && isShellLang(lang) && code.trim().length > 0);
   const pre = useRef<HTMLPreElement>(null);
-  useScrollFade(pre, "x");
   const [scrolls, setScrolls] = useState(false);
-  useEffect(() => {
-    const el = pre.current;
-    if (!el) return;
-    const check = () => setScrolls(el.scrollWidth > el.clientWidth + 1);
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    if (el.firstElementChild) ro.observe(el.firstElementChild);
-    return () => ro.disconnect();
-  }, []);
+  useScrollFade(pre, "x", setScrolls);
   useEffect(() => {
     if (!sent) return;
     const id = window.setTimeout(() => setSent(false), 1500);
@@ -215,7 +205,7 @@ const COMPONENTS: Components = {
 
 const WITH_FILE_LINKS: Components = { ...COMPONENTS, code: ({ children }) => <InlineCode>{children}</InlineCode> };
 
-import { splitStableMarkdown } from "../../lib/markdownSplit";
+import { splitMarkdownSections, splitStableMarkdown } from "../../lib/markdownSplit";
 
 /** Settled texts whose rendering is kept, most recently used last. */
 const KEPT_MAX = 400;
@@ -264,6 +254,7 @@ export const Markdown = memo(function Markdown(props: {
   const base = fileLinks ? WITH_FILE_LINKS : COMPONENTS;
   const resolved = useMemo(() => (overrides ? { ...base, ...overrides } : base), [base, overrides]);
   const parts = useMemo(() => (streaming ? splitStableMarkdown(text) : null), [streaming, text]);
+  const sections = useMemo(() => (streaming ? null : splitMarkdownSections(text)), [streaming, text]);
 
   return (
     <div className={className ?? "octo-prose"} data-streaming={streaming ? "" : undefined}>
@@ -274,6 +265,12 @@ export const Markdown = memo(function Markdown(props: {
           ))}
           {parts.tail && <MarkdownChunk text={parts.tail} components={resolved} keep={false} />}
         </>
+      ) : sections ? (
+        sections.map((sec, i) => (
+          <div key={i} className="octo-md-section">
+            <MarkdownChunk text={sec} components={resolved} />
+          </div>
+        ))
       ) : (
         <MarkdownChunk text={text} components={resolved} keep={!streaming} />
       )}

@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { notificationSupport, requestNotificationPermission, setNotificationsPref, useNotificationsPref } from "../../lib/notifications";
-import { PREFS, sidebarViewCodec, usePersistentState, writePref } from "../../lib/storage";
+import { newTabTargetCodec, PREFS, sidebarViewCodec, usePersistentState, writePref } from "../../lib/storage";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { Segmented } from "../primitives/Segmented";
@@ -19,6 +19,8 @@ export function GeneralSection() {
   const [saved, run] = useSave();
   const [view, setView] = usePersistentState(PREFS.sidebarView, sidebarViewCodec);
   const [savedView, runView] = useSave();
+  const [newTabTarget, setNewTabTarget] = usePersistentState(PREFS.newTabTarget, newTabTargetCodec);
+  const [savedTabTarget, runTabTarget] = useSave();
   const notifPref = useNotificationsPref();
   const [savedNotif, runNotif] = useSave();
   const notifId = useId();
@@ -72,6 +74,29 @@ export function GeneralSection() {
                 void runView(async () => {
                   if (!writePref(PREFS.sidebarView, sidebarViewCodec.stringify(v))) throw new Error("Could not save: the browser's storage is full or blocked");
                   setView(v);
+                })
+              }
+            />
+          }
+        />
+        <SettingsRow
+          rowId="new-tab-target"
+          title="Open new tabs in"
+          description="Open new tabs in the current panel, or split them into a side panel on the right."
+          status={<SaveStatus state={savedTabTarget} />}
+          control={
+            <Segmented
+              label="Open new tabs in"
+              options={[
+                { id: "same", label: "Same panel" },
+                { id: "side", label: "Right panel" },
+              ]}
+              value={newTabTarget}
+              onChange={(v) =>
+                void runTabTarget(async () => {
+                  if (!writePref(PREFS.newTabTarget, newTabTargetCodec.stringify(v)))
+                    throw new Error("Could not save: the browser's storage is full or blocked");
+                  setNewTabTarget(v);
                 })
               }
             />

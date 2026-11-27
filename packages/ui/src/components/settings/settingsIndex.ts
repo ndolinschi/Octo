@@ -51,6 +51,13 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
   },
   {
     section: "general",
+    id: "new-tab-target",
+    title: "Open new tabs in",
+    description: "Same panel or right side panel",
+    keywords: "tabs split panel right side same group layout",
+  },
+  {
+    section: "general",
     id: "notifications",
     title: "Desktop notifications",
     description: "Notify when a session finishes, fails, or needs input while Octo is in the background",

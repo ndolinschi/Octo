@@ -20,7 +20,6 @@ const Announcer = lazy(() => import("./Announcer").then((m) => ({ default: m.Ann
 
 /** Decision 63: the project's own agent goes by the project's name in its conversation, never "Orchestrator". */
 const nameIn = (projectName: string) => (a: Pick<Agent, "parent_id" | "role">) => (a.parent_id === null ? projectName : baseRoleName(a));
-import { showRail } from "../../lib/transcript";
 /** The failed start of an empty project (rare): its own chunk. */
 const LoadFailed = lazy(() => import("./LoadFailed").then((m) => ({ default: m.LoadFailed })));
 const StartFailure = lazy(() => import("./StartFailure").then((m) => ({ default: m.StartFailure })));
@@ -32,7 +31,6 @@ import { buildTurns, promptText, requestSummaries } from "../../lib/transcript";
 import { CommentsControl } from "./CommentsControlLazy";
 import { Composer, type ComposerHandle, type ComposerProps } from "./Composer";
 const InlineNotes = lazy(() => import("./InlineNotes").then((m) => ({ default: m.InlineNotes })));
-const TurnRail = lazy(() => import("./TurnRail").then((m) => ({ default: m.TurnRail })));
 import { useOrchestratorComposer } from "./useOrchestratorComposer";
 import { StreakLayer } from "../primitives/StreakLayer";
 import { STREAK_EMPTY } from "../../lib/streakPresets";
@@ -137,25 +135,6 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
     [messages, hasStreaming, agent?.status, agentId],
     saved ? saved.atBottom : isOrchestrator || agent?.status === "running",
   );
-
-  // The scroll area's visible height: the turn rail never grows past it.
-  const [scrollHeight, setScrollHeight] = useState(0);
-  const sized = useRef<{ el: HTMLElement; ro: ResizeObserver } | null>(null);
-  useLayoutEffect(() => {
-    const el = scroll.ref.current;
-    if (sized.current?.el === el) return;
-    sized.current?.ro.disconnect();
-    sized.current = null;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      // Hidden (background tab): keep the last size.
-      if (el.clientHeight > 0) setScrollHeight(el.clientHeight);
-    });
-    ro.observe(el);
-    sized.current = { el, ro };
-    if (el.clientHeight > 0) setScrollHeight(el.clientHeight);
-  });
-  useEffect(() => () => sized.current?.ro.disconnect(), []);
 
   // A conversation kept alive in a background tab returns to the end when shown again (if it was there).
   const shown = ws ? ws.isVisible(tab) : true;
@@ -331,20 +310,6 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
                 onHeight={stuck.setPinnedHeight}
               />
             </Suspense>
-          )}
-          {showRail(requests.length) && (
-            // The rail sits in the column's left padding, 4px clear of it; hidden when the padding is 16. The
-            // layer covers the whole scroll area (it clips like the transcript) but takes no pointer events.
-            <div className={cn(EDGES, "pointer-events-none absolute inset-x-0 top-0 z-20 @max-[560px]/conv:hidden")} style={{ height: scrollHeight }}>
-              {/* Decision 57: centred vertically in the conversation's viewport; it takes no layout width. */}
-              <div className="relative mx-auto h-full max-w-measure">
-                <div className="pointer-events-auto absolute top-1/2 right-full mr-3 -translate-y-1/2">
-                  <Suspense fallback={null}>
-                    <TurnRail requests={requests} projectId={projectId} now={now} maxHeight={scrollHeight - 16} />
-                  </Suspense>
-                </div>
-              </div>
-            </div>
           )}
           <div
             ref={scroll.ref}

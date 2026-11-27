@@ -18,6 +18,7 @@ const GROUPS: readonly { title: string; items: readonly Shortcut[] }[] = [
     title: "General",
     items: [
       { keys: ["Mod", "K"], does: "Search and run commands" },
+      { keys: ["Mod", "Shift", "F"], does: "Open search panel" },
       { keys: ["Mod", "P"], does: "Quick open a file" },
       { keys: ["?"], does: "Show this list (not while typing)" },
       { keys: ["Mod", "L"], does: "Write a message (or attach editor selection)" },

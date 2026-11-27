@@ -240,6 +240,11 @@ function Shell() {
         // P2-7: what is typed before the palette's field has focus goes to the field, not to the composer.
         paletteGate.toggle();
       }
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.shiftKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        e.stopPropagation();
+        paletteGate.toggle();
+      }
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "p") {
         e.preventDefault();
         e.stopPropagation();

@@ -373,6 +373,10 @@ func (p approvalPolicy) Decide(ctx context.Context, req permission.Request) perm
 		if p.rt.acpModeAllows(req.ACP.ToolCall) {
 			return permission.AutoApprove{}.Decide(ctx, req)
 		}
+		slog.Warn("acp: read-only mode denied permission request",
+			"project", p.rt.pid(), "mode", p.rt.mode,
+			"kind", req.ACP.ToolCall.Kind, "title", req.ACP.ToolCall.Title,
+			"action", describeToolCall(req.ACP.ToolCall))
 		return p.pick(req, approval.Deny, "", p.rt.modeRefusal("this action"))
 	}
 	call := req.ACP.ToolCall

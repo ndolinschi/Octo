@@ -66,7 +66,7 @@ export function useTreeShell(root: RefObject<HTMLDivElement | null>, tab: TabId,
   // also when the column was hidden; the toggle in the bar hides it again.
   const emptyShown = fileKey === null && ws.isVisible(tab);
   useEffect(() => {
-    if (emptyShown && groupId) setColumnOpen(groupId, true);
+    if (emptyShown && groupId) setColumnOpen(groupId, true, false);
   }, [emptyShown, groupId, fv.focusTreeTick, setColumnOpen]);
 
   return {

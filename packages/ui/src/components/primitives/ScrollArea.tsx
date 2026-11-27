@@ -11,12 +11,14 @@ type Gutter = "none" | "stable" | "both";
 const NO_REF = { current: null };
 
 const AXIS: Record<Axis, string> = { y: "overflow-x-hidden overflow-y-auto", x: "overflow-x-auto overflow-y-hidden", both: "overflow-auto" };
+const CONTAIN: Record<Axis, string> = { y: "overscroll-y-contain", x: "overscroll-x-contain", both: "overscroll-contain" };
 const GUTTER: Record<Gutter, string> = { none: "", stable: "scroll-gutter", both: "scroll-quiet" };
 
 /**
  * The one scroll container (decision 90; the code base had 34 of them with eight different companion sets). Every region
  * that scrolls is a `ScrollArea`, so the treatment is the same everywhere: the thin scrollbar of `styles.css`, overscroll
- * contained (a list at its end never scrolls the page behind it), and the options below.
+ * contained on its scrollable axis (a list at its end never scrolls the page behind it, while a horizontal-only scroller
+ * lets vertical wheel/trackpad scrolling chain to the parent), and the options below.
  *
  * - `axis`: `y` (default), `x`, `both`.
  * - `gutter`: `stable` reserves the scrollbar's width so content does not shift when it appears (decision 69), `both` on both
@@ -47,7 +49,7 @@ export function ScrollArea({
     <div
       ref={mergeRefs(own, ref)}
       {...(scrollStyle !== undefined ? { style: scrollStyle } : {})}
-      className={cn(AXIS[axis], contain && "overscroll-contain", GUTTER[gutter], fade && (axis === "x" ? "fade-x" : "fade-y"), className)}
+      className={cn(AXIS[axis], contain && CONTAIN[axis], GUTTER[gutter], fade && (axis === "x" ? "fade-x" : "fade-y"), className)}
       {...rest}
     />
   );
