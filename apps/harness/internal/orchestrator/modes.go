@@ -237,7 +237,9 @@ func acceptEditsMode(modes []acp.SessionMode) string {
 	return ""
 }
 
-// askingMode is the agent's mode that asks before changes: the one named default.
+// askingMode is the agent's mode that asks before changes: the one named default,
+// or (for agents like GitHub Copilot that have Agent/Plan/Autopilot with no
+// "default" mode) a non-self-approving, non-read-only agent/code mode.
 func askingMode(modes []acp.SessionMode) string {
 	for _, m := range modes {
 		if strings.EqualFold(m.ID, "default") {
@@ -249,7 +251,31 @@ func askingMode(modes []acp.SessionMode) string {
 			return m.ID
 		}
 	}
+	for _, want := range []string{"agent", "code"} {
+		for _, m := range modes {
+			if isReadOnlySessionMode(m.ID) || isReadOnlySessionMode(m.Name) || selfApproving(m.ID) || selfApproving(m.Name) {
+				continue
+			}
+			if strings.EqualFold(m.ID, want) || strings.HasSuffix(strings.ToLower(m.ID), "#"+want) || strings.EqualFold(strings.TrimSpace(m.Name), want) {
+				return m.ID
+			}
+		}
+	}
 	return ""
+}
+
+// inferAgentModeFromReadOnly guesses a writable mode ID when the agent omitted
+// its mode list on session/load after a cold harness restart, yet reported a
+// read-only current mode (e.g. via current_mode_update). SetMode errors are
+// non-fatal, so a wrong guess simply logs a warning.
+func inferAgentModeFromReadOnly(cur string) string {
+	if !isReadOnlySessionMode(cur) {
+		return ""
+	}
+	if i := strings.LastIndex(cur, "#"); i >= 0 {
+		return cur[:i+1] + "agent"
+	}
+	return "default"
 }
 
 // applyMode puts the live ACP session into the agent's mode matching the
@@ -263,6 +289,9 @@ func (s *orchSession) applyMode(ctx context.Context, rt *runtime, client *acp.Cl
 	modes, cur, base := s.modes, s.curMode, s.baseMode
 	s.mu.Unlock()
 	target := sessionModeTarget(rt.readOnlyMode(), rt.mode, func() string { return rt.accessMode(ctx) }, modes, base)
+	if target == "" && !rt.readOnlyMode() {
+		target = inferAgentModeFromReadOnly(cur)
+	}
 	if target == "" || target == cur {
 		return
 	}
@@ -388,7 +417,9 @@ func isCancelledPlanText(text string) bool {
 		return false
 	}
 	lower := strings.ToLower(s)
-	lower = strings.TrimSpace(strings.TrimPrefix(lower, "info:"))
+	for _, prefix := range []string{"info:", "[info]"} {
+		lower = strings.TrimSpace(strings.TrimPrefix(lower, prefix))
+	}
 	lower = strings.TrimRight(lower, ".!")
 	switch lower {
 	case "operation cancelled by user",
@@ -396,7 +427,9 @@ func isCancelledPlanText(text string) bool {
 		"cancelled by user",
 		"canceled by user",
 		"request cancelled by user",
-		"request canceled by user":
+		"request canceled by user",
+		"turn cancelled by user",
+		"turn canceled by user":
 		return true
 	}
 	return false

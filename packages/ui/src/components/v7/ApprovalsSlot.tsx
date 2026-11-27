@@ -2,7 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AnsweredInput, Approval, ApprovalAnswer, AutoMemoryMode, Bridge, InputAnswer, InputRequest } from "@octo/agent-client";
 import { useLatest } from "../../lib/hooks";
 import { agentDisplayName } from "../../lib/orchestratorMore";
-import { approvalDeadline, approvalItems, resolutionCause, type ApprovalItem, type Resolution } from "../../lib/v7/approval";
+import {
+  approvalDeadline,
+  approvalItems,
+  pruneCompleted,
+  resolutionCause,
+  shouldPruneCompleted,
+  type ApprovalItem,
+  type Resolution,
+} from "../../lib/v7/approval";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { useSessionScope } from "../../state/session";
@@ -43,11 +51,6 @@ function upsert<T extends { id: string }>(list: readonly T[], item: T): T[] {
   return list.some((x) => x.id === item.id) ? [...list] : [...list, item];
 }
 
-function isNewTurnOrReset(e: Parameters<Parameters<typeof useV7Events>[0]>[0], orchestratorId: string | undefined): boolean {
-  if (e.type === "conversation.rewound" || e.type === "conversation.cleared") return true;
-  return e.type === "message.created" && e.message.role === "user" && (!orchestratorId || e.message.agent_id === orchestratorId);
-}
-
 /** Approvals seen this turn and how each ended; cards collapse to one line during the turn and clear when a new turn starts. */
 function useApprovals({ projectId, bridge, synced, initial, orchestratorId }: Ids<Approval>) {
   const [seen, setSeen] = useState<Approval[]>(() => [...initial]);
@@ -69,10 +72,10 @@ function useApprovals({ projectId, bridge, synced, initial, orchestratorId }: Id
   }, [bridge, projectId, synced]);
 
   useV7Events((e) => {
-    if (isNewTurnOrReset(e, orchestratorId)) {
+    if (shouldPruneCompleted(e, orchestratorId)) {
       const done = resolvedRef.current;
       if (Object.keys(done).length > 0) {
-        setSeen((s) => s.filter((a) => !done[a.id]));
+        setSeen((s) => pruneCompleted(s, done));
         setResolved({});
         local.current = {};
       }
@@ -118,10 +121,10 @@ function useForms({ projectId, bridge, synced, initial, orchestratorId }: Ids<In
   }, [bridge, projectId, synced]);
 
   useV7Events((e) => {
-    if (isNewTurnOrReset(e, orchestratorId)) {
+    if (shouldPruneCompleted(e, orchestratorId)) {
       const done = answeredRef.current;
       if (Object.keys(done).length > 0) {
-        setSeen((s) => s.filter((f) => !done[f.id]));
+        setSeen((s) => pruneCompleted(s, done));
         setAnswered({});
       }
       return;

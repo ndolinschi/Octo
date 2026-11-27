@@ -310,7 +310,10 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 			s.h.rememberModes(ag.ID, modes, base)
 			s.mu.Lock()
 			s.sessID = stored.SessionID
-			s.modes, s.baseMode, s.curMode = modes, base, cur
+			s.modes, s.baseMode = modes, base
+			if cur != "" {
+				s.curMode = cur
+			}
 			s.costSeen, s.usedSeen = cost, tokens
 			s.mu.Unlock()
 			return false, nil

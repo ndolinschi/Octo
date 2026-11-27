@@ -43,14 +43,20 @@ export function PlanTab(props: { planId: string }) {
     }
   }, [bridge, projectId, state.sessions.defaultId, ws?.chatSessionId, ws?.focusedSessionId]);
 
+  const hasPlan = Boolean(plan);
   useEffect(() => {
+    if (hasPlan) return;
     let alive = true;
-    if (!plan) {
-      void loadLatest().finally(() => {
-        if (alive) setFetchedId(planId);
-      });
-    }
-    const off = onEvent((e) => {
+    void loadLatest().finally(() => {
+      if (alive) setFetchedId(planId);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [hasPlan, loadLatest, planId]);
+
+  useEffect(() => {
+    return onEvent((e) => {
       if (e.type === "plan.created" || e.type === "plan.approved") {
         setPlanTabState(projectId, e.plan, planTitle(e.plan.text).title);
       }
@@ -58,11 +64,7 @@ export function PlanTab(props: { planId: string }) {
         dropPlansFromTurn(projectId, e.message_id);
       }
     });
-    return () => {
-      alive = false;
-      off();
-    };
-  }, [loadLatest, onEvent, plan, planId, projectId]);
+  }, [onEvent, projectId]);
 
   const approve = async () => {
     if (!plan || !bridge.approvePlan || busy) return;

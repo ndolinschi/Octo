@@ -120,8 +120,9 @@ function PlanCard(props: { plan: Plan; onPlan(plan: Plan): void; onRefresh(): Pr
 
 /** The newest plan, asked once for all the cards that look (one request per project/session within a second). */
 const latest = new Map<string, { at: number; plan: Promise<Plan | null> }>();
+const latestKey = (projectId: string, sessionId: string | null) => (sessionId ? `${projectId}:${sessionId}` : projectId);
 function latestPlan(bridge: Bridge, projectId: string, sessionId: string | null): Promise<Plan | null> {
-  const key = sessionId ? `${projectId}:${sessionId}` : projectId;
+  const key = latestKey(projectId, sessionId);
   const hit = latest.get(key);
   if (hit && Date.now() - hit.at < 1000) return hit.plan;
   // null: no plan turn yet. Any failure: plans still arrive as events, and a reload asks again.
@@ -148,6 +149,7 @@ export function PlanForTurn(props: { turnId: number; onKeepEditing(): void }) {
   const active = synced ?? plan;
   useEffect(() => {
     let alive = true;
+    const key = latestKey(projectId, sessionId);
     void latestPlan(bridge, projectId, sessionId).then((p) => {
       if (!alive || !p) return;
       setPlanTabState(projectId, p, planTitle(p.text).title);
@@ -155,10 +157,12 @@ export function PlanForTurn(props: { turnId: number; onKeepEditing(): void }) {
     });
     const off = onEvent((e) => {
       if (e.type === "plan.created" || e.type === "plan.approved") {
+        latest.delete(key);
         setPlanTabState(projectId, e.plan, planTitle(e.plan.text).title);
         if (e.plan.turn_id === turnId) setPlan(e.plan);
       }
       if (e.type === "conversation.rewound") {
+        latest.delete(key);
         dropPlansFromTurn(projectId, e.message_id);
         if (e.message_id <= turnId) setPlan(null);
       }
@@ -169,6 +173,7 @@ export function PlanForTurn(props: { turnId: number; onKeepEditing(): void }) {
     };
   }, [bridge, projectId, sessionId, onEvent, turnId]);
   const refresh = useCallback(async () => {
+    latest.delete(latestKey(projectId, sessionId));
     const p = sessionId && bridge.getSessionLatestPlan ? await bridge.getSessionLatestPlan(projectId, sessionId) : await bridge.getLatestPlan?.(projectId);
     if (p) {
       setPlanTabState(projectId, p, planTitle(p.text).title);

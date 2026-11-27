@@ -47,6 +47,36 @@ func TestSessionModeTargetResumesOutOfPlanOrAsk(t *testing.T) {
 	if len(gotModes) != 3 || gotBase != wantAgent {
 		t.Fatalf("knownModes = (%d, %q), want (3, %q)", len(gotModes), gotBase, wantAgent)
 	}
+
+	// Copilot Autopilot under supervised and accept_edits must drop to Agent (asking mode), not stay in Autopilot.
+	autopilot := copilot[2].ID
+	if got := sessionModeTarget(false, projectstore.ModeAgent, acc(projectstore.AccessSupervised), copilot, autopilot); got != wantAgent {
+		t.Fatalf("copilot autopilot under supervised -> got %q, want %q", got, wantAgent)
+	}
+	if got := sessionModeTarget(false, projectstore.ModeAgent, acc(projectstore.AccessAcceptEdits), copilot, autopilot); got != wantAgent {
+		t.Fatalf("copilot autopilot under accept_edits -> got %q, want %q", got, wantAgent)
+	}
+	if got := sessionModeTarget(false, projectstore.ModeAgent, acc(projectstore.AccessFull), copilot, autopilot); got != autopilot {
+		t.Fatalf("copilot autopilot under full -> got %q, want %q", got, autopilot)
+	}
+}
+
+func TestInferAgentModeFromReadOnly(t *testing.T) {
+	if got := inferAgentModeFromReadOnly("https://agentclientprotocol.com/protocol/session-modes#plan"); got != "https://agentclientprotocol.com/protocol/session-modes#agent" {
+		t.Fatalf("URI plan -> got %q", got)
+	}
+	if got := inferAgentModeFromReadOnly("plan"); got != "default" {
+		t.Fatalf("plain plan -> got %q, want default", got)
+	}
+	if got := inferAgentModeFromReadOnly("ask"); got != "default" {
+		t.Fatalf("plain ask -> got %q, want default", got)
+	}
+	if got := inferAgentModeFromReadOnly("agent"); got != "" {
+		t.Fatalf("writable mode -> got %q, want empty", got)
+	}
+	if got := inferAgentModeFromReadOnly(""); got != "" {
+		t.Fatalf("empty mode -> got %q, want empty", got)
+	}
 }
 
 func TestACPPromptModeNote(t *testing.T) {
@@ -79,10 +109,13 @@ func TestIsCancelledPlanText(t *testing.T) {
 	cancelled := []string{
 		"Info: Operation cancelled by user",
 		"info: operation cancelled by user.",
+		"[Info] Operation cancelled by user\n",
 		"Operation cancelled by user",
 		"Operation canceled by user",
 		"Cancelled by user",
 		"Request cancelled by user!",
+		"Turn cancelled by user",
+		"Turn canceled by user.",
 	}
 	for _, s := range cancelled {
 		if !isCancelledPlanText(s) {
