@@ -47,12 +47,12 @@ export function Picker(props: {
   /** A key the picker does not know: return true when it was the caller's (a row's shortcut). */
   onShortcut?(e: KeyboardEvent<HTMLInputElement>): boolean;
 }) {
-  const { onClose } = props;
+  const { onClose, sections: buildSections } = props;
   const [query, setQuery] = useState("");
-  const sections = props.sections(query);
+  const sections = useMemo(() => buildSections(query), [buildSections, query]);
   const flat = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
-  const enabled = flat.filter((r) => !r.disabled);
-  const enabledIds = enabled.map((r) => r.id);
+  const enabled = useMemo(() => flat.filter((r) => !r.disabled), [flat]);
+  const enabledIds = useMemo(() => enabled.map((r) => r.id), [enabled]);
   const [active, setActive] = useState<string | null>(null);
   const current = enabled.find((r) => r.id === active) ?? enabled[0] ?? null;
   const ownSearch = useRef<HTMLInputElement>(null);

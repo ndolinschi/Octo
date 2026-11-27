@@ -1,5 +1,5 @@
-import { ArrowLeft, Check, ChevronDown, ChevronUp, CornerDownRight, ExternalLink, Pilcrow, Undo2 } from "lucide-react";
-import { memo, useState, type ReactNode } from "react";
+import { ArrowLeft, Check, ChevronDown, ChevronUp, ExternalLink, Undo2 } from "lucide-react";
+import { memo, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { kindLabel, kindLetter, splitPath, type DiffLayout } from "../../lib/v7/changes";
@@ -20,7 +20,7 @@ const KIND_TONE = { A: "text-ok", M: "text-fg-3", D: "text-err" } as const;
 
 /**
  * The right side of the changes view: a 40px row like the file view's breadcrumb (back on narrow panes, the file,
- * counts, prev / next, whitespace, Open file, Keep, Revert), any revert outcome, then the diff or why there is none.
+ * counts, prev / next, Open file, Keep, Revert), any revert outcome, then the diff or why there is none.
  */
 export const DiffPanel = memo(function DiffPanel(props: {
   selection: Selection;
@@ -37,7 +37,7 @@ export const DiffPanel = memo(function DiffPanel(props: {
   onBack?(): void;
   onPrev: (() => void) | null;
   onNext: (() => void) | null;
-  onToggleWhitespace(): void;
+  onToggleWhitespace?(): void;
   onRevert(): void;
   onRetry(): void;
   /** Opens the file in the editor, at a line when given. */
@@ -50,15 +50,12 @@ export const DiffPanel = memo(function DiffPanel(props: {
   const reverted = props.row !== undefined && "reverted" in props.row;
   const reverting = props.row !== undefined && "reverting" in props.row;
   const problem = props.row !== undefined && "problem" in props.row ? props.row.problem : null;
-  const [firstLine, setFirstLine] = useState<number | null>(null);
   const loading = useDelayedLoading(props.diff.status === "loading");
   const canOpen = props.onOpenFile !== undefined && file.kind !== "deleted";
   const moreItems: MenuItem[] = [
     { id: "prev", label: "Previous file", shortcut: "Alt+[", disabled: !props.onPrev, run: () => props.onPrev?.() },
     { id: "next", label: "Next file", shortcut: "Alt+]", disabled: !props.onNext, run: () => props.onNext?.() },
-    { id: "ws", label: props.ignoreWhitespace ? "Show whitespace changes" : "Ignore whitespace", run: props.onToggleWhitespace },
     ...(props.onToggleKept && !reverted ? [{ id: "keep", label: props.kept ? "Unmark kept" : "Keep file", run: props.onToggleKept }] : []),
-    ...(canOpen && firstLine !== null ? [{ id: "line", label: `Go to line ${firstLine}`, run: () => props.onOpenFile?.(firstLine) }] : []),
     ...(canOpen ? [{ id: "open", label: "Open file", run: () => props.onOpenFile?.() }] : []),
   ];
   return (
@@ -88,17 +85,6 @@ export const DiffPanel = memo(function DiffPanel(props: {
         <span className="flex shrink-0 items-center gap-1 @max-[480px]/diff:hidden">
           <IconButton icon={ChevronUp} label="Previous file" shortcut="Alt+[" disabled={!props.onPrev} onClick={() => props.onPrev?.()} />
           <IconButton icon={ChevronDown} label="Next file" shortcut="Alt+]" disabled={!props.onNext} onClick={() => props.onNext?.()} />
-          <span className="contents @max-[760px]/diff:hidden">
-            <Button variant="quiet" size="sm" pressed={props.ignoreWhitespace} title="Hide changes that are only whitespace" onClick={props.onToggleWhitespace}>
-              Ignore whitespace
-            </Button>
-          </span>
-          <span className="hidden @max-[760px]/diff:contents">
-            <IconButton icon={Pilcrow} label="Ignore whitespace" pressed={props.ignoreWhitespace} onClick={props.onToggleWhitespace} />
-          </span>
-          {props.onOpenFile && file.kind !== "deleted" && firstLine !== null && (
-            <IconButton icon={CornerDownRight} label={`Go to line ${firstLine}`} onClick={() => props.onOpenFile?.(firstLine)} />
-          )}
           {props.onOpenFile && file.kind !== "deleted" && <IconButton icon={ExternalLink} label="Open file" onClick={() => props.onOpenFile?.()} />}
           {props.onToggleKept && !reverted && (
             <>
@@ -172,7 +158,6 @@ export const DiffPanel = memo(function DiffPanel(props: {
             ignoreWhitespace={props.ignoreWhitespace}
             flashKey={props.flash}
             commented={props.commented}
-            onFirstLine={setFirstLine}
             {...(props.onOpenFile && file.kind !== "deleted" ? { onGoToLine: (line: number) => props.onOpenFile?.(line) } : {})}
             {...(props.onAddComment ? { onAddComment: props.onAddComment } : {})}
           />

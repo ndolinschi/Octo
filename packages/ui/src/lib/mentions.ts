@@ -5,26 +5,19 @@ import { OCTO_COMMAND_NAMES } from "./slash";
  * same characters, transparent), so only the spans' positions matter and nothing here changes metrics.
  */
 
-export type HighlightKind = "mention" | "command" | "md-heading" | "md-tag" | "md-code" | "md-quote" | "md-list" | "md-link" | "md-strong" | "md-em";
+export type HighlightKind = "mention" | "command" | "md-heading" | "md-tag";
 
 export type Span = { kind: "text" | HighlightKind; text: string };
 
 const TRAILING = /[.,;:!?)\]}'"]+$/;
 const TOKEN = /(^|\s)([@/])([^\s]+)/g;
-const FENCE = /^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:\n[ \t]{0,3}\1[ \t]*(?=\n|$)|$)/gm;
-const INLINE_CODE = /`[^`\n]+`/g;
 const HEADING = /^[ \t]{0,3}#{1,6}(?:[ \t]+[^\n]*)?$/gm;
-const QUOTE = /^[ \t]{0,3}((?:>[ \t]?)+)/gm;
-const LIST = /^[ \t]{0,3}([-*+]|\d{1,9}[.)])(?=[ \t])/gm;
-const LINK = /\[[^\]\n]+\]\([^\s)\n]+\)/g;
-const TAG = /(^|\s)(#[A-Za-z_][A-Za-z0-9_-]*)/g;
-const STRONG = /(\*\*[^*\n]+?\*\*|__[^_\n]+?__|~~[^~\n]+?~~)/g;
-const EM = /(^|[^\w*])(\*[^\s*](?:[^*\n]*?[^\s*])?\*)(?!\*)/g;
+const HTML_TAG = /<\/?[A-Za-z][A-Za-z0-9:_-]*(?:\s+[^<>]*)?\/?>/g;
 
 /**
  * `@path` (needs a `/`, a file extension, or membership in `options.knownFiles` so a handle like `@maya` stays plain),
- * a known `/command` at the start of the text, plus metric-safe Markdown syntax (`#` headings, `#tags`, code, quotes,
- * lists, links, and emphasis). Returned spans always concatenate back to `text` character-for-character.
+ * a known `/command` at the start of the text, plus metric-safe `#`/`###` headings and HTML/XML `<tags>`.
+ * Returned spans always concatenate back to `text` character-for-character.
  */
 export function composerSpans(
   text: string,
@@ -57,9 +50,6 @@ export function composerSpans(
     }
   };
 
-  for (const m of text.matchAll(FENCE)) claim(m.index, m.index + m[0].length, "md-code");
-  for (const m of text.matchAll(INLINE_CODE)) claim(m.index, m.index + m[0].length, "md-code");
-
   for (const m of text.matchAll(TOKEN)) {
     const lead = m[1] ?? "";
     const sigil = m[2];
@@ -73,31 +63,12 @@ export function composerSpans(
     }
   }
 
+  for (const m of text.matchAll(HTML_TAG)) {
+    claim(m.index, m.index + m[0].length, "md-tag");
+  }
   for (const m of text.matchAll(HEADING)) {
     const lead = m[0].length - m[0].trimStart().length;
     claimOpen(m.index + lead, m.index + m[0].length, "md-heading");
-  }
-  for (const m of text.matchAll(QUOTE)) {
-    const lead = m[0].length - m[0].trimStart().length;
-    const len = (m[1] ?? "").length;
-    claim(m.index + lead, m.index + lead + len, "md-quote");
-  }
-  for (const m of text.matchAll(LIST)) {
-    const lead = m[0].length - m[0].trimStart().length;
-    const len = (m[1] ?? "").length;
-    claim(m.index + lead, m.index + lead + len, "md-list");
-  }
-  for (const m of text.matchAll(LINK)) claim(m.index, m.index + m[0].length, "md-link");
-  for (const m of text.matchAll(TAG)) {
-    const lead = m[1] ?? "";
-    const tag = m[2] ?? "";
-    claim(m.index + lead.length, m.index + lead.length + tag.length, "md-tag");
-  }
-  for (const m of text.matchAll(STRONG)) claim(m.index, m.index + m[0].length, "md-strong");
-  for (const m of text.matchAll(EM)) {
-    const lead = m[1] ?? "";
-    const em = m[2] ?? "";
-    claim(m.index + lead.length, m.index + lead.length + em.length, "md-em");
   }
 
   if (marks.length === 0) return [{ kind: "text", text }];

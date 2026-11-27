@@ -3,13 +3,20 @@ import { useEffect, useRef, useState } from "react";
 import type { ReviewComment, ReviewFinding, ReviewFindingDecision } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { commentWhere } from "../../lib/review/position";
+import { numberCodec, PREFS, usePersistentState } from "../../lib/storage";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { KeyHint } from "../primitives/KeyHint";
+import { SidebarResizeHandle } from "../primitives/ResizeHandle";
 import { TextField } from "../primitives/TextField";
 import { ViewTabs } from "../primitives/ViewTabs";
 
 type Tab = "comments" | "findings";
+
+const PENDING_MIN = 280;
+const PENDING_MAX = 720;
+const PENDING_DEFAULT = 400;
+const PENDING_WIDTH_CODEC = numberCodec(PENDING_MIN, PENDING_MAX, PENDING_DEFAULT);
 
 /** R5 (polish step 6b): pending comments and findings are list rows split by hairlines, not outlined cards on the overlay. */
 const PENDING_ROW = "flex flex-col gap-2 border-t border-line py-3 first:border-t-0 first:pt-1";
@@ -38,6 +45,7 @@ export function PendingPanel(props: {
   onClose(): void;
 }) {
   const [tab, setTab] = useState<Tab>(props.comments.length === 0 && props.findings.length > 0 ? "findings" : "comments");
+  const [width, setWidth] = usePersistentState(PREFS.reviewPendingWidth, PENDING_WIDTH_CODEC);
   const box = useRef<HTMLElement>(null);
   const { onClose } = props;
   // Closing returns focus to the control that opened the panel (when nothing else took it, like the comment box does).
@@ -70,8 +78,19 @@ export function PendingPanel(props: {
       tabIndex={-1}
       role="dialog"
       aria-label="Pending comments and findings"
-      className="absolute inset-y-0 right-0 z-20 flex w-[400px] max-w-full flex-col border-l border-panel-edge bg-overlay shadow-pop outline-none"
+      style={{ width }}
+      className="absolute inset-y-0 right-0 z-20 flex max-w-full flex-col border-l border-panel-edge bg-overlay shadow-pop outline-none"
     >
+      <SidebarResizeHandle
+        target={box}
+        edge="left"
+        label="Resize pending panel"
+        width={width}
+        min={PENDING_MIN}
+        max={PENDING_MAX}
+        defaultWidth={PENDING_DEFAULT}
+        onCommit={setWidth}
+      />
       <header className="flex h-ctl-lg shrink-0 items-center gap-2 pr-2 pl-4 shadow-[inset_0_-1px_0_var(--octo-line)]">
         <h2 className="text-heading text-fg">Pending</h2>
         <span className="min-w-0 truncate text-xs text-fg-3">Posted only when you submit</span>

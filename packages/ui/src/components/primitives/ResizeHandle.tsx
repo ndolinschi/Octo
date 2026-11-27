@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
+import { cn } from "../../lib/cn";
 
 /**
  * A vertical resize handle (`role="separator"`): drag, or ←/→ (±16px, Shift ±64); double-click resets. The pointer and
@@ -100,5 +101,57 @@ export function ResizeHandle(props: {
     >
       {props.children}
     </div>
+  );
+}
+
+/**
+ * Shared edge handle for resizable sidebars (Review file list, Pending panel, Changes file list): previews width
+ * directly on `target` via `onFrame` (zero re-renders during drag), commits on drag end, supports ←/→ keyboard steps
+ * and double-click reset to `defaultWidth`.
+ */
+export function SidebarResizeHandle(props: {
+  target: RefObject<HTMLElement | null>;
+  edge: "left" | "right";
+  label: string;
+  width: number;
+  min: number;
+  max: number;
+  defaultWidth: number;
+  onCommit(width: number): void;
+}) {
+  const start = useRef(props.width);
+  const next = useRef(props.width);
+  const sign = props.edge === "right" ? 1 : -1;
+  const clamp = (w: number) => Math.max(props.min, Math.min(props.max, Math.round(w)));
+  return (
+    <ResizeHandle
+      label={props.label}
+      title="Drag to resize; double-click to reset"
+      value={props.width}
+      min={props.min}
+      max={props.max}
+      onDragStart={() => {
+        start.current = props.width;
+        next.current = props.width;
+      }}
+      onDrag={(_dx, total) => {
+        next.current = clamp(start.current + sign * total);
+      }}
+      onFrame={() => {
+        if (props.target.current) props.target.current.style.width = `${next.current}px`;
+      }}
+      onDragEnd={() => props.onCommit(next.current)}
+      onKey={(dx) => props.onCommit(clamp(props.width + sign * dx))}
+      onReset={() => props.onCommit(props.defaultWidth)}
+      className={cn(
+        "group/handle absolute inset-y-0 z-10 w-2 cursor-col-resize touch-none focus-visible:shadow-none",
+        props.edge === "right" ? "-right-1" : "-left-1",
+      )}
+    >
+      <span
+        aria-hidden
+        className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 transition-[background-color] duration-fast group-hover/handle:bg-line-strong group-focus-visible/handle:bg-fg-3 group-active/handle:bg-fg-3"
+      />
+    </ResizeHandle>
   );
 }

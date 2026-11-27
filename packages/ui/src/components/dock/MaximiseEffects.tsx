@@ -16,16 +16,26 @@ export default function MaximiseEffects() {
   const shell = useShell();
   const shellRef = useLatest(shell);
 
-  // Closes the sidebar once, from what the render shows (not from a ref that is a render behind: React's development
-  // double-run of effects would toggle it twice), and gives it back when this unmounts.
+  // Closes the sidebar once on mount (tracked by `didInit` so manually re-opening the sidebar later never slams it back
+  // shut), and gives it back when this unmounts. In a single-group layout, maximising only hides the sidebar, so manually
+  // opening the sidebar exits maximise cleanly instead of leaving the full-screen button stuck in its active state.
+  const didInit = useRef(false);
   const closedByUs = useRef(false);
   const open = shell.sidebarOpen;
   useEffect(() => {
-    if (open && !closedByUs.current) {
-      closedByUs.current = true;
-      shellRef.current.toggleSidebar();
+    if (!didInit.current) {
+      didInit.current = true;
+      if (open) {
+        closedByUs.current = true;
+        shellRef.current.toggleSidebar();
+      }
+      return;
     }
-  }, [open, shellRef]);
+    if (open && wsRef.current.layout.groups.length === 1) {
+      closedByUs.current = false;
+      wsRef.current.toggleMaximise(focusedGroup(wsRef.current.layout).active, false);
+    }
+  }, [open, shellRef, wsRef]);
   useEffect(
     () => () => {
       if (closedByUs.current && !shellRef.current.sidebarOpen) {

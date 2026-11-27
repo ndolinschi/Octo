@@ -8,12 +8,6 @@ const KIND_CLASS: Record<HighlightKind, string> = {
   command: "octo-command",
   "md-heading": "octo-md-heading",
   "md-tag": "octo-md-tag",
-  "md-code": "octo-md-code",
-  "md-quote": "octo-md-quote",
-  "md-list": "octo-md-list",
-  "md-link": "octo-md-link",
-  "md-strong": "octo-md-strong",
-  "md-em": "octo-md-em",
 };
 
 /**

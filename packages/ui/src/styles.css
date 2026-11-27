@@ -1912,29 +1912,7 @@
   color: var(--octo-accent);
 }
 .octo-md-tag {
-  border-radius: var(--radius-2xs);
-  background: color-mix(in srgb, var(--octo-ok) 16%, transparent);
   color: var(--octo-ok);
-}
-.octo-md-code {
-  border-radius: var(--radius-2xs);
-  background: var(--octo-hover-in-card);
-  color: var(--octo-warn);
-}
-.octo-md-quote {
-  color: var(--octo-fg-3);
-}
-.octo-md-list {
-  color: var(--octo-accent);
-}
-.octo-md-link {
-  color: var(--octo-link);
-}
-.octo-md-strong {
-  color: var(--octo-fg);
-}
-.octo-md-em {
-  color: var(--octo-fg-2);
 }
 [data-column] [data-prompt] {
   margin-inline: -12px;

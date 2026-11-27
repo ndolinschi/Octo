@@ -56,6 +56,8 @@ export const PREFS = {
   scrollSpots: (projectId: string) => key(`scroll.${projectId}`),
   /** File tree compact folders (Settings → Editor, decision 98): `"on" | "off"` as plain text. */
   compactFolders: key("compactFolders"),
+  /** File tree icon theme (Settings → Editor): `"vscode" | "minimal"` as plain text. */
+  fileIcons: key("fileIcons"),
   /** Transcript detail level (`Ctrl+O` / Project actions): `"normal" | "thinking" | "verbose"`. */
   transcriptView: key("transcriptView"),
   /** Desktop notifications when a session finishes, fails, or needs input while unfocused (B8): `"on" | "off"`. */
@@ -64,6 +66,16 @@ export const PREFS = {
   editorAutoSave: key("editorAutoSave"),
   /** Where new tabs open (Settings → General): `"same" | "side"` as plain text. */
   newTabTarget: key("newTabTarget"),
+  /** Review file list sidebar width in px (180–560), set by dragging its edge. */
+  reviewFilesWidth: key("reviewFilesWidth"),
+  /** Review pending panel sidebar width in px (280–720), set by dragging its edge. */
+  reviewPendingWidth: key("reviewPendingWidth"),
+  /** Review diff layout preference: `"auto" | "split" | "unified"` as plain text. */
+  reviewDiffLayout: key("reviewDiffLayout"),
+  /** Changes file list sidebar width in px (180–560), set by dragging its edge. */
+  changesFilesWidth: key("changesFilesWidth"),
+  /** Pinned/starred project ids shown at the top of the project selector and sidebar: JSON string[]. */
+  pinnedProjects: key("pinnedProjects"),
 } as const;
 
 /** How a value is stored. `parse` never throws: missing, malformed or foreign text becomes a valid (default) value. */

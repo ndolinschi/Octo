@@ -51,7 +51,7 @@ type CodeValue = {
   startIntel(create: (options: Omit<LspManagerOptions, "monaco">) => IntelClient): void;
   dirs: Record<string, DirState>;
   /** Loads directories breadth-first (up to the limits) so every loaded file can be searched. */
-  indexFiles(): void;
+  indexFiles(force?: boolean): void;
   fileIndex: FileIndex;
   /** Every file in the loaded directories, folder by folder, paths sorted. */
   loadedFiles: { folder: string; path: string }[];
@@ -159,64 +159,73 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
 
   const [fileIndex, setFileIndex] = useState<FileIndex>({ status: "idle", partial: false });
   const indexing = useRef(false);
-  const indexFiles = useCallback(() => {
-    if (indexing.current) return;
-    indexing.current = true;
-    setFileIndex({ status: "loading", partial: false });
-    void (async () => {
-      const CONCURRENCY = 6;
-      let wave: [string, string][] = (foldersRef.current ?? []).map((f) => [f.label, ""]);
-      let seenDirs = 0;
-      let seenEntries = 0;
-      let partial = false;
-      while (wave.length > 0 && !partial) {
-        const nextWave: [string, string][] = [];
-        const batchPatch: Record<string, DirState> = {};
-        for (let i = 0; i < wave.length && !partial; i += CONCURRENCY) {
-          const slice: [string, string][] = [];
-          while (slice.length < CONCURRENCY && i + slice.length < wave.length) {
-            if (seenDirs >= INDEX_MAX_DIRS || seenEntries >= INDEX_MAX_ENTRIES) {
-              partial = true;
-              break;
-            }
-            slice.push(wave[i + slice.length]!);
-            seenDirs += 1;
-          }
-          const results = await Promise.all(
-            slice.map(async ([folder, path]) => {
-              const key = fileKey(folder, path);
-              const known = dirsRef.current[key];
-              if (known?.status === "ready") return { folder, key, entries: known.entries, fetched: false };
-              try {
-                const entries = await bridge.listFiles(projectId, folder, path);
-                return { folder, key, entries, fetched: true };
-              } catch {
-                return { folder, key, entries: null as FileEntry[] | null, fetched: false };
+  const indexedKey = useRef<string | null>(null);
+  const foldersKey = useMemo(() => `${projectId}\0${(folders ?? []).map((f) => `${f.label}:${f.path}`).join("\0")}`, [projectId, folders]);
+  const foldersKeyRef = useLatest(foldersKey);
+  const indexFiles = useCallback(
+    (force = false) => {
+      if (indexing.current) return;
+      if (!force && indexedKey.current === foldersKeyRef.current) return;
+      const runKey = foldersKeyRef.current;
+      indexing.current = true;
+      setFileIndex({ status: "loading", partial: false });
+      void (async () => {
+        const CONCURRENCY = 6;
+        let wave: [string, string][] = (foldersRef.current ?? []).map((f) => [f.label, ""]);
+        let seenDirs = 0;
+        let seenEntries = 0;
+        let partial = false;
+        while (wave.length > 0 && !partial) {
+          const nextWave: [string, string][] = [];
+          const batchPatch: Record<string, DirState> = {};
+          for (let i = 0; i < wave.length && !partial; i += CONCURRENCY) {
+            const slice: [string, string][] = [];
+            while (slice.length < CONCURRENCY && i + slice.length < wave.length) {
+              if (seenDirs >= INDEX_MAX_DIRS || seenEntries >= INDEX_MAX_ENTRIES) {
+                partial = true;
+                break;
               }
-            }),
-          );
-          for (const r of results) {
-            if (!r.entries) continue;
-            if (r.fetched) {
-              const ready: DirState = { status: "ready", entries: r.entries, error: null };
-              batchPatch[r.key] = ready;
+              slice.push(wave[i + slice.length]!);
+              seenDirs += 1;
             }
-            seenEntries += r.entries.length;
-            if (seenEntries >= INDEX_MAX_ENTRIES) partial = true;
-            for (const e of r.entries) if (e.type === "dir") nextWave.push([r.folder, e.path]);
+            const results = await Promise.all(
+              slice.map(async ([folder, path]) => {
+                const key = fileKey(folder, path);
+                const known = dirsRef.current[key];
+                if (known?.status === "ready") return { folder, key, entries: known.entries, fetched: false };
+                try {
+                  const entries = await bridge.listFiles(projectId, folder, path);
+                  return { folder, key, entries, fetched: true };
+                } catch {
+                  return { folder, key, entries: null as FileEntry[] | null, fetched: false };
+                }
+              }),
+            );
+            for (const r of results) {
+              if (!r.entries) continue;
+              if (r.fetched) {
+                const ready: DirState = { status: "ready", entries: r.entries, error: null };
+                batchPatch[r.key] = ready;
+              }
+              seenEntries += r.entries.length;
+              if (seenEntries >= INDEX_MAX_ENTRIES) partial = true;
+              for (const e of r.entries) if (e.type === "dir") nextWave.push([r.folder, e.path]);
+            }
           }
+          if (Object.keys(batchPatch).length > 0) {
+            dirsRef.current = { ...dirsRef.current, ...batchPatch };
+            setDirs((d) => ({ ...d, ...batchPatch }));
+          }
+          wave = nextWave;
         }
-        if (Object.keys(batchPatch).length > 0) {
-          dirsRef.current = { ...dirsRef.current, ...batchPatch };
-          setDirs((d) => ({ ...d, ...batchPatch }));
-        }
-        wave = nextWave;
-      }
-      setFileIndex({ status: "done", partial });
-      // A later call (folders changed, files added) walks again, reusing what is loaded.
-      indexing.current = false;
-    })();
-  }, [bridge, projectId, dirsRef, foldersRef]);
+        indexedKey.current = runKey;
+        setFileIndex({ status: "done", partial });
+        // A later forced call (or folder change) walks again, reusing what is loaded.
+        indexing.current = false;
+      })();
+    },
+    [bridge, projectId, dirsRef, foldersRef, foldersKeyRef],
+  );
 
   const loadedFiles = useMemo(() => {
     const out: { folder: string; path: string }[] = [];

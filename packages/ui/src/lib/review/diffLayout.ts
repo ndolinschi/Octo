@@ -15,3 +15,9 @@ export function reviewDiffLayout(prefer: ReviewDiffPrefer, paneWidth: number | n
   if (prefer === "unified" || paneWidth === null) return "unified";
   return paneWidth >= SIDE_MIN_PX * 2 + SPLIT_OVERHEAD_PX ? "split" : "unified";
 }
+
+/** Resolves the active diff layout: an explicit user choice ("unified" | "split") wins; "auto" follows config + width. */
+export function resolveReviewDiffLayout(userChoice: ReviewDiffPrefer, configPrefer: ReviewDiffPrefer, paneWidth: number | null): ReviewDiffLayout {
+  if (userChoice === "unified" || userChoice === "split") return userChoice;
+  return reviewDiffLayout(configPrefer, paneWidth);
+}

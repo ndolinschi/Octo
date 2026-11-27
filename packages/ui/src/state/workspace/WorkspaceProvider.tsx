@@ -46,6 +46,7 @@ import { useTabKeys } from "./useTabKeys";
 import { dockFits, dockNeeds, groupFloors } from "./floors";
 import { TREE_MIN, useFileView } from "../fileView";
 import { maximisedGroup, toggleMaximise } from "./maximise";
+import { closeTabPicker, openTabPicker } from "./pickerStore";
 import { domId, tabButton } from "./ids";
 import { DEFAULT_USAGE_VIEW } from "../../lib/usageView";
 import { type FileKey, keyFolder } from "../../lib/files";
@@ -116,8 +117,7 @@ export type WorkspaceValue = {
   focusChat(): void;
   openAgent(agentId: string, options?: { otherSide?: boolean }): void;
   openTool(tool: ToolTab): void;
-  /** The "+" tab picker (decision 25): open in `group`'s strip (default: the focused group), with a counter so a repeat re-opens. */
-  picker: { group: string; n: number } | null;
+  /** The "+" tab picker (decision 25): open in `group`'s strip (default: the focused group); state lives in `pickerStore`. */
   openPicker(group?: string): void;
   closePicker(): void;
   /** Opens a file's tab: in `where.group` (in place of `where.replace`) when given, else in the side group. */
@@ -278,7 +278,6 @@ export function WorkspaceProvider({
   const [lastConversation, setLastConversation] = useState<TabId>(L.CHAT);
   const [focusRequest, setFocusRequest] = useState<{ tab: TabId; n: number } | null>(null);
   const [closing, setClosing] = useState<Closing | null>(null);
-  const [picker, setPicker] = useState<{ group: string; n: number } | null>(null);
   const [memory] = useState(() => new TabMemory());
   const code = useRef<CodeLink | null>(null);
   const mru = useRef<TabId[]>([]);
@@ -291,7 +290,17 @@ export function WorkspaceProvider({
   const maxRef = useRef<string | null>(null);
   const [runStatuses, setRunStatuses] = useState<WorkspaceValue["runStatuses"]>({});
 
-  const narrow = !docked || !dockFits(layout.groups, dockWidth);
+  useEffect(() => () => closeTabPicker(projectId), [projectId]);
+
+  // Hidden step-aside groups must not force narrow mode while a group is maximised (e.g. when opening the left sidebar).
+  const maxActive = maxGroup !== null && layout.focused === maxGroup && layout.groups.some((g) => g.id === maxGroup);
+  const narrow = !docked || (!maxActive && !dockFits(layout.groups, dockWidth));
+  useEffect(() => {
+    if (!docked && maxRef.current !== null) {
+      maxRef.current = null;
+      setMaxGroup(null);
+    }
+  }, [docked]);
   const { column: treeColumn, focusTree } = useFileView();
   const floors = useMemo(
     () =>
@@ -579,14 +588,13 @@ export function WorkspaceProvider({
       },
       memory,
       closing,
-      picker,
       openPicker: (group) => {
         const current = layoutRef.current;
         // Narrow: only the active group renders the merged strip, so anchor the picker there.
         const target = narrowRef.current ? L.focusedGroup(current).id : (group ?? current.focused);
-        setPicker((p) => ({ group: target, n: (p?.n ?? 0) + 1 }));
+        openTabPicker(projectId, target);
       },
-      closePicker: () => setPicker(null),
+      closePicker: () => closeTabPicker(projectId),
       openSettings: onSettings,
       isVisible,
       setDockWidth,
@@ -885,7 +893,6 @@ export function WorkspaceProvider({
     runStatuses,
     memory,
     closing,
-    picker,
     closedTabs,
     onSettings,
     commit,
