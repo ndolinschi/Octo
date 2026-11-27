@@ -43,10 +43,12 @@ var (
 // limitFields is what an agent error says about a limit, read from its fields
 // and its structured data.
 type limitFields struct {
-	kind     string
-	codes    []string
-	status   int
-	message  string
+	kind   string
+	codes  []string
+	status int
+	// messages: the error's own message, then any "message" of its data
+	// (a generic "Request failed" can carry the limit text in data.error.message).
+	messages []string
 	resetsAt *time.Time
 }
 
@@ -57,7 +59,7 @@ func rpcLimit(ag plugins.Agent, err error) (*limitError, bool) {
 	if !errors.As(err, &rpcErr) {
 		return nil, false
 	}
-	f := limitFields{message: rpcErr.Message}
+	f := limitFields{messages: []string{rpcErr.Message}}
 	f.read(rpcErr.Data)
 	return f.classify(ag)
 }
@@ -75,7 +77,7 @@ func limitFailure(ag plugins.Agent, hit *limitError, details string) *usererr.Er
 
 // agentErrorLimit is rpcLimit for a mid-turn "agent_error" update.
 func agentErrorLimit(ag plugins.Agent, ae acp.AgentError) (*limitError, bool) {
-	f := limitFields{message: ae.Message, status: ae.StatusCode, codes: []string{ae.Code, ae.Name}}
+	f := limitFields{messages: []string{ae.Message}, status: ae.StatusCode, codes: []string{ae.Code, ae.Name}}
 	f.read(ae.Data)
 	return f.classify(ag)
 }
@@ -91,8 +93,10 @@ func (f limitFields) classify(ag plugins.Agent) (*limitError, bool) {
 		return hit, true
 	}
 	for _, re := range ag.LimitPatterns {
-		if f.message != "" && re.MatchString(f.message) {
-			return hit, true
+		for _, m := range f.messages {
+			if m != "" && re.MatchString(m) {
+				return hit, true
+			}
 		}
 	}
 	if f.hasCode(rateCodes) || f.status == http.StatusTooManyRequests {
@@ -133,6 +137,9 @@ func (f *limitFields) readObject(obj map[string]any, depth int) {
 	if s, ok := obj["errorKind"].(string); ok && f.kind == "" {
 		f.kind = s
 	}
+	if s, ok := obj["message"].(string); ok {
+		f.messages = append(f.messages, s)
+	}
 	for _, k := range []string{"code", "name", "status", "reason"} {
 		if s, ok := obj[k].(string); ok {
 			f.codes = append(f.codes, s)
@@ -153,7 +160,12 @@ func (f *limitFields) readObject(obj map[string]any, depth int) {
 	}
 }
 
-// parseResetsAt reads an RFC 3339 time or Unix seconds (number or digits); nil otherwise.
+// unixMilliFrom: a Unix time this large is in milliseconds (as JS CLIs write
+// Date.now()); in seconds it would be past the year 33000.
+const unixMilliFrom = 1e12
+
+// parseResetsAt reads an RFC 3339 time or a Unix time in seconds or
+// milliseconds (number or digits); nil otherwise.
 func parseResetsAt(v any) *time.Time {
 	var t time.Time
 	switch x := v.(type) {
@@ -161,12 +173,12 @@ func parseResetsAt(v any) *time.Time {
 		if x <= 0 {
 			return nil
 		}
-		t = time.Unix(int64(x), 0)
+		t = unixTime(int64(x))
 	case string:
 		if p, err := time.Parse(time.RFC3339, x); err == nil {
 			t = p
 		} else if n, err := strconv.ParseInt(x, 10, 64); err == nil && n > 0 {
-			t = time.Unix(n, 0)
+			t = unixTime(n)
 		} else {
 			return nil
 		}
@@ -175,6 +187,13 @@ func parseResetsAt(v any) *time.Time {
 	}
 	t = t.UTC()
 	return &t
+}
+
+func unixTime(n int64) time.Time {
+	if n >= unixMilliFrom {
+		return time.UnixMilli(n)
+	}
+	return time.Unix(n, 0)
 }
 
 // noteLimit passes what a run of an ACP agent showed about its usage limit to

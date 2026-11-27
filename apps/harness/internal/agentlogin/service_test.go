@@ -33,6 +33,11 @@ type fixture struct {
 
 func newFixture(t *testing.T, script string, opts agentlogin.Options) *fixture {
 	t.Helper()
+	return newFixtureWith(t, script, opts, terminal.Options{})
+}
+
+func newFixtureWith(t *testing.T, script string, opts agentlogin.Options, termOpts terminal.Options) *fixture {
+	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("uses sh")
 	}
@@ -49,7 +54,7 @@ func newFixture(t *testing.T, script string, opts agentlogin.Options) *fixture {
 	f.reg.SetAccounts(func() []plugins.Account {
 		return []plugins.Account{{Agent: "cc", ID: "work", Label: "Work", ConfigDir: f.work, Owned: true}}
 	})
-	f.mgr = terminal.NewManager(terminal.Options{})
+	f.mgr = terminal.NewManager(termOpts)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

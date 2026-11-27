@@ -47,19 +47,24 @@ export function LoginSheet(props: { provider: Provider; method?: string | undefi
   const [state, setState] = useState<AgentLoginState | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [copied, copy] = useCopy();
-  const done = useRef(false);
+  // The last login state Settings was refreshed for: a check that says something new refreshes it (a slow login's
+  // early "not_logged_in" must not stop the later "ok" from refreshing).
+  const refreshedFor = useRef<AgentLoginState | null>(null);
 
-  const finish = useCallback(() => {
-    if (done.current) return;
-    done.current = true;
-    void refreshProviders(bridge).catch(() => undefined);
-  }, [bridge]);
+  const refreshFor = useCallback(
+    (next: AgentLoginState) => {
+      if (refreshedFor.current === next) return;
+      refreshedFor.current = next;
+      void refreshProviders(bridge).catch(() => undefined);
+    },
+    [bridge],
+  );
 
   useEffect(() => {
     const container = host.current;
     const start = bridge.startAgentLogin;
     if (!start || !container) return;
-    done.current = false;
+    refreshedFor.current = null;
     setSessionCommand(null);
     let alive = true;
     let session: AgentLoginSession | null = null;
@@ -149,7 +154,7 @@ export function LoginSheet(props: { provider: Provider; method?: string | undefi
         cleanups.push(
           s.onLogin((next) => {
             setState(next);
-            finish();
+            refreshFor(next);
           }),
         );
       },
@@ -164,7 +169,7 @@ export function LoginSheet(props: { provider: Provider; method?: string | undefi
       term?.dispose();
       void session?.close().catch(() => undefined);
     };
-  }, [bridge, provider.id, method, attempt, finish]);
+  }, [bridge, provider.id, method, attempt, refreshFor]);
 
   const again = () => {
     setPhase({ kind: "starting" });
@@ -238,7 +243,9 @@ export function LoginSheet(props: { provider: Provider; method?: string | undefi
           </div>
         )}
         {state === "ok" && <Notice tone="success">Logged in to {name}.</Notice>}
-        {state === "not_logged_in" && <Notice tone="warn">Octo still sees {name} as logged out. Finish the steps in the terminal, or start again.</Notice>}
+        {state === "not_logged_in" && phase.kind === "exited" && (
+          <Notice tone="warn">Octo still sees {name} as logged out. Finish the steps in the terminal, or start again.</Notice>
+        )}
         {state === "unchecked" && (
           <Notice tone="info">Octo cannot check this login. If you finished the steps, close this and send a request to try it.</Notice>
         )}

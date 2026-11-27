@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
@@ -83,5 +84,34 @@ func TestDiscoverAgentSkillsOtherProviders(t *testing.T) {
 	agy := discoverAgentSkills("antigravity", nil, []projectstore.Folder{{Path: proj}}, home)
 	if len(agy) != 2 || agy[0].Name != "plan" || agy[1].Name != "shared" {
 		t.Fatalf("antigravity = %+v", agy)
+	}
+}
+
+// An account's own CLI home replaces the default login's skill folders
+// (CLAUDE_CONFIG_DIR for Claude Code, GEMINI_CLI_HOME for Gemini); the shared
+// ~/.agents folder stays.
+func TestHomeSkillSourcesOfAnAccount(t *testing.T) {
+	home, acct := "/home/u", "/accts/work"
+	for _, tc := range []struct {
+		name    string
+		id      string
+		account map[string]string
+		want    []string
+	}{
+		{"claude default", "claude-code", nil, []string{"/home/u/.claude/skills", "/home/u/.claude/commands", "/home/u/.agents/skills"}},
+		{"claude account", "claude-code", map[string]string{"CLAUDE_CONFIG_DIR": acct}, []string{"/accts/work/skills", "/accts/work/commands", "/home/u/.agents/skills"}},
+		{"claude account without the variable", "claude-code", map[string]string{}, []string{"/home/u/.claude/skills", "/home/u/.claude/commands", "/home/u/.agents/skills"}},
+		{"gemini default", "gemini", nil, []string{"/home/u/.gemini/skills", "/home/u/.agents/skills"}},
+		{"gemini account", "gemini", map[string]string{"GEMINI_CLI_HOME": acct}, []string{"/accts/work/.gemini/skills", "/home/u/.agents/skills"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got []string
+			for _, src := range homeSkillSources(tc.id, home, tc.account) {
+				got = append(got, filepath.ToSlash(src.dir))
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("dirs = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

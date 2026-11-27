@@ -89,9 +89,16 @@ type PtyCore<C extends PtyCreated> = {
 
 /**
  * What terminals and logins share: POST `collectionPath`, then the session's SSE `/events` (`output`, `exit`),
- * `/input`, `/resize` and DELETE. `parse` validates the start response.
+ * `/input`, `/resize` and DELETE. `parse` validates the start response. `keepStreamAfterExit` (logins) leaves the
+ * stream open after `exit`, because the server sends the last `login` check after it and then ends the stream.
  */
-async function openPtySession<C extends PtyCreated>(t: LspTransport, collectionPath: string, body: unknown, parse: (body: unknown) => C): Promise<PtyCore<C>> {
+async function openPtySession<C extends PtyCreated>(
+  t: LspTransport,
+  collectionPath: string,
+  body: unknown,
+  parse: (body: unknown) => C,
+  keepStreamAfterExit = false,
+): Promise<PtyCore<C>> {
   const created = parse(await t.request("POST", collectionPath, body));
   const sessionPath = `${collectionPath}/${encodeURIComponent(created.sessionId)}`;
 
@@ -116,8 +123,10 @@ async function openPtySession<C extends PtyCreated>(t: LspTransport, collectionP
     exited = info;
     buffering = false;
     queue = [];
-    source.onerror = null;
-    source.close();
+    if (!keepStreamAfterExit) {
+      source.onerror = null;
+      source.close();
+    }
     exitListeners.forEach((cb) => cb(info));
   };
 
@@ -148,7 +157,14 @@ async function openPtySession<C extends PtyCreated>(t: LspTransport, collectionP
   });
 
   source.onerror = () => {
-    if (source.readyState === 2 && !closing && !exited) {
+    // After `exit` the server's end of the stream is the end of the session: EventSource would reconnect on that
+    // EOF (readyState 0), so close it here.
+    if (exited) {
+      source.onerror = null;
+      source.close();
+      return;
+    }
+    if (source.readyState === 2 && !closing) {
       emitExit({ code: -1, reason: "stream_closed" });
     }
   };
@@ -200,7 +216,7 @@ export async function openTerminalSession(t: LspTransport, projectPath: string, 
 
 /** `POST /v1/providers/{id}/login`: a PTY that logs an agent account in; `login` frames carry the recheck's result. */
 export async function openLoginSession(t: LspTransport, providerId: string, options?: AgentLoginOptions): Promise<AgentLoginSession> {
-  const { created, session, source } = await openPtySession(t, `/v1/providers/${encodeURIComponent(providerId)}/login`, options ?? {}, parseLoginCreated);
+  const { created, session, source } = await openPtySession(t, `/v1/providers/${encodeURIComponent(providerId)}/login`, options ?? {}, parseLoginCreated, true);
   const loginListeners = new Set<(state: AgentLoginState) => void>();
   let last: AgentLoginState | undefined;
   source.addEventListener("login", (ev) => {

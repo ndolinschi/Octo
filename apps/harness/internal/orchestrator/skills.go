@@ -131,9 +131,10 @@ func projectSkillSources(id, root string) []skillSource {
 func homeSkillSources(id, home string, account map[string]string) []skillSource {
 	switch id {
 	case "claude-code", "claude":
+		claudeDir := accountHome(account, "CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
 		return []skillSource{
-			{dir: filepath.Join(home, ".claude", "skills")},
-			{dir: filepath.Join(home, ".claude", "commands"), commands: true},
+			{dir: filepath.Join(claudeDir, "skills")},
+			{dir: filepath.Join(claudeDir, "commands"), commands: true},
 			{dir: filepath.Join(home, ".agents", "skills")},
 		}
 	case "codex":
@@ -172,8 +173,9 @@ func homeSkillSources(id, home string, account map[string]string) []skillSource 
 			{dir: filepath.Join(home, ".agents", "skills")},
 		}
 	case "gemini":
+		// GEMINI_CLI_HOME stands in for the home folder: Gemini CLI keeps .gemini under it.
 		return []skillSource{
-			{dir: filepath.Join(home, ".gemini", "skills")},
+			{dir: filepath.Join(accountHome(account, "GEMINI_CLI_HOME", home), ".gemini", "skills")},
 			{dir: filepath.Join(home, ".agents", "skills")},
 		}
 	case "copilot":
@@ -366,4 +368,13 @@ func firstBodyLine(body string) string {
 		}
 	}
 	return ""
+}
+
+// accountHome is the folder an account's env names in key, else fallback (the
+// default login's, also when the account has none).
+func accountHome(account map[string]string, key, fallback string) string {
+	if d := strings.TrimSpace(account[key]); d != "" {
+		return d
+	}
+	return fallback
 }

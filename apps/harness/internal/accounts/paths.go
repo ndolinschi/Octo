@@ -33,8 +33,9 @@ func within(p, dir string) bool {
 // deletable reports whether Octo may delete the folder of account a: Octo created it (Owned), the path the record names is a plain folder
 // (not a symlink, so nothing it points at is touched), and that folder is not
 // a place a hand-edited record could make dangerous: the file system root, the
-// home folder or one holding it, the data folder or one holding it, the
-// agent's default folder (defaultDir), or the folder of another account.
+// home folder or one holding it (anything, when the home folder is unknown),
+// the data folder or one holding it, the agent's default folder (defaultDir)
+// or one holding it, or the folder of another account.
 // Caller holds s.mu.
 func (s *Store) deletable(defaultDir string, a plugins.Account) bool {
 	if !a.Owned {
@@ -51,13 +52,14 @@ func (s *Store) deletable(defaultDir string, a plugins.Account) bool {
 	if filepath.Dir(real) == real {
 		return false
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" && within(realPath(home), real) {
+	// An unknown home folder fails closed: nothing can be shown to be outside it.
+	if home, err := os.UserHomeDir(); err != nil || home == "" || within(realPath(home), real) {
 		return false
 	}
 	if s.path != "" && within(realPath(filepath.Dir(s.path)), real) {
 		return false
 	}
-	if defaultDir != "" && real == realPath(plugins.ExpandAccountDir(defaultDir)) {
+	if defaultDir != "" && within(realPath(plugins.ExpandAccountDir(defaultDir)), real) {
 		return false
 	}
 	for _, o := range s.list {

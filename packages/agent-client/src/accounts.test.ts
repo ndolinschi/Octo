@@ -65,6 +65,7 @@ class FakeEventSource implements EventSourceLike {
   onopen: ((ev: unknown) => void) | null = null;
   onerror: ((ev: unknown) => void) | null = null;
   closed = false;
+  readyState = 1;
   private listeners = new Map<string, Set<(ev: { data?: unknown }) => void>>();
   constructor(readonly url: string) {
     FakeEventSource.last = this;
@@ -75,12 +76,61 @@ class FakeEventSource implements EventSourceLike {
     this.listeners.set(type, set);
   }
   emit(type: string, data: unknown): void {
+    if (this.closed) return;
     for (const cb of this.listeners.get(type) ?? []) cb({ data: JSON.stringify(data) });
   }
   close(): void {
     this.closed = true;
+    this.readyState = 2;
+  }
+  /** The server ended the stream: a real EventSource goes to readyState 0 and would reconnect. */
+  serverEnd(): void {
+    if (this.closed) return;
+    this.readyState = 0;
+    this.onerror?.({});
   }
 }
+
+function loginFetch(seen: Seen[]): FetchLike {
+  return async (url, init) => {
+    seen.push({ method: init?.method, url, body: init?.body === undefined ? undefined : JSON.parse(init.body) });
+    if (init?.method === "POST" && url.endsWith("/login")) {
+      return { ok: true, status: 201, text: async () => JSON.stringify({ session_id: "lg_1", command: "claude auth login", pid: 77 }) };
+    }
+    return { ok: true, status: 204, text: async () => "" };
+  };
+}
+
+test("a login that exits before its check is ok still delivers the last login frame, then closes on server EOF", async () => {
+  const bridge = createHttpBridge({ baseUrl: "http://h:1", fetch: loginFetch([]), EventSource: FakeEventSource });
+  const login = await bridge.startAgentLogin("claude-code");
+  const es = FakeEventSource.last;
+  assert.ok(es);
+  const states: AgentLoginState[] = [];
+  const exits: string[] = [];
+  login.onLogin((s) => states.push(s));
+  login.onExit((i) => exits.push(i.reason ?? ""));
+  es.emit("exit", { code: 0 });
+  assert.deepEqual(exits, [""]);
+  assert.equal(es.closed, false, "the stream stays open for the post-exit check");
+  es.emit("login", { state: "ok" });
+  assert.deepEqual(states, ["ok"]);
+  es.serverEnd();
+  assert.equal(es.closed, true, "no reconnect after the server ended the stream");
+  assert.deepEqual(exits, [""], "server EOF after exit is not a second exit");
+});
+
+test("a login stream that ends before exit reports stream_closed", async () => {
+  const bridge = createHttpBridge({ baseUrl: "http://h:1", fetch: loginFetch([]), EventSource: FakeEventSource });
+  const login = await bridge.startAgentLogin("claude-code");
+  const es = FakeEventSource.last;
+  assert.ok(es);
+  const exits: string[] = [];
+  login.onExit((i) => exits.push(i.reason ?? ""));
+  es.readyState = 2;
+  es.onerror?.({});
+  assert.deepEqual(exits, ["stream_closed"]);
+});
 
 test("startAgentLogin opens the login PTY and delivers output, login and exit frames", async () => {
   const seen: Seen[] = [];

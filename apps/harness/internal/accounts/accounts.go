@@ -156,6 +156,10 @@ func (s *Store) Add(base plugins.Agent, in plugins.Account) (plugins.Account, er
 			return plugins.Account{}, ErrTaken
 		}
 	}
+	// The same rule as Rename: one label per login of the agent, ignoring case.
+	if s.labelTaken(in.Agent, in.ID, in.Label) {
+		return plugins.Account{}, ErrTaken
+	}
 	// A folder is one login, whichever agent and whatever spelling (a
 	// trailing slash, a symlink) names it.
 	if slices.ContainsFunc(s.list, func(a plugins.Account) bool { return realPath(plugins.ExpandAccountDir(a.ConfigDir)) == real }) {
@@ -165,7 +169,8 @@ func (s *Store) Add(base plugins.Agent, in plugins.Account) (plugins.Account, er
 		return plugins.Account{}, ErrFull
 	}
 	// Owned: the folder does not exist yet, so Octo creates it (and may delete
-	// it when the account is removed, if the user asks).
+	// it when the account is removed, if the user asks). Never the caller's say.
+	in.Owned = false
 	if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
 		in.Owned = true
 	}

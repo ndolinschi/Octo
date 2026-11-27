@@ -36,6 +36,10 @@ export function AccountRow({ name, folder, provider, onOpen }: { name: string; f
     }
     setBusy(false);
   };
+  const cancel = () => {
+    setDraft(null);
+    setError("");
+  };
   return (
     <li data-account={provider.id} className="flex min-w-0 flex-col gap-1 border-b border-line py-1.5 last:border-b-0">
       <div className="flex min-h-ctl-md min-w-0 items-center gap-3">
@@ -47,11 +51,11 @@ export function AccountRow({ name, folder, provider, onOpen }: { name: string; f
               void save();
             }}
           >
-            <RenameField aria-label={`Name of ${name}`} value={draft} onChange={setDraft} onCancel={() => setDraft(null)} />
+            <RenameField aria-label={`Name of ${name}`} value={draft} onChange={setDraft} onCancel={cancel} />
             <Button type="submit" size="xs" variant="secondary" loading={busy}>
               Save
             </Button>
-            <Button type="button" size="xs" variant="quiet" onClick={() => setDraft(null)}>
+            <Button type="button" size="xs" variant="quiet" onClick={cancel}>
               Cancel
             </Button>
           </form>

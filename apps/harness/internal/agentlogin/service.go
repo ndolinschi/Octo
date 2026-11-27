@@ -24,6 +24,7 @@ const Project = ":agent-login"
 const (
 	DefaultPollEvery = 5 * time.Second
 	DefaultMaxLife   = 10 * time.Minute
+	DefaultLinger    = time.Minute
 	checkTimeout     = 30 * time.Second
 )
 
@@ -60,6 +61,7 @@ type Terminals interface {
 type Options struct {
 	PollEvery time.Duration // login check period while the command runs
 	MaxLife   time.Duration // hard stop of a login command
+	Linger    time.Duration // how long a finished login stays reachable (a late event stream still gets its result)
 	Home      func() string // folder a default account's login runs in
 }
 
@@ -88,6 +90,9 @@ func New(ctx context.Context, agents Agents, terms Terminals, opts Options) *Ser
 	if opts.MaxLife <= 0 {
 		opts.MaxLife = DefaultMaxLife
 	}
+	if opts.Linger <= 0 {
+		opts.Linger = DefaultLinger
+	}
 	if opts.Home == nil {
 		opts.Home = func() string { h, _ := os.UserHomeDir(); return h }
 	}
@@ -111,6 +116,15 @@ func (s *Service) Start(ctx context.Context, agentID string, req Request) (*Logi
 	if !ok {
 		return nil, &UnavailableError{Label: label, Command: a.LoginCmd(), Reason: "the agent has no login command to run" + methodNote(req.Method)}
 	}
+	// The previous login goes first, so replacing it never meets the per-project
+	// session limit it holds a place of.
+	s.mu.Lock()
+	old := s.logins[agentID]
+	delete(s.logins, agentID)
+	s.mu.Unlock()
+	if old != nil {
+		old.sess.Close("replaced by a newer login")
+	}
 	sess, err := s.terms.Start(ctx, Project, terminal.Spec{
 		Name: "login", Folder: agentID, Command: command, Args: args, Env: env, Dir: s.dirOf(a), Cols: req.Cols, Rows: req.Rows,
 	})
@@ -122,11 +136,11 @@ func (s *Service) Start(ctx context.Context, agentID string, req Request) (*Logi
 	}
 	l := newLogin(agentID, a.LoginCmd(), sess)
 	s.mu.Lock()
-	old := s.logins[agentID]
+	racer := s.logins[agentID] // a concurrent Start of the same agent
 	s.logins[agentID] = l
 	s.mu.Unlock()
-	if old != nil {
-		old.sess.Close("replaced by a newer login")
+	if racer != nil {
+		racer.sess.Close("replaced by a newer login")
 	}
 	slog.Info("agent login started", "agent", agentID, "session", l.ID)
 	go s.watch(l)

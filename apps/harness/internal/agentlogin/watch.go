@@ -11,9 +11,14 @@ import (
 // watch checks the agent's login every PollEvery while the command runs (until
 // a check says ok), once more when it exits, and stops the command after
 // MaxLife. It ends when the process has exited, which MaxLife and the terminal
-// manager's shutdown both force.
+// manager's shutdown both force; the finished session is closed Linger later
+// (an event stream that saw the end closes it sooner), so one whose client went
+// away never stays registered.
 func (s *Service) watch(l *Login) {
-	defer close(l.done)
+	defer func() {
+		close(l.done)
+		time.AfterFunc(s.opts.Linger, func() { s.forget(l, "login finished") })
+	}()
 	exited := make(chan struct{})
 	go func() {
 		_, _ = l.sess.Exit(context.Background())
@@ -65,4 +70,14 @@ func stateOf(a plugins.Agent, ok bool) string {
 		return StateOK
 	}
 	return StateNotLoggedIn
+}
+
+// forget closes l's session and drops l unless a newer login replaced it.
+func (s *Service) forget(l *Login, reason string) {
+	l.sess.Close(reason)
+	s.mu.Lock()
+	if s.logins[l.AgentID] == l {
+		delete(s.logins, l.AgentID)
+	}
+	s.mu.Unlock()
 }
