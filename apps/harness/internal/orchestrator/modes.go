@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
@@ -130,11 +132,81 @@ var readOnlyGit = map[string]bool{
 }
 
 // ReadOnlyCommand reports whether command is on the small allow-list of shell
-// commands that cannot change anything: one simple command (approval.Tokens: no
-// operator, redirection, substitution or expansion) of a known read-only program,
-// without the options that would make it write or run something (find -exec,
-// -delete; git --output; rg --pre; sort -o).
+// commands that cannot change anything: one simple command, or a pipeline of
+// simple commands separated by unquoted single `|` (each stage checked by
+// approval.Tokens: no redirection, substitution, expansion, or other operator),
+// of known read-only programs without options that write or run something
+// (find -exec, -delete; git --output; rg --pre; sort -o).
 func ReadOnlyCommand(command string) bool {
+	stages, ok := splitReadOnlyPipeline(command)
+	if !ok {
+		return false
+	}
+	for _, stage := range stages {
+		if !readOnlySimpleCommand(stage) {
+			return false
+		}
+	}
+	return true
+}
+
+// splitReadOnlyPipeline splits command on unquoted single `|` pipes, returning
+// false on empty stages, `||`, `|&`, or unterminated quotes.
+func splitReadOnlyPipeline(command string) ([]string, bool) {
+	var stages []string
+	start := 0
+	inSingle, inDouble, escaped := false, false, false
+	for i := 0; i < len(command); i++ {
+		c := command[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if inSingle {
+			if c == '\'' {
+				inSingle = false
+			}
+			continue
+		}
+		if inDouble {
+			if c == '\\' {
+				escaped = true
+			} else if c == '"' {
+				inDouble = false
+			}
+			continue
+		}
+		switch c {
+		case '\\':
+			escaped = true
+		case '\'':
+			inSingle = true
+		case '"':
+			inDouble = true
+		case '|':
+			if i+1 < len(command) && (command[i+1] == '|' || command[i+1] == '&') {
+				return nil, false
+			}
+			seg := strings.TrimSpace(command[start:i])
+			if seg == "" {
+				return nil, false
+			}
+			stages = append(stages, seg)
+			start = i + 1
+		}
+	}
+	if inSingle || inDouble || escaped {
+		return nil, false
+	}
+	tail := strings.TrimSpace(command[start:])
+	if tail == "" {
+		return nil, false
+	}
+	stages = append(stages, tail)
+	return stages, true
+}
+
+func readOnlySimpleCommand(command string) bool {
 	words, ok := approval.Tokens(command)
 	if !ok {
 		return false
@@ -183,8 +255,84 @@ func (rt *runtime) acpModeAllows(call acp.ToolCall) bool {
 		return true
 	case "execute":
 		return ReadOnlyCommand(commandOf(call.RawInput))
+	case "edit":
+		// In Plan mode, ACP agents like GitHub Copilot write their own plan file
+		// under ~/.copilot/session-state/<id>/plan.md (outside the project folders).
+		// Denying that edit causes Copilot to abort the turn with "Operation cancelled by user".
+		return rt.mode == projectstore.ModePlan && rt.isAgentSessionStateWrite(call)
 	}
 	return false
+}
+
+// isAgentSessionStateWrite reports whether call targets only files inside an
+// ACP agent's private session-state directory (e.g. ~/.copilot/session-state/)
+// and never inside any project folder.
+func (rt *runtime) isAgentSessionStateWrite(call acp.ToolCall) bool {
+	paths := toolCallPaths(call)
+	if len(paths) == 0 {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false
+	}
+	allowedRoot := filepath.Clean(filepath.Join(home, ".copilot", "session-state"))
+	for _, p := range paths {
+		if !filepath.IsAbs(p) {
+			return false
+		}
+		clean := filepath.Clean(p)
+		if _, _, _, err := rt.locate(clean); err == nil {
+			return false // never allow edits inside a project folder in Plan mode
+		}
+		rel, err := filepath.Rel(allowedRoot, clean)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return false
+		}
+	}
+	return true
+}
+
+// toolCallPaths extracts absolute/target file paths from an ACP tool call's
+// locations or rawInput (path / file_path / filePath).
+func toolCallPaths(call acp.ToolCall) []string {
+	var out []string
+	for _, l := range call.Locations {
+		if p := strings.TrimSpace(l.Path); p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 && len(call.RawInput) > 0 {
+		var in struct {
+			Path     string `json:"path"`
+			FilePath string `json:"file_path"`
+			Camel    string `json:"filePath"`
+		}
+		if json.Unmarshal(call.RawInput, &in) == nil {
+			for _, p := range []string{in.Path, in.FilePath, in.Camel} {
+				if p = strings.TrimSpace(p); p != "" {
+					out = append(out, p)
+					break
+				}
+			}
+		}
+	}
+	return out
+}
+
+// describeToolCall returns a short human-readable label for a blocked ACP tool call.
+func describeToolCall(call acp.ToolCall) string {
+	if cmd := strings.TrimSpace(commandOf(call.RawInput)); cmd != "" {
+		if len(cmd) > 80 {
+			cmd = cmd[:77] + "..."
+		}
+		return fmt.Sprintf("command %q", cmd)
+	}
+	if paths := toolCallPaths(call); len(paths) > 0 {
+		label := firstNonEmpty(call.Kind, "edit")
+		return fmt.Sprintf("%s %s", label, filepath.Base(paths[0]))
+	}
+	return firstNonEmpty(call.Title, call.Kind, "a tool call")
 }
 
 // pickSessionMode finds the agent's own mode for ask or plan among its advertised ones.

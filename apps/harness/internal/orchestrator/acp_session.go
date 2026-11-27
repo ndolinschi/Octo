@@ -45,6 +45,9 @@ type acpSession struct {
 	// userDenied are the titles of the permission requests the user (or a
 	// denial earlier in the turn) refused (R5-13).
 	userDenied []string
+	// modeDenied are the actions auto-denied by read-only mode (Plan/Ask) so
+	// an agent that aborts with "Operation cancelled by user" gets a clear note.
+	modeDenied []string
 	// order, titles and claimed let an MCP tool call find the ACP tool_call
 	// row the agent announced for it.
 	order    []string
@@ -474,7 +477,8 @@ func (s *acpSession) idle() bool {
 
 func (s *acpSession) RequestPermission(ctx context.Context, req acp.PermissionRequest) string {
 	req.ToolCall = s.completed(req.ToolCall)
-	asks := s.rt.asksACP(ctx, req.ToolCall)
+	readOnly := s.rt.readOnlyMode()
+	asks := !readOnly && s.rt.asksACP(ctx, req.ToolCall)
 	s.mu.Lock()
 	s.active = true
 	s.touch()
@@ -498,6 +502,10 @@ func (s *acpSession) RequestPermission(ctx context.Context, req acp.PermissionRe
 	})
 	if d.Allow {
 		s.preapprove(req.ToolCall)
+	} else if readOnly {
+		s.mu.Lock()
+		s.modeDenied = append(s.modeDenied, describeToolCall(req.ToolCall))
+		s.mu.Unlock()
 	} else if asks {
 		s.mu.Lock()
 		s.userDenied = append(s.userDenied, firstNonEmpty(req.ToolCall.Title, req.ToolCall.Kind, "a permission request"))
@@ -628,6 +636,29 @@ func (s *acpSession) finishLocked(ctx context.Context, failed bool) *agent.Usage
 	}
 	// A turn that was cancelled keeps the text it had written, flagged stopped.
 	s.stopping = ctx.Err() != nil
+	if !failed && !s.stopping && len(s.modeDenied) > 0 {
+		tail := strings.TrimSpace(s.pending.String())
+		if isCancelledPlanText(tail) || (tail == "" && len(s.all) == 0) {
+			s.rt.modeAborted.Store(true)
+			modeLabel := "Read-only"
+			switch s.rt.mode {
+			case projectstore.ModePlan:
+				modeLabel = "Plan"
+			case projectstore.ModeAsk:
+				modeLabel = "Ask"
+			}
+			denied := slices.Compact(slices.Clone(s.modeDenied))
+			note := fmt.Sprintf("%s mode is read-only and blocked: %s. %s aborted the turn when that permission was denied. Switch to Agent mode to allow changes, or try again.",
+				modeLabel, strings.Join(denied, "; "), s.label)
+			if tail != "" {
+				note = "\n\n" + note
+			}
+			s.pending.WriteString(note)
+			if safe := s.stream.Write(note); safe != "" {
+				s.sink.TextDelta(safe)
+			}
+		}
+	}
 	s.flushLocked(ctx)
 	s.flushThoughtLocked()
 	close(s.stopWatch)

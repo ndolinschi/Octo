@@ -136,7 +136,7 @@ export const TurnChanges = memo(function TurnChanges({ turnId }: { turnId: numbe
               const key = keys[i] ?? "";
               return (
                 <span key={key} className="flex min-w-0 items-center gap-1.5">
-                  <span aria-hidden className={i === 0 ? "@max-xl/changes:hidden" : undefined}>
+                  <span aria-hidden className={i === 0 ? "shrink-0 @max-xl/changes:hidden" : "shrink-0"}>
                     ·
                   </span>
                   <Button
@@ -144,7 +144,7 @@ export const TurnChanges = memo(function TurnChanges({ turnId }: { turnId: numbe
                     tone="quiet"
                     mono
                     size="xs"
-                    className="h-6 min-w-0"
+                    className="h-6 min-w-0 overflow-hidden"
                     data-row
                     title={`${kindLabel(f.kind)}: ${f.folder}/${f.path} — show its diff`}
                     onClick={() => {
@@ -152,7 +152,7 @@ export const TurnChanges = memo(function TurnChanges({ turnId }: { turnId: numbe
                       toggle(key, !(listed && open.has(key)));
                     }}
                   >
-                    <span className="truncate">{basename(f.path)}</span>
+                    <span className="min-w-0 truncate">{basename(f.path)}</span>
                   </Button>
                 </span>
               );

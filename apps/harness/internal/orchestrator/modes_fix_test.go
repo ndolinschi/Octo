@@ -1,6 +1,9 @@
 package orchestrator
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
@@ -133,5 +136,77 @@ func TestIsCancelledPlanText(t *testing.T) {
 		if isCancelledPlanText(s) {
 			t.Errorf("isCancelledPlanText(%q) = true, want false", s)
 		}
+	}
+}
+
+func TestReadOnlyCommandPipelines(t *testing.T) {
+	cases := map[string]bool{
+		"rg foo src | head -n 20":         true,
+		"git log --oneline | head -n 10":  true,
+		"find . -name '*.go' | sort | wc": true,
+		"rg 'foo|bar' src | head -n 5":    true,
+		"ls | tee out":                    false,
+		"rg foo | xargs rm":               false,
+		"git status || rm -rf x":          false,
+		"git status |& head":              false,
+		"ls |":                            false,
+		"| ls":                            false,
+		"cat a > b | head":                false,
+		"ls | sort -o out":                false,
+	}
+	for cmd, want := range cases {
+		if got := ReadOnlyCommand(cmd); got != want {
+			t.Errorf("ReadOnlyCommand(%q) = %v, want %v", cmd, got, want)
+		}
+	}
+}
+
+func TestACPModeAllowsSessionStatePlanWrite(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("no home dir")
+	}
+	projDir := t.TempDir()
+	planPath := filepath.Join(home, ".copilot", "session-state", "abc-123", "plan.md")
+	escapePath := filepath.Join(home, ".copilot", "session-state", "..", "config.json")
+	projFile := filepath.Join(projDir, "main.go")
+
+	planRT := &runtime{mode: projectstore.ModePlan, folders: []projectstore.Folder{{Label: "repo", Path: projDir}}}
+	askRT := &runtime{mode: projectstore.ModeAsk, folders: []projectstore.Folder{{Label: "repo", Path: projDir}}}
+
+	editPlanLoc := acp.ToolCall{Kind: "edit", Locations: []acp.Location{{Path: planPath}}}
+	if !planRT.acpModeAllows(editPlanLoc) {
+		t.Fatal("Plan mode should allow editing ~/.copilot/session-state/<id>/plan.md")
+	}
+	if askRT.acpModeAllows(editPlanLoc) {
+		t.Fatal("Ask mode must not allow editing session-state files")
+	}
+
+	rawPlan, _ := json.Marshal(map[string]string{"file_path": planPath})
+	if !planRT.acpModeAllows(acp.ToolCall{Kind: "edit", RawInput: rawPlan}) {
+		t.Fatal("Plan mode should allow session-state edit specified via rawInput.file_path")
+	}
+
+	if planRT.acpModeAllows(acp.ToolCall{Kind: "edit", Locations: []acp.Location{{Path: escapePath}}}) {
+		t.Fatal("Plan mode must reject path escaping ~/.copilot/session-state")
+	}
+	if planRT.acpModeAllows(acp.ToolCall{Kind: "edit", Locations: []acp.Location{{Path: projFile}}}) {
+		t.Fatal("Plan mode must reject editing files inside project folders")
+	}
+	if planRT.acpModeAllows(acp.ToolCall{Kind: "edit"}) {
+		t.Fatal("Plan mode must reject edit with no path")
+	}
+}
+
+func TestDescribeToolCall(t *testing.T) {
+	rawCmd, _ := json.Marshal(map[string]string{"command": "poetry run pytest"})
+	if got := describeToolCall(acp.ToolCall{Kind: "execute", RawInput: rawCmd}); got != `command "poetry run pytest"` {
+		t.Fatalf("command describe = %q", got)
+	}
+	if got := describeToolCall(acp.ToolCall{Kind: "edit", Locations: []acp.Location{{Path: "/repo/src/app.py"}}}); got != "edit app.py" {
+		t.Fatalf("edit describe = %q", got)
+	}
+	if got := describeToolCall(acp.ToolCall{Kind: "other", Title: "Run linter"}); got != "Run linter" {
+		t.Fatalf("title describe = %q", got)
 	}
 }

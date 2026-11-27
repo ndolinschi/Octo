@@ -88,6 +88,15 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
       if (!inside(e)) return;
       lastInput.current = performance.now();
       if (e.type !== "touchend" && e.type !== "beforematch") stopGlide();
+      // An upward wheel/trackpad gesture releases stick immediately, before ResizeObserver can snap back on async content growth (e.g. Expand all).
+      if (e instanceof WheelEvent && e.deltaY < 0 && atBottomRef.current) {
+        const el = ref.current;
+        if (el && el.scrollHeight > el.clientHeight + 1) {
+          touched.current = true;
+          atBottomRef.current = false;
+          setAtBottom(false);
+        }
+      }
     };
     const onKey = (e: KeyboardEvent) => {
       const t = e.target;
@@ -233,7 +242,7 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
       }
       const wasHidden = hidden.current;
       hidden.current = false;
-      if (atBottomRef.current) {
+      if (atBottomRef.current && !pointerHeld.current) {
         if (gliding.current && !wasHidden) {
           if (Math.abs(el.scrollHeight - glideEnd.current) > 1) {
             glideEnd.current = el.scrollHeight;
