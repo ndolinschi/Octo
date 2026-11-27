@@ -291,15 +291,19 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 			if uerr != nil {
 				rt.logErr("seed acp usage counters", uerr)
 			}
-			base := loaded.Mode
+			modes, base, cur := loaded.Modes, loaded.Mode, loaded.Mode
+			if len(modes) == 0 {
+				modes, base = s.h.knownModes(ag.ID)
+			}
 			if isReadOnlySessionMode(base) {
-				if a := pickAgentSessionMode(loaded.Modes); a != "" {
+				if a := pickAgentSessionMode(modes); a != "" {
 					base = a
 				}
 			}
+			s.h.rememberModes(ag.ID, modes, base)
 			s.mu.Lock()
 			s.sessID = stored.SessionID
-			s.modes, s.baseMode, s.curMode = loaded.Modes, base, loaded.Mode
+			s.modes, s.baseMode, s.curMode = modes, base, cur
 			s.costSeen, s.usedSeen = cost, tokens
 			s.mu.Unlock()
 			return false, nil
@@ -323,9 +327,16 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 	if err != nil {
 		return false, acpFailure(ag, true, err) // NEW-10: before session/new answered, the agent was starting
 	}
+	base := sess.Mode
+	if isReadOnlySessionMode(base) {
+		if a := pickAgentSessionMode(sess.Modes); a != "" {
+			base = a
+		}
+	}
+	s.h.rememberModes(ag.ID, sess.Modes, base)
 	s.mu.Lock()
 	s.sessID = sess.ID
-	s.modes, s.baseMode, s.curMode = sess.Modes, sess.Mode, sess.Mode
+	s.modes, s.baseMode, s.curMode = sess.Modes, base, sess.Mode
 	s.mu.Unlock()
 	c, cancel = dbCtx(ctx)
 	defer cancel()

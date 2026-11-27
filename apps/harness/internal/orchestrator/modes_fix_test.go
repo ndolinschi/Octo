@@ -29,6 +29,24 @@ func TestSessionModeTargetResumesOutOfPlanOrAsk(t *testing.T) {
 	if got := sessionModeTarget(true, projectstore.ModePlan, acc(projectstore.AccessFull), modes, "agent"); got != "plan" {
 		t.Fatalf("plan turn -> got %q, want %q", got, "plan")
 	}
+
+	// Copilot-style URI mode IDs (e.g. ...#agent / ...#plan).
+	copilot := []acp.SessionMode{
+		{ID: "https://agentclientprotocol.com/protocol/session-modes#plan", Name: "Plan"},
+		{ID: "https://agentclientprotocol.com/protocol/session-modes#agent", Name: "Agent mode"},
+		{ID: "https://agentclientprotocol.com/protocol/session-modes#autopilot", Name: "Autopilot"},
+	}
+	wantAgent := "https://agentclientprotocol.com/protocol/session-modes#agent"
+	if got := sessionModeTarget(false, projectstore.ModeAgent, acc(projectstore.AccessFull), copilot, copilot[0].ID); got != wantAgent {
+		t.Fatalf("copilot resumed from plan -> got %q, want %q", got, wantAgent)
+	}
+
+	h := newACPHost(0)
+	h.rememberModes("copilot", copilot, wantAgent)
+	gotModes, gotBase := h.knownModes("copilot")
+	if len(gotModes) != 3 || gotBase != wantAgent {
+		t.Fatalf("knownModes = (%d, %q), want (3, %q)", len(gotModes), gotBase, wantAgent)
+	}
 }
 
 func TestACPPromptModeNote(t *testing.T) {

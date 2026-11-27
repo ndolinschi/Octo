@@ -299,7 +299,7 @@ func pickAgentSessionMode(modes []acp.SessionMode) string {
 			if isReadOnlySessionMode(m.ID) || isReadOnlySessionMode(m.Name) {
 				continue
 			}
-			if strings.EqualFold(m.ID, want) || strings.EqualFold(strings.TrimSpace(m.Name), want) {
+			if strings.EqualFold(m.ID, want) || strings.HasSuffix(strings.ToLower(m.ID), "#"+want) || strings.EqualFold(strings.TrimSpace(m.Name), want) {
 				return m.ID
 			}
 		}

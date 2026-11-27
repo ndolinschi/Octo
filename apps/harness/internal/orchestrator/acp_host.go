@@ -16,6 +16,11 @@ import (
 // its agent process is shut down (HARNESS_ACP_IDLE overrides it).
 const DefaultACPIdle = 30 * time.Minute
 
+type cachedModes struct {
+	modes    []acp.SessionMode
+	baseMode string
+}
+
 // acpHost owns the long-lived ACP sessions of ACP-run orchestrators: at most
 // one per main session (keyed by skey), started lazily by the session's first
 // turn, kept between turns, restarted when the process dies and closed when
@@ -24,15 +29,39 @@ type acpHost struct {
 	idle   time.Duration
 	tokens *mcp.Tokens
 
-	mu       sync.Mutex
-	sessions map[string]*orchSession
+	mu        sync.Mutex
+	sessions  map[string]*orchSession
+	modeCache map[string]cachedModes
 }
 
 func newACPHost(idle time.Duration) *acpHost {
 	if idle <= 0 {
 		idle = DefaultACPIdle
 	}
-	return &acpHost{idle: idle, tokens: mcp.NewTokens(), sessions: map[string]*orchSession{}}
+	return &acpHost{idle: idle, tokens: mcp.NewTokens(), sessions: map[string]*orchSession{}, modeCache: map[string]cachedModes{}}
+}
+
+func (h *acpHost) rememberModes(pluginID string, modes []acp.SessionMode, base string) {
+	if pluginID == "" || len(modes) == 0 {
+		return
+	}
+	cp := make([]acp.SessionMode, len(modes))
+	copy(cp, modes)
+	h.mu.Lock()
+	h.modeCache[pluginID] = cachedModes{modes: cp, baseMode: base}
+	h.mu.Unlock()
+}
+
+func (h *acpHost) knownModes(pluginID string) ([]acp.SessionMode, string) {
+	h.mu.Lock()
+	c := h.modeCache[pluginID]
+	h.mu.Unlock()
+	if len(c.modes) == 0 {
+		return nil, ""
+	}
+	cp := make([]acp.SessionMode, len(c.modes))
+	copy(cp, c.modes)
+	return cp, c.baseMode
 }
 
 // orchSession is one main session's orchestrator process. mu guards every field;
