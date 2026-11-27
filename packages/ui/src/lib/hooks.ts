@@ -290,14 +290,21 @@ export function useEscape(active: boolean, onEscape: () => void) {
  * `fade-y` utilities): the cue for lists whose scrollbar is hidden so their rows keep the panel's insets.
  * Returns an updater to call after programmatic scrolls.
  */
-export function useScrollFade<T extends HTMLElement>(ref: RefObject<T | null>, axis: "x" | "y"): () => void {
+export function useScrollFade<T extends HTMLElement>(ref: RefObject<T | null>, axis: "x" | "y", onOverflow?: (overflows: boolean) => void): () => void {
+  const overflowCb = useLatest(onOverflow);
+  const lastOverflow = useRef<boolean | null>(null);
   const update = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     const [pos, size, total] = axis === "x" ? [el.scrollLeft, el.clientWidth, el.scrollWidth] : [el.scrollTop, el.clientHeight, el.scrollHeight];
     const fade = [pos > 1 && "start", pos + size < total - 1 && "end"].filter(Boolean).join(" ");
     if ((el.dataset.fade ?? "") !== fade) el.dataset.fade = fade;
-  }, [ref, axis]);
+    const overflows = total > size + 1;
+    if (overflowCb.current && lastOverflow.current !== overflows) {
+      lastOverflow.current = overflows;
+      overflowCb.current(overflows);
+    }
+  }, [ref, axis, overflowCb]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;

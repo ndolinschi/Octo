@@ -84,18 +84,8 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   const code = textOf(children).replace(/\n$/, "");
   const canRun = Boolean(ws?.toolEnabled("terminal") && isShellLang(lang) && code.trim().length > 0);
   const pre = useRef<HTMLPreElement>(null);
-  useScrollFade(pre, "x");
   const [scrolls, setScrolls] = useState(false);
-  useEffect(() => {
-    const el = pre.current;
-    if (!el) return;
-    const check = () => setScrolls(el.scrollWidth > el.clientWidth + 1);
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    if (el.firstElementChild) ro.observe(el.firstElementChild);
-    return () => ro.disconnect();
-  }, []);
+  useScrollFade(pre, "x", setScrolls);
   useEffect(() => {
     if (!sent) return;
     const id = window.setTimeout(() => setSent(false), 1500);

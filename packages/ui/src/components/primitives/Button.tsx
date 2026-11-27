@@ -52,6 +52,8 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   tone?: "link" | "quiet";
 };
 
+const SHRINK_CLASS = /(^|\s)(shrink|min-w-0|flex-1)(\s|$)/;
+
 /**
  * The labelled action (decision 90).
  *
@@ -96,7 +98,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       onClick={loading ? undefined : onClick}
       className={cn(
         "touch-hit inline-flex items-center whitespace-nowrap disabled:pointer-events-none",
-        !(className && /(^|\s)(shrink|min-w-0|flex-1)(\s|$)/.test(className)) && "shrink-0",
+        !(className && SHRINK_CLASS.test(className)) && "shrink-0",
         link ? "gap-1" : cn("press justify-center gap-1.5", spec.h, spec.radius),
         pad && BUTTON_PAD[pad][size],
         spec.text,

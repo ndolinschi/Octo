@@ -47,13 +47,13 @@ export const PendingChangesBar = memo(function PendingChangesBar() {
   const latest = turns?.[0] ?? null;
   if (!latest || latest.files.length === 0) return null;
   const keys = latest.files.map((f) => rowKey(latest.turn_id, f));
-  const remaining = keys.filter((k) => !kept.has(k));
-  if (remaining.length === 0) return null;
+  const firstIdx = keys.findIndex((k) => !kept.has(k));
+  if (firstIdx < 0) return null;
 
   const canReview = Boolean(ws && ws.toolEnabled("changes"));
   const preview = latest.files.slice(0, 2).map((f) => basename(f.path));
   const extra = latest.files.length - preview.length;
-  const firstUnkept = latest.files.find((f) => !kept.has(rowKey(latest.turn_id, f))) ?? latest.files[0];
+  const firstUnkept = latest.files[firstIdx];
 
   return (
     <div
