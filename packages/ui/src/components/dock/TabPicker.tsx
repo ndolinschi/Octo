@@ -18,6 +18,7 @@ import { useProject } from "../../state/project";
 import { useOptionalComments } from "../../state/comments";
 import { getBrowserTabPins, getBrowserTabState, useBrowserTabsRevision } from "../../state/browserTabs";
 import { getTerminalTabState, useTerminalTabsRevision } from "../../state/terminalTabs";
+import { getPlanTabState, usePlanTabsRevision } from "../../state/planTabs";
 import { allTabs, CHAT, parseTab, sessionTab, toolTab, type ToolTab } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { fileIcon } from "../primitives/fileIcons";
@@ -49,6 +50,7 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
   const { state, project, projectId } = useProject();
   useBrowserTabsRevision(projectId);
   useTerminalTabsRevision(projectId);
+  usePlanTabsRevision(projectId);
   const commentCounts = useOptionalComments()?.counts;
   const { openProjectInEditor } = useHost();
   const createSession = useCreateProjectSession();
@@ -112,6 +114,7 @@ export function TabPicker({ anchor, onClose }: { anchor: RefObject<HTMLElement |
       return { url: b.url, title: b.title, pins: getBrowserTabPins(projectId, id) };
     },
     terminal: (id: string) => getTerminalTabState(projectId, id),
+    plan: (id: string) => getPlanTabState(projectId, id),
   };
 
   const recentRows: PickerRow[] = ws

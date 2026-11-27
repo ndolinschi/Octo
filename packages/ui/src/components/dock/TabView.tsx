@@ -104,6 +104,8 @@ const ProcessesTab = warmedTool("tool:processes", () => import("../processes/Pro
 const SidePanel = lazy(() => import("../side/SidePanel").then((m) => ({ default: m.SidePanel })));
 /** The Usage tab too (v6.2). */
 const UsagePanel = lazy(() => import("../usage/UsagePanel").then((m) => ({ default: m.UsagePanel })));
+/** Plan reading tab opened from a PlanCard ("Open in tab"). */
+const PlanTab = lazy(() => import("../chat/PlanTab").then((m) => ({ default: m.PlanTab })));
 
 function ScopedDetailsPanel() {
   const ws = useOptionalWorkspace();
@@ -138,6 +140,12 @@ export const TabView = memo(function TabView({ tab }: { tab: TabId }) {
       return (
         <Suspense fallback={null}>
           <RunTab name={ref.name} />
+        </Suspense>
+      );
+    case "plan":
+      return (
+        <Suspense fallback={null}>
+          <PlanTab planId={ref.planId} />
         </Suspense>
       );
     case "browser":

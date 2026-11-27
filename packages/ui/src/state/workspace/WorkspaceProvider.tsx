@@ -130,6 +130,8 @@ export type WorkspaceValue = {
   openRun(name: string): void;
   /** One session in a tab of its own, beside the tab it was opened from (two sessions side by side). */
   openSession(sessionId: string): void;
+  /** Opens (or focuses) a Plan reading tab beside the conversation. */
+  openPlan(planId: string): void;
   /** Opens (or focuses) a tab in a given group. */
   openIn(tab: TabId, groupId: string): void;
   /** Removes a tab without asking (a restored file that no longer exists). */
@@ -672,6 +674,11 @@ export function WorkspaceProvider({
         }
         // Main sessions open as tabs in Chat's group so multiple sessions can be open concurrently.
         commit(L.open(current, tab, { group: L.chatGroupOf(current).id }));
+      },
+      openPlan: (planId) => {
+        const tab = L.planTab(planId);
+        openSide(tab, fileFraction());
+        ensureRoomy(tab);
       },
       openIn: (tab, groupId) => {
         const r = L.parseTab(tab);

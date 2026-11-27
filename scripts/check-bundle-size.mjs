@@ -82,8 +82,12 @@ import { gzipSync } from "node:zlib";
  * and `useModal` nested-overlay Escape fix added +0.99 kB to the entry (160.39 -> 161.38 kB gzip; meanwhile
  * `@octo/web` initial JS dropped from 184.69 kB across 77 chunks to 73.28 kB across 2 chunks via lazy `Remote` +
  * `$initial` coalescing). Budget = measured + 1.0 = 162.4.
+ *
+ * Plan tab (2026-11-27): `PlanTab` loads in its own lazy chunk; first-paint entry carries only `plan:<id>` tab
+ * layout/info, `GLYPH.plan` (`ClipboardList`), `planTabs` tab-strip metadata cache, and `openPlan` (163.32 kB gzip).
+ * Budget raised from 162.8 to 164.0.
  */
-const BUDGET_KB = 162.8;
+const BUDGET_KB = 164.0;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.resolve(process.argv[2] ?? path.join(root, "apps/desktop/dist"));

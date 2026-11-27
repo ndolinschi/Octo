@@ -2,6 +2,7 @@ import {
   Activity,
   Bot,
   Brain,
+  ClipboardList,
   FileDiff,
   GitPullRequest,
   ChartNoAxesColumn,
@@ -56,6 +57,8 @@ export const GLYPH = {
   side: MessageCircleQuestionMark,
   /** A project command and its run tab (decision 68). */
   run: Terminal,
+  /** A plan from Plan mode opened in its own reading tab. */
+  plan: ClipboardList,
   /** Settings, app-wide and per project: one gear (the tooltip says which). */
   settings: Settings,
 } satisfies Record<string, LucideIcon>;
