@@ -47,7 +47,7 @@ flowchart TB
 
 ## Layout
 
-Every package of the module (`go list ./...`, 67 on 2026-11-22). Imports, callers, sizes and test counts per package are in
+Every package of the module (`go list ./...`, 67 on 2026-11-22, plus `accounts` and `agentlogin` of 2026-11-26). Imports, callers, sizes and test counts per package are in
 the module map of [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md#module-map); limits and background work in
 [`docs/SYSTEM.md`](../../../docs/SYSTEM.md).
 
@@ -55,9 +55,11 @@ the module map of [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md#module-
 | --- | --- |
 | `cmd/harness` | The binary: `serve` (wires every package below), `doctor`, `mcp-relay`, `run` / `sessions` / `show` (legacy one-shot CLI), `version` |
 | `internal/acp` | Agent Client Protocol client: JSON-RPC over a child's stdio, session/new, load, prompt, auth, model selection |
+| `internal/accounts` | Extra logins (accounts) of ACP agents: the store `{data-dir}/agent-accounts.json`, add, rename, remove (with the folder Octo created, on request); the plugin registry reads it on every call and serves each account as an agent of its own |
 | `internal/acptrace` | Opt-in wire trace of ACP sessions under `{data-dir}/traces/` (redacted, 5 MB x 20 files) |
 | `internal/activity` | The one-line "what the agent is doing now" label (Reading x, Running `cmd`) |
 | `internal/agent` | The built-in Messages-API tool loop (`agent.Loop`): streaming, concurrent tools, caching breakpoints, compaction, tool-result clearing; `Runner` for the legacy CLI |
+| `internal/agentlogin` | Runs an agent's own login command in a PTY and rechecks the login while it runs (the `/v1/providers/{id}/login` routes) |
 | `internal/anthropicclient` | The Anthropic SDK client with base URL, key source and a response observer (rate-limit headers) |
 | `internal/apitoken` | The bridge's bearer token: from `HARNESS_API_TOKEN` or generated into `{data-dir}/api-token` |
 | `internal/approval` | Pending approval requests and turn grants; one waiting request blocks only its agent |
@@ -165,6 +167,16 @@ Manifests are read once at startup from `{data-dir}/plugins/*/plugin.json` and e
 `spawn_agent` gains an optional `agent` (enum of available ACP agent ids; omitted from the schema when there are none). The sub-agent row is created as usual with `model = "acp:<id>"`, then `acp.Start` runs the command in the project's first folder (`initialize` with protocol version 1, fs capabilities on, terminal off), `session/new` with `mcpServers: []` (an ACP **sub-agent** gets none of the harness's tools; only an ACP-run *orchestrator* gets the MCP server, see [acp-orchestrator.md](./acp-orchestrator.md)) and one `session/prompt` carrying the task. The orchestrator system prompt names the available agents.
 
 Subscription agents (Copilot, Grok, Codex; [`plugins-examples/subscription-agents`](../plugins-examples/subscription-agents/plugin.json)) added manifest fields `models`, `defaultModel`, `modelArg`, `auth {probe, hint}` and `${NAME}` env references (expanded by `Launch.ResolvedEnv` at spawn; an entry with an unset or empty variable is dropped). `spawn_agent` also accepts `model` for ACP agents: validated against the manifest list (else a free token matching `plugins.ModelPattern`), recorded as `acp:<id>/<model>` on the agent and its usage rows (`acp:<id>` when no model applies; the manifest default counts). `acp.Client.RunWith` takes `RunOptions`: when `session/new` is refused and `initialize` advertised `authMethods`, it calls `authenticate` with the first method of type `agent` (no interaction; `terminal`, `env_var` and unknown types are skipped) and retries once, else fails with `acp.ErrAuthRequired` plus the manifest hint. A requested model is selected through a model config option (`session/set_config_option`), else `session/set_model`, or `modelArg` at start-up; one the orchestrator asked for that cannot be selected fails the sub-agent, a manifest default is best effort. Unknown notifications, session updates and capabilities are ignored. `GET /v1/plugins` agents carry `logged_in`, `models`, `default_model`, `hint`: `Registry.StartProbes` enables the login probes, which run in goroutines when `Plugins()` is called (at most once a minute per agent, 5 s timeout, never awaited by the request).
+
+**Accounts, login commands and limit patterns (2026-11-26).** Optional manifest fields per agent (`internal/plugins/manifest_accounts.go`; the model, ids, routes and store are in [`providers.md`](providers.md#agent-accounts-2026-11-26)):
+
+- `accounts`: `{"env": "CLAUDE_CONFIG_DIR", "default": "~/.claude"}` (the variable that moves the CLI's config and login folder, and the folder it uses when unset; see [`providers.md`](providers.md#agent-accounts-2026-11-26)), with optional `extraEnv` (more variables set on every extra account, never on the agent's own entry; names must be valid variable names, not `env` itself, and values hold no `$`), `note` (shown beside the accounts) and `unsupported` (`{"unsupported": "<reason>"}` instead of `env`, for a CLI that cannot keep a second login apart). An agent with no `accounts` block is "one account only" with the generic reason "Octo knows no documented way to keep a second login of this CLI apart." An `unsupported` agent (the older field) has no accounts either.
+- `auth.login`: `[{"id", "label", "args": ["claude", "auth", "login", "--claudeai"]}]`, the interactive commands that log the CLI in, one per method (ids unique, `args[0]` the program, resolved like the agent's own command). The login button runs the first, or the one named by the request, in a terminal session with the account's environment. `auth.command` stays the display string; `auth` is now valid with only `login`.
+- `limitPatterns`: regular expressions (Go syntax) matched against an agent's error message; a match marks the error as a usage limit ([`acp-orchestrator.md`](acp-orchestrator.md#usage-limits-and-switching-accounts-2026-11-26)).
+
+- `experimental` (boolean, default false): the agent is listed and can be chosen by hand, but Octo never picks it on its own: it is offered to the orchestrator, `spawn_agent`, automatic routing and the no-key fallback orchestrator only when the project's models name it (`GET /v1/plugins` carries `experimental`; `GET /v1/providers` lists it `experimental: true`). It cannot be combined with `unsupported`. `plugins.manifestAgent.Experimental`, `orchestrator.offeredAgents`.
+
+A manifest that breaks these rules is listed with an error in that plugin's `errors`, like any other. `Agent` has the `Account*` fields (`AccountEnv`, `AccountDefault`, `AccountOf`, `AccountID`, `AccountLabel`, `AccountDir`, and since the additions `AccountOwned`, `AccountNote`, `AccountUnsupported`, `AccountDefaultLabel`), `Logins` and `Limit`; the registry reads the account store on every call (`Registry.SetAccounts`, `SetDefaultLabels`, `internal/plugins/accounts.go`) and serves each account as an agent of its own, so adding an account needs no restart; `Registry.Forget` drops a removed account's state. `internal/agentlogin` runs the login commands.
 
 | ACP | Harness |
 | --- | --- |

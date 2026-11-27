@@ -47,3 +47,7 @@ test("an account of an agent has the agent's mark", () => {
   assert.equal(markKeyOf("acp:claude-code@work/opus"), "claude-code");
   assert.equal(markKeyOf("acp:codex@personal"), "codex");
 });
+
+test("an account's model keeps the agent's mark", () => {
+  assert.equal(markKeyOf("acp:codex@second/gpt-5"), "codex");
+});

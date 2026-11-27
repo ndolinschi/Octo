@@ -141,6 +141,8 @@ type Provider struct {
 	// Experimental (agents): the launch command comes from the agent's
 	// documentation and has not been run with Octo (manifest verified: false).
 	// ExperimentalNote says what is known.
+	// It is also set for an agent whose manifest says experimental, which Octo
+	// never picks on its own (ManualOnly).
 	Experimental     bool   `json:"experimental,omitempty"`
 	ExperimentalNote string `json:"experimental_note,omitempty"`
 	// Problem is Reason in structured form while the provider is not ready:
@@ -158,6 +160,25 @@ type Provider struct {
 	AccountID      string `json:"account_id,omitempty"`
 	AccountLabel   string `json:"account_label,omitempty"`
 	AccountDir     string `json:"account_dir,omitempty"`
+	// AccountOwned (an account's own entry): Octo created its folder, so it may
+	// delete it when the account is removed. AccountNote (agents with
+	// AccountEnv) is shown beside the accounts; AccountUnsupported (other
+	// agents) says why the agent keeps one login only; AccountDefaultLabel is
+	// the name the user gave the agent's own login ("" while it has none).
+	AccountOwned        bool   `json:"account_owned,omitempty"`
+	AccountNote         string `json:"account_note,omitempty"`
+	AccountUnsupported  string `json:"account_unsupported,omitempty"`
+	AccountDefaultLabel string `json:"account_default_label,omitempty"`
+	// LoginMethods are the agent's interactive login commands (Log in);
+	// LoginCommand is the terminal command that logs it in (an account's with
+	// its folder set).
+	LoginMethods []plugins.LoginMethod `json:"login_methods,omitempty"`
+	LoginCommand string                `json:"login_command,omitempty"`
+	// Limit is the usage limit a real session last ran into.
+	Limit *plugins.LimitState `json:"limit,omitempty"`
+
+	// manualOnly: the manifest says experimental; never suggested as a default.
+	manualOnly bool
 }
 
 // Roles is the model per tier of one agent ("" = the agent's own default).
@@ -404,6 +425,8 @@ func apiDefault(d config.Models) string {
 	return config.BuiltinModels().Balanced
 }
 
+// orderAgents lists the agents of listFirst first, then the rest in manifest
+// order; the accounts of an agent follow it directly.
 func orderAgents(in []plugins.Agent) []plugins.Agent {
 	out := make([]plugins.Agent, 0, len(in))
 	used := make([]bool, len(in))
@@ -435,9 +458,11 @@ func (s *Service) agentProvider(a plugins.Agent) Provider {
 	p := Provider{
 		ID: a.ID, Kind: KindAgent, Label: a.Label, InstallHint: a.InstallHint, LoginHint: a.Hint,
 		DefaultModel: a.DefaultModel, FlatRate: a.FlatRate, ModelsNote: a.ModelsNote, AcceptsCustomModel: true,
-		Experimental: !a.Verified, ExperimentalNote: a.VerifiedNote,
+		Experimental: !a.Verified || a.Experimental, manualOnly: a.Experimental, ExperimentalNote: a.VerifiedNote,
 		AccountEnv: a.AccountEnv, AccountDefault: a.AccountDefault,
 		AccountOf: a.AccountOf, AccountID: a.AccountID, AccountLabel: a.AccountLabel, AccountDir: a.AccountDir,
+		AccountOwned: a.AccountOwned, AccountNote: a.AccountNote, AccountUnsupported: a.AccountUnsupported,
+		AccountDefaultLabel: a.AccountDefaultLabel, LoginMethods: a.Logins, LoginCommand: a.LoginCmd(), Limit: a.Limit,
 	}
 	if p.Label == "" {
 		p.Label = a.ID
@@ -449,10 +474,10 @@ func (s *Service) agentProvider(a plugins.Agent) Provider {
 	case a.VersionTooOld:
 		// Installed, but older than the launch command needs: not startable until updated.
 		p.State = StateNotInstalled
-		p.Problem = usererr.AgentTooOld(p.Label, a.Version.Version, a.MinVersion, a.InstallCmd(), a.TooOldDetails())
+		p.Problem = AgentMissing(a)
 	case !a.Available:
 		p.State = StateNotInstalled
-		p.Problem = usererr.AgentNotInstalled(p.Label, a.InstallCmd(), strings.TrimSpace(a.UnavailableReason+" "+a.InstallHint))
+		p.Problem = AgentMissing(a)
 	case a.LoggedIn != nil && !*a.LoggedIn:
 		p.State = StateNotLoggedIn
 		p.Problem = usererr.AgentNotLoggedIn(p.Label, a.LoginCmd(), a.Hint)
@@ -559,7 +584,8 @@ func suggest(list []Provider, d config.Models) Suggested {
 	}
 	var readyAgents []string
 	for _, p := range list {
-		if p.Kind == KindAgent && p.State == StateReady {
+		// Another account of an agent (other billing) and an experimental agent are never suggested.
+		if p.Kind == KindAgent && p.State == StateReady && !p.manualOnly && p.AccountOf == "" {
 			readyAgents = append(readyAgents, p.ID)
 		}
 	}

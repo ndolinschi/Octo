@@ -81,6 +81,12 @@ type manifestAgent struct {
 	// how far (copilot: only the logged-out path).
 	Verified     *bool  `json:"verified"`
 	VerifiedNote string `json:"verifiedNote"`
+	// Experimental marks an agent Octo never picks on its own: it is not offered
+	// to the orchestrator's agent list, spawn_agent, automatic routing or the
+	// no-key fallback orchestrator unless the project's models name it. It is
+	// still listed and can be chosen by hand. Absent means false; it cannot be
+	// combined with unsupported.
+	Experimental bool `json:"experimental"`
 	// Unsupported, when set, says why the agent cannot work with Octo (its CLI
 	// has no ACP mode): it is listed with state not_supported and that reason,
 	// is never probed, started, offered or routed to, and `acp:<id>` is refused
@@ -102,15 +108,11 @@ type manifestAgent struct {
 	SearchPaths []string `json:"searchPaths"`
 	// Accounts, when set, lets the user add more logins of the agent: each
 	// account starts the agent with Accounts.Env pointing at its own folder
-	// (CLAUDE_CONFIG_DIR, CODEX_HOME), where the CLI keeps that login.
+	// (CLAUDE_CONFIG_DIR, CODEX_HOME), where the CLI keeps that login
+	// (manifest_accounts.go).
 	Accounts *manifestAccounts `json:"accounts"`
-}
-
-// manifestAccounts names the variable that moves the CLI's config and login
-// folder; Default is the folder used when it is not set (shown, not used).
-type manifestAccounts struct {
-	Env     string `json:"env"`
-	Default string `json:"default"`
+	// LimitPatterns are regular expressions that mark an agent error message as a usage limit.
+	LimitPatterns []string `json:"limitPatterns"`
 }
 
 // manifestModelsCommand runs a command and reads model ids from its output:
@@ -197,6 +199,8 @@ type manifestAuth struct {
 	Command string          `json:"command"`
 	Methods []AuthMethodRef `json:"methods"`
 	Skip    []string        `json:"skip"`
+	// Login lists interactive login commands ({id, label, args}).
+	Login []manifestLogin `json:"login"`
 }
 
 // AuthMethodRef names an ACP auth method. RequiresEnv, when set, makes the
@@ -295,9 +299,6 @@ func (a manifestAgent) validate() error {
 			return err
 		}
 	}
-	if a.Accounts != nil && !envKeyPat.MatchString(a.Accounts.Env) {
-		return fmt.Errorf("accounts.env %q is not a valid variable name", a.Accounts.Env)
-	}
 	switch a.MCPTransport {
 	case "", "auto", MCPTransportStdio:
 	default:
@@ -315,8 +316,8 @@ func (a manifestAgent) validate() error {
 		return fmt.Errorf("args contains %s but modelArg is not set", ModelArgsPlaceholder)
 	}
 	if a.Auth != nil {
-		if len(a.Auth.Probe) == 0 && strings.TrimSpace(a.Auth.Hint) == "" {
-			return fmt.Errorf("auth needs a probe, a hint or both")
+		if len(a.Auth.Probe) == 0 && strings.TrimSpace(a.Auth.Hint) == "" && len(a.Auth.Login) == 0 {
+			return fmt.Errorf("auth needs a probe, a hint, a login command or more")
 		}
 		if a.Auth.NotLoggedInPattern != "" {
 			if len(a.Auth.Probe) == 0 {
@@ -336,7 +337,10 @@ func (a manifestAgent) validate() error {
 			return err
 		}
 	}
-	return nil
+	if a.Experimental && strings.TrimSpace(a.Unsupported) != "" {
+		return fmt.Errorf("experimental and unsupported exclude each other")
+	}
+	return a.validateAccountFields()
 }
 
 func validateModels(models []string, def string) error {

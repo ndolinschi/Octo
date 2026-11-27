@@ -8,6 +8,7 @@ import { Button } from "../primitives/Button";
 import { CommandLine } from "../primitives/CommandLine";
 import { Rich } from "../shared/providers/ConnectSteps";
 import { Notice } from "../primitives/Notice";
+import { LoginButton, OneAccountOnly } from "./accounts/AgentLogin";
 import { AgentPrefs } from "./AgentPrefsPane";
 import { AccountFacts, AgentAccounts } from "./AgentAccountsPane";
 import { ProviderKey } from "./ProviderKey";
@@ -73,6 +74,9 @@ export function ProviderDetail({ provider: p, onRouter, onSelect }: { provider: 
       </div>
       <div className={cn("flex max-w-measure min-w-0 flex-col gap-6", CONTROL_CAP)}>
         {reason && <Reason provider={p} text={reason} />}
+        {p.kind === "agent" && !p.account_of && !p.account_env && p.account_unsupported && p.state !== "not_installed" && (
+          <OneAccountOnly provider={p} withLogin={!loginInReason(p, reason)} />
+        )}
         {p.kind === "api" && <ProviderKey />}
         {(p.models.length > 0 || p.state === "ready") && p.kind !== "router" && <ProviderModels provider={p} />}
         {p.account_of && <AccountFacts account={p} {...(onSelect ? { onRemoved: () => onSelect(p.account_of ?? "") } : {})} />}
@@ -88,6 +92,15 @@ export function ProviderDetail({ provider: p, onRouter, onSelect }: { provider: 
       </div>
     </div>
   );
+}
+
+/**
+ * Whether the "Log in" step under the reason carries the agent's one Log in button: an agent that is installed and has no
+ * accounts list (one account only, or an older harness). An agent with accounts logs in from each account's row, and an
+ * account from its own Account section.
+ */
+function loginInReason(p: Provider, reason: string): boolean {
+  return Boolean(reason) && p.kind === "agent" && p.state !== "error" && p.state !== "not_installed" && !takesAccounts(p) && !p.account_of;
 }
 
 /** "type /login" in a login hint: the step typed inside the agent after starting it. */
@@ -153,6 +166,11 @@ function Reason({ provider: p, text }: { provider: Provider; text: string }) {
                   {commands.length > 1 ? "Run one of these in a terminal" : "Run this in a terminal"}
                   {slash && s.title === "Log in" ? `, then type ${slash} and follow the steps` : ""}.
                 </p>
+              )}
+              {s.title === "Log in" && loginInReason(p, text) && (
+                <div className="flex pt-1">
+                  <LoginButton provider={p} />
+                </div>
               )}
               {commands.length === 0 && (
                 <p className="text-sm text-fg-2">{s.hint ? <HintProse text={s.hint} /> : "No setup steps are available; see the agent's documentation."}</p>

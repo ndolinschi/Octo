@@ -365,4 +365,7 @@ type AgentError struct {
 	Code       string
 	Message    string
 	StatusCode int
+	// Data is the error object as the agent sent it (nil for a plain string),
+	// for classifiers that read fields beyond these (errorKind, rateLimit).
+	Data json.RawMessage
 }

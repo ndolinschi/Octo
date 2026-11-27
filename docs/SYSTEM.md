@@ -80,6 +80,8 @@ the proxy serves without history); the price catalogue refresh starts when upstr
 | API key refused | `api_key_rejected`, button "Connect provider" | `internal/usererr` |
 | Ollama or a loopback gateway not running | The provider reads `not_running`; "Check again" re-probes (`POST /v1/providers/{id}/recheck`) | `internal/providers` |
 | ACP agent missing or logged out | The turn ends with the agent's install or login hint (`hint` on `turn.finished`) | `internal/acp`, `internal/plugins` |
+| An agent's plan limit is reached | The turn ends with `agent_limit_reached` ("<Agent> · <Account> has reached its usage limit.", action `switch_account`); the user picks another account or model and the request is sent again; nothing switches by itself. A limit the CLI reports as plain answer text is not caught | `orchestrator/acp_limits.go`, `internal/usererr/catalogue_accounts.go` |
+| The accounts file cannot be read or does not parse | Logged; the harness starts without the extra accounts (every agent works as its own login) and the file is replaced on the next change | `internal/accounts` |
 | A project database cannot be opened or is damaged | The project stays in the list as unavailable (`project_unavailable`) and names the `.pre-*` backups when there are some; the file is left untouched | `projectstore/unavailable.go` |
 | A project folder is missing | `folder_missing`: the project opens; tools and files on that folder refuse with the path | `internal/usererr/catalogue_ops.go` |
 | The registry cannot be opened | The harness does not start (`registry_unavailable`); the shell shows the message and the log tail | `serve.go` |
@@ -92,8 +94,8 @@ Not verified: any of these on macOS or Windows; with a real tunnel; with a real 
 ## API surface
 
 All routes are registered in `apps/harness/internal/bridge/bridge.go` (and `internal/remoteaccess` for `/v1/remote` and the
-tunnel listener): 167 method + path pairs on 2026-11-22. Every `/v1` route needs `Authorization: Bearer <token>`; the two SSE
-routes also take `?token=`. Errors are catalogue bodies (`message`, `hint`, `command`, `action`, `details`;
+tunnel listener): 167 method + path pairs on 2026-11-22. Every `/v1` route needs `Authorization: Bearer <token>`; the SSE
+routes (a project's events, a language-server session, a terminal, an agent login) also take `?token=`. Errors are catalogue bodies (`message`, `hint`, `command`, `action`, `details`;
 [`errors.md`](../apps/harness/docs/errors.md)). The client methods are in `packages/agent-client/src/client.ts` and `rare.ts`.
 
 | Area | Routes (`{pid}` = project, `{sid}` = session) | Exact shapes |
@@ -101,6 +103,7 @@ routes also take `?token=`. Errors are catalogue bodies (`message`, `hint`, `com
 | Service | `GET /health`, `/v1/config`, `/v1/diagnostics`, `/v1/limits`, `/v1/usage`, `/v1/search`, `/v1/plugins` | [architecture.md](../apps/harness/docs/architecture.md), [acp-orchestrator.md](../apps/harness/docs/acp-orchestrator.md) |
 | Settings | `GET`/`PUT /v1/settings` (loopback peers and the UI's origins only) | [settings.md](../apps/harness/docs/settings.md) |
 | Providers | `GET /v1/providers`; `PUT .../{id}/prefs`, `.../custom-models`; `POST .../recheck`, `.../refresh-models` | [providers.md](../apps/harness/docs/providers.md) |
+| Agent accounts and logins (local only; not for a paired device) | `POST /v1/providers/{id}/accounts`, `DELETE .../accounts/{account}[?delete_folder=true]`; `PATCH /v1/providers/{id}/account`; `POST /v1/providers/{id}/login`, `GET .../login/{lid}/events` (SSE, also `?token=`), `POST .../login/{lid}/input`, `.../resize`, `DELETE .../login/{lid}` | [providers.md](../apps/harness/docs/providers.md#agent-accounts-2026-11-26) |
 | Folders | `GET /v1/fs/dirs`, `/v1/fs/recent`; `POST /v1/fs/pick-folder` | [architecture.md](../apps/harness/docs/architecture.md) |
 | Projects and the conversation | `GET`/`POST /v1/projects`; `GET`/`PATCH`/`DELETE /v1/projects/{pid}`; `agents`, `agents/{aid}`, `agents/{aid}/messages`; `POST messages`, `cancel`, `compact`, `clear`, `rewind`, `side` (+ `stop`, `GET`, `DELETE`), `complete`, `attachments`; `GET context`, `turns/{tid}/context`, `slash-commands`, `export`, `plans/latest`, `POST plans/{id}/approve` | [architecture.md](../apps/harness/docs/architecture.md), [parity.md](../apps/harness/docs/parity.md) |
 | Sessions, workspaces, branches | `GET`/`DELETE /v1/sessions`, `/v1/sessions/importable`; per project `sessions` (list, create, import, get, patch, delete, `messages`, `stop`, `resume`, `default`, `clear`, `compact`, `rewind`, `context`, `export`, `plans/latest`, `queue...`, `worktree`), `workspaces`, `branches`, `branches/switch` | [sessions.md](../apps/harness/docs/sessions.md) |
@@ -175,6 +178,18 @@ schema 15 (parallel sessions) leaves `project.sqlite.pre-v15` (numbered names wh
 database newer than the binary is refused untouched. Delete the backups by hand, with the harness stopped, once the
 migrated project works.
 
+### Harness: agent accounts (2026-11-26)
+
+Two things in the data folder belong to accounts of agents ([providers.md](../apps/harness/docs/providers.md#agent-accounts-2026-11-26)).
+`agent-accounts.json` (file `0600`, written by temp file and rename) holds the names, short ids and folders of the extra
+accounts, whether Octo created each folder (`owned`), and the names given to agents' own logins (`default_labels`); no
+secret. Each account's folder is the one given when it was added (the UI suggests one beside the agent's own, such as
+`~/.claude-work`); Octo creates it (`0700`) when it is missing. The CLI writes its own login there and Octo never reads it.
+Octo deletes a folder only when the account is removed with "Also delete its login folder" and Octo created it; the CLI's
+keychain entry, if it made one, is never removed.
+The project database only stores model strings such as `acp:claude-code@work/opus`; it has no account table and no
+migration was needed.
+
 ### Router: `history.sqlite`
 
 | Table | Holds | Retention |
@@ -200,6 +215,7 @@ bound.
 | Providers picture refresh | every 15 s | `serve.go` `providersWatchEvery`, `internal/providers` |
 | ACP login probes | at most once a minute per agent (15 s after a failure), 5 s timeout, never awaited by a request | `internal/plugins/probe.go` |
 | Agent version checks | every 10 min, 5 s timeout | `internal/plugins/version.go` |
+| Agent login poll (while a login command runs) | the login probe every 5 s until it says logged in, once more at exit; the command is stopped after 10 min | `internal/agentlogin` |
 | Streaming checkpoint / running-turn stamp | at most every 500 ms / every 5 s | `projectstore/partials.go`, `orchestrator/orchestrator.go` |
 | Idle ACP orchestrator sessions | shut down after 30 min (`HARNESS_ACP_IDLE`); side-question sessions after 15 min | `orchestrator/acp_host.go`, `side_acp.go` |
 | Language-server sessions without a stream | ended after 30 s | `internal/lsp` |
@@ -226,6 +242,8 @@ bound.
 | Queue | 20 messages per session | `projectstore/queue.go` |
 | Language servers | 8 live sessions per project; 4 MiB per message; 256 buffered messages | `internal/lsp` |
 | Terminals | 12 per project; 64 KiB per input | `internal/terminal` |
+| Agent logins | one per agent id (a new one closes the old); 10 min each; they count against the terminal manager's session limits | `internal/agentlogin` |
+| Account name | 1 to 40 characters; slug at most 32 | `internal/accounts` |
 | Command output | 5 MiB per run, 64 KiB tail kept | `internal/commands` |
 | Memory file / form text / schema | 64 KiB / 16 KiB / 32 KiB | `internal/memory`, `internal/inputs` |
 | ACP recap for a new session | 8000 characters, last 40 texts | `orchestrator/acp_orch.go` |
@@ -264,6 +282,7 @@ bound.
 | "Router could not start" line | Details (the `router.log` tail) | The upstream key in Settings → Providers; `router.log`; run `octo --version` from the app folder |
 | A turn fails with no model call | The turn's message and hint | No key: Settings → Providers; budget reached: the project's budget; `GET /v1/providers` |
 | An ACP agent turn fails | The hint on the failed turn | `harness doctor` (command, login probe); the wire trace; [acp-orchestrator.md](../apps/harness/docs/acp-orchestrator.md) |
+| A second account is not logged in, or the Log in button fails | `harness doctor` (each account, its folder and probe); the command shown under the login sheet, run in a terminal | [providers.md](../apps/harness/docs/providers.md#agent-accounts-2026-11-26) |
 | The UI shows stale state after a sleep or network change | The live indicator (connecting / reconnecting) | The SSE route with curl and the token; `GET /health`; the reconnect watchdog in `client.ts` |
 | A project is greyed out as unavailable | Its error and `details` | The `project.sqlite` path and its `.pre-*` backups; file permissions |
 | `folder_missing` | The folder path in `details` | Re-attach or remove the folder in the project's settings |

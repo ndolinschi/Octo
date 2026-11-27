@@ -1,3 +1,4 @@
+import type { LspTransport } from "./lspSession";
 import type {
   Attachment,
   BrowserProxySession,
@@ -9,6 +10,7 @@ import type {
   LanguageServerInfo,
   Plugin,
   Project,
+  Provider,
   QueuedMessage,
   QueueState,
   Transcript,
@@ -105,10 +107,19 @@ export type RareContext = {
   binaryFetch(): BinaryFetchLike;
   /** The error for a failed response. */
   fail(status: number, text: string): BridgeError;
+  /** What the SSE session modules need: the request function and an EventSource opener. */
+  sessionDeps(): LspTransport;
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
+}
+
+/** The answer of a provider call: the provider itself, or the whole list it sits in; null when the body says neither. */
+function asProvider(body: unknown, id: string): Provider | null {
+  if (!isRecord(body)) return null;
+  if (Array.isArray(body.providers)) return (body.providers.find((p) => isRecord(p) && p.id === id) as Provider | undefined) ?? null;
+  return typeof body.id === "string" && Array.isArray(body.models) ? (body as Provider) : null;
 }
 
 function parseJson(text: string): unknown {
@@ -143,6 +154,7 @@ export function createRareMethods({
   sendTimeout = SEND_TIMEOUT_MS,
   binaryFetch,
   fail,
+  sessionDeps,
 }: RareContext): Pick<Bridge, RareMethod> {
   const timers = given ?? globalTimers();
   /**
@@ -638,5 +650,22 @@ export function createRareMethods({
         ...(Array.isArray(body.conversations) ? { conversations: body.conversations as ConversationMarker[] } : {}),
       };
     },
+    addAgentAccount: async (agentId, account) => {
+      const body = await request("POST", `/v1/providers/${encodeURIComponent(agentId)}/accounts`, account);
+      return isRecord(body) && typeof body.id === "string" ? asProvider(body, body.id) : null;
+    },
+    renameAgentAccount: async (id, label) => {
+      const body = await request("PATCH", `/v1/providers/${encodeURIComponent(id)}/account`, { label });
+      return isRecord(body) && typeof body.id === "string" ? asProvider(body, body.id) : null;
+    },
+    removeAgentAccount: async (agentId, accountId, opts) => {
+      const q = opts?.deleteFolder ? "?delete_folder=true" : "";
+      await request("DELETE", `/v1/providers/${encodeURIComponent(agentId)}/accounts/${encodeURIComponent(accountId)}${q}`);
+    },
+    startAgentLogin: async (id, opts) => (await import("./terminalSession")).openLoginSession(sessionDeps(), id, opts),
+    refreshProviderModels: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/refresh-models`), id),
+    recheckProvider: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/recheck`), id),
+    setProviderCustomModels: async (id, models) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/custom-models`, { models }), id),
+    setProviderPrefs: async (id, prefs) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/prefs`, prefs), id),
   };
 }

@@ -98,7 +98,8 @@ func TestAgentAccountsOverHTTP(t *testing.T) {
 	e.wantError(t, "POST", "/v1/providers/keeper@work/accounts", map[string]string{"label": "X", "config_dir": work + "-5"}, http.StatusBadRequest, "invalid_request")
 	e.wantError(t, "POST", "/v1/providers/nope/accounts", map[string]string{"label": "X", "config_dir": work + "-6"}, http.StatusNotFound, "not_found")
 
-	// The file keeps the label and the folder only, readable by the owner alone.
+	// The file keeps the label and the folder only (and, since Octo created this
+	// folder, "owned"), readable by the owner alone.
 	file := filepath.Join(e.env.dir, accounts.File)
 	fi, err := os.Stat(file)
 	if err != nil || fi.Mode().Perm() != 0o600 {
@@ -108,7 +109,7 @@ func TestAgentAccountsOverHTTP(t *testing.T) {
 		Accounts []map[string]any `json:"accounts"`
 	}
 	raw, _ := os.ReadFile(file)
-	if err := json.Unmarshal(raw, &body); err != nil || len(body.Accounts) != 1 || len(body.Accounts[0]) != 4 {
+	if err := json.Unmarshal(raw, &body); err != nil || len(body.Accounts) != 1 || len(body.Accounts[0]) != 5 || body.Accounts[0]["owned"] != true {
 		t.Fatalf("accounts file = %s", raw)
 	}
 

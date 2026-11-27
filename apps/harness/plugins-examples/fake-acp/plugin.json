@@ -1,6 +1,6 @@
 {
   "name": "fake-acp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Scripted ACP agent for demos and tests (no model, no network)",
   "agents": [
     {
@@ -8,7 +8,33 @@
       "label": "Fake ACP agent",
       "command": "./bin/fakeacp",
       "args": [],
-      "env": {}
+      "env": {},
+      "accounts": {
+        "env": "OCTO_FAKEACP_HOME"
+      },
+      "auth": {
+        "probe": [
+          "./bin/fakeacp",
+          "status"
+        ],
+        "notLoggedInExit": [
+          1
+        ],
+        "command": "./bin/fakeacp login",
+        "login": [
+          {
+            "id": "login",
+            "label": "Fake account",
+            "args": [
+              "./bin/fakeacp",
+              "login"
+            ]
+          }
+        ]
+      },
+      "limitPatterns": [
+        "(?i)hit your usage limit"
+      ]
     }
   ]
 }

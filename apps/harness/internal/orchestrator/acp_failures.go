@@ -49,6 +49,9 @@ func agentErrorFailure(ag plugins.Agent, ae acp.AgentError, stderr string) error
 	if isAgentErrorAuth(ae) {
 		return usererr.AgentNotLoggedIn(ag.Label, ag.LoginCmd(), joinDetails(detail, ag.Hint, stderr))
 	}
+	if hit, ok := agentErrorLimit(ag, ae); ok {
+		return limitFailure(ag, hit, joinDetails(detail, stderr))
+	}
 	return usererr.AgentFailed(ag.Label, joinDetails(detail, stderr))
 }
 
@@ -121,6 +124,10 @@ func acpFailure(ag plugins.Agent, starting bool, err error) error {
 	if isAuthFailure(err) {
 		return usererr.AgentNotLoggedIn(ag.Label, ag.LoginCmd(), ag.Hint).Caused(err)
 	}
+	if hit, ok := rpcLimit(ag, err); ok {
+		hit.cause = err
+		return limitFailure(ag, hit, err.Error())
+	}
 	if u := launchRejection(ag, err); u != nil {
 		return u
 	}
@@ -153,7 +160,7 @@ func startFailure(t acpTarget, err error) error {
 	if u := launchRejection(ag, err); u != nil {
 		return u
 	}
-	if t.requested && len(ag.ModelArg) > 0 && !isAuthFailure(err) {
+	if _, limit := rpcLimit(ag, err); t.requested && len(ag.ModelArg) > 0 && !isAuthFailure(err) && !limit {
 		return usererr.AgentModelRejected(ag.Label, t.model, ag.Models, "It did not start with that model. "+err.Error()).Caused(err)
 	}
 	return acpFailure(ag, true, err)

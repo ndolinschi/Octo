@@ -50,7 +50,7 @@ type spawnInput struct {
 }
 
 func (rt *runtime) spawnDef(parent projectstore.Agent) (tools.Def, error) {
-	schema, err := spawnSchemaFor(rt.acpAgents(), rt.routeEnabled())
+	schema, err := spawnSchemaFor(rt.offeredAgents(), rt.routeEnabled())
 	if err != nil {
 		return tools.Def{}, fmt.Errorf("spawn_agent schema: %w", err)
 	}
@@ -167,7 +167,7 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 func (rt *runtime) spawnTarget(in spawnInput) (model string, ext *acpTarget, msg string) {
 	model = rt.models.ForTier(in.Tier)
 	if in.Agent != "" {
-		target, msg := rt.pickACPAgent(in.Agent, strings.TrimSpace(in.Model))
+		target, msg := rt.pickOfferedAgent(in.Agent, strings.TrimSpace(in.Model))
 		if msg != "" {
 			return "", nil, msg
 		}

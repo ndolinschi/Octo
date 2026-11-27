@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentLabelOf, allPlainStrings, commandOf, JARGON, plainError, stripJargon } from "./plain";
+import { agentLabelOf, allPlainStrings, commandOf, JARGON, plainError, plainStructured, stripJargon } from "./plain";
 import { INSIDE_WORDS } from "./words";
 
 test("the inside words: prose is caught, commands, paths and the version label are not", () => {
@@ -102,4 +102,20 @@ test("NEW-1: a failure with no text says the request failed and offers Retry, ne
     assert.deepEqual(p.next, { kind: "retry" });
     assert.doesNotMatch(p.sentence, /no reason/i);
   }
+});
+
+test("every error action maps to a next step, and a reached limit keeps the plain Retry", () => {
+  const actions = ["recheck_provider", "connect_provider", "retry", "open_settings", "update_agent", "use_worktree", "switch_account"] as const;
+  for (const action of actions) {
+    const p = plainStructured({ message: "Claude Code · Work has reached its usage limit.", hint: "Pick another account or model and retry.", action });
+    assert.equal(p.action, action);
+  }
+  const limit = plainStructured({
+    message: "Claude Code · Work has reached its usage limit.",
+    hint: "Pick another account or model and retry.",
+    action: "switch_account",
+  });
+  assert.deepEqual(limit.next, { kind: "retry" });
+  assert.equal(limit.sentence, "Claude Code · Work has reached its usage limit.");
+  assert.doesNotMatch(limit.sentence, JARGON);
 });

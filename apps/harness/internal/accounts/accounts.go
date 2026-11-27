@@ -5,9 +5,11 @@
 // so it can be chosen per project, per session and per delegation like any
 // other agent.
 //
-// Only the label and the folder are stored, in {data-dir}/agent-accounts.json.
-// Nothing here reads the folder, a token or a credential: the user logs the
-// folder in with the CLI's own login command.
+// Only the label and the folder are stored, in {data-dir}/agent-accounts.json,
+// with whether Octo created the folder ("owned") and the names the user gave
+// the agents' own logins ("default_labels"). Nothing here reads the folder, a
+// token or a credential: the user logs the folder in with the CLI's own login
+// command.
 package accounts
 
 import (
@@ -44,6 +46,8 @@ var (
 	ErrTaken        = errors.New("an account with that id or folder exists")
 	ErrFull         = errors.New("too many accounts for the agent")
 	ErrNotFound     = errors.New("no such account")
+	// ErrNotOwned: removing with the folder was asked for a folder Octo may not delete.
+	ErrNotOwned = errors.New("octo did not create the account's folder")
 )
 
 // InvalidError is a field the store refuses: "label", "id" or "config_dir".
@@ -61,10 +65,15 @@ type Store struct {
 	path string
 	mu   sync.Mutex
 	list []plugins.Account
+	// labels names the agents' own (default) logins, by agent id.
+	labels map[string]string
 }
 
+// fileBody is the file. DefaultLabels is optional: a file without it (as
+// written before default names existed) reads as no names.
 type fileBody struct {
-	Accounts []plugins.Account `json:"accounts"`
+	Accounts      []plugins.Account `json:"accounts"`
+	DefaultLabels map[string]string `json:"default_labels,omitempty"`
 }
 
 // Open reads {dataDir}/agent-accounts.json. A missing file is an empty store;
@@ -92,6 +101,14 @@ func Open(dataDir string) *Store {
 	for _, a := range body.Accounts {
 		if validate(a) == nil {
 			s.list = append(s.list, a)
+		}
+	}
+	for agent, l := range body.DefaultLabels {
+		if validLabel(l) == nil {
+			if s.labels == nil {
+				s.labels = map[string]string{}
+			}
+			s.labels[agent] = l
 		}
 	}
 	return s
@@ -123,7 +140,8 @@ func (s *Store) Add(base plugins.Agent, in plugins.Account) (plugins.Account, er
 		return plugins.Account{}, err
 	}
 	dir := filepath.Clean(plugins.ExpandAccountDir(in.ConfigDir))
-	if base.AccountDefault != "" && dir == filepath.Clean(plugins.ExpandAccountDir(base.AccountDefault)) {
+	real := realPath(dir)
+	if base.AccountDefault != "" && real == realPath(plugins.ExpandAccountDir(base.AccountDefault)) {
 		return plugins.Account{}, &InvalidError{Field: "config_dir", Reason: "is the agent's default folder, which its own entry already uses"}
 	}
 	s.mu.Lock()
@@ -134,18 +152,36 @@ func (s *Store) Add(base plugins.Agent, in plugins.Account) (plugins.Account, er
 			continue
 		}
 		n++
-		if a.ID == in.ID || filepath.Clean(plugins.ExpandAccountDir(a.ConfigDir)) == dir {
+		if a.ID == in.ID {
 			return plugins.Account{}, ErrTaken
 		}
 	}
+	// The same rule as Rename: one label per login of the agent, ignoring case.
+	if s.labelTaken(in.Agent, in.ID, in.Label) {
+		return plugins.Account{}, ErrTaken
+	}
+	// A folder is one login, whichever agent and whatever spelling (a
+	// trailing slash, a symlink) names it.
+	if slices.ContainsFunc(s.list, func(a plugins.Account) bool { return realPath(plugins.ExpandAccountDir(a.ConfigDir)) == real }) {
+		return plugins.Account{}, ErrTaken
+	}
 	if n >= MaxPerAgent {
 		return plugins.Account{}, ErrFull
+	}
+	// Owned: the folder does not exist yet, so Octo creates it (and may delete
+	// it when the account is removed, if the user asks). Never the caller's say.
+	in.Owned = false
+	if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
+		in.Owned = true
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return plugins.Account{}, &InvalidError{Field: "config_dir", Reason: "cannot be created: " + err.Error()}
 	}
 	next := append(slices.Clone(s.list), in)
-	if err := s.write(next); err != nil {
+	if err := s.write(next, s.labels); err != nil {
+		if in.Owned {
+			_ = os.Remove(dir) // only while it is still empty
+		}
 		return plugins.Account{}, err
 	}
 	s.list = next
@@ -155,29 +191,18 @@ func (s *Store) Add(base plugins.Agent, in plugins.Account) (plugins.Account, er
 
 // Remove forgets an account. Its folder (and the login in it) stays on disk.
 func (s *Store) Remove(agent, id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	i := slices.IndexFunc(s.list, func(a plugins.Account) bool { return a.Agent == agent && a.ID == id })
-	if i < 0 {
-		return ErrNotFound
-	}
-	next := slices.Delete(slices.Clone(s.list), i, i+1)
-	if err := s.write(next); err != nil {
-		return err
-	}
-	s.list = next
-	slog.Info("agent account removed", "agent", agent, "account", id)
-	return nil
+	_, err := s.RemoveWithFolder(agent, id, false, "")
+	return err
 }
 
-func (s *Store) write(list []plugins.Account) error {
+func (s *Store) write(list []plugins.Account, labels map[string]string) error {
 	if s.path == "" {
 		return nil
 	}
 	if list == nil {
 		list = []plugins.Account{}
 	}
-	data, err := json.MarshalIndent(fileBody{Accounts: list}, "", "  ")
+	data, err := json.MarshalIndent(fileBody{Accounts: list, DefaultLabels: labels}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -205,13 +230,20 @@ func (s *Store) write(list []plugins.Account) error {
 
 // validate checks one account's fields (not its agent or its uniqueness).
 func validate(a plugins.Account) error {
-	switch {
-	case a.Label == "" || utf8.RuneCountInString(a.Label) > MaxLabelLen || strings.IndexFunc(a.Label, unicode.IsControl) >= 0:
-		return &InvalidError{Field: "label", Reason: fmt.Sprintf("must be 1 to %d characters without control characters", MaxLabelLen)}
-	case !idPattern.MatchString(a.ID):
+	if err := validLabel(a.Label); err != nil {
+		return err
+	}
+	if !idPattern.MatchString(a.ID) {
 		return &InvalidError{Field: "id", Reason: "must be lower-case letters, digits and hyphens, at most 32"}
 	}
 	return validDir(a.ConfigDir)
+}
+
+func validLabel(l string) error {
+	if l == "" || utf8.RuneCountInString(l) > MaxLabelLen || strings.IndexFunc(l, unicode.IsControl) >= 0 {
+		return &InvalidError{Field: "label", Reason: fmt.Sprintf("must be 1 to %d characters without control characters", MaxLabelLen)}
+	}
+	return nil
 }
 
 func validDir(dir string) error {
@@ -233,33 +265,4 @@ func validDir(dir string) error {
 	default:
 		return bad("must be a full path or start with ~/")
 	}
-}
-
-// Slug is an account id made from a label: lower-case letters and digits,
-// other runs turned into one hyphen, at most 32 characters; "account" when
-// nothing is left.
-func Slug(label string) string {
-	var b strings.Builder
-	dash := false
-	for _, r := range strings.ToLower(label) {
-		switch {
-		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
-			b.WriteRune(r)
-			dash = false
-		case b.Len() > 0 && !dash:
-			b.WriteByte('-')
-			dash = true
-		}
-		if b.Len() >= 32 {
-			break
-		}
-	}
-	out := strings.Trim(b.String(), "-")
-	if len(out) > 32 {
-		out = strings.Trim(out[:32], "-")
-	}
-	if out == "" {
-		return "account"
-	}
-	return out
 }

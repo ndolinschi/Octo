@@ -3,7 +3,8 @@ import test from "node:test";
 import type { BridgeConfig, Plugin, ProviderList, SettingsView } from "@octo/agent-client";
 import { deriveProviders } from "./derive";
 import { canRun, chipLabel, chipParts } from "./providers";
-import { tidyAgentLabel } from "../models";
+import { modelName, tidyAgentLabel } from "../models";
+import { agentLabelOf } from "../errors/words";
 import { API_PROVIDER, ROUTER_PROVIDER, connectAction, providerOf, stateText } from "./providersMore";
 import { extraReason } from "./reasons";
 
@@ -202,4 +203,47 @@ test("canRun: the Ollama tier runs only while Ollama answers", () => {
   assert.equal(canRun(ollama("not_running"), "small"), false);
   assert.equal(canRun(ollama("not_running"), "ollama:qwen2.5-coder:3b"), false);
   assert.equal(stateText("not_running"), "Not running");
+});
+
+test("an account's model reads 'Agent · Account / Model' in the chip and a short chip keeps the account", () => {
+  const accounts: ProviderList = {
+    connected: 2,
+    suggested: { orchestrator: "", fast: "", balanced: "", deep: "" },
+    providers: [
+      {
+        id: "claude-code",
+        kind: "agent",
+        label: "Claude Code · Personal",
+        state: "ready",
+        reason: "",
+        install_hint: "",
+        login_hint: "",
+        models: [{ id: "opus", label: "Opus 5.5", source: "manifest" }],
+        default_model: "",
+        flat_rate: true,
+      },
+      {
+        id: "claude-code@work",
+        kind: "agent",
+        label: "Claude Code · Work",
+        state: "ready",
+        reason: "",
+        install_hint: "",
+        login_hint: "",
+        models: [{ id: "opus", label: "Opus 5.5", source: "manifest" }],
+        default_model: "",
+        flat_rate: true,
+      },
+    ],
+  };
+  assert.equal(chipLabel("acp:claude-code@work/opus", accounts), "Claude Code · Work / Opus 5.5");
+  assert.equal(chipLabel("acp:claude-code/opus", accounts), "Claude Code · Personal / Opus 5.5");
+  assert.equal(chipLabel("acp:claude-code@work", accounts), "Claude Code · Work");
+  // A short chip drops the agent's name and keeps the account with the model: "Work / Opus 5.5".
+  assert.deepEqual(chipParts("Claude Code · Work / Opus 5.5"), { provider: "Claude Code · ", model: "Work / Opus 5.5" });
+  assert.deepEqual(chipParts("Claude Code · Opus 5.5"), { provider: "Claude Code · ", model: "Opus 5.5" });
+  // Without the list the label comes from the id: base label, then the account.
+  assert.equal(modelName("acp:claude-code@work/opus"), "Claude Code · Work / Opus");
+  assert.equal(modelName("acp:claude-code/opus"), "Claude Code · Opus");
+  assert.equal(agentLabelOf("claude-code@my-team"), "Claude Code · My Team");
 });

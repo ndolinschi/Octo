@@ -8,7 +8,8 @@ import (
 	"time"
 )
 
-// Registry is the immutable result of Load; safe for concurrent reads.
+// Registry is the result of Load; safe for concurrent use. The manifest agents
+// are fixed; the accounts derived from them change with SetAccounts.
 type Registry struct {
 	plugins []Plugin
 	agents  map[string]Agent
@@ -21,10 +22,14 @@ type Registry struct {
 	// models without a login) otherwise keeps reading ready.
 	seenMu  sync.Mutex
 	seenOut map[string]bool
+	// limits holds the usage limits real sessions ran into (SeenLimit), under seenMu.
+	limits map[string]LimitState
 	// accounts lists the user's extra agent accounts (SetAccounts); each is
 	// served as an agent of its own, "<agent>@<account>".
 	acctMu   sync.RWMutex
 	accounts func() []Account
+	// defaultLabels names the agents' own (default) logins (SetDefaultLabels).
+	defaultLabels func() map[string]string
 }
 
 // SeenLogin records what a real session of the agent found: ok=false (it
@@ -37,6 +42,9 @@ func (r *Registry) SeenLogin(id string, ok bool) bool {
 	}
 	r.seenMu.Lock()
 	defer r.seenMu.Unlock()
+	if !ok && !r.has(id) {
+		return false // the agent (an account removed meanwhile) is gone: record nothing
+	}
 	if r.seenOut[id] == !ok {
 		return false
 	}
@@ -99,6 +107,7 @@ func (r *Registry) OnProbeChange(f func()) {
 // unknown id.
 func (r *Registry) Recheck(ctx context.Context, id string) (Agent, bool) {
 	r.SeenLogin(id, true) // the user asks again: the probe (or, without one, the next session) decides
+	r.SeenLimit(id, nil, false)
 	if r != nil && r.versions != nil {
 		if raw, ok := r.agents[versionKey(id)]; ok {
 			r.versions.sync(ctx, raw)
@@ -177,6 +186,7 @@ func (r *Registry) withState(a Agent) Agent {
 	}
 	// An API key forwarded to a subscription agent makes it bill per token.
 	a.FlatRate = a.FlatRateIn(a.ResolvedEnv())
+	a.Limit = r.limitOf(a.ID)
 	return a
 }
 
@@ -221,10 +231,10 @@ func (r *Registry) Agent(id string) (Agent, bool) {
 		return Agent{}, false
 	}
 	a, ok := r.agents[id]
-	if !ok {
-		if a, ok = r.accountAgent(id); !ok {
-			return Agent{}, false
-		}
+	if ok {
+		a = r.withDefaultLabel(a, r.defaultLabelMap())
+	} else if a, ok = r.accountAgent(id); !ok {
+		return Agent{}, false
 	}
 	return r.withState(a), ok
 }

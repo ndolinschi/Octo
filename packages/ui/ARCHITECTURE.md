@@ -22,6 +22,10 @@ app/                    OctoApp (props: bridge, bridgeUrl, shell, demo, host, ta
 components/<feature>/   21 folders: chat · files · browser · terminal · processes · commands · review · sessions · agents · notes ·
                         details · usage · memory · v7 · settings · providers · home · project · shell · side · status
                         (screens and their parts)
+                        Agent accounts (2026-11-26): `components/settings/AgentAccountsPane.tsx` (the Accounts list, Add account and an
+                        account's own detail) with `settings/accounts/` (AccountRow, AgentLogin = Log in and "One account only", and
+                        LoginSheet = the xterm login surface, its own lazy chunk behind `lazy()`; the rest is in the Settings chunk) and `components/chat/LimitChooser.tsx` (the turn banner's "Use another account" and
+                        "Choose another model"; the model list is the lazy ModelPickerPanel). Nothing of it is in the entry chunk.
 components/dock/        tab groups, strip, divider, drag layer, TabView = the composition point (hands one feature to another
                         as a prop: the file view's floating composer)
 components/primitives/  the component library (decision 90; see "Primitives" below) — import `lib` only
@@ -35,7 +39,7 @@ lib/                    pure helpers and small hooks: models (names, served mode
                         modelPicker, picker, recap, triage, table, contextMeter, agentGroups, keys, files, buffers (EditorBuffers: Monaco models, type-only import), format, match (+ group ranking), comments, transcript, tools, route,
                         storage, fileLinks, codePalette, highlight (lazy), streak, focus, constants, context, orchestrator
                         (a project's orchestrator state), usage (report arithmetic, chart scale, limits), memory/ (task filters, receipt arithmetic, search form), crumbs
-                        (breadcrumb fit), frontMatter, languages, streakPresets (band geometry per start screen), branches (the composer's branch chip and picker rows, decision 100) — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
+                        (breadcrumb fit), providers/accounts (one agent's accounts: siblings, the limit text, `modelsPatchForAccountSwitch`), findUrls (links in a login's terminal output), terminal/ (the xterm grid and theme, shared by the Terminal tab and the login sheet), frontMatter, languages, streakPresets (band geometry per start screen), branches (the composer's branch chip and picker rows, decision 100) — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
 demo/                   in-memory Bridge with seeded projects (for ?demo= and for scripted checks); its own entry point,
                         `@octo/ui/demo` (`demo/index.ts`), not part of the package root
 styles.css              design tokens (@theme), base rules, Monaco widget overrides

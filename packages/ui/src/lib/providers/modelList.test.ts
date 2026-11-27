@@ -350,3 +350,90 @@ test("agent preferences kept in this browser: malformed text reads as none, a ch
     roles: { fast: "", deep: "opus" },
   });
 });
+
+const claudeModels = [model("claude-opus-5-5", "Opus 5.5"), model("claude-sonnet-5-5", "Sonnet 5.5")];
+const withAccounts = (providers: Provider[]): ProviderList => ({ connected: providers.length, suggested: list.suggested, providers });
+
+test("pickerView: an agent with one account reads exactly as before, accounts fields or not", () => {
+  const plain = withAccounts([
+    provider({ id: "claude-code", kind: "agent", label: "Claude Code", state: "ready", models: claudeModels, default_model: "claude-sonnet-5-5" }),
+  ]);
+  const known = withAccounts([
+    provider({
+      id: "claude-code",
+      kind: "agent",
+      label: "Claude Code",
+      state: "ready",
+      models: claudeModels,
+      default_model: "claude-sonnet-5-5",
+      account_env: "CLAUDE_CONFIG_DIR",
+      login_methods: [{ id: "claudeai", label: "Claude subscription" }],
+    }),
+  ]);
+  assert.deepEqual(pickerView(known), pickerView(plain));
+  assert.deepEqual(pickerView(known, { agent: "claude-code" }), pickerView(plain, { agent: "claude-code" }));
+});
+
+const two = withAccounts([
+  provider({ id: "api", kind: "api", label: "Anthropic API", state: "ready", models: [model("claude-sonnet-5-5", "Sonnet 5.5")] }),
+  provider({ id: "claude-code@work", kind: "agent", label: "Claude Code · Work", state: "ready", models: claudeModels, account_of: "claude-code" }),
+  provider({ id: "codex", kind: "agent", label: "Codex", state: "ready", models: [model("gpt-5", "GPT-5")] }),
+  provider({
+    id: "claude-code",
+    kind: "agent",
+    label: "Claude Code · Personal",
+    state: "ready",
+    models: claudeModels,
+    default_model: "claude-sonnet-5-5",
+    account_env: "CLAUDE_CONFIG_DIR",
+  }),
+]);
+
+test("pickerView: several accounts sit together under their labels, the default first, other agents after", () => {
+  const v = pickerView(two);
+  assert.equal(v.level, "top");
+  if (v.level !== "top") return;
+  const agents = v.groups.find((g) => g.key === "agents");
+  assert.deepEqual(
+    agents?.rows.map((r) => [r.key, r.label]),
+    [
+      ["acp:claude-code", "Claude Code · Personal"],
+      ["acp:claude-code@work", "Claude Code · Work"],
+      ["acp:codex", "Codex"],
+    ],
+  );
+});
+
+test("pickerView: an account at its plan limit says so, with the reset time while it is ahead", () => {
+  const now = Date.parse("2026-11-26T10:00:00");
+  const limited = withAccounts([
+    provider({ id: "claude-code", kind: "agent", label: "Claude Code · Personal", state: "ready", models: claudeModels, account_env: "CLAUDE_CONFIG_DIR" }),
+    provider({
+      id: "claude-code@work",
+      kind: "agent",
+      label: "Claude Code · Work",
+      state: "ready",
+      models: claudeModels,
+      account_of: "claude-code",
+      limit: { reached_at: "2026-11-26T09:00:00", resets_at: "2026-11-26T15:00:00" },
+    }),
+  ]);
+  const v = pickerView(limited, { now });
+  const rows = v.level === "top" ? (v.groups.find((g) => g.key === "agents")?.rows ?? []) : [];
+  assert.deepEqual(
+    rows.map((r) => (r.kind === "agent" ? (r.limit ?? null) : "?")),
+    [null, "limit reached until 15:00"],
+  );
+  // The second level names the account: "Claude Code · Work" is the header, its models are the usual ones.
+  const inside = pickerView(limited, { agent: "claude-code@work", now });
+  assert.equal(inside.level === "agent" && inside.agent.label, "Claude Code · Work");
+});
+
+test("choosable and searching name a model of an account 'Claude Code · Work / Opus 5.5'", () => {
+  assert.ok(choosable(two).some((o) => o.value === "acp:claude-code@work/claude-opus-5-5" && o.label === "Claude Code · Work / Opus 5.5"));
+  // One account keeps the dot: "Claude Code · Opus 5.5".
+  assert.ok(choosable(list).some((o) => o.value === "acp:claude-code/claude-opus-5-5" && o.label === "Claude Code · Opus 5.5"));
+  const found = pickerView(two, { query: "work opus" });
+  const row = found.level === "top" ? found.groups.flatMap((g) => g.rows).find((r) => r.kind === "model") : undefined;
+  assert.equal(row?.kind === "model" && row.agentLabel, "Claude Code · Work");
+});

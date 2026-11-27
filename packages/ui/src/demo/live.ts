@@ -16,6 +16,20 @@ export async function failTurn(ctx: Ctx, prompt: string): Promise<void> {
   });
 }
 
+/**
+ * Demo-only (`?limit=<provider id>`): every turn on that account ends at once with the plan-limit failure, which offers
+ * "Use another account" and "Choose another model" beside Retry.
+ */
+export async function limitTurn(ctx: Ctx, prompt: string, label: string): Promise<void> {
+  await turn(ctx, prompt, async () => {
+    throw Object.assign(new Error(`${label} has reached its usage limit.`), {
+      hint: "Pick another account or model and retry, or wait until the limit resets.",
+      action: "switch_account",
+      code: "agent_limit_reached",
+    });
+  });
+}
+
 /** Demo-only: "refused spawn" — a `spawn_agent` call the harness refuses before any agent exists (an error result, no agent). */
 export const SPAWN_REFUSED_TRIGGER = /refused spawn/i;
 

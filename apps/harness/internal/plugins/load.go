@@ -29,6 +29,7 @@ func Load(ctx context.Context, dataDir string, extraDirs []string, connect Conne
 		reg:   &Registry{plugins: []Plugin{}, agents: map[string]Agent{}, servers: map[string]LanguageServer{}, probes: newProber(), versions: newVersioner()},
 		names: map[string]string{}, tools: map[string]bool{}, loaded: map[string]bool{},
 	}
+	b.reg.probes.alive, b.reg.versions.alive = b.reg.has, b.reg.has
 	b.scan(filepath.Join(dataDir, "plugins"), false)
 	for _, d := range extraDirs {
 		b.scan(d, true)
@@ -196,6 +197,7 @@ func (b *builder) populate(p *Plugin, m manifest) {
 			Models: append([]string{}, a.Models...), DefaultModel: a.DefaultModel, ModelArg: slices.Clone(a.ModelArg),
 			InstallHint: strings.TrimSpace(a.Install), Requires: slices.Clone(a.Requires), FlatRate: a.FlatRate != nil && *a.FlatRate, Strengths: slices.Clone(a.Strengths), BillingEnv: slices.Clone(a.BillingEnv),
 			Verified: a.Verified != nil && *a.Verified, VerifiedNote: strings.TrimSpace(a.VerifiedNote), StartHint: strings.TrimSpace(a.StartHint),
+			Experimental: a.Experimental,
 		}
 		if reason := strings.TrimSpace(a.Unsupported); reason != "" {
 			ag.Unsupported, ag.Available, ag.UnavailableReason = reason, false, reason
@@ -206,9 +208,6 @@ func (b *builder) populate(p *Plugin, m manifest) {
 			ag.MCPTransport = ""
 		}
 		ag.SearchPaths = slices.Clone(a.SearchPaths)
-		if a.Accounts != nil && ag.Unsupported == "" {
-			ag.AccountEnv, ag.AccountDefault = a.Accounts.Env, strings.TrimSpace(a.Accounts.Default)
-		}
 		if v := a.Version; v != nil {
 			ag.VersionCommand, _ = resolveCommandIn(v.Command[0], p.Dir, a.SearchPaths)
 			ag.VersionArgs, ag.MinVersion = slices.Clone(v.Command[1:]), strings.TrimSpace(v.Min)
@@ -233,6 +232,7 @@ func (b *builder) populate(p *Plugin, m manifest) {
 				}
 			}
 		}
+		populateAccounts(&ag, a, p.Dir)
 		b.reg.agents[ag.ID] = ag
 		p.Agents = append(p.Agents, ag)
 	}

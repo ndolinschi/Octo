@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/ndolinschi/Octo/apps/harness/internal/accounts"
 	"io"
 	"io/fs"
 	"log"
@@ -22,7 +21,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/accounts"
 	"github.com/ndolinschi/Octo/apps/harness/internal/acptrace"
+	"github.com/ndolinschi/Octo/apps/harness/internal/agentlogin"
 	"github.com/ndolinschi/Octo/apps/harness/internal/anthropicclient"
 	"github.com/ndolinschi/Octo/apps/harness/internal/apitoken"
 	"github.com/ndolinschi/Octo/apps/harness/internal/bridge"
@@ -252,6 +253,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	// started as an agent of its own, "<agent>@<account>".
 	accountStore := accounts.Open(cfg.DataDir)
 	pluginReg.SetAccounts(accountStore.List)
+	pluginReg.SetDefaultLabels(accountStore.DefaultLabels)
 
 	priceTable, err := prices.Load(filepath.Join(cfg.DataDir, prices.File))
 	if err != nil {
@@ -299,7 +301,8 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	})
 	featureStore := features.NewStore(os.LookupEnv)
 	pluginReg.OnProbeChange(provSvc.Refresh)
-	accountSvc := &accounts.Service{Store: accountStore, Agent: pluginReg.Agent, Recheck: provSvc.Recheck, Refresh: provSvc.Refresh}
+	accountSvc := &accounts.Service{Store: accountStore, Agent: pluginReg.Agent, Recheck: provSvc.Recheck, Refresh: provSvc.Refresh,
+		Provider: provSvc.Provider, Forget: pluginReg.Forget}
 	pluginReg.StartProbes(ctx)
 	notes := project.NewNotes(store, hub)
 	orch := orchestrator.New(store, hub, notes, orchestrator.Options{
@@ -314,6 +317,11 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		AgentSource:     provSvc.Agents,
 		OnAgentLogin: func(id string, ok bool) {
 			if pluginReg.SeenLogin(id, ok) {
+				provSvc.Refresh()
+			}
+		},
+		OnAgentLimit: func(id string, resetsAt *time.Time, reached bool) {
+			if pluginReg.SeenLimit(id, resetsAt, reached) {
 				provSvc.Refresh()
 			}
 		},
@@ -360,6 +368,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 
 	lspMgr := lsp.NewManager(lsp.Options{})
 	termMgr := terminal.NewManager(terminal.Options{Children: children})
+	loginSvc := agentlogin.New(ctx, pluginReg, termMgr, agentlogin.Options{})
 	// PR review (RV1): the `gh` adapter; worktrees of finished reviews are swept at start and every 6 hours.
 	reviews := review.New(store, hub, review.Options{Host: codehost.NewGH()})
 	go reviews.Run(ctx, 6*time.Hour)
@@ -414,6 +423,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 			return diagnostics(c, pluginReg, octo, ok, why, logRing, nil)
 		}),
 	}
+	bridgeOpts = append(bridgeOpts, bridge.WithAgentLogins(loginSvc))
 	// Remote access (spec 2026-11-14-remote-access-mobile-design.md): off at every start; its control routes live
 	// on this bridge behind the local token, its own listener opens only when the owner turns it on.
 	remote, err := setupRemote(ctx, cfg, svc, notes, files, hub, bridgeOpts, browserMgr.AddBlockedPort)

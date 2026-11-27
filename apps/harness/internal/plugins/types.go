@@ -70,8 +70,17 @@ type Agent struct {
 	// Unsupported is why the agent cannot work with Octo (manifest unsupported);
 	// Available is false for it and nothing ever starts or probes it.
 	Unsupported string `json:"unsupported,omitempty"`
+	// Experimental (manifest experimental): never picked automatically; only
+	// offered to the orchestrator when the project's models name the agent.
+	Experimental bool `json:"experimental,omitempty"`
 	// StartHint is the manifest's remark for a launch rejected by the CLI.
 	StartHint string `json:"-"`
+	// Logins are the manifest's interactive login commands (auth.login).
+	Logins []LoginMethod `json:"login_methods,omitempty"`
+	// Limit is the usage limit a real session last ran into (filled by the registry).
+	Limit *LimitState `json:"limit,omitempty"`
+	// LimitPatterns mark an agent error message as a usage limit (manifest limitPatterns).
+	LimitPatterns []*regexp.Regexp `json:"-"`
 	Launch
 
 	// Requires are the manifest's extra commands (server-side; diagnostics).
@@ -134,6 +143,19 @@ type Agent struct {
 	AccountID    string `json:"account_id,omitempty"`
 	AccountLabel string `json:"account_label,omitempty"`
 	AccountDir   string `json:"account_dir,omitempty"`
+	// AccountOwned (an account's own entry): Octo created its folder when the
+	// account was added, so removing the account may delete it on request.
+	AccountOwned bool `json:"account_owned,omitempty"`
+	// AccountNote (agents with AccountEnv) is the manifest's accounts.note, shown
+	// beside the accounts. AccountUnsupported (agents without AccountEnv) is why
+	// the agent keeps one login only. AccountDefaultLabel is the name the user
+	// gave the agent's own (default) login; "" while it has none.
+	AccountNote         string `json:"account_note,omitempty"`
+	AccountUnsupported  string `json:"account_unsupported,omitempty"`
+	AccountDefaultLabel string `json:"account_default_label,omitempty"`
+	// accountExtraEnv is the manifest's accounts.extraEnv: more variables set on
+	// every extra account (never on the agent's own entry).
+	accountExtraEnv map[string]string
 
 	// commandFound: the agent's own program was found at load (Available may
 	// later turn false for a CLI that is too old; the check must still rerun).

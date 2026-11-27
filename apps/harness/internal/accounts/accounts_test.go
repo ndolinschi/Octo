@@ -51,6 +51,9 @@ func TestAddRefusals(t *testing.T) {
 	if _, err := s.Add(claude, plugins.Account{Label: "A", ConfigDir: filepath.Join(tmp, "a")}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.Rename(claude, "", "Personal"); err != nil {
+		t.Fatal(err)
+	}
 	invalid := func(field string) func(error) bool {
 		return func(err error) bool {
 			var ie *accounts.InvalidError
@@ -65,6 +68,8 @@ func TestAddRefusals(t *testing.T) {
 		want  func(error) bool
 	}{
 		{"same id", claude, plugins.Account{Label: "A", ConfigDir: filepath.Join(tmp, "b")}, is(accounts.ErrTaken)},
+		{"same label, other id", claude, plugins.Account{ID: "other", Label: "a", ConfigDir: filepath.Join(tmp, "b")}, is(accounts.ErrTaken)},
+		{"the default login's name", claude, plugins.Account{Label: "PERSONAL", ConfigDir: filepath.Join(tmp, "b")}, is(accounts.ErrTaken)},
 		{"same folder", claude, plugins.Account{Label: "B", ConfigDir: filepath.Join(tmp, "a") + "/"}, is(accounts.ErrTaken)},
 		{"no label", claude, plugins.Account{Label: " ", ConfigDir: filepath.Join(tmp, "c")}, invalid("label")},
 		{"long label", claude, plugins.Account{Label: strings.Repeat("x", 41), ConfigDir: filepath.Join(tmp, "c")}, invalid("label")},

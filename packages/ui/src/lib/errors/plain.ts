@@ -36,6 +36,8 @@ const ACTION_NEXT: Record<ErrorAction, (command: string | undefined) => NextStep
   update_agent: () => null,
   // Decision 98: the branch picker shows its own "Start in a worktree from <branch>" button.
   use_worktree: () => null,
+  // A reached plan limit: the banner offers "Use another account" and "Choose another model"; the plain Retry stays (the limit may be over).
+  switch_account: () => ({ kind: "retry" }),
 };
 
 /**

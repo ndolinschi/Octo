@@ -10,14 +10,14 @@ import (
 
 // WithAPIToken makes every /v1 route require "Authorization: Bearer <token>".
 // /health and the MCP routes (which have their own per-session tokens) stay
-// open, and so does a CORS preflight. The two SSE routes also take the token
+// open, and so does a CORS preflight. The SSE routes also take the token
 // as a ?token= query parameter, because a browser EventSource cannot set
 // headers. An empty token leaves the bridge open (tests, --no-api-token).
 func WithAPIToken(token string) Option { return func(s *Server) { s.apiToken = token } }
 
 // sseRoute matches the routes a browser opens with EventSource: the project
-// event stream, a language-server session's stream, and a terminal session's stream.
-var sseRoute = regexp.MustCompile(`^/v1/projects/[^/]+(/events|/lsp/sessions/[^/]+/events|/terminals/[^/]+/events)$`)
+// event stream, a language-server session's stream, a terminal session's stream, and an agent login's stream.
+var sseRoute = regexp.MustCompile(`^/v1/(projects/[^/]+(/events|/lsp/sessions/[^/]+/events|/terminals/[^/]+/events)|providers/[^/]+/login/[^/]+/events)$`)
 
 const unauthorizedMessage = "missing or invalid API token: send Authorization: Bearer <token> " +
 	"(the token is HARNESS_API_TOKEN, or the file api-token in the harness data directory)"

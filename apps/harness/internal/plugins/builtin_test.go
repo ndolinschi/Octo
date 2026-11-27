@@ -20,7 +20,7 @@ func TestBuiltinSubscriptionAgentsLoad(t *testing.T) {
 	if len(ps) != 1 || ps[0].Name != subscriptionagents.Name || !ps[0].Builtin || len(ps[0].Errors) != 0 {
 		t.Fatalf("plugins = %+v", ps)
 	}
-	if _, ok := reg.Agent("claude-code"); !ok || len(ps[0].Agents) != 11 {
+	if _, ok := reg.Agent("claude-code"); !ok || len(ps[0].Agents) != 12 {
 		t.Fatalf("agents = %d", len(ps[0].Agents))
 	}
 	raw, err := json.Marshal(ps[0])
@@ -105,7 +105,7 @@ func TestBuiltinAgentIDClashIsSilent(t *testing.T) {
 	if ag.Command == "" || filepath.Base(ag.Command) != "sh" {
 		t.Fatalf("claude-code = %+v, want the custom plugin's", ag)
 	}
-	if ps[1].Name != subscriptionagents.Name || len(ps[1].Agents) != 10 {
+	if ps[1].Name != subscriptionagents.Name || len(ps[1].Agents) != 11 {
 		t.Fatalf("builtin = %+v", ps[1])
 	}
 }
@@ -117,7 +117,7 @@ func TestBuiltinAgentIDClashIsSilent(t *testing.T) {
 func TestBuiltinFlatRateChoices(t *testing.T) {
 	reg := plugins.Load(context.Background(), t.TempDir(), nil, nil, plugins.WithBuiltin(subscriptionagents.Manifest))
 	want := map[string]bool{
-		"claude-code": true, "copilot": true, "codex": true, "cursor": true, "antigravity": true, "devin": true,
+		"claude-code": true, "copilot": true, "codex": true, "cursor": true, "antigravity": true, "gemini": true, "devin": true,
 		"grok": true, "opencode": false, "droid": false, "omp": false, "pi": false,
 	}
 	for _, a := range reg.Agents() {

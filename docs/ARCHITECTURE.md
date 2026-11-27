@@ -114,6 +114,7 @@ Nothing below is shared between harness, router and shell.
 | `project.sqlite` | `{data-dir}/projects/{pid}/project.sqlite` | harness | One per project: messages, agents, usage, sessions, memory, changes, approvals, queue, reviews, ... (39 tables, three of them FTS5 indexes; [SYSTEM.md](SYSTEM.md#data-model)). Schema **15** (`projectstore.SchemaVersion`). Migrations leave `project.sqlite.pre-m6` and `.pre-v15` beside it, **kept for good**. A project whose database cannot be opened is listed as unavailable |
 | Project side files | `{data-dir}/projects/{pid}/shadow/` (change pre-images, 256 MiB cap), `secrets.json` (`0600`, never in SQLite), attachments, worktrees | harness | |
 | ACP wire traces | `{data-dir}/traces/` | harness | Only with `HARNESS_ACP_TRACE`; 5 MB per file, 20 files, redacted |
+| Agent accounts | `{data-dir}/agent-accounts.json` (file `0600`); each account's folder where the user put it (suggested `~/.claude-work`; created `0700` when missing) | harness (the CLI writes its own login into the folders) | Names, short ids and folders of extra accounts of agents; no secret. The folders hold each CLI's own login files, which Octo never reads ([SYSTEM.md](SYSTEM.md#harness-agent-accounts-2026-11-26)) |
 | Plugins, remote-tool cache, price table | `{data-dir}/plugins/`, `{data-dir}/cache/`, `{data-dir}/prices.toml` | harness | All optional |
 | Remote devices | `{data-dir}/remote/devices.json` (folder `0700`, file `0600`) | harness | SHA-256 of each device token, never the token |
 | Legacy CLI sessions | `{data-dir}/harness.sqlite` | harness | Only `harness run / sessions / show` |
@@ -303,9 +304,11 @@ Generated from `go list -json ./...` (imports and test files) with a hand-writte
 | --- | --- | --- | --- | --- | --- |
 | `cmd/harness` | The binary: `serve` (wires every package below), `doctor`, `mcp-relay`, `run` / `sessions` / `show` (legacy one-shot CLI), `version` | `acptrace`, `agent`, `anthropicclient`, `apitoken`, `bridge` +31 | - | 7 / 1037 | 14 |
 | `acp` | Agent Client Protocol client: JSON-RPC over a child's stdio, session/new, load, prompt, auth, model selection | `acptrace`, `childenv` | `orchestrator`, `permission`, `providers` | 11 / 2191 | 9 |
+| `accounts` | Extra logins (accounts) of ACP agents: the store `{data-dir}/agent-accounts.json`, add, rename, remove (with the folder Octo created, on request), read by the plugin registry on every call | `plugins` | `bridge`, `cmd/harness` | 3 / 503 | 2 |
 | `acptrace` | Opt-in wire trace of ACP sessions under `{data-dir}/traces/` (redacted, 5 MB x 20 files) | - | `acp`, `cmd/harness`, `diag` | 2 / 350 | 1 |
 | `activity` | The one-line "what the agent is doing now" label (Reading x, Running `cmd`) | - | `agent`, `orchestrator` | 1 / 159 | 1 |
 | `agent` | The built-in Messages-API tool loop (`agent.Loop`): streaming, concurrent tools, caching breakpoints, compaction, tool-result clearing; `Runner` for the legacy CLI | `activity`, `router`, `store`, `tools` | `cmd/harness`, `orchestrator` | 7 / 1008 | 6 |
+| `agentlogin` | Runs an agent's own login command in a PTY and rechecks the login while it runs (`/v1/providers/{id}/login`) | `plugins`, `terminal` | `bridge`, `cmd/harness` | 3 / 323 | 1 |
 | `anthropicclient` | The Anthropic SDK client with base URL, key source and a response observer (rate-limit headers) | - | `cmd/harness` | 1 / 99 | 2 |
 | `apitoken` | The bridge's bearer token: from `HARNESS_API_TOKEN` or generated into `{data-dir}/api-token` | - | `bridge`, `cmd/harness` | 1 / 119 | 1 |
 | `approval` | Pending approval requests and turn grants; one waiting request blocks only its agent | `globx`, `projectstore` | `orchestrator`, `project` | 2 / 663 | 2 |
@@ -367,11 +370,11 @@ Generated from `go list -json ./...` (imports and test files) with a hand-writte
 | `examples/mockllm` | `main` around `internal/mockllm` | `mockllm` | - | 1 / 45 | - |
 | `examples/remotetool` | Minimal remote tool server (manual demo of `--remote`) | - | - | 1 / 51 | - |
 | `plugins` | Plugin manifests (language servers, ACP agents, tool servers), login and version probes | `childenv` | `bridge`, `cmd/harness`, `diag`, `orchestrator` +2 | 12 / 2024 | 11 |
-| `plugins-examples/subscription-agents` | Embeds the built-in `subscription-agents` manifest (11 ACP agents) | - | `cmd/harness` | 1 / 14 | - |
+| `plugins-examples/subscription-agents` | Embeds the built-in `subscription-agents` manifest (12 ACP agents) | - | `cmd/harness` | 1 / 14 | - |
 
 Other directories: `examples/` (three `main` packages), `plugins-examples/` (manifests: `subscription-agents` is embedded in
 the binary; `acp-agents`, `fake-acp`, `go-tools`, `typescript-tools` are examples, loaded only when copied into a plugins
-directory), `scripts/` (seven e2e and live scripts, [Gates](#gates-and-scripts)). Product docs:
+directory), `scripts/` (eight e2e and live scripts, [Gates](#gates-and-scripts)). Product docs:
 [`apps/harness/docs/README.md`](../apps/harness/docs/README.md); package detail:
 [`apps/harness/docs/architecture.md`](../apps/harness/docs/architecture.md).
 
@@ -483,6 +486,7 @@ reads three keys of `harness.env` and writes the router's config fragments; the 
 | Orchestrator, sub-agents, tiers | `internal/{orchestrator,agent,anthropicclient}` | `apps/harness/docs/architecture.md` | `apps/harness/scripts/e2e-router.sh` (three sub-agents on one budget key) |
 | Orchestrator on an ACP agent, MCP | `internal/{acp,permission,mcp,mcprelay}`, `internal/orchestrator/acp_*.go`; `apps/harness/docs/acp-orchestrator.md` | `apps/harness/docs/acp-orchestrator.md` | `apps/harness/scripts/e2e-acp-orchestrator.sh` |
 | Plugins, agent manifests, login probes | `internal/plugins`, `apps/harness/plugins-examples/` | `apps/harness/docs/providers.md`, `plugins-examples/` | `apps/harness/scripts/test-subscriptions.sh` (live, needs the CLIs and accounts) |
+| Agent accounts (several logins of one agent), login button, usage limits | `internal/{accounts,agentlogin}`, `internal/plugins/{accounts,accounts_types,manifest_accounts,limits}.go`, `internal/bridge/{accounts,agent_login}.go`, `internal/orchestrator/{acp_accounts,acp_limits}.go`; UI `packages/ui/src/components/settings/AgentAccountsPane.tsx`, `settings/accounts` (rows, Log in, login sheet), `components/chat/LimitChooser.tsx`, `lib/providers/accounts.ts` | `apps/harness/docs/providers.md` (primary), `acp-orchestrator.md`, `errors.md` | `go test ./internal/{accounts,agentlogin,plugins,orchestrator}`; `e2e-accounts.sh` (scripted agent only) |
 | Child process environment | `internal/childenv` | `2026-11-10-subscription-agents-design.md` | `go test ./internal/childenv` |
 | Language servers | `internal/{lsp,fakelsp}`; UI `packages/ui/src/lsp` | `apps/harness/docs/README.md` | `go test` (real `gopls` test when installed) |
 | Files and code pane | `internal/files`, `packages/ui/src/components/files` | `apps/harness/docs/architecture.md` | `go test`; UI scripts |
@@ -552,7 +556,8 @@ beats the file; flags beat both. Test-only variables (`OCTO_FAKEACP_*`, `OCTO_FA
 | `HARNESS_CHILD_ENV_ALLOW` (setting, at once) | empty | `internal/childenv` | Extra names or `PREFIX_*` passed to every child process. Without it children get only the allow-list of `internal/childenv`; names containing KEY, TOKEN, SECRET, PASSWORD, CREDENTIAL and `*_BASE_URL` are dropped unless named here or passed by a manifest's `env` |
 | `HARNESS_IMPORT_HOME` | the user's home directory | `internal/sessionimport` | Where "Import sessions" looks for other tools' session stores (`~/.claude/projects`, `~/.codex/sessions`, ...); for tests and unusual homes |
 | `HARNESS_REMOTE_CLOUDFLARED`, `HARNESS_REMOTE_ADDR`, `HARNESS_REMOTE_WEB_DIR` (flag `--remote-web-dir`), `HARNESS_REMOTE_WEB_PROXY`, `HARNESS_REMOTE_ALLOW`, `HARNESS_REMOTE_DEVICE_IDLE_DAYS`, `HARNESS_REMOTE_IDLE_OFF_HOURS` | `cloudflared` on PATH, `127.0.0.1:0`, none, none, `send,answer,stop`, `30`, `8` | `internal/remoteaccess` | Remote access. Not settings; see `apps/harness/docs/remote-access.md` |
-| `OCTO_CODEX_HOME`, `OCTO_OMP_DIR` | none | `plugins-examples/subscription-agents/plugin.json`, `internal/orchestrator/skills.go` | Become `CODEX_HOME` and `PI_CODING_AGENT_DIR` for those agents |
+| `OCTO_CODEX_HOME`, `OCTO_OMP_DIR` | none | `plugins-examples/subscription-agents/plugin.json`, `internal/orchestrator/skills.go` | Become `CODEX_HOME` and `PI_CODING_AGENT_DIR` for those agents. Since 2026-11-26 `OCTO_CODEX_HOME` steers the default Codex account only |
+| `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`, `GEMINI_FORCE_FILE_STORAGE`, `XDG_DATA_HOME` (account isolation) | none | `plugins-examples/subscription-agents/plugin.json` (`accounts.env`, `accounts.extraEnv`), `internal/plugins/accounts.go` | **Set by the harness for the child process of an extra account of an agent**, to that account's folder (`XDG_DATA_HOME` for Devin; `GEMINI_FORCE_FILE_STORAGE=true` through `extraEnv`); never read from the harness's own environment. The one exception is the existing `OCTO_CODEX_HOME` above. `CODEX_HOME` and `XDG_*` stay in the child allow-list as before; `GEMINI_*` is dropped from a child by the filter, but a manifest's `env` is applied after it, so the account's value reaches that child only |
 | `OCTO_ROUTER_ENABLED`, `OCTO_ROUTER_UPSTREAM_KEY`, `OCTO_ROUTER_BASE_URL` | off, empty, empty | stored by the harness (settings, restart); **read by the desktop shell** | Never passed to child processes |
 | `OCTO_MCP_TOKEN`, `OCTO_PICK_START` | internal | `internal/orchestrator`, `internal/bridge/pickfolder.go` | Set by the harness for its own children (the MCP relay; the Windows folder dialog). Not for users |
 
@@ -602,7 +607,7 @@ The helper scripts in `apps/router/scripts/` (`claude-code-env.sh`, `claude-code
 | `GO_VERSION` | `1.26.11` | `scripts/install-go-toolchain.sh` | The Go release it installs |
 | `OCTO_NO_ROUTER` | `0` | `scripts/build-sidecar.sh`, `scripts/install.sh` | `1`: placeholder instead of a router build |
 | `OCTO_NO_WEB` | `0` | `scripts/build-sidecar.sh` | `1`: skip building the phone client (same as `--no-web`) |
-| `E2E_MOCK_PORT`, `E2E_HARNESS_PORT`, `E2E_ROUTER_PORT`, `E2E_DIRECT_PORT`, `E2E_ESCALATE_PORT`, `E2E_PORT_STDIO`, `E2E_PORT_HTTP`, `E2E_PORT_NOKEY`, `E2E_PORT_AGY`, `E2E_WAIT_SECS` | 88xx (each script's header lists them); waits 60 s (v7: 120) | `apps/harness/scripts/e2e-acp-orchestrator.sh`, `e2e-router.sh`, `e2e-v7.sh` | Ports and the bound of every wait. A busy default moves on; a busy port you set is an error. `e2e-parity.sh`, `e2e-remote.sh` and `e2e-sessions.sh` still use fixed ports (8840-8843, 18842) |
+| `E2E_MOCK_PORT`, `E2E_HARNESS_PORT`, `E2E_ROUTER_PORT`, `E2E_DIRECT_PORT`, `E2E_ESCALATE_PORT`, `E2E_PORT_STDIO`, `E2E_PORT_HTTP`, `E2E_PORT_NOKEY`, `E2E_PORT_AGY`, `E2E_WAIT_SECS` | 88xx (each script's header lists them); waits 60 s (v7: 120) | `apps/harness/scripts/e2e-acp-orchestrator.sh`, `e2e-router.sh`, `e2e-v7.sh`, `e2e-accounts.sh` (`E2E_MOCK_PORT` 8840, `E2E_HARNESS_PORT` 8841) | Ports and the bound of every wait. A busy default moves on; a busy port you set is an error. `e2e-parity.sh`, `e2e-remote.sh` and `e2e-sessions.sh` still use fixed ports (8840-8843, 18842) |
 | `OCTO_TEST_<ID>` | unset | `go test -tags subscription` (`apps/harness/scripts/test-subscriptions.sh`) | Opt in to a live agent run |
 | `BRIDGE`, `PHONE`, `LOCAL_TOKEN`, `PROJECT_DIR` | none | `apps/web/scripts/phone-flow.mjs` | The phone-flow check against a running harness |
 
@@ -623,7 +628,8 @@ a row that says "not verified".
 | Delegation records, outcome reports, the `solved` label, `octo export-delegations`, escalation on failure (2026-11-20; setting off by default) | Built | `cargo test -p octo` (`tests/delegations.rs`); Go tests; `e2e-router.sh` cases 7 and 8 against the real router | A real model or agent; the label's noise rate (unknown) |
 | Router decision quality | Verified live (run 1): classifier answered in 49–93 ms | | Bands beyond that run |
 | ACP orchestrator (S2), MCP server, relay | Built; verified live with Claude Code (runs 1 and 2) | `e2e-acp-orchestrator.sh` | Copilot and Grok logged in; each CLI's handling of `mcpServers`, `session/load`, tool titles |
-| ACP agent manifests (11) | Written from vendor docs and the ACP registry | Scripted agents; live CLIs need `test-subscriptions.sh` | codex, cursor, opencode, antigravity, devin, droid, omp, pi: no run recorded; run 1's silent Copilot turn not reproduced |
+| Additions to several accounts per agent (2026-11-26): rename, remove with the folder, login button, usage limit and "use another account", one account only, Gemini and Devin, `harness doctor` per account | Built | Go tests, UI tests, `e2e-accounts.sh` and the demo bridge, all with the scripted agent and shell-script login commands only | **Any real CLI or real account; no live run is recorded:** that two Claude Code logins stay apart in the macOS Keychain per folder; each CLI's login inside Octo's terminal session; the real limit messages and where they arrive (a limit reported as plain answer text is not caught); the reset-time format; Gemini's forced file storage; Devin's folder move |
+| ACP agent manifests (12) | Written from vendor docs and the ACP registry | Scripted agents; live CLIs need `test-subscriptions.sh` | codex, cursor, opencode, antigravity, gemini, devin, droid, omp, pi: no run recorded; run 1's silent Copilot turn not reproduced |
 | Live activity (thinking, plan, tool rows, quiet notice) | Built | Scripted agent: timing; secrets never leave the harness | Whether real agents send chunks at all (the wire trace shows it) |
 | Settings API (`harness.env`), no-key start | Built | Go gates; both e2e scripts | Harness and shell writing `harness.env` at the same moment |
 | Providers endpoint (`GET /v1/providers`, `422`, `409`) | Built | Go tests with fake probe commands | Real CLI probes; "connected means selectable" and provider preferences (not built) |
@@ -679,7 +685,7 @@ a row that says "not verified".
 | whole frontend | `pnpm lint` (tsc, eslint, `scripts/check-cycles.mjs`), `pnpm format:check`, `pnpm test:scripts` (also `scripts/workflows-pinned.test.mjs`: every action in `.github/workflows` is pinned to a commit SHA with its tag in a comment; `dtolnay/rust-toolchain` then names its `toolchain` explicitly) |
 | Browser scripts (not in CI; need a dev server and Playwright) | `node packages/ui/scripts/<name>.mjs --url http://localhost:1420` for `spacing-audit`, `flicker`, `layout-shift`, `project-switch` (changing project), `scroll-on-send`, `file-open-stability`, `frame-colours`, ...; `node apps/desktop/scripts/traffic-lights.mjs` (the macOS title bar geometry, on `?demo=1&titlebar=mac`) |
 | Shell | `cd apps/desktop/src-tauri && cargo test -p octo-sidecar`; `cargo check` needs the sidecar binaries and WebKitGTK |
-| End to end (`e2e` job of harness.yml) | `bash apps/harness/scripts/e2e-acp-orchestrator.sh`, `e2e-router.sh` (needs `cargo build -p octo` first), `e2e-v7.sh`; `pnpm test:dev-sh` |
+| End to end (`e2e` job of harness.yml) | `bash apps/harness/scripts/e2e-acp-orchestrator.sh`, `e2e-router.sh` (needs `cargo build -p octo` first), `e2e-v7.sh`, `e2e-accounts.sh` (accounts of the scripted agent; ports 8840 and 8841 move on when busy); `pnpm test:dev-sh` |
 | Not in CI (manual, scripted) | `bash apps/harness/scripts/e2e-parity.sh`, `e2e-remote.sh`, `e2e-sessions.sh` (fixed ports); `apps/web/scripts/phone-flow.sh` |
 | Live (needs accounts) | `bash apps/harness/scripts/test-subscriptions.sh [agent ...]` (or `all`) |
 

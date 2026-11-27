@@ -43,6 +43,7 @@ type Server struct {
 	browser   BrowserProxy
 	workers   WorkerProcesses
 	terminals TerminalSessions
+	logins    AgentLogins
 
 	settings         SettingsStore
 	settingsLoopback bool
@@ -143,8 +144,10 @@ func (s *Server) routes() *http.ServeMux {
 		if s.accounts != nil {
 			mux.HandleFunc("POST /v1/providers/{id}/accounts", s.addAccount)
 			mux.HandleFunc("DELETE /v1/providers/{id}/accounts/{account}", s.removeAccount)
+			mux.HandleFunc("PATCH /v1/providers/{id}/account", s.renameAccount)
 		}
 	}
+	s.agentLoginRoutes(mux)
 	if s.diagnostics != nil {
 		mux.HandleFunc("GET /v1/diagnostics", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, s.diagnostics()) })
 	}

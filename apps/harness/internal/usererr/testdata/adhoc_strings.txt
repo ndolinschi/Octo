@@ -66,6 +66,7 @@ project/conversation.go|notFound|project
 project/errors.go|Error.Message|file is not UTF-8 text
 project/errors.go|Error.Message|the review workspace is read-only: refreshing the review moves its worktree and would discard edits
 project/facts.go|notFound|fact
+project/files.go|Error.Message|a file or folder already exists at that path
 project/files.go|fileTooLarge|file exceeds the 2 MiB limit
 project/files.go|invalid|%s
 project/files.go|invalid|expected_mtime must be an RFC 3339 timestamp

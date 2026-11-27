@@ -1,7 +1,6 @@
 package orchestrator
 
 import (
-	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -9,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
+	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -18,15 +18,18 @@ type skillSource struct {
 }
 
 // discoverAgentSkills scans the project's folders and the user's home directory for
-// skills and slash-command files belonging to the selected ACP agent.
-func discoverAgentSkills(agentID string, folders []projectstore.Folder, home string) []acp.Command {
+// skills and slash-command files belonging to the selected ACP agent. An account
+// of an agent ("codex@work") reads its base agent's places; env is that agent's
+// resolved environment, where an account's own CLI home is set.
+func discoverAgentSkills(agentID string, env map[string]string, folders []projectstore.Folder, home string) []acp.Command {
 	id := strings.ToLower(strings.TrimSpace(agentID))
 	if id == "" {
 		return nil
 	}
 	// An account of an agent ("claude-code@work") reads the agent's own skill folders.
-	if base, _, ok := plugins.SplitAccountID(id); ok {
-		id = base
+	slug := ""
+	if base, acct, ok := plugins.SplitAccountID(id); ok {
+		id, slug = base, acct
 	}
 	var sources []skillSource
 	for _, f := range folders {
@@ -37,7 +40,11 @@ func discoverAgentSkills(agentID string, folders []projectstore.Folder, home str
 		sources = append(sources, projectSkillSources(id, root)...)
 	}
 	if home != "" && id != "scripted" {
-		sources = append(sources, homeSkillSources(id, home)...)
+		var account map[string]string
+		if slug != "" {
+			account = env
+		}
+		sources = append(sources, homeSkillSources(id, home, account)...)
 	}
 
 	var out []acp.Command
@@ -118,17 +125,24 @@ func projectSkillSources(id, root string) []skillSource {
 	}
 }
 
-func homeSkillSources(id, home string) []skillSource {
+// homeSkillSources lists the skill folders under the user's home; account is
+// the environment of a non-default account (nil for the default one), whose
+// own CLI home replaces the harness's.
+func homeSkillSources(id, home string, account map[string]string) []skillSource {
 	switch id {
 	case "claude-code", "claude":
+		claudeDir := accountHome(account, "CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
 		return []skillSource{
-			{dir: filepath.Join(home, ".claude", "skills")},
-			{dir: filepath.Join(home, ".claude", "commands"), commands: true},
+			{dir: filepath.Join(claudeDir, "skills")},
+			{dir: filepath.Join(claudeDir, "commands"), commands: true},
 			{dir: filepath.Join(home, ".agents", "skills")},
 		}
 	case "codex":
 		codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
-		if codexHome == "" {
+		if account != nil {
+			codexHome = strings.TrimSpace(account["CODEX_HOME"])
+		}
+		if codexHome == "" && account == nil {
 			codexHome = strings.TrimSpace(os.Getenv("OCTO_CODEX_HOME"))
 		}
 		if codexHome == "" {
@@ -159,8 +173,9 @@ func homeSkillSources(id, home string) []skillSource {
 			{dir: filepath.Join(home, ".agents", "skills")},
 		}
 	case "gemini":
+		// GEMINI_CLI_HOME stands in for the home folder: Gemini CLI keeps .gemini under it.
 		return []skillSource{
-			{dir: filepath.Join(home, ".gemini", "skills")},
+			{dir: filepath.Join(accountHome(account, "GEMINI_CLI_HOME", home), ".gemini", "skills")},
 			{dir: filepath.Join(home, ".agents", "skills")},
 		}
 	case "copilot":
@@ -353,4 +368,13 @@ func firstBodyLine(body string) string {
 		}
 	}
 	return ""
+}
+
+// accountHome is the folder an account's env names in key, else fallback (the
+// default login's, also when the account has none).
+func accountHome(account map[string]string, key, fallback string) string {
+	if d := strings.TrimSpace(account[key]); d != "" {
+		return d
+	}
+	return fallback
 }

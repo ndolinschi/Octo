@@ -16,6 +16,19 @@ export function parseAcp(value: string): { id: string; model: string | null } | 
 }
 
 /**
+ * Whether an agent's label names one of several accounts ("Claude Code · Work"): a derived account's id has an `@`, and the
+ * harness labels every account of an agent with several as "<agent> · <account>"; an agent with one account keeps its plain label.
+ */
+export function accountLabelled(agentId: string, label: string): boolean {
+  return agentId.includes("@") || label.includes(" · ");
+}
+
+/** An agent's model as one name: "Claude Code · Opus"; with several accounts "Claude Code · Work / Opus" (the account stays with its agent). */
+export function joinAgentModel(agentLabel: string, model: string, agentId = ""): string {
+  return `${agentLabel}${accountLabelled(agentId, agentLabel) ? " / " : " · "}${model}`;
+}
+
+/**
  * Single-provider rule for Session mode: choosing an ACP subscription agent (`acp:<id>[/<model>]`) for the Session
  * aligns `fast`, `balanced`, `deep` (and any cross-provider `side` override) to that same agent unless already on it.
  */
@@ -118,7 +131,7 @@ export function modelName(value: string, acp: readonly AcpName[] = []): string {
   const ref = parseAcp(value);
   if (!ref) return readableModelId(value);
   const label = acp.find((a) => a.id === ref.id)?.label ?? agentLabelOf(ref.id);
-  return ref.model ? `${label} · ${readableModelId(ref.model)}` : label;
+  return ref.model ? joinAgentModel(label, readableModelId(ref.model), ref.id) : label;
 }
 
 /** The model that answered (decision 37): `served_model` when a router reported one, and the requested one when it differs. */

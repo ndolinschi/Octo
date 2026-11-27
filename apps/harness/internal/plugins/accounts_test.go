@@ -110,7 +110,7 @@ func TestAccountLoginCommandQuoting(t *testing.T) {
 
 func TestBuiltinAccounts(t *testing.T) {
 	r := plugins.Load(context.Background(), t.TempDir(), nil, nil, plugins.WithBuiltin(subscriptionagents.Manifest))
-	want := map[string]string{"claude-code": "CLAUDE_CONFIG_DIR", "codex": "CODEX_HOME", "omp": "PI_CODING_AGENT_DIR"}
+	want := map[string]string{"claude-code": "CLAUDE_CONFIG_DIR", "codex": "CODEX_HOME", "omp": "PI_CODING_AGENT_DIR", "gemini": "GEMINI_CLI_HOME", "devin": "XDG_DATA_HOME"}
 	for _, a := range r.Agents() {
 		if a.AccountEnv != want[a.ID] {
 			t.Errorf("%s: account env %q, want %q", a.ID, a.AccountEnv, want[a.ID])

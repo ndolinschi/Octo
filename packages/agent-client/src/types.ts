@@ -3,7 +3,7 @@ import type { ReviewListUpdatedEvent, ReviewUpdatedEvent, ReviewWorkspace, Revie
 
 /** A button the UI can offer for a failure (decision 94b); an absent `action` means none. */
 /** `use_worktree`: a refused branch switch of the main checkout; the UI offers "Start in a worktree from <branch>" (UI decision 98). */
-export type ErrorAction = "recheck_provider" | "connect_provider" | "retry" | "open_settings" | "update_agent" | "use_worktree";
+export type ErrorAction = "recheck_provider" | "connect_provider" | "retry" | "open_settings" | "update_agent" | "use_worktree" | "switch_account";
 
 /** The optional parts of a failure beside its plain one-sentence message. `details` is technical text (a fold). */
 export type ErrorFields = {
@@ -863,10 +863,30 @@ export type Provider = {
   account_id?: string;
   account_label?: string;
   account_dir?: string;
+  /** An account's own entry: Octo created its folder, so removing the account can delete it (`delete_folder`). */
+  account_owned?: boolean;
+  /** With `account_env`: the manifest's note shown beside the accounts. */
+  account_note?: string;
+  /** Agents without `account_env`: why the agent keeps one login only ("One account only: <reason>"). */
+  account_unsupported?: string;
+  /** With `account_env`: the name the user gave the agent's own login (`PATCH .../account`); absent while it has none. */
+  account_default_label?: string;
+  /** Agents: the ways to log this agent in (`POST /v1/providers/{id}/login` takes the id as `method`). */
+  login_methods?: LoginMethod[];
+  /** Agents: the terminal command that logs this account in (fallback when the login terminal is not used). */
+  login_command?: string;
+  /** Agents: the account's plan limit was reached (until `resets_at`, when known). */
+  limit?: ProviderLimit;
 };
 
 /** `POST /v1/providers/{id}/accounts`: a name and the folder the CLI keeps this login in; `id` is made from the name when absent. */
 export type AgentAccountInput = { label: string; config_dir: string; id?: string };
+
+/** A way to log in: `id` goes to the login route as `method`. */
+export type LoginMethod = { id: string; label: string };
+
+/** A reached plan limit (RFC 3339 times). */
+export type ProviderLimit = { reached_at: string; resets_at?: string };
 
 /** The model an agent uses for a delegation decided fast / balanced / deep; "" means the agent's own default. */
 export type ProviderRoles = { fast: string; balanced: string; deep: string };
@@ -958,6 +978,15 @@ export type PluginAgent = {
   tokens_estimated?: boolean;
   /** Difficulty bands the manifest says the agent suits (strengths); absent when none. */
   strengths?: ("easy" | "medium" | "hard")[];
+  /** An account's own entry (`<agent>@<account>`): the agent it is an account of, and the account's name. */
+  account_of?: string;
+  account_label?: string;
+  /** The ways to log this agent in. */
+  login_methods?: LoginMethod[];
+  /** The account's plan limit, while reached. */
+  limit?: ProviderLimit;
+  /** The launch command is not verified (the plugin says so). */
+  experimental?: boolean;
 };
 export type PluginToolServer = { url: string };
 
@@ -1819,3 +1848,26 @@ export type TerminalSession = {
   onExit(cb: (info: TerminalExit) => void): () => void;
   close(): Promise<void>;
 };
+
+/** `POST /v1/providers/{id}/login` body. */
+export type AgentLoginOptions = { method?: string; cols?: number; rows?: number };
+
+/** State a login's recheck settled on (`event: login`). */
+export type AgentLoginState = "ok" | "not_logged_in" | "unchecked";
+
+/** A live login terminal (`POST /v1/providers/{id}/login` + SSE `/events`); `command` is the text to run by hand instead. */
+export type AgentLoginSession = Omit<TerminalSession, "folder" | "cwd" | "shell"> & {
+  command: string;
+  onLogin(cb: (state: AgentLoginState) => void): () => void;
+};
+
+/** An agent id split at its first `@`: `claude-code@work` is base `claude-code`, account `work`. */
+export function splitAgentId(id: string): { base: string; account: string } {
+  const i = id.indexOf("@");
+  return i < 0 ? { base: id, account: "" } : { base: id.slice(0, i), account: id.slice(i + 1) };
+}
+
+/** The inverse of {@link splitAgentId}: an empty account is the default one (the bare base id). */
+export function agentIdOf(base: string, account: string): string {
+  return account === "" ? base : `${base}@${account}`;
+}

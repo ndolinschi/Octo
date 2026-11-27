@@ -34,3 +34,56 @@ func AccountsFull(max int) *Error {
 func AccountGone() *Error {
 	return &Error{Code: "not_found", Message: "That account no longer exists.", Hint: "Refresh the list, then try again.", Action: ActionRetry}
 }
+
+// AccountFolderNotOwned: removing an account with its folder was asked, but
+// Octo did not create that folder (or it is no longer a plain folder at the
+// account's path), so Octo will not delete it. Nothing was removed.
+func AccountFolderNotOwned() *Error {
+	return &Error{Code: "conflict", Message: "Octo did not create this account's folder, so it will not delete it.", Hint: "Remove the account and keep its folder, then delete the folder yourself if you no longer need it."}
+}
+
+// Code of the usage-limit cases below.
+const CodeAgentLimitReached = "agent_limit_reached"
+
+// AgentLimitReached: the agent (one account of it) refused a turn because its
+// plan's usage limit is reached. label names the account ("Claude Code · Work");
+// details is the agent's own text; accounts says the agent can keep several
+// accounts, so another one is worth offering.
+func AgentLimitReached(label, details string, accounts bool) *Error {
+	return &Error{
+		Code: CodeAgentLimitReached, Message: label + " has reached its usage limit.",
+		Hint:   "Pick another " + accountOr(accounts) + "model and retry, or wait until the limit resets.",
+		Action: ActionSwitchAccount, Details: clip(details),
+	}
+}
+
+// AgentRateLimited: the agent refused a turn for a rate limit that says
+// nothing about the plan (a bare 429); it usually lifts within moments. Same
+// code and action as AgentLimitReached.
+func AgentRateLimited(label, details string, accounts bool) *Error {
+	return &Error{
+		Code: CodeAgentLimitReached, Message: label + " is being rate limited.",
+		Hint:   "Retry in a moment, or pick another " + accountOr(accounts) + "model.",
+		Action: ActionSwitchAccount, Details: clip(details),
+	}
+}
+
+func accountOr(accounts bool) string {
+	if accounts {
+		return "account or "
+	}
+	return ""
+}
+
+// CodeLoginUnavailable is the code of LoginUnavailable.
+const CodeLoginUnavailable = "login_unavailable"
+
+// LoginUnavailable: Octo has no login command to run for the agent. command is
+// the terminal command to log in by hand ("" when unknown).
+func LoginUnavailable(label, command, details string) *Error {
+	return &Error{
+		Code: CodeLoginUnavailable, Message: label + " cannot be logged in from Octo.",
+		Hint:    "Log in to it in a terminal, then check again.",
+		Command: command, Action: ActionRecheckProvider, Details: clip(details),
+	}
+}

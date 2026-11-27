@@ -20,6 +20,10 @@ const (
 	// EnvLoginFile, when set, makes the unattended method succeed only while
 	// that file exists (a stand-in for stored credentials).
 	EnvLoginFile = "OCTO_FAKEACP_LOGIN_FILE"
+	// EnvHome is the folder variable of an account of the scripted agent
+	// (manifest accounts.env): `fakeacp login` and `status` use "login" in it
+	// when EnvLoginFile is not set.
+	EnvHome = "OCTO_FAKEACP_HOME"
 	// EnvModels is a comma-separated list of models the agent advertises.
 	EnvModels = "OCTO_FAKEACP_MODELS"
 	// EnvModelsVia selects where session/new lists them: "models" (the
@@ -44,6 +48,10 @@ const (
 	// EnvReportEnv is a comma-separated list of variable names; the final
 	// summary says for each whether the agent's environment has it set.
 	EnvReportEnv = "OCTO_FAKEACP_REPORT_ENV"
+	// EnvReportValues is a comma-separated list of variable names; the final
+	// summary says for each its value ("unset" when missing), so a turn on a
+	// second account shows the folder it saw.
+	EnvReportValues = "OCTO_FAKEACP_REPORT_VALUES"
 	// EnvLoadSession=1 advertises agentCapabilities.loadSession and serves
 	// session/load (replaying a short history as session/update first).
 	EnvLoadSession = "OCTO_FAKEACP_LOAD_SESSION"

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/accounts"
 	"github.com/ndolinschi/Octo/apps/harness/internal/acptrace"
 	"github.com/ndolinschi/Octo/apps/harness/internal/buildinfo"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
@@ -75,6 +76,10 @@ func cmdDoctor(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	reg := loadPlugins(ctx, cfg, tools.NewRegistry())
+	// Read-only: the stored accounts become agents of their own, probed below with their own environment.
+	acctStore := accounts.Open(cfg.DataDir)
+	reg.SetAccounts(acctStore.List)
+	reg.SetDefaultLabels(acctStore.DefaultLabels)
 	ok, why := cfg.BuiltinLoop()
 	var octo *router.Router
 	if cfg.BaseURL != "" {

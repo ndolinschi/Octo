@@ -67,6 +67,22 @@ A project can show **unavailable** instead of opening:
 | "This project's budget is used up ($X of $Y)." | Raise or remove the budget in Project settings. Nothing more is sent until you do |
 | "That is too much to send at once (the limit is 1 MiB)." | Save the long text as a file in the project and mention it with `@` |
 
+## Accounts of an agent
+
+| You see | What it means and the fix |
+| --- | --- |
+| The **Log in** button shows an error, or the login sheet says Octo cannot log in from here | Run the command shown under the sheet in a terminal, then press **Check again**. Octo could not start the agent's login command or the agent has none for Octo to run |
+| The login finished but the account stays "Not logged in" | Press **Check again**. If it does not change, run the shown command yourself and read what the agent says. For Gemini CLI Octo has no login check: the state reads unchecked until a request works |
+| The account is logged in as the **wrong** person | A browser that is already signed in to the other account completed the login. Run **Log in** again after signing out of the other account in that browser, or open the link in a private window |
+| "<Agent> · <Account> has reached its usage limit." | The agent said the plan's limit is reached. Press **Use another account**, or **Choose another model**, or wait for the reset. Nothing switches by itself. If you never see this message but the agent's reply says it is out of usage, Octo did not recognise the limit; choose another account yourself |
+| "<Agent> · <Account> is being rate limited." | The agent refused the request for a short-term rate limit (not the plan's limit). Retry in a moment, or choose another account or model; Octo does not mark the account as at its limit |
+| "Octo did not create this account's folder, so it will not delete it." | You asked to delete the folder of an account whose folder existed before Octo used it. Remove the account without deleting its folder, then delete the folder yourself if you want |
+| "<Agent> cannot have more than one account in Octo." | That agent cannot keep a second login apart ([which ones](first-run.md#more-than-one-account-of-an-agent)); its detail says why ("One account only: …"). Use its one login or another agent |
+| "This agent has an account with that name or folder already." | Choose another name and another folder; when renaming, names are unique per agent, ignoring case, the first login's name included |
+| "Change this on your computer" | You are on a paired phone; accounts and the project's model are changed on the computer only |
+
+`harness doctor` lists every account with its folder and runs its login check with its own folder.
+
 If an agent works in your terminal but "is not logged in" in Octo, Octo's agents inherit the environment of your **login shell**. A
 macOS app started from the Dock does not have your shell's `PATH` by itself, so Octo asks your login shell for it (3 seconds).
 Run `harness doctor`: it lists the variable names the agents get. If the agent's command is "not found", fix your shell's `PATH`.

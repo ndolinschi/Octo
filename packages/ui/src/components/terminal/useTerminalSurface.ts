@@ -3,9 +3,9 @@ import { Terminal } from "@xterm/xterm";
 import { type RefObject, useEffect, useRef } from "react";
 import type { Bridge } from "@octo/agent-client";
 import { monoFont } from "../../lib/monoFont";
-import { estimateGrid, measureCell, XTERM_SCROLLBAR } from "./grid";
+import { estimateGrid, measureCell, XTERM_SCROLLBAR } from "../../lib/terminal/grid";
 import type { ManagedTerminal } from "./sessionStore";
-import { readXtermTheme } from "./xtermTheme";
+import { readXtermTheme } from "../../lib/terminal/xtermTheme";
 
 const FONT_SIZE = 13;
 const LINE_HEIGHT = 1.35;

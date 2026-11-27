@@ -105,7 +105,7 @@ func TestServeStartsWithoutAnyKey(t *testing.T) {
 	}
 	getJSON("/v1/plugins", &pl)
 	if len(pl.Plugins) != 1 || pl.Plugins[0].Name != "subscription-agents" || !pl.Plugins[0].Builtin ||
-		len(pl.Plugins[0].Agents) != 11 || len(pl.Plugins[0].Errors) != 0 {
+		len(pl.Plugins[0].Agents) != 12 || len(pl.Plugins[0].Errors) != 0 {
 		t.Fatalf("plugins = %+v", pl.Plugins)
 	}
 	var c struct {

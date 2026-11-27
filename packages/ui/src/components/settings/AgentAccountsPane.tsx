@@ -1,13 +1,15 @@
 import type { Provider } from "@octo/agent-client";
 import { useId, useState } from "react";
-import { accountBase, accountsOf, refreshProviders, stateTone, suggestedAccountDir, providerStateText, useProviders } from "../../lib/providers";
+import { accountBase, accountsOf, agentBaseLabel, defaultAccountName, refreshProviders, suggestedAccountDir, useProviders } from "../../lib/providers";
 import { errorMessage, structuredError } from "../../lib/format";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { FieldRow } from "../primitives/FieldRow";
 import { Notice } from "../primitives/Notice";
+import { Checkbox } from "../primitives/Checkbox";
 import { TextField } from "../primitives/TextField";
-import { ToneDot } from "../shared/providers/ProviderRows";
+import { AccountRow } from "./accounts/AccountRow";
+import { LoginButton } from "./accounts/AgentLogin";
 import { SectionTitle } from "./ProviderParts";
 
 /**
@@ -53,7 +55,7 @@ export function AgentAccounts({ agent, onOpen }: { agent: Provider; onOpen?: (id
       <div className="flex flex-col gap-1">
         <SectionTitle>Accounts</SectionTitle>
         <ul className="flex flex-col">
-          <AccountRow name="Default" folder={agent.account_default ?? "The CLI's own folder"} provider={agent} />
+          <AccountRow name={defaultAccountName(agent)} folder={agent.account_default ?? "The CLI's own folder"} provider={agent} />
           {accounts.map((a) => (
             <AccountRow
               key={a.id}
@@ -64,6 +66,7 @@ export function AgentAccounts({ agent, onOpen }: { agent: Provider; onOpen?: (id
             />
           ))}
         </ul>
+        {agent.account_note && <p className="text-xs text-fg-3">{agent.account_note}</p>}
       </div>
       {bridge.addAgentAccount && (
         <div className="flex flex-col gap-2">
@@ -89,7 +92,7 @@ export function AgentAccounts({ agent, onOpen }: { agent: Provider; onOpen?: (id
                 ),
               },
             ]}
-            hint={`Octo starts ${agent.label} with ${env} set to this folder, so the account keeps its own login there. Octo stores only the name and the folder.`}
+            hint={`Octo starts ${agentBaseLabel(agent)} with ${env} set to this folder, so the account keeps its own login there. Octo stores only the name and the folder.`}
           />
           <div className="flex flex-wrap items-center gap-3">
             <Button size="sm" aria-busy={busy} onClick={() => void add()}>
@@ -108,33 +111,17 @@ export function AgentAccounts({ agent, onOpen }: { agent: Provider; onOpen?: (id
   );
 }
 
-function AccountRow({ name, folder, provider, onOpen }: { name: string; folder: string; provider: Provider; onOpen?: (() => void) | undefined }) {
-  return (
-    <li className="flex min-h-ctl-md items-center gap-3 border-b border-line py-1.5 last:border-b-0">
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm text-fg">{name}</span>
-        <span className="truncate font-mono text-xs text-fg-3">{folder}</span>
-      </span>
-      <span className="flex shrink-0 items-center gap-2 text-xs text-fg-2">
-        <ToneDot tone={stateTone(provider)} />
-        {providerStateText(provider)}
-      </span>
-      {onOpen && (
-        <Button variant="quiet" size="xs" onClick={onOpen}>
-          Open
-        </Button>
-      )}
-    </li>
-  );
-}
-
-/** An account's own detail: which agent and folder it is, and "Remove account" (the folder and its login stay). */
+/**
+ * An account's own detail: which agent and folder it is, Log in, and "Remove account". The folder and its login stay,
+ * unless Octo created the folder (`account_owned`) and the person ticks "Also delete its login folder" while confirming.
+ */
 export function AccountFacts({ account, onRemoved }: { account: Provider; onRemoved?: () => void }) {
   const { bridge } = useApp();
   const providers = useProviders(bridge);
   const all = providers.status === "loading" ? [] : (providers.list?.providers ?? []);
   const agent = accountBase(all, account);
   const [confirm, setConfirm] = useState(false);
+  const [deleteFolder, setDeleteFolder] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const remove = async () => {
@@ -145,11 +132,12 @@ export function AccountFacts({ account, onRemoved }: { account: Provider; onRemo
     }
     setBusy(true);
     try {
-      await bridge.removeAgentAccount(account.account_of, account.account_id);
+      await bridge.removeAgentAccount(account.account_of, account.account_id, { deleteFolder: account.account_owned === true && deleteFolder });
       await refreshProviders(bridge);
       onRemoved?.();
     } catch (e) {
-      setError(errorMessage(e));
+      const s = structuredError(e);
+      setError(s ? `${s.message}${s.hint ? ` ${s.hint}` : ""}` : errorMessage(e));
       setConfirm(false);
     }
     setBusy(false);
@@ -158,18 +146,39 @@ export function AccountFacts({ account, onRemoved }: { account: Provider; onRemo
     <section aria-label="Account" className="flex flex-col gap-1">
       <SectionTitle>Account</SectionTitle>
       <p className="text-sm text-fg-2">
-        {`An account of ${agent?.label ?? account.account_of ?? "this agent"}. Its login is kept in `}
+        {`An account of ${agent ? agentBaseLabel(agent) : (account.account_of ?? "this agent")}. Its login is kept in `}
         <code className="font-mono text-fg">{account.account_dir}</code>
         {agent?.account_env ? ` (${agent.account_env}).` : "."}
       </p>
       <p className="text-xs text-fg-3">Choose it in any model picker to run a project, a session or a delegation on this login.</p>
+      {account.state !== "not_installed" && (
+        <div className="flex pt-1">
+          <LoginButton provider={account} />
+        </div>
+      )}
       {bridge.removeAgentAccount && (
-        <div className="flex flex-wrap items-center gap-3 pt-2">
-          <Button size="sm" variant={confirm ? "danger" : "secondary"} aria-busy={busy} onClick={() => void remove()} onBlur={() => setConfirm(false)}>
-            {confirm ? "Remove account?" : "Remove account"}
-          </Button>
-          {confirm && <span className="text-xs text-fg-3">The folder and the login in it stay on this computer.</span>}
-          {error && <Notice tone="error">{error}</Notice>}
+        <div className="flex flex-col gap-2 pt-2">
+          {account.account_owned && (
+            <Checkbox
+              checked={deleteFolder}
+              onChange={setDeleteFolder}
+              label="Also delete its login folder when removing"
+              description="Octo made this folder. Deleting it signs the account out for good; a system keychain entry the CLI made stays."
+            />
+          )}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button size="sm" variant={confirm ? "danger" : "secondary"} aria-busy={busy} onClick={() => void remove()} onBlur={() => setConfirm(false)}>
+              {confirm ? "Remove account?" : "Remove account"}
+            </Button>
+            {confirm && (
+              <span className="text-xs text-fg-3">
+                {account.account_owned && deleteFolder
+                  ? "Its folder and the login in it are deleted too."
+                  : "The folder and the login in it stay on this computer."}
+              </span>
+            )}
+            {error && <Notice tone="error">{error}</Notice>}
+          </div>
         </div>
       )}
     </section>

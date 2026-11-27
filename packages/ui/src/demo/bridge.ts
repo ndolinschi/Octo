@@ -8,6 +8,7 @@ import {
   STUBBORN_TRIGGER,
   approvalTurn,
   failTurn,
+  limitTurn,
   liveTurn,
   slowTurn,
   spawnRefusedTurn,
@@ -20,6 +21,7 @@ import {
   type Bridge,
   type Models,
   type Project,
+  type Provider,
   type ProjectInput,
   type ProjectSummary,
   type SideMessage,
@@ -153,7 +155,16 @@ function startScript(rec: ProjectRecord, t: number, script: (ctx: Ctx) => Promis
 }
 
 /** The scripted turn a message starts (the demo triggers: fail, live, spawn refused, slow, approval, stubborn, else generic). */
-function scriptFor(text: string): (ctx: Ctx) => Promise<void> {
+function scriptFor(text: string, limited: (value: string) => Provider | null): (ctx: Ctx) => Promise<void> {
+  return (ctx) => {
+    // `?limit=<provider id>`: a turn whose orchestrator is that account ends in the plan-limit failure.
+    const limit = limited(ctx.rec.project.models.orchestrator);
+    if (limit) return limitTurn(ctx, text, limit.label);
+    return scriptForText(text)(ctx);
+  };
+}
+
+function scriptForText(text: string): (ctx: Ctx) => Promise<void> {
   return (ctx) =>
     FAIL_TRIGGER.test(text)
       ? failTurn(ctx, text)
@@ -516,7 +527,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     updated_at: p.updated_at,
   });
 
-  const { unusable, features, ...providerMethods } = demoProviders();
+  const { unusable, features, limited, ...providerMethods } = demoProviders();
   /** A project as read: the stored models that cannot run now are listed, never refused (as the harness does). */
   const withIssues = (p: Project): Project => ({ ...clone(p), models_unavailable: unusable(p.models) });
   const remote = createDemoRemote();
@@ -764,7 +775,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const rec = get(id);
       if (rec.turn) throw new BridgeError(409, "turn_in_progress", "a turn is already running");
       trace("sendMessage", text);
-      startScript(rec, Date.now(), scriptFor(text));
+      startScript(rec, Date.now(), scriptFor(text, limited));
       const orch = orchestratorOf(rec);
       const sent = [...rec.messages].reverse().find((m) => m.agent_id === orch.id && m.role === "user");
       if (!sent) throw new BridgeError(500, "internal", "message not recorded");
@@ -784,7 +795,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       if (!root) throw new BridgeError(404, "not_found", "session not found");
       if (rec.turns?.has(root.id)) throw new BridgeError(409, "turn_in_progress", "a turn is already running");
       trace("sendSessionMessage", text);
-      startScript(rec, Date.now(), scriptFor(text), root.id);
+      startScript(rec, Date.now(), scriptFor(text, limited), root.id);
       const sent = [...rec.messages].reverse().find((m) => m.agent_id === root.id && m.role === "user");
       if (!sent) throw new BridgeError(500, "internal", "message not recorded");
       return { message: clone(sent) };

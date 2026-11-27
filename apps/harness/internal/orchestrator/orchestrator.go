@@ -67,6 +67,10 @@ type Options struct {
 	// about its login (R5-4): ok=false when it refused for a missing login,
 	// ok=true when a turn of it ended without that refusal.
 	OnAgentLogin func(agentID string, ok bool)
+	// OnAgentLimit, when set, is told what a real session of an ACP agent found
+	// about its usage limit: reached with the reset time (nil when unknown) when
+	// it refused for one, !reached when a turn of it ended without that refusal.
+	OnAgentLimit func(agentID string, resetsAt *time.Time, reached bool)
 	// BuiltinUnavailable, when non-empty, says the built-in Messages-API loop
 	// cannot run (no key, no router); it is the error every agent, sub-agent
 	// and side question that needs it ends with, and no request is sent.
@@ -643,6 +647,7 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 // ended otherwise (done, or failed for another reason after it started) marks
 // it logged in only when it succeeded.
 func (o *Orchestrator) noteLogin(agentID string, err error) {
+	o.noteLimit(agentID, err)
 	if o.opts.OnAgentLogin == nil || agentID == "" {
 		return
 	}

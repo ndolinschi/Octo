@@ -306,6 +306,7 @@ func parseAgentError(raw json.RawMessage) (AgentError, bool) {
 		Code:       strings.TrimSpace(envelope.Code),
 		Message:    strings.TrimSpace(envelope.Message),
 		StatusCode: envelope.StatusCode,
+		Data:       append(json.RawMessage(nil), raw...),
 	}
 	if envelope.Data != nil {
 		if ae.Message == "" {
@@ -345,6 +346,7 @@ func parseAgentErrorPayload(raw json.RawMessage) (AgentError, bool) {
 		Code:       strings.TrimSpace(obj.Code),
 		Message:    strings.TrimSpace(obj.Message),
 		StatusCode: obj.StatusCode,
+		Data:       append(json.RawMessage(nil), raw...),
 	}
 	if obj.Data != nil {
 		if ae.Message == "" {

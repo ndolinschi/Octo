@@ -38,7 +38,11 @@ func (s *Server) builtinState() (bool, string) {
 }
 
 func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, s.providers.Snapshot())
+	snap := s.providers.Snapshot()
+	if !s.localRequest(r) {
+		snap = forDevice(snap)
+	}
+	writeJSON(w, http.StatusOK, snap)
 }
 
 // ProviderEditor is what the model endpoints of an agent need beyond the

@@ -19,7 +19,7 @@ agents. The only traffic that leaves your computer is the calls to the model or 
 | Page | What it covers |
 | --- | --- |
 | [Install](install.md) | What `pnpm install:app` builds on macOS and Linux. There are no signed releases yet. |
-| [First run](first-run.md) | The connect screen, adding an API key or an agent, and what "Ready", "Not running" and "Not logged in" mean. |
+| [First run](first-run.md) | The connect screen, adding an API key or an agent, more than one account of an agent (log in, rename, remove, usage limits), and what "Ready", "Not running" and "Not logged in" mean. |
 | [Projects and sessions](projects-and-sessions.md) | Projects with one or several folders, sessions, the branch chip and worktrees. |
 | [Working with an agent](working-with-an-agent.md) | Modes, permission levels, the approval card, queue and stop, rewind. |
 | [The tool tabs](tool-tabs.md) | Files, Changes, Review, Terminal, Browser, Processes, side question. |
@@ -37,6 +37,7 @@ limited way, and the guide says so where it matters:
 - Verified by the owner on Linux with a real agent: Claude Code (the app, the harness, the router, installing from source).
 - Verified only with a mock model and scripted stand-in agents, in a Chromium browser on Linux: nearly everything else,
   including the whole interface of the last weeks.
+- **Not verified with a real agent or account:** the additions to accounts of an agent (the Log in button inside Octo, the usage-limit notice, renaming, removing with the folder, accounts of Devin and Gemini CLI);
 - **Not verified with a real agent:** GitHub Copilot, Grok, Codex, Cursor, OpenCode, Antigravity, Devin, Droid, omp, pi
   (logged in), images sent to an agent, resuming an agent's own session, an agent asking for permission in "Ask first".
 - Not verified on macOS in a release build, in Safari or WebKit, in the Tauri window, on Windows, with a real Ollama, or with a

@@ -12,6 +12,7 @@ import {
   type SettingsUpdate,
   type SettingsView,
 } from "@octo/agent-client";
+import { demoAccountExtras } from "./accounts";
 import { ownerProviders } from "./providersOwner";
 import { accountSlug } from "../lib/providers/accounts";
 
@@ -24,7 +25,13 @@ import { accountSlug } from "../lib/providers/accounts";
  * empty project then show the calm "log in later or choose another model" notice). A create or patch is never refused for an unready
  * agent; the project lists it in `models_unavailable`.
  */
-export type DemoProvidersOptions = { none?: boolean };
+export type DemoProvidersOptions = {
+  none?: boolean;
+  /** `?accounts=work`: Claude Code has a logged-in account "Work"; `all` also gives Codex a logged-out "Second". */
+  accounts?: string | null;
+  /** `?limit=<provider id>`: that entry has reached its plan limit (it shows `limit`; a turn on it fails with `switch_account`). */
+  limit?: string | null;
+};
 
 const knob = (name: string): string | null => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get(name));
 
@@ -176,7 +183,7 @@ function noneFromUrl(): boolean {
 
 const delay = () => new Promise((r) => setTimeout(r, 120));
 
-type DemoAccount = { agent: string; id: string; label: string; dir: string };
+type DemoAccount = { agent: string; id: string; label: string; dir: string; owned?: boolean };
 
 /** The login command of each demo agent that takes accounts, run with its folder (the harness's `login_hint`). */
 const ACCOUNT_LOGIN: Record<string, string> = { "claude-code": "claude auth login", codex: "codex login" };
@@ -197,6 +204,7 @@ function accountEntry(agent: Provider, a: DemoAccount, ready: boolean): Provider
     account_id: a.id,
     account_label: a.label,
     account_dir: a.dir,
+    ...(a.owned ? { account_owned: true } : {}),
   };
 }
 
@@ -209,12 +217,16 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
     | "setProviderCustomModels"
     | "setProviderPrefs"
     | "addAgentAccount"
+    | "renameAgentAccount"
     | "removeAgentAccount"
+    | "startAgentLogin"
     | "getSettings"
     | "putSettings"
     | "getDiagnostics"
   >
 > & {
+  /** The provider an orchestrator setting (`acp:<id>[/<model>]`) runs on when it has reached its plan limit (`?limit=`), else null. */
+  limited(value: string): Provider | null;
   /** The stored models that cannot run now, as a project lists them (`models_unavailable`); a create or patch is never refused for them. */
   unusable(models: Partial<Models>): ModelIssue[];
   /** Live process-wide feature flags derived from settings. */
@@ -234,8 +246,12 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
   /** Per agent: preferred model and role models saved through `setProviderPrefs`. */
   const prefs = new Map<string, ProviderPrefs>();
   /** Agent accounts added through `addAgentAccount`; `?accounts=work` starts with a logged-in Claude Code "Work" account. */
-  const accounts: DemoAccount[] = knob("accounts") === "work" ? [{ agent: "claude-code", id: "work", label: "Work", dir: "~/.claude-work" }] : [];
-  if (knob("accounts") === "work") loggedIn.add("claude-code@work");
+  const accountsKnob = options.accounts !== undefined ? options.accounts : knob("accounts");
+  const accounts: DemoAccount[] =
+    accountsKnob === "work" || accountsKnob === "all" ? [{ agent: "claude-code", id: "work", label: "Work", dir: "~/.claude-work" }] : [];
+  if (accounts.length > 0) loggedIn.add("claude-code@work");
+  if (accountsKnob === "all") accounts.push({ agent: "codex", id: "second", label: "Second", dir: "~/.codex-second", owned: true });
+  const extras = demoAccountExtras({ limit: options.limit !== undefined ? options.limit : knob("limit"), loggedIn });
   const claudeEmpty = knob("claude") === "empty";
   const owner = knob("providers") === "owner";
   const trace = (event: string, detail: unknown) => console.debug(`[octo demo] ${event}`, JSON.stringify(detail));
@@ -401,7 +417,9 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
       };
     };
     // Each account is an agent of its own, listed right after its agent (the harness's order).
-    const all = list.flatMap((p) => [p, ...accounts.filter((a) => a.agent === p.id).map((a) => accountEntry(p, a, loggedIn.has(`${p.id}@${a.id}`)))]);
+    const all = extras.decorate(
+      list.flatMap((p) => [p, ...accounts.filter((a) => a.agent === p.id).map((a) => accountEntry(p, a, loggedIn.has(`${p.id}@${a.id}`)))]),
+    );
     list.splice(0, list.length, ...all);
     const connected = list.filter((p) => p.state === "ready").length;
     const agent = !apiReady && !none ? "acp:claude-code" : null;
@@ -419,6 +437,10 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
   };
 
   return {
+    limited: (value) => {
+      const id = value.startsWith("acp:") ? value.slice(4).split("/")[0] : undefined;
+      return id !== undefined && extras.limitedId() === id ? (providers().providers.find((x) => x.id === id) ?? null) : null;
+    },
     listProviders: async () => (await delay(), providers()),
     refreshProviderModels: async (id) => {
       await new Promise((r) => setTimeout(r, 700));
@@ -493,16 +515,46 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
         throw Object.assign(new BridgeError(409, "conflict", "This agent has an account with that name or folder already."), {
           hint: "Choose another name and another folder.",
         });
-      accounts.push({ agent: agentId, id, label, dir });
+      accounts.push({ agent: agentId, id, label, dir, owned: true });
       trace("add-account", { agentId, id });
       return providers().providers.find((x) => x.id === `${agentId}@${id}`) ?? null;
     },
-    removeAgentAccount: async (agentId, accountId) => {
+    removeAgentAccount: async (agentId, accountId, opts) => {
       await delay();
       const at = accounts.findIndex((a) => a.agent === agentId && a.id === accountId);
       if (at < 0) throw new BridgeError(404, "not_found", "That account no longer exists.");
+      if (opts?.deleteFolder && !accounts[at]?.owned)
+        throw Object.assign(new BridgeError(409, "conflict", "Octo did not create this account's folder, so it will not delete it."), {
+          hint: "Remove the account and keep its folder, then delete the folder yourself if you no longer need it.",
+        });
       accounts.splice(at, 1);
-      trace("remove-account", { agentId, accountId });
+      loggedIn.delete(`${agentId}@${accountId}`);
+      trace("remove-account", { agentId, accountId, deleteFolder: opts?.deleteFolder === true });
+    },
+    renameAgentAccount: async (id, input) => {
+      await delay();
+      const label = input.trim();
+      if (!label)
+        throw Object.assign(new BridgeError(400, "invalid_request", "An account needs a short name."), { hint: "Use 1 to 40 letters, digits or spaces." });
+      const [agentId = id, accountId] = id.split("@");
+      const agent = providers().providers.find((x) => x.id === agentId);
+      if (!agent?.account_env)
+        throw Object.assign(new BridgeError(400, "invalid_request", `${agent?.label ?? id} cannot have more than one account in Octo.`), {
+          hint: "Add accounts to Claude Code or Codex instead.",
+        });
+      const acct = accountId === undefined ? undefined : accounts.find((a) => a.agent === agentId && a.id === accountId);
+      if (accountId !== undefined && !acct) throw new BridgeError(404, "not_found", "That account no longer exists.");
+      if (acct) acct.label = label;
+      else extras.defaultLabels.set(agentId, label);
+      trace("rename-account", { id });
+      return providers().providers.find((x) => x.id === id) ?? null;
+    },
+    startAgentLogin: async (id, opts) => {
+      await delay();
+      const p = providers().providers.find((x) => x.id === id && x.kind === "agent");
+      if (!p) throw new BridgeError(404, "not_found", `no agent ${id}`);
+      trace("login", { id });
+      return extras.login(p, opts);
     },
     setProviderCustomModels: async (id, models) => {
       await delay();

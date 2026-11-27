@@ -17,7 +17,7 @@ A _provider_ is anything that can run a model for you. The list on the connect s
 | --- | --- | --- |
 | Anthropic API | Octo's own agent loop, calling a model with your API key | Per token, billed to your key |
 | Octo router | An optional proxy inside the app that picks cheaper models for easy work and keeps a budget; it needs one provider key, such as OpenRouter's | Per token, through that key |
-| Agents (Claude Code, GitHub Copilot, Grok, Codex, Cursor, OpenCode, Antigravity, Devin, Factory Droid, Oh My Pi, Pi) | Programs on your computer that Octo drives for you | Your subscription with that vendor, no charge per token |
+| Agents (Claude Code, GitHub Copilot, Grok, Codex, Cursor, OpenCode, Antigravity, Gemini CLI, Devin, Factory Droid, Oh My Pi, Pi) | Programs on your computer that Octo drives for you | Your subscription with that vendor, no charge per token |
 | Ollama | A local model server, used only for the small inline-completion model in the editor | Free, local |
 
 **Ollama alone does not let you start a project.** Projects need an agent, an API key or the router.
@@ -40,6 +40,9 @@ Octo does not install agents. For the agent you want:
 2. Press **Check again** in Octo. A logged-in agent turns **Ready**. You do not need to restart Octo.
 3. Choose the agent as the project's main agent or from the model menu in a session ([Working with an agent](working-with-an-agent.md)).
 
+For Claude Code, Codex, Devin and Gemini CLI you can also log in from Octo and keep more than one account: see
+[More than one account of an agent](#more-than-one-account-of-an-agent).
+
 Octo gives an agent the same environment your terminal has (your `PATH`, `HOME`, proxy settings and a few more), so an agent
 that works in your terminal finds its login. It does not pass your provider keys on to an agent, with one exception: a few
 agents name a vendor key in their entry (for example `XAI_API_KEY` for Grok), and if that key is in Octo's environment it is
@@ -49,6 +52,63 @@ warns about these.
 **Verification.** Claude Code has been run with Octo for real. Copilot and Grok were tried logged out only. The other agents were
 written from the vendors' documentation and the ACP agent registry and never run: they are marked **experimental** in the list.
 Octo adds a model list to each agent by opening a short, empty session with it (no prompt is sent, so nothing is billed).
+
+## More than one account of an agent
+
+Some agents can be logged in to a second account (a work and a personal Claude Code, say). Octo runs the agent with a separate
+login folder for each account and lists them side by side, such as **Claude Code · Personal** and **Claude Code · Work**.
+
+**Which agents.** Claude Code, Codex, Oh My Pi, Devin and Gemini CLI (experimental) can have several accounts. **One account
+only:** Antigravity (its app, command line and editor share one system login), Copilot (the CLI has its own `/user switch`; run it
+inside Copilot), Cursor, Grok and OpenCode (Octo has not confirmed where they keep the login), Droid (it signs in with an API key,
+and Octo does not store keys), and pi (not looked into). The agent's detail pane says "One account only" and why.
+
+**Add an account.** Settings → Providers → the agent → **Accounts**: give the account a name (up to 40 characters) and a login
+folder (Octo suggests one beside the agent's own, for example `~/.claude-work`), then **Add account**. Octo creates the folder if
+it does not exist yet; a folder that already exists (an earlier login of the agent, say) is used as it is and never deleted.
+Your current login is listed as **Default** until you rename it. The short id Octo gives the account (`work`) is fixed; the
+name can change.
+
+**Log in.** Press **Log in** on the account's row (or in the account's own detail) (a small menu if the agent has several ways, such as Claude's subscription or
+Console). Octo runs the agent's own login command in a terminal inside Octo, with that account's folder, and shows what the
+command prints: a link, a code, a prompt to paste a code. Press **Open in browser** or **Copy link**, follow the steps, and type
+into the terminal if it asks. Octo checks the login every few seconds and when the command ends; the row turns **Ready**. The
+command is also shown under the terminal, so you can run it in a terminal of your own and press **Check again**. If the button
+fails, use that command.
+
+**A browser already signed in to the other account will complete the wrong login.** Before you open the link, sign out of the
+other account in that browser, or copy the link into a private window.
+
+**Rename and remove.** **Rename** on a row changes the name only (also for your first login). **Remove account**, in the
+account's own detail, takes the account out of Octo's lists; projects that used it show the model as unavailable until you pick
+another. The box **Also delete its login folder when removing** appears only for a folder Octo made, and is off by default: it
+deletes that folder, which signs the account out for good. It does not remove an entry the agent may have saved in your system
+keychain; remove that yourself if you want it gone. A folder that existed before is never deleted. Your first login cannot be
+removed.
+
+**Choose an account.** In the model menu each account is its own entry (**Claude Code · Work**), and its models are inside it.
+A project uses the account its models name. **Octo never uses another account by itself:** when a project names none, only the
+first (default) account is offered to delegate work to, so a work login is not billed for personal projects.
+
+**When a limit is reached.** If an agent says the account's usage limit is reached, the request stops with "<Agent> · <Account>
+has reached its usage limit." and two buttons: **Use another account** (the agent's other accounts, with their state) and
+**Choose another model**. Pick one and Octo sends your request again. Nothing switches without you. A different account starts a
+new session with the agent, which gets a short summary of the conversation so far (at most 8000 characters), not the old
+session itself. The account that ran out shows "limit reached" in the list until it works again or the reset time passes; **Check
+again** clears it too. Octo can only react to a limit the agent reports as an error. A limit written into the agent's reply text
+is not noticed.
+
+**Only on this computer.** Adding, renaming, removing, logging in and switching accounts are not available from a paired phone
+([Remote access](remote-access.md)). When a limit stops a request on a phone, it says "Change this on your computer" and offers the plain Retry.
+
+**Where the logins live.** Octo stores only the names, short ids and folders. The agent itself writes its login into the
+account's folder inside Octo's data folder, and Octo never reads it ([Privacy and data](privacy-and-data.md#agent-accounts)).
+
+**Verification.** Accounts were checked only with a stand-in agent, scripted login commands and Octo's tests. **Not verified with
+any real agent or account:** that two Claude Code logins stay apart in the macOS keychain per folder, each agent's login inside
+Octo's terminal, the real limit messages and where they arrive, the reset-time format, Gemini's login storage and Devin's
+folder move. If something differs, run `harness doctor` (it lists each account with its folder and login check) and
+[tell the owner](troubleshooting.md#reporting-a-problem).
 
 ## What the states mean
 

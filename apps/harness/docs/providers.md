@@ -30,7 +30,7 @@ A *provider* is anything that can run a model: the built-in Messages-API loop (a
 
 Agent entries carry more than the others: `models_refreshed_at` (RFC 3339, when the harness last looked for the models, found or not), `models_error` (short text, only when that look failed; not an error of the provider), `models_note` (the manifest's remark on its list), `accepts_custom_model` (always `true`: any model name can be chosen), `login` (below), `preferred_model` (`""` when none) and `roles` (always the three keys; `""` = the agent's own default). `models[].source` is `catalogue`, `manifest`, `advertised`, `command` or `custom`.
 
-Order: `api`, then `router` (only while an Octo router is detected), then one entry per ACP agent in manifest order with `claude-code`, `copilot`, `grok` first.
+Order: `api`, then `router` (only while an Octo router is detected), then one entry per ACP agent in manifest order with `claude-code`, `copilot`, `grok` first; the accounts of an agent follow it directly.
 
 | Entry | `ready` when | Models |
 | --- | --- | --- |
@@ -110,6 +110,62 @@ moves their login folder.
 - Octo stores no token and never reads the folder: the user logs it in with the CLI. Skills of an account are looked
   for where its agent's are.
 
+**Additions (2026-11-26, later): rename, removing the folder, Log in, limits, one account only.** All additive; the
+routes, the file and the fields above are unchanged.
+
+- `PATCH /v1/providers/{id}/account` `{"label"}` renames an account (`{id}` is its own id, `claude-code@work`) or names
+  the agent's own login (`{id}` is the agent's): the entry then reads `Claude Code · Personal` and carries
+  `account_default_label`. Answers the entry (200); the id and the folder never change. A label another login of the same
+  agent has (ignoring case) is `409 conflict` (`AccountTaken`); the other refusals are the add route's.
+- `DELETE .../accounts/{account}?delete_folder=true` also deletes the folder, but only one Octo created: the record says
+  `owned` (set when `POST .../accounts` had to create the folder; listed as `account_owned`), the path the record names is
+  a plain folder and not a symlink, and it is not the file-system root, the home folder or one holding it, the data
+  folder or one holding it, the agent's `account_default` or another account's folder. Otherwise nothing is removed and
+  the answer is `409 conflict` (`AccountFolderNotOwned`). A keychain entry the CLI made is never removed.
+- The file gains two optional fields that a harness without them ignores: `owned` on a record and `default_labels`
+  (`{"<agent>": "<label>"}`). A file without them reads as before. Two accounts cannot share a folder; that is judged on
+  cleaned paths with symlinks resolved, across agents.
+- Manifest `accounts` gains optional `extraEnv` (more variables set on every extra account, never on the agent's own
+  entry: Gemini's `GEMINI_FORCE_FILE_STORAGE=true`), `note` (listed as `account_note`) and `unsupported` (instead of
+  `env`: why the agent keeps one login only). Every agent without `env` lists `account_unsupported` (the manifest's
+  reason, or "Octo knows no documented way to keep a second login of this CLI apart."); Settings shows it as "One account
+  only: <reason>". Built in, besides claude-code, codex and omp: `devin` (`XDG_DATA_HOME`, default `~/.local/share`; all
+  of Devin's data moves, not only the login) and the experimental `gemini` (`GEMINI_CLI_HOME` plus `extraEnv`).
+- `login_methods` (`[{id, label}]`, manifest `auth.login`), `login_command` (the terminal command that logs the entry
+  in; an account's starts with its folder variable) and `limit` (below) on every agent entry; `GET /v1/plugins` agents
+  carry `login_methods`, `limit` and the `account_*` fields too.
+- A removed account's login probe, "seen logged out" and limit state are dropped (`Registry.Forget`), so an account added
+  again under the same id starts clean.
+
+#### Log in
+
+| Route | Body | Answer | Errors |
+| --- | --- | --- | --- |
+| `POST /v1/providers/{id}/login` | `{"method"?, "cols"?, "rows"?}` (`method` is an id from `login_methods`; absent means the first) | `201 {"session_id", "command", "pid"}` (`command` is the fallback text) | `404`; `409 login_unavailable` (the agent has no login command Octo can run, or it did not start; `command` is the text to run by hand); `409 agent_not_installed` / `agent_too_old` (the CLI is missing or too old: its install line is the `command`, no terminal is started) |
+| `GET /v1/providers/{id}/login/{lid}/events` | SSE; `?token=` is accepted like on the other SSE routes | `output` `{"data": base64}`, `exit` `{"code", "reason"?}`, `login` `{"state": "ok" \| "not_logged_in" \| "unchecked"}` | `404` |
+| `POST /v1/providers/{id}/login/{lid}/input` | `{"data"}` | `202` | `404` |
+| `POST /v1/providers/{id}/login/{lid}/resize` | `{"cols", "rows"}` | `204` | `404` |
+| `DELETE /v1/providers/{id}/login/{lid}` | none | `204` | `404` |
+
+**Login.** The route runs the manifest's `auth.login` command (a method per entry) in a PTY with the account's environment, in the account's folder (the home folder for a default account), under the pseudo-project `:agent-login`, so it never shows in a project's terminals or Processes tab. One login per agent id at a time (a new one closes the old first, so replacing a login works at the terminal manager's per-project limit). The output is shown as is and logged nowhere. While the process runs the harness rechecks the login (`Registry.Recheck`, the probe) every 5 s until a check says `ok`, and once more when the process exits; each result is a `login` event (`unchecked` when the agent has no probe or it could not tell, as for Gemini). A login is stopped after 10 minutes; the terminal manager's 5-minute idle close and its limits apply. After the `exit` event the stream stays open and waits up to 30 s for the last check, then the harness ends it (a client keeps its stream open after `exit` and does not reconnect when the harness ends it: `openLoginSession`). A finished login is closed and forgotten 1 minute after its last check even when no stream is attached (a stream that saw the last check closes it at once). A changed probe publishes `providers.updated`.
+
+#### Paired devices
+
+**Paired devices get no folders.** `GET /v1/providers` and `GET /v1/plugins` are readable by a paired device, which cannot manage accounts or log in. A request that is not local (the same test as settings: loopback peer, loopback `Host`, no foreign `Origin`; a device arrives through the tunnel with the tunnel's host name) is answered without `account_dir`, `account_default`, `account_owned` and `login_command` (also without `command` of `problem` and `models_problem`, which can hold the same line), and an account's folder and login command are replaced by plain words in its `login_hint`, `reason` and problem text; everything else is unchanged. Local answers are unchanged. Test: `TestPairedDeviceGetsNoFoldersOrLoginCommands`.
+
+#### Usage limits
+
+`limit` is `{reached_at, resets_at?}` (RFC 3339). It is set when a real turn of that account ended in a limit failure (classification: [`acp-orchestrator.md`](acp-orchestrator.md#usage-limits-and-switching-accounts-2026-11-26)), and cleared by the next turn that runs, by **Check again** (`POST /v1/providers/{id}/recheck`) and when `resets_at` has passed. A bare 429 or `RATE_LIMIT_EXCEEDED` (a transient rate limit) fails the turn but does not set `limit`. It does not change `state`: the entry stays `ready`, and nothing is refused because of it. `providers.updated` follows a change.
+
+#### Who is offered work without being asked
+
+An **experimental** agent (manifest `"experimental": true`, built in for `gemini`) and its accounts are offered only when a project's models name it, and `suggested` never proposes it ([`acp-orchestrator.md`](acp-orchestrator.md#usage-limits-and-switching-accounts-2026-11-26)). A non-default account is never picked automatically (spec: work and personal billing are the user's call). It is used only when a project's models name it (`orchestrator`, `fast`, `balanced`, `deep`, `side` or `auto_candidates`). Per base agent a project offers only the accounts its models name, and when they name none of them, only the default account. This covers the default orchestrator without a key, `suggested`, the router's `tier: auto` candidates and `spawn_agent`'s `agent` list. When an account is named, the base agent's other accounts are not offered unless they are named too.
+
+**`experimental`** is `true` for an agent that is not verified (above) and also for one whose manifest says `"experimental": true`; the latter is never picked automatically (above). `GET /v1/plugins` agents carry `experimental: true` for the manifest flag only.
+
+**Not verified (the additions).** The additions (rename, removing the folder, Log in, limits, one account only, Gemini, Devin) were exercised with the scripted agent (`internal/fakeacp`), shell-script login commands, unit tests, `scripts/e2e-accounts.sh` and the UI's demo bridge. No real CLI and no real account was used, and no live run is recorded. Not verified: that two Claude Code logins stay apart in the macOS Keychain per folder; each CLI's login inside Octo's terminal session; the real limit messages and where they arrive (a limit a CLI reports as plain answer text is not caught); the format of the reset time; Gemini's forced file storage; Devin's folder move.
+
+
 ### Agent models
 
 `models` is, in this order and each id once (the first source wins): the manifest's `models` (`source: "manifest"`, with the manifest's `modelLabels`), what the manifest's `modelsCommand` printed (`"command"`), every model the agent advertised in a session the harness opened or discovered (`"advertised"`) and the names typed by the user (`"custom"`). `seen_at` is when a session last advertised a model. `stale: true` flags an **advertised** model the agent's latest session did not advertise; it is kept, never dropped (a manifest alias is the CLI's own name and is never flagged). `default_model` is the manifest's `defaultModel`, else the model the agent reported as current.
@@ -141,7 +197,7 @@ What a project created without models gets: the current defaults (`HARNESS_MODEL
 
 ## Event `providers.updated`
 
-`{ "type": "providers.updated", "seq": n, "connected": 2 }` on every project stream (like `settings.changed`). Sent only when the picture changed (seen_at aside): a login probe changed its outcome, a key or default model was written, an agent advertised new models, the router appeared or went away (re-read every 15 s). A client refetches `GET /v1/providers`. State: `providersRevision` in `@octo/agent-client`.
+`{ "type": "providers.updated", "seq": n, "connected": 2 }` on every project stream (like `settings.changed`). Sent only when the picture changed (seen_at aside): a login probe changed its outcome, an account was added, renamed or removed, a usage limit was reached or cleared, a key or default model was written, an agent advertised new models, the router appeared or went away (re-read every 15 s). A client refetches `GET /v1/providers`. State: `providersRevision` in `@octo/agent-client`.
 
 ## Model checks
 

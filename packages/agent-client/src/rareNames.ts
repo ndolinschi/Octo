@@ -133,6 +133,14 @@ export const RARE_METHODS = [
   "listWorkerProcesses",
   "stopWorkerProcess",
   "restartWorkerProcess",
+  "addAgentAccount",
+  "renameAgentAccount",
+  "removeAgentAccount",
+  "startAgentLogin",
+  "refreshProviderModels",
+  "recheckProvider",
+  "setProviderCustomModels",
+  "setProviderPrefs",
 ] as const;
 
 export type RareMethod = (typeof RARE_METHODS)[number];

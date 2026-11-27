@@ -26,8 +26,9 @@ export function VisibleModels({ list }: { list: ProviderList }) {
       {shown.map((o) => (
         <SettingsRow
           key={o.value}
-          // The provider once, under the name ("Claude Code · Sonnet 5.5" over "Claude Code" said it twice).
-          title={o.label.startsWith(`${o.group} · `) ? o.label.slice(o.group.length + 3) : o.label}
+          // The provider once, under the name ("Claude Code · Sonnet 5.5" over "Claude Code" said it twice; with accounts the
+          // label reads "Claude Code · Work / Sonnet 5.5" over "Claude Code · Work").
+          title={[" · ", " / "].map((sep) => `${o.group}${sep}`).find((p) => o.label.startsWith(p)) ? o.label.slice(o.group.length + 3) : o.label}
           description={o.group}
           control={
             <Switch
