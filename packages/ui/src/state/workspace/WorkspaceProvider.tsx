@@ -2,7 +2,7 @@ import { focusSoon, focusSurfaceSoon } from "../../lib/focus";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMediaQuery, useLatest } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
-import { loadPref, numberCodec, PREFS, readPref, usePersistentState, writePref } from "../../lib/storage";
+import { loadPref, newTabTargetCodec, numberCodec, PREFS, readPref, usePersistentState, writePref } from "../../lib/storage";
 import { lastSessionCodec } from "../projectCache";
 import { changedFileCount } from "../../lib/statusBar";
 import { isTabEnabled, type TabFeatureFlags } from "../../lib/tabFlags";
@@ -335,10 +335,15 @@ export function WorkspaceProvider({
     [projectId, setLayout, chatSessionRef],
   );
 
-  /** Opens a tab in the side group, creating it right of Chat's group (`fraction` of the row) when there is none. */
+  /** Opens a tab in the current panel (default) or in a side group right of Chat (`fraction` of the row), per Settings → General → "Open new tabs in". */
   const openSide = useCallback(
     (tab: TabId, fraction?: number) => {
       const current = layoutRef.current;
+      if (loadPref(PREFS.newTabTarget, newTabTargetCodec) === "same") {
+        const targetGroup = L.focusedGroup(current);
+        commit(L.open(current, tab, { group: targetGroup.id }), maxRef.current !== null && targetGroup.id !== maxRef.current ? { force: true } : undefined);
+        return;
+      }
       const side = L.sideGroup(current);
       const home = L.chatGroupOf(current);
       const target: L.Target = side ? { group: side.id } : { newAfter: home.id, size: fraction ?? home.size / 2 };
