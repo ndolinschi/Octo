@@ -33,7 +33,7 @@ test("theme: values stored since v6 load; anything else is system", () => {
 test("file tree preference: v6 text loads, byte-compatible on write", () => {
   assert.deepEqual(treePrefCodec.parse('{"open":false,"width":320}'), { open: false, width: 320 });
   assert.equal(treePrefCodec.stringify({ open: false, width: 320 }), '{"open":false,"width":320}');
-  assert.deepEqual(treePrefCodec.parse(null), { open: true, width: TREE_DEFAULT });
+  assert.deepEqual(treePrefCodec.parse(null), { open: false, width: TREE_DEFAULT });
   assert.equal(treePrefCodec.parse('{"width":9999}').width, TREE_MAX);
 });
 

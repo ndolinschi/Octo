@@ -11,7 +11,7 @@ export type TreeColumnState = { open: boolean; width: number };
 type FileViewValue = {
   /** A file group's tree column (decision 94a): shown or hidden, and its width. Per group; a group nobody has changed uses the project's stored default. */
   column(groupId: string): TreeColumnState;
-  setColumnOpen(groupId: string, open: boolean): void;
+  setColumnOpen(groupId: string, open: boolean, persist?: boolean): void;
   setColumnWidth(groupId: string, width: number): void;
   /** Bumped when something asks the visible file view to show and focus its tree (the header's Files button, Reveal in tree). */
   focusTreeTick: number;
@@ -44,18 +44,18 @@ export function FileViewProvider({ projectId, children }: { projectId: string; c
   const [focusTreeTick, setTick] = useState(0);
   const [filter, setFilter] = useState("");
   const patch = useCallback(
-    (groupId: string, change: Partial<TreeColumnState>) => {
+    (groupId: string, change: Partial<TreeColumnState>, persist = true) => {
       setGroups((g) => {
         const cur = g[groupId] ?? initial;
         const next = { ...cur, ...change };
         return next.open === cur.open && next.width === cur.width && g[groupId] ? g : { ...g, [groupId]: next };
       });
-      setStored((s) => ({ ...s, ...change }));
+      if (persist) setStored((s) => ({ ...s, ...change }));
     },
     [setStored, initial],
   );
   const column = useCallback((groupId: string) => groups[groupId] ?? initial, [groups, initial]);
-  const setColumnOpen = useCallback((groupId: string, open: boolean) => patch(groupId, { open }), [patch]);
+  const setColumnOpen = useCallback((groupId: string, open: boolean, persist = true) => patch(groupId, { open }, persist), [patch]);
   const setColumnWidth = useCallback((groupId: string, width: number) => patch(groupId, { width: columnWidth(width) }), [patch]);
   const requested = useRef(0);
   const focusTree = useCallback(

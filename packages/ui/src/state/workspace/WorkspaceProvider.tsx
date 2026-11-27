@@ -342,7 +342,7 @@ export function WorkspaceProvider({
       const side = L.sideGroup(current);
       const home = L.chatGroupOf(current);
       const target: L.Target = side ? { group: side.id } : { newAfter: home.id, size: fraction ?? home.size / 2 };
-      commit(L.open(current, tab, target));
+      commit(L.open(current, tab, target), maxRef.current !== null ? { force: true } : undefined);
     },
     [commit],
   );

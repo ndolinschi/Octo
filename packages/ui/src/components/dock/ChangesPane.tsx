@@ -37,6 +37,7 @@ export function ChangesPane() {
       <ChangesTab
         loadMonaco={loadMonaco}
         focusTurn={focus ? focus.turnId : null}
+        focusSeq={focus?.seq ?? 0}
         onShowAll={clearChangesFocus}
         {...(focus?.folder !== undefined && focus.path !== undefined ? { focusFile: { folder: focus.folder, path: focus.path, seq: focus.seq } } : {})}
         {...(code ? { onOpenFile: (folder: string, path: string, line?: number) => code.openFile(folder, path, line ? { line } : undefined) } : {})}

@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, ChevronRight, CodeXml, Ellipsis, PanelLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronRight, CodeXml, Ellipsis, Maximize2, Minimize2, PanelLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import {
   Fragment,
@@ -116,6 +116,7 @@ const MD_MODE = slot("md", (v): v is Mode => v === "preview" || v === "source");
  */
 export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileKey: FileKey | null; floatingComposer: FloatingSlot }) {
   const code = useCode();
+  const ws = useWorkspace();
   const group = useGroup();
   const { project } = useProject();
   const { theme } = useApp();
@@ -377,6 +378,15 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
               path={path}
               autoSave={autoSave === "on"}
               onToggleAutoSave={() => setAutoSave((cur) => (cur === "on" ? "off" : "on"))}
+            />
+          )}
+          {!ws.narrow && fileKey && (
+            <IconButton
+              icon={ws.maximised === groupId ? Minimize2 : Maximize2}
+              label={ws.maximised === groupId ? "Restore editor size" : "Full screen editor"}
+              title={ws.maximised === groupId ? "Restore editor size" : "Full screen editor"}
+              aria-pressed={ws.maximised === groupId}
+              onClick={() => ws.toggleMaximise(tab)}
             />
           )}
           {!page && (
@@ -694,6 +704,11 @@ function MoreMenu({
                 label: "Auto save",
                 checked: autoSave,
                 run: onToggleAutoSave,
+              },
+              {
+                id: "lsp",
+                label: code.intel.get(fileKeyOf(folder, path)).status?.state === "ready" ? "Restart language server (LSP)" : "Run language server (LSP)",
+                run: () => code.intel.restart(fileKeyOf(folder, path)),
               },
               { id: "sep-save", separator: true },
               {

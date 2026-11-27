@@ -11,7 +11,11 @@ const B = fileKey("p", "b");
 
 const client = () => {
   const calls: string[] = [];
-  const c: IntelClient = { retry: (k) => void calls.push(`retry ${k}`), dispose: () => void calls.push("dispose") };
+  const c: IntelClient = {
+    retry: (k) => void calls.push(`retry ${k}`),
+    restart: (k) => void calls.push(`restart ${k}`),
+    dispose: () => void calls.push("dispose"),
+  };
   return { c, calls };
 };
 

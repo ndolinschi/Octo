@@ -36,7 +36,7 @@ export const PendingChangesBar = memo(function PendingChangesBar() {
   useEffect(
     () =>
       onEvent((ev) => {
-        if (ev.type !== "change.recorded") return;
+        if (ev.type !== "change.recorded" && ev.type !== "turn.finished") return;
         entry.stale = true;
         void loadTurnChanges(bridge, projectId, entry);
       }),
@@ -53,6 +53,7 @@ export const PendingChangesBar = memo(function PendingChangesBar() {
   const canReview = Boolean(ws && ws.toolEnabled("changes"));
   const preview = latest.files.slice(0, 2).map((f) => basename(f.path));
   const extra = latest.files.length - preview.length;
+  const firstUnkept = latest.files.find((f) => !kept.has(rowKey(latest.turn_id, f))) ?? latest.files[0];
 
   return (
     <div
@@ -78,7 +79,10 @@ export const PendingChangesBar = memo(function PendingChangesBar() {
             size="xs"
             data-warm="tool:changes"
             onClick={() => {
-              requestChangesFocus({ turnId: latest.turn_id });
+              requestChangesFocus({
+                turnId: latest.turn_id,
+                ...(firstUnkept ? { folder: firstUnkept.folder, path: firstUnkept.path } : {}),
+              });
               ws?.openTool("changes");
             }}
           >
