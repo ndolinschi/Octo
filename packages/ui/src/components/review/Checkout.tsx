@@ -50,7 +50,7 @@ export function CheckoutBanner({ checkout }: { checkout: Checkout }) {
   if (!checkout.inWorkspace && !s && !checkout.error) return null;
   const back = s ? goBackCommand(s) : null;
   return (
-    <div role="status" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-1.5 text-sm">
+    <div role="status" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line py-1.5 pr-2 pl-4 text-sm">
       {checkout.error && (
         <>
           <span role="alert" className="min-w-0 flex-1 text-err">

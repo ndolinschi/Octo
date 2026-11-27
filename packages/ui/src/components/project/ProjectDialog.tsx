@@ -291,10 +291,14 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
           {!editing && (
             <div className="flex flex-wrap items-center gap-1.5">
               {filled.map((f) => (
-                <span key={f.key} title={f.path} className="inline-flex h-ctl-sm max-w-full items-center gap-1 rounded-sm bg-raised pl-2 text-sm text-fg">
+                <span
+                  key={f.key}
+                  title={f.path}
+                  className="inline-flex h-ctl-sm max-w-full items-center gap-1 rounded-sm bg-raised pr-0.5 pl-2 text-sm text-fg"
+                >
                   <Glyph icon={FolderOpen} size={14} className="shrink-0 text-fg-3" />
                   <span className="min-w-0 truncate">{folderName(f.path)}</span>
-                  <IconButton icon={X} size="sm" label={`Remove ${folderName(f.path)}`} onClick={() => removeFolder(f.key)} />
+                  <IconButton icon={X} size="xs" label={`Remove ${folderName(f.path)}`} onClick={() => removeFolder(f.key)} />
                 </span>
               ))}
               <AddFolder
@@ -323,6 +327,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                   />
                   <IconButton
                     icon={X}
+                    size="xs"
                     label={`Remove folder ${i + 1}`}
                     onClick={() => setFolders((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== f.key) : [{ key: f.key + 1, path: "" }]))}
                   />

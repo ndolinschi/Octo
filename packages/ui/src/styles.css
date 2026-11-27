@@ -2151,8 +2151,8 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 /* retest3: toolcalls (toolpolish) — the inline diff of an edit call and of a turn's changed files. One grid for every row:
    [old no.][new no.][sign][code], number columns as wide as the diff's largest number (`--diff-digits`, set by DiffPreview),
    12px inset, 8px between columns, the sign in its own 1ch. Changed rows: a quiet tint on the code, a stronger one on the
-   gutter cell (opaque, so the sticky gutter hides code scrolled under it); only the tint carries the colour (numbers and signs
-   stay fg-3). Code never wraps: the code area scrolls sideways under the fixed gutter and fades at an edge with more. */
+   gutter cell (opaque, so the sticky gutter hides code scrolled under it); only the tint carries the colour (unchanged gutters
+   stay fg-3; tinted gutters step up to fg-2 for AA contrast). Code never wraps: the code area scrolls sideways under the fixed gutter and fades at an edge with more. */
 .octo-diff {
   --diff-gap: 8px;
   --diff-gutter-w: calc(12px + 1ch + var(--diff-gap));
@@ -2230,9 +2230,11 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 }
 .octo-diff-row[data-kind="add"] .octo-diff-gutter {
   background: var(--diff-add-gutter);
+  color: var(--octo-fg-2);
 }
 .octo-diff-row[data-kind="del"] .octo-diff-gutter {
   background: var(--diff-del-gutter);
+  color: var(--octo-fg-2);
 }
 /* A command's output: wrapped like a terminal (`pre-wrap`, long words broken), each line hanging 2ch under its own start. */
 .octo-out-line {
@@ -2459,7 +2461,8 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] [data-composer] {
   flex-flow: row wrap;
   align-items: flex-end;
-  padding: 2px;
+  padding: 4px;
+  column-gap: 4px;
 }
 [data-phone] [data-composer] > * {
   flex-basis: 100%;
@@ -2486,15 +2489,35 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   width: var(--spacing-ctl-lg);
   height: var(--spacing-ctl-lg);
 }
-[data-phone] button.touch-hit:where(.h-ctl-xs, .h-ctl-sm, .h-ctl-md) {
+[data-phone] button.touch-hit:where(.h-ctl-xs, .h-ctl-sm, .h-ctl-md):not([role="switch"]) {
   min-width: var(--spacing-ctl-lg);
   height: var(--spacing-ctl-lg);
+}
+/* Switch keeps its 40x24 pill geometry so the 20px knob stays centred; its touch-hit ::after keeps the 44px target. */
+[data-phone] button[role="switch"] {
+  width: 40px;
+}
+/* Provider key links (openrouter.ai, console.anthropic.com) keep inline text styling while gaining a 44px touch target. */
+[data-phone] :is([data-connect-detail], [data-provider-detail]) a {
+  position: relative;
+}
+[data-phone] :is([data-connect-detail], [data-provider-detail]) a::after {
+  content: "";
+  position: absolute;
+  inset-block: min(0px, calc((100% - var(--spacing-touch)) / 2));
+  inset-inline: min(0px, calc((100% - var(--spacing-touch)) / 2));
+}
+/* SecretForm stacks its key input above Save below 420px; `flex-1` sets flex-basis to 0 vertically and squashes the 44px input. */
+@media (width < 420px) {
+  [data-phone] input[name="octo-provider-key"] {
+    flex: none;
+  }
 }
 /* Touch controls sit on the field's baseline with a full 44px box. */
 [data-phone] [data-composer-row] > button {
   min-width: var(--spacing-ctl-lg);
   height: var(--spacing-ctl-lg);
-  margin: 0 2px;
+  margin: 0;
 }
 [data-phone] [data-key-hint][class~="max-sm:hidden"] {
   display: none;
@@ -2532,6 +2555,12 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 }
 [data-phone] [data-file-bar="file"] > button {
   display: none;
+}
+/* A phone segmented track is 48px (44px options + 2px padding); bars that host one grow with a 4px inset instead of clipping it. */
+[data-phone] :is([data-file-bar="file"], [data-image-preview] + div, div:has(+ [data-image-preview])):has([role="radiogroup"]) {
+  height: auto;
+  min-height: var(--spacing-ctl-lg);
+  padding-block: 4px;
 }
 /* Approval and form cards: the whole column, their buttons 44px. */
 [data-phone] :is([data-v7-approval], [data-v7-form]) button:not([aria-label], [role="radio"], [role="checkbox"]) {
@@ -2671,6 +2700,19 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
+}
+/* G1 removed [data-panel-title] and A4 hides PanelPurpose on phone: drop the 44px bar completely when nothing visible remains. */
+[data-phone] [data-panel-bar]:not(:has([data-panel-header] > :not(:empty))) {
+  display: none;
+}
+/* PanelFilters holds 44px touch fields on phone: keep the same 4px vertical breathing room as desktop's 28px-in-36px row. */
+[data-phone] [data-panel-filters] {
+  padding-block: 4px;
+}
+/* Memory RememberedHeader reserves a 24px slot for desktop's xs `+`; match the 44px touch button so it aligns with the rows' `—¯` column. */
+[data-phone] [data-memory] span.size-6:has(> button.touch-hit) {
+  width: var(--spacing-ctl-lg);
+  height: var(--spacing-ctl-lg);
 }
 
 /* No hover on a phone: a reply's footer (copy, time, model) is always shown, and wraps (above). */

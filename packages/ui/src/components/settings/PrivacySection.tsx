@@ -309,19 +309,21 @@ function ChildEnvRow() {
       description="Names of extra environment variables agents and tools may see, separated by commas."
       status={<SaveStatus state={saved} />}
       control={
-        <TextField
-          size="sm"
-          id={id}
-          value={draft ?? stored}
-          disabled={!s.editable}
-          placeholder="None"
-          spellCheck={false}
-          autoComplete="off"
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => e.key === "Enter" && commit()}
-          className={`${CONTROL_W.lg} font-mono`}
-        />
+        <div className={CONTROL_W.lg}>
+          <TextField
+            size="sm"
+            id={id}
+            value={draft ?? stored}
+            disabled={!s.editable}
+            placeholder="None"
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => e.key === "Enter" && commit()}
+            className="font-mono"
+          />
+        </div>
       }
     />
   );

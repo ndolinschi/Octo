@@ -8,7 +8,7 @@ import { rankGroups } from "../../lib/matchMore";
 import { navigate, settingsHref } from "../../lib/route";
 import { focusSoon } from "../../lib/focus";
 import { cn } from "../../lib/cn";
-import { useMediaQuery } from "../../lib/hooks";
+import { useMediaQuery, useScrollFade } from "../../lib/hooks";
 import { useHistoryLayer } from "../../lib/historyLayer";
 import { usePhone } from "../../lib/phone";
 import { palette as paletteGate } from "../../lib/typeahead";
@@ -122,6 +122,7 @@ export function CommandPalette(props: {
   const nav = useNav();
   const panel = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
+  useScrollFade(list, "y");
   const gate = useRef(createPointerGate());
   const fromPointer = useRef(false);
   const [query, setQuery] = useState("");
@@ -572,9 +573,15 @@ export function CommandPalette(props: {
             </Button>
           )}
         </div>
-        <div ref={list} id={`${baseId}-list`} role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
+        <div
+          ref={list}
+          id={`${baseId}-list`}
+          role="listbox"
+          aria-label="Results"
+          className="octo-popup-fade min-h-0 flex-1 overflow-y-auto overscroll-contain p-1"
+        >
           {groups.map((g) => (
-            <div key={g.title} role="group" aria-labelledby={`${baseId}-${g.title}`} className="pb-1">
+            <div key={g.title} role="group" aria-labelledby={`${baseId}-${g.title}`} className="pb-1 last:pb-0">
               {/* Polish step 2 (F6): the caption on the rows' text edge, as in the sidebar. */}
               <SectionHeader as="h3" id={`${baseId}-${g.title}`} className="pr-2 pl-8">
                 {g.title}

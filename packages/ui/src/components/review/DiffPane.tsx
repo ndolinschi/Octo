@@ -79,11 +79,11 @@ export function DiffPane(props: {
       >
         {props.picker ?? (
           <span className="flex min-w-0 flex-1 items-baseline gap-2 pl-2">
-            <span className="min-w-0 shrink truncate text-sm font-medium text-fg" title={f.path}>
+            <span className="min-w-0 shrink-[0.2] truncate text-sm font-medium text-fg" title={f.path}>
               {name}
             </span>
-            <span className="min-w-0 truncate text-xs text-fg-3 @max-md/diff:hidden">{f.old_path ? `renamed from ${f.old_path}` : dir}</span>
-            <Counts added={f.added} removed={f.removed} className={f.binary ? "hidden" : "@max-xs/diff:hidden"} />
+            <span className="min-w-0 truncate text-xs text-fg-3 @max-lg/diff:hidden">{f.old_path ? `renamed from ${f.old_path}` : dir}</span>
+            {!f.binary && <Counts added={f.added} removed={f.removed} className="@max-xs/diff:hidden" />}
             {props.sinceReview && <span className="shrink-0 text-xs text-warn">since your review</span>}
           </span>
         )}

@@ -136,6 +136,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
             label="Sessions"
             listLabel="Sessions"
             listSemantics="own"
+            detailClassName="px-pane"
             placeholder="Choose a session to read its conversation."
             selected={picked?.id ?? null}
             onSelect={(id) => setSelected(id)}

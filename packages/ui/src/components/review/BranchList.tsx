@@ -184,7 +184,7 @@ function BranchRow({ b, now, busy, onOpen }: { b: ReviewBranch; now: number; bus
     <button type="button" data-row className={cn(BRANCH_ROW, dim && "text-fg-3")} disabled={busy} aria-busy={busy} onClick={onOpen}>
       <span className="grid size-4 shrink-0 place-items-center text-fg-3">{busy ? <Spinner /> : <Glyph icon={GitBranch} size={14} />}</span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex min-w-0 items-center gap-3">
+        <span className="flex min-w-0 items-center gap-2 @2xl:gap-3">
           <span title={b.name} className={cn("flex min-w-0 flex-[2] font-mono text-sm @md:min-w-[24ch]", tone)}>
             <span className="min-w-0 truncate">{head}</span>
             {tail && <span className="shrink-0">{tail}</span>}
@@ -193,11 +193,11 @@ function BranchRow({ b, now, busy, onOpen }: { b: ReviewBranch; now: number; bus
           <span title={aheadBehindText(b)} className="shrink-0 text-xs whitespace-nowrap text-fg-3">
             {aheadBehindCompact(b)}
           </span>
-          <span className="hidden min-w-0 flex-1 truncate text-xs text-fg-3 @2xl:block">{b.commit.subject}</span>
+          {b.commit.subject && <span className="hidden min-w-0 flex-1 truncate text-xs text-fg-3 @2xl:block">{b.commit.subject}</span>}
+          {time && <span className="shrink-0 text-right text-xs whitespace-nowrap text-fg-3 tabular-nums">{time}</span>}
         </span>
-        <span className="hidden min-w-0 truncate text-xs text-fg-3 @max-md:block">{b.commit.subject}</span>
+        {b.commit.subject && <span className="hidden min-w-0 truncate text-xs text-fg-3 @max-2xl:block">{b.commit.subject}</span>}
       </span>
-      {time && <span className="shrink-0 self-start pt-0.5 text-right text-xs whitespace-nowrap text-fg-3 @md:self-center @md:pt-0">{time}</span>}
     </button>
   );
 }

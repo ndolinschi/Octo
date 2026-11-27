@@ -124,7 +124,7 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
               Compact now
             </Button>
           )}
-          <Button size="sm" variant="quiet" className="ml-auto" onClick={() => setDetails(true)}>
+          <Button size="sm" variant="quiet" className="-mr-2 ml-auto" onClick={() => setDetails(true)}>
             Open context details
           </Button>
         </div>

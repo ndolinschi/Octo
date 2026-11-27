@@ -234,7 +234,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   if (!fileKey) {
     cover = code.folders.length ? <Cover title="No file open">{TOOL_PURPOSE.files} Filter the tree by name to find one.</Cover> : <NoFolders />;
   } else if (!ready) {
-    cover = <Message file={file} folder={folder} path={path} showLoading={opening} />;
+    cover = <Message file={file} folder={folder} path={path} showLoading={opening} bottomRoom={bottomRoom} />;
   } else if (markdown && mode === "preview") {
     cover = (
       <Suspense
@@ -259,6 +259,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
         path={path}
         sizeHint={undefined}
         svgText={code.buffers.value(file.key) ?? file.content}
+        bottomRoom={bottomRoom}
         fallback={null}
         actions={null}
       />
@@ -713,7 +714,19 @@ function MoreMenu({
   );
 }
 
-function Message({ file, folder, path, showLoading }: { file: OpenFile | undefined; folder: string; path: string; showLoading: boolean }) {
+function Message({
+  file,
+  folder,
+  path,
+  showLoading,
+  bottomRoom,
+}: {
+  file: OpenFile | undefined;
+  folder: string;
+  path: string;
+  showLoading: boolean;
+  bottomRoom: number;
+}) {
   const code = useCode();
   const projectId = useProject().project?.id;
   const [, copy] = useCopy();
@@ -764,7 +777,18 @@ function Message({ file, folder, path, showLoading }: { file: OpenFile | undefin
       </Cover>
     );
     if (imageType(path) === null || !projectId) return notice;
-    return <ImagePreview key={file.key} projectId={projectId} folder={folder} path={path} sizeHint={listedSize} fallback={notice} actions={actions} />;
+    return (
+      <ImagePreview
+        key={file.key}
+        projectId={projectId}
+        folder={folder}
+        path={path}
+        sizeHint={listedSize}
+        bottomRoom={bottomRoom}
+        fallback={notice}
+        actions={actions}
+      />
+    );
   }
   return (
     <Cover title={`Couldn't open ${name}`} tone="err" actions={actions}>
