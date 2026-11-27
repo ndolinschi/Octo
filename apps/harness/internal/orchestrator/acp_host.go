@@ -60,10 +60,12 @@ type orchSession struct {
 	// warning shown on every turn of the session.
 	noMCP *usererr.Error
 	// modes are the session modes the agent advertised when the session was
-	// created, baseMode the one it started in and curMode the one in use.
-	modes    []acp.SessionMode
-	baseMode string
-	curMode  string
+	// created, baseMode the one it started in, curMode the one in use, and
+	// lastTurnMode the Octo turn mode of the previous prompt on this process.
+	modes        []acp.SessionMode
+	baseMode     string
+	curMode      string
+	lastTurnMode string
 
 	// Turn state (valid while turnCtx != nil).
 	agentID    string // the project's orchestrator agent row
@@ -185,7 +187,7 @@ func (s *orchSession) closeLocked() {
 	}
 	s.sessID = ""
 	s.unbriefed = false
-	s.modes, s.baseMode, s.curMode = nil, "", ""
+	s.modes, s.baseMode, s.curMode, s.lastTurnMode = nil, "", "", ""
 	s.costSeen, s.usedSeen = 0, 0 // the counters belong to the session that ended
 }
 

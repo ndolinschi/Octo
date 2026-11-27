@@ -116,6 +116,9 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 		return agent.Result{}, &ImagesUnsupported{AgentID: target.agent.ID, Label: target.agent.Label}
 	}
 	s.applyMode(ctx, rt, client, sessID)
+	s.mu.Lock()
+	s.lastTurnMode = rt.mode
+	s.mu.Unlock()
 	endSpan := rt.trackSpan(ctx, orch.ID, "", changes.SourceACPTurn)
 	sent := time.Now()
 	stop, err := client.PromptWith(ctx, sessID, prompt, images, handler)
@@ -137,6 +140,10 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 			if prompt2, err = rt.acpTurnPrompt(ctx, s, orch, fresh2); err == nil {
 				s.mu.Lock()
 				client, sessID = s.client, s.sessID
+				s.mu.Unlock()
+				s.applyMode(ctx, rt, client, sessID)
+				s.mu.Lock()
+				s.lastTurnMode = rt.mode
 				s.mu.Unlock()
 				stop, err = client.PromptWith(ctx, sessID, prompt2, images, handler)
 			}
@@ -267,7 +274,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 		rt.logErr("read acp session", dbErr)
 	}
 	if have && stored.PluginAgent == ag.ID && stored.Model == t.recorded() && client.Capabilities().LoadSession {
-		err := s.loadWithFallback(ctx, client, ag.Label, stored.SessionID, cwd, servers)
+		loaded, err := s.loadWithFallback(ctx, client, ag.Label, stored.SessionID, cwd, servers)
 		if err == nil {
 			// The resumed session keeps counting from where it was: seed the
 			// counters with what it has reported so far, so its next
@@ -284,8 +291,15 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 			if uerr != nil {
 				rt.logErr("seed acp usage counters", uerr)
 			}
+			base := loaded.Mode
+			if isReadOnlySessionMode(base) {
+				if a := pickAgentSessionMode(loaded.Modes); a != "" {
+					base = a
+				}
+			}
 			s.mu.Lock()
 			s.sessID = stored.SessionID
+			s.modes, s.baseMode, s.curMode = loaded.Modes, base, loaded.Mode
 			s.costSeen, s.usedSeen = cost, tokens
 			s.mu.Unlock()
 			return false, nil
@@ -330,16 +344,16 @@ func refusedMCP(label string, e *acp.RPCError) *usererr.Error {
 
 // loadWithFallback resumes a stored session; an agent that refuses the MCP
 // servers on load gets them dropped (with the warning) before giving up.
-func (s *orchSession) loadWithFallback(ctx context.Context, client *acp.Client, label, id, cwd string, servers []acp.MCPServer) error {
-	err := client.LoadSession(ctx, id, cwd, servers)
+func (s *orchSession) loadWithFallback(ctx context.Context, client *acp.Client, label, id, cwd string, servers []acp.MCPServer) (acp.Session, error) {
+	sess, err := client.LoadSessionResult(ctx, id, cwd, servers)
 	var rpcErr *acp.RPCError
 	if err != nil && len(servers) > 0 && errors.As(err, &rpcErr) && ctx.Err() == nil {
-		if err2 := client.LoadSession(ctx, id, cwd, nil); err2 == nil {
+		if sess2, err2 := client.LoadSessionResult(ctx, id, cwd, nil); err2 == nil {
 			s.setNoMCP(refusedMCP(label, rpcErr))
-			return nil
+			return sess2, nil
 		}
 	}
-	return err
+	return sess, err
 }
 
 // mcpCaps is what the agent advertised, minus HTTP MCP support when its
@@ -488,7 +502,10 @@ func (rt *runtime) acpTurnPrompt(ctx context.Context, s *orchSession, orch proje
 	if rt.reportNote != "" {
 		b.WriteString(rt.reportNote + "\n\n")
 	}
-	if n := modeNote(rt.mode); n != "" {
+	s.mu.Lock()
+	prevMode := s.lastTurnMode
+	s.mu.Unlock()
+	if n := acpPromptModeNote(rt.mode, prevMode, fresh); n != "" {
 		b.WriteString("[" + n + "]\n")
 	}
 	if prev, e, ok := unansweredBefore(msgs, last, rt.unfinishedTurns(ctx, orch.ID)); ok {

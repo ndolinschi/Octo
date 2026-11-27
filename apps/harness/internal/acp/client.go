@@ -240,14 +240,25 @@ func (c *Client) NewSession(ctx context.Context, cwd string, servers []MCPServer
 // Capabilities().LoadSession is true. The agent replays the conversation as
 // session/update notifications, which are dropped: nothing is running yet.
 func (c *Client) LoadSession(ctx context.Context, sessionID, cwd string, servers []MCPServer) error {
+	_, err := c.LoadSessionResult(ctx, sessionID, cwd, servers)
+	return err
+}
+
+// LoadSessionResult is LoadSession returning any session modes the agent
+// reported in its session/load result (Modes is nil when none were reported).
+func (c *Client) LoadSessionResult(ctx context.Context, sessionID, cwd string, servers []MCPServer) (Session, error) {
 	if servers == nil {
 		servers = []MCPServer{}
 	}
-	err := c.conn.call(ctx, methodSessionLoad, loadSessionParams{SessionID: sessionID, Cwd: cwd, MCPServers: servers}, nil)
-	if err != nil {
-		return fmt.Errorf("acp session/load: %w", err)
+	var res struct {
+		Modes json.RawMessage `json:"modes"`
 	}
-	return nil
+	err := c.conn.call(ctx, methodSessionLoad, loadSessionParams{SessionID: sessionID, Cwd: cwd, MCPServers: servers}, &res)
+	if err != nil {
+		return Session{}, fmt.Errorf("acp session/load: %w", err)
+	}
+	modes, cur := parseModes(res.Modes)
+	return Session{ID: sessionID, Modes: modes, Mode: cur}, nil
 }
 
 // Prompt sends one text prompt on an open session and returns the stop

@@ -275,6 +275,61 @@ func (s *orchSession) applyMode(ctx context.Context, rt *runtime, client *acp.Cl
 	s.mu.Unlock()
 }
 
+// isReadOnlySessionMode reports whether an agent's own session mode ID or name
+// is a read-only / ask / plan mode rather than a writable agent mode.
+func isReadOnlySessionMode(idOrName string) bool {
+	s := strings.ToLower(strings.TrimSpace(idOrName))
+	if s == "" {
+		return false
+	}
+	for _, w := range []string{"plan", "ask", "read-only", "readonly", "read_only"} {
+		if strings.Contains(s, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// pickAgentSessionMode finds a writable (agent/code/default) mode among the
+// agent's advertised modes, used when base is missing or was a read-only/plan
+// mode (e.g. after resuming a session that was saved while in Plan mode).
+func pickAgentSessionMode(modes []acp.SessionMode) string {
+	for _, want := range []string{"agent", "code", "default"} {
+		for _, m := range modes {
+			if isReadOnlySessionMode(m.ID) || isReadOnlySessionMode(m.Name) {
+				continue
+			}
+			if strings.EqualFold(m.ID, want) || strings.EqualFold(strings.TrimSpace(m.Name), want) {
+				return m.ID
+			}
+		}
+	}
+	for _, m := range modes {
+		if !isReadOnlySessionMode(m.ID) && !isReadOnlySessionMode(m.Name) {
+			return m.ID
+		}
+	}
+	return ""
+}
+
+// agentModeResumeNote tells an ACP agent that a session which previously ran in
+// Ask or Plan mode (or was resumed) is now in Agent mode (read-write).
+const agentModeResumeNote = "Mode: AGENT. You are now in Agent mode (read-write). You may edit files, run commands, and delegate as needed — do not stay in read-only or plan mode."
+
+// acpPromptModeNote is the bracketed mode note prepended to an ACP prompt.
+// Ask and Plan always carry their read-only note; Agent carries agentModeResumeNote
+// when switching out of Ask/Plan or when resuming a non-fresh session whose prior
+// mode is unknown, so the agent does not remain stuck in read-only/plan behavior.
+func acpPromptModeNote(turnMode, prevMode string, fresh bool) string {
+	if n := modeNote(turnMode); n != "" {
+		return n
+	}
+	if turnMode == projectstore.ModeAgent && (prevMode == projectstore.ModeAsk || prevMode == projectstore.ModePlan || (!fresh && prevMode == "")) {
+		return agentModeResumeNote
+	}
+	return ""
+}
+
 // sessionModeTarget is the agent mode a live ACP session should be in for a
 // turn ("": leave it as it is). Ask/plan turns map to the agent's own read-only
 // or plan mode; otherwise the session keeps the mode it started in (base),
@@ -290,13 +345,16 @@ func sessionModeTarget(readOnly bool, turnMode string, access func() string, mod
 	if readOnly {
 		return pickSessionMode(modes, turnMode)
 	}
-	if base == "" {
+	target := base
+	if target == "" || isReadOnlySessionMode(target) {
+		target = pickAgentSessionMode(modes)
+	}
+	if target == "" {
 		return ""
 	}
-	target := base
 	switch access() {
 	case projectstore.AccessSupervised:
-		if selfApproving(base) {
+		if selfApproving(target) {
 			if d := askingMode(modes); d != "" {
 				target = d
 			}
@@ -307,7 +365,7 @@ func sessionModeTarget(readOnly bool, turnMode string, access func() string, mod
 		// than edits (Claude Code's acceptEdits also runs filesystem commands such
 		// as `echo hi > f`, mkdir, mv without asking), so the asking mode is
 		// preferred; the agent's accept-edits mode only when it has no asking one.
-		if selfApproving(base) {
+		if selfApproving(target) {
 			if d := askingMode(modes); d != "" {
 				target = d
 			} else if m := acceptEditsMode(modes); m != "" {
@@ -320,20 +378,46 @@ func sessionModeTarget(readOnly bool, turnMode string, access func() string, mod
 
 // --- plans -------------------------------------------------------------------
 
-// savePlan stores the result of a plan-mode turn as a plan.
-func (o *Orchestrator) savePlan(rt *runtime, text string) {
+// isCancelledPlanText reports whether a plan-mode reply is just a bare
+// cancellation notice emitted by an agent (for example, when an ACP agent
+// aborts a turn with "Info: Operation cancelled by user" after a denied tool
+// call and still returns stopReason=end_turn) rather than an actual plan.
+func isCancelledPlanText(text string) bool {
+	s := strings.TrimSpace(text)
+	if s == "" || strings.Contains(s, "\n") || len(s) > 120 {
+		return false
+	}
+	lower := strings.ToLower(s)
+	lower = strings.TrimSpace(strings.TrimPrefix(lower, "info:"))
+	lower = strings.TrimRight(lower, ".!")
+	switch lower {
+	case "operation cancelled by user",
+		"operation canceled by user",
+		"cancelled by user",
+		"canceled by user",
+		"request cancelled by user",
+		"request canceled by user":
+		return true
+	}
+	return false
+}
+
+// savePlan stores the result of a plan-mode turn as a plan and reports whether
+// a plan was stored.
+func (o *Orchestrator) savePlan(rt *runtime, text string) bool {
 	text = strings.TrimSpace(rt.redact(text))
-	if text == "" {
-		return
+	if text == "" || isCancelledPlanText(text) {
+		return false
 	}
 	c, cancel := dbCtx(context.Background())
 	defer cancel()
 	p, err := rt.db.AddPlan(c, rt.turnID, text)
 	if err != nil {
 		rt.logErr("store plan", err)
-		return
+		return false
 	}
 	rt.publish(events.PlanCreated, map[string]any{"plan": p})
+	return true
 }
 
 // LatestPlan is the default session's newest plan (projectstore.ErrNotFound: none).
