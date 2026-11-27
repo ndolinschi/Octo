@@ -12,6 +12,7 @@ import { useCode } from "../../../state/code";
 import { useOptionalComments } from "../../../state/comments";
 import { getBrowserTabPins, getBrowserTabState, useBrowserTabsRevision } from "../../../state/browserTabs";
 import { getTerminalTabState, useTerminalTabsRevision } from "../../../state/terminalTabs";
+import { getPlanTabState, usePlanTabsRevision } from "../../../state/planTabs";
 import { useProject } from "../../../state/project";
 import { useRunsSelector, useRunsStore } from "../../../state/projectRuns";
 import { StatusSlotsContext } from "../../../state/statusSlots";
@@ -63,6 +64,7 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
   const { state, project, projectId, applySession } = useProject();
   useBrowserTabsRevision(projectId);
   useTerminalTabsRevision(projectId);
+  usePlanTabsRevision(projectId);
   const { bridge, projects } = useApp();
   const activity = useActivity();
   // Remote access: on a paired device the commands and project settings are the computer's; sends need the permission.
@@ -100,6 +102,7 @@ export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; se
       return { url: b.url, title: b.title, pins: getBrowserTabPins(projectId, id) };
     },
     terminal: (id: string) => getTerminalTabState(projectId, id),
+    plan: (id: string) => getPlanTabState(projectId, id),
   };
   // The action runs once the sheet has given focus back to its opener (which would otherwise take the focus, and the dock's
   // shown group, back to the conversation).

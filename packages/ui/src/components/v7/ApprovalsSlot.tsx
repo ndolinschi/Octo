@@ -2,9 +2,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AnsweredInput, Approval, ApprovalAnswer, AutoMemoryMode, Bridge, InputAnswer, InputRequest } from "@octo/agent-client";
 import { useLatest } from "../../lib/hooks";
 import { agentDisplayName } from "../../lib/orchestratorMore";
-import { approvalDeadline, approvalItems, resolutionCause, type ApprovalItem, type Resolution } from "../../lib/v7/approval";
+import {
+  approvalDeadline,
+  approvalItems,
+  pruneCompleted,
+  resolutionCause,
+  shouldPruneCompleted,
+  type ApprovalItem,
+  type Resolution,
+} from "../../lib/v7/approval";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
+import { useSessionScope } from "../../state/session";
 import { ApprovalCard } from "./ApprovalCard";
 import { ApprovalGroup } from "./ApprovalGroup";
 import { InputFormCard } from "./InputFormCard";
@@ -36,17 +45,18 @@ function segments(items: readonly ApprovalItem[]): Segment[] {
  * `synced`: bumped by every re-read after a reconnect; the lists load again (what the stream missed). `initial`: what the
  * project state already holds (its last read and events), so the cards paint with the transcript (decision 99).
  */
-type Ids<T> = { projectId: string; bridge: Bridge; synced: number; initial: readonly T[] };
+type Ids<T> = { projectId: string; bridge: Bridge; synced: number; initial: readonly T[]; orchestratorId: string | undefined };
 
 function upsert<T extends { id: string }>(list: readonly T[], item: T): T[] {
   return list.some((x) => x.id === item.id) ? [...list] : [...list, item];
 }
 
-/** Approvals seen this session and how each ended; the cards collapse to one line instead of vanishing. */
-function useApprovals({ projectId, bridge, synced, initial }: Ids<Approval>) {
+/** Approvals seen this turn and how each ended; cards collapse to one line during the turn and clear when a new turn starts. */
+function useApprovals({ projectId, bridge, synced, initial, orchestratorId }: Ids<Approval>) {
   const [seen, setSeen] = useState<Approval[]>(() => [...initial]);
   const [resolved, setResolved] = useState<Record<string, Resolution>>({});
   const seenRef = useLatest(seen);
+  const resolvedRef = useLatest(resolved);
   const local = useRef<Record<string, Resolution>>({});
 
   useEffect(() => {
@@ -62,6 +72,15 @@ function useApprovals({ projectId, bridge, synced, initial }: Ids<Approval>) {
   }, [bridge, projectId, synced]);
 
   useV7Events((e) => {
+    if (shouldPruneCompleted(e, orchestratorId)) {
+      const done = resolvedRef.current;
+      if (Object.keys(done).length > 0) {
+        setSeen((s) => pruneCompleted(s, done));
+        setResolved({});
+        local.current = {};
+      }
+      return;
+    }
     if (e.type === "approval.requested") setSeen((s) => upsert(s, e.approval));
     if (e.type === "approval.resolved") {
       const a = seenRef.current.find((x) => x.id === e.id);
@@ -83,10 +102,11 @@ function useApprovals({ projectId, bridge, synced, initial }: Ids<Approval>) {
   return { items: approvalItems(pending, seen, resolved), markResolved };
 }
 
-/** Forms (`request_input`) seen this session and their answers (names only; secret values never pass through here). */
-function useForms({ projectId, bridge, synced, initial }: Ids<InputRequest>) {
+/** Forms (`request_input`) seen this turn and their answers (names only; secret values never pass through here). */
+function useForms({ projectId, bridge, synced, initial, orchestratorId }: Ids<InputRequest>) {
   const [seen, setSeen] = useState<InputRequest[]>(() => [...initial]);
   const [answered, setAnswered] = useState<Record<string, AnsweredInput>>({});
+  const answeredRef = useLatest(answered);
 
   useEffect(() => {
     let alive = true;
@@ -101,6 +121,14 @@ function useForms({ projectId, bridge, synced, initial }: Ids<InputRequest>) {
   }, [bridge, projectId, synced]);
 
   useV7Events((e) => {
+    if (shouldPruneCompleted(e, orchestratorId)) {
+      const done = answeredRef.current;
+      if (Object.keys(done).length > 0) {
+        setSeen((s) => pruneCompleted(s, done));
+        setAnswered({});
+      }
+      return;
+    }
     if (e.type === "input.requested") setSeen((s) => upsert(s, e.input));
     if (e.type === "input.resolved") setAnswered((a) => ({ ...a, [e.id]: { status: e.status, provided: e.provided, values: e.values } }));
   });
@@ -121,16 +149,19 @@ export type ApprovalsSlotProps = {
  */
 export function ApprovalsSlot(props: ApprovalsSlotProps) {
   const { bridge } = useApp();
+  const { projectId } = useProject();
+  const scope = useSessionScope();
   if (!bridge.resolveApproval || !bridge.submitInput) return null;
-  return <Live {...props} />;
+  return <Live key={`${projectId}:${scope?.sessionId ?? ""}`} {...props} />;
 }
 
 function Live({ onOpenAgent }: ApprovalsSlotProps) {
   const { bridge } = useApp();
   const { projectId, project, synced, update, state } = useProject();
   const name = (label: string) => agentDisplayName(label, project?.name);
-  const approvals = useApprovals({ projectId, bridge, synced, initial: state.approvals });
-  const forms = useForms({ projectId, bridge, synced, initial: state.inputs });
+  const orchestratorId = project?.orchestrator_agent_id;
+  const approvals = useApprovals({ projectId, bridge, synced, initial: state.approvals, orchestratorId });
+  const forms = useForms({ projectId, bridge, synced, initial: state.inputs, orchestratorId });
   const resolve = useCallback(
     (id: string, answer: ApprovalAnswer) => bridge.resolveApproval?.(projectId, id, answer) ?? Promise.resolve(),
     [bridge, projectId],

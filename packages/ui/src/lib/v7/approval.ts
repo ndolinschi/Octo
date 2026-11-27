@@ -272,3 +272,17 @@ export function diffBlocks(added: number, removed: number, blocks = 5): ("add" |
   for (let i = 0; i < blocks; i++) out.push(i < add ? "add" : i < filled ? "del" : "none");
   return out;
 }
+
+/**
+ * True when an event starts a new user turn on the orchestrator or resets the conversation, meaning
+ * already-resolved approvals and closed/answered forms from earlier turns should be cleared from the bottom slot.
+ */
+export function shouldPruneCompleted(event: { type: string; message?: { role: string; agent_id?: string } }, orchestratorId: string | undefined): boolean {
+  if (event.type === "conversation.rewound" || event.type === "conversation.cleared") return true;
+  return event.type === "message.created" && event.message?.role === "user" && (!orchestratorId || event.message.agent_id === orchestratorId);
+}
+
+/** Drops items whose ids appear in `done`, keeping still-pending items in order. */
+export function pruneCompleted<T extends { id: string }>(seen: readonly T[], done: Readonly<Record<string, unknown>>): T[] {
+  return seen.filter((item) => done[item.id] === undefined);
+}

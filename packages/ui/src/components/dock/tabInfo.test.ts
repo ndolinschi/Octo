@@ -1,7 +1,7 @@
 import { emptyProjectState, withSessions, type ProjectState } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentTab, browserTab, CHAT, sessionTab, terminalTab, toolTab } from "../../state/workspace/layout";
+import { agentTab, browserTab, CHAT, planTab, sessionTab, terminalTab, toolTab } from "../../state/workspace/layout";
 import { GLYPH } from "../primitives/glyphs";
 import { conversationLabel, tabInfo } from "./tabInfo";
 
@@ -164,4 +164,32 @@ test("an agent tab is the agent's label, its task in the tooltip (decision F4)",
   assert.equal(info.label, "Dependency auditor");
   assert.equal(info.title, "Dependency auditor: Breaking changes 0.76 → 0.80");
   assert.equal(tabInfo(agentTab("gone"), ctx).label, "Agent");
+});
+
+test("a plan tab shows its title, icon and pending glyph", () => {
+  const base = { state: emptyProjectState(), orchestratorId: "root", file: () => undefined, comments: () => 0, runStatus: () => null };
+  const pending = tabInfo(planTab("pln_1"), {
+    ...base,
+    plan: () => ({
+      title: "Plan: Add fallback method",
+      plan: { status: "pending" },
+    }),
+  });
+  assert.equal(pending.label, "Plan: Add fallback method");
+  assert.equal(pending.icon, GLYPH.plan);
+  assert.equal(pending.glyph, "needs");
+
+  const approved = tabInfo(planTab("pln_1"), {
+    ...base,
+    plan: () => ({
+      title: "Plan: Add fallback method",
+      plan: { status: "approved" },
+    }),
+  });
+  assert.equal(approved.glyph, null);
+  assert.equal(approved.title, "Plan: Add fallback method (approved)");
+
+  const fallback = tabInfo(planTab("pln_unknown"), base);
+  assert.equal(fallback.label, "Plan");
+  assert.equal(fallback.glyph, null);
 });

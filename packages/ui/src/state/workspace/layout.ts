@@ -22,7 +22,8 @@ export type TabRef =
   | { kind: "browser"; browserId: string }
   | { kind: "terminal"; terminalId: string }
   | { kind: "run"; name: string }
-  | { kind: "session"; sessionId: string };
+  | { kind: "session"; sessionId: string }
+  | { kind: "plan"; planId: string };
 
 // The brand is applied here and nowhere else: every call site below has just validated or built the string.
 const brand = (id: string) => id as TabId;
@@ -54,6 +55,8 @@ export const terminalTab = (terminalId: string): TabId => brand(`terminal:${term
 export const runTab = (name: string): TabId => brand(`run:${name}`);
 /** One session of the project in a tab of its own ("Open in tab" of the Sessions tool). */
 export const sessionTab = (sessionId: string): TabId => brand(`session:${sessionId}`);
+/** One plan from Plan mode opened in its own reading tab. */
+export const planTab = (planId: string): TabId => brand(`plan:${planId}`);
 
 /** What a tab id refers to; null for any string that is not a tab id (stored layouts, DOM attributes). */
 export function parseTab(id: string): TabRef | null {
@@ -65,6 +68,7 @@ export function parseTab(id: string): TabRef | null {
   if (id.startsWith("browser:") && id.length > 8) return { kind: "browser", browserId: id.slice(8) };
   if (id.startsWith("terminal:") && id.length > 9) return { kind: "terminal", terminalId: id.slice(9) };
   if (id.startsWith("run:") && id.length > 4) return { kind: "run", name: id.slice(4) };
+  if (id.startsWith("plan:") && id.length > 5) return { kind: "plan", planId: id.slice(5) };
   const key = id.startsWith("file:") ? parseFileKey(id.slice(5)) : null;
   return key ? { kind: "file", key } : null;
 }
