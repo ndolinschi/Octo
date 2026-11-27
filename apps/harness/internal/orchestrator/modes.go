@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
@@ -130,11 +132,81 @@ var readOnlyGit = map[string]bool{
 }
 
 // ReadOnlyCommand reports whether command is on the small allow-list of shell
-// commands that cannot change anything: one simple command (approval.Tokens: no
-// operator, redirection, substitution or expansion) of a known read-only program,
-// without the options that would make it write or run something (find -exec,
-// -delete; git --output; rg --pre; sort -o).
+// commands that cannot change anything: one simple command, or a pipeline of
+// simple commands separated by unquoted single `|` (each stage checked by
+// approval.Tokens: no redirection, substitution, expansion, or other operator),
+// of known read-only programs without options that write or run something
+// (find -exec, -delete; git --output; rg --pre; sort -o).
 func ReadOnlyCommand(command string) bool {
+	stages, ok := splitReadOnlyPipeline(command)
+	if !ok {
+		return false
+	}
+	for _, stage := range stages {
+		if !readOnlySimpleCommand(stage) {
+			return false
+		}
+	}
+	return true
+}
+
+// splitReadOnlyPipeline splits command on unquoted single `|` pipes, returning
+// false on empty stages, `||`, `|&`, or unterminated quotes.
+func splitReadOnlyPipeline(command string) ([]string, bool) {
+	var stages []string
+	start := 0
+	inSingle, inDouble, escaped := false, false, false
+	for i := 0; i < len(command); i++ {
+		c := command[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if inSingle {
+			if c == '\'' {
+				inSingle = false
+			}
+			continue
+		}
+		if inDouble {
+			if c == '\\' {
+				escaped = true
+			} else if c == '"' {
+				inDouble = false
+			}
+			continue
+		}
+		switch c {
+		case '\\':
+			escaped = true
+		case '\'':
+			inSingle = true
+		case '"':
+			inDouble = true
+		case '|':
+			if i+1 < len(command) && (command[i+1] == '|' || command[i+1] == '&') {
+				return nil, false
+			}
+			seg := strings.TrimSpace(command[start:i])
+			if seg == "" {
+				return nil, false
+			}
+			stages = append(stages, seg)
+			start = i + 1
+		}
+	}
+	if inSingle || inDouble || escaped {
+		return nil, false
+	}
+	tail := strings.TrimSpace(command[start:])
+	if tail == "" {
+		return nil, false
+	}
+	stages = append(stages, tail)
+	return stages, true
+}
+
+func readOnlySimpleCommand(command string) bool {
 	words, ok := approval.Tokens(command)
 	if !ok {
 		return false
@@ -183,8 +255,84 @@ func (rt *runtime) acpModeAllows(call acp.ToolCall) bool {
 		return true
 	case "execute":
 		return ReadOnlyCommand(commandOf(call.RawInput))
+	case "edit":
+		// In Plan mode, ACP agents like GitHub Copilot write their own plan file
+		// under ~/.copilot/session-state/<id>/plan.md (outside the project folders).
+		// Denying that edit causes Copilot to abort the turn with "Operation cancelled by user".
+		return rt.mode == projectstore.ModePlan && rt.isAgentSessionStateWrite(call)
 	}
 	return false
+}
+
+// isAgentSessionStateWrite reports whether call targets only files inside an
+// ACP agent's private session-state directory (e.g. ~/.copilot/session-state/)
+// and never inside any project folder.
+func (rt *runtime) isAgentSessionStateWrite(call acp.ToolCall) bool {
+	paths := toolCallPaths(call)
+	if len(paths) == 0 {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false
+	}
+	allowedRoot := filepath.Clean(filepath.Join(home, ".copilot", "session-state"))
+	for _, p := range paths {
+		if !filepath.IsAbs(p) {
+			return false
+		}
+		clean := filepath.Clean(p)
+		if _, _, _, err := rt.locate(clean); err == nil {
+			return false // never allow edits inside a project folder in Plan mode
+		}
+		rel, err := filepath.Rel(allowedRoot, clean)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return false
+		}
+	}
+	return true
+}
+
+// toolCallPaths extracts absolute/target file paths from an ACP tool call's
+// locations or rawInput (path / file_path / filePath).
+func toolCallPaths(call acp.ToolCall) []string {
+	var out []string
+	for _, l := range call.Locations {
+		if p := strings.TrimSpace(l.Path); p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 && len(call.RawInput) > 0 {
+		var in struct {
+			Path     string `json:"path"`
+			FilePath string `json:"file_path"`
+			Camel    string `json:"filePath"`
+		}
+		if json.Unmarshal(call.RawInput, &in) == nil {
+			for _, p := range []string{in.Path, in.FilePath, in.Camel} {
+				if p = strings.TrimSpace(p); p != "" {
+					out = append(out, p)
+					break
+				}
+			}
+		}
+	}
+	return out
+}
+
+// describeToolCall returns a short human-readable label for a blocked ACP tool call.
+func describeToolCall(call acp.ToolCall) string {
+	if cmd := strings.TrimSpace(commandOf(call.RawInput)); cmd != "" {
+		if len(cmd) > 80 {
+			cmd = cmd[:77] + "..."
+		}
+		return fmt.Sprintf("command %q", cmd)
+	}
+	if paths := toolCallPaths(call); len(paths) > 0 {
+		label := firstNonEmpty(call.Kind, "edit")
+		return fmt.Sprintf("%s %s", label, filepath.Base(paths[0]))
+	}
+	return firstNonEmpty(call.Title, call.Kind, "a tool call")
 }
 
 // pickSessionMode finds the agent's own mode for ask or plan among its advertised ones.
@@ -237,7 +385,9 @@ func acceptEditsMode(modes []acp.SessionMode) string {
 	return ""
 }
 
-// askingMode is the agent's mode that asks before changes: the one named default.
+// askingMode is the agent's mode that asks before changes: the one named default,
+// or (for agents like GitHub Copilot that have Agent/Plan/Autopilot with no
+// "default" mode) a non-self-approving, non-read-only agent/code mode.
 func askingMode(modes []acp.SessionMode) string {
 	for _, m := range modes {
 		if strings.EqualFold(m.ID, "default") {
@@ -249,7 +399,31 @@ func askingMode(modes []acp.SessionMode) string {
 			return m.ID
 		}
 	}
+	for _, want := range []string{"agent", "code"} {
+		for _, m := range modes {
+			if isReadOnlySessionMode(m.ID) || isReadOnlySessionMode(m.Name) || selfApproving(m.ID) || selfApproving(m.Name) {
+				continue
+			}
+			if strings.EqualFold(m.ID, want) || strings.HasSuffix(strings.ToLower(m.ID), "#"+want) || strings.EqualFold(strings.TrimSpace(m.Name), want) {
+				return m.ID
+			}
+		}
+	}
 	return ""
+}
+
+// inferAgentModeFromReadOnly guesses a writable mode ID when the agent omitted
+// its mode list on session/load after a cold harness restart, yet reported a
+// read-only current mode (e.g. via current_mode_update). SetMode errors are
+// non-fatal, so a wrong guess simply logs a warning.
+func inferAgentModeFromReadOnly(cur string) string {
+	if !isReadOnlySessionMode(cur) {
+		return ""
+	}
+	if i := strings.LastIndex(cur, "#"); i >= 0 {
+		return cur[:i+1] + "agent"
+	}
+	return "default"
 }
 
 // applyMode puts the live ACP session into the agent's mode matching the
@@ -263,6 +437,9 @@ func (s *orchSession) applyMode(ctx context.Context, rt *runtime, client *acp.Cl
 	modes, cur, base := s.modes, s.curMode, s.baseMode
 	s.mu.Unlock()
 	target := sessionModeTarget(rt.readOnlyMode(), rt.mode, func() string { return rt.accessMode(ctx) }, modes, base)
+	if target == "" && !rt.readOnlyMode() {
+		target = inferAgentModeFromReadOnly(cur)
+	}
 	if target == "" || target == cur {
 		return
 	}
@@ -273,6 +450,61 @@ func (s *orchSession) applyMode(ctx context.Context, rt *runtime, client *acp.Cl
 	s.mu.Lock()
 	s.curMode = target
 	s.mu.Unlock()
+}
+
+// isReadOnlySessionMode reports whether an agent's own session mode ID or name
+// is a read-only / ask / plan mode rather than a writable agent mode.
+func isReadOnlySessionMode(idOrName string) bool {
+	s := strings.ToLower(strings.TrimSpace(idOrName))
+	if s == "" {
+		return false
+	}
+	for _, w := range []string{"plan", "ask", "read-only", "readonly", "read_only"} {
+		if strings.Contains(s, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// pickAgentSessionMode finds a writable (agent/code/default) mode among the
+// agent's advertised modes, used when base is missing or was a read-only/plan
+// mode (e.g. after resuming a session that was saved while in Plan mode).
+func pickAgentSessionMode(modes []acp.SessionMode) string {
+	for _, want := range []string{"agent", "code", "default"} {
+		for _, m := range modes {
+			if isReadOnlySessionMode(m.ID) || isReadOnlySessionMode(m.Name) {
+				continue
+			}
+			if strings.EqualFold(m.ID, want) || strings.HasSuffix(strings.ToLower(m.ID), "#"+want) || strings.EqualFold(strings.TrimSpace(m.Name), want) {
+				return m.ID
+			}
+		}
+	}
+	for _, m := range modes {
+		if !isReadOnlySessionMode(m.ID) && !isReadOnlySessionMode(m.Name) {
+			return m.ID
+		}
+	}
+	return ""
+}
+
+// agentModeResumeNote tells an ACP agent that a session which previously ran in
+// Ask or Plan mode (or was resumed) is now in Agent mode (read-write).
+const agentModeResumeNote = "Mode: AGENT. You are now in Agent mode (read-write). You may edit files, run commands, and delegate as needed — do not stay in read-only or plan mode."
+
+// acpPromptModeNote is the bracketed mode note prepended to an ACP prompt.
+// Ask and Plan always carry their read-only note; Agent carries agentModeResumeNote
+// when switching out of Ask/Plan or when resuming a non-fresh session whose prior
+// mode is unknown, so the agent does not remain stuck in read-only/plan behavior.
+func acpPromptModeNote(turnMode, prevMode string, fresh bool) string {
+	if n := modeNote(turnMode); n != "" {
+		return n
+	}
+	if turnMode == projectstore.ModeAgent && (prevMode == projectstore.ModeAsk || prevMode == projectstore.ModePlan || (!fresh && prevMode == "")) {
+		return agentModeResumeNote
+	}
+	return ""
 }
 
 // sessionModeTarget is the agent mode a live ACP session should be in for a
@@ -290,13 +522,16 @@ func sessionModeTarget(readOnly bool, turnMode string, access func() string, mod
 	if readOnly {
 		return pickSessionMode(modes, turnMode)
 	}
-	if base == "" {
+	target := base
+	if target == "" || isReadOnlySessionMode(target) {
+		target = pickAgentSessionMode(modes)
+	}
+	if target == "" {
 		return ""
 	}
-	target := base
 	switch access() {
 	case projectstore.AccessSupervised:
-		if selfApproving(base) {
+		if selfApproving(target) {
 			if d := askingMode(modes); d != "" {
 				target = d
 			}
@@ -307,7 +542,7 @@ func sessionModeTarget(readOnly bool, turnMode string, access func() string, mod
 		// than edits (Claude Code's acceptEdits also runs filesystem commands such
 		// as `echo hi > f`, mkdir, mv without asking), so the asking mode is
 		// preferred; the agent's accept-edits mode only when it has no asking one.
-		if selfApproving(base) {
+		if selfApproving(target) {
 			if d := askingMode(modes); d != "" {
 				target = d
 			} else if m := acceptEditsMode(modes); m != "" {
@@ -320,20 +555,50 @@ func sessionModeTarget(readOnly bool, turnMode string, access func() string, mod
 
 // --- plans -------------------------------------------------------------------
 
-// savePlan stores the result of a plan-mode turn as a plan.
-func (o *Orchestrator) savePlan(rt *runtime, text string) {
+// isCancelledPlanText reports whether a plan-mode reply is just a bare
+// cancellation notice emitted by an agent (for example, when an ACP agent
+// aborts a turn with "Info: Operation cancelled by user" after a denied tool
+// call and still returns stopReason=end_turn) rather than an actual plan.
+func isCancelledPlanText(text string) bool {
+	s := strings.TrimSpace(text)
+	if s == "" || strings.Contains(s, "\n") || len(s) > 120 {
+		return false
+	}
+	lower := strings.ToLower(s)
+	for _, prefix := range []string{"info:", "[info]"} {
+		lower = strings.TrimSpace(strings.TrimPrefix(lower, prefix))
+	}
+	lower = strings.TrimRight(lower, ".!")
+	switch lower {
+	case "operation cancelled by user",
+		"operation canceled by user",
+		"cancelled by user",
+		"canceled by user",
+		"request cancelled by user",
+		"request canceled by user",
+		"turn cancelled by user",
+		"turn canceled by user":
+		return true
+	}
+	return false
+}
+
+// savePlan stores the result of a plan-mode turn as a plan and reports whether
+// a plan was stored.
+func (o *Orchestrator) savePlan(rt *runtime, text string) bool {
 	text = strings.TrimSpace(rt.redact(text))
-	if text == "" {
-		return
+	if text == "" || isCancelledPlanText(text) {
+		return false
 	}
 	c, cancel := dbCtx(context.Background())
 	defer cancel()
 	p, err := rt.db.AddPlan(c, rt.turnID, text)
 	if err != nil {
 		rt.logErr("store plan", err)
-		return
+		return false
 	}
 	rt.publish(events.PlanCreated, map[string]any{"plan": p})
+	return true
 }
 
 // LatestPlan is the default session's newest plan (projectstore.ErrNotFound: none).

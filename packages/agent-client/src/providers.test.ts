@@ -200,3 +200,24 @@ test("a refusal carries can_force and force_unverified goes out in the body", as
   const old = new BridgeError(422, "model_unavailable", "m", { provider: "grok", reason: "r" });
   assert.equal(old.can_force, undefined);
 });
+
+test("addAgentAccount posts the name and folder and reads the account's entry; removeAgentAccount deletes it", async () => {
+  const seen: { method: string | undefined; url: string; body: unknown }[] = [];
+  const claude = sample.providers[1];
+  assert.ok(claude);
+  const account = { ...claude, id: "claude-code@work", label: "Claude Code · Work", account_of: "claude-code", account_id: "work" };
+  const fetch: FetchLike = async (url, init) => {
+    seen.push({ method: init?.method, url, body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined });
+    if (init?.method === "DELETE") return { ok: true, status: 204, text: async () => "" };
+    return { ok: true, status: 201, text: async () => JSON.stringify(account) };
+  };
+  const bridge = createHttpBridge({ baseUrl: "http://h:1", fetch });
+  const got = await bridge.addAgentAccount("claude-code", { label: "Work", config_dir: "~/.claude-work" });
+  assert.equal(got?.id, "claude-code@work");
+  assert.equal(got?.account_of, "claude-code");
+  await bridge.removeAgentAccount("claude-code", "work");
+  assert.deepEqual(seen, [
+    { method: "POST", url: "http://h:1/v1/providers/claude-code/accounts", body: { label: "Work", config_dir: "~/.claude-work" } },
+    { method: "DELETE", url: "http://h:1/v1/providers/claude-code/accounts/work", body: undefined },
+  ]);
+});

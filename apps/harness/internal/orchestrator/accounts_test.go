@@ -21,7 +21,7 @@ func TestSwitchingAccountStartsANewSession(t *testing.T) {
 	logs := t.TempDir()
 	def := fakeAgent("fake", true)
 	two := fakeAgent("fake@two", true)
-	two.BaseID, def.BaseID = "fake", "fake"
+	two.AccountOf = "fake"
 	for _, a := range []struct {
 		env map[string]string
 		log string

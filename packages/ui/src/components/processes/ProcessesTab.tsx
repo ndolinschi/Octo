@@ -1,6 +1,7 @@
 import type { AdhocCommandInput, WorkerProcess } from "@octo/agent-client";
-import { Check, OctagonX, Plus, RefreshCw, Square } from "lucide-react";
+import { Check, OctagonX, Plus, RefreshCw, Search, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { cn } from "../../lib/cn";
 import { durationText } from "../../lib/commands/format";
 import { runsReducer } from "../../lib/commands/runs";
@@ -66,6 +67,11 @@ export default function ProcessesTab() {
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<ProcessFilter>("all");
   const [query, setQuery] = useState("");
+  // Under 420px (the 2-column list column and narrow panes) search collapses to a button so the filter chips stay unclipped (as PullList).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const searchButton = useRef<HTMLButtonElement>(null);
+  const searchShown = searchOpen || query !== "";
   const [starting, setStarting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -237,15 +243,43 @@ export default function ProcessesTab() {
             selected={picked?.key ?? null}
             onSelect={setSelected}
             listHeader={
-              <PanelFilters>
-                <FilterTabs<ProcessFilter> label="Filter processes" bare options={filterOptions} value={filter} onChange={(v) => setFilter(v)} />
+              <PanelFilters className="@container/pf">
+                <FilterTabs<ProcessFilter>
+                  label="Filter processes"
+                  bare
+                  options={filterOptions}
+                  value={filter}
+                  onChange={(v) => setFilter(v)}
+                  className={cn(searchShown && "@max-[420px]/pf:hidden")}
+                />
+                {!searchShown && (
+                  <IconButton
+                    ref={searchButton}
+                    icon={Search}
+                    label="Filter processes"
+                    onClick={() => {
+                      flushSync(() => setSearchOpen(true));
+                      searchInput.current?.focus();
+                    }}
+                    className="ml-auto shrink-0 @min-[420px]/pf:hidden"
+                  />
+                )}
                 <SearchField
+                  ref={searchInput}
                   label="Filter by name, command or PID"
                   placeholder="Filter processes…"
                   size="sm"
                   value={query}
                   onChange={setQuery}
-                  className="ml-auto max-w-56 min-w-28 flex-1"
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape" && query === "" && searchOpen) {
+                      e.preventDefault();
+                      flushSync(() => setSearchOpen(false));
+                      searchButton.current?.focus();
+                    }
+                  }}
+                  inputProps={{ spellCheck: false, autoComplete: "off", onBlur: () => query === "" && setSearchOpen(false) }}
+                  className={cn("ml-auto max-w-56 min-w-28 flex-1", searchShown ? "@max-[420px]/pf:max-w-none" : "@max-[420px]/pf:hidden")}
                 />
               </PanelFilters>
             }

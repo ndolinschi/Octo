@@ -10,8 +10,10 @@ import {
   formatCountdown,
   keyAction,
   optionAnswer,
+  pruneCompleted,
   resolutionCause,
   resolutionLabel,
+  shouldPruneCompleted,
   turnScopeLabel,
 } from "./approval";
 import { answeredLine, SECRET_MIN_BYTES, utf8Length } from "./form";
@@ -234,4 +236,16 @@ test("allow for this request: the label names exactly what the harness remembers
   ]) {
     assert.equal(turnScopeLabel(a("command", { command }, "bash")), null, `expected null for ${JSON.stringify(command)}`);
   }
+});
+
+test("shouldPruneCompleted & pruneCompleted: clear resolved/closed cards on new orchestrator turn, rewind or clear, while keeping pending items and ignoring sub-agents", () => {
+  assert.equal(shouldPruneCompleted({ type: "message.created", message: { role: "user", agent_id: "orch_1" } }, "orch_1"), true);
+  assert.equal(shouldPruneCompleted({ type: "message.created", message: { role: "user", agent_id: "sub_2" } }, "orch_1"), false);
+  assert.equal(shouldPruneCompleted({ type: "message.created", message: { role: "assistant", agent_id: "orch_1" } }, "orch_1"), false);
+  assert.equal(shouldPruneCompleted({ type: "conversation.rewound" }, "orch_1"), true);
+  assert.equal(shouldPruneCompleted({ type: "conversation.cleared" }, "orch_1"), true);
+  assert.equal(shouldPruneCompleted({ type: "input.resolved" }, "orch_1"), false);
+
+  const items = [{ id: "in_done" }, { id: "in_pending" }, { id: "in_closed" }];
+  assert.deepEqual(pruneCompleted(items, { in_done: { status: "submitted" }, in_closed: { status: "cancelled" } }), [{ id: "in_pending" }]);
 });

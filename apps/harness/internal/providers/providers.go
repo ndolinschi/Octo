@@ -150,15 +150,28 @@ type Provider struct {
 	Problem *usererr.Error `json:"problem,omitempty"`
 	// ModelsProblem is ModelsError in structured form (ModelsError is its plain message).
 	ModelsProblem *usererr.Error `json:"models_problem,omitempty"`
-	// BaseID (agents) is the manifest agent the entry runs: its own id, or the
-	// base of an account ("claude-code" for "claude-code@work").
-	BaseID string `json:"base_id,omitempty"`
-	// Account is the login the entry stands for, set whenever the base agent can
-	// keep several; AccountsSupport (base agents) says whether it can.
-	Account         *plugins.AccountInfo     `json:"account,omitempty"`
-	AccountsSupport *plugins.AccountsSupport `json:"accounts_support,omitempty"`
-	// LoginMethods are the agent's interactive login commands; LoginCommand is
-	// the terminal command that logs it in (an account's with its folder set).
+	// Accounts (agents). AccountEnv: the agent takes more accounts, each a
+	// folder this variable points at (AccountDefault is the folder the agent's
+	// own entry uses). AccountOf: this entry is one of those accounts, of the
+	// agent with that id; AccountID, AccountLabel and AccountDir describe it.
+	AccountEnv     string `json:"account_env,omitempty"`
+	AccountDefault string `json:"account_default,omitempty"`
+	AccountOf      string `json:"account_of,omitempty"`
+	AccountID      string `json:"account_id,omitempty"`
+	AccountLabel   string `json:"account_label,omitempty"`
+	AccountDir     string `json:"account_dir,omitempty"`
+	// AccountOwned (an account's own entry): Octo created its folder, so it may
+	// delete it when the account is removed. AccountNote (agents with
+	// AccountEnv) is shown beside the accounts; AccountUnsupported (other
+	// agents) says why the agent keeps one login only; AccountDefaultLabel is
+	// the name the user gave the agent's own login ("" while it has none).
+	AccountOwned        bool   `json:"account_owned,omitempty"`
+	AccountNote         string `json:"account_note,omitempty"`
+	AccountUnsupported  string `json:"account_unsupported,omitempty"`
+	AccountDefaultLabel string `json:"account_default_label,omitempty"`
+	// LoginMethods are the agent's interactive login commands (Log in);
+	// LoginCommand is the terminal command that logs it in (an account's with
+	// its folder set).
 	LoginMethods []plugins.LoginMethod `json:"login_methods,omitempty"`
 	LoginCommand string                `json:"login_command,omitempty"`
 	// Limit is the usage limit a real session last ran into.
@@ -415,33 +428,30 @@ func apiDefault(d config.Models) string {
 // orderAgents lists the agents of listFirst first, then the rest in manifest
 // order; the accounts of an agent follow it directly.
 func orderAgents(in []plugins.Agent) []plugins.Agent {
-	var bases []string
-	groups := map[string][]plugins.Agent{}
-	for _, a := range in {
-		b := baseOf(a)
-		if _, seen := groups[b]; !seen {
-			bases = append(bases, b)
-		}
-		groups[b] = append(groups[b], a)
-	}
 	out := make([]plugins.Agent, 0, len(in))
-	for _, id := range listFirst {
-		out = append(out, groups[id]...)
-		delete(groups, id)
+	used := make([]bool, len(in))
+	// An agent's accounts follow it wherever it is listed.
+	take := func(i int) {
+		out, used[i] = append(out, in[i]), true
+		for j, b := range in {
+			if b.AccountOf == in[i].ID && !used[j] {
+				out, used[j] = append(out, b), true
+			}
+		}
 	}
-	for _, b := range bases {
-		out = append(out, groups[b]...)
+	for _, id := range listFirst {
+		for i, a := range in {
+			if a.ID == id && !used[i] {
+				take(i)
+			}
+		}
+	}
+	for i := range in {
+		if !used[i] {
+			take(i)
+		}
 	}
 	return out
-}
-
-// baseOf is the manifest agent a runs.
-func baseOf(a plugins.Agent) string {
-	if a.BaseID != "" {
-		return a.BaseID
-	}
-	base, _ := plugins.SplitID(a.ID)
-	return base
 }
 
 func (s *Service) agentProvider(a plugins.Agent) Provider {
@@ -449,8 +459,10 @@ func (s *Service) agentProvider(a plugins.Agent) Provider {
 		ID: a.ID, Kind: KindAgent, Label: a.Label, InstallHint: a.InstallHint, LoginHint: a.Hint,
 		DefaultModel: a.DefaultModel, FlatRate: a.FlatRate, ModelsNote: a.ModelsNote, AcceptsCustomModel: true,
 		Experimental: !a.Verified || a.Experimental, manualOnly: a.Experimental, ExperimentalNote: a.VerifiedNote,
-		BaseID: baseOf(a), Account: a.Account, AccountsSupport: a.Accounts, LoginMethods: a.Logins,
-		LoginCommand: a.LoginCmd(), Limit: a.Limit,
+		AccountEnv: a.AccountEnv, AccountDefault: a.AccountDefault,
+		AccountOf: a.AccountOf, AccountID: a.AccountID, AccountLabel: a.AccountLabel, AccountDir: a.AccountDir,
+		AccountOwned: a.AccountOwned, AccountNote: a.AccountNote, AccountUnsupported: a.AccountUnsupported,
+		AccountDefaultLabel: a.AccountDefaultLabel, LoginMethods: a.Logins, LoginCommand: a.LoginCmd(), Limit: a.Limit,
 	}
 	if p.Label == "" {
 		p.Label = a.ID
@@ -573,7 +585,7 @@ func suggest(list []Provider, d config.Models) Suggested {
 	var readyAgents []string
 	for _, p := range list {
 		// Another account of an agent (other billing) and an experimental agent are never suggested.
-		if p.Kind == KindAgent && p.State == StateReady && !p.manualOnly && (p.Account == nil || p.Account.Default) {
+		if p.Kind == KindAgent && p.State == StateReady && !p.manualOnly && p.AccountOf == "" {
 			readyAgents = append(readyAgents, p.ID)
 		}
 	}

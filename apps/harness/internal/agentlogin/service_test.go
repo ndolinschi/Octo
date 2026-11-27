@@ -18,7 +18,7 @@ import (
 // The agent "cc" is logged in when $CLAUDE_CONFIG_DIR/ok exists; its login
 // command is a shell script given per test through the "script" login method.
 const manifest = `{"name":"p","version":"1","agents":[
- {"id":"cc","label":"Claude Code","command":"sh","accounts":{"env":{"CLAUDE_CONFIG_DIR":"{dir}"}},
+ {"id":"cc","label":"Claude Code","command":"sh","accounts":{"env":"CLAUDE_CONFIG_DIR"},
   "auth":{"probe":["sh","-c","test -f \"$CLAUDE_CONFIG_DIR/ok\""],"notLoggedInExit":[1],
    "login":[{"id":"script","label":"Script","args":["sh","-c","%SCRIPT%"]}]}},
  {"id":"plain","label":"Plain","command":"sh"}]}`
@@ -46,9 +46,9 @@ func newFixture(t *testing.T, script string, opts agentlogin.Options) *fixture {
 		t.Fatal(err)
 	}
 	f := &fixture{reg: plugins.Load(context.Background(), data, nil, nil), work: t.TempDir(), home: t.TempDir()}
-	if errs := f.reg.SetAccounts([]plugins.AccountSpec{{Agent: "cc", ID: "work", Name: "Work", Dir: f.work, Owned: true}}, nil); len(errs) > 0 {
-		t.Fatalf("accounts: %v", errs)
-	}
+	f.reg.SetAccounts(func() []plugins.Account {
+		return []plugins.Account{{Agent: "cc", ID: "work", Label: "Work", ConfigDir: f.work, Owned: true}}
+	})
 	f.mgr = terminal.NewManager(terminal.Options{})
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

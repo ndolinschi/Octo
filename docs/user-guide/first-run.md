@@ -58,18 +58,18 @@ Octo adds a model list to each agent by opening a short, empty session with it (
 Some agents can be logged in to a second account (a work and a personal Claude Code, say). Octo runs the agent with a separate
 login folder for each account and lists them side by side, such as **Claude Code · Personal** and **Claude Code · Work**.
 
-**Which agents.** Claude Code, Codex, Devin and Gemini CLI (experimental) can have several accounts. **One account only:**
-Antigravity (its app, command line and editor share one system login), Copilot (the CLI has its own `/user switch`; run it
+**Which agents.** Claude Code, Codex, Oh My Pi, Devin and Gemini CLI (experimental) can have several accounts. **One account
+only:** Antigravity (its app, command line and editor share one system login), Copilot (the CLI has its own `/user switch`; run it
 inside Copilot), Cursor, Grok and OpenCode (Octo has not confirmed where they keep the login), Droid (it signs in with an API key,
-and Octo does not store keys), and omp and pi (not looked into). The agent's detail pane says "One account only" and why.
+and Octo does not store keys), and pi (not looked into). The agent's detail pane says "One account only" and why.
 
-**Add an account.** Settings → Providers → the agent → **Accounts** → **Add account**. Give it a name (up to 40 characters). The
-first time, you can also name your current login, which Octo calls "Default" until you rename it. Octo makes a folder for the new
-account inside its data folder. **Use an existing folder** is for an agent that already has a login in a folder you chose (for
-example `~/.claude-work`); Octo uses it as it is and never deletes it. The short id Octo gives the account (`work`) is fixed; the
+**Add an account.** Settings → Providers → the agent → **Accounts**: give the account a name (up to 40 characters) and a login
+folder (Octo suggests one beside the agent's own, for example `~/.claude-work`), then **Add account**. Octo creates the folder if
+it does not exist yet; a folder that already exists (an earlier login of the agent, say) is used as it is and never deleted.
+Your current login is listed as **Default** until you rename it. The short id Octo gives the account (`work`) is fixed; the
 name can change.
 
-**Log in.** Press **Log in** on the account's row (a small menu if the agent has several ways, such as Claude's subscription or
+**Log in.** Press **Log in** on the account's row (or in the account's own detail) (a small menu if the agent has several ways, such as Claude's subscription or
 Console). Octo runs the agent's own login command in a terminal inside Octo, with that account's folder, and shows what the
 command prints: a link, a code, a prompt to paste a code. Press **Open in browser** or **Copy link**, follow the steps, and type
 into the terminal if it asks. Octo checks the login every few seconds and when the command ends; the row turns **Ready**. The
@@ -79,11 +79,12 @@ fails, use that command.
 **A browser already signed in to the other account will complete the wrong login.** Before you open the link, sign out of the
 other account in that browser, or copy the link into a private window.
 
-**Rename and remove.** **Rename** changes the name only. **Remove** takes the account out of Octo's lists; projects that used it
-show the model as unavailable until you pick another. The box **Also delete its login folder** appears only for a folder Octo made,
-and is off by default: it deletes that folder, which signs the account out for good. It does not remove an entry the agent may
-have saved in your system keychain; remove that yourself if you want it gone. A folder you chose is never deleted. The default
-account (your first login) cannot be removed.
+**Rename and remove.** **Rename** on a row changes the name only (also for your first login). **Remove account**, in the
+account's own detail, takes the account out of Octo's lists; projects that used it show the model as unavailable until you pick
+another. The box **Also delete its login folder when removing** appears only for a folder Octo made, and is off by default: it
+deletes that folder, which signs the account out for good. It does not remove an entry the agent may have saved in your system
+keychain; remove that yourself if you want it gone. A folder that existed before is never deleted. Your first login cannot be
+removed.
 
 **Choose an account.** In the model menu each account is its own entry (**Claude Code · Work**), and its models are inside it.
 A project uses the account its models name. **Octo never uses another account by itself:** when a project names none, only the

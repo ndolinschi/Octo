@@ -106,7 +106,10 @@ type manifestAgent struct {
 	// agent's command is looked for when it is not on PATH: the vendor's
 	// default install folder, which an app started from the Dock may not have.
 	SearchPaths []string `json:"searchPaths"`
-	// Accounts says how a second login of the CLI is kept apart (manifest_accounts.go).
+	// Accounts, when set, lets the user add more logins of the agent: each
+	// account starts the agent with Accounts.Env pointing at its own folder
+	// (CLAUDE_CONFIG_DIR, CODEX_HOME), where the CLI keeps that login
+	// (manifest_accounts.go).
 	Accounts *manifestAccounts `json:"accounts"`
 	// LimitPatterns are regular expressions that mark an agent error message as a usage limit.
 	LimitPatterns []string `json:"limitPatterns"`

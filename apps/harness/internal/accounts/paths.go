@@ -3,8 +3,9 @@ package accounts
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
+
+	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 )
 
 // realPath is p cleaned with its symlinks resolved; the deepest part that
@@ -23,34 +24,46 @@ func realPath(p string) string {
 	}
 }
 
-// dirUsed reports whether a folder the user chose is already the folder of an
-// account, comparing cleaned paths with their symlinks resolved.
-func (s *Service) dirUsed(dir string) bool {
-	want := realPath(dir)
-	return slices.ContainsFunc(s.f.Accounts, func(a Account) bool { return realPath(a.Dir) == want })
+// within reports whether p is dir or lies inside it (both real paths).
+func within(p, dir string) bool {
+	rel, err := filepath.Rel(dir, p)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
-// deletable reports whether Octo may delete acc's folder: it created it
-// (Owned), the record's folder is exactly {data}/accounts/<agent>/<id>, that
-// folder is not a symlink, and the folder it lies in still resolves to a place
-// inside the real {data}/accounts. A hand-edited record, or a symlinked agent
-// folder, therefore never makes Octo delete anything else.
-func (s *Service) deletable(acc Account) bool {
-	if !acc.Owned || acc.Agent == "" || acc.ID == "" || acc.Agent != filepath.Base(acc.Agent) ||
-		acc.Dir != filepath.Join(s.root, acc.Agent, acc.ID) {
+// deletable reports whether Octo may delete the folder of account a: Octo created it (Owned), the path the record names is a plain folder
+// (not a symlink, so nothing it points at is touched), and that folder is not
+// a place a hand-edited record could make dangerous: the file system root, the
+// home folder or one holding it, the data folder or one holding it, the
+// agent's default folder (defaultDir), or the folder of another account.
+// Caller holds s.mu.
+func (s *Store) deletable(defaultDir string, a plugins.Account) bool {
+	if !a.Owned {
 		return false
 	}
-	if fi, err := os.Lstat(acc.Dir); err != nil || !fi.IsDir() {
+	dir := filepath.Clean(plugins.ExpandAccountDir(a.ConfigDir))
+	if !filepath.IsAbs(dir) {
 		return false
 	}
-	root, err := filepath.EvalSymlinks(s.root)
-	if err != nil {
+	if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
 		return false
 	}
-	parent, err := filepath.EvalSymlinks(filepath.Dir(acc.Dir))
-	if err != nil {
+	real := realPath(dir)
+	if filepath.Dir(real) == real {
 		return false
 	}
-	rel, err := filepath.Rel(root, parent)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+	if home, err := os.UserHomeDir(); err == nil && home != "" && within(realPath(home), real) {
+		return false
+	}
+	if s.path != "" && within(realPath(filepath.Dir(s.path)), real) {
+		return false
+	}
+	if defaultDir != "" && real == realPath(plugins.ExpandAccountDir(defaultDir)) {
+		return false
+	}
+	for _, o := range s.list {
+		if (o.Agent != a.Agent || o.ID != a.ID) && within(realPath(plugins.ExpandAccountDir(o.ConfigDir)), real) {
+			return false
+		}
+	}
+	return true
 }

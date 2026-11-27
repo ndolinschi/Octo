@@ -21,6 +21,12 @@ func samples() map[string]*Error {
 	const long = "exit status 1: acp initialize: JSON-RPC session/new failed (stderr: boom)"
 	return map[string]*Error{
 		"AgentNotLoggedIn":       AgentNotLoggedIn("GitHub Copilot", "copilot login", long),
+		"AccountsNotSupported":   AccountsNotSupported("GitHub Copilot"),
+		"AccountNameInvalid":     AccountNameInvalid(40),
+		"AccountFolderInvalid":   AccountFolderInvalid(),
+		"AccountTaken":           AccountTaken(),
+		"AccountsFull":           AccountsFull(20),
+		"AccountGone":            AccountGone(),
 		"AgentNotInstalled":      AgentNotInstalled("GitHub Copilot", "npm install -g @github/copilot", long),
 		"AgentLaunchRejected":    AgentLaunchRejected("Antigravity", "agy", "unexpected argument 'acp'", "Update agy."),
 		"AgentTooOld":            AgentTooOld("Antigravity", "1.4.12", "1.5.0", "curl -fsSL https://antigravity.google/cli/install.sh | bash", long),
@@ -141,11 +147,7 @@ func samples() map[string]*Error {
 		"AgentLimitReachedNoAccounts": AgentLimitReached("Grok", "rate_limit: You've hit your weekly limit", false),
 		"AgentRateLimited":            AgentRateLimited("Claude Code · Work", "APIError: Upstream provider rate limit reached", true),
 		"AgentRateLimitedNoAccounts":  AgentRateLimited("OpenCode", "APIError: Upstream provider rate limit reached", false),
-		"AccountsFileUnusable":        AccountsFileUnusable("agent-accounts.json", "the file does not parse"),
-		"AccountsUnsupported":         AccountsUnsupported("Antigravity", "one OS keyring entry is shared by app, CLI and IDE"),
-		"AccountNameTaken":            AccountNameTaken("Work"),
-		"AccountDefault":              AccountDefault("Claude Code"),
-		"AccountInvalid":              AccountInvalid("dir \"rel/x\" is not an absolute path"),
+		"AccountFolderNotOwned":       AccountFolderNotOwned(),
 		"LoginUnavailable":            LoginUnavailable("Grok", "grok login", "the manifest lists no auth.login command"),
 	}
 }

@@ -12,9 +12,8 @@ import (
 
 func account(base, slug, name string, mod func(*plugins.Agent)) plugins.Agent {
 	return agent(base+"@"+slug, func(a *plugins.Agent) {
-		a.BaseID = base
+		a.AccountOf, a.AccountID, a.AccountLabel, a.AccountDir, a.AccountOwned = base, slug, name, "/acc/"+slug, true
 		a.Label = strings.ToUpper(base[:1]) + base[1:] + " · " + name
-		a.Account = &plugins.AccountInfo{ID: slug, Name: name, Dir: "/acc/" + slug, Owned: true}
 		if mod != nil {
 			mod(a)
 		}
@@ -32,7 +31,7 @@ func TestAccountsAreListedRightAfterTheirBase(t *testing.T) {
 		{"accounts of a listed-first agent move with it", []plugins.Agent{
 			agent("zed", nil), agent("claude-code", nil), account("claude-code", "work", "Work", nil), agent("codex", nil), account("codex", "two", "Two", nil)},
 			[]string{"api", "claude-code", "claude-code@work", "zed", "codex", "codex@two"}},
-		{"base id set explicitly", []plugins.Agent{
+		{"listed after its base wherever it is", []plugins.Agent{
 			agent("codex", nil), agent("grok", nil), account("codex", "b", "B", func(a *plugins.Agent) { a.ID = "codex@b" })},
 			[]string{"api", "grok", "codex", "codex@b"}},
 	} {
@@ -73,9 +72,7 @@ func TestAccountFieldsOfAnAgentProvider(t *testing.T) {
 	reset := time.Date(2026, 11, 26, 15, 0, 0, 0, time.UTC)
 	r := newRig(t,
 		agent("claude-code", func(a *plugins.Agent) {
-			a.BaseID = "claude-code"
-			a.Account = &plugins.AccountInfo{Name: "Personal", Default: true}
-			a.Accounts = &plugins.AccountsSupport{Supported: true, Note: "files"}
+			a.AccountEnv, a.AccountDefaultLabel, a.AccountNote = "CLAUDE_CONFIG_DIR", "Personal", "files"
 			a.Logins = []plugins.LoginMethod{{ID: "claudeai", Label: "Claude subscription", Args: []string{"claude", "auth", "login"}}}
 			a.LoginCommand = "claude auth login"
 		}),
@@ -90,24 +87,24 @@ func TestAccountFieldsOfAnAgentProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"base_id":"claude-code"`, `"account":{"id":"","name":"Personal","default":true}`,
-		`"accounts_support":{"supported":true,"note":"files"}`, `"login_methods":[{"id":"claudeai","label":"Claude subscription"}]`,
+	for _, want := range []string{`"account_env":"CLAUDE_CONFIG_DIR"`, `"account_default_label":"Personal"`,
+		`"account_note":"files"`, `"login_methods":[{"id":"claudeai","label":"Claude subscription"}]`,
 		`"login_command":"claude auth login"`} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("base JSON lacks %s: %s", want, b)
 		}
 	}
 	w := byID(t, snap, "claude-code@work")
-	if w.BaseID != "claude-code" || w.Account == nil || w.Account.ID != "work" || w.Limit == nil || !w.Limit.ResetsAt.Equal(reset) ||
+	if w.AccountOf != "claude-code" || w.AccountID != "work" || !w.AccountOwned || w.Limit == nil || !w.Limit.ResetsAt.Equal(reset) ||
 		w.State != "ready" || !strings.HasPrefix(w.LoginCommand, "CLAUDE_CONFIG_DIR=") {
 		t.Fatalf("account = %+v", w)
 	}
 	z, _ := json.Marshal(byID(t, snap, "zed"))
-	if !strings.Contains(string(z), `"base_id":"zed"`) || strings.Contains(string(z), `"account"`) || strings.Contains(string(z), `"limit"`) {
+	if strings.Contains(string(z), `"account_`) || strings.Contains(string(z), `"limit"`) {
 		t.Fatalf("plain agent JSON = %s", z)
 	}
 	api, _ := json.Marshal(byID(t, snap, "api"))
-	if strings.Contains(string(api), "base_id") {
+	if strings.Contains(string(api), "account_") {
 		t.Fatalf("api provider must not carry account fields: %s", api)
 	}
 }

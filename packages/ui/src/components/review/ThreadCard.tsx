@@ -104,7 +104,7 @@ export function ThreadCard(props: {
           </p>
           <Markdown text={c.body} components={PR_TEXT} className={proseClass("compact")} />
           {i === 0 && hidden > 0 && (
-            <Button variant="link" size="xs" onClick={() => setAll(true)} className="w-fit px-1">
+            <Button variant="link" size="xs" onClick={() => setAll(true)} className="w-fit">
               {hidden === 1 ? "1 more reply" : `${hidden} more replies`}
             </Button>
           )}

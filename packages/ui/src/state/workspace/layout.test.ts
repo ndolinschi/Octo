@@ -39,6 +39,7 @@ import {
   terminalTab,
   type Group,
   type Layout,
+  planTab,
   toolTab,
   type TabId,
 } from "./layout";
@@ -86,11 +87,27 @@ function prng(seed: number) {
 }
 
 test("tab ids: constructors and parseTabId round trip; foreign strings are rejected", () => {
-  const all = [CHAT, FILES, BROWSER, TERMINAL, PROCESSES, NOTES, AGENTS, DETAILS, agentTab("a1"), browserTab("b1"), terminalTab("t1"), f("src/a.ts"), f("")];
+  const all = [
+    CHAT,
+    FILES,
+    BROWSER,
+    TERMINAL,
+    PROCESSES,
+    NOTES,
+    AGENTS,
+    DETAILS,
+    agentTab("a1"),
+    browserTab("b1"),
+    terminalTab("t1"),
+    planTab("pln_1"),
+    f("src/a.ts"),
+    f(""),
+  ];
   for (const id of all) assert.equal(parseTabId(id), id, id);
   assert.equal(parseTabId(agentTab("x")), "agent:x");
   assert.equal(parseTabId(browserTab("b1")), "browser:b1");
   assert.equal(parseTabId(terminalTab("t1")), "terminal:t1");
+  assert.equal(parseTabId(planTab("pln_1")), "plan:pln_1");
   for (const foreign of [
     "",
     "chat ",
@@ -98,6 +115,7 @@ test("tab ids: constructors and parseTabId round trip; foreign strings are rejec
     "tools",
     "agent:",
     "browser:",
+    "plan:",
     "terminal:",
     "agent",
     "file:",

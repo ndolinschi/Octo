@@ -2,7 +2,7 @@ import { focusSoon, focusSurfaceSoon } from "../../lib/focus";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMediaQuery, useLatest } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
-import { loadPref, numberCodec, PREFS, readPref, usePersistentState, writePref } from "../../lib/storage";
+import { loadPref, newTabTargetCodec, numberCodec, PREFS, readPref, usePersistentState, writePref } from "../../lib/storage";
 import { lastSessionCodec } from "../projectCache";
 import { changedFileCount } from "../../lib/statusBar";
 import { isTabEnabled, type TabFeatureFlags } from "../../lib/tabFlags";
@@ -130,6 +130,8 @@ export type WorkspaceValue = {
   openRun(name: string): void;
   /** One session in a tab of its own, beside the tab it was opened from (two sessions side by side). */
   openSession(sessionId: string): void;
+  /** Opens (or focuses) a Plan reading tab beside the conversation. */
+  openPlan(planId: string): void;
   /** Opens (or focuses) a tab in a given group. */
   openIn(tab: TabId, groupId: string): void;
   /** Removes a tab without asking (a restored file that no longer exists). */
@@ -333,14 +335,19 @@ export function WorkspaceProvider({
     [projectId, setLayout, chatSessionRef],
   );
 
-  /** Opens a tab in the side group, creating it right of Chat's group (`fraction` of the row) when there is none. */
+  /** Opens a tab in the current panel (default) or in a side group right of Chat (`fraction` of the row), per Settings → General → "Open new tabs in". */
   const openSide = useCallback(
     (tab: TabId, fraction?: number) => {
       const current = layoutRef.current;
+      if (loadPref(PREFS.newTabTarget, newTabTargetCodec) === "same") {
+        const targetGroup = L.focusedGroup(current);
+        commit(L.open(current, tab, { group: targetGroup.id }), maxRef.current !== null && targetGroup.id !== maxRef.current ? { force: true } : undefined);
+        return;
+      }
       const side = L.sideGroup(current);
       const home = L.chatGroupOf(current);
       const target: L.Target = side ? { group: side.id } : { newAfter: home.id, size: fraction ?? home.size / 2 };
-      commit(L.open(current, tab, target));
+      commit(L.open(current, tab, target), maxRef.current !== null ? { force: true } : undefined);
     },
     [commit],
   );
@@ -672,6 +679,11 @@ export function WorkspaceProvider({
         }
         // Main sessions open as tabs in Chat's group so multiple sessions can be open concurrently.
         commit(L.open(current, tab, { group: L.chatGroupOf(current).id }));
+      },
+      openPlan: (planId) => {
+        const tab = L.planTab(planId);
+        openSide(tab, fileFraction());
+        ensureRoomy(tab);
       },
       openIn: (tab, groupId) => {
         const r = L.parseTab(tab);

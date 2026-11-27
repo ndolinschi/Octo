@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CHAT_MIN_WIDTH, EDITOR_MIN_GROUP, GROUP_GAP, MIN_GROUP } from "../../lib/constants";
 import { dockFits, dockNeeds, groupFloor, groupFloors } from "./floors";
-import { CHAT, fileTab, sessionTab, toolTab } from "./layout";
+import { CHAT, fileTab, planTab, sessionTab, toolTab } from "./layout";
 import { fileKey } from "../../lib/files";
 
 const file = fileTab(fileKey("f", "a.ts"));
@@ -12,6 +12,7 @@ test("a group's floor follows what it holds", () => {
   assert.equal(groupFloor([sessionTab("s1")]), CHAT_MIN_WIDTH, "a session conversation tab uses the conversation floor");
   assert.equal(groupFloor([toolTab("agents")]), MIN_GROUP);
   assert.equal(groupFloor([file]), EDITOR_MIN_GROUP);
+  assert.equal(groupFloor([planTab("pln_1")]), EDITOR_MIN_GROUP);
   assert.equal(groupFloor([toolTab("files")]), EDITOR_MIN_GROUP);
   assert.equal(groupFloor([toolTab("agents"), file]), EDITOR_MIN_GROUP);
   assert.equal(groupFloor([file, CHAT]), CHAT_MIN_WIDTH, "the conversation's floor is the largest");

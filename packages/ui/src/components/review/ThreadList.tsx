@@ -30,8 +30,8 @@ export function ThreadsToggle(props: { rows: readonly ThreadRow[]; open: boolean
       onClick={props.onToggle}
       className="shrink-0 text-fg-2"
     >
-      <span className="@max-md/diff:sr-only">{label}</span>
-      <span aria-hidden className="hidden @max-md/diff:inline">
+      <span className="@max-xl/diff:sr-only">{label}</span>
+      <span aria-hidden className="hidden @max-xl/diff:inline">
         {props.rows.length}
       </span>
     </Button>

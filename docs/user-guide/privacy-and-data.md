@@ -26,7 +26,7 @@ Settings → Privacy and data → **Data folder** shows the exact path and copie
 | `harness/remote/devices.json` | Paired phones (a hash of each token, never the token) |
 | `harness/traces/` | The wire trace, only while you have it switched on |
 | `harness/agent-models.json`, `harness/children.json` | Models agents advertised; terminals and runs currently open |
-| `harness/agent-accounts.json`, `harness/accounts/<agent>/<id>/` | Names, short ids and folders of extra agent accounts; and the folders Octo made for them, where the agent keeps its own login ([below](#agent-accounts)) |
+| `harness/agent-accounts.json` | Names, short ids and folders of extra agent accounts, and whether Octo made each folder ([below](#agent-accounts)) |
 | `router/` | The optional router's configuration and `history.sqlite` |
 | Review checkouts, worktrees | Under `harness/projects/<id>/` (`review/`, `worktrees/`) |
 
@@ -54,14 +54,13 @@ Run from the repository (`pnpm dev:all`), the data folder is `./data/harness` in
 
 When you add a second account of an agent ([First run](first-run.md#more-than-one-account-of-an-agent)), Octo stores the account's
 name, short id and folder in `harness/agent-accounts.json`: no password, token or key. The agent writes its own login
-into the account's folder (by default `harness/accounts/<agent>/<id>/`; the file names are the agent's, for example `auth.json`
+into the account's folder (the one you gave, such as `~/.claude-work`; the file names are the agent's, for example `auth.json`
 for Codex). **Octo never reads those files.** Two consequences:
 
-- A backup or copy of the data folder contains those logins; whoever has the copy can use the accounts. Deleting the data
-  folder signs those accounts out.
+- A backup or copy of that folder contains the login; whoever has the copy can use the account.
 - Some agents (Claude Code on macOS, for one) may save the login in the system keychain instead of a file. Octo does not make or
-  read that entry, and removing the account does not remove it. A login you added with **Use an existing folder** stays in that
-  folder, which Octo never deletes.
+  read that entry, and removing the account does not remove it. A folder that existed before you added the account is never
+  deleted by Octo.
 
 The login terminal's output (links, codes) is shown to you and not written to Octo's logs or stored. **Remove** with **Also delete
 its login folder** deletes only a folder Octo made.

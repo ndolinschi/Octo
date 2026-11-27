@@ -38,10 +38,9 @@ func (e *env) getAs(t *testing.T, path, host, origin string) string {
 // account folder, no "owned" flag and no login command (it can name the folder).
 func TestPairedDeviceGetsNoFoldersOrLoginCommands(t *testing.T) {
 	e := newAccountsEnv(t)
-	var acc accountReply
-	e.into(t, "POST", "/v1/providers/cc/accounts", map[string]any{"name": "Work"}, http.StatusCreated, &acc)
+	acc := e.addAccount(t, "cc", "Work")
 	e.into(t, "POST", "/v1/providers/cc@work/recheck", nil, http.StatusOK, nil) // not logged in: the problem carries the login line
-	dir := acc.Account.Dir
+	dir := acc.AccountDir
 
 	for _, path := range []string{"/v1/providers", "/v1/plugins"} {
 		for _, local := range []struct{ name, host, origin string }{
@@ -50,7 +49,7 @@ func TestPairedDeviceGetsNoFoldersOrLoginCommands(t *testing.T) {
 			{"desktop origin", "", "http://localhost:1420"},
 		} {
 			body := e.getAs(t, path, local.host, local.origin)
-			if !strings.Contains(body, dir) || !strings.Contains(body, `"login_command"`) || !strings.Contains(body, `"owned":true`) {
+			if !strings.Contains(body, dir) || !strings.Contains(body, `"login_command"`) || !strings.Contains(body, `"account_owned":true`) {
 				t.Errorf("%s as %s lost its folder or login command: %s", path, local.name, body)
 			}
 		}
@@ -60,7 +59,7 @@ func TestPairedDeviceGetsNoFoldersOrLoginCommands(t *testing.T) {
 			{"foreign origin", "", "https://evil.example"},
 		} {
 			body := e.getAs(t, path, paired.host, paired.origin)
-			for _, leak := range []string{dir, `"login_command"`, `"dir"`, `"owned"`, "CLAUDE_CONFIG_DIR"} {
+			for _, leak := range []string{dir, `"login_command"`, `"account_dir"`, `"account_default"`, `"account_owned"`, "CLAUDE_CONFIG_DIR="} {
 				if strings.Contains(body, leak) {
 					t.Errorf("%s as %s leaks %q: %s", path, paired.name, leak, body)
 				}

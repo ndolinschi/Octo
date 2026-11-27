@@ -629,9 +629,10 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 		notice = o.acp.warning(rt.key())
 	}
 	o.approvals.EndTurn(rt.pid(), rt.turnID)
-	if status == projectstore.StatusCompleted && rt.mode == projectstore.ModePlan {
-		rt.turnPlan.Store(true)
-		o.savePlan(rt, res.Text)
+	if status == projectstore.StatusCompleted && rt.mode == projectstore.ModePlan && !rt.modeAborted.Load() {
+		if o.savePlan(rt, res.Text) {
+			rt.turnPlan.Store(true)
+		}
 	}
 	finished := rt.finishTurn(orch.ID, status, res.Text, problem, notice)
 	rt.publish(events.ContextUpdated, map[string]any{"project_id": rt.pid()})

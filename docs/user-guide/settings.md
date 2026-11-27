@@ -24,6 +24,12 @@ apply at once; those that need Octo's local service to restart (an API key, the 
   agent is an external one. A tier whose provider is not connected says "provider not connected" under it.
 - **Integrations.** Language servers, agents and tool servers that come from plugins.
 
+- **Several accounts of one agent.** Settings → Providers → Claude Code (or Codex) → **Accounts**: give the account a
+  name and a login folder (for example `~/.claude-work`), then press **Log in** on its row (or run the login command its
+  detail shows in a terminal). The
+  account is listed as "Claude Code · Work" and can be chosen in any model picker, so one project or session can use your
+  work login and another your personal one. Octo keeps only the name and the folder.
+
 ## Workspace
 
 - **Editor.** **Compact folders** for the file tree. **Suggestions**: inline completion in the editor, off or on the **Small tier

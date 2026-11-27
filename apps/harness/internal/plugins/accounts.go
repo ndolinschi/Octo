@@ -3,209 +3,161 @@ package plugins
 import (
 	"fmt"
 	"maps"
-	"path/filepath"
-	"slices"
+	"runtime"
 	"strings"
 )
 
-// accountView is the derived-agent overlay SetAccounts swaps in whole; its maps
-// are never changed after the swap, so a reader may keep using one it took.
-type accountView struct {
-	derived map[string]Agent    // derived id -> agent (no probe state)
-	order   map[string][]string // base id -> its derived ids, in spec order
-	names   map[string]string   // base id -> display name of its default account
+// AccountSep joins an agent id and one of its account ids into the id of the
+// account's own agent: "claude-code@work", used as `acp:claude-code@work/opus`.
+// Manifest ids never contain it (idPattern), so the split is unambiguous.
+const AccountSep = "@"
+
+// Account is one extra login of an agent whose manifest has `accounts`: the
+// agent started with its AccountEnv set to ConfigDir, the folder where the CLI
+// keeps that login. Octo never reads, stores or logs what is in the folder;
+// the user logs in with the CLI (the account's login command). Owned: Octo
+// created the folder when the account was added (absent in files written
+// before it existed, which reads as false: such a folder is never deleted).
+type Account struct {
+	ID        string `json:"id"`
+	Agent     string `json:"agent"`
+	Label     string `json:"label"`
+	ConfigDir string `json:"config_dir"`
+	Owned     bool   `json:"owned,omitempty"`
 }
 
-func (r *Registry) view() accountView {
-	r.accMu.RLock()
-	defer r.accMu.RUnlock()
-	return r.acc
+// AccountAgentID is the id of the agent that runs account of agent.
+func AccountAgentID(agent, account string) string { return agent + AccountSep + account }
+
+// SplitAccountID splits "agent@account"; ok is false for a plain agent id.
+func SplitAccountID(id string) (agent, account string, ok bool) {
+	agent, account, ok = strings.Cut(id, AccountSep)
+	if !ok || agent == "" || account == "" {
+		return "", "", false
+	}
+	return agent, account, true
 }
 
-// SetAccounts replaces the accounts expanded into derived agents: each spec
-// becomes agent DerivedID(spec.Agent, spec.ID) with the base agent's launch,
-// the manifest's accounts.env ({dir} = spec.Dir) laid over its environment, and
-// the label "<base label> · <name>". defaultNames are the display names of the
-// base agents' own logins. A spec whose base agent is unknown or cannot keep
-// accounts apart, or that is malformed, is skipped with an error. Probe,
-// login and limit state of ids that are gone is dropped.
-func (r *Registry) SetAccounts(specs []AccountSpec, defaultNames map[string]string) []error {
+// Base is the manifest agent a entry runs: AccountOf for an account's own
+// entry, else its own id.
+func (a Agent) Base() string {
+	if a.AccountOf != "" {
+		return a.AccountOf
+	}
+	return a.ID
+}
+
+// ExpandAccountDir is dir with a leading "~/" replaced by the user's home.
+func ExpandAccountDir(dir string) string { return expandHome(dir) }
+
+// SetAccounts makes the registry list the accounts f returns (read on every
+// call, so an account added through the API shows at once). An account whose
+// agent is unknown or has no `accounts` in its manifest is left out.
+func (r *Registry) SetAccounts(f func() []Account) {
 	if r == nil {
+		return
+	}
+	r.acctMu.Lock()
+	r.accounts = f
+	r.acctMu.Unlock()
+}
+
+// SetDefaultLabels makes the registry name each agent's own (default) login
+// with the label f returns for its id: the entry reads "<label> · <name>" and
+// carries AccountDefaultLabel. An agent without a label keeps its own.
+func (r *Registry) SetDefaultLabels(f func() map[string]string) {
+	if r == nil {
+		return
+	}
+	r.acctMu.Lock()
+	r.defaultLabels = f
+	r.acctMu.Unlock()
+}
+
+func (r *Registry) accountList() []Account {
+	r.acctMu.RLock()
+	f := r.accounts
+	r.acctMu.RUnlock()
+	if f == nil {
 		return nil
 	}
-	var errs []error
-	v := accountView{derived: map[string]Agent{}, order: map[string][]string{}, names: map[string]string{}}
-	for base, n := range defaultNames {
-		if n = strings.TrimSpace(n); n != "" {
-			v.names[base] = n
-		}
-	}
-	for _, s := range specs {
-		a, err := r.derive(s)
-		if err == nil {
-			if _, dup := v.derived[a.ID]; dup {
-				err = fmt.Errorf("account %s: duplicate", a.ID)
-			}
-		}
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		v.derived[a.ID] = a
-		v.order[s.Agent] = append(v.order[s.Agent], a.ID)
-	}
-	r.accMu.Lock()
-	old := r.acc
-	r.acc = v
-	r.accMu.Unlock()
-	for id := range old.derived {
-		if _, ok := v.derived[id]; !ok {
-			r.forget(id)
-		}
-	}
-	return errs
+	return f()
 }
 
-func (r *Registry) derive(s AccountSpec) (Agent, error) {
-	id := DerivedID(s.Agent, s.ID)
-	base, ok := r.agents[s.Agent]
-	name := strings.TrimSpace(s.Name)
-	switch {
-	case !ok:
-		return Agent{}, fmt.Errorf("account %s: no agent %q is loaded", id, s.Agent)
-	case base.accountEnv == nil:
-		return Agent{}, fmt.Errorf("account %s: the agent cannot keep accounts apart", id)
-	case !ValidSlug(s.ID) || s.ID == ReservedSlug:
-		return Agent{}, fmt.Errorf("account %s: %q is not a valid account id", id, s.ID)
-	case name == "":
-		return Agent{}, fmt.Errorf("account %s: the name is empty", id)
-	case !filepath.IsAbs(s.Dir) || strings.Contains(s.Dir, "${"):
-		return Agent{}, fmt.Errorf("account %s: the folder must be an absolute path", id)
+func (r *Registry) defaultLabelMap() map[string]string {
+	r.acctMu.RLock()
+	f := r.defaultLabels
+	r.acctMu.RUnlock()
+	if f == nil {
+		return nil
 	}
-	a := base
-	a.ID, a.BaseID = id, base.ID
-	overlay := make(map[string]string, len(base.accountEnv))
-	for k, val := range base.accountEnv {
-		overlay[k] = strings.ReplaceAll(val, DirPlaceholder, s.Dir)
-	}
-	env := maps.Clone(base.Launch.Env)
-	if env == nil {
-		env = map[string]string{}
-	}
-	maps.Copy(env, overlay)
-	a.Launch.Env = env
-	a.Label = base.Label + " · " + name
-	a.Account = &AccountInfo{ID: s.ID, Name: name, Dir: s.Dir, Owned: s.Owned}
-	a.Accounts, a.accountEnv = nil, nil
-	a.Limit = nil
-	a.LoginCommand = ""
-	if cmd := base.LoginCmd(); cmd != "" {
-		a.LoginCommand = envPrefix(overlay) + " " + cmd
-	}
-	// The base's login text would log in the default account; an account's
-	// own command (LoginCmd) already carries its folder, which a hint must not.
-	a.Hint = accountHint
-	if a.LoginCommand != "" {
-		a.Hint = accountHintWithCommand
-	}
-	return a, nil
+	return f()
 }
 
-// Login text of a derived account, in place of the base agent's own.
-const (
-	accountHint            = "This account keeps its login apart from the default one: the default account's login steps do not apply to it."
-	accountHintWithCommand = "Log in to this account with its own login command, not the default account's."
-)
-
-// envPrefix is env as shell assignments (NAME='value' ...), sorted by name.
-func envPrefix(env map[string]string) string {
-	parts := make([]string, 0, len(env))
-	for _, k := range sortedKeys(env) {
-		parts = append(parts, k+"="+shellQuote(env[k]))
-	}
-	return strings.Join(parts, " ")
-}
-
-func shellJoin(args []string) string {
-	out := make([]string, len(args))
-	for i, a := range args {
-		out[i] = a
-		if a == "" || strings.ContainsFunc(a, func(r rune) bool { return !isShellSafe(r) }) {
-			out[i] = shellQuote(a)
-		}
-	}
-	return strings.Join(out, " ")
-}
-
-func isShellSafe(r rune) bool {
-	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("-_./=:@%+,", r)
-}
-
-// shellQuote single-quotes s for a POSIX shell.
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
-
-// Support says whether the manifest agent base can keep more than one login;
-// false for an unknown id or a derived one.
-func (r *Registry) Support(base string) (AccountsSupport, bool) {
-	if r == nil {
-		return AccountsSupport{}, false
-	}
-	a, ok := r.agents[base]
-	if !ok || a.Accounts == nil {
-		return AccountsSupport{}, false
-	}
-	return *a.Accounts, true
-}
-
-// decorate gives a manifest agent its default-account fields: the account (when
-// it can keep several) and, while it has derived accounts, the label
-// "<label> · <default name>".
-func (v accountView) decorate(a Agent) Agent {
-	if a.Accounts == nil || !a.Accounts.Supported {
-		return a
-	}
-	name := v.names[a.ID]
-	if name == "" {
-		name = DefaultAccountName
-	}
-	a.Account = &AccountInfo{Name: name, Default: true}
-	if len(v.order[a.ID]) > 0 {
-		a.Label += " · " + name
+// withDefaultLabel names a manifest agent's own login when the user gave it a name.
+func (r *Registry) withDefaultLabel(a Agent, labels map[string]string) Agent {
+	if l := strings.TrimSpace(labels[a.ID]); l != "" && a.AccountEnv != "" {
+		a.AccountDefaultLabel = l
+		a.Label += " · " + l
 	}
 	return a
 }
 
-// expand lists agents (manifest agents in load order) with each one's derived
-// accounts right after it.
-func (v accountView) expand(in []Agent) []Agent {
-	out := make([]Agent, 0, len(in)+len(v.derived))
+// withAccounts is in with each agent followed by the agents of its accounts.
+func (r *Registry) withAccounts(in []Agent) []Agent {
+	accts, labels := r.accountList(), r.defaultLabelMap()
+	if len(accts) == 0 && len(labels) == 0 {
+		return in
+	}
+	out := make([]Agent, 0, len(in))
 	for _, a := range in {
-		out = append(out, v.decorate(a))
-		for _, id := range v.order[a.ID] {
-			out = append(out, v.derived[id])
+		out = append(out, r.withDefaultLabel(a, labels))
+		if a.AccountEnv == "" {
+			continue
+		}
+		for _, acct := range accts {
+			if acct.Agent == a.ID {
+				out = append(out, deriveAccount(a, acct))
+			}
 		}
 	}
 	return out
 }
 
-// raw is the agent with id without probe state: a manifest agent decorated, or a derived account.
-func (r *Registry) raw(id string) (Agent, bool) {
-	v := r.view()
-	if a, ok := r.agents[id]; ok {
-		return v.decorate(a), true
+// accountAgent looks up the agent of an account id ("claude-code@work").
+func (r *Registry) accountAgent(id string) (Agent, bool) {
+	base, acctID, ok := SplitAccountID(id)
+	if !ok {
+		return Agent{}, false
 	}
-	a, ok := v.derived[id]
-	return a, ok
+	b, ok := r.agents[base]
+	if !ok || b.AccountEnv == "" {
+		return Agent{}, false
+	}
+	for _, acct := range r.accountList() {
+		if acct.Agent == base && acct.ID == acctID {
+			return deriveAccount(b, acct), true
+		}
+	}
+	return Agent{}, false
 }
 
 // has reports whether id is a manifest agent or a current account.
 func (r *Registry) has(id string) bool {
-	_, ok := r.raw(id)
+	if _, ok := r.agents[id]; ok {
+		return true
+	}
+	_, ok := r.accountAgent(id)
 	return ok
 }
 
-// forget drops what the registry remembers about an agent id that is gone.
-func (r *Registry) forget(id string) {
+// Forget drops what the registry remembers about an agent id that is gone (an
+// account just removed): its login probe, "seen logged out" and limit state,
+// so an account added again later under the same id starts clean.
+func (r *Registry) Forget(id string) {
+	if r == nil {
+		return
+	}
 	r.seenMu.Lock()
 	delete(r.seenOut, id)
 	delete(r.limits, id)
@@ -215,31 +167,83 @@ func (r *Registry) forget(id string) {
 		delete(r.probes.state, id)
 		r.probes.mu.Unlock()
 	}
-	if r.versions != nil {
-		r.versions.mu.Lock()
-		delete(r.versions.state, id)
-		r.versions.mu.Unlock()
-	}
 }
 
-// LoginSpec is how to run one of the agent's interactive login commands
-// (method "" is the first): the program (resolved like the agent's own), its
-// arguments and the agent's resolved environment, account variables included.
-// ok is false when the agent has no such login command.
-func (a Agent) LoginSpec(method string) (command string, args []string, env map[string]string, ok bool) {
-	if a.Unsupported != "" || len(a.Logins) == 0 {
-		return "", nil, nil, false
+// deriveAccount is base started for acct: the same program, models and probe,
+// its own id and label, and base.AccountEnv set to the account's folder in its
+// environment (so the login probe, model listing and sessions all use that
+// login). The login command and hint say how to log that folder in.
+func deriveAccount(base Agent, acct Account) Agent {
+	a := base
+	dir := ExpandAccountDir(acct.ConfigDir)
+	a.ID = AccountAgentID(base.ID, acct.ID)
+	a.Label = base.Label + " · " + acct.Label
+	env := maps.Clone(base.Env)
+	if env == nil {
+		env = map[string]string{}
 	}
-	i := 0
-	if method != "" {
-		if i = slices.IndexFunc(a.Logins, func(m LoginMethod) bool { return m.ID == method }); i < 0 {
-			return "", nil, nil, false
+	maps.Copy(env, base.accountExtraEnv)
+	env[base.AccountEnv] = dir
+	a.Env = env
+	a.AccountOf, a.AccountID, a.AccountLabel, a.AccountDir, a.AccountOwned = base.ID, acct.ID, acct.Label, dir, acct.Owned
+	a.AccountEnv, a.AccountDefault, a.AccountNote, a.AccountUnsupported, a.AccountDefaultLabel = "", "", "", "", ""
+	a.accountExtraEnv = nil
+	if login := base.LoginCmd(); login != "" {
+		a.LoginCommand = accountLoginCommand(base, dir, login)
+		a.Hint = fmt.Sprintf("Log this account in once: run `%s` in a terminal. Its login stays in %s.", a.LoginCommand, dir)
+	} else {
+		a.LoginCommand = ""
+		a.Hint = fmt.Sprintf("Log this account in once with %s set to %s, then check again.", base.AccountEnv, dir)
+	}
+	return a
+}
+
+// accountLoginCommand is AccountLoginCommand with the manifest's
+// accounts.extraEnv set too.
+func accountLoginCommand(base Agent, dir, login string) string {
+	if len(base.accountExtraEnv) == 0 {
+		return AccountLoginCommand(base.AccountEnv, dir, login)
+	}
+	var b strings.Builder
+	for _, k := range sortedKeys(base.accountExtraEnv) {
+		if runtime.GOOS == "windows" {
+			fmt.Fprintf(&b, "$env:%s=%s; ", k, psQuote(base.accountExtraEnv[k]))
+		} else {
+			fmt.Fprintf(&b, "%s=%s ", k, shQuote(base.accountExtraEnv[k]))
 		}
 	}
-	m := a.Logins[i]
-	command = m.command
-	if command == "" {
-		command = m.Args[0]
+	if runtime.GOOS == "windows" {
+		return b.String() + AccountLoginCommand(base.AccountEnv, dir, login)
 	}
-	return command, slices.Clone(m.Args[1:]), a.ResolvedEnv(), true
+	return strings.TrimSuffix(b.String(), " ") + " " + AccountLoginCommand(base.AccountEnv, dir, login)
+}
+
+// AccountLoginCommand is login run with env set to dir, as a person types it
+// in a terminal (POSIX shells; PowerShell on Windows).
+func AccountLoginCommand(env, dir, login string) string {
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf("$env:%s=%s; %s", env, psQuote(dir), login)
+	}
+	return env + "=" + shQuote(dir) + " " + login
+}
+
+// shQuote quotes s for a POSIX shell when it needs it.
+func shQuote(s string) string {
+	if s != "" && strings.IndexFunc(s, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("/._-+:,@%", r))
+	}) < 0 {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func psQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
+
+// shellJoin is args as one POSIX command line, quoting what needs it.
+func shellJoin(args []string) string {
+	out := make([]string, len(args))
+	for i, a := range args {
+		out[i] = shQuote(a)
+	}
+	return strings.Join(out, " ")
 }

@@ -1,15 +1,16 @@
 import type { Provider } from "@octo/agent-client";
 import { SETTING_IDS } from "@octo/agent-client";
 import { useState } from "react";
-import { billingLine, commandsIn, extraReason, primaryAction, reasonLine, recheckAgent, refreshProviders, stateTone } from "../../lib/providers";
+import { billingLine, commandsIn, extraReason, primaryAction, reasonLine, recheckAgent, refreshProviders, stateTone, takesAccounts } from "../../lib/providers";
 import { cn } from "../../lib/cn";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { CommandLine } from "../primitives/CommandLine";
 import { Rich } from "../shared/providers/ConnectSteps";
 import { Notice } from "../primitives/Notice";
-import { AccountsSection, LoginButton } from "./accounts/AccountsSection";
+import { LoginButton, OneAccountOnly } from "./accounts/AgentLogin";
 import { AgentPrefs } from "./AgentPrefsPane";
+import { AccountFacts, AgentAccounts } from "./AgentAccountsPane";
 import { ProviderKey } from "./ProviderKey";
 import { ProviderModels } from "./ProviderModels";
 import { useHarnessSettings } from "./harnessSettings";
@@ -20,7 +21,7 @@ import { ProviderTitle, RouterFacts, SectionTitle } from "./ProviderParts";
  * Decision 89 d, in this order: title row (mark, name, state, the state's one action), the reason with the commands to run,
  * the API key field (API only), Models, Preferred model, Roles, Billing. Fills the rest of the page beside the list.
  */
-export function ProviderDetail({ provider: p, onRouter }: { provider: Provider; onRouter?: () => void }) {
+export function ProviderDetail({ provider: p, onRouter, onSelect }: { provider: Provider; onRouter?: () => void; onSelect?: (id: string) => void }) {
   const { bridge } = useApp();
   const harness = useHarnessSettings();
   // A2: the API provider's one action is its key form's "Save key"; a second filled "Connect" beside it did nothing visible.
@@ -73,9 +74,13 @@ export function ProviderDetail({ provider: p, onRouter }: { provider: Provider; 
       </div>
       <div className={cn("flex max-w-measure min-w-0 flex-col gap-6", CONTROL_CAP)}>
         {reason && <Reason provider={p} text={reason} />}
-        {p.kind === "agent" && <AccountsSection provider={p} loginBlock={loginInReason(p, reason)} />}
+        {p.kind === "agent" && !p.account_of && !p.account_env && p.account_unsupported && p.state !== "not_installed" && (
+          <OneAccountOnly provider={p} withLogin={!loginInReason(p, reason)} />
+        )}
         {p.kind === "api" && <ProviderKey />}
         {(p.models.length > 0 || p.state === "ready") && p.kind !== "router" && <ProviderModels provider={p} />}
+        {p.account_of && <AccountFacts account={p} {...(onSelect ? { onRemoved: () => onSelect(p.account_of ?? "") } : {})} />}
+        {takesAccounts(p) && p.state !== "not_installed" && <AgentAccounts agent={p} {...(onSelect ? { onOpen: onSelect } : {})} />}
         {p.kind === "agent" && p.state === "ready" && <AgentPrefs agent={p} />}
         {p.kind === "router" && <RouterFacts provider={p} checking={rechecking} onCheck={() => void recheckRouter()} onSettings={onRouter} />}
         {p.state !== "not_installed" && p.state !== "not_connected" && (
@@ -91,17 +96,11 @@ export function ProviderDetail({ provider: p, onRouter }: { provider: Provider; 
 
 /**
  * Whether the "Log in" step under the reason carries the agent's one Log in button: an agent that is installed and has no
- * accounts of its own to list (one account only, or an older harness). An agent with accounts logs in from each account's row.
+ * accounts list (one account only, or an older harness). An agent with accounts logs in from each account's row, and an
+ * account from its own Account section.
  */
 function loginInReason(p: Provider, reason: string): boolean {
-  return (
-    Boolean(reason) &&
-    p.kind === "agent" &&
-    p.state !== "error" &&
-    p.state !== "not_installed" &&
-    p.accounts_support?.supported !== true &&
-    p.account === undefined
-  );
+  return Boolean(reason) && p.kind === "agent" && p.state !== "error" && p.state !== "not_installed" && !takesAccounts(p) && !p.account_of;
 }
 
 /** "type /login" in a login hint: the step typed inside the agent after starting it. */

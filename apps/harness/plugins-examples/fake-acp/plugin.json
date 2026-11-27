@@ -10,9 +10,7 @@
       "args": [],
       "env": {},
       "accounts": {
-        "env": {
-          "OCTO_FAKEACP_LOGIN_FILE": "{dir}/login"
-        }
+        "env": "OCTO_FAKEACP_HOME"
       },
       "auth": {
         "probe": [

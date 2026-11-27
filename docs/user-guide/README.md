@@ -37,7 +37,7 @@ limited way, and the guide says so where it matters:
 - Verified by the owner on Linux with a real agent: Claude Code (the app, the harness, the router, installing from source).
 - Verified only with a mock model and scripted stand-in agents, in a Chromium browser on Linux: nearly everything else,
   including the whole interface of the last weeks.
-- **Not verified with a real agent or account:** more than one account of an agent (Claude Code, Codex, Devin, Gemini CLI), the Log in button inside Octo, and the usage-limit notice;
+- **Not verified with a real agent or account:** the additions to accounts of an agent (the Log in button inside Octo, the usage-limit notice, renaming, removing with the folder, accounts of Devin and Gemini CLI);
 - **Not verified with a real agent:** GitHub Copilot, Grok, Codex, Cursor, OpenCode, Antigravity, Devin, Droid, omp, pi
   (logged in), images sent to an agent, resuming an agent's own session, an agent asking for permission in "Ask first".
 - Not verified on macOS in a release build, in Safari or WebKit, in the Tauri window, on Windows, with a real Ollama, or with a

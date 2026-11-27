@@ -105,6 +105,10 @@ export class EditorBuffers {
     return this.buffers.has(key);
   }
 
+  model(key: FileKey): Monaco.editor.ITextModel | null {
+    return this.buffers.get(key)?.model ?? null;
+  }
+
   value(key: FileKey): string | null {
     return this.buffers.get(key)?.model.getValue() ?? null;
   }

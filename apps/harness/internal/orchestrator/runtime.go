@@ -37,6 +37,9 @@ type runtime struct {
 	// plan (memory M6: facts the harness has without a model); touched are the files tool calls read or changed.
 	turnCommands atomic.Int32
 	turnPlan     atomic.Bool
+	// modeAborted is set when an ACP agent aborted the turn after read-only
+	// mode (Plan/Ask) auto-denied a permission request.
+	modeAborted atomic.Bool
 	// remembered counts the items the turn's agents kept with the remember tool.
 	remembered atomic.Int32
 	// memAsk lets one memory-save card at a time be open, so parallel saves see the answer to the first (UX-01).

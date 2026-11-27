@@ -13,20 +13,16 @@ export {
 } from "./providersMore";
 export { extraReason, plainReason } from "./reasons";
 export {
-  DEFAULT_ACCOUNT_NAME,
-  accountName,
-  accountSwitchOffer,
-  agentBaseLabel,
-  namesAgent,
-  accountNameProblem,
   accountStatus,
-  accountsOf,
+  accountSwitchOffer,
   baseIdOf,
+  defaultAccountName,
+  familyOf,
   groupSiblings,
-  isDefaultAccount,
   limitText,
   loginChoices,
   modelsPatchForAccountSwitch,
+  namesAgent,
   siblingChoices,
   withProviderLabels,
   type AccountChoice,
@@ -76,3 +72,4 @@ export {
   type Tone,
 } from "./view";
 export { USE_ANYWAY_NOTE, canForce, recheckAgent, refusedProvider } from "./recheck";
+export { accountBase, accountSlug, accountsOf, suggestedAccountDir, takesAccounts } from "./accounts";

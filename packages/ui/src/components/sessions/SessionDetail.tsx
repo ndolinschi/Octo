@@ -147,7 +147,7 @@ export function SessionDetail(props: {
             })
           ))}
       </div>
-      <footer className="sticky bottom-0 mt-4 -mb-4 border-t border-line bg-panel px-2 pt-2 pb-3">
+      <footer className="sticky bottom-0 mt-4 border-t border-line bg-panel px-2 pt-2 pb-3">
         {s.kind === "agent" ? (
           <SessionComposer key={`${s.id}:${s.can_message}`} session={s} actions={actions} />
         ) : (

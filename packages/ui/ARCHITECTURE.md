@@ -22,9 +22,9 @@ app/                    OctoApp (props: bridge, bridgeUrl, shell, demo, host, ta
 components/<feature>/   21 folders: chat · files · browser · terminal · processes · commands · review · sessions · agents · notes ·
                         details · usage · memory · v7 · settings · providers · home · project · shell · side · status
                         (screens and their parts)
-                        Agent accounts (2026-11-26): `components/settings/accounts/` (AccountsSection in the provider detail, AddAccountDialog,
-                        RemoveAccountDialog, and LoginSheet = the xterm login surface, its own lazy chunk behind `lazy()`; the rest is
-                        in the Settings chunk) and `components/chat/LimitChooser.tsx` (the turn banner's "Use another account" and
+                        Agent accounts (2026-11-26): `components/settings/AgentAccountsPane.tsx` (the Accounts list, Add account and an
+                        account's own detail) with `settings/accounts/` (AccountRow, AgentLogin = Log in and "One account only", and
+                        LoginSheet = the xterm login surface, its own lazy chunk behind `lazy()`; the rest is in the Settings chunk) and `components/chat/LimitChooser.tsx` (the turn banner's "Use another account" and
                         "Choose another model"; the model list is the lazy ModelPickerPanel). Nothing of it is in the entry chunk.
 components/dock/        tab groups, strip, divider, drag layer, TabView = the composition point (hands one feature to another
                         as a prop: the file view's floating composer)

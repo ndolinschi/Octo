@@ -62,6 +62,8 @@ export const PREFS = {
   notifications: key("notifications"),
   /** File editor auto-save toggle (FileView ⋯ menu): `"on" | "off"`. */
   editorAutoSave: key("editorAutoSave"),
+  /** Where new tabs open (Settings → General): `"same" | "side"` as plain text. */
+  newTabTarget: key("newTabTarget"),
 } as const;
 
 /** How a value is stored. `parse` never throws: missing, malformed or foreign text becomes a valid (default) value. */
@@ -157,3 +159,6 @@ export function usePersistentState<T>(
 
 /** Decision 96: what the sidebar lists (Settings → General → "Sidebar shows") — projects with their sessions (default), projects only, or sessions only. */
 export const sidebarViewCodec = choiceCodec(["tree", "projects", "sessions"] as const, "sessions");
+
+/** Where new tabs open (Settings → General → "Open new tabs in") — same panel (default) or right side panel. */
+export const newTabTargetCodec = choiceCodec(["same", "side"] as const, "same");

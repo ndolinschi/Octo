@@ -18,7 +18,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
-var limitAgent = plugins.Agent{ID: "cc@work", BaseID: "cc", Label: "Claude Code · Work",
+var limitAgent = plugins.Agent{ID: "cc@work", AccountOf: "cc", Label: "Claude Code · Work",
 	LimitPatterns: []*regexp.Regexp{regexp.MustCompile(`(?i)weekly limit`)}}
 
 func TestRPCLimitClassifier(t *testing.T) {
@@ -129,8 +129,10 @@ func TestNoteLimitReportsReachedAndCleared(t *testing.T) {
 func agentsOf(ids ...string) []plugins.Agent {
 	out := make([]plugins.Agent, len(ids))
 	for i, id := range ids {
-		base, _ := plugins.SplitID(id)
-		out[i] = plugins.Agent{ID: id, BaseID: base, Available: true}
+		out[i] = plugins.Agent{ID: id, Available: true}
+		if base, _, ok := plugins.SplitAccountID(id); ok {
+			out[i].AccountOf = base
+		}
 	}
 	return out
 }
@@ -203,9 +205,9 @@ func TestSkillsOfAnAccountUseItsBaseAndItsCodexHome(t *testing.T) {
 // The hint offers another account only for an agent that can keep several;
 // the sticky provider state (OnAgentLimit) is set for a plan limit only.
 func TestLimitFailureWordingAndStickiness(t *testing.T) {
-	withAccounts := plugins.Agent{ID: "cc", BaseID: "cc", Label: "Claude Code", Accounts: &plugins.AccountsSupport{Supported: true}}
-	derived := plugins.Agent{ID: "cc@work", BaseID: "cc", Label: "Claude Code · Work", Account: &plugins.AccountInfo{ID: "work", Name: "Work"}}
-	oneLogin := plugins.Agent{ID: "cop", BaseID: "cop", Label: "Copilot", Accounts: &plugins.AccountsSupport{Reason: "shared keychain"}}
+	withAccounts := plugins.Agent{ID: "cc", Label: "Claude Code", AccountEnv: "CLAUDE_CONFIG_DIR"}
+	derived := plugins.Agent{ID: "cc@work", AccountOf: "cc", AccountID: "work", AccountLabel: "Work", Label: "Claude Code · Work"}
+	oneLogin := plugins.Agent{ID: "cop", Label: "Copilot", AccountUnsupported: "shared keychain"}
 	bare := acp.AgentError{Name: "APIError", Message: "Upstream provider rate limit reached", StatusCode: 429}
 	plan := acp.AgentError{Message: "limit", Data: json.RawMessage(`{"errorKind":"rate_limit"}`)}
 	for _, tc := range []struct {

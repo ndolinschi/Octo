@@ -1,8 +1,5 @@
 import {
   BridgeError,
-  type AccountsSupport,
-  type AgentAccount,
-  type AgentAccountRemoved,
   type AgentLoginOptions,
   type AgentLoginSession,
   type AgentLoginState,
@@ -12,169 +9,88 @@ import {
 } from "@octo/agent-client";
 
 /**
- * Demo accounts (design 2026-11-26 section 9, `?accounts=claude|all`, `?limit=<provider id>`): the account state the demo
- * keeps in memory: which accounts exist, their names, the default account's name, and a fake login that prints a link and a
- * code and turns `ok` after Enter or 3 seconds. `providers.ts` decorates its provider list with it and exposes the four
- * bridge methods; nothing here touches a real folder.
+ * Demo additions to the agent accounts of `providers.ts` (which keeps the accounts themselves, `?accounts=work`): the login
+ * methods and login sheet (a fake link and code that turns `ok` after Enter or 3 seconds), the "one account only" reasons, a
+ * name for the agent's own login (rename), and `?limit=<provider id>` (that entry has reached its plan limit). Nothing here
+ * touches a real folder.
  */
 
-/** What each demo agent can do: Claude Code and Codex keep accounts apart, the others cannot (and say why). */
+/** Why the demo agents without `account_env` keep one login only (the harness's `account_unsupported`). */
 const REASONS: Record<string, string> = {
-  antigravity: "Its login is shared by the app, the command line and the editor through one system keychain entry.",
-  copilot: "Octo cannot keep a second GitHub Copilot login apart yet.",
-  grok: "Octo cannot keep a second Grok login apart.",
+  copilot: "Octo has not yet confirmed how to keep a second GitHub Copilot sign-in apart.",
+  grok: "Octo could not confirm where Grok keeps its sign-in, so a second one cannot be kept apart.",
 };
-const SUPPORTED: ReadonlySet<string> = new Set(["claude-code", "codex", "gemini", "devin"]);
-
-export function supportOf(id: string): AccountsSupport {
-  return SUPPORTED.has(id) ? { supported: true } : { supported: false, reason: REASONS[id] ?? "Octo cannot keep a second login apart for this agent." };
-}
+const NO_WAY = "Octo knows no documented way to keep a second login of this CLI apart.";
 
 const METHODS: Record<string, LoginMethod[]> = {
   "claude-code": [
     { id: "claudeai", label: "Claude subscription" },
-    { id: "console", label: "Anthropic Console (billed per token)" },
+    { id: "console", label: "Anthropic Console" },
   ],
   codex: [
-    { id: "browser", label: "Browser" },
+    { id: "browser", label: "Browser sign-in" },
     { id: "device", label: "Device code" },
   ],
-  copilot: [{ id: "default", label: "GitHub account" }],
-  grok: [{ id: "default", label: "Browser" }],
+  copilot: [{ id: "login", label: "GitHub account" }],
+  grok: [{ id: "login", label: "xAI account" }],
 };
 const LOGIN_COMMAND: Record<string, string> = { "claude-code": "claude auth login", codex: "codex login", copilot: "copilot login", grok: "grok login" };
-/** What each login method runs instead of the plain command (the demo's stand-ins for the real flags). */
-const METHOD_COMMAND: Record<string, Record<string, string>> = {
-  "claude-code": { claudeai: "claude auth login --claudeai", console: "claude auth login --console" },
-  codex: { browser: "codex login", device: "codex login --device-auth" },
-};
-const HOME_VAR: Record<string, string> = { "claude-code": "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" };
 const LOGIN_PAGE: Record<string, string> = {
   "claude-code": "https://claude.ai/oauth/authorize?client_id=octo-demo",
   codex: "https://auth.openai.com/codex/device",
 };
 
-type Record_ = { base: string; slug: string; name: string; dir: string; owned: boolean };
-
-const slugOf = (name: string): string =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 32)
-    .replace(/-+$/, "");
-
 const encoder = new TextEncoder();
 
-export type DemoAccountsOptions = { accounts?: string | null; limit?: string | null; loggedIn: Set<string> };
+export type DemoAccountExtrasOptions = { limit?: string | null; loggedIn: Set<string> };
 
-export function demoAccounts(options: DemoAccountsOptions) {
+export function demoAccountExtras(options: DemoAccountExtrasOptions) {
   const { loggedIn } = options;
-  const records: Record_[] = [];
-  const defaultNames = new Map<string, string>();
-  if (options.accounts === "claude" || options.accounts === "all") {
-    records.push({ base: "claude-code", slug: "work", name: "Work", dir: "~/Library/Application Support/Octo/harness/accounts/claude-code/work", owned: true });
-    defaultNames.set("claude-code", "Personal");
-  }
-  if (options.accounts === "all") {
-    records.push({ base: "codex", slug: "second", name: "Second", dir: "~/Library/Application Support/Octo/harness/accounts/codex/second", owned: true });
-    defaultNames.set("codex", "Personal");
-    loggedIn.add("codex@second");
-  }
-
-  const idOf = (r: Record_) => `${r.base}@${r.slug}`;
-  const accountOf = (r: Record_): AgentAccount => ({ id: r.slug, name: r.name, default: false, dir: r.dir, owned: r.owned });
-  const loginCommand = (base: string, r?: Record_, method?: string): string => {
-    const cmd = (method ? METHOD_COMMAND[base]?.[method] : undefined) ?? LOGIN_COMMAND[base];
-    if (!cmd) return "";
-    const home = HOME_VAR[base];
-    return r && home ? `${home}="${r.dir}" ${cmd}` : cmd;
-  };
+  /** Names the user gave the agents' own logins (`renameAgentAccount` with the agent's id). */
+  const defaultLabels = new Map<string, string>();
   const limit = (id: string): Pick<Provider, "limit"> => {
     if (options.limit !== id) return {};
     const now = Date.now();
     return { limit: { reached_at: new Date(now - 5 * 60_000).toISOString(), resets_at: new Date(now + 90 * 60_000).toISOString() } };
   };
+  const baseOf = (p: Pick<Provider, "id" | "account_of">) => p.account_of ?? p.id;
 
-  /** The provider list with accounts: every agent says whether it supports them, and an agent with several lists each one. */
+  /** The list as the harness lists it: login methods and commands, the reasons, the default account's name, a limit. */
   const decorate = (list: readonly Provider[]): Provider[] =>
-    list.flatMap((p): Provider[] => {
-      if (p.kind !== "agent") return [p];
-      const family = records.filter((r) => r.base === p.id);
-      const support = supportOf(p.id);
-      const name = defaultNames.get(p.id) ?? "Default";
-      const methods = METHODS[p.id];
-      const login = loginCommand(p.id);
-      const own: Provider = {
+    list.map((p): Provider => {
+      if (p.kind !== "agent") return p;
+      const base = baseOf(p);
+      const methods = METHODS[base];
+      const named = !p.account_of && p.account_env ? defaultLabels.get(p.id) : undefined;
+      const command =
+        p.account_of && p.account_dir
+          ? `${list.find((x) => x.id === base)?.account_env ?? ""}=${p.account_dir} ${LOGIN_COMMAND[base] ?? ""}`
+          : LOGIN_COMMAND[base];
+      return {
         ...p,
-        base_id: p.id,
-        accounts_support: support,
-        ...(support.supported ? { account: { id: "", name, default: true } } : {}),
-        ...(family.length > 0 ? { label: `${p.label} · ${name}` } : {}),
+        ...(named ? { label: `${p.label} · ${named}`, account_default_label: named } : {}),
+        ...(!p.account_of && !p.account_env ? { account_unsupported: REASONS[p.id] ?? NO_WAY } : {}),
         ...(methods ? { login_methods: methods } : {}),
-        ...(login ? { login_command: login } : {}),
+        ...(command ? { login_command: command.trim() } : {}),
         ...limit(p.id),
       };
-      const derived = family.map((r): Provider => ({
-        ...p,
-        id: idOf(r),
-        base_id: p.id,
-        label: `${p.label} · ${r.name}`,
-        state: loggedIn.has(idOf(r)) ? "ready" : "not_logged_in",
-        reason: loggedIn.has(idOf(r)) ? "" : "not logged in",
-        account: accountOf(r),
-        ...(methods ? { login_methods: methods } : {}),
-        ...(login ? { login_command: loginCommand(p.id, r) } : {}),
-        ...limit(idOf(r)),
-      }));
-      return [own, ...derived];
     });
-
-  const recordOf = (id: string): Record_ | undefined => records.find((r) => idOf(r) === id);
 
   return {
     decorate,
+    defaultLabels,
     /** The agent a `?limit=` turn fails on (its provider id), or null. */
     limitedId: (): string | null => options.limit ?? null,
-    add(base: string, input: { name: string; dir?: string }): AgentAccount {
-      if (!supportOf(base).supported) throw new BridgeError(400, "accounts_unsupported", supportOf(base).reason ?? "This agent keeps one account only.");
-      const name = input.name.trim();
-      if (name === "") throw new BridgeError(400, "invalid_account", "Give the account a name.");
-      let slug = slugOf(name) || "account";
-      if (slug === "default") slug = "default-2";
-      for (let n = 2; records.some((r) => r.base === base && r.slug === slug); n++) slug = `${slugOf(name) || "account"}-${n}`;
-      const owned = !input.dir;
-      const r: Record_ = { base, slug, name, dir: input.dir ?? `~/Library/Application Support/Octo/harness/accounts/${base}/${slug}`, owned };
-      records.push(r);
-      return accountOf(r);
-    },
-    rename(providerId: string, name: string): AgentAccount {
-      const next = name.trim();
-      if (next === "") throw new BridgeError(400, "invalid_account", "Give the account a name.");
-      const r = recordOf(providerId);
-      if (r) {
-        r.name = next;
-        return accountOf(r);
-      }
-      if (!supportOf(providerId).supported) throw new BridgeError(404, "not_found", "This agent has no accounts.");
-      defaultNames.set(providerId, next);
-      return { id: "", name: next, default: true };
-    },
-    remove(providerId: string, deleteData: boolean): AgentAccountRemoved {
-      const r = recordOf(providerId);
-      if (!r) throw new BridgeError(400, "default_account", "The default account cannot be removed.");
-      records.splice(records.indexOf(r), 1);
-      loggedIn.delete(providerId);
-      return { removed: providerId, deleted_dir: deleteData && r.owned ? r.dir : null };
-    },
     /** A login that prints a fake link and code, and turns `ok` after Enter or 3 seconds. */
-    login(providerId: string, opts?: AgentLoginOptions): AgentLoginSession {
-      const base = providerId.split("@")[0] ?? providerId;
-      if (!METHODS[base]) {
-        throw new BridgeError(404, "login_unavailable", "This agent has no login command Octo knows.", {
-          hint: "Log in from a terminal, then press Check again.",
+    login(provider: Provider, opts?: AgentLoginOptions): AgentLoginSession {
+      const base = baseOf(provider);
+      const methods = METHODS[base];
+      if (!methods) {
+        throw Object.assign(new BridgeError(409, "login_unavailable", `${provider.label} cannot be logged in from Octo.`), {
+          hint: "Log in to it in a terminal, then check again.",
         });
       }
+      const providerId = provider.id;
       const outputs = new Set<(data: Uint8Array) => void>();
       const exits = new Set<(info: TerminalExit) => void>();
       const logins = new Set<(state: AgentLoginState) => void>();
@@ -199,7 +115,7 @@ export function demoAccounts(options: DemoAccountsOptions) {
         logins.forEach((fn) => fn("ok"));
       };
       const page = LOGIN_PAGE[base] ?? "https://example.com/login";
-      const method = METHODS[base].find((m) => m.id === opts?.method)?.label;
+      const method = methods.find((m) => m.id === opts?.method)?.label;
       emit(
         `Starting the login${method ? ` (${method})` : ""}…\r\n\r\nOpen this link in your browser to sign in:\r\n\r\n  ${page}&state=${providerId.replace("@", "-")}\r\n\r\nYour one-time code: OCTO-4821\r\n\r\nPress Enter when you have signed in.\r\n`,
       );
@@ -208,7 +124,7 @@ export function demoAccounts(options: DemoAccountsOptions) {
       return {
         sessionId: `login-${providerId}`,
         pid: 52_000,
-        command: loginCommand(base, recordOf(providerId), opts?.method),
+        command: provider.login_command ?? "",
         write: async (data) => {
           if (/[\r\n]/.test(data)) finish();
           else emit(data);

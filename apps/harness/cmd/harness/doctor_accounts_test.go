@@ -21,9 +21,9 @@ func TestDoctorProbesEveryAccountWithItsOwnEnv(t *testing.T) {
 		}
 	}
 	manifest := `{"name":"acc","version":"1","agents":[{"id":"cc","label":"Claude Code","command":"sh",
-	 "accounts":{"env":{"CLAUDE_CONFIG_DIR":"{dir}"}},
+	 "accounts":{"env":"CLAUDE_CONFIG_DIR"},
 	 "auth":{"probe":["sh","-c","test -f \"$CLAUDE_CONFIG_DIR/ok\""],"notLoggedInExit":[1],"hint":"x"}}]}`
-	store := `{"version":1,"accounts":[{"agent":"cc","id":"work","name":"Work","dir":"` + folder + `","owned":true,"created_at":"2026-11-26T10:00:00Z"}],"default_names":{}}`
+	store := `{"accounts":[{"id":"work","agent":"cc","label":"Work","config_dir":"` + folder + `","owned":true}]}`
 	storePath := filepath.Join(data, "agent-accounts.json")
 	for p, c := range map[string]string{filepath.Join(plug, "plugin.json"): manifest, storePath: store, filepath.Join(folder, "ok"): ""} {
 		if err := os.WriteFile(p, []byte(c), 0o644); err != nil {
@@ -45,14 +45,12 @@ func TestDoctorProbesEveryAccountWithItsOwnEnv(t *testing.T) {
 	text := run(" --json")
 	var rep struct {
 		Agents []struct {
-			ID      string `json:"id"`
-			Label   string `json:"label"`
-			Account *struct {
-				Name    string `json:"name"`
-				Default bool   `json:"default"`
-				Dir     string `json:"dir"`
-			} `json:"account"`
-			Probe struct {
+			ID           string `json:"id"`
+			Label        string `json:"label"`
+			AccountOf    string `json:"account_of"`
+			AccountLabel string `json:"account_label"`
+			AccountDir   string `json:"account_dir"`
+			Probe        struct {
 				LoggedIn *bool    `json:"logged_in"`
 				EnvNames []string `json:"env_names"`
 			} `json:"probe"`
@@ -77,15 +75,15 @@ func TestDoctorProbesEveryAccountWithItsOwnEnv(t *testing.T) {
 	if w.Probe.LoggedIn == nil || !*w.Probe.LoggedIn {
 		t.Errorf("the account is not probed with its own folder: %+v", w.Probe)
 	}
-	if w.Account == nil || w.Account.Name != "Work" || w.Account.Dir != folder || w.Account.Default {
-		t.Errorf("account = %+v", w.Account)
+	if w.AccountOf != "cc" || w.AccountLabel != "Work" || w.AccountDir != folder {
+		t.Errorf("account = %+v", w)
 	}
 	if !strings.Contains(strings.Join(w.Probe.EnvNames, ","), "CLAUDE_CONFIG_DIR") || strings.Contains(text, "CLAUDE_CONFIG_DIR=") {
 		t.Errorf("env names = %v; a value must never be printed", w.Probe.EnvNames)
 	}
 
 	plain := run("")
-	if !strings.Contains(plain, "- cc@work (Claude Code · Work)") || !strings.Contains(plain, "account: Work (folder: "+folder+")") {
+	if !strings.Contains(plain, "- cc@work (Claude Code · Work)") || !strings.Contains(plain, "account: Work of cc (folder: "+folder+")") {
 		t.Errorf("text report:\n%s", plain)
 	}
 	if after, _ := os.ReadFile(storePath); string(after) != store {

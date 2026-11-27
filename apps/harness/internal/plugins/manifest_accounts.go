@@ -8,16 +8,21 @@ import (
 	"strings"
 )
 
-// DirPlaceholder is replaced by an account's folder in the manifest's accounts.env.
-const DirPlaceholder = "{dir}"
+// NoAccountsReason is why an agent whose manifest has no accounts block keeps one login only.
+const NoAccountsReason = "Octo knows no documented way to keep a second login of this CLI apart."
 
-// manifestAccounts is an agent's `accounts` block: Env keeps one login of the
-// CLI apart from another ({dir} is the account's folder); Unsupported says why
-// it cannot; Note is shown beside the accounts.
+// manifestAccounts is an agent's `accounts` block. Env names the variable that
+// moves the CLI's config and login folder; Default is the folder used when it
+// is not set (shown, not used). The optional fields: ExtraEnv are more
+// variables set on every extra account (never on the agent's own entry), Note
+// is shown beside the accounts, and Unsupported (without Env) says why the
+// agent keeps one login only.
 type manifestAccounts struct {
-	Env         map[string]string `json:"env"`
-	Unsupported string            `json:"unsupported"`
+	Env         string            `json:"env"`
+	Default     string            `json:"default"`
+	ExtraEnv    map[string]string `json:"extraEnv"`
 	Note        string            `json:"note"`
+	Unsupported string            `json:"unsupported"`
 }
 
 // manifestLogin is one entry of auth.login: an interactive command that logs
@@ -28,29 +33,27 @@ type manifestLogin struct {
 	Args  []string `json:"args"`
 }
 
+func (m manifestAccounts) unsupported() string { return strings.TrimSpace(m.Unsupported) }
+
 func (m manifestAccounts) validate() error {
-	if strings.TrimSpace(m.Unsupported) != "" {
-		if len(m.Env) > 0 {
+	if m.unsupported() != "" {
+		if m.Env != "" || len(m.ExtraEnv) > 0 {
 			return fmt.Errorf("accounts: env and unsupported exclude each other")
 		}
 		return nil
 	}
-	if len(m.Env) == 0 {
-		return fmt.Errorf("accounts: env must name at least one variable, or say unsupported")
+	if !envKeyPat.MatchString(m.Env) {
+		return fmt.Errorf("accounts.env %q is not a valid variable name", m.Env)
 	}
-	hasDir := false
-	for _, k := range sortedKeys(m.Env) {
-		v := m.Env[k]
-		switch {
+	for _, k := range sortedKeys(m.ExtraEnv) {
+		switch v := m.ExtraEnv[k]; {
 		case !envKeyPat.MatchString(k):
-			return fmt.Errorf("accounts.env name %q is not a valid variable name", k)
-		case strings.Contains(v, "${"):
-			return fmt.Errorf("accounts.env %s: ${NAME} references are not allowed", k)
+			return fmt.Errorf("accounts.extraEnv name %q is not a valid variable name", k)
+		case k == m.Env:
+			return fmt.Errorf("accounts.extraEnv must not set %s, the account folder's variable", k)
+		case strings.Contains(v, "$"):
+			return fmt.Errorf("accounts.extraEnv %s: $ references are not allowed", k)
 		}
-		hasDir = hasDir || strings.Contains(v, DirPlaceholder)
-	}
-	if !hasDir {
-		return fmt.Errorf("accounts.env: one value must contain %s", DirPlaceholder)
 	}
 	return nil
 }
@@ -102,25 +105,23 @@ func (a manifestAgent) validateAccountFields() error {
 
 // populateAccounts fills the account fields of ag from its (validated) manifest entry.
 func populateAccounts(ag *Agent, a manifestAgent, dir string) {
-	ag.BaseID = ag.ID
 	for _, p := range a.LimitPatterns {
 		ag.LimitPatterns = append(ag.LimitPatterns, regexp.MustCompile(p)) // validated with the manifest
 	}
-	sup := AccountsSupport{Reason: NoAccountsReason}
 	switch {
 	case a.Accounts == nil:
-	case strings.TrimSpace(a.Accounts.Unsupported) != "":
-		sup.Reason = strings.TrimSpace(a.Accounts.Unsupported)
+		ag.AccountUnsupported = NoAccountsReason
+	case a.Accounts.unsupported() != "":
+		ag.AccountUnsupported = a.Accounts.unsupported()
 	case ag.Unsupported != "":
-		sup.Reason = ag.Unsupported
+		ag.AccountUnsupported = ag.Unsupported
 	default:
-		sup = AccountsSupport{Supported: true, Note: strings.TrimSpace(a.Accounts.Note)}
-		ag.accountEnv = maps.Clone(a.Accounts.Env)
+		ag.AccountEnv, ag.AccountDefault = a.Accounts.Env, strings.TrimSpace(a.Accounts.Default)
+		ag.accountExtraEnv = maps.Clone(a.Accounts.ExtraEnv)
 	}
-	if a.Accounts != nil && sup.Note == "" {
-		sup.Note = strings.TrimSpace(a.Accounts.Note)
+	if a.Accounts != nil {
+		ag.AccountNote = strings.TrimSpace(a.Accounts.Note)
 	}
-	ag.Accounts = &sup
 	if a.Auth == nil || ag.Unsupported != "" {
 		return
 	}

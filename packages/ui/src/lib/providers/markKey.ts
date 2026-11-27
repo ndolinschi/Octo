@@ -1,5 +1,3 @@
-import { splitAgentId } from "@octo/agent-client";
-
 /**
  * Which vendor mark (a file in `assets/providers/`) an id gets, or null when it has none. Two kinds of id share one table:
  * a provider or agent id ("claude-code", "api") gets that provider's own mark; a model id ("claude-sonnet-5-5",
@@ -57,22 +55,19 @@ const MODEL_NAME: readonly (readonly [RegExp, string])[] = [
   [/^glm/, "zhipu"],
 ];
 
-/** An account of an agent (`claude-code@work`) keeps its agent's mark: the lookup uses the base id. */
-const agentKey = (agentId: string): string | undefined => PROVIDERS[splitAgentId(agentId).base];
-
 export function markKeyOf(id: string): string | null {
   const lower = id.trim().toLowerCase();
   if (lower.startsWith("acp:")) {
     const rest = lower.slice(4);
     const slash = rest.indexOf("/");
-    const agentId = slash >= 0 ? rest.slice(0, slash) : rest;
+    // An account of an agent ("claude-code@work") has the agent's mark.
+    const agentId = baseAgent(slash >= 0 ? rest.slice(0, slash) : rest);
     const modelId = slash >= 0 ? rest.slice(slash + 1) : "";
-    const agent = agentId ? agentKey(agentId) : undefined;
-    if (agent) return agent;
+    if (agentId && PROVIDERS[agentId]) return PROVIDERS[agentId];
     if (modelId) return markKeyOf(modelId);
     return null;
   }
-  const provider = lower.includes("/") ? PROVIDERS[lower] : agentKey(lower);
+  const provider = PROVIDERS[lower] ?? PROVIDERS[baseAgent(lower)];
   if (provider) return provider;
   const slash = lower.indexOf("/");
   if (slash > 0) {
@@ -82,4 +77,10 @@ export function markKeyOf(id: string): string | null {
   const name = slash >= 0 ? lower.slice(slash + 1) : lower;
   for (const [re, key] of MODEL_NAME) if (re.test(name)) return key;
   return null;
+}
+
+/** The agent of an account id ("claude-code@work" is "claude-code"); any other id as it is. */
+function baseAgent(id: string): string {
+  const at = id.indexOf("@");
+  return at > 0 ? id.slice(0, at) : id;
 }

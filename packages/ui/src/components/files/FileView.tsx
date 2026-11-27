@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, ChevronRight, CodeXml, Ellipsis, PanelLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronRight, CodeXml, Ellipsis, Maximize2, Minimize2, PanelLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import {
   Fragment,
@@ -116,6 +116,7 @@ const MD_MODE = slot("md", (v): v is Mode => v === "preview" || v === "source");
  */
 export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileKey: FileKey | null; floatingComposer: FloatingSlot }) {
   const code = useCode();
+  const ws = useWorkspace();
   const group = useGroup();
   const { project } = useProject();
   const { theme } = useApp();
@@ -234,7 +235,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   if (!fileKey) {
     cover = code.folders.length ? <Cover title="No file open">{TOOL_PURPOSE.files} Filter the tree by name to find one.</Cover> : <NoFolders />;
   } else if (!ready) {
-    cover = <Message file={file} folder={folder} path={path} showLoading={opening} />;
+    cover = <Message file={file} folder={folder} path={path} showLoading={opening} bottomRoom={bottomRoom} />;
   } else if (markdown && mode === "preview") {
     cover = (
       <Suspense
@@ -259,6 +260,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
         path={path}
         sizeHint={undefined}
         svgText={code.buffers.value(file.key) ?? file.content}
+        bottomRoom={bottomRoom}
         fallback={null}
         actions={null}
       />
@@ -272,7 +274,8 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
     <div className="relative h-full min-h-0">
       {fileKey !== null && (
         // `isolate`: Monaco's own layers (its scrollbars are z 11) stay inside this box, under the cover (finding B20).
-        <div className="absolute inset-0 isolate" inert={cover !== null}>
+        // Hide while covered so Monaco's GPU layers do not composite behind MarkdownPreview while scrolling.
+        <div className={cn("absolute inset-0 isolate", cover !== null && "invisible [&_.scrollbar]:invisible!")} inert={cover !== null}>
           <CodeEditor
             file={shown}
             buffers={code.buffers}
@@ -375,6 +378,15 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
               path={path}
               autoSave={autoSave === "on"}
               onToggleAutoSave={() => setAutoSave((cur) => (cur === "on" ? "off" : "on"))}
+            />
+          )}
+          {!ws.narrow && fileKey && (
+            <IconButton
+              icon={ws.maximised === groupId ? Minimize2 : Maximize2}
+              label={ws.maximised === groupId ? "Restore editor size" : "Full screen editor"}
+              title={ws.maximised === groupId ? "Restore editor size" : "Full screen editor"}
+              aria-pressed={ws.maximised === groupId}
+              onClick={() => ws.toggleMaximise(tab)}
             />
           )}
           {!page && (
@@ -693,6 +705,11 @@ function MoreMenu({
                 checked: autoSave,
                 run: onToggleAutoSave,
               },
+              {
+                id: "lsp",
+                label: code.intel.get(fileKeyOf(folder, path)).status?.state === "ready" ? "Restart language server (LSP)" : "Run language server (LSP)",
+                run: () => code.intel.restart(fileKeyOf(folder, path)),
+              },
               { id: "sep-save", separator: true },
               {
                 id: "path",
@@ -713,7 +730,19 @@ function MoreMenu({
   );
 }
 
-function Message({ file, folder, path, showLoading }: { file: OpenFile | undefined; folder: string; path: string; showLoading: boolean }) {
+function Message({
+  file,
+  folder,
+  path,
+  showLoading,
+  bottomRoom,
+}: {
+  file: OpenFile | undefined;
+  folder: string;
+  path: string;
+  showLoading: boolean;
+  bottomRoom: number;
+}) {
   const code = useCode();
   const projectId = useProject().project?.id;
   const [, copy] = useCopy();
@@ -764,7 +793,18 @@ function Message({ file, folder, path, showLoading }: { file: OpenFile | undefin
       </Cover>
     );
     if (imageType(path) === null || !projectId) return notice;
-    return <ImagePreview key={file.key} projectId={projectId} folder={folder} path={path} sizeHint={listedSize} fallback={notice} actions={actions} />;
+    return (
+      <ImagePreview
+        key={file.key}
+        projectId={projectId}
+        folder={folder}
+        path={path}
+        sizeHint={listedSize}
+        bottomRoom={bottomRoom}
+        fallback={notice}
+        actions={actions}
+      />
+    );
   }
   return (
     <Cover title={`Couldn't open ${name}`} tone="err" actions={actions}>

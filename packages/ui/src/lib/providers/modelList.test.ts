@@ -366,9 +366,7 @@ test("pickerView: an agent with one account reads exactly as before, accounts fi
       state: "ready",
       models: claudeModels,
       default_model: "claude-sonnet-5-5",
-      base_id: "claude-code",
-      accounts_support: { supported: true },
-      account: { id: "", name: "Default", default: true },
+      account_env: "CLAUDE_CONFIG_DIR",
       login_methods: [{ id: "claudeai", label: "Claude subscription" }],
     }),
   ]);
@@ -378,7 +376,7 @@ test("pickerView: an agent with one account reads exactly as before, accounts fi
 
 const two = withAccounts([
   provider({ id: "api", kind: "api", label: "Anthropic API", state: "ready", models: [model("claude-sonnet-5-5", "Sonnet 5.5")] }),
-  provider({ id: "claude-code@work", kind: "agent", label: "Claude Code · Work", state: "ready", models: claudeModels, base_id: "claude-code" }),
+  provider({ id: "claude-code@work", kind: "agent", label: "Claude Code · Work", state: "ready", models: claudeModels, account_of: "claude-code" }),
   provider({ id: "codex", kind: "agent", label: "Codex", state: "ready", models: [model("gpt-5", "GPT-5")] }),
   provider({
     id: "claude-code",
@@ -387,7 +385,7 @@ const two = withAccounts([
     state: "ready",
     models: claudeModels,
     default_model: "claude-sonnet-5-5",
-    base_id: "claude-code",
+    account_env: "CLAUDE_CONFIG_DIR",
   }),
 ]);
 
@@ -409,14 +407,14 @@ test("pickerView: several accounts sit together under their labels, the default 
 test("pickerView: an account at its plan limit says so, with the reset time while it is ahead", () => {
   const now = Date.parse("2026-11-26T10:00:00");
   const limited = withAccounts([
-    provider({ id: "claude-code", kind: "agent", label: "Claude Code · Personal", state: "ready", models: claudeModels, base_id: "claude-code" }),
+    provider({ id: "claude-code", kind: "agent", label: "Claude Code · Personal", state: "ready", models: claudeModels, account_env: "CLAUDE_CONFIG_DIR" }),
     provider({
       id: "claude-code@work",
       kind: "agent",
       label: "Claude Code · Work",
       state: "ready",
       models: claudeModels,
-      base_id: "claude-code",
+      account_of: "claude-code",
       limit: { reached_at: "2026-11-26T09:00:00", resets_at: "2026-11-26T15:00:00" },
     }),
   ]);

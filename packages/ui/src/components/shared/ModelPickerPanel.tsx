@@ -480,6 +480,7 @@ function OtherField(props: { draft: string; label: string; example: string; onDr
   return (
     <TextField
       ref={field}
+      size="sm"
       variant="bare"
       value={props.draft}
       aria-label={props.label}

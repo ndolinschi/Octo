@@ -131,25 +131,27 @@ function RouterUrl() {
       description="Leave empty to use the router bundled with the app."
       status={<SaveStatus state={saved} restart={harness.needsRestart(s.id)} onRestart={restart} />}
       control={
-        <TextField
-          size="sm"
-          id={id}
-          value={value}
-          disabled={!s.editable}
-          placeholder="http://127.0.0.1:8080"
-          spellCheck={false}
-          autoComplete="off"
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit();
-            if (e.key === "Escape" && draft !== null) {
-              e.preventDefault();
-              setDraft(null);
-            }
-          }}
-          className={`${CONTROL_W.lg} font-mono`}
-        />
+        <div className={CONTROL_W.lg}>
+          <TextField
+            size="sm"
+            id={id}
+            value={value}
+            disabled={!s.editable}
+            placeholder="http://127.0.0.1:8080"
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape" && draft !== null) {
+                e.preventDefault();
+                setDraft(null);
+              }
+            }}
+            className="font-mono"
+          />
+        </div>
       }
     />
   );

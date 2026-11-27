@@ -6,8 +6,7 @@ import { agentIdOf, splitAgentId, type AgentLoginState } from "./types";
 
 type Seen = { method: string | undefined; url: string; body: unknown };
 
-const account = { id: "work", name: "Work", default: false, dir: "/d/work", owned: true };
-const provider = { id: "claude-code@work", kind: "agent", label: "Claude Code", base_id: "claude-code", account };
+const provider = { id: "claude-code@work", kind: "agent", label: "Claude Code · Job", models: [], account_of: "claude-code", account_id: "work" };
 
 function recorder(status: number, reply: unknown): { seen: Seen[]; fetch: FetchLike } {
   const seen: Seen[] = [];
@@ -18,40 +17,30 @@ function recorder(status: number, reply: unknown): { seen: Seen[]; fetch: FetchL
   return { seen, fetch };
 }
 
-test("addAgentAccount posts name and dir to the base's accounts path", async () => {
-  const { seen, fetch } = recorder(201, { account, provider });
-  const bridge = createHttpBridge({ baseUrl: "http://h:1", fetch });
-  const r = await bridge.addAgentAccount("claude-code", { name: "Work", dir: "/d/work" });
-  assert.deepEqual(seen, [{ method: "POST", url: "http://h:1/v1/providers/claude-code/accounts", body: { name: "Work", dir: "/d/work" } }]);
-  assert.equal(r.account.id, "work");
-  assert.equal(r.provider.id, "claude-code@work");
-});
-
-test("renameAgentAccount patches the account path with the id percent-encoded", async () => {
-  const { seen, fetch } = recorder(200, { account: { ...account, name: "Job" }, provider });
+test("renameAgentAccount patches the account path with the id percent-encoded and reads the entry", async () => {
+  const { seen, fetch } = recorder(200, provider);
   const bridge = createHttpBridge({ baseUrl: "http://h:1", fetch });
   const r = await bridge.renameAgentAccount("claude-code@work", "Job");
-  assert.deepEqual(seen, [{ method: "PATCH", url: "http://h:1/v1/providers/claude-code%40work/account", body: { name: "Job" } }]);
-  assert.equal(r.account.name, "Job");
+  assert.deepEqual(seen, [{ method: "PATCH", url: "http://h:1/v1/providers/claude-code%40work/account", body: { label: "Job" } }]);
+  assert.equal(r?.label, "Claude Code · Job");
+  const bad = recorder(200, { nope: true });
+  assert.equal(await createHttpBridge({ baseUrl: "http://h:1", fetch: bad.fetch }).renameAgentAccount("x", "n"), null);
 });
 
-test("removeAgentAccount sends delete_data and parses the answer", async () => {
-  const { seen, fetch } = recorder(200, { removed: "claude-code@work", deleted_dir: "/d/work" });
+test("removeAgentAccount asks for the folder to be deleted only when told to", async () => {
+  const { seen, fetch } = recorder(204, undefined);
   const bridge = createHttpBridge({ baseUrl: "http://h:1", fetch });
-  assert.deepEqual(await bridge.removeAgentAccount("claude-code@work", { deleteData: true }), { removed: "claude-code@work", deleted_dir: "/d/work" });
-  assert.deepEqual(seen, [{ method: "DELETE", url: "http://h:1/v1/providers/claude-code%40work/account?delete_data=true", body: undefined }]);
-
-  const kept = recorder(200, { removed: "claude-code@work", deleted_dir: null });
-  const b2 = createHttpBridge({ baseUrl: "http://h:1", fetch: kept.fetch });
-  assert.equal((await b2.removeAgentAccount("claude-code@work", { deleteData: false })).deleted_dir, null);
-  assert.ok(kept.seen[0]?.url.endsWith("?delete_data=false"));
-});
-
-test("a malformed account answer is an invalid_response", async () => {
-  const { fetch } = recorder(200, { nope: true });
-  const bridge = createHttpBridge({ baseUrl: "http://h:1", fetch });
-  await assert.rejects(bridge.addAgentAccount("x", { name: "n" }), (e: unknown) => e instanceof BridgeError && e.code === "invalid_response");
-  await assert.rejects(bridge.removeAgentAccount("x", { deleteData: false }), (e: unknown) => e instanceof BridgeError && e.code === "invalid_response");
+  await bridge.removeAgentAccount("claude-code", "work", { deleteFolder: true });
+  await bridge.removeAgentAccount("claude-code", "work", { deleteFolder: false });
+  await bridge.removeAgentAccount("claude-code", "work");
+  assert.deepEqual(
+    seen.map((s) => s.url),
+    [
+      "http://h:1/v1/providers/claude-code/accounts/work?delete_folder=true",
+      "http://h:1/v1/providers/claude-code/accounts/work",
+      "http://h:1/v1/providers/claude-code/accounts/work",
+    ],
+  );
 });
 
 test("a limit refusal keeps the switch_account action; the new methods are HTTP-only", async () => {

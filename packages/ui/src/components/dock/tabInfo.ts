@@ -155,6 +155,8 @@ export function tabInfo(
     browser?(browserId: string): { url: string; title: string; pins: number } | undefined;
     /** Terminal tab metadata (shell name, folder label, optional title). */
     terminal?(terminalId: string): { shell: string; folder: string; title: string; ordinal?: number } | undefined;
+    /** Plan tab metadata (cached plan and derived title). */
+    plan?(planId: string): { title: string; plan: { status: string } } | undefined;
   },
 ): TabInfo {
   const ref = parseTab(tab);
@@ -232,6 +234,19 @@ export function tabInfo(
       icon: GLYPH.run,
       status: status === "running" ? "running" : null,
       glyph: status === "running" ? "working" : status,
+      comments: 0,
+    };
+  }
+  if (ref.kind === "plan") {
+    const entry = ctx.plan?.(ref.planId);
+    const title = entry?.title || "Plan";
+    return {
+      label: middleTruncate(title, 28),
+      name: title,
+      title: entry?.plan.status === "approved" ? `${title} (approved)` : title,
+      icon: GLYPH.plan,
+      status: null,
+      glyph: entry?.plan.status === "pending" ? "needs" : null,
       comments: 0,
     };
   }

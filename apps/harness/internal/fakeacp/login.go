@@ -19,7 +19,8 @@ import (
 //	fakeacp status  exits 0 while that file exists, otherwise prints
 //	                "Not logged in" and exits 1
 //
-// Both need EnvLoginFile; without it they exit 1 with a message.
+// Both need EnvLoginFile, or EnvHome (the login file is then "login" in that
+// folder: an account's folder variable); without either they exit 1 with a message.
 
 const (
 	// LoginURLLine is the line `fakeacp login` prints first.
@@ -90,10 +91,21 @@ func cliCommand(ctx context.Context, args []string, in io.Reader, out, errOut io
 	return 0, false
 }
 
+// cliLoginFile is the file `login` writes and `status` looks for.
+func cliLoginFile() string {
+	if f := os.Getenv(EnvLoginFile); f != "" {
+		return f
+	}
+	if home := os.Getenv(EnvHome); home != "" {
+		return filepath.Join(home, "login")
+	}
+	return ""
+}
+
 func cliLogin(ctx context.Context, in io.Reader, out, errOut io.Writer) int {
-	file := os.Getenv(EnvLoginFile)
+	file := cliLoginFile()
 	if file == "" {
-		fmt.Fprintln(errOut, "fakeacp: "+EnvLoginFile+" is not set")
+		fmt.Fprintln(errOut, "fakeacp: "+EnvLoginFile+" (or "+EnvHome+") is not set")
 		return 1
 	}
 	fmt.Fprintln(out, LoginURLLine)
@@ -123,9 +135,9 @@ func cliLogin(ctx context.Context, in io.Reader, out, errOut io.Writer) int {
 }
 
 func cliStatus(out, errOut io.Writer) int {
-	file := os.Getenv(EnvLoginFile)
+	file := cliLoginFile()
 	if file == "" {
-		fmt.Fprintln(errOut, "fakeacp: "+EnvLoginFile+" is not set")
+		fmt.Fprintln(errOut, "fakeacp: "+EnvLoginFile+" (or "+EnvHome+") is not set")
 		return 1
 	}
 	if _, err := os.Stat(file); err != nil {

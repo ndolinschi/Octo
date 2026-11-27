@@ -72,12 +72,11 @@ func openSSE(t *testing.T, e *env, path, token string) *lspStream {
 
 func TestLoginOverHTTP(t *testing.T) {
 	e := newAccountsEnv(t)
-	var acc accountReply
-	e.into(t, "POST", "/v1/providers/cc/accounts", map[string]any{"name": "Work"}, http.StatusCreated, &acc)
+	acc := e.addAccount(t, "cc", "Work")
 
 	var sl startedLogin
 	e.into(t, "POST", "/v1/providers/cc@work/login", map[string]any{"method": "script", "cols": 90, "rows": 24}, http.StatusCreated, &sl)
-	if !strings.HasPrefix(sl.ID, "tm_") || sl.PID <= 0 || !strings.HasSuffix(sl.Command, " cc auth login") || !strings.Contains(sl.Command, acc.Account.Dir) {
+	if !strings.HasPrefix(sl.ID, "tm_") || sl.PID <= 0 || !strings.HasSuffix(sl.Command, " cc auth login") || !strings.Contains(sl.Command, acc.AccountDir) {
 		t.Fatalf("started = %+v", sl)
 	}
 	st := openSSE(t, e.env, loginPath("cc@work", sl.ID, "/events"), "")
@@ -121,7 +120,7 @@ func TestLoginOverHTTP(t *testing.T) {
 		t.Fatalf("the final check must follow the exit frame: %v", order)
 	}
 	// The login is the account's: its folder holds the CLI's marker, the default account's login did not change.
-	if _, err := os.Stat(filepath.Join(acc.Account.Dir, "ok")); err != nil {
+	if _, err := os.Stat(filepath.Join(acc.AccountDir, "ok")); err != nil {
 		t.Fatal(err)
 	}
 	var list struct {
@@ -138,7 +137,7 @@ func TestLoginOverHTTP(t *testing.T) {
 
 func TestLoginRoutesAndErrors(t *testing.T) {
 	e := newAccountsEnv(t)
-	e.into(t, "POST", "/v1/providers/cc/accounts", map[string]any{"name": "Work"}, http.StatusCreated, nil)
+	e.addAccount(t, "cc", "Work")
 	e.wantError(t, "POST", "/v1/providers/nope/login", nil, http.StatusNotFound, "not_found")
 	e.wantError(t, "POST", "/v1/providers/plain/login", nil, http.StatusConflict, "login_unavailable")
 	e.wantError(t, "POST", "/v1/providers/cc/login", map[string]string{"method": "device"}, http.StatusConflict, "login_unavailable")

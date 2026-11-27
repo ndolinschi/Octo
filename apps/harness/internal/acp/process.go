@@ -37,6 +37,10 @@ type Spec struct {
 	// time it sends available_commands_update, also outside a prompt (agents
 	// send the first list right after the session is created).
 	OnCommands func([]Command)
+	// OnMode, when set, is called when the agent sends current_mode_update
+	// (including during session/load or mid-turn), so the caller keeps its
+	// tracked current session mode accurate.
+	OnMode func(sessionID, modeID string)
 }
 
 type process struct {

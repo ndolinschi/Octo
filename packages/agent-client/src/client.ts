@@ -114,6 +114,7 @@ import type {
   PickFolderResult,
   Provider,
   ProviderPrefs,
+  AgentAccountInput,
   ProvidersResponse,
   SettingsUpdate,
   SettingsView,
@@ -132,8 +133,6 @@ import type {
   BrowserProxySession,
   TerminalOpenOptions,
   TerminalSession,
-  AgentAccountRemoved,
-  AgentAccountResult,
   AgentLoginOptions,
   AgentLoginSession,
 } from "./types";
@@ -375,6 +374,17 @@ export interface Bridge {
    * Answers the updated provider entry. Optional.
    */
   setProviderPrefs?(id: string, prefs: ProviderPrefs): Promise<Provider | null>;
+  /**
+   * `POST /v1/providers/{id}/accounts`: adds an account of an agent whose entry has `account_env` (another login, kept in
+   * its own folder). Answers the account's own entry (`<id>@<account>`), its login checked. Octo stores only the name and
+   * the folder; the user logs the folder in with the command in its `login_hint`. Optional.
+   */
+  addAgentAccount?(agentId: string, account: AgentAccountInput): Promise<Provider | null>;
+  /**
+   * `DELETE /v1/providers/{id}/accounts/{account}`: forgets an account; its folder and the login in it stay, unless
+   * `deleteFolder` asks to delete a folder Octo created (`account_owned`; any other is refused and the account kept). Optional.
+   */
+  removeAgentAccount?(agentId: string, accountId: string, opts?: { deleteFolder?: boolean }): Promise<void>;
   /**
    * Folder picker. `path` is a directory path or a prefix of one (`~` is the home directory, empty is home): the
    * child directories of its directory whose names start with the last segment (case-insensitive, hidden ones only
@@ -644,12 +654,11 @@ export interface Bridge {
   openLanguageServer(projectId: string, serverId: string, opts?: { workspace?: "review" }): Promise<LanguageServerSession>;
   /** Opens a live interactive PTY shell in a project folder (HTTP bridge only). */
   openTerminal?(projectId: string, options?: TerminalOpenOptions): Promise<TerminalSession>;
-  /** `POST /v1/providers/{agentId}/accounts`: adds an account for an agent (HTTP only). `dir` is its isolation folder; omitted, the harness makes one. */
-  addAgentAccount?(agentId: string, input: { name: string; dir?: string }): Promise<AgentAccountResult>;
-  /** `PATCH /v1/providers/{id}/account`: renames an account; a base id renames the default one (HTTP only). */
-  renameAgentAccount?(providerId: string, name: string): Promise<AgentAccountResult>;
-  /** `DELETE /v1/providers/{id}/account?delete_data=`: removes an account; the default one cannot be removed (HTTP only). */
-  removeAgentAccount?(providerId: string, opts: { deleteData: boolean }): Promise<AgentAccountRemoved>;
+  /**
+   * `PATCH /v1/providers/{id}/account`: renames an account (`id` is its own entry, `<agent>@<account>`), or names an
+   * agent's own (default) login (`id` is the agent's). Answers the entry with its new label. Optional (HTTP only).
+   */
+  renameAgentAccount?(providerId: string, label: string): Promise<Provider | null>;
   /** `POST /v1/providers/{id}/login`: opens the agent's login in a PTY (HTTP only). */
   startAgentLogin?(providerId: string, opts?: AgentLoginOptions): Promise<AgentLoginSession>;
   subscribe(projectId: string, handlers: SubscribeHandlers): () => void;

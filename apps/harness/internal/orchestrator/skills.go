@@ -22,10 +22,14 @@ type skillSource struct {
 // of an agent ("codex@work") reads its base agent's places; env is that agent's
 // resolved environment, where an account's own CLI home is set.
 func discoverAgentSkills(agentID string, env map[string]string, folders []projectstore.Folder, home string) []acp.Command {
-	base, slug := plugins.SplitID(strings.ToLower(strings.TrimSpace(agentID)))
-	id := base
+	id := strings.ToLower(strings.TrimSpace(agentID))
 	if id == "" {
 		return nil
+	}
+	// An account of an agent ("claude-code@work") reads the agent's own skill folders.
+	slug := ""
+	if base, acct, ok := plugins.SplitAccountID(id); ok {
+		id, slug = base, acct
 	}
 	var sources []skillSource
 	for _, f := range folders {

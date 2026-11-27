@@ -11,17 +11,16 @@ import (
 // isAccount reports whether a is a non-default account of its base agent
 // ("claude-code@work"): such an agent is never picked automatically.
 func isAccount(a plugins.Agent) bool {
-	_, slug := plugins.SplitID(a.ID)
-	return slug != ""
+	_, _, ok := plugins.SplitAccountID(a.ID)
+	return a.AccountOf != "" || ok
 }
 
 // baseOf is the manifest agent a runs.
 func baseOf(a plugins.Agent) string {
-	if a.BaseID != "" {
-		return a.BaseID
+	if base, _, ok := plugins.SplitAccountID(a.ID); ok && a.AccountOf == "" {
+		return base
 	}
-	base, _ := plugins.SplitID(a.ID)
-	return base
+	return a.Base()
 }
 
 // namedAgents are the agent ids the project's models name (orchestrator, the

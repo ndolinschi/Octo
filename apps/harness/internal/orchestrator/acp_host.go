@@ -16,6 +16,11 @@ import (
 // its agent process is shut down (HARNESS_ACP_IDLE overrides it).
 const DefaultACPIdle = 30 * time.Minute
 
+type cachedModes struct {
+	modes    []acp.SessionMode
+	baseMode string
+}
+
 // acpHost owns the long-lived ACP sessions of ACP-run orchestrators: at most
 // one per main session (keyed by skey), started lazily by the session's first
 // turn, kept between turns, restarted when the process dies and closed when
@@ -24,15 +29,39 @@ type acpHost struct {
 	idle   time.Duration
 	tokens *mcp.Tokens
 
-	mu       sync.Mutex
-	sessions map[string]*orchSession
+	mu        sync.Mutex
+	sessions  map[string]*orchSession
+	modeCache map[string]cachedModes
 }
 
 func newACPHost(idle time.Duration) *acpHost {
 	if idle <= 0 {
 		idle = DefaultACPIdle
 	}
-	return &acpHost{idle: idle, tokens: mcp.NewTokens(), sessions: map[string]*orchSession{}}
+	return &acpHost{idle: idle, tokens: mcp.NewTokens(), sessions: map[string]*orchSession{}, modeCache: map[string]cachedModes{}}
+}
+
+func (h *acpHost) rememberModes(pluginID string, modes []acp.SessionMode, base string) {
+	if pluginID == "" || len(modes) == 0 {
+		return
+	}
+	cp := make([]acp.SessionMode, len(modes))
+	copy(cp, modes)
+	h.mu.Lock()
+	h.modeCache[pluginID] = cachedModes{modes: cp, baseMode: base}
+	h.mu.Unlock()
+}
+
+func (h *acpHost) knownModes(pluginID string) ([]acp.SessionMode, string) {
+	h.mu.Lock()
+	c := h.modeCache[pluginID]
+	h.mu.Unlock()
+	if len(c.modes) == 0 {
+		return nil, ""
+	}
+	cp := make([]acp.SessionMode, len(c.modes))
+	copy(cp, c.modes)
+	return cp, c.baseMode
 }
 
 // orchSession is one main session's orchestrator process. mu guards every field;
@@ -60,10 +89,12 @@ type orchSession struct {
 	// warning shown on every turn of the session.
 	noMCP *usererr.Error
 	// modes are the session modes the agent advertised when the session was
-	// created, baseMode the one it started in and curMode the one in use.
-	modes    []acp.SessionMode
-	baseMode string
-	curMode  string
+	// created, baseMode the one it started in, curMode the one in use, and
+	// lastTurnMode the Octo turn mode of the previous prompt on this process.
+	modes        []acp.SessionMode
+	baseMode     string
+	curMode      string
+	lastTurnMode string
 
 	// Turn state (valid while turnCtx != nil).
 	agentID    string // the project's orchestrator agent row
@@ -185,7 +216,7 @@ func (s *orchSession) closeLocked() {
 	}
 	s.sessID = ""
 	s.unbriefed = false
-	s.modes, s.baseMode, s.curMode = nil, "", ""
+	s.modes, s.baseMode, s.curMode, s.lastTurnMode = nil, "", "", ""
 	s.costSeen, s.usedSeen = 0, 0 // the counters belong to the session that ended
 }
 

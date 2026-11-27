@@ -77,9 +77,9 @@ func cmdDoctor(args []string) error {
 	defer cancel()
 	reg := loadPlugins(ctx, cfg, tools.NewRegistry())
 	// Read-only: the stored accounts become agents of their own, probed below with their own environment.
-	if _, err := accounts.Open(cfg.DataDir, reg, nil); err != nil {
-		fmt.Fprintf(os.Stderr, "harness doctor: agent accounts not read: %v\n", err)
-	}
+	acctStore := accounts.Open(cfg.DataDir)
+	reg.SetAccounts(acctStore.List)
+	reg.SetDefaultLabels(acctStore.DefaultLabels)
 	ok, why := cfg.BuiltinLoop()
 	var octo *router.Router
 	if cfg.BaseURL != "" {

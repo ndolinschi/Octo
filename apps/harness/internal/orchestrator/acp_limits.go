@@ -66,7 +66,7 @@ func rpcLimit(ag plugins.Agent, err error) (*limitError, bool) {
 // limit, or a transient rate limit; another account is offered only when the
 // agent can keep several.
 func limitFailure(ag plugins.Agent, hit *limitError, details string) *usererr.Error {
-	accounts := ag.Account != nil || (ag.Accounts != nil && ag.Accounts.Supported)
+	accounts := ag.AccountOf != "" || ag.AccountEnv != ""
 	if hit.transient {
 		return usererr.AgentRateLimited(ag.Label, details, accounts).Caused(hit)
 	}

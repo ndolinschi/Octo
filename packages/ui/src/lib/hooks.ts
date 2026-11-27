@@ -88,6 +88,15 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
       if (!inside(e)) return;
       lastInput.current = performance.now();
       if (e.type !== "touchend" && e.type !== "beforematch") stopGlide();
+      // An upward wheel/trackpad gesture releases stick immediately, before ResizeObserver can snap back on async content growth (e.g. Expand all).
+      if (e instanceof WheelEvent && e.deltaY < 0 && atBottomRef.current) {
+        const el = ref.current;
+        if (el && el.scrollHeight > el.clientHeight + 1) {
+          touched.current = true;
+          atBottomRef.current = false;
+          setAtBottom(false);
+        }
+      }
     };
     const onKey = (e: KeyboardEvent) => {
       const t = e.target;
@@ -233,7 +242,7 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
       }
       const wasHidden = hidden.current;
       hidden.current = false;
-      if (atBottomRef.current) {
+      if (atBottomRef.current && !pointerHeld.current) {
         if (gliding.current && !wasHidden) {
           if (Math.abs(el.scrollHeight - glideEnd.current) > 1) {
             glideEnd.current = el.scrollHeight;
@@ -281,14 +290,21 @@ export function useEscape(active: boolean, onEscape: () => void) {
  * `fade-y` utilities): the cue for lists whose scrollbar is hidden so their rows keep the panel's insets.
  * Returns an updater to call after programmatic scrolls.
  */
-export function useScrollFade<T extends HTMLElement>(ref: RefObject<T | null>, axis: "x" | "y"): () => void {
+export function useScrollFade<T extends HTMLElement>(ref: RefObject<T | null>, axis: "x" | "y", onOverflow?: (overflows: boolean) => void): () => void {
+  const overflowCb = useLatest(onOverflow);
+  const lastOverflow = useRef<boolean | null>(null);
   const update = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     const [pos, size, total] = axis === "x" ? [el.scrollLeft, el.clientWidth, el.scrollWidth] : [el.scrollTop, el.clientHeight, el.scrollHeight];
     const fade = [pos > 1 && "start", pos + size < total - 1 && "end"].filter(Boolean).join(" ");
     if ((el.dataset.fade ?? "") !== fade) el.dataset.fade = fade;
-  }, [ref, axis]);
+    const overflows = total > size + 1;
+    if (overflowCb.current && lastOverflow.current !== overflows) {
+      lastOverflow.current = overflows;
+      overflowCb.current(overflows);
+    }
+  }, [ref, axis, overflowCb]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;

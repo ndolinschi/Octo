@@ -87,3 +87,17 @@ func TestParseCompactionShapes(t *testing.T) {
 		t.Fatal("ordinary session_info_update must not parse as compaction")
 	}
 }
+
+func TestNotifyCurrentModeUpdate(t *testing.T) {
+	var got []string
+	c := &Client{
+		onMode: func(sid, mode string) {
+			got = append(got, sid+":"+mode)
+		},
+	}
+	c.notify(t.Context(), methodUpdate, json.RawMessage(`{"sessionId":"s1","update":{"sessionUpdate":"current_mode_update","currentModeId":"plan"}}`))
+	c.notify(t.Context(), methodUpdate, json.RawMessage(`{"sessionId":"s1","update":{"sessionUpdate":"current_mode_update","modeId":"https://agentclientprotocol.com/protocol/session-modes#agent"}}`))
+	if len(got) != 2 || got[0] != "s1:plan" || got[1] != "s1:https://agentclientprotocol.com/protocol/session-modes#agent" {
+		t.Fatalf("got = %v", got)
+	}
+}

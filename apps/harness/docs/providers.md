@@ -87,6 +87,85 @@ same notice. Models come only from agy's own model picker (its session config op
 so the fast, balanced and deep tiers on Antigravity use agy's own default until the user sets roles (`PUT /v1/providers/antigravity/prefs`).
 Details: `acp-orchestrator.md`, "Antigravity (`agy`)".
 
+### Agent accounts (2026-11-26)
+
+More than one login of the same agent, modelled on T3 Code's provider instances (one `CLAUDE_CONFIG_DIR` / `CODEX_HOME`
+per account). An agent whose manifest has `accounts: {"env": "CLAUDE_CONFIG_DIR", "default": "~/.claude"}` lists
+`account_env` and `account_default`; the built-in manifest gives it to `claude-code` (`CLAUDE_CONFIG_DIR`), `codex`
+(`CODEX_HOME`) and `omp` (`PI_CODING_AGENT_DIR`). Copilot, Grok, Cursor and Antigravity have none: no documented variable
+moves their login folder.
+
+- `POST /v1/providers/{id}/accounts` `{"label", "config_dir", "id"?}` stores a name and a folder (absolute or `~/`, no
+  `$`, not the agent's default, at most 20 per agent; `id` is made from the name) in `{data-dir}/agent-accounts.json`
+  (mode 0600), creates the folder (0700) when it is missing, and answers 201 with the account's own entry, its login
+  probe already run. `DELETE /v1/providers/{id}/accounts/{account}` forgets it (204); the folder and the login in it stay.
+  Refusals are catalogue cases (`AccountNameInvalid`, `AccountFolderInvalid`, `AccountTaken`, `AccountsFull`,
+  `AccountsNotSupported`, `AccountGone`).
+- Each account is an agent of its own, `<agent>@<account>` (`claude-code@work`), listed right after its agent with
+  `account_of`, `account_id`, `account_label` and `account_dir`. It is the agent's manifest entry with the variable set
+  to the folder in its environment, so its login probe, model listing, sessions and delegations all use that login, and
+  it is chosen like any agent: `acp:claude-code@work/opus` as a project's orchestrator or tier, a session's model, or a
+  `spawn_agent` target. Its login hint is the agent's login command with the variable in front
+  (`CLAUDE_CONFIG_DIR=/home/me/.claude-work claude auth login`).
+- Octo stores no token and never reads the folder: the user logs it in with the CLI. Skills of an account are looked
+  for where its agent's are.
+
+**Additions (2026-11-26, later): rename, removing the folder, Log in, limits, one account only.** All additive; the
+routes, the file and the fields above are unchanged.
+
+- `PATCH /v1/providers/{id}/account` `{"label"}` renames an account (`{id}` is its own id, `claude-code@work`) or names
+  the agent's own login (`{id}` is the agent's): the entry then reads `Claude Code · Personal` and carries
+  `account_default_label`. Answers the entry (200); the id and the folder never change. A label another login of the same
+  agent has (ignoring case) is `409 conflict` (`AccountTaken`); the other refusals are the add route's.
+- `DELETE .../accounts/{account}?delete_folder=true` also deletes the folder, but only one Octo created: the record says
+  `owned` (set when `POST .../accounts` had to create the folder; listed as `account_owned`), the path the record names is
+  a plain folder and not a symlink, and it is not the file-system root, the home folder or one holding it, the data
+  folder or one holding it, the agent's `account_default` or another account's folder. Otherwise nothing is removed and
+  the answer is `409 conflict` (`AccountFolderNotOwned`). A keychain entry the CLI made is never removed.
+- The file gains two optional fields that a harness without them ignores: `owned` on a record and `default_labels`
+  (`{"<agent>": "<label>"}`). A file without them reads as before. Two accounts cannot share a folder; that is judged on
+  cleaned paths with symlinks resolved, across agents.
+- Manifest `accounts` gains optional `extraEnv` (more variables set on every extra account, never on the agent's own
+  entry: Gemini's `GEMINI_FORCE_FILE_STORAGE=true`), `note` (listed as `account_note`) and `unsupported` (instead of
+  `env`: why the agent keeps one login only). Every agent without `env` lists `account_unsupported` (the manifest's
+  reason, or "Octo knows no documented way to keep a second login of this CLI apart."); Settings shows it as "One account
+  only: <reason>". Built in, besides claude-code, codex and omp: `devin` (`XDG_DATA_HOME`, default `~/.local/share`; all
+  of Devin's data moves, not only the login) and the experimental `gemini` (`GEMINI_CLI_HOME` plus `extraEnv`).
+- `login_methods` (`[{id, label}]`, manifest `auth.login`), `login_command` (the terminal command that logs the entry
+  in; an account's starts with its folder variable) and `limit` (below) on every agent entry; `GET /v1/plugins` agents
+  carry `login_methods`, `limit` and the `account_*` fields too.
+- A removed account's login probe, "seen logged out" and limit state are dropped (`Registry.Forget`), so an account added
+  again under the same id starts clean.
+
+#### Log in
+
+| Route | Body | Answer | Errors |
+| --- | --- | --- | --- |
+| `POST /v1/providers/{id}/login` | `{"method"?, "cols"?, "rows"?}` (`method` is an id from `login_methods`; absent means the first) | `201 {"session_id", "command", "pid"}` (`command` is the fallback text) | `404`; `409 login_unavailable` (the agent has no login command Octo can run, or it did not start; `command` is the text to run by hand); `409 agent_not_installed` / `agent_too_old` (the CLI is missing or too old: its install line is the `command`, no terminal is started) |
+| `GET /v1/providers/{id}/login/{lid}/events` | SSE; `?token=` is accepted like on the other SSE routes | `output` `{"data": base64}`, `exit` `{"code", "reason"?}`, `login` `{"state": "ok" \| "not_logged_in" \| "unchecked"}` | `404` |
+| `POST /v1/providers/{id}/login/{lid}/input` | `{"data"}` | `202` | `404` |
+| `POST /v1/providers/{id}/login/{lid}/resize` | `{"cols", "rows"}` | `204` | `404` |
+| `DELETE /v1/providers/{id}/login/{lid}` | none | `204` | `404` |
+
+**Login.** The route runs the manifest's `auth.login` command (a method per entry) in a PTY with the account's environment, in the account's folder (the home folder for a default account), under the pseudo-project `:agent-login`, so it never shows in a project's terminals or Processes tab. One login per agent id at a time (a new one closes the old). The output is shown as is and logged nowhere. While the process runs the harness rechecks the login (`Registry.Recheck`, the probe) every 5 s until a check says `ok`, and once more when the process exits; each result is a `login` event (`unchecked` when the agent has no probe or it could not tell, as for Gemini). A login is stopped after 10 minutes; the terminal manager's 5-minute idle close and its limits apply. After the `exit` event the stream waits up to 30 s for the last check. A changed probe publishes `providers.updated`.
+
+#### Paired devices
+
+**Paired devices get no folders.** `GET /v1/providers` and `GET /v1/plugins` are readable by a paired device, which cannot manage accounts or log in. A request that is not local (the same test as settings: loopback peer, loopback `Host`, no foreign `Origin`; a device arrives through the tunnel with the tunnel's host name) is answered without `account_dir`, `account_default`, `account_owned` and `login_command` (also without `command` of `problem` and `models_problem`, which can hold the same line), and an account's folder and login command are replaced by plain words in its `login_hint`, `reason` and problem text; everything else is unchanged. Local answers are unchanged. Test: `TestPairedDeviceGetsNoFoldersOrLoginCommands`.
+
+#### Usage limits
+
+`limit` is `{reached_at, resets_at?}` (RFC 3339). It is set when a real turn of that account ended in a limit failure (classification: [`acp-orchestrator.md`](acp-orchestrator.md#usage-limits-and-switching-accounts-2026-11-26)), and cleared by the next turn that runs, by **Check again** (`POST /v1/providers/{id}/recheck`) and when `resets_at` has passed. A bare 429 or `RATE_LIMIT_EXCEEDED` (a transient rate limit) fails the turn but does not set `limit`. It does not change `state`: the entry stays `ready`, and nothing is refused because of it. `providers.updated` follows a change.
+
+#### Who is offered work without being asked
+
+An **experimental** agent (manifest `"experimental": true`, built in for `gemini`) and its accounts are offered only when a project's models name it, and `suggested` never proposes it ([`acp-orchestrator.md`](acp-orchestrator.md#usage-limits-and-switching-accounts-2026-11-26)). A non-default account is never picked automatically (spec: work and personal billing are the user's call). It is used only when a project's models name it (`orchestrator`, `fast`, `balanced`, `deep`, `side` or `auto_candidates`). Per base agent a project offers only the accounts its models name, and when they name none of them, only the default account. This covers the default orchestrator without a key, `suggested`, the router's `tier: auto` candidates and `spawn_agent`'s `agent` list. When an account is named, the base agent's other accounts are not offered unless they are named too.
+
+**`experimental`** is `true` for an agent that is not verified (above) and also for one whose manifest says `"experimental": true`; the latter is never picked automatically (above). `GET /v1/plugins` agents carry `experimental: true` for the manifest flag only.
+
+**Not verified (the additions).** The additions (rename, removing the folder, Log in, limits, one account only, Gemini, Devin) were exercised with the scripted agent (`internal/fakeacp`), shell-script login commands, unit tests, `scripts/e2e-accounts.sh` and the UI's demo bridge. No real CLI and no real account was used, and no live run is recorded. Not verified: that two Claude Code logins stay apart in the macOS Keychain per folder; each CLI's login inside Octo's terminal session; the real limit messages and where they arrive (a limit a CLI reports as plain answer text is not caught); the format of the reset time; Gemini's forced file storage; Devin's folder move.
+
+
 ### Agent models
 
 `models` is, in this order and each id once (the first source wins): the manifest's `models` (`source: "manifest"`, with the manifest's `modelLabels`), what the manifest's `modelsCommand` printed (`"command"`), every model the agent advertised in a session the harness opened or discovered (`"advertised"`) and the names typed by the user (`"custom"`). `seen_at` is when a session last advertised a model. `stale: true` flags an **advertised** model the agent's latest session did not advertise; it is kept, never dropped (a manifest alias is the CLI's own name and is never flagged). `default_model` is the manifest's `defaultModel`, else the model the agent reported as current.
@@ -115,59 +194,6 @@ The cache is `{data-dir}/agent-models.json` (mode `0600`, additive fields, ids v
 ### `suggested`
 
 What a project created without models gets: the current defaults (`HARNESS_MODEL_*`) when the API or router is ready (a default naming an agent that is not ready falls back to the compiled-in model of its slot); otherwise the first ready agent in the order `claude-code`, `codex`, `copilot`, then the rest, as `acp:<id>` in all four slots; empty strings when nothing is ready.
-
-## Accounts: more than one login per agent (2026-11-26)
-
-One agent CLI can be logged in to one account at a time. Octo keeps a second login apart by running the CLI with its own login folder, set through the environment variable the CLI documents for that. Each account is a **derived agent** of its base agent, so everything keyed by the agent id (the login probe, the model cache, usage rows, the stored ACP session) is per account without a change.
-
-**Ids.** The default account is the agent's own login and keeps the bare id: `acp:claude-code/opus`. Another account is `<base>@<slug>`: `acp:claude-code@work/opus`. The slug is fixed when the account is added (made from the name: lower case, runs of other characters become `-`, at most 32 characters, `-2`, `-3` added on a clash; `default` is reserved; pattern `^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$`); the display name is separate and can be renamed. Manifest ids cannot contain `@`, so the two never clash. Nothing is migrated: every stored `acp:<id>` is still the default account. Go: `plugins.SplitID`, `DerivedID`, `ValidSlug`; TypeScript: `splitAgentId`, `agentIdOf` (`@octo/agent-client`).
-
-**Store.** `{data-dir}/agent-accounts.json` (folder `0700`, file `0600`, written atomically): `{"version": 1, "accounts": [{agent, id, name, dir, owned, created_at}], "default_names": {"<agent>": "<name>"}}`. It holds names, slugs and folders only. A file with another `version`, or one that does not parse, is left untouched (never rewritten) and accounts stay off (a log warning); add, rename and remove then answer `409 accounts_file_unusable` (it names the file and says to fix or move it aside and restart), not "one account only". A file that cannot be read at all turns the account routes off (not served). A record whose agent is gone or no longer supports accounts stays in the file and is not offered. A name is 1 to 40 characters, no control characters, and unique per agent ignoring case, **the default account's name included** (it reads `Default` until renamed). Every change is applied at once, without a restart, and publishes `providers.updated`.
-
-**Folder.** By default Octo creates `{data-dir}/accounts/<agent>/<slug>` (`0700`, `owned: true`). With `dir` the account uses a folder that exists already (absolute, or `~/...`, no `${`; two accounts cannot share one, which is judged on cleaned paths with symlinks resolved, so a trailing slash or a symlink does not get round it. The agent's own default home is not compared: the manifest does not say where it is); it is `owned: false` and Octo never deletes it. The CLI writes its own login into that folder, so it sits inside the data folder (a backup of the data folder copies those logins; deleting it logs those accounts out). Octo never reads what the CLI writes there; it only checks the login by running the CLI's own status command (the manifest `auth.probe`) with the account's environment.
-
-**Environment.** An account's child processes (the agent, its probe, its models command, its login) get the base agent's `env` with the manifest's `accounts.env` laid over it, `{dir}` replaced by the folder. These variables exist only in that account's own entry: the default account and the other accounts never see them. For Codex the account's `CODEX_HOME` replaces the base entry's `CODEX_HOME=${OCTO_CODEX_HOME}`, so `OCTO_CODEX_HOME` steers the default account only. The variables are listed per agent in [`../plugins-examples/subscription-agents/plugin.json`](../plugins-examples/subscription-agents/plugin.json) and in the table of the harness [README](../README.md#running-on-subscriptions); the manifest fields are in [`architecture.md`](architecture.md#plugins-and-acp-agents).
-
-### Routes
-
-All under `/v1/providers/**`: local only, a paired device cannot call them (`internal/remoteaccess/rules.go`). They exist only while the harness has an accounts store. Errors are catalogue errors ([`errors.md`](errors.md#added-2026-11-26-agent-accounts-and-usage-limits)).
-
-| Route | Body | Answer | Errors |
-| --- | --- | --- | --- |
-| `POST /v1/providers/{base}/accounts` | `{"name", "dir"?}` | `201 {"account", "provider"}` | `404 not_found` (unknown agent); `409 accounts_unsupported` (the manifest's reason in `details`); `409 account_name_taken`; `409 accounts_file_unusable` (the accounts file cannot be read; it is not changed); `400 invalid_request` (empty or over-long name, `dir` not absolute or not an existing folder, `dir` already used) |
-| `PATCH /v1/providers/{id}/account` | `{"name"}` (a base id renames the default account) | `200 {"account", "provider"}` | `404`; `409 account_name_taken`; `409 accounts_unsupported`; `409 accounts_file_unusable`; `400` |
-| `DELETE /v1/providers/{id}/account?delete_data=bool` | none | `200 {"removed": id, "deleted_dir": path or null}` | `404`; `409 account_default` (the default account cannot be removed); `400` for a `delete_data` that is not a boolean |
-| `POST /v1/providers/{id}/login` | `{"method"?, "cols"?, "rows"?}` (`method` is an id from `login_methods`; absent means the first) | `201 {"session_id", "command", "pid"}` (`command` is the fallback text) | `404`; `409 login_unavailable` (the agent has no login command Octo can run, or it did not start; `command` is the text to run by hand); `409 agent_not_installed` / `agent_too_old` (the CLI is missing or too old: its install line is the `command`, no terminal is started) |
-| `GET /v1/providers/{id}/login/{lid}/events` | SSE; `?token=` is accepted like on the other SSE routes | `output` `{"data": base64}`, `exit` `{"code", "reason"?}`, `login` `{"state": "ok" \| "not_logged_in" \| "unchecked"}` | `404` |
-| `POST /v1/providers/{id}/login/{lid}/input` | `{"data"}` | `202` | `404` |
-| `POST /v1/providers/{id}/login/{lid}/resize` | `{"cols", "rows"}` | `204` | `404` |
-| `DELETE /v1/providers/{id}/login/{lid}` | none | `204` | `404` |
-
-`account` is `{id, name, default, dir?, owned?}` (`id` is `""` for the default account, else the slug). `deleted_dir` is set only when `delete_data=true` was asked, the record says `owned`, its folder is exactly `{data-dir}/accounts/<agent>/<id>`, that folder is not a symlink and the folder it lies in still resolves (symlinks followed) to a place inside the real `{data-dir}/accounts`. Otherwise the record is removed, nothing is deleted and `deleted_dir` is `null` (a hand-edited record or a symlinked `accounts/<agent>` cannot make Octo delete anything else): **the CLI's own keychain entry, if it made one, is not removed**, and a folder you chose is never touched. Removing an account does not touch projects that name it; its model is then listed in `models_unavailable`.
-
-**Login.** The route runs the manifest's `auth.login` command (a method per entry) in a PTY with the account's environment, in the account's folder (the home folder for a default account), under the pseudo-project `:agent-login`, so it never shows in a project's terminals or Processes tab. One login per agent id at a time (a new one closes the old). The output is shown as is and logged nowhere. While the process runs the harness rechecks the login (`Registry.Recheck`, the probe) every 5 s until a check says `ok`, and once more when the process exits; each result is a `login` event (`unchecked` when the agent has no probe or it could not tell, as for Gemini). A login is stopped after 10 minutes; the terminal manager's 5-minute idle close and its limits apply. After the `exit` event the stream waits up to 30 s for the last check. A changed probe publishes `providers.updated`.
-
-### Additive fields
-
-`GET /v1/providers` agent entries gain: `base_id` (always set), `account` (`{id, name, default, dir?, owned?}`, set whenever the base agent supports accounts; for a base entry it is the default account with its name), `accounts_support` (base entries: `{supported, reason?, note?}`; an agent without an `accounts` block reports `supported: false` with a generic reason), `login_methods` (`[{id, label}]`), `login_command` (the terminal command that logs this account in: for an account it starts with the folder variables, `CLAUDE_CONFIG_DIR='<folder>' claude auth login`) and `limit` (below). While a base agent has at least one other account its label reads `<label> · <default name>` and each account's `<label> · <name>`; accounts are listed directly after their base. `GET /v1/plugins` agents carry the same fields (`base_id`, `account`, `accounts_support`, `login_methods`, `login_command`, `limit`). An account's `hint` / `login_hint` is its own sentence ("Log in to this account with its own login command, not the default account's."), not the base agent's login text, and never names the folder.
-
-**Paired devices get no folders.** `GET /v1/providers` and `GET /v1/plugins` are readable by a paired device, which cannot manage accounts or log in. A request that is not local (the same test as settings: loopback peer, loopback `Host`, no foreign `Origin`; a device arrives through the tunnel with the tunnel's host name) is answered without `account.dir`, `account.owned`, `login_command` (also `command` of `problem` and `models_problem`, which can hold the same line); everything else is unchanged. Local answers are unchanged. Test: `TestPairedDeviceGetsNoFoldersOrLoginCommands`.
-
-**`experimental`** is `true` for an agent that is not verified (above) and also for one whose manifest says `"experimental": true`; the latter is never picked automatically (below). `GET /v1/plugins` agents carry `experimental: true` for the manifest flag only.
-
-### Usage limits
-
-`limit` is `{reached_at, resets_at?}` (RFC 3339). It is set when a real turn of that account ended in a limit failure (classification: [`acp-orchestrator.md`](acp-orchestrator.md#usage-limits-and-switching-accounts-2026-11-26)), and cleared by the next turn that runs, by **Check again** (`POST /v1/providers/{id}/recheck`) and when `resets_at` has passed. A bare 429 or `RATE_LIMIT_EXCEEDED` (a transient rate limit) fails the turn but does not set `limit`. It does not change `state`: the entry stays `ready`, and nothing is refused because of it. `providers.updated` follows a change.
-
-### Who is offered work without being asked
-
-An **experimental** agent (manifest `"experimental": true`, built in for `gemini`) and its accounts are offered only when a project's models name it, and `suggested` never proposes it ([`acp-orchestrator.md`](acp-orchestrator.md#usage-limits-and-switching-accounts-2026-11-26)). A non-default account is never picked automatically (spec: work and personal billing are the user's call). It is used only when a project's models name it (`orchestrator`, `fast`, `balanced`, `deep`, `side` or `auto_candidates`). Per base agent a project offers only the accounts its models name, and when they name none of them, only the default account. This covers the default orchestrator without a key, `suggested`, the router's `tier: auto` candidates and `spawn_agent`'s `agent` list. When an account is named, the base agent's other accounts are not offered unless they are named too.
-
-### Which agents support accounts
-
-A manifest agent supports accounts when it has an `accounts.env` block, and says why not otherwise (`accounts.unsupported`, or a generic reason). Built in: Claude Code (`CLAUDE_CONFIG_DIR`), Codex (`CODEX_HOME`), Devin (`XDG_DATA_HOME`: moves all of Devin's data, not only the login) and the experimental Gemini CLI (`GEMINI_CLI_HOME`, plus `GEMINI_FORCE_FILE_STORAGE=true` so the login is a file in the account folder and not a shared keychain entry). One account only: Antigravity, Copilot, Cursor, Grok, OpenCode, Droid, omp and pi, each with the reason from its manifest. The per-agent table is in the harness README.
-
-**Not verified.** Accounts were exercised with the scripted agent (`internal/fakeacp`), shell-script login commands, unit tests, `scripts/e2e-accounts.sh` and the UI's demo bridge. No real CLI and no real account was used, and no live run is recorded. Not verified: that two Claude Code logins stay apart in the macOS Keychain per folder; each CLI's login inside Octo's terminal session; the real limit messages and where they arrive (a limit a CLI reports as plain answer text is not caught); the format of the reset time; Gemini's forced file storage; Devin's folder move.
 
 ## Event `providers.updated`
 

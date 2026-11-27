@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # End-to-end check of multiple accounts per agent against a real `harness serve`, driven only with curl: the scripted
 # agent (examples/fakeacp) is the base agent "fake"; its manifest says how a second login is kept apart
-# (accounts.env OCTO_FAKEACP_LOGIN_FILE={dir}/login), how the login is checked (`fakeacp status`) and how to log in
+# (accounts.env OCTO_FAKEACP_HOME, the folder `fakeacp` keeps its login file in), how the login is checked
+# (`fakeacp status`) and how to log in
 # (`fakeacp login`). Six steps:
 #   1. add an account: it starts not_logged_in
 #   2. log in through the login routes (PTY output, one input line, the login event, a recheck)
 #   3. a turn on acp:fake@two sees only its own folder
 #   4. the limit markers end the turn with the "usage limit" notice and the switch_account action
 #   5. PATCH the project to acp:fake and retry: a new agent session, the default account's own environment
-#   6. rename keeps the id; remove with delete_data=true deletes the folder and the model is no longer offered
+#   6. rename keeps the id; remove with delete_folder=true deletes the folder and the model is no longer offered
 # Mock model + scripted agent; no network, no third-party agent CLI. Needs Go and python3.
 # Ports: E2E_MOCK_PORT (8840) and E2E_HARNESS_PORT (8841); a busy default moves to the next free port, a busy port you
 # set is an error. Waits are on state, not time: E2E_WAIT_SECS (default 120) bounds each one.
@@ -39,8 +40,8 @@ mkdir -p "$TMP/plugins/fake" "$TMP/ws" "$TMP/data"
 printf '# E2E workspace\n' >"$TMP/ws/README.md"
 cat >"$TMP/plugins/fake/plugin.json" <<JSON
 {"name":"fake","version":"1","agents":[{"id":"fake","label":"Fake","command":"$TMP/fakeacp",
- "env":{"OCTO_FAKEACP_UNIQUE_SESSIONS":"1","OCTO_FAKEACP_REQUEST_LOG":"$REQLOG","OCTO_FAKEACP_REPORT_VALUES":"OCTO_FAKEACP_LOGIN_FILE"},
- "accounts":{"env":{"OCTO_FAKEACP_LOGIN_FILE":"{dir}/login"}},
+ "env":{"OCTO_FAKEACP_UNIQUE_SESSIONS":"1","OCTO_FAKEACP_REQUEST_LOG":"$REQLOG","OCTO_FAKEACP_REPORT_VALUES":"OCTO_FAKEACP_HOME"},
+ "accounts":{"env":"OCTO_FAKEACP_HOME"},
  "auth":{"probe":["$TMP/fakeacp","status"],"notLoggedInExit":[1],"command":"fakeacp login",
   "login":[{"id":"login","label":"Fake account","args":["$TMP/fakeacp","login"]}]},
  "limitPatterns":["(?i)hit your usage limit"]}]}
@@ -82,21 +83,24 @@ sessions_started() { grep -c '^session/new' "$REQLOG" 2>/dev/null || true; }
 
 echo "== 1. add an account: it starts not_logged_in"
 [ "$(login_state fake)" = not_logged_in ] || fail "the default account is not not_logged_in before any login: $(provider fake)"
-ADD=$(post POST /v1/providers/fake/accounts '{"name":"Two"}') || fail "adding an account failed: $(curl -s -X POST "$BASE/v1/providers/fake/accounts" -H 'content-type: application/json' -d '{"name":"Two"}')"
-[ "$(jget 'd["account"]["id"]' <<<"$ADD")" = two ] || fail "the account id is not 'two': $ADD"
-[ "$(jget 'd["account"]["default"]' <<<"$ADD")" = False ] || fail "the new account is the default: $ADD"
-[ "$(jget 'd["provider"]["id"]' <<<"$ADD")" = "fake@two" ] || fail "the provider id is not fake@two: $ADD"
-DIR=$(jget 'd["account"]["dir"]' <<<"$ADD")
+WANT_DIR="$TMP/data/accounts/fake/two"
+ADD_BODY="{\"label\":\"Two\",\"config_dir\":\"$WANT_DIR\"}"
+ADD=$(post POST /v1/providers/fake/accounts "$ADD_BODY") || fail "adding an account failed: $(curl -s -X POST "$BASE/v1/providers/fake/accounts" -H 'content-type: application/json' -d "$ADD_BODY")"
+[ "$(jget 'd["account_id"]' <<<"$ADD")" = two ] || fail "the account id is not 'two': $ADD"
+[ "$(jget 'd["id"]' <<<"$ADD")" = "fake@two" ] || fail "the provider id is not fake@two: $ADD"
+[ "$(jget 'd.get("account_owned")' <<<"$ADD")" = True ] || fail "the folder Octo created is not owned: $ADD"
+DIR=$(jget 'd["account_dir"]' <<<"$ADD")
+[ "$DIR" = "$WANT_DIR" ] || fail "the account folder is $DIR, want $WANT_DIR"
 [ -d "$DIR" ] || fail "the account folder $DIR was not created"
-case "$DIR" in */accounts/fake/two) ;; *) fail "the account folder is not under the data folder: $DIR" ;; esac
 [ "$(login_state fake@two)" = not_logged_in ] || fail "fake@two is not not_logged_in: $(provider fake@two)"
 provider fake@two | python3 -c '
 import json, sys
 p = json.load(sys.stdin)
-assert p["base_id"] == "fake" and p["account"]["name"] == "Two" and not p["account"]["default"], p
+assert p["account_of"] == "fake" and p["account_label"] == "Two", p
 assert [m["id"] for m in p["login_methods"]] == ["login"], p
-' || fail "the provider lacks base_id, account or login_methods: $(provider fake@two)"
-code=$(curl -s -o "$TMP/dup.json" -w '%{http_code}' -X POST "$BASE/v1/providers/fake/accounts" -H 'content-type: application/json' -d '{"name":"Two"}')
+' || fail "the provider lacks account_of, account_label or login_methods: $(provider fake@two)"
+code=$(curl -s -o "$TMP/dup.json" -w '%{http_code}' -X POST "$BASE/v1/providers/fake/accounts" -H 'content-type: application/json' \
+  -d "{\"label\":\"Two\",\"config_dir\":\"$TMP/data/accounts/fake/other\"}")
 [ "$code" = 409 ] || fail "a second account named Two answered $code, want 409: $(cat "$TMP/dup.json")"
 
 echo "== 2. log in through the routes"
@@ -131,7 +135,7 @@ PID=$(post POST /v1/projects "{\"name\":\"accounts\",\"folders\":[{\"path\":\"$T
 ORCH=$(curl -fsS "$BASE/v1/projects/$PID" | jget 'd["orchestrator_agent_id"]')
 T1=$(say "$PID" "hello")
 echo "$T1"
-grep -qF "OCTO_FAKEACP_LOGIN_FILE=$DIR/login." <<<"$T1" || fail "the turn on fake@two did not see its own folder ($DIR/login): $T1"
+grep -qF "OCTO_FAKEACP_HOME=$DIR." <<<"$T1" || fail "the turn on fake@two did not see its own folder ($DIR): $T1"
 [ "$(orch_error "$PID")" = "" ] || fail "the turn on fake@two failed: $(orch_error "$PID")"
 
 echo "== 4. a usage limit ends the turn with the switch_account action"
@@ -157,18 +161,18 @@ BEFORE=$(sessions_started)
 post PATCH "/v1/projects/$PID" '{"models":{"orchestrator":"acp:fake"}}' >/dev/null || fail "PATCH of the project models failed"
 T2=$(say "$PID" "hello again")
 echo "$T2"
-grep -qF "OCTO_FAKEACP_LOGIN_FILE=unset." <<<"$T2" || fail "the retry on the default account did not run with its own environment: $T2"
+grep -qF "OCTO_FAKEACP_HOME=unset." <<<"$T2" || fail "the retry on the default account did not run with its own environment: $T2"
 [ "$(sessions_started)" -gt "$BEFORE" ] || fail "no new agent session (session/new) for the default account: $(cat "$REQLOG")"
 [ "$(orch_error "$PID")" = "" ] || fail "the retry failed: $(orch_error "$PID")"
 
-echo "== 6. rename keeps the id; remove with delete_data deletes the folder"
-REN=$(post PATCH /v1/providers/fake%40two/account '{"name":"Second"}') || fail "rename failed"
-[ "$(jget 'd["account"]["id"]' <<<"$REN")" = two ] && [ "$(jget 'd["account"]["name"]' <<<"$REN")" = Second ] || fail "rename changed the id or not the name: $REN"
+echo "== 6. rename keeps the id; remove with delete_folder deletes the folder"
+REN=$(post PATCH /v1/providers/fake%40two/account '{"label":"Second"}') || fail "rename failed"
+[ "$(jget 'd["id"]' <<<"$REN")" = fake@two ] && [ "$(jget 'd["account_label"]' <<<"$REN")" = Second ] || fail "rename changed the id or not the name: $REN"
 provider fake@two | grep -q 'Second' || fail "the provider label does not show the new name: $(provider fake@two)"
-code=$(curl -s -o "$TMP/del-default.json" -w '%{http_code}' -X DELETE "$BASE/v1/providers/fake/account")
-[ "$code" = 409 ] || fail "removing the default account answered $code, want 409: $(cat "$TMP/del-default.json")"
-RM=$(curl -fsS -X DELETE "$BASE/v1/providers/fake%40two/account?delete_data=true") || fail "remove failed"
-[ "$(jget 'd["removed"]' <<<"$RM")" = "fake@two" ] && [ "$(jget 'd["deleted_dir"]' <<<"$RM")" = "$DIR" ] || fail "remove answered $RM"
+DEF=$(post PATCH /v1/providers/fake/account '{"label":"Personal"}') || fail "naming the default account failed"
+[ "$(jget 'd["label"]' <<<"$DEF")" = "Fake · Personal" ] || fail "the default account's name is not shown: $DEF"
+code=$(curl -s -o "$TMP/rm.json" -w '%{http_code}' -X DELETE "$BASE/v1/providers/fake/accounts/two?delete_folder=true")
+[ "$code" = 204 ] || fail "remove answered $code: $(cat "$TMP/rm.json")"
 [ ! -e "$DIR" ] || fail "the account folder $DIR is still there"
 [ -z "$(provider fake@two)" ] || fail "fake@two is still listed: $(provider fake@two)"
 code=$(curl -s -o "$TMP/gone.json" -w '%{http_code}' -X POST "$BASE/v1/projects" -H "Authorization: Bearer $HARNESS_API_TOKEN" -H 'content-type: application/json' \

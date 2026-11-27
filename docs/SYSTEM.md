@@ -81,7 +81,7 @@ the proxy serves without history); the price catalogue refresh starts when upstr
 | Ollama or a loopback gateway not running | The provider reads `not_running`; "Check again" re-probes (`POST /v1/providers/{id}/recheck`) | `internal/providers` |
 | ACP agent missing or logged out | The turn ends with the agent's install or login hint (`hint` on `turn.finished`) | `internal/acp`, `internal/plugins` |
 | An agent's plan limit is reached | The turn ends with `agent_limit_reached` ("<Agent> · <Account> has reached its usage limit.", action `switch_account`); the user picks another account or model and the request is sent again; nothing switches by itself. A limit the CLI reports as plain answer text is not caught | `orchestrator/acp_limits.go`, `internal/usererr/catalogue_accounts.go` |
-| The accounts file has another version, or cannot be read | Version: it is left as is and the account routes answer `accounts_unsupported`. Unreadable: the account routes are not served. Either way every agent works as its default account | `internal/accounts`, `serve.go` |
+| The accounts file cannot be read or does not parse | Logged; the harness starts without the extra accounts (every agent works as its own login) and the file is replaced on the next change | `internal/accounts` |
 | A project database cannot be opened or is damaged | The project stays in the list as unavailable (`project_unavailable`) and names the `.pre-*` backups when there are some; the file is left untouched | `projectstore/unavailable.go` |
 | A project folder is missing | `folder_missing`: the project opens; tools and files on that folder refuse with the path | `internal/usererr/catalogue_ops.go` |
 | The registry cannot be opened | The harness does not start (`registry_unavailable`); the shell shows the message and the log tail | `serve.go` |
@@ -103,7 +103,7 @@ routes (a project's events, a language-server session, a terminal, an agent logi
 | Service | `GET /health`, `/v1/config`, `/v1/diagnostics`, `/v1/limits`, `/v1/usage`, `/v1/search`, `/v1/plugins` | [architecture.md](../apps/harness/docs/architecture.md), [acp-orchestrator.md](../apps/harness/docs/acp-orchestrator.md) |
 | Settings | `GET`/`PUT /v1/settings` (loopback peers and the UI's origins only) | [settings.md](../apps/harness/docs/settings.md) |
 | Providers | `GET /v1/providers`; `PUT .../{id}/prefs`, `.../custom-models`; `POST .../recheck`, `.../refresh-models` | [providers.md](../apps/harness/docs/providers.md) |
-| Agent accounts and logins (local only; not for a paired device) | `POST /v1/providers/{base}/accounts`; `PATCH`, `DELETE /v1/providers/{id}/account`; `POST /v1/providers/{id}/login`, `GET .../login/{lid}/events` (SSE, also `?token=`), `POST .../login/{lid}/input`, `.../resize`, `DELETE .../login/{lid}` | [providers.md](../apps/harness/docs/providers.md#accounts-more-than-one-login-per-agent-2026-11-26) |
+| Agent accounts and logins (local only; not for a paired device) | `POST /v1/providers/{id}/accounts`, `DELETE .../accounts/{account}[?delete_folder=true]`; `PATCH /v1/providers/{id}/account`; `POST /v1/providers/{id}/login`, `GET .../login/{lid}/events` (SSE, also `?token=`), `POST .../login/{lid}/input`, `.../resize`, `DELETE .../login/{lid}` | [providers.md](../apps/harness/docs/providers.md#agent-accounts-2026-11-26) |
 | Folders | `GET /v1/fs/dirs`, `/v1/fs/recent`; `POST /v1/fs/pick-folder` | [architecture.md](../apps/harness/docs/architecture.md) |
 | Projects and the conversation | `GET`/`POST /v1/projects`; `GET`/`PATCH`/`DELETE /v1/projects/{pid}`; `agents`, `agents/{aid}`, `agents/{aid}/messages`; `POST messages`, `cancel`, `compact`, `clear`, `rewind`, `side` (+ `stop`, `GET`, `DELETE`), `complete`, `attachments`; `GET context`, `turns/{tid}/context`, `slash-commands`, `export`, `plans/latest`, `POST plans/{id}/approve` | [architecture.md](../apps/harness/docs/architecture.md), [parity.md](../apps/harness/docs/parity.md) |
 | Sessions, workspaces, branches | `GET`/`DELETE /v1/sessions`, `/v1/sessions/importable`; per project `sessions` (list, create, import, get, patch, delete, `messages`, `stop`, `resume`, `default`, `clear`, `compact`, `rewind`, `context`, `export`, `plans/latest`, `queue...`, `worktree`), `workspaces`, `branches`, `branches/switch` | [sessions.md](../apps/harness/docs/sessions.md) |
@@ -180,12 +180,13 @@ migrated project works.
 
 ### Harness: agent accounts (2026-11-26)
 
-Two things in the data folder belong to accounts of agents ([providers.md](../apps/harness/docs/providers.md#accounts-more-than-one-login-per-agent-2026-11-26)).
-`agent-accounts.json` (folder `0700`, file `0600`, written by temp file and rename, `version` 1) holds the names, short ids
-and folders of the extra accounts and the display name of each agent's default account; no secret. `accounts/<agent>/<id>/`
-is the folder Octo creates for an account (`0700`) unless the user chose an existing folder. The CLI writes its own login
-there (Octo never reads it), so a backup of the data folder copies those logins and deleting it logs those accounts out.
-A folder the user chose is never deleted by Octo; the CLI's keychain entry, if it made one, is not removed with an account.
+Two things in the data folder belong to accounts of agents ([providers.md](../apps/harness/docs/providers.md#agent-accounts-2026-11-26)).
+`agent-accounts.json` (file `0600`, written by temp file and rename) holds the names, short ids and folders of the extra
+accounts, whether Octo created each folder (`owned`), and the names given to agents' own logins (`default_labels`); no
+secret. Each account's folder is the one given when it was added (the UI suggests one beside the agent's own, such as
+`~/.claude-work`); Octo creates it (`0700`) when it is missing. The CLI writes its own login there and Octo never reads it.
+Octo deletes a folder only when the account is removed with "Also delete its login folder" and Octo created it; the CLI's
+keychain entry, if it made one, is never removed.
 The project database only stores model strings such as `acp:claude-code@work/opus`; it has no account table and no
 migration was needed.
 
@@ -281,7 +282,7 @@ bound.
 | "Router could not start" line | Details (the `router.log` tail) | The upstream key in Settings → Providers; `router.log`; run `octo --version` from the app folder |
 | A turn fails with no model call | The turn's message and hint | No key: Settings → Providers; budget reached: the project's budget; `GET /v1/providers` |
 | An ACP agent turn fails | The hint on the failed turn | `harness doctor` (command, login probe); the wire trace; [acp-orchestrator.md](../apps/harness/docs/acp-orchestrator.md) |
-| A second account is not logged in, or the Log in button fails | `harness doctor` (each account, its folder and probe); the command shown under the login sheet, run in a terminal | [providers.md](../apps/harness/docs/providers.md#accounts-more-than-one-login-per-agent-2026-11-26) |
+| A second account is not logged in, or the Log in button fails | `harness doctor` (each account, its folder and probe); the command shown under the login sheet, run in a terminal | [providers.md](../apps/harness/docs/providers.md#agent-accounts-2026-11-26) |
 | The UI shows stale state after a sleep or network change | The live indicator (connecting / reconnecting) | The SSE route with curl and the token; `GET /health`; the reconnect watchdog in `client.ts` |
 | A project is greyed out as unavailable | Its error and `details` | The `project.sqlite` path and its `.pre-*` backups; file permissions |
 | `folder_missing` | The folder path in `details` | Re-attach or remove the folder in the project's settings |

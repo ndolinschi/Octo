@@ -75,13 +75,6 @@ type Agent struct {
 	Experimental bool `json:"experimental,omitempty"`
 	// StartHint is the manifest's remark for a launch rejected by the CLI.
 	StartHint string `json:"-"`
-	// BaseID is the manifest agent this entry runs: its own id, or for an
-	// account (a derived agent "claude-code@work") the part before "@".
-	BaseID string `json:"base_id"`
-	// Account is the login this entry stands for; nil when the base agent
-	// cannot keep more than one. Accounts (base agents only) says whether it can.
-	Account  *AccountInfo     `json:"account,omitempty"`
-	Accounts *AccountsSupport `json:"accounts_support,omitempty"`
 	// Logins are the manifest's interactive login commands (auth.login).
 	Logins []LoginMethod `json:"login_methods,omitempty"`
 	// Limit is the usage limit a real session last ran into (filled by the registry).
@@ -138,12 +131,35 @@ type Agent struct {
 	// agent's program is looked for when it is not on PATH.
 	SearchPaths []string `json:"-"`
 
+	// AccountEnv is the variable that gives the agent's CLI another config and
+	// login folder (manifest accounts.env); "" when the agent has no accounts.
+	// AccountDefault is the folder the CLI uses when it is not set.
+	AccountEnv     string `json:"account_env,omitempty"`
+	AccountDefault string `json:"account_default,omitempty"`
+	// AccountOf is set on an agent that is one of the user's extra accounts of
+	// another: the base agent's id. AccountID and AccountLabel name the account,
+	// AccountDir is its folder (the value of the base's AccountEnv).
+	AccountOf    string `json:"account_of,omitempty"`
+	AccountID    string `json:"account_id,omitempty"`
+	AccountLabel string `json:"account_label,omitempty"`
+	AccountDir   string `json:"account_dir,omitempty"`
+	// AccountOwned (an account's own entry): Octo created its folder when the
+	// account was added, so removing the account may delete it on request.
+	AccountOwned bool `json:"account_owned,omitempty"`
+	// AccountNote (agents with AccountEnv) is the manifest's accounts.note, shown
+	// beside the accounts. AccountUnsupported (agents without AccountEnv) is why
+	// the agent keeps one login only. AccountDefaultLabel is the name the user
+	// gave the agent's own (default) login; "" while it has none.
+	AccountNote         string `json:"account_note,omitempty"`
+	AccountUnsupported  string `json:"account_unsupported,omitempty"`
+	AccountDefaultLabel string `json:"account_default_label,omitempty"`
+	// accountExtraEnv is the manifest's accounts.extraEnv: more variables set on
+	// every extra account (never on the agent's own entry).
+	accountExtraEnv map[string]string
+
 	// commandFound: the agent's own program was found at load (Available may
 	// later turn false for a CLI that is too old; the check must still rerun).
 	commandFound bool
-	// accountEnv is the manifest's accounts.env ({dir} not yet replaced); nil
-	// when the agent cannot keep accounts apart.
-	accountEnv map[string]string
 }
 
 // MCPTransportStdio is the `mcpTransport` value that forces the stdio relay.

@@ -142,8 +142,8 @@ func methodNote(m string) string {
 
 // dirOf is the folder the login runs in: the account's, else the home folder.
 func (s *Service) dirOf(a plugins.Agent) string {
-	if a.Account != nil && !a.Account.Default && a.Account.Dir != "" {
-		return a.Account.Dir
+	if a.AccountOf != "" && a.AccountDir != "" {
+		return a.AccountDir
 	}
 	return s.opts.Home()
 }

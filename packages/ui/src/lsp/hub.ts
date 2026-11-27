@@ -13,7 +13,7 @@ export type Problem = { severity: ProblemSeverity; message: string; source: stri
 export type FileIntel = { status: LspStatus | null; problems: Problem[]; notice: string | null };
 
 /** What the hub needs from the running client. */
-export type IntelClient = { retry(fileKey: FileKey): void; dispose(): void };
+export type IntelClient = { retry(fileKey: FileKey): void; restart(fileKey: FileKey): void; dispose(): void };
 
 const EMPTY: FileIntel = { status: null, problems: [], notice: null };
 const NOTICE_MS = 4_000;
@@ -48,6 +48,11 @@ export class EditorIntel {
 
   retry(key: FileKey): void {
     this.client?.retry(key);
+  }
+
+  /** Runs or restarts the language server for `key` (re-probing available servers). */
+  restart(key: FileKey): void {
+    this.client?.restart(key);
   }
 
   setStatus(key: FileKey, status: LspStatus | null): void {

@@ -3,6 +3,7 @@ import { lazy, Suspense, useState } from "react";
 import { useOptionalComments } from "../../../state/comments";
 import { getBrowserTabPins, getBrowserTabState, useBrowserTabsRevision } from "../../../state/browserTabs";
 import { getTerminalTabState, useTerminalTabsRevision } from "../../../state/terminalTabs";
+import { getPlanTabState, usePlanTabsRevision } from "../../../state/planTabs";
 import { useCode } from "../../../state/code";
 import { useProject } from "../../../state/project";
 import { useShell } from "../../../state/shell";
@@ -35,6 +36,7 @@ export default function PhoneHeader() {
   const { state, project, projectId } = useProject();
   useBrowserTabsRevision(projectId);
   useTerminalTabsRevision(projectId);
+  usePlanTabsRevision(projectId);
   const { toggleSidebar, sidebarOpen } = useShell();
   const counts = useOptionalComments()?.counts;
   const [more, setMore] = useState(false);
@@ -49,6 +51,7 @@ export default function PhoneHeader() {
     else if (r.kind === "run") ws.openRun(r.name);
     else if (r.kind === "agent") ws.openAgent(r.agentId);
     else if (r.kind === "session") ws.openSession(r.sessionId);
+    else if (r.kind === "plan") ws.openPlan(r.planId);
     else ws.focusChat();
   });
   const info = tabInfo(props.active, {
@@ -64,6 +67,7 @@ export default function PhoneHeader() {
       return { url: b.url, title: b.title, pins: getBrowserTabPins(projectId, id) };
     },
     terminal: (id: string) => getTerminalTabState(projectId, id),
+    plan: (id: string) => getPlanTabState(projectId, id),
   });
   const sid = conversationSession(props.active, ws.chatSessionId, state);
   const session = sid !== null ? state.sessions.list.find((s) => s.id === sid) : undefined;

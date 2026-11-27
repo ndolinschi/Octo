@@ -70,6 +70,22 @@ export class LspManager implements IntelClient {
     if (doc && (doc.session.state === "failed" || doc.session.state === "stopped")) void doc.session.start();
   }
 
+  restart(key: FileKey): void {
+    this.servers = null;
+    const existing = this.docs.get(key);
+    if (existing) {
+      const serverId = existing.session.server.id;
+      const siblings = [...this.docs.values()].filter((d) => d.session.server.id === serverId);
+      for (const d of siblings) this.detach(d.key);
+      for (const d of siblings) {
+        if (!d.model.isDisposed()) void this.attach(d.key, d.model, d.key === key);
+      }
+      return;
+    }
+    const model = this.o.buffers.model(key);
+    if (model && !model.isDisposed()) void this.attach(key, model, true);
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -84,12 +100,16 @@ export class LspManager implements IntelClient {
 
   /* ---------- documents ---------- */
 
-  private async attach(key: FileKey, model: Monaco.editor.ITextModel) {
+  private async attach(key: FileKey, model: Monaco.editor.ITextModel, notifyOnMissing = false) {
     const language = model.getLanguageId();
     this.servers ??= this.o.bridge.listLanguageServers(this.o.projectId).catch(() => []);
     const servers = await this.servers;
     const server = servers.find((s) => s.available && s.languages.includes(language));
-    if (!server || this.disposed || this.docs.has(key) || model.isDisposed()) return;
+    if (!server) {
+      if (notifyOnMissing && !this.disposed) this.o.intel.notify(key, `No language server available for ${language}.`);
+      return;
+    }
+    if (this.disposed || this.docs.has(key) || model.isDisposed()) return;
     const { folder, path } = splitKey(key);
     const root = this.o.folders().find((f) => f.label === folder);
     if (!root) return;

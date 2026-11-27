@@ -26,6 +26,8 @@ export function ImagePreview(props: {
   sizeHint: number | undefined;
   /** An SVG already open as text: drawn from this text (unsaved edits included), nothing is fetched. */
   svgText?: string;
+  /** Room reserved at the bottom for the floating composer; when set, the meta/zoom bar sits at the top so it is never covered. */
+  bottomRoom?: number;
   fallback: ReactNode;
   actions: ReactNode;
 }) {
@@ -110,8 +112,31 @@ export function ImagePreview(props: {
     );
   }
   const pixels = pixelSizeLabel(natural.w, natural.h);
+  const bottomRoom = props.bottomRoom ?? 0;
+  const bar = (
+    <div
+      className={cn(
+        "flex h-ctl-lg shrink-0 items-center gap-3 pr-pane pl-4 text-xs text-fg-3 tabular-nums",
+        bottomRoom > 0 ? "shadow-[inset_0_-1px_0_var(--octo-line)]" : "shadow-[inset_0_1px_0_var(--octo-line)]",
+      )}
+    >
+      <span className="min-w-0 flex-1 truncate" role="status">
+        {load.status === "ready" ? [pixels, fileSizeLabel(load.size)].filter(Boolean).join(" · ") : ""}
+      </span>
+      <Segmented<Zoom>
+        label="Image size"
+        options={[
+          { id: "fit", label: "Fit" },
+          { id: "actual", label: "100 %" },
+        ]}
+        value={zoom}
+        onChange={setZoom}
+      />
+    </div>
+  );
   return (
     <Frame>
+      {bottomRoom > 0 && bar}
       {/* Auto margins centre the picture while it fits and let it scroll from its edge when it does not (100 %). */}
       <div data-image-preview className="flex min-h-0 flex-1 overflow-auto p-4">
         {load.status === "ready" ? (
@@ -130,20 +155,7 @@ export function ImagePreview(props: {
           )
         )}
       </div>
-      <div className="flex h-ctl-lg shrink-0 items-center gap-3 pr-pane pl-4 text-xs text-fg-3 tabular-nums shadow-[inset_0_1px_0_var(--octo-line)]">
-        <span className="min-w-0 flex-1 truncate" role="status">
-          {load.status === "ready" ? [pixels, fileSizeLabel(load.size)].filter(Boolean).join(" · ") : ""}
-        </span>
-        <Segmented<Zoom>
-          label="Image size"
-          options={[
-            { id: "fit", label: "Fit" },
-            { id: "actual", label: "100 %" },
-          ]}
-          value={zoom}
-          onChange={setZoom}
-        />
-      </div>
+      {bottomRoom > 0 ? <div aria-hidden className="shrink-0" style={{ height: bottomRoom }} /> : bar}
     </Frame>
   );
 }

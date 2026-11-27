@@ -3,10 +3,56 @@ import { modelsPatchForSessionChoice, parseAcp, type AcpName } from "../models";
 import { isReady } from "./providers";
 import { providerStateText } from "./providersMore";
 
-// Accounts of an agent (design 2026-11-26 sections 3, 7, 9): one agent, several logins. React-free.
+/**
+ * Agent accounts (T3 Code's "instances" in Octo's terms): an agent whose entry has `account_env` takes more logins, each
+ * kept in its own folder and listed as an agent of its own, `<agent>@<account>`. These helpers read the shared list.
+ */
 
-/** The base agent id of a provider entry: the entry's own `base_id`, else the part of its id before the `@`. */
-export const baseIdOf = (p: Pick<Provider, "id" | "base_id">): string => p.base_id ?? splitAgentId(p.id).base;
+/** The accounts of `agentId`, in the list's order. */
+export function accountsOf(providers: readonly Provider[], agentId: string): Provider[] {
+  return providers.filter((p) => p.account_of === agentId);
+}
+
+/** The agent an account belongs to; undefined for anything else. */
+export function accountBase(providers: readonly Provider[], p: Pick<Provider, "account_of">): Provider | undefined {
+  return p.account_of ? providers.find((x) => x.id === p.account_of) : undefined;
+}
+
+/** Whether the detail of `p` offers "Add account". */
+export const takesAccounts = (p: Pick<Provider, "kind" | "account_env" | "account_of">): boolean => p.kind === "agent" && !!p.account_env && !p.account_of;
+
+/** The id the harness makes from a name: lower-case letters and digits, other runs one hyphen, at most 32. */
+export function accountSlug(label: string): string {
+  const s = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32)
+    .replace(/-+$/, "");
+  return s || "account";
+}
+
+/**
+ * The folder offered for a new account: the agent's default folder with the name after a hyphen (`~/.claude` and
+ * "Work" give `~/.claude-work`); `~/.<agent>-<name>` when the manifest names no default.
+ */
+export function suggestedAccountDir(agent: Pick<Provider, "id" | "account_default">, label: string): string {
+  const slug = accountSlug(label.trim() || "account");
+  const base = (agent.account_default ?? "").replace(/\/+$/, "") || `~/.${agent.id}`;
+  return `${base}-${slug}`;
+}
+
+/** The agent an entry runs: the agent of an account (`account_of`), else the part of its id before the `@`. */
+export const baseIdOf = (p: Pick<Provider, "id" | "account_of">): string => p.account_of ?? splitAgentId(p.id).base;
+
+/** The agent's own entry first, then its accounts in list order. */
+export function familyOf(providers: readonly Provider[], baseId: string): Provider[] {
+  const own = providers.filter((p) => p.kind === "agent" && p.id === baseId);
+  return [...own, ...providers.filter((p) => p.kind === "agent" && p.account_of === baseId)];
+}
+
+/** The name the agent's own login reads as in its Accounts list: the name the user gave it, else "Default". */
+export const defaultAccountName = (agent: Pick<Provider, "account_default_label">): string => agent.account_default_label ?? "Default";
 
 /** "15:00": a clock time in the person's zone, 24 hours. */
 function clock(ms: number): string {
@@ -21,48 +67,30 @@ export function limitText(limit: ProviderLimit | undefined, now: number = Date.n
   return Number.isFinite(reset) && reset > now ? `limit reached until ${clock(reset)}` : "limit reached";
 }
 
-/** The agent entries of one base agent, in list order (the default account first, then the others as the harness lists them). */
-export function accountsOf(providers: readonly Provider[], baseId: string): Provider[] {
-  return providers.filter((p) => p.kind === "agent" && baseIdOf(p) === baseId);
+/** The state of an account as one dim line: "Ready", "Not logged in", … then "limit reached until 15:00" when it is. */
+export function accountStatus(p: Pick<Provider, "state" | "kind" | "login" | "limit">, now: number = Date.now()): string {
+  const limit = limitText(p.limit, now);
+  return limit ? `${providerStateText(p)} · ${limit}` : providerStateText(p);
 }
 
 /**
- * `providers` with the accounts of one agent side by side: each agent's siblings follow its first entry, the default account
- * first. With one account per agent the order is unchanged.
+ * `providers` with the accounts of one agent right after the agent's own entry (the harness lists them so; this keeps it
+ * for a list that does not). With no accounts the order is unchanged.
  */
 export function groupSiblings(providers: readonly Provider[]): Provider[] {
+  if (!providers.some((p) => p.account_of)) return [...providers];
   const out: Provider[] = [];
   const placed = new Set<string>();
   for (const p of providers) {
-    if (p.kind !== "agent") {
-      out.push(p);
-      continue;
-    }
     if (placed.has(p.id)) continue;
-    const family = accountsOf(providers, baseIdOf(p));
-    const defaults = family.filter((x) => x.id === baseIdOf(x));
-    for (const x of [...defaults, ...family.filter((x) => x.id !== baseIdOf(x))]) {
+    const family = p.kind === "agent" ? familyOf(providers, baseIdOf(p)) : [p];
+    for (const x of family.length > 0 ? family : [p]) {
+      if (placed.has(x.id)) continue;
       placed.add(x.id);
       out.push(x);
     }
   }
   return out;
-}
-
-/** The display name of an account: its own name, else the part of the label after the dot, else the label. */
-export function accountName(p: Pick<Provider, "label" | "account">): string {
-  if (p.account?.name) return p.account.name;
-  const at = p.label.indexOf(" · ");
-  return at > 0 ? p.label.slice(at + 3) : p.label;
-}
-
-/** The agent's own name without the account: "Claude Code" for "Claude Code · Work" (an entry with no account keeps its label). */
-export function agentBaseLabel(p: Pick<Provider, "label" | "account">): string {
-  if (!p.account) return p.label;
-  const suffix = ` · ${accountName(p)}`;
-  if (p.label.endsWith(suffix) && p.label.length > suffix.length) return p.label.slice(0, -suffix.length);
-  const at = p.label.indexOf(" · ");
-  return at > 0 ? p.label.slice(0, at) : p.label;
 }
 
 /** One account the limit banner offers instead of the one that ran out. */
@@ -78,21 +106,18 @@ export type AccountChoice = {
 };
 
 /**
- * The other accounts of the agent that ran out (same base agent), the ones that can run first, then those that have hit
- * a limit themselves, then those that are not ready; each keeps the harness's order within its kind.
+ * The other logins of the agent that ran out (its own entry and its accounts), the ones that can run first, then those
+ * that have hit a limit themselves, then those that are not ready; each keeps the harness's order within its kind.
  */
 export function siblingChoices(providers: readonly Provider[], failedId: string, now: number = Date.now()): AccountChoice[] {
   const failed = providers.find((p) => p.id === failedId);
   const base = failed ? baseIdOf(failed) : splitAgentId(failedId).base;
   const rank = (p: Provider) => (!isReady(p) ? 2 : p.limit ? 1 : 0);
-  return accountsOf(providers, base)
+  return familyOf(providers, base)
     .filter((p) => p.id !== failedId)
     .map((p, order) => ({ p, order }))
     .sort((a, b) => rank(a.p) - rank(b.p) || a.order - b.order)
-    .map(({ p }): AccountChoice => {
-      const limit = limitText(p.limit, now);
-      return { id: p.id, value: `acp:${p.id}`, label: p.label, ready: isReady(p), status: limit ? `${providerStateText(p)} · ${limit}` : providerStateText(p) };
-    });
+    .map(({ p }): AccountChoice => ({ id: p.id, value: `acp:${p.id}`, label: p.label, ready: isReady(p), status: accountStatus(p, now) }));
 }
 
 type Slots = Partial<Pick<Models, "orchestrator" | "fast" | "balanced" | "deep" | "side" | "auto_candidates">>;
@@ -111,8 +136,8 @@ export function namesAgent(agentId: string, models: Slots): boolean {
 }
 
 /**
- * What the project's models become when the person answers a reached limit (design section 7). `choice` is a sibling
- * account (`acp:<base>@<other>` or the default `acp:<base>`, no model named): every slot on `failedAgentId` moves to it and
+ * What the project's models become when the person answers a reached limit. `choice` is a sibling login
+ * (`acp:<agent>@<other>` or the agent's own `acp:<agent>`, no model named): every slot on `failedAgentId` moves to it and
  * keeps its model part (`acp:claude-code@work/opus` becomes `acp:claude-code/opus`); a slot on any other agent is never
  * touched, so when no slot names the failed agent (the limit hit a sub-agent the orchestrator picked) the patch is empty.
  * Any other choice (a model, another agent) is the composer chip's own rule, `modelsPatchForSessionChoice`. Only changed
@@ -139,44 +164,21 @@ export function modelsPatchForAccountSwitch(choice: string, failedAgentId: strin
 export type SwitchOffer = { kind: "none" } | { kind: "unnamed" } | { kind: "choices"; choices: AccountChoice[]; anyReady: boolean };
 
 /**
- * Whether the limit row offers "Use another account": only when the failed agent's base supports accounts and a sibling
- * exists; when the project's models do not name the failed account there is nothing to move (`unnamed`); otherwise the
- * siblings, and whether any can run now.
+ * Whether the limit row offers "Use another account": only when the failed agent takes accounts (`account_env`) and
+ * another login exists; when the project's models do not name the failed one there is nothing to move (`unnamed`);
+ * otherwise the other logins, and whether any can run now.
  */
 export function accountSwitchOffer(providers: readonly Provider[], failedId: string, models: Slots, now: number = Date.now()): SwitchOffer {
   const failed = providers.find((p) => p.id === failedId);
   const base = failed ? baseIdOf(failed) : splitAgentId(failedId).base;
-  if (providers.find((p) => p.id === base)?.accounts_support?.supported !== true) return { kind: "none" };
+  if (!providers.find((p) => p.id === base)?.account_env) return { kind: "none" };
   const choices = siblingChoices(providers, failedId, now);
   if (choices.length === 0) return { kind: "none" };
   if (!namesAgent(failedId, models)) return { kind: "unnamed" };
   return { kind: "choices", choices, anyReady: choices.some((c) => c.ready) };
 }
 
-/** The name Octo suggests for an agent's existing login when a second account is added. */
-export const DEFAULT_ACCOUNT_NAME = "Personal";
-
-const MAX_NAME = 40;
-
-/** Why `name` cannot name an account (empty, long, or the same as another account's), else null; `taken` are the other names. */
-export function accountNameProblem(name: string, taken: readonly string[]): string | null {
-  const n = name.trim();
-  if (n === "") return "Give the account a name.";
-  if (Array.from(n).length > MAX_NAME) return `Use ${MAX_NAME} characters or fewer.`;
-  if (taken.some((t) => t.trim().toLowerCase() === n.toLowerCase())) return "Another account already has that name.";
-  return null;
-}
-
-/** The state of an account as one dim line: "Ready", "Not logged in", … then "limit reached until 15:00" when it is. */
-export function accountStatus(p: Pick<Provider, "state" | "kind" | "login" | "limit">, now: number = Date.now()): string {
-  const limit = limitText(p.limit, now);
-  return limit ? `${providerStateText(p)} · ${limit}` : providerStateText(p);
-}
-
-/** Whether an entry is the agent's default account (its own login, the bare id). */
-export const isDefaultAccount = (p: Pick<Provider, "id" | "base_id" | "account">): boolean => p.account?.default ?? p.id === baseIdOf(p);
-
-/** The login methods an account offers: its own list, else one unnamed method when only a command is known, else none. */
+/** The login methods an entry offers: its own list, else one unnamed method when only a command is known, else none. */
 export function loginChoices(p: Pick<Provider, "login_methods" | "login_command">): { id: string; label: string }[] {
   if (p.login_methods && p.login_methods.length > 0) return p.login_methods.map((m) => ({ id: m.id, label: m.label }));
   return p.login_command ? [{ id: "", label: "Log in" }] : [];

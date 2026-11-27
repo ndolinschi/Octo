@@ -28,7 +28,7 @@ export function BoundaryMarker(props: { earlier: string; onOpenEarlier?: (() => 
     <div data-boundary className="flex min-w-0 items-center gap-1 pb-3 text-xs whitespace-nowrap text-fg-3">
       <span className="shrink-0">New session · earlier:</span>
       {props.onOpenEarlier ? (
-        <Button variant="link" size="xs" tone="quiet" className="min-w-0 shrink overflow-hidden px-0" title={props.earlier} onClick={props.onOpenEarlier}>
+        <Button variant="link" size="xs" tone="quiet" className="min-w-0 shrink px-0" title={props.earlier} onClick={props.onOpenEarlier}>
           <span className="min-w-0 truncate">{props.earlier}</span>
         </Button>
       ) : (

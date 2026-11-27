@@ -1,7 +1,5 @@
 import type { LspTransport } from "./lspSession";
 import type {
-  AgentAccount,
-  AgentAccountResult,
   Attachment,
   BrowserProxySession,
   CompletionResult,
@@ -115,13 +113,6 @@ export type RareContext = {
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
-}
-
-function asAccountResult(body: unknown): AgentAccountResult {
-  if (!isRecord(body) || !isRecord(body.account) || !isRecord(body.provider)) {
-    throw new BridgeError(0, "invalid_response", 'missing "account" or "provider" in response');
-  }
-  return { account: body.account as AgentAccount, provider: body.provider as Provider };
 }
 
 /** The answer of a provider call: the provider itself, or the whole list it sits in; null when the body says neither. */
@@ -659,12 +650,17 @@ export function createRareMethods({
         ...(Array.isArray(body.conversations) ? { conversations: body.conversations as ConversationMarker[] } : {}),
       };
     },
-    addAgentAccount: async (agentId, input) => asAccountResult(await request("POST", `/v1/providers/${encodeURIComponent(agentId)}/accounts`, input)),
-    renameAgentAccount: async (id, name) => asAccountResult(await request("PATCH", `/v1/providers/${encodeURIComponent(id)}/account`, { name })),
-    removeAgentAccount: async (id, opts) => {
-      const body = await request("DELETE", `/v1/providers/${encodeURIComponent(id)}/account?delete_data=${opts.deleteData ? "true" : "false"}`);
-      if (!isRecord(body) || typeof body.removed !== "string") throw new BridgeError(0, "invalid_response", 'missing "removed" in response');
-      return { removed: body.removed, deleted_dir: typeof body.deleted_dir === "string" ? body.deleted_dir : null };
+    addAgentAccount: async (agentId, account) => {
+      const body = await request("POST", `/v1/providers/${encodeURIComponent(agentId)}/accounts`, account);
+      return isRecord(body) && typeof body.id === "string" ? asProvider(body, body.id) : null;
+    },
+    renameAgentAccount: async (id, label) => {
+      const body = await request("PATCH", `/v1/providers/${encodeURIComponent(id)}/account`, { label });
+      return isRecord(body) && typeof body.id === "string" ? asProvider(body, body.id) : null;
+    },
+    removeAgentAccount: async (agentId, accountId, opts) => {
+      const q = opts?.deleteFolder ? "?delete_folder=true" : "";
+      await request("DELETE", `/v1/providers/${encodeURIComponent(agentId)}/accounts/${encodeURIComponent(accountId)}${q}`);
     },
     startAgentLogin: async (id, opts) => (await import("./terminalSession")).openLoginSession(sessionDeps(), id, opts),
     refreshProviderModels: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/refresh-models`), id),

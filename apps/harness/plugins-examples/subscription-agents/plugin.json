@@ -6,6 +6,10 @@
     {
       "id": "claude-code",
       "label": "Claude Code",
+      "accounts": {
+        "env": "CLAUDE_CONFIG_DIR",
+        "default": "~/.claude"
+      },
       "verified": true,
       "flatRate": true,
       "billingEnv": [
@@ -72,11 +76,6 @@
         "fast": "haiku",
         "balanced": "sonnet",
         "deep": "opus"
-      },
-      "accounts": {
-        "env": {
-          "CLAUDE_CONFIG_DIR": "{dir}"
-        }
       },
       "limitPatterns": [
         "(?i)you['’]ve hit your (session limit|weekly limit|opus limit)"
@@ -180,6 +179,10 @@
     {
       "id": "codex",
       "label": "Codex",
+      "accounts": {
+        "env": "CODEX_HOME",
+        "default": "~/.codex"
+      },
       "flatRate": true,
       "strengths": [
         "easy",
@@ -229,11 +232,6 @@
         "codex"
       ],
       "install": "Install the Codex CLI so that `codex` is on PATH: npm install -g @openai/codex (the ACP adapter @agentclientprotocol/codex-acp is fetched by npx and drives it; the entry is available only when `codex` is found)",
-      "accounts": {
-        "env": {
-          "CODEX_HOME": "{dir}"
-        }
-      },
       "limitPatterns": [
         "(?i)you['’]ve hit your usage limit"
       ]
@@ -368,8 +366,8 @@
       ],
       "env": {},
       "accounts": {
-        "env": {
-          "GEMINI_CLI_HOME": "{dir}",
+        "env": "GEMINI_CLI_HOME",
+        "extraEnv": {
           "GEMINI_FORCE_FILE_STORAGE": "true"
         },
         "note": "Logins are kept as files in the account folder, not in the system keychain."
@@ -435,9 +433,8 @@
         ]
       },
       "accounts": {
-        "env": {
-          "XDG_DATA_HOME": "{dir}"
-        },
+        "env": "XDG_DATA_HOME",
+        "default": "~/.local/share",
         "note": "Devin keeps all of its data in the account folder, not only the login."
       }
     },
@@ -479,6 +476,9 @@
     {
       "id": "omp",
       "label": "Oh My Pi",
+      "accounts": {
+        "env": "PI_CODING_AGENT_DIR"
+      },
       "flatRate": false,
       "command": "omp",
       "args": [
@@ -489,9 +489,6 @@
       },
       "auth": {
         "hint": "Run omp once and sign in (credentials in ~/.omp); omp models --json must list at least one model. Set OCTO_OMP_DIR to use a separate profile folder."
-      },
-      "accounts": {
-        "unsupported": "Octo has not looked into keeping a second sign-in of this CLI apart."
       }
     },
     {

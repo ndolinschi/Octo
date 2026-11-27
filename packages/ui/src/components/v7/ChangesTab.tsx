@@ -10,7 +10,9 @@ import { useV7Events } from "./useV7Events";
 
 const LABEL_MAX = 60;
 
-export type ChangesTabProps = Pick<ChangesViewProps, "loadMonaco" | "focusTurn" | "focusFile" | "onShowAll" | "onAddComment" | "commentsFor" | "onOpenFile">;
+export type ChangesTabProps = Pick<ChangesViewProps, "loadMonaco" | "focusTurn" | "focusFile" | "onShowAll" | "onAddComment" | "commentsFor" | "onOpenFile"> & {
+  focusSeq?: number;
+};
 
 /**
  * Dock tab (v7 §1, decision 47): what the agents changed in the open project. Binds `listChanges` / `getChange` /
@@ -28,12 +30,12 @@ export function ChangesTab(props: ChangesTabProps) {
   return <Live {...props} />;
 }
 
-function Live(props: ChangesTabProps) {
+function Live({ focusSeq = 0, ...props }: ChangesTabProps) {
   const { bridge, theme } = useApp();
   const { projectId, project, state } = useProject();
   const [recorded, setRecorded] = useState(0);
   useV7Events((e) => {
-    if (e.type === "change.recorded") setRecorded((n) => n + 1);
+    if (e.type === "change.recorded" || e.type === "turn.finished") setRecorded((n) => n + 1);
   });
   const api = useMemo<ChangesApi>(
     () => ({
@@ -52,5 +54,5 @@ function Live(props: ChangesTabProps) {
     const line = text && "text" in text ? text.text.replace(/\s+/g, " ").trim() : "";
     return line ? (line.length > LABEL_MAX ? `${line.slice(0, LABEL_MAX - 1)}…` : line) : earlierRequestLabel(turn, Date.now());
   };
-  return <ChangesView api={api} theme={theme} refreshKey={recorded} turnLabel={turnLabel} {...props} />;
+  return <ChangesView api={api} theme={theme} refreshKey={recorded + focusSeq} turnLabel={turnLabel} {...props} />;
 }

@@ -850,12 +850,27 @@ export type Provider = {
   roles?: ProviderRoles;
   /** Agents: with `experimental`, what is known: the launch command comes from the agent's documentation and has not been run with Octo. */
   experimental_note?: string;
-  /** Agents: the base agent id (`claude-code` for `claude-code@work`); absent from an older harness. */
-  base_id?: string;
-  /** Agents: which account this entry is; set whenever the base agent supports accounts. */
-  account?: AgentAccount;
-  /** Agents (base entries only): whether accounts can be added for this agent. */
-  accounts_support?: AccountsSupport;
+  /**
+   * Agents that take more accounts (manifest `accounts`): the variable that points the CLI at another config and login
+   * folder (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`). Absent for an agent without accounts and on an account's own entry.
+   */
+  account_env?: string;
+  /** With `account_env`: the folder the agent's own entry uses (`~/.claude`); absent when the manifest does not say. */
+  account_default?: string;
+  /** An account's own entry (id `<agent>@<account>`): the agent it is an account of. */
+  account_of?: string;
+  /** With `account_of`: the account's id, name and folder (the value of the agent's `account_env`). */
+  account_id?: string;
+  account_label?: string;
+  account_dir?: string;
+  /** An account's own entry: Octo created its folder, so removing the account can delete it (`delete_folder`). */
+  account_owned?: boolean;
+  /** With `account_env`: the manifest's note shown beside the accounts. */
+  account_note?: string;
+  /** Agents without `account_env`: why the agent keeps one login only ("One account only: <reason>"). */
+  account_unsupported?: string;
+  /** With `account_env`: the name the user gave the agent's own login (`PATCH .../account`); absent while it has none. */
+  account_default_label?: string;
   /** Agents: the ways to log this agent in (`POST /v1/providers/{id}/login` takes the id as `method`). */
   login_methods?: LoginMethod[];
   /** Agents: the terminal command that logs this account in (fallback when the login terminal is not used). */
@@ -864,11 +879,8 @@ export type Provider = {
   limit?: ProviderLimit;
 };
 
-/** One login of an agent. `id` is "" for the default account (the agent's own login); otherwise the slug. */
-export type AgentAccount = { id: string; name: string; default: boolean; dir?: string; owned?: boolean };
-
-/** Whether accounts can be added for an agent, and why not when they cannot. */
-export type AccountsSupport = { supported: boolean; reason?: string; note?: string };
+/** `POST /v1/providers/{id}/accounts`: a name and the folder the CLI keeps this login in; `id` is made from the name when absent. */
+export type AgentAccountInput = { label: string; config_dir: string; id?: string };
 
 /** A way to log in: `id` goes to the login route as `method`. */
 export type LoginMethod = { id: string; label: string };
@@ -966,10 +978,9 @@ export type PluginAgent = {
   tokens_estimated?: boolean;
   /** Difficulty bands the manifest says the agent suits (strengths); absent when none. */
   strengths?: ("easy" | "medium" | "hard")[];
-  /** The base agent id (`claude-code` for `claude-code@work`); absent from an older harness. */
-  base_id?: string;
-  /** Which account this agent is; set whenever the base agent supports accounts. */
-  account?: AgentAccount;
+  /** An account's own entry (`<agent>@<account>`): the agent it is an account of, and the account's name. */
+  account_of?: string;
+  account_label?: string;
   /** The ways to log this agent in. */
   login_methods?: LoginMethod[];
   /** The account's plan limit, while reached. */
@@ -1849,12 +1860,6 @@ export type AgentLoginSession = Omit<TerminalSession, "folder" | "cwd" | "shell"
   command: string;
   onLogin(cb: (state: AgentLoginState) => void): () => void;
 };
-
-/** `POST /v1/providers/{base}/accounts` and `PATCH /v1/providers/{id}/account` answer. */
-export type AgentAccountResult = { account: AgentAccount; provider: Provider };
-
-/** `DELETE /v1/providers/{id}/account` answer; `deleted_dir` is null unless the folder was deleted. */
-export type AgentAccountRemoved = { removed: string; deleted_dir: string | null };
 
 /** An agent id split at its first `@`: `claude-code@work` is base `claude-code`, account `work`. */
 export function splitAgentId(id: string): { base: string; account: string } {

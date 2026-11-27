@@ -9,7 +9,7 @@ export function ImageDiff({ file, rawUrl }: { file: ReviewFile; rawUrl(side: "ne
     ...(file.new_size >= 0 ? [{ side: "new" as const, label: "After" }] : []),
   ];
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-auto p-3">
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-3">
       <p className="mb-3 text-xs text-fg-3">
         {file.status === "added" ? "New image" : file.status === "deleted" ? "Removed image" : "Changed image"}: {sizeChange(file)}
       </p>

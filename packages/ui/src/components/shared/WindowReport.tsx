@@ -81,6 +81,7 @@ export function WindowReport(props: {
               {formatTokens(i.tokens)}
             </span>
           }
+          trailingShown
           trailing={
             open ? (
               <Button variant="quiet" size="xs" className="w-12 px-0" onClick={open}>
@@ -100,7 +101,7 @@ export function WindowReport(props: {
       {...(view ? { description: contextHeadline(view) } : {})}
       onClose={props.onClose}
       footer={
-        <Button variant="quiet" onClick={props.onClose}>
+        <Button variant="quiet" className="min-[421px]:-mr-3" onClick={props.onClose}>
           Close
         </Button>
       }
@@ -131,6 +132,7 @@ export function WindowReport(props: {
                 <ListRow
                   title={s.label}
                   leading={<span className={cn("size-2 rounded-2xs", contextKey(s).key)} />}
+                  trailingShown
                   trailing={TAIL}
                   tone={s.kind === "free" ? "quiet" : "default"}
                   meta={
@@ -141,7 +143,7 @@ export function WindowReport(props: {
                   }
                 />
                 {s.items.length > 0 && (
-                  <ul aria-label={`${s.label}: what is inside`} className="flex flex-col pl-4">
+                  <ul aria-label={`${s.label}: what is inside`} className="flex flex-col pl-6">
                     {shown.map((i) => itemRow(i, ""))}
                     {(hidden > 0 || all.has(s.id)) && (
                       <li>
@@ -163,6 +165,8 @@ export function WindowReport(props: {
             <li>
               <ListRow
                 title="Reserved for compacting"
+                leading={<span aria-hidden />}
+                trailingShown
                 trailing={TAIL}
                 tone="quiet"
                 meta={
@@ -217,6 +221,7 @@ export function WindowReport(props: {
                       {formatTokens(m.tokens)}
                     </span>
                   }
+                  trailingShown
                   trailing={
                     props.onOpenMessage ? (
                       <Button variant="quiet" size="xs" className="w-12 px-0" onClick={() => props.onOpenMessage?.(m.messageId)}>

@@ -6,7 +6,7 @@ export const MODES: readonly ProjectMode[] = ["agent", "ask", "plan"];
 /** One short line while a read-only mode is on; null for Agent. */
 export function modeNote(mode: ProjectMode): string | null {
   if (mode === "ask") return "Ask mode is read-only: no files or commands are changed.";
-  if (mode === "plan") return "Plan mode is read-only: you get a plan to approve before anything runs.";
+  if (mode === "plan") return "Plan mode is read-only: messages refine the plan for you to approve before anything runs.";
   return null;
 }
 

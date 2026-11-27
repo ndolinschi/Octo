@@ -249,6 +249,11 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	}
 
 	pluginReg := loadPlugins(ctx, cfg, remoteReg)
+	// The user's extra agent accounts (agent-accounts.json): each is listed and
+	// started as an agent of its own, "<agent>@<account>".
+	accountStore := accounts.Open(cfg.DataDir)
+	pluginReg.SetAccounts(accountStore.List)
+	pluginReg.SetDefaultLabels(accountStore.DefaultLabels)
 
 	priceTable, err := prices.Load(filepath.Join(cfg.DataDir, prices.File))
 	if err != nil {
@@ -295,13 +300,9 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Publish: func(n int) { hub.PublishAll(events.ProvidersUpdated, map[string]any{"connected": n}) },
 	})
 	featureStore := features.NewStore(os.LookupEnv)
-	// Agent accounts expand into the registry before the first probe and before the orchestrator reads the agents.
-	accountSvc, err := accounts.Open(cfg.DataDir, pluginReg, provSvc.Refresh)
-	if err != nil {
-		slog.Warn("agent accounts are off: the accounts file cannot be read", "err", err)
-		accountSvc = nil
-	}
 	pluginReg.OnProbeChange(provSvc.Refresh)
+	accountSvc := &accounts.Service{Store: accountStore, Agent: pluginReg.Agent, Recheck: provSvc.Recheck, Refresh: provSvc.Refresh,
+		Provider: provSvc.Provider, Forget: pluginReg.Forget}
 	pluginReg.StartProbes(ctx)
 	notes := project.NewNotes(store, hub)
 	orch := orchestrator.New(store, hub, notes, orchestrator.Options{
@@ -413,7 +414,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	files := project.NewFiles(store, hub)
 	bridgeOpts := []bridge.Option{
 		bridge.WithReviews(reviews), bridge.WithCommands(cmds), bridge.WithBrowserProxy(browserMgr), bridge.WithWorkerProcesses(orch),
-		bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithTerminals(termMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo), bridge.WithFeatures(featureStore),
+		bridge.WithPlugins(pluginReg), bridge.WithAccounts(accountSvc), bridge.WithLSP(pluginReg, lspMgr), bridge.WithTerminals(termMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo), bridge.WithFeatures(featureStore),
 		bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
 		bridge.WithDiagnostics(func() any {
 			ok, why := builtin()
@@ -423,9 +424,6 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		}),
 	}
 	bridgeOpts = append(bridgeOpts, bridge.WithAgentLogins(loginSvc))
-	if accountSvc != nil {
-		bridgeOpts = append(bridgeOpts, bridge.WithAccounts(accountSvc))
-	}
 	// Remote access (spec 2026-11-14-remote-access-mobile-design.md): off at every start; its control routes live
 	// on this bridge behind the local token, its own listener opens only when the owner turns it on.
 	remote, err := setupRemote(ctx, cfg, svc, notes, files, hub, bridgeOpts, browserMgr.AddBlockedPort)
