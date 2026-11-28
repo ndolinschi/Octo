@@ -6,7 +6,7 @@ import { Chip } from "../primitives/Chip";
 import { Glyph } from "../primitives/Glyph";
 import { Presence } from "../primitives/Presence";
 import { Segmented } from "../primitives/Segmented";
-import { WORKSPACE_MODES, type WorkspaceMode } from "./composerProjectBar";
+import { WORKSPACE_MODES, type WorkspaceMode } from "./projectBarState";
 import { useComposerProjectBar } from "./useComposerProjectBar";
 import type { ComposerDraft } from "./useComposerText";
 

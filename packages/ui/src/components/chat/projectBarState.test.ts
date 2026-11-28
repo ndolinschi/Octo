@@ -1,7 +1,7 @@
 import type { ProjectSession, ProjectSummary } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findReusableSharedSession, isUnusedEmptyMain, sortProjectsByRecent } from "./composerProjectBar";
+import { findReusableSharedSession, isUnusedEmptyMain, sortProjectsByRecent } from "./projectBarState";
 
 function session(patch: Partial<ProjectSession> = {}): ProjectSession {
   return {
