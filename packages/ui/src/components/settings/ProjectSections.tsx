@@ -10,11 +10,13 @@ import { remainingText } from "../../lib/usage";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { Notice } from "../primitives/Notice";
+import { Segmented } from "../primitives/Segmented";
 import { Select } from "../primitives/Select";
 import { SkeletonList } from "../primitives/Skeleton";
 import { Switch } from "../primitives/Switch";
 import { TextField } from "../primitives/TextField";
 import { setCompactFolders, useCompactFolders } from "../../lib/compactFoldersPref";
+import { setFileIconTheme, useFileIconTheme, type FileIconTheme } from "../../lib/fileIconsPref";
 import { settingsHref } from "../../lib/route";
 import { useHarnessSettings } from "./harnessSettings";
 import { limitTitle, resetsIn, spendText } from "./usageText";
@@ -225,11 +227,13 @@ export function EditorSection({ projectId }: { projectId: string | null }) {
   );
 }
 
-/** Decision 98: compact folders, for this app (not per project); applies at once to an open tree. */
+/** Decision 98: compact folders and file icon theme, for this app (not per project); applies at once to an open tree. */
 function FileTreeGroup() {
   const on = useCompactFolders();
+  const iconTheme = useFileIconTheme();
   const id = useId();
   const [saved, run] = useSave();
+  const [savedIcons, runIcons] = useSave();
   return (
     <SettingsGroup label="File tree">
       <SettingsRow
@@ -246,6 +250,28 @@ function FileTreeGroup() {
             onChange={(next) =>
               void run(async () => {
                 if (!setCompactFolders(next)) throw new Error("Could not save: the browser's storage is full or blocked");
+                await Promise.resolve();
+              })
+            }
+          />
+        }
+      />
+      <SettingsRow
+        rowId="file-icons"
+        title="File icons"
+        description="Use vscode-icons colored folder and file icons ([icon] [arrow] for folders), or minimal monochrome glyphs."
+        status={<SaveStatus state={savedIcons} />}
+        control={
+          <Segmented<FileIconTheme>
+            label="File icons"
+            value={iconTheme}
+            options={[
+              { id: "vscode", label: "VSCode icons" },
+              { id: "minimal", label: "Minimal" },
+            ]}
+            onChange={(next) =>
+              void runIcons(async () => {
+                if (!setFileIconTheme(next)) throw new Error("Could not save: the browser's storage is full or blocked");
                 await Promise.resolve();
               })
             }

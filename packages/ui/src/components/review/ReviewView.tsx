@@ -9,13 +9,15 @@ import { blockAt, changeBlocks, hunksToTexts, stepChange, type ChangeBlock } fro
 import { groupFiles, navigableFiles, plural, readingOrder, sinceReview, stepFile } from "../../lib/review/files";
 import type { ReviewKeyAction } from "../../lib/review/keys";
 import { anchorProblem, commentWhere, fileCommentInput, generalCommentInput, lineCommentInput, linesOf, type Anchor } from "../../lib/review/position";
-import { reviewDiffLayout } from "../../lib/review/diffLayout";
+import { resolveReviewDiffLayout, type ReviewDiffPrefer } from "../../lib/review/diffLayout";
 import { repliesByThread, stepThread, threadRows, threadsOfFile, unresolvedTotal, type ThreadRow } from "../../lib/review/threads";
+import { choiceCodec, numberCodec, PREFS, usePersistentState } from "../../lib/storage";
 import { Button } from "../primitives/Button";
 import { Checkbox } from "../primitives/Checkbox";
 import { EmptyState } from "../primitives/EmptyState";
 import { Glyph } from "../primitives/Glyph";
 import { Presence } from "../primitives/Presence";
+import { SidebarResizeHandle } from "../primitives/ResizeHandle";
 import { SkeletonList } from "../primitives/Skeleton";
 import { CheckoutBanner, CheckoutMenu, checkoutItems, DirtyDialog } from "./Checkout";
 import { Composer, type ComposerValue } from "./Composer";
@@ -40,6 +42,11 @@ import { useWidth } from "../../lib/useWidth";
 /** Below this width the file list becomes a picker above the diff. */
 const NARROW_BELOW = 760;
 const FILES_WIDTH = 288;
+const FILES_MIN = 180;
+const FILES_MAX = 560;
+const DIFF_MIN_PX = 360;
+const FILES_WIDTH_CODEC = numberCodec(FILES_MIN, FILES_MAX, FILES_WIDTH);
+const DIFF_LAYOUT_CODEC = choiceCodec<ReviewDiffPrefer>(["auto", "split", "unified"], "auto");
 const HINT_MS = 5000;
 
 type ComposerState = { kind: "line"; anchor: Anchor; suggest: boolean } | { kind: "file" } | { kind: "general" } | { kind: "edit"; comment: ReviewComment };
@@ -311,8 +318,13 @@ function Ready(props: {
   const commented: Marked[] = here.map((c) => ({ side: c.side ?? "new", start: c.start_line ?? c.line ?? 1, end: c.line ?? 1 }));
   const flagged: Marked[] = findings.filter((f) => f.path === path && f.status === "new").map((f) => ({ side: "new", start: f.start_line, end: f.end_line }));
   const diffCol = useRef<HTMLDivElement>(null);
+  const filesCol = useRef<HTMLDivElement>(null);
   const diffWidth = useWidth(diffCol);
-  const split = reviewDiffLayout(review.config?.prefer ?? "auto", diffWidth) === "split";
+  const [storedFilesWidth, setFilesWidth] = usePersistentState(PREFS.reviewFilesWidth, FILES_WIDTH_CODEC);
+  const maxFilesWidth = width !== null ? Math.max(FILES_MIN, Math.min(FILES_MAX, width - DIFF_MIN_PX)) : FILES_MAX;
+  const filesWidth = Math.max(FILES_MIN, Math.min(maxFilesWidth, storedFilesWidth));
+  const [diffMode, setDiffMode] = usePersistentState(PREFS.reviewDiffLayout, DIFF_LAYOUT_CODEC);
+  const split = resolveReviewDiffLayout(diffMode, review.config?.prefer ?? "auto", diffWidth) === "split";
   const fileThreads = useMemo(() => (path === null ? { inline: [], apart: [] } : threadsOfFile(threadList, path)), [threadList, path]);
   // One column has no editor for the removed side: those threads wait in the list under the toolbar instead of at a wrong line.
   const drawn = useMemo(() => (split ? fileThreads.inline : fileThreads.inline.filter((t) => t.side === "new")), [split, fileThreads]);
@@ -431,14 +443,26 @@ function Ready(props: {
       />
       <div className="flex min-h-0 flex-1">
         {!narrow && file && (
-          <div style={{ width: FILES_WIDTH }} className="shrink-0 overflow-y-auto border-r border-line">
-            <FileList
-              sections={shownSections}
-              selected={path}
-              opened={opened}
-              onToggleGroup={(g) => setOpened((o) => (o.has(g) ? new Set([...o].filter((x) => x !== g)) : new Set([...o, g])))}
-              onSelect={select}
-              onViewed={(p, v) => void actions.setViewed(p, v)}
+          <div ref={filesCol} style={{ width: filesWidth }} className="relative flex shrink-0 flex-col border-r border-line">
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <FileList
+                sections={shownSections}
+                selected={path}
+                opened={opened}
+                onToggleGroup={(g) => setOpened((o) => (o.has(g) ? new Set([...o].filter((x) => x !== g)) : new Set([...o, g])))}
+                onSelect={select}
+                onViewed={(p, v) => void actions.setViewed(p, v)}
+              />
+            </div>
+            <SidebarResizeHandle
+              target={filesCol}
+              edge="right"
+              label="Resize review file list"
+              width={filesWidth}
+              min={FILES_MIN}
+              max={maxFilesWidth}
+              defaultWidth={FILES_WIDTH}
+              onCommit={setFilesWidth}
             />
           </div>
         )}
@@ -451,6 +475,7 @@ function Ready(props: {
               theme={props.theme}
               loadMonaco={props.loadMonaco}
               split={split}
+              onDiffLayout={setDiffMode}
               ignoreWhitespace={ignoreWhitespace}
               expanded={expanded}
               sinceReview={filterSince}

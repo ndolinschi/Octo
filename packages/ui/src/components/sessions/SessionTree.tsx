@@ -19,6 +19,7 @@ import { isOpen, parseOpen, projectSummary, treeKey, TREE_ALL, type KeyRow } fro
 import { flatSessions, pinNeedsYou, treeSessions } from "../../lib/sessions/flat";
 import { orchestratorGlyph, type GlyphState } from "../../lib/stateGlyph";
 import { jsonCodec, PREFS, usePersistentState } from "../../lib/storage";
+import { togglePinnedProject, usePinnedProjects } from "../../lib/pinnedProjectsPref";
 import { useActivity } from "../../state/activity";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
@@ -83,6 +84,8 @@ export function SessionTree(props: SessionTreeProps) {
   const index = useSessionIndex(projects);
   const orchestrators = useOrchestrators(projects);
   const acp = useAcpNames();
+  const pinnedProjectIds = usePinnedProjects();
+  const pinnedProjects = useMemo(() => new Set(pinnedProjectIds), [pinnedProjectIds]);
   const [stored, setStored] = usePersistentState(PREFS.sidebarOpen, openCodec);
   const [showAll, setShowAll] = useState<ReadonlySet<string>>(new Set());
   const [menu, setMenu] = useState<MenuAt | null>(null);
@@ -98,10 +101,18 @@ export function SessionTree(props: SessionTreeProps) {
   useRovingRows(list);
   const phone = usePhone();
 
-  // Stable order (newest project first by creation), so rows never jump under the pointer as activity moves.
+  // Pinned projects stay on top; within pinned and unpinned, newest project first by creation so rows never jump.
   const ordered = useMemo(
-    () => (projects ? [...projects].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || a.id.localeCompare(b.id)) : null),
-    [projects],
+    () =>
+      projects
+        ? [...projects].sort(
+            (a, b) =>
+              Number(pinnedProjects.has(b.id)) - Number(pinnedProjects.has(a.id)) ||
+              Date.parse(b.created_at) - Date.parse(a.created_at) ||
+              a.id.localeCompare(b.id),
+          )
+        : null,
+    [projects, pinnedProjects],
   );
   const defaultOf = (pid: string) => index.byProject.get(pid)?.find((s) => s.default ?? s.current)?.id ?? null;
   const currentSession = props.agentRoute ? null : (props.activeSessionId ?? (props.activeProjectId ? defaultOf(props.activeProjectId) : null));
@@ -182,6 +193,11 @@ export function SessionTree(props: SessionTreeProps) {
       label: "New session",
       disabled: !props.canCreate,
       run: () => createSession(m.project.id),
+    },
+    {
+      id: "pin",
+      label: pinnedProjects.has(m.project.id) ? "Unpin project" : "Pin project",
+      run: () => void togglePinnedProject(m.project.id),
     },
     ...(m.expandable ? [{ id: "toggle", label: m.open ? "Hide sessions" : "Show sessions", run: () => toggle(m.project.id, !m.open) }] : []),
     ...(!device

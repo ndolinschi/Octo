@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { PullRequestList, PullRequestRow, ReviewComment, ReviewThread } from "@octo/agent-client";
 import { dirtyList, goBackCommand, checkoutSentence, hasConflicts } from "./checkout";
-import { reviewDiffLayout } from "./diffLayout";
+import { resolveReviewDiffLayout, reviewDiffLayout } from "./diffLayout";
 import { createListCache, filterCounts, freshness, mergePages, newSinceMyReview, visibleRows } from "./pullList";
 import {
   firstPhrase,
@@ -189,6 +189,10 @@ test("the width floor beats every preference", () => {
   assert.equal(reviewDiffLayout("auto", 1000), "split");
   assert.equal(reviewDiffLayout("split", 700), "unified");
   assert.equal(reviewDiffLayout("unified", 2000), "unified");
+  assert.equal(resolveReviewDiffLayout("split", "auto", 700), "split");
+  assert.equal(resolveReviewDiffLayout("unified", "split", 2000), "unified");
+  assert.equal(resolveReviewDiffLayout("auto", "auto", 1000), "split");
+  assert.equal(resolveReviewDiffLayout("auto", "auto", 900), "unified");
 });
 
 test("check out wording and the way back", () => {

@@ -6,10 +6,12 @@ import { useMediaQuery } from "../../lib/hooks";
 import { useHistoryLayer } from "../../lib/historyLayer";
 import { usePhone } from "../../lib/phone";
 import { DIFF_SPLIT_MIN, diffLayout, earlierRequestLabel, filesChanged, neighbours, rowKey, splitPath } from "../../lib/v7/changes";
+import { numberCodec, PREFS, usePersistentState } from "../../lib/storage";
 import { keepAllFiles, keptChangesSnapshot, subscribeKeptChanges, toggleFileKept } from "../../state/keptChanges";
 import { useOptionalProject } from "../../state/project";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
+import { SidebarResizeHandle } from "../primitives/ResizeHandle";
 import { SkeletonList } from "../primitives/Skeleton";
 import { FloatRoom, FloatRoomContext } from "../primitives/floatRoom";
 import { Presence } from "../primitives/Presence";
@@ -21,6 +23,11 @@ import { useWidth } from "../../lib/useWidth";
 
 /** Below this pane width the list and the diff take turns (the list first, Back returns to it). */
 const TWO_COLUMNS_MIN = 720;
+const LIST_MIN = 180;
+const LIST_MAX = 560;
+const LIST_DEFAULT = 280;
+const DIFF_MIN_PX = 360;
+const LIST_WIDTH_CODEC = numberCodec(LIST_MIN, LIST_MAX, LIST_DEFAULT);
 
 export type ChangesViewProps = {
   api: ChangesApi;
@@ -51,6 +58,7 @@ const NONE: readonly { start: number; end: number }[] = [];
 /** The changes view (v7 §1, decision 47): per-turn file lists beside a diff, revert with a confirm, line comments. */
 export function ChangesView(props: ChangesViewProps) {
   const box = useRef<HTMLDivElement>(null);
+  const listCol = useRef<HTMLDivElement>(null);
   const floatRoom = useContext(FloatRoomContext);
   const width = useWidth(box);
   const wideWindow = useMediaQuery(`(min-width: ${DIFF_SPLIT_MIN}px)`);
@@ -68,7 +76,9 @@ export function ChangesView(props: ChangesViewProps) {
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [turnBusy, setTurnBusy] = useState<number | null>(null);
   const two = width === null || width >= TWO_COLUMNS_MIN;
-  const listWidth = width !== null ? Math.min(360, Math.max(280, Math.round(width * 0.3))) : 280;
+  const [storedListWidth, setListWidth] = usePersistentState(PREFS.changesFilesWidth, LIST_WIDTH_CODEC);
+  const maxListWidth = width !== null ? Math.max(LIST_MIN, Math.min(LIST_MAX, width - DIFF_MIN_PX)) : LIST_MAX;
+  const listWidth = Math.max(LIST_MIN, Math.min(maxListWidth, storedListWidth));
   const layout = diffLayout(wideWindow ? DIFF_SPLIT_MIN : 0, two && width !== null ? width - listWidth : 0);
   const label = props.turnLabel ?? ((turn: TurnChanges) => earlierRequestLabel(turn, Date.now()));
 
@@ -210,15 +220,27 @@ export function ChangesView(props: ChangesViewProps) {
           <div className="flex min-h-0 flex-1 flex-col">{body}</div>
         ) : two ? (
           <>
-            <nav
-              aria-label="Changed files"
-              {...(floatRoom > 0 ? { style: { scrollPaddingBottom: floatRoom } } : {})}
-              className="@container/list flex w-[clamp(17.5rem,30%,22.5rem)] shrink-0 flex-col gap-2 overflow-y-auto border-r border-line px-pane pt-1 pb-4"
-            >
-              {reviewHeader}
-              {list}
-              <FloatRoom />
-            </nav>
+            <div ref={listCol} style={{ width: listWidth }} className="relative flex shrink-0 flex-col border-r border-line">
+              <nav
+                aria-label="Changed files"
+                {...(floatRoom > 0 ? { style: { scrollPaddingBottom: floatRoom } } : {})}
+                className="@container/list flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-pane pt-1 pb-4"
+              >
+                {reviewHeader}
+                {list}
+                <FloatRoom />
+              </nav>
+              <SidebarResizeHandle
+                target={listCol}
+                edge="right"
+                label="Resize changed files list"
+                width={listWidth}
+                min={LIST_MIN}
+                max={maxListWidth}
+                defaultWidth={LIST_DEFAULT}
+                onCommit={setListWidth}
+              />
+            </div>
             {diff}
           </>
         ) : showDiff && diff ? (

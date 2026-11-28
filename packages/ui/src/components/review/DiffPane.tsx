@@ -1,5 +1,5 @@
-import { ChevronDown, ChevronUp, CornerDownRight } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { useMemo, type ReactNode } from "react";
 import type { ReviewFile, ReviewFileDiff } from "@octo/agent-client";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { hunksToTexts } from "../../lib/review/changes";
@@ -9,13 +9,20 @@ import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { IconMenu } from "../primitives/IconMenu";
 import { Checkbox } from "../primitives/Checkbox";
+import { Segmented } from "../primitives/Segmented";
 import { Spinner } from "../primitives/Status";
 import { ImageDiff } from "./ImageDiff";
 import { Counts, Notice } from "./parts";
 import { ReviewDiff, runsOf, type DiffZone, type Marked, type ReviewMonaco, type RevealRequest, type ScrollRequest } from "./ReviewDiff";
 import type { DiffLoad } from "./useReview";
+import type { ReviewDiffLayout } from "../../lib/review/diffLayout";
 
 const STATUS_WORD = { added: "Added", modified: "Modified", deleted: "Deleted", renamed: "Renamed", copied: "Copied", typechange: "Type changed" } as const;
+
+const DIFF_LAYOUTS: readonly { id: ReviewDiffLayout; label: string; title: string }[] = [
+  { id: "unified", label: "Unified", title: "Show changes in a single column" },
+  { id: "split", label: "Split", title: "Show old and new code side by side" },
+];
 
 /** The centre of the review: a 40px toolbar for the file, then its diff (or why there is none), then the comment box. */
 export function DiffPane(props: {
@@ -25,6 +32,7 @@ export function DiffPane(props: {
   theme: import("../../lib/theme").Theme;
   loadMonaco(): Promise<ReviewMonaco>;
   split: boolean;
+  onDiffLayout?(layout: ReviewDiffLayout): void;
   ignoreWhitespace: boolean;
   expanded: boolean;
   /** The diff is the part that changed since the review was submitted. */
@@ -59,15 +67,10 @@ export function DiffPane(props: {
   openWhere?: string;
 }) {
   const f = props.file;
-  const [firstLine, setFirstLine] = useState<number | null>(null);
-  useEffect(() => {
-    if (props.diff.status !== "ready" || f.image || f.binary || props.diff.diff.too_large || props.diff.diff.hunks.length === 0) {
-      setFirstLine(null);
-    }
-  }, [f.path, f.image, f.binary, props.diff]);
   const canOpen = props.onOpenAt !== undefined && f.status !== "deleted" && !f.binary;
   const { dir, name } = splitPath(f.path);
   const loading = useDelayedLoading(props.diff.status === "loading");
+  const layoutValue: ReviewDiffLayout = props.split ? "split" : "unified";
   return (
     <div className="@container/diff flex min-h-0 min-w-0 flex-1 flex-col">
       {/* R4 (polish step 6b): the file's bar is one 40px line with the editor bar's controls (28px, 16px glyphs, gap 4): the
@@ -89,20 +92,20 @@ export function DiffPane(props: {
         )}
         <span className="flex shrink-0 items-center gap-1">
           {props.threadsToggle}
+          {props.onDiffLayout && !f.binary && !f.image && (
+            <Segmented<ReviewDiffLayout>
+              label="Diff layout"
+              options={DIFF_LAYOUTS}
+              value={layoutValue}
+              onChange={props.onDiffLayout}
+              className="@max-[520px]/diff:hidden"
+            />
+          )}
           <span title={f.viewed ? "Viewed (v)" : "Mark as viewed (v)"} className="flex px-1 @max-[440px]/diff:px-0.5">
             <Checkbox label="Viewed" checked={f.viewed} onChange={props.onViewed} />
           </span>
           <IconButton icon={ChevronUp} label="Previous change" shortcut="k" onClick={() => props.onStepChange(-1)} className="@max-[440px]/diff:hidden" />
           <IconButton icon={ChevronDown} label="Next change" shortcut="j" onClick={() => props.onStepChange(1)} className="@max-[440px]/diff:hidden" />
-          {/* As in Changes (DiffPanel): the first changed line, opened in the editor; the line numbers of the new side open it too. */}
-          {canOpen && firstLine !== null && (
-            <IconButton
-              icon={CornerDownRight}
-              label={`Go to line ${firstLine}`}
-              title={`Go to line ${firstLine}${props.openWhere ? ` ${props.openWhere}` : ""}`}
-              onClick={() => props.onOpenAt?.(firstLine)}
-            />
-          )}
           <IconMenu
             label="More for this file"
             items={[
@@ -111,6 +114,13 @@ export function DiffPane(props: {
                     { id: "prev-file", label: "Previous file", run: () => props.onStepFile?.(-1) },
                     { id: "next-file", label: "Next file", run: () => props.onStepFile?.(1) },
                     { id: "sep-file", separator: true } as const,
+                  ]
+                : []),
+              ...(props.onDiffLayout && !f.binary && !f.image
+                ? [
+                    { id: "layout-unified", label: "Unified diff", checked: !props.split, run: () => props.onDiffLayout?.("unified") },
+                    { id: "layout-split", label: "Split diff", checked: props.split, run: () => props.onDiffLayout?.("split") },
+                    { id: "sep-layout", separator: true } as const,
                   ]
                 : []),
               { id: "ws", label: "Ignore whitespace", checked: props.ignoreWhitespace, run: props.onToggleWhitespace },
@@ -142,7 +152,7 @@ export function DiffPane(props: {
             </div>
           ) : null
         ) : (
-          <Body {...props} file={f} diff={props.diff.diff} onFirstLine={setFirstLine} />
+          <Body {...props} file={f} diff={props.diff.diff} />
         )}
       </div>
       {props.composer}
@@ -150,7 +160,7 @@ export function DiffPane(props: {
   );
 }
 
-function Body(props: Omit<Parameters<typeof DiffPane>[0], "diff"> & { diff: ReviewFileDiff; onFirstLine(line: number | null): void }) {
+function Body(props: Omit<Parameters<typeof DiffPane>[0], "diff"> & { diff: ReviewFileDiff }) {
   const { file: f, diff } = props;
   const texts = useMemo(() => hunksToTexts(diff.hunks), [diff.hunks]);
   const runs = useMemo(() => runsOf(diff.hunks), [diff.hunks]);
@@ -198,7 +208,6 @@ function Body(props: Omit<Parameters<typeof DiffPane>[0], "diff"> & { diff: Revi
       renderZone={props.renderZone}
       onAnchor={props.onAnchor}
       onSelection={props.onSelection}
-      onFirstLine={props.onFirstLine}
       {...(props.onOpenAt && f.status !== "deleted" ? { onGoToLine: (line: number) => props.onOpenAt?.(line) } : {})}
     />
   );

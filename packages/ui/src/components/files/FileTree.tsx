@@ -5,6 +5,7 @@ import { forwardRef, lazy, memo, Suspense, useCallback, useEffect, useImperative
 import { cn } from "../../lib/cn";
 import { ancestors, fileKey, fileName, parentPath } from "../../lib/files";
 import { useCompactFolders } from "../../lib/compactFoldersPref";
+import { useFileIconTheme } from "../../lib/fileIconsPref";
 import { TreeScrollController } from "../../lib/treeScroll";
 import { useApp } from "../../state/app";
 import { useCode } from "../../state/code";
@@ -22,8 +23,31 @@ import { Presence } from "../primitives/Presence";
 import { chatMention } from "../../lib/chatMention";
 import { addToChat, canAddToChat } from "../../state/chatInsert";
 import type { FileTreeAction } from "./FileTreeActionsDialog";
+import type { VscodeIconsApi } from "./vscodeIcons";
 
 const FileTreeActionsDialog = lazy(() => import("./FileTreeActionsDialog"));
+
+let loadedVscodeIcons: VscodeIconsApi | null = null;
+let vscodeIconsPromise: Promise<VscodeIconsApi> | null = null;
+
+function useVscodeIcons(enabled: boolean): VscodeIconsApi | null {
+  const [api, setApi] = useState<VscodeIconsApi | null>(() => loadedVscodeIcons);
+  useEffect(() => {
+    if (!enabled || loadedVscodeIcons) return;
+    let alive = true;
+    vscodeIconsPromise ??= import("./vscodeIcons").then((m) => {
+      loadedVscodeIcons = m.vscodeIconsApi;
+      return m.vscodeIconsApi;
+    });
+    void vscodeIconsPromise.then((resolved) => {
+      if (alive) setApi(resolved);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [enabled]);
+  return enabled ? (api ?? loadedVscodeIcons) : null;
+}
 
 /**
  * Indent per level (polish step 4, E2: was 16). A root folder is the tree's section head and its entries start on its own
@@ -64,6 +88,7 @@ const TreeNodeRow = memo(function TreeNodeRow({
   roots,
   comments,
   query,
+  vscodeIcons,
   setRowRef,
   onFocusRow,
   onKeyDownRow,
@@ -78,6 +103,7 @@ const TreeNodeRow = memo(function TreeNodeRow({
   roots: readonly string[];
   comments: number;
   query: string;
+  vscodeIcons: VscodeIconsApi | null;
   setRowRef: (id: string, el: HTMLDivElement | null) => void;
   onFocusRow: (id: string) => void;
   onKeyDownRow: (e: KeyboardEvent, row: Row) => void;
@@ -122,16 +148,29 @@ const TreeNodeRow = memo(function TreeNodeRow({
       )}
     >
       <Indent px={indent} />
-      {/* One glyph column (decided once, v6.2): a folder's chevron or a file's type glyph, so every label of a
-          level starts on one edge. */}
-      <span aria-hidden className="grid size-6 shrink-0 place-items-center text-fg-3">
-        {Icon ? (
-          <Glyph icon={Icon} size={14} />
+      {vscodeIcons ? (
+        row.kind === "dir" ? (
+          <span aria-hidden className="flex shrink-0 items-center gap-0.5 text-fg-3">
+            <img src={vscodeIcons.folderIcon(row.name, row.expanded)} alt="" className="size-4 shrink-0" draggable={false} />
+            <Glyph icon={ChevronRight} size={12} className={cn("transition-[rotate] duration-base", row.expanded && "rotate-90")} />
+          </span>
         ) : (
-          <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-base", row.kind === "dir" && row.expanded && "rotate-90")} />
-        )}
-      </span>
-      <span data-label className={cn("ml-1 min-w-0 truncate", isRoot ? "text-xs font-medium text-fg-3" : "text-fg")} title={chain ? row.title : row.name}>
+          <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+            <img src={vscodeIcons.fileIcon(row.name)} alt="" className="size-4 shrink-0" draggable={false} />
+          </span>
+        )
+      ) : (
+        /* One glyph column (decided once, v6.2): a folder's chevron or a file's type glyph, so every label of a
+           level starts on one edge. */
+        <span aria-hidden className="grid size-6 shrink-0 place-items-center text-fg-3">
+          {Icon ? (
+            <Glyph icon={Icon} size={14} />
+          ) : (
+            <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-base", row.kind === "dir" && row.expanded && "rotate-90")} />
+          )}
+        </span>
+      )}
+      <span data-label className={cn("ml-1.5 min-w-0 truncate", isRoot ? "text-xs font-medium text-fg-3" : "text-fg")} title={chain ? row.title : row.name}>
         {/* A root keeps what tells it from the other roots; a compact chain ("com/wsgc/…/config") keeps its last folder. */}
         {isRoot ? (
           <MiddleText text={row.name} split={distinctSplit(row.name, roots)} />
@@ -191,6 +230,8 @@ export const FileTree = forwardRef<
   }, [query, loadedFiles]);
 
   const compact = useCompactFolders();
+  const iconTheme = useFileIconTheme();
+  const vscodeIcons = useVscodeIcons(iconTheme === "vscode");
   const allRows = useMemo(() => treeRows(folders, dirs, isExpanded, only, compact), [folders, dirs, isExpanded, only, compact]);
   // Loading rows appear only for slow folders (after 200ms) and then stay ≥300ms.
   const slow = useDelayedLoading(allRows.some((r) => r.kind === "loading"));
@@ -350,6 +391,7 @@ export const FileTree = forwardRef<
             roots={roots}
             comments={row.kind === "file" ? (counts?.get(row.id) ?? 0) : 0}
             query={query}
+            vscodeIcons={vscodeIcons}
             setRowRef={setRowRef}
             onFocusRow={setFocusId}
             onKeyDownRow={onKeyDown}

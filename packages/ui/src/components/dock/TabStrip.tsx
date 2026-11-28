@@ -16,6 +16,7 @@ import { SIDE_PAD, useChrome } from "../../state/chrome";
 import { ProjectActions, ProjectTeamLine } from "../shell/ProjectBar";
 import { endPlan, fitStrip, slotShift, TAB_MIN, tabFloor } from "../../state/workspace/tabStrip";
 import { MOD, useWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { useTabPickerKey } from "../../state/workspace/pickerStore";
 import { Presence } from "../primitives/Presence";
 import { dragStep, pressTab, takeSettle, useDrag } from "./drag";
 import { tabButton } from "../../state/workspace/ids";
@@ -188,7 +189,8 @@ export function TabStrip(props: {
   // Decision 90: the review's own header carries the commands (run in its worktree), so the top row does not repeat them.
   const reviewActive = ws.layout.groups.some((g) => g.active === toolTab("review"));
   const listWidth = room > 0 ? room - reserved - (overflow ? allRoom : 0) : 0;
-  const pickerHere = ws.picker !== null && ws.picker.group === props.groupId;
+  const pickerKey = useTabPickerKey(projectId, props.groupId);
+  const pickerHere = pickerKey !== null;
   const button = (tab: TabId) => (list.current ? tabButton(list.current, tab) : null);
 
   /* Overflow: fade whichever end has more tabs, and keep the selected tab in view. */
@@ -365,7 +367,7 @@ export function TabStrip(props: {
       <Presence show={pickerHere} exitMs={0}>
         {pickerHere && (
           <Suspense fallback={null}>
-            <TabPicker key={ws.picker?.n} anchor={plus} onClose={ws.closePicker} />
+            <TabPicker key={pickerKey} anchor={plus} onClose={ws.closePicker} />
           </Suspense>
         )}
       </Presence>

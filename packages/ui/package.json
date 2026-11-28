@@ -21,6 +21,7 @@
     "format": "prettier --write --ignore-path ../../.prettierignore \"src/**/*.{ts,tsx,css}\" \"*.json\""
   },
   "dependencies": {
+    "@iconify-json/vscode-icons": "^1.2.100",
     "@octo/agent-client": "workspace:*",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
@@ -28,7 +29,8 @@
     "lucide-react": "^1.71.0",
     "monaco-editor": "0.57.0",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "vscode-icons-js": "^11.6.1"
   },
   "peerDependencies": {
     "react": "^19.1.0",
