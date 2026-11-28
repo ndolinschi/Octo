@@ -12,7 +12,7 @@ import { useSessionScope } from "../../state/session";
 import { sessionTab } from "../../state/workspace/layout";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { clearDraft, stashCrossProjectDraft } from "./composerDraft";
-import { findReusableSharedSession, isUnusedEmptyMain, sortProjectsByRecent, type WorkspaceMode } from "./composerProjectBar";
+import { findReusableSharedSession, isUnusedEmptyMain, sortProjectsByRecent, type WorkspaceMode } from "./projectBarState";
 import { useBranchHead } from "./useBranchHead";
 import type { ComposerDraft } from "./useComposerText";
 
