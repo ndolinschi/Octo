@@ -239,7 +239,7 @@ async function openTool(page, label) {
   const plus = page.locator("[data-tab-plus]:visible").last();
   const more = page.locator("[data-phone-header]").getByRole("button", { name: "More" }).first();
   if (!(await plus.count()) && (await more.isVisible().catch(() => false))) {
-    // The phone layout (a window under 480px is one, touch or not): the tool opens from the "⋯" sheet, as a person would.
+    // The phone layout (a window at or under 414px is one, touch or not): the tool opens from the "⋯" sheet, as a person would.
     const name = PHONE_PANELS[TOOL_ROWS[label] ?? label];
     if (!name) skip(`"${label}" has no row on the phone's "⋯" sheet`);
     await more.click({ timeout: T });
@@ -1121,7 +1121,7 @@ const STATES = [
 function PHONE_STATES() {
   const vps = [
     { width: 390, height: 844, touch: true },
-    { width: 430, height: 932, touch: true },
+    { width: 414, height: 896, touch: true },
     { width: 360, height: 640, touch: true },
   ];
   const session = async (page) => {
@@ -1772,8 +1772,8 @@ async function main() {
               (document.querySelector("[data-column]")?.closest(".overflow-y-auto") ?? document.body).appendChild(t);
             });
           }
-          // A window under 480px is the phone layout whether or not it is a touch context (`lib/phone.ts`).
-          const rows = vp.touch || vp.width < 480 ? PHONE_ROW_HEIGHTS : ROW_HEIGHTS;
+          // A window at or below 414px is the phone layout whether or not it is a touch context (`lib/phone.ts`).
+          const rows = vp.touch || vp.width <= 414 ? PHONE_ROW_HEIGHTS : ROW_HEIGHTS;
           const res = await page.evaluate(auditInPage, { SCALE, ROW_HEIGHTS: rows, TOL, ICON_GAP_MIN, allow: ALLOW, rules: pass.rules });
           merged.violations.push(...res.violations);
           for (const [k, v] of Object.entries(res.suppressed)) merged.suppressed[k] = (merged.suppressed[k] ?? 0) + v;

@@ -51,11 +51,11 @@ export async function launchBrowser(options = {}) {
 }
 
 /**
- * `browser.newContext(options)`. In WebKit a phone-wide viewport (≤ 480) is a phone: touch and a mobile viewport, as a real
+ * `browser.newContext(options)`. In WebKit a phone-wide viewport (≤ 414) is a phone: touch and a mobile viewport, as a real
  * one (`PHONE`), unless the script says otherwise. An engine without `isMobile` gets the same context without it.
  */
 export async function newContext(browser, options = {}) {
-  if (BROWSER === "webkit" && options.viewport && options.viewport.width <= 480 && options.hasTouch === undefined) {
+  if (BROWSER === "webkit" && options.viewport && options.viewport.width <= 414 && options.hasTouch === undefined) {
     options = { ...options, hasTouch: true, isMobile: true };
   }
   try {

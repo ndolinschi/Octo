@@ -1,7 +1,7 @@
 import { Check, FileDiff } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { requestChangesFocus } from "../../lib/changesFocus";
-import { filesChanged, rowKey } from "../../lib/v7/changes";
+import { filesChanged } from "../../lib/v7/changes";
 import { useApp } from "../../state/app";
 import { keepAllFiles, keptChangesSnapshot, subscribeKeptChanges } from "../../state/keptChanges";
 import { useProject } from "../../state/project";
@@ -9,13 +9,13 @@ import { loadTurnChanges, turnChangesEntry } from "../../state/turnChanges";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
-
-const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1) || p;
+import { summarizePendingChanges } from "./pendingChanges";
 
 /**
- * Sticky Cursor-style review bar directly above the composer when the latest turn has unreviewed file changes:
+ * Sticky review bar directly above `.octo-composer` when the latest turn has unreviewed file changes:
  * shows file count, `+a −r` totals, top filenames, "Review" (opens the Changes tab on that turn), and "Keep"
- * (marks the turn's files reviewed/kept and dismisses the bar). Lazy-loaded so it adds nothing to the entry bundle.
+ * (marks the turn's files reviewed/kept and dismisses the bar). Matches `.octo-composer`'s `12px` radius and
+ * hairline outline with `36px` (`h-strip`) height and concentric `6px` insets around the `24px` action buttons.
  */
 export const PendingChangesBar = memo(function PendingChangesBar() {
   const { bridge } = useApp();
@@ -44,34 +44,33 @@ export const PendingChangesBar = memo(function PendingChangesBar() {
   );
 
   // `listChanges` returns turns newest first. Show the bar only when the newest turn has files not yet kept.
-  const latest = turns?.[0] ?? null;
-  if (!latest || latest.files.length === 0) return null;
-  const keys = latest.files.map((f) => rowKey(latest.turn_id, f));
-  const firstIdx = keys.findIndex((k) => !kept.has(k));
-  if (firstIdx < 0) return null;
+  const summary = useMemo(() => summarizePendingChanges(turns, kept), [turns, kept]);
+  if (!summary) return null;
 
-  const canReview = Boolean(ws && ws.toolEnabled("changes"));
-  const preview = latest.files.slice(0, 2).map((f) => basename(f.path));
-  const extra = latest.files.length - preview.length;
-  const firstUnkept = latest.files[firstIdx];
+  const canReview = Boolean(ws?.toolEnabled("changes"));
 
   return (
     <div
       data-pending-changes-bar
       role="region"
       aria-label="Unreviewed file changes"
-      className="mb-1.5 flex h-ctl-md items-center gap-2 rounded-lg border border-line bg-raised px-3 text-xs text-fg-2"
+      className="mb-2 flex min-h-strip items-center gap-2 rounded-xl bg-raised pr-1.5 pl-3 text-xs text-fg-2 outline-1 -outline-offset-1 outline-line phone:h-auto phone:py-1"
     >
       <Glyph icon={FileDiff} size={14} className="shrink-0 text-fg-3" />
-      <span className="shrink-0 font-medium text-fg">{filesChanged(latest.files.length)}</span>
+      <span className="shrink-0 font-medium text-fg">{filesChanged(summary.fileCount)}</span>
       <span className="inline-flex shrink-0 items-center gap-1.5 tabular-nums">
-        {(latest.added > 0 || latest.removed === 0) && <span className="text-ok">+{latest.added}</span>}
-        {latest.removed > 0 && <span className="text-err">−{latest.removed}</span>}
+        {(summary.added > 0 || summary.removed === 0) && <span className="text-ok">+{summary.added}</span>}
+        {summary.removed > 0 && <span className="text-err">−{summary.removed}</span>}
       </span>
-      <span className="min-w-0 flex-1 truncate font-mono text-fg-3 @max-[520px]/conv:hidden">
-        {preview.join(" · ")}
-        {extra > 0 ? ` +${extra}` : ""}
-      </span>
+      {summary.preview.length > 0 && (
+        <>
+          <span aria-hidden className="h-3 w-px shrink-0 bg-line @max-[520px]/conv:hidden" />
+          <span className="min-w-0 flex-1 truncate font-mono text-fg-3 @max-[520px]/conv:hidden">
+            {summary.preview.join(" · ")}
+            {summary.extra > 0 ? ` +${summary.extra}` : ""}
+          </span>
+        </>
+      )}
       <span className="ml-auto flex shrink-0 items-center gap-1">
         {canReview && (
           <Button
@@ -80,8 +79,8 @@ export const PendingChangesBar = memo(function PendingChangesBar() {
             data-warm="tool:changes"
             onClick={() => {
               requestChangesFocus({
-                turnId: latest.turn_id,
-                ...(firstUnkept ? { folder: firstUnkept.folder, path: firstUnkept.path } : {}),
+                turnId: summary.turnId,
+                ...(summary.firstUnkept ? { folder: summary.firstUnkept.folder, path: summary.firstUnkept.path } : {}),
               });
               ws?.openTool("changes");
             }}
@@ -89,7 +88,13 @@ export const PendingChangesBar = memo(function PendingChangesBar() {
             Review
           </Button>
         )}
-        <Button variant="secondary" size="xs" icon={Check} title="Mark these changes reviewed and keep them" onClick={() => keepAllFiles(projectId, keys)}>
+        <Button
+          variant="secondary"
+          size="xs"
+          icon={Check}
+          title="Mark these changes reviewed and keep them"
+          onClick={() => keepAllFiles(projectId, summary.keys)}
+        >
           Keep
         </Button>
       </span>

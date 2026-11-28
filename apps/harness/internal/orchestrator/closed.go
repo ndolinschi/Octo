@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
@@ -37,6 +38,26 @@ func closedWhy(e projectstore.TurnEnding) string {
 		return "the person stopped it before any answer"
 	}
 	return "it failed before any answer"
+}
+
+// partialEndedWhy describes why a turn that already produced partial work did not complete.
+func partialEndedWhy(e projectstore.TurnEnding) string {
+	if e.Interrupted {
+		return "interrupted when Octo's local service restarted"
+	}
+	return "failed mid-turn"
+}
+
+// retryContinuationNote tells the model or ACP agent that a repeated request after a
+// partially-completed failed turn is a Retry to continue, not a brand-new request.
+func retryContinuationNote(e projectstore.TurnEnding) string {
+	why := "failed before finishing"
+	if e.Interrupted {
+		why = "was interrupted before finishing"
+	}
+	return "[Octo: the previous attempt at this request " + why + " after making partial progress. " +
+		"The user is retrying it — do not start over, re-ask already answered questions, or redo work already completed in this conversation or workspace; " +
+		"check what was already done and continue from where the previous attempt stopped.]"
 }
 
 // unfinishedTurns is projectstore.UnfinishedTurns; a failure to read counts as none (the context is built as before).
@@ -85,4 +106,52 @@ func unansweredBefore(msgs []projectstore.Message, last int, ended map[int64]pro
 		return "", projectstore.TurnEnding{}, false
 	}
 	return "", projectstore.TurnEnding{}, false
+}
+
+// partialFailureBefore reports the ending of the request immediately before msgs[last]
+// when that turn failed or was interrupted after producing assistant output.
+func partialFailureBefore(msgs []projectstore.Message, last int, ended map[int64]projectstore.TurnEnding) (int, projectstore.TurnEnding, bool) {
+	if len(ended) == 0 || last <= 0 || last >= len(msgs) {
+		return -1, projectstore.TurnEnding{}, false
+	}
+	sawAssistant := false
+	for j := last - 1; j >= 0; j-- {
+		m := msgs[j]
+		if m.Role == "assistant" {
+			sawAssistant = true
+			continue
+		}
+		if m.Role != "user" || m.Command == ReportCommand || messageText(m) == "" {
+			continue
+		}
+		if !sawAssistant {
+			return -1, projectstore.TurnEnding{}, false
+		}
+		e, ok := ended[m.ID]
+		if ok && (e.Status == projectstore.ExchangeFailed || e.Interrupted) {
+			return j, e, true
+		}
+		return -1, projectstore.TurnEnding{}, false
+	}
+	return -1, projectstore.TurnEnding{}, false
+}
+
+// failedRetryBefore reports whether msgs[last] repeats the immediately preceding
+// user request whose turn failed or was interrupted after producing partial work.
+func failedRetryBefore(msgs []projectstore.Message, last int, ended map[int64]projectstore.TurnEnding) (projectstore.TurnEnding, bool) {
+	if last <= 0 || last >= len(msgs) || msgs[last].Command != "" {
+		return projectstore.TurnEnding{}, false
+	}
+	cur := strings.TrimSpace(messageText(msgs[last]))
+	if cur == "" {
+		return projectstore.TurnEnding{}, false
+	}
+	prevIdx, e, ok := partialFailureBefore(msgs, last, ended)
+	if !ok {
+		return projectstore.TurnEnding{}, false
+	}
+	if strings.TrimSpace(messageText(msgs[prevIdx])) != cur {
+		return projectstore.TurnEnding{}, false
+	}
+	return e, true
 }

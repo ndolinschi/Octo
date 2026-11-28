@@ -1,15 +1,23 @@
+import { RefreshCw } from "lucide-react";
+import { useLatest } from "../../lib/hooks";
 import { usePhone } from "../../lib/phone";
 import { quietFocus } from "../../lib/quietFocus";
 import { memo, useCallback, useDeferredValue, useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { cn } from "../../lib/cn";
 import { useCode } from "../../state/code";
+import { planRefreshDirs } from "../../state/dirCache";
 import { TREE_DEFAULT, TREE_MAX, TREE_MIN, useFileFilter, useFileView } from "../../state/fileView";
+import { useProject } from "../../state/project";
 import type { TabId } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { IconButton } from "../primitives/IconButton";
 import { PanelFilters } from "../primitives/Panel";
 import { ResizeHandle } from "../primitives/ResizeHandle";
 import { SearchField } from "../primitives/SearchField";
 import { FileTree, type FileTreeHandle } from "./FileTree";
+
+/** Minimum gap between automatic background refreshes (visibility, focus, turn/command end) so rapid switches stay quiet. */
+const AUTO_REFRESH_MS = 1500;
 
 /**
  * The file view's tree (decision 94a): a column at the group's left edge with a hairline on its right edge, or the whole
@@ -31,19 +39,86 @@ export const TreeColumn = memo(function TreeColumn(props: {
 }) {
   const code = useCode();
   const fv = useFileView();
+  const { onEvent, live } = useProject();
   const { filter, setFilter } = useFileFilter();
   const deferredFilter = useDeferredValue(filter);
   const ws = useWorkspace();
   const aside = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const tree = useRef<FileTreeHandle>(null);
-  const { indexFiles, fileIndex } = code;
+  const { indexFiles, fileIndex, evictDirs, reloadDir } = code;
+  const codeRef = useLatest(code);
   const { width, page, shown } = props;
   const active = filter.trim().length > 0;
+  const visible = shown && ws.isVisible(props.tab);
+
+  const lastRefresh = useRef(0);
+  const triggerRefresh = useCallback(
+    (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastRefresh.current < AUTO_REFRESH_MS) return;
+      lastRefresh.current = now;
+      const { reload, evict } = planRefreshDirs(codeRef.current.dirs, codeRef.current.isExpanded);
+      evictDirs(evict);
+      for (const d of reload) reloadDir(d.folder, d.path, true);
+      if (active) indexFiles(true);
+    },
+    [codeRef, evictDirs, reloadDir, indexFiles, active],
+  );
 
   useEffect(() => {
     if (active) indexFiles();
   }, [active, indexFiles]);
+
+  // Refresh expanded directories when returning to the Files tab (skips initial mount while roots load via ensureDir).
+  const wasVisible = useRef(visible);
+  useEffect(() => {
+    if (visible && !wasVisible.current) triggerRefresh();
+    wasVisible.current = visible;
+  }, [visible, triggerRefresh]);
+
+  // Refresh when the window regains focus or returns from background so external/terminal additions appear without clicking.
+  useEffect(() => {
+    if (!visible) return;
+    const onFocus = () => triggerRefresh();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") triggerRefresh();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [visible, triggerRefresh]);
+
+  // Refresh after an SSE reconnect, or after an agent turn / run command finishes; re-index live when filtering.
+  const prevLive = useRef(live);
+  useEffect(() => {
+    if (prevLive.current !== "live" && live === "live" && visible) triggerRefresh(true);
+    prevLive.current = live;
+  }, [live, visible, triggerRefresh]);
+
+  useEffect(() => {
+    let timer = 0;
+    const unsub = onEvent((event) => {
+      if (event.type === "turn.finished" || event.type === "command.finished") {
+        if (visible) triggerRefresh();
+        return;
+      }
+      if (event.type === "file.changed" && active && visible) {
+        if (timer) window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          timer = 0;
+          indexFiles(true);
+        }, 250);
+      }
+    });
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      unsub();
+    };
+  }, [onEvent, visible, active, triggerRefresh, indexFiles]);
 
   // "Show files" (header) and "Reveal in tree" land in the visible view's filter input — also when the
   // request is what mounted this column (the Files tab opening, the column being shown).
@@ -51,8 +126,8 @@ export const TreeColumn = memo(function TreeColumn(props: {
   const { takeFocusRequest } = fv;
   const phone = usePhone();
   useEffect(() => {
-    if (shown && ws.isVisible(props.tab) && takeFocusRequest() && !phone) quietFocus(input.current);
-  }, [fv.focusTreeTick, ws, props.tab, takeFocusRequest, shown, phone]);
+    if (visible && takeFocusRequest() && !phone) quietFocus(input.current);
+  }, [fv.focusTreeTick, takeFocusRequest, visible, phone]);
 
   const onInputKey = useCallback((e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
@@ -83,6 +158,7 @@ export const TreeColumn = memo(function TreeColumn(props: {
           inputProps={{ spellCheck: false, autoComplete: "off", "aria-controls": `${props.id}-list` }}
           className="min-w-0 flex-1"
         />
+        <IconButton icon={RefreshCw} label="Refresh files" size="sm" onClick={() => triggerRefresh(true)} className="shrink-0" />
       </PanelFilters>
       <div id={`${props.id}-list`} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4 [overflow-anchor:none]">
         {active && fileIndex.status === "done" && fileIndex.partial && (

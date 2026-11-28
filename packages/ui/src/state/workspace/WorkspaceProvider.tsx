@@ -739,8 +739,9 @@ export function WorkspaceProvider({
       canDrop: (tab, target) => {
         const from = L.groupOf(layout, tab);
         if (!from) return false;
-        if (target.kind === "into") return target.group !== from.id;
         if (target.kind === "strip") return true;
+        if (narrow) return false;
+        if (target.kind === "into") return target.group !== from.id;
         return (
           L.canSplit(layout, tab, target.group) &&
           (from.tabs.length === 1 && from.id !== target.group ? true : widthRef.current >= dockNeeds([...layoutRef.current.groups, { tabs: [] }]))
@@ -750,11 +751,17 @@ export function WorkspaceProvider({
       drop: (tab, target) => {
         const current = layoutRef.current;
         if (target.kind === "strip") {
-          // C2: the drag measured the shown tabs only; hidden ones ("All tabs") keep their places.
-          const shown = shownByStrip.current.get(target.group);
-          const groupTabs = current.groups.find((g) => g.id === target.group)?.tabs ?? [];
-          const index = shown ? shownToLayoutIndex(shown, groupTabs, target.index) : target.index;
-          commit(L.move(current, tab, target.group, index), { focusTab: tab });
+          if (narrowRef.current) {
+            commit(L.move(current, tab, target.group, target.index), { focusTab: tab });
+          } else {
+            // C2: the drag measured the shown tabs only; hidden ones ("All tabs") keep their places.
+            const shown = shownByStrip.current.get(target.group);
+            const groupTabs = current.groups.find((g) => g.id === target.group)?.tabs ?? [];
+            const index = shown ? shownToLayoutIndex(shown, groupTabs, target.index) : target.index;
+            commit(L.move(current, tab, target.group, index), { focusTab: tab });
+          }
+        } else if (narrowRef.current) {
+          return;
         } else if (target.kind === "into") commit(L.move(current, tab, target.group), { focusTab: tab });
         else commit(L.split(current, tab, target.group, target.side), { focusTab: tab });
         // The drag ends after the move: if that left focus on nothing, the moved tab's button takes it.

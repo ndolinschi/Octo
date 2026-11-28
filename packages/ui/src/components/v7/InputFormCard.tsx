@@ -77,23 +77,20 @@ function SchemaCard(props: InputFormCardProps & { form: NormalForm }) {
         <div className="flex flex-col gap-4">
           {request.reason && <p className="[overflow-wrap:anywhere] text-fg-2">{request.reason}</p>}
           <SchemaForm form={form} state={f} idPrefix={`v7-${request.id}`} />
-          <SentNote secret={hasSecret} />
+          {hasSecret && <SecretNote />}
         </div>
       </RequestCard>
     </form>
   );
 }
 
-function SentNote({ secret }: { secret: boolean }) {
+function SecretNote() {
   return (
     <p className="flex items-start gap-2 text-xs text-fg-3">
       <span aria-hidden className="grid h-4 shrink-0 place-items-center">
         <Glyph icon={Lock} size={14} />
       </span>
-      <span>
-        Sent to Octo's local service, not to the model.
-        {secret && " Secrets are stored for this project; the agent only learns that they were provided."}
-      </span>
+      <span>Secrets are stored for this project; the agent only learns that they were provided.</span>
     </p>
   );
 }

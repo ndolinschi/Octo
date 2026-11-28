@@ -5,9 +5,9 @@ import type { SchemaField } from "./schema";
  * per-form cases.
  */
 export type Widget =
-  "text" | "email" | "url" | "path" | "textarea" | "password" | "date" | "datetime" | "number" | "checkbox" | "segments" | "select" | "checkboxes";
+  "text" | "email" | "url" | "path" | "textarea" | "password" | "date" | "datetime" | "number" | "checkbox" | "segments" | "choices" | "select" | "checkboxes";
 
-/** A one-of with at most this many choices, each at most `SEGMENT_LABEL_MAX` characters, is a row of segments. */
+/** A one-of with at most this many choices renders inline as `segments` when labels are short, else as stacked `choices` buttons. */
 export const SEGMENTS_MAX = 4;
 export const SEGMENT_LABEL_MAX = 16;
 
@@ -24,7 +24,12 @@ export function widgetFor(f: SchemaField): Widget {
       // Spec §A.4 asks for a multi-select menu past 6 choices; v1 keeps a checkbox list for any count (no multi-select primitive yet).
       return "checkboxes";
     case "string": {
-      if (f.choices) return f.choices.length <= SEGMENTS_MAX && f.choices.every((c) => Array.from(c.title).length <= SEGMENT_LABEL_MAX) ? "segments" : "select";
+      if (f.choices) {
+        if (f.choices.length <= SEGMENTS_MAX) {
+          return f.choices.every((c) => Array.from(c.title).length <= SEGMENT_LABEL_MAX) ? "segments" : "choices";
+        }
+        return "select";
+      }
       if (p.format === "password") return "password";
       if (p.format === "date") return "date";
       if (p.format === "date-time") return "datetime";

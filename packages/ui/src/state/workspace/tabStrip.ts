@@ -265,3 +265,37 @@ export function endPlan(i: { room: number; tabs: number; agents: number; agentsC
   const base = i.room - (i.agentsCompact ? i.agents : 0);
   return { agentsCompact: i.agents > 0 && need > base };
 }
+
+/**
+ * Resolves a drop at `targetIndex` (pre-removal index in `shown`, or in `allTabs` when nothing is hidden) inside the
+ * combined single strip of narrow mode (`ws.narrow`) to the destination `(groupId, index)` expected by `layout.move`.
+ */
+export function narrowStripDropTarget<T>(
+  groups: readonly { id: string; tabs: readonly T[] }[],
+  tab: T,
+  shown: readonly T[] | undefined,
+  targetIndex: number,
+): { groupId: string; index: number } | null {
+  if (groups.length === 0) return null;
+  const all = groups.flatMap((g) => g.tabs);
+  const fromAll = all.indexOf(tab);
+  if (fromAll < 0) return null;
+  const preIdx = shown ? shownToLayoutIndex(shown, all, targetIndex) : targetIndex;
+  const afterIdx = Math.max(0, Math.min(all.length - 1, preIdx > fromAll ? preIdx - 1 : preIdx));
+  let offset = 0;
+  for (let i = 0; i < groups.length; i++) {
+    const g = groups[i];
+    if (!g) continue;
+    const rem = g.tabs.filter((t) => t !== tab);
+    if (afterIdx <= offset + rem.length || i === groups.length - 1) {
+      const inRem = Math.max(0, Math.min(rem.length, afterIdx - offset));
+      const fromInGroup = g.tabs.indexOf(tab);
+      if (fromInGroup >= 0) {
+        return { groupId: g.id, index: inRem > fromInGroup ? inRem + 1 : inRem };
+      }
+      return { groupId: g.id, index: inRem };
+    }
+    offset += rem.length;
+  }
+  return null;
+}

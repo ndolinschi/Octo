@@ -1,4 +1,4 @@
-import { ArrowUp, MessageSquare, Sparkles, X } from "lucide-react";
+import { ArrowUp, MessageSquare, Plus, Sparkles, X } from "lucide-react";
 import type * as Monaco from "monaco-editor";
 import { memo, useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { chatMention, selectedLines } from "../../../lib/chatMention";
@@ -21,7 +21,7 @@ type InlineEditTarget = {
   anchor: Anchor;
 };
 
-const BAR_HEIGHT = 30;
+const BAR_HEIGHT = 32;
 const INLINE_WIDTH = 440;
 const INLINE_HEIGHT = 76;
 
@@ -238,18 +238,19 @@ export const EditorActionLayer = memo(function EditorActionLayer(props: {
           aria-label="Selection actions"
           style={{ top: selectionBar.anchor.top, left: selectionBar.anchor.left }}
           onMouseDown={(e) => e.preventDefault()}
-          className="border-line-2 absolute z-20 flex items-center gap-0.5 rounded-md border bg-raised px-1 py-0.5 shadow-pop"
+          className="octo-overlay absolute z-20 flex items-center gap-0.5 rounded-md bg-overlay p-1 shadow-pop forced-colors:border forced-colors:border-[CanvasText]"
         >
           {canChat && (
             <Button
               variant="quiet"
               size="xs"
+              icon={Plus}
               title={`Add ${selectionBar.mention} to chat (${MAC ? "⌘L" : "Ctrl+L"})`}
               onClick={sendSelectionToChat}
               className="gap-1.5 text-fg-2 hover:text-fg"
             >
               <span>Add to chat</span>
-              <span className="text-2xs font-mono text-fg-3">{MAC ? "⌘L" : "Ctrl+L"}</span>
+              <kbd className="font-sans text-xs text-fg-3">{MAC ? "⌘L" : "Ctrl+L"}</kbd>
             </Button>
           )}
           {canEdit && (
@@ -259,14 +260,24 @@ export const EditorActionLayer = memo(function EditorActionLayer(props: {
               icon={Sparkles}
               title={`Edit ${selectionBar.mention} with agent (${MAC ? "⌘I" : "Ctrl+I"})`}
               onClick={openInlineEdit}
-              className="gap-1 text-fg-2 hover:text-fg"
+              className="gap-1.5 text-fg-2 hover:text-fg"
             >
               <span>Edit</span>
-              <span className="text-2xs font-mono text-fg-3">{MAC ? "⌘I" : "Ctrl+I"}</span>
+              <kbd className="font-sans text-xs text-fg-3">{MAC ? "⌘I" : "Ctrl+I"}</kbd>
             </Button>
           )}
           {canComment && (
-            <IconButton icon={MessageSquare} size="xs" label="Comment on selected lines" shortcut={MAC ? "⌘⌥C" : "Ctrl+Alt+C"} onClick={runComment} />
+            <>
+              <span aria-hidden className="mx-0.5 h-3 w-px bg-line" />
+              <IconButton
+                icon={MessageSquare}
+                size="xs"
+                label="Comment on selected lines"
+                shortcut={MAC ? "⌘⌥C" : "Ctrl+Alt+C"}
+                onClick={runComment}
+                className="text-fg-2"
+              />
+            </>
           )}
         </div>
       )}
@@ -277,7 +288,7 @@ export const EditorActionLayer = memo(function EditorActionLayer(props: {
           aria-label="Inline edit with agent"
           onSubmit={submitInline}
           style={{ top: inlineEdit.anchor.top, left: inlineEdit.anchor.left, width: "min(440px, calc(100% - 16px))" }}
-          className="border-line-2 absolute z-30 flex flex-col gap-1.5 rounded-lg border bg-raised p-2 shadow-pop"
+          className="octo-overlay absolute z-30 flex flex-col gap-2 rounded-xl bg-overlay p-2 shadow-pop forced-colors:border forced-colors:border-[CanvasText]"
         >
           <div className="flex items-center justify-between gap-2">
             <span className="flex min-w-0 items-center gap-1.5 text-xs text-fg-2">

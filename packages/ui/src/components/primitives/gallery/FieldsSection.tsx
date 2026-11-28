@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CONTROL_SIZES } from "../../../lib/controls";
 import { Checkbox } from "../Checkbox";
+import { ChoiceGroup } from "../ChoiceGroup";
 import { Field } from "../Field";
 import { KeyHint } from "../KeyHint";
 import { SearchField } from "../SearchField";
@@ -18,6 +19,10 @@ const OPTIONS = [
 ];
 
 const REGIONS = ["eu-west", "us-east", "ap-south"].map((id) => ({ id, label: id }));
+const REVIEW_CHOICES = [
+  { id: "approved", label: "Approved — proceed to the implementation plan" },
+  { id: "changes", label: "Changes needed (I'll describe them)" },
+];
 
 export function FieldsSection() {
   const [checked, setChecked] = useState(true);
@@ -27,6 +32,7 @@ export function FieldsSection() {
   const [q2, setQ2] = useState("memory");
   const [seg, setSeg] = useState("us-east");
   const [none, setNone] = useState("");
+  const [choice, setChoice] = useState("approved");
   return (
     <Section id="fields" title="Fields" note="One focus indicator for every field: the border turns fg and the shadow ring is off. Click into each to see it.">
       <Variants label="TextField sizes (framed), invalid, disabled, leading sign, bare">
@@ -83,12 +89,19 @@ export function FieldsSection() {
           <Select value={pick} onChange={setPick} options={OPTIONS} label="Tier" disabled />
         </W>
       </Variants>
-      <Variants label="Segmented (C4: a recessed track; 24px segments, the track is their tint): chosen, nothing chosen yet, in a card">
+      <Variants label="Segmented (C4: a recessed track; sm 28px and xs 24px): chosen, xs, disabled, nothing chosen yet, in a card">
         <Segmented<string> label="Region" options={REGIONS} value={seg} onChange={setSeg} />
+        <Segmented<string> size="xs" label="Region compact" options={REGIONS} value={seg} onChange={setSeg} />
+        <Segmented<string> size="xs" disabled label="Region disabled" options={REGIONS} value={seg} onChange={setSeg} />
         <Segmented<string> label="Region, none chosen" options={REGIONS} value={none} onChange={setNone} />
         <span className="octo-in-card rounded-md bg-raised p-card">
           <Segmented<string> label="Region in a card" options={REGIONS} value={seg} onChange={setSeg} />
         </span>
+      </Variants>
+      <Variants label="ChoiceGroup (stacked exclusive options for 2–4 descriptive choices)">
+        <div className="w-full max-w-md">
+          <ChoiceGroup label="Spec review" options={REVIEW_CHOICES} value={choice} onChange={setChoice} />
+        </div>
       </Variants>
       <Variants label="Checkbox: off, on, indeterminate, description, disabled; Switch: on, off, disabled">
         <Checkbox checked={false} onChange={() => undefined} label="Off" />

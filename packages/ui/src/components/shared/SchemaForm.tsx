@@ -5,6 +5,7 @@ import type { Draft } from "../../lib/schemaForm/draft";
 import type { NormalForm, SchemaField } from "../../lib/schemaForm/schema";
 import { widgetFor } from "../../lib/schemaForm/widgets";
 import { Checkbox } from "../primitives/Checkbox";
+import { ChoiceGroup } from "../primitives/ChoiceGroup";
 import { IconButton } from "../primitives/IconButton";
 import { Segmented } from "../primitives/Segmented";
 import { Select } from "../primitives/Select";
@@ -45,10 +46,10 @@ function FieldView({ field, domId, state }: ViewProps) {
   const labelId = `${domId}-label`;
   const draft = state.drafts[field.id];
   const choices = field.choices ?? [];
-  const unchosen = widget === "segments" && !choices.some((c) => c.const === draft);
-  // R2: a row of segments with none picked says so in its label ("Region · choose one"), not in a word beside the track.
+  const unchosen = (widget === "segments" || widget === "choices") && !choices.some((c) => c.const === draft);
+  // R2: a row of segments or choices with none picked says so in its label ("Region · choose one"), not beside the track.
   const label = unchosen ? `${field.title} · choose one` : field.title;
-  const groupLabel = widget === "segments" || widget === "checkboxes";
+  const groupLabel = widget === "segments" || widget === "choices" || widget === "checkboxes";
 
   if (widget === "checkbox") {
     return (
@@ -154,8 +155,30 @@ function Control(props: ControlProps) {
           aria-describedby={describedBy}
           className="flex flex-wrap items-center"
         >
-          <Segmented label={props.label} options={choices.map((c) => ({ id: c.const, label: c.title }))} value={text} onChange={(v) => !disabled && set(v)} />
+          <Segmented
+            label={props.label}
+            options={choices.map((c) => ({ id: c.const, label: c.title }))}
+            value={text}
+            disabled={disabled}
+            onChange={(v) => !disabled && set(v)}
+          />
         </div>
+      );
+    case "choices":
+      return (
+        <ChoiceGroup
+          ref={state.registerControl(field.id)}
+          id={domId}
+          label={props.label}
+          labelledBy={props.labelId}
+          describedBy={describedBy}
+          options={choices.map((c) => ({ id: c.const, label: c.title }))}
+          value={text}
+          disabled={disabled}
+          invalid={invalid}
+          required={field.required}
+          onChange={(v) => !disabled && set(v)}
+        />
       );
     case "select":
       return (

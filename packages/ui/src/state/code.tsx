@@ -1,47 +1,24 @@
-import { BridgeError, type FileEntry, type Folder } from "@octo/agent-client";
+import type { FileEntry, Folder } from "@octo/agent-client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { EditorBuffers } from "../lib/buffers";
-import { ancestors, fileKey, fileName, normalizePath, parentPath, splitKey, type FilePosition, type FileKey, keyInFolder, isRootKey } from "../lib/files";
+import { ancestors, fileKey, fileName, normalizePath, splitKey, type FilePosition, type FileKey, keyInFolder, isRootKey } from "../lib/files";
 import { EditorIntel, type IntelClient } from "../lsp/hub";
 import type { TabId } from "./workspace/layout";
 import type { LspManagerOptions } from "../lsp/manager";
 import { useApp } from "./app";
 import { useOptionalNav } from "./nav";
 import { useProject } from "./project";
-import { errorMessage } from "../lib/format";
 import { createRequiredContext } from "../lib/context";
 import { useLatest } from "../lib/hooks";
+import type { DirState, FileIndex, FileNotice, FileStatus, OpenFile } from "./dirCache";
 
-export type FileStatus = "loading" | "ready" | "error" | "too_large" | "binary";
-export type FileNotice = { kind: "conflict" } | { kind: "save_error"; message: string } | { kind: "changed" };
-
-export type OpenFile = {
-  key: FileKey;
-  folder: string;
-  path: string;
-  name: string;
-  status: FileStatus;
-  error: string | null;
-  /** Content as last read from or written to disk. */
-  content: string;
-  mtime: string;
-  modified: boolean;
-  saving: boolean;
-  notice: FileNotice | null;
-};
-
-export type DirState = { status: "loading" | "ready" | "error"; entries: FileEntry[]; error: string | null };
-
-/** Breadth-first walk of every folder for Filter files and the composer's file search. */
-export type FileIndex = { status: "idle" | "loading" | "done"; /** Stopped at a limit: only loaded folders were searched. */ partial: boolean };
-
-/** Limits of the walk (contract v6 decision 6). */
-const INDEX_MAX_DIRS = 200;
-const INDEX_MAX_ENTRIES = 5000;
+export type { DirState, FileIndex, FileNotice, FileStatus, OpenFile };
 
 type CodeValue = {
   /** The project's folders (label + absolute path), one tree root each. */
   folders: { label: string; path: string }[];
+  /** Non-shared worktree workspace id of the focused session, or `undefined` for the shared checkout. */
+  workspaceId: string | undefined;
   files: OpenFile[];
   file(key: FileKey): OpenFile | undefined;
   buffers: EditorBuffers;
@@ -59,7 +36,9 @@ type CodeValue = {
   /** A list is a compact row's directories (decision 98): all open or close together, and only the last one is listed. */
   setExpanded(folder: string, path: string | readonly string[], expanded: boolean): void;
   ensureDir(folder: string, path: string): void;
-  reloadDir(folder: string, path: string): void;
+  reloadDir(folder: string, path: string, quiet?: boolean): void;
+  /** Evicts cached collapsed directory listings and invalidates the file index so expanding reloads from disk. */
+  evictDirs(keys: readonly FileKey[]): void;
   /** Tree row that reflects the latest open/reveal/focused file; bumps `revealTick` to scroll it into view. */
   selectedKey: FileKey | null;
   revealTick: number;
@@ -82,6 +61,7 @@ type CodeValue = {
 
 const NO_FOLDERS: { label: string; path: string }[] = [];
 const NO_FOLDERS_FULL: Folder[] = [];
+const normWs = (id?: string | null) => (id && id !== "shared" ? id : undefined);
 
 export const { Provider: CodeContextProvider, useRequired: useCode, useOptional: useOptionalCode } = createRequiredContext<CodeValue>("useCode");
 
@@ -89,6 +69,8 @@ export const { Provider: CodeContextProvider, useRequired: useCode, useOptional:
 export type OpenWhere = { group: string; replace?: TabId };
 
 type Callbacks = {
+  /** Non-shared worktree workspace id for the active session, or `undefined` for the shared checkout. */
+  workspaceId?: string | undefined;
   /** Show the tab of a file the user opened. */
   onOpen(key: FileKey, where?: OpenWhere): void;
   /** Show the Files tab (a folder was revealed). */
@@ -102,9 +84,10 @@ type Callbacks = {
  * expanded folders survive moving and closing tabs. Which file tab is shown where is the
  * workspace's business; it is told through the callbacks.
  */
-export function CodeProvider({ children, ...callbacks }: Callbacks & { children: ReactNode }) {
+export function CodeProvider({ children, workspaceId: rawWorkspaceId, ...callbacks }: Callbacks & { children: ReactNode }) {
   const { bridge } = useApp();
-  const { projectId, project, onEvent } = useProject();
+  const { projectId, project, onEvent, kept } = useProject();
+  const workspaceId = normWs(rawWorkspaceId);
   const folders = project?.folders;
   const [files, setFiles] = useState<OpenFile[]>([]);
   const [dirs, setDirs] = useState<Record<string, DirState>>({});
@@ -116,7 +99,14 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
   const dirsRef = useLatest(dirs);
   const expandedRef = useLatest(expanded);
   const selectedRef = useLatest(selectedKey);
+  const workspaceIdRef = useLatest(workspaceId);
   const cb = useLatest(callbacks);
+  const dirGen = useRef(new Map<string, number>());
+  const workspaceGen = useRef(0);
+  const indexGen = useRef(0);
+  const reindexWanted = useRef(false);
+
+  const wsOpt = useCallback(() => (workspaceIdRef.current ? { workspaceId: workspaceIdRef.current } : undefined), [workspaceIdRef]);
 
   const patch = useCallback((key: FileKey, next: Partial<OpenFile>) => {
     setFiles((fs) => fs.map((f) => (f.key === key ? { ...f, ...next } : f)));
@@ -139,92 +129,117 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
 
   /* ---------- tree ---------- */
 
-  const loadDir = useCallback(
-    async (folder: string, path: string, quiet = false): Promise<FileEntry[] | null> => {
-      const key = fileKey(folder, path);
-      if (!quiet) setDirs((d) => ({ ...d, [key]: { status: "loading", entries: d[key]?.entries ?? [], error: null } }));
-      try {
-        const entries = await bridge.listFiles(projectId, folder, path);
-        dirsRef.current = { ...dirsRef.current, [key]: { status: "ready", entries, error: null } };
-        setDirs((d) => ({ ...d, [key]: { status: "ready", entries, error: null } }));
-        return entries;
-      } catch (e) {
-        if (quiet && dirsRef.current[key]?.status === "ready") return dirsRef.current[key].entries;
-        setDirs((d) => ({ ...d, [key]: { status: "error", entries: [], error: errorMessage(e) } }));
-        return null;
-      }
-    },
-    [bridge, projectId, dirsRef],
-  );
-
   const [fileIndex, setFileIndex] = useState<FileIndex>({ status: "idle", partial: false });
   const indexing = useRef(false);
   const indexedKey = useRef<string | null>(null);
-  const foldersKey = useMemo(() => `${projectId}\0${(folders ?? []).map((f) => `${f.label}:${f.path}`).join("\0")}`, [projectId, folders]);
+
+  const evictDirs = useCallback(
+    (keys: readonly FileKey[]) => {
+      indexedKey.current = null;
+      indexGen.current++;
+      if (!keys.length) return;
+      const drop = new Set<string>(keys);
+      let changed = false;
+      for (const k of keys) {
+        dirGen.current.set(k, (dirGen.current.get(k) ?? 0) + 1);
+        if (k in dirsRef.current) changed = true;
+      }
+      if (!changed) return;
+      const next = Object.fromEntries(Object.entries(dirsRef.current).filter(([k]) => !drop.has(k)));
+      dirsRef.current = next;
+      setDirs(next);
+    },
+    [dirsRef],
+  );
+
+  const loadDir = useCallback(
+    async (folder: string, path: string, quiet = false): Promise<FileEntry[] | null> => {
+      const key = fileKey(folder, path);
+      const gen = (dirGen.current.get(key) ?? 0) + 1;
+      dirGen.current.set(key, gen);
+      const write = (state: DirState) => {
+        dirsRef.current = { ...dirsRef.current, [key]: state };
+        setDirs((d) => ({ ...d, [key]: state }));
+      };
+      if (!quiet) write({ status: "loading", entries: dirsRef.current[key]?.entries ?? [], error: null });
+      const { loadDirectory } = await import("./codeOps");
+      return loadDirectory({
+        bridge,
+        projectId,
+        folder,
+        path,
+        opts: wsOpt(),
+        quiet,
+        isCurrent: () => dirGen.current.get(key) === gen,
+        prev: () => dirsRef.current[key],
+        write,
+      });
+    },
+    [bridge, projectId, dirsRef, wsOpt],
+  );
+
+  const reloadDir = useCallback(
+    (folder: string, path: string, quiet?: boolean) => {
+      indexedKey.current = null;
+      indexGen.current++;
+      void loadDir(folder, path, quiet);
+    },
+    [loadDir],
+  );
+
+  const foldersKey = useMemo(
+    () => `${projectId}\0${workspaceId ?? ""}\0${(folders ?? []).map((f) => `${f.label}:${f.path}`).join("\0")}`,
+    [projectId, workspaceId, folders],
+  );
   const foldersKeyRef = useLatest(foldersKey);
   const indexFiles = useCallback(
     (force = false) => {
-      if (indexing.current) return;
+      if (indexing.current) {
+        if (force) reindexWanted.current = true;
+        return;
+      }
       if (!force && indexedKey.current === foldersKeyRef.current) return;
       const runKey = foldersKeyRef.current;
+      const runIndexGen = indexGen.current;
       indexing.current = true;
       setFileIndex({ status: "loading", partial: false });
-      void (async () => {
-        const CONCURRENCY = 6;
-        let wave: [string, string][] = (foldersRef.current ?? []).map((f) => [f.label, ""]);
-        let seenDirs = 0;
-        let seenEntries = 0;
-        let partial = false;
-        while (wave.length > 0 && !partial) {
-          const nextWave: [string, string][] = [];
-          const batchPatch: Record<string, DirState> = {};
-          for (let i = 0; i < wave.length && !partial; i += CONCURRENCY) {
-            const slice: [string, string][] = [];
-            while (slice.length < CONCURRENCY && i + slice.length < wave.length) {
-              if (seenDirs >= INDEX_MAX_DIRS || seenEntries >= INDEX_MAX_ENTRIES) {
-                partial = true;
-                break;
+      void import("./codeOps")
+        .then(({ runFileIndex }) =>
+          runFileIndex({
+            bridge,
+            projectId,
+            folders: (foldersRef.current ?? []).map((f) => f.label),
+            opts: wsOpt(),
+            force,
+            isCurrent: () => foldersKeyRef.current === runKey,
+            getKnown: (key) => dirsRef.current[key],
+            getDirGen: (key) => dirGen.current.get(key) ?? 0,
+            commitBatch: (batchPatch) => {
+              const applied: Record<string, DirState> = {};
+              for (const [k, v] of Object.entries(batchPatch)) {
+                if ((dirGen.current.get(k) ?? 0) === v.gen) applied[k] = v.state;
               }
-              slice.push(wave[i + slice.length]!);
-              seenDirs += 1;
-            }
-            const results = await Promise.all(
-              slice.map(async ([folder, path]) => {
-                const key = fileKey(folder, path);
-                const known = dirsRef.current[key];
-                if (known?.status === "ready") return { folder, key, entries: known.entries, fetched: false };
-                try {
-                  const entries = await bridge.listFiles(projectId, folder, path);
-                  return { folder, key, entries, fetched: true };
-                } catch {
-                  return { folder, key, entries: null as FileEntry[] | null, fetched: false };
-                }
-              }),
-            );
-            for (const r of results) {
-              if (!r.entries) continue;
-              if (r.fetched) {
-                const ready: DirState = { status: "ready", entries: r.entries, error: null };
-                batchPatch[r.key] = ready;
-              }
-              seenEntries += r.entries.length;
-              if (seenEntries >= INDEX_MAX_ENTRIES) partial = true;
-              for (const e of r.entries) if (e.type === "dir") nextWave.push([r.folder, e.path]);
-            }
+              if (!Object.keys(applied).length) return;
+              dirsRef.current = { ...dirsRef.current, ...applied };
+              setDirs((d) => ({ ...d, ...applied }));
+            },
+          }),
+        )
+        .then((partial) => {
+          if (foldersKeyRef.current === runKey) {
+            if (indexGen.current === runIndexGen) indexedKey.current = runKey;
+            setFileIndex({ status: "done", partial });
           }
-          if (Object.keys(batchPatch).length > 0) {
-            dirsRef.current = { ...dirsRef.current, ...batchPatch };
-            setDirs((d) => ({ ...d, ...batchPatch }));
+        })
+        .finally(() => {
+          indexing.current = false;
+          if (reindexWanted.current) {
+            reindexWanted.current = false;
+            indexFiles(true);
           }
-          wave = nextWave;
-        }
-        indexedKey.current = runKey;
-        setFileIndex({ status: "done", partial });
-        // A later forced call (or folder change) walks again, reusing what is loaded.
-        indexing.current = false;
-      })();
+        });
     },
-    [bridge, projectId, dirsRef, foldersRef, foldersKeyRef],
+    [bridge, projectId, dirsRef, foldersRef, foldersKeyRef, wsOpt],
   );
 
   const loadedFiles = useMemo(() => {
@@ -239,7 +254,6 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
   }, [dirs, folders]);
 
   // Persist the walked file list onto `project.kept.files` once per completed walk (O(F)) instead of inside every InlineCode mount.
-  const { kept } = useProject();
   useEffect(() => {
     if (fileIndex.status !== "done") return;
     kept.files.clear();
@@ -277,18 +291,23 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
 
   const load = useCallback(
     async (key: FileKey, folder: string, path: string, restored = false) => {
-      try {
-        const fc = await bridge.readFile(projectId, folder, path);
-        patch(key, { status: "ready", content: fc.content, mtime: fc.mtime, error: null, notice: null });
-        buffers.replace(key, fc.content);
-      } catch (e) {
-        const code = e instanceof BridgeError ? e.code : "";
-        if (restored && code === "not_found") return cb.current.onGone(key);
-        const status: FileStatus = code === "file_too_large" ? "too_large" : code === "binary_file" ? "binary" : "error";
-        patch(key, { status, error: errorMessage(e) });
-      }
+      const wsGen = workspaceGen.current;
+      const { loadOpenFile } = await import("./codeOps");
+      await loadOpenFile({
+        bridge,
+        projectId,
+        key,
+        folder,
+        path,
+        opts: wsOpt(),
+        restored,
+        isCurrent: () => workspaceGen.current === wsGen,
+        buffers,
+        patch,
+        onGone: (k) => cb.current.onGone(k),
+      });
     },
-    [bridge, projectId, patch, buffers, cb],
+    [bridge, projectId, patch, buffers, cb, wsOpt],
   );
 
   /** Adds the file to the open set (loading it) unless it is already there. */
@@ -367,42 +386,38 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
     async (key: FileKey, options: { overwrite?: boolean } = {}) => {
       const f = find(key);
       if (!f || f.status !== "ready" || saving.current.has(key)) return;
-      saving.current.add(key);
-      const content = buffers.value(key) ?? f.content;
-      const version = buffers.version(key);
-      patch(key, { saving: true, notice: null });
-      try {
-        const stat = await bridge.writeFile(projectId, {
-          folder: f.folder,
-          path: f.path,
-          content,
-          ...(options.overwrite ? {} : { expected_mtime: f.mtime }),
-        });
-        patch(key, { saving: false, content, mtime: stat.mtime });
-        if (version !== null) buffers.markSaved(key, version);
-      } catch (e) {
-        const conflict = e instanceof BridgeError && e.code === "file_changed";
-        patch(key, { saving: false, notice: conflict ? { kind: "conflict" } : { kind: "save_error", message: errorMessage(e) } });
-      } finally {
-        saving.current.delete(key);
-      }
+      const { saveOpenFile } = await import("./codeOps");
+      await saveOpenFile({
+        bridge,
+        projectId,
+        file: f,
+        buffers,
+        saving: saving.current,
+        workspaceId: workspaceIdRef.current,
+        overwrite: Boolean(options.overwrite),
+        patch,
+      });
     },
-    [bridge, projectId, patch, buffers, find],
+    [bridge, projectId, patch, buffers, find, workspaceIdRef],
   );
 
   const reloadFromDisk = useCallback(
     async (key: FileKey) => {
       const f = find(key);
       if (!f) return;
-      try {
-        const fc = await bridge.readFile(projectId, f.folder, f.path);
-        patch(key, { status: "ready", content: fc.content, mtime: fc.mtime, notice: null, error: null });
-        buffers.replace(key, fc.content);
-      } catch (e) {
-        patch(key, { notice: { kind: "save_error", message: `Couldn't reload: ${errorMessage(e)}` } });
-      }
+      const wsGen = workspaceGen.current;
+      const { reloadOpenFile } = await import("./codeOps");
+      await reloadOpenFile({
+        bridge,
+        projectId,
+        file: f,
+        opts: wsOpt(),
+        isCurrent: () => workspaceGen.current === wsGen,
+        buffers,
+        patch,
+      });
     },
-    [bridge, projectId, patch, buffers, find],
+    [bridge, projectId, patch, buffers, find, wsOpt],
   );
 
   const retryOpen = useCallback(
@@ -415,54 +430,54 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
     [load, patch, find],
   );
 
+  /* ---------- workspace switch ---------- */
+
+  const prevWorkspace = useRef(workspaceId);
+  useEffect(() => {
+    if (prevWorkspace.current === workspaceId) return;
+    prevWorkspace.current = workspaceId;
+    workspaceGen.current++;
+    indexGen.current++;
+    reindexWanted.current = false;
+    for (const k of dirGen.current.keys()) dirGen.current.set(k, (dirGen.current.get(k) ?? 0) + 1);
+    dirsRef.current = {};
+    setDirs({});
+    indexedKey.current = null;
+    setFileIndex({ status: "idle", partial: false });
+    for (const f of filesRef.current) if (!f.modified) void load(f.key, f.folder, f.path);
+  }, [workspaceId, dirsRef, filesRef, load]);
+
   /* ---------- live refresh ---------- */
 
   useEffect(
     () =>
       onEvent((event) => {
         if (event.type !== "file.changed") return;
-        const path = normalizePath(event.path);
-        const dirPath = parentPath(path);
-        const listed = dirsRef.current[fileKey(event.folder, dirPath)];
-        const shown = listed && (expandedRef.current[fileKey(event.folder, dirPath)] ?? dirPath === "");
-        void (async () => {
-          const before = listed?.entries.length ?? 0;
-          const after = shown ? ((await loadDir(event.folder, dirPath, true))?.length ?? before) : before;
-          // Decision 98: a directory that is not listed, or holds (held) one entry, may sit in a compact row, whose
-          // `chain` hint comes from the nearest listed ancestor: list that again so the row re-forms or splits.
-          if (!dirPath || (listed && before > 1 && after > 1)) return;
-          for (let a = parentPath(dirPath); ; a = parentPath(a)) {
-            const k = fileKey(event.folder, a);
-            if (dirsRef.current[k]) {
-              if (expandedRef.current[k] ?? a === "") void loadDir(event.folder, a, true);
-              return;
-            }
-            if (!a) return;
-          }
-        })();
-        const key = fileKey(event.folder, path);
-        const f = filesRef.current.find((x) => x.key === key);
-        // While saving, our own write is in flight; its response carries the new mtime.
-        if (!f || saving.current.has(key) || f.status === "loading") return;
-        if (f.status !== "ready") return retryOpen(key);
-        void bridge.readFile(projectId, f.folder, f.path).then(
-          (fc) => {
-            const now = filesRef.current.find((x) => x.key === key);
-            if (!now || saving.current.has(key) || fc.mtime === now.mtime) return;
-            if (now.modified) {
-              if (buffers.value(key) === fc.content) {
-                patch(key, { content: fc.content, mtime: fc.mtime });
-                buffers.replace(key, fc.content);
-              } else patch(key, { notice: { kind: "changed" } });
-              return;
-            }
-            patch(key, { content: fc.content, mtime: fc.mtime });
-            buffers.replace(key, fc.content);
-          },
-          () => undefined,
+        const wsGen = workspaceGen.current;
+        void import("./codeOps").then(({ handleFileChanged }) =>
+          handleFileChanged({
+            event,
+            workspaceId: workspaceIdRef.current,
+            isCurrent: () => workspaceGen.current === wsGen,
+            bridge,
+            projectId,
+            dirs: () => dirsRef.current,
+            expanded: () => expandedRef.current,
+            files: () => filesRef.current,
+            saving: saving.current,
+            buffers,
+            invalidateIndex: () => {
+              indexedKey.current = null;
+              indexGen.current++;
+            },
+            evictDirs,
+            loadDir,
+            patch,
+            retryOpen,
+          }),
         );
       }),
-    [onEvent, bridge, projectId, loadDir, patch, buffers, retryOpen, dirsRef, expandedRef, filesRef],
+    [onEvent, bridge, projectId, loadDir, evictDirs, patch, buffers, retryOpen, dirsRef, expandedRef, filesRef, workspaceIdRef],
   );
 
   // Leaving the project unmounts this provider and its buffers: the shell asks first.
@@ -488,6 +503,7 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
   const value = useMemo<CodeValue>(
     () => ({
       folders: folders ?? NO_FOLDERS,
+      workspaceId,
       files,
       file: (key) => files.find((f) => f.key === key),
       buffers,
@@ -515,7 +531,8 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
         if (value && last !== undefined) ensureDir(folder, last);
       },
       ensureDir,
-      reloadDir: (folder, path) => void loadDir(folder, path),
+      reloadDir,
+      evictDirs,
       selectedKey,
       revealTick,
       openFile,
@@ -535,6 +552,7 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
     }),
     [
       folders,
+      workspaceId,
       files,
       buffers,
       intel,
@@ -546,7 +564,8 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       loadedFiles,
       isExpanded,
       ensureDir,
-      loadDir,
+      reloadDir,
+      evictDirs,
       selectedKey,
       revealTick,
       openFile,

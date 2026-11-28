@@ -157,6 +157,7 @@ func (o *Orchestrator) Context(ctx context.Context, projectID, agentID string) (
 	if err != nil {
 		return ContextReport{}, err
 	}
+	compacted = hasUsableCompaction(comp, compacted)
 	if a.ParentID == nil && memory.ParseSettings(rt.info.MemoryJSON).Context == memory.ContextWindow {
 		compacted = false // the window mode sends no summary
 	}

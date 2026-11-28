@@ -25,6 +25,7 @@ import {
   tabWant,
   TAB_CLOSE_ROOM,
   TAB_FLOOR,
+  narrowStripDropTarget,
   recentPickerTabs,
 } from "./tabStrip";
 
@@ -209,4 +210,22 @@ test("recentPickerTabs puts newest closed first, then MRU open tabs without dupl
     { tab: "open-1", status: "open" },
     { tab: "reopened-now", status: "open" },
   ]);
+});
+
+test("narrowStripDropTarget maps combined single-strip drops into group move targets", () => {
+  const one = [{ id: "g1", tabs: ["chat", "f1", "f2"] }];
+  assert.deepEqual(narrowStripDropTarget(one, "f2", undefined, toMoveIndex(2, 1)), { groupId: "g1", index: 1 }, "move backward in single group");
+  assert.deepEqual(narrowStripDropTarget(one, "f1", undefined, toMoveIndex(1, 2)), { groupId: "g1", index: 3 }, "move forward in single group");
+  assert.deepEqual(narrowStripDropTarget(one, "chat", undefined, 0), { groupId: "g1", index: 0 }, "pinned chat stays at 0");
+
+  const two = [
+    { id: "g1", tabs: ["chat", "f1"] },
+    { id: "g2", tabs: ["t1", "t2"] },
+  ];
+  assert.deepEqual(narrowStripDropTarget(two, "t2", undefined, toMoveIndex(3, 1)), { groupId: "g1", index: 1 }, "cross-group backward into g1");
+  assert.deepEqual(narrowStripDropTarget(two, "f1", undefined, toMoveIndex(1, 3)), { groupId: "g2", index: 2 }, "cross-group forward to end of g2");
+
+  // With hidden tabs ("All tabs" overflow): shown is ["chat", "f1", "t2"], dragging "t2" before "f1" (index 1).
+  assert.deepEqual(narrowStripDropTarget(two, "t2", ["chat", "f1", "t2"], toMoveIndex(2, 1)), { groupId: "g1", index: 1 }, "overflow shown subset");
+  assert.equal(narrowStripDropTarget(two, "missing", undefined, 0), null);
 });

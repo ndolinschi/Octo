@@ -101,20 +101,24 @@ test("criterion 9: widgets by schema — 3-choice one-of segments, 6-choice Sele
   assert.deepEqual(form(fixture.forms.checks).fields.map(widgetFor), ["checkboxes", "checkboxes"]);
   assert.deepEqual(form(fixture.forms.rollout).fields.map(widgetFor), ["number", "datetime", "date", "textarea", "text", "checkbox", "number"]);
   assert.deepEqual(form(SIGNIN).fields.map(widgetFor), ["email", "password", "checkbox"]);
-  // A short list with a long label is a Select (segments never truncate).
+  // A short list (2–4) with a long label renders as stacked choice buttons (segments never truncate; 5+ stays Select).
   const long = form({
     type: "object",
     properties: {
       r: {
         type: "string",
         oneOf: [
-          { const: "a", title: "Asia Pacific (Mumbai)" },
-          { const: "b", title: "B" },
+          { const: "a", title: "Approved — proceed to the implementation plan" },
+          { const: "b", title: "Changes needed (I'll describe them)" },
         ],
+      },
+      many: {
+        type: "string",
+        enum: ["a", "b", "c", "d", "e"],
       },
     },
   });
-  assert.deepEqual(long.fields.map(widgetFor), ["select"]);
+  assert.deepEqual(long.fields.map(widgetFor), ["choices", "select"]);
 });
 
 test("defaults fill the drafts; a password never has one", () => {

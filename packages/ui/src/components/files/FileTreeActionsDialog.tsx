@@ -1,8 +1,9 @@
 import { useEffect, useId, useRef, useState, type SyntheticEvent } from "react";
 import { errorMessage } from "../../lib/format";
-import { fileKey, fileName, normalizePath, parentPath } from "../../lib/files";
+import { ancestors, fileKey, fileName, normalizePath, parentPath } from "../../lib/files";
 import { useApp } from "../../state/app";
 import { useCode } from "../../state/code";
+import { nearestListedAncestor } from "../../state/dirCache";
 import { useProject } from "../../state/project";
 import { fileTab } from "../../state/workspace/layout";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
@@ -69,6 +70,21 @@ export default function FileTreeActionsDialog(props: {
     }
   };
 
+  const reloadParent = (folder: string, dirPath: string) => {
+    const listed = code.dirs[fileKey(folder, dirPath)];
+    if (dirPath && (!listed || listed.entries.length <= 1)) {
+      const ancestor = nearestListedAncestor(code.dirs, folder, dirPath);
+      if (ancestor) {
+        if (code.isExpanded(ancestor.key)) code.reloadDir(folder, ancestor.path, true);
+        else code.evictDirs([ancestor.key]);
+      }
+    }
+    code.reloadDir(folder, dirPath);
+  };
+
+  const wsOpt = code.workspaceId ? { workspaceId: code.workspaceId } : undefined;
+  const wsBody = code.workspaceId ? { workspace_id: code.workspaceId } : {};
+
   const submit = async (e?: SyntheticEvent) => {
     e?.preventDefault();
     if (busy) return;
@@ -81,9 +97,9 @@ export default function FileTreeActionsDialog(props: {
       }
       setBusy(true);
       try {
-        await bridge.deleteFile(projectId, action.folder, action.path);
+        await bridge.deleteFile(projectId, action.folder, action.path, wsOpt);
         closeAffectedTabs(action.folder, action.path, action.isDir);
-        code.reloadDir(action.folder, parentPath(action.path));
+        reloadParent(action.folder, parentPath(action.path));
         onClose();
       } catch (err) {
         setError(errorMessage(err));
@@ -102,18 +118,16 @@ export default function FileTreeActionsDialog(props: {
     setBusy(true);
     try {
       if (action.kind === "new-file") {
-        await bridge.writeFile(projectId, { folder: action.folder, path: next, content: "" });
-        const dir = parentPath(next);
-        code.reloadDir(action.folder, dir);
-        if (dir) code.setExpanded(action.folder, dir, true);
+        await bridge.writeFile(projectId, { folder: action.folder, path: next, content: "", ...wsBody });
+        reloadParent(action.folder, parentPath(next));
+        const parents = ancestors(next);
+        if (parents.length) code.setExpanded(action.folder, parents, true);
         (onOpenFile ?? code.openFile)(action.folder, next);
       } else if (action.kind === "new-folder") {
         if (!bridge.createDirectory) throw new Error("Creating folders is not supported by this harness version.");
-        await bridge.createDirectory(projectId, { folder: action.folder, path: next });
-        const dir = parentPath(next);
-        code.reloadDir(action.folder, dir);
-        if (dir) code.setExpanded(action.folder, dir, true);
-        code.setExpanded(action.folder, next, true);
+        await bridge.createDirectory(projectId, { folder: action.folder, path: next, ...wsBody });
+        reloadParent(action.folder, parentPath(next));
+        code.setExpanded(action.folder, [...ancestors(next), next], true);
       } else {
         if (!bridge.renameFile) throw new Error("Renaming files is not supported by this harness version.");
         if (next === action.path) {
@@ -121,12 +135,12 @@ export default function FileTreeActionsDialog(props: {
           return;
         }
         const wasOpen = !action.isDir && Boolean(code.file(fileKey(action.folder, action.path)));
-        await bridge.renameFile(projectId, { folder: action.folder, from: action.path, to: next });
+        await bridge.renameFile(projectId, { folder: action.folder, from: action.path, to: next, ...wsBody });
         closeAffectedTabs(action.folder, action.path, action.isDir);
         const oldDir = parentPath(action.path);
         const newDir = parentPath(next);
-        code.reloadDir(action.folder, oldDir);
-        if (newDir !== oldDir) code.reloadDir(action.folder, newDir);
+        reloadParent(action.folder, oldDir);
+        if (newDir !== oldDir) reloadParent(action.folder, newDir);
         if (wasOpen) (onOpenFile ?? code.openFile)(action.folder, next);
       }
       onClose();

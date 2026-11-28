@@ -464,6 +464,8 @@ func (rt *runtime) acpTurnPrompt(ctx context.Context, s *orchSession, orch proje
 
 	st := memory.ParseSettings(rt.info.MemoryJSON)
 	windowed := st.Context == memory.ContextWindow
+	ended := rt.unfinishedTurns(ctx, orch.ID)
+	retryEnd, isRetry := failedRetryBefore(msgs, last, ended)
 	var b strings.Builder
 	switch {
 	case fresh:
@@ -496,6 +498,11 @@ func (rt *runtime) acpTurnPrompt(ctx context.Context, s *orchSession, orch proje
 			if recap != "" {
 				b.WriteString("\nEarlier in this conversation (recap built by the harness; you have no other memory of it):\n")
 				b.WriteString(recap)
+				if !isRetry {
+					if _, pe, ok := partialFailureBefore(msgs, last, ended); ok {
+						b.WriteString("\n[Octo: the previous turn ended before finishing (" + partialEndedWhy(pe) + ").]")
+					}
+				}
 				b.WriteString("\n")
 			}
 			b.WriteString(rt.memory().PreviousSessionPointer(ctx))
@@ -529,8 +536,10 @@ func (rt *runtime) acpTurnPrompt(ctx context.Context, s *orchSession, orch proje
 	if n := acpPromptModeNote(rt.mode, prevMode, fresh); n != "" {
 		b.WriteString("[" + n + "]\n")
 	}
-	if prev, e, ok := unansweredBefore(msgs, last, rt.unfinishedTurns(ctx, orch.ID)); ok {
+	if prev, e, ok := unansweredBefore(msgs, last, ended); ok {
 		b.WriteString(closedPromptNote(prev, e)) // NEW-8: the agent may hold the unanswered request (closed.go)
+	} else if isRetry {
+		b.WriteString(retryContinuationNote(retryEnd) + "\n\n")
 	}
 	b.WriteString(request)
 	return b.String(), nil
@@ -588,55 +597,6 @@ func messageText(m projectstore.Message) string {
 		}
 	}
 	return strings.Join(parts, "\n")
-}
-
-// recap summarizes the conversation before the current request for a session
-// that has no memory of it: the latest compaction summary when the agent row
-// has one, otherwise the most recent user/assistant texts (at most
-// recapMaxMessages of them), newest kept first, in order, and all within
-// RecapCap characters. Tool calls and results are left out.
-func (rt *runtime) recap(ctx context.Context, agentID string, before []projectstore.Message) (string, error) {
-	comp, ok, err := rt.db.LatestCompaction(ctx, agentID)
-	if err != nil {
-		return "", err
-	}
-	if len(before) == 0 && !(ok && comp.Cleared) {
-		return "", nil
-	}
-	if ok && strings.TrimSpace(comp.Summary) != "" {
-		return clip(comp.Summary, RecapCap), nil
-	}
-	var lines []string
-	used := 0
-	for i := len(before) - 1; i >= 0 && len(lines) < recapMaxMessages; i-- {
-		text := messageText(before[i])
-		if text == "" {
-			continue
-		}
-		line := before[i].Role + ": " + text
-		room := RecapCap - used
-		if room <= 0 {
-			break
-		}
-		if len(line) > room {
-			line = clip(line, room)
-		}
-		used += len(line) + 1
-		lines = append([]string{line}, lines...)
-	}
-	return strings.Join(lines, "\n"), nil
-}
-
-// clip shortens s to at most n bytes at a rune boundary, marking the cut.
-func clip(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	const mark = "...(cut)"
-	if n <= len(mark) {
-		return strings.ToValidUTF8(s[:n], "")
-	}
-	return strings.ToValidUTF8(s[:n-len(mark)], "") + mark
 }
 
 // MCPHandler is the harness's MCP server for ACP orchestrators, to be mounted

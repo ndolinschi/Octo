@@ -40,8 +40,8 @@ Contents: [Rules](#rules-of-use) · [Primitives](#primitives) · [Shared composi
 | `IconButton` (`IconButton.tsx`) | An icon-only action; the required `label` is its name and tooltip | `size` xs 24, sm 28 (default), md 32, lg 40; `variant` quiet, primary, round; `shortcut` | a visible label (`Button`), a chip with a value (`Chip`) | 51 (primitives 10, chat 7, browser 5) |
 | `IconMenu` (`IconMenu.tsx`) | The "⋯" of a detail or card: an icon button that opens a `Menu` | `label`, items | a trigger with a word (`MenuButton`), a value (`Select`), a context menu (`Menu`) | 11 (memory 3, review 2, sessions 2) |
 | `MenuButton` (`MenuButton.tsx`) | A quiet text button with a chevron that opens a menu (decision 33) | 24px, `fg-2` | a value choice (`Select`) | 2 (commands, terminal) |
-| `Chip` (`Chip.tsx`) | The composer's control-row chip (model, mode, branch): glyph, label, one chevron | `bare` drops the label | a plain action (`Button`) | 5 (chat 3) |
-| `Segmented` (`Segmented.tsx`) | Two to five exclusive choices on a track (decision 33) | 24px segments in a 28px track, text only | a menu of options (`Select`), an on/off (`Switch`) | 12 (review 3, files 2) |
+| `Chip` (`Chip.tsx`) | The composer's control-row chip (model, mode, branch): glyph, label, one chevron | `size` xs 24 / sm 28 (default); `bare` drops the label | a plain action (`Button`) | 5 (chat 3) |
+| `Segmented` (`Segmented.tsx`) | Two to five exclusive choices on a track (decision 33) | `size` sm 28 (default) / xs 24, `disabled`, text only | a menu of options (`Select`), descriptive multi-word choices (`ChoiceGroup`), an on/off (`Switch`) | 12 (review 3, files 2) |
 | `InlineButton` (`InlineButton.tsx`) | A button inside running text (a word that acts) | Enter and Space press it | a toolbar, row or form control | 3 (shared 2) |
 | `FileInput` (`FileInput.tsx`) | The platform file dialog, hidden; gives files to `onFiles` | with or without its own `button` | dropping files, a visible file name | 2 (chat, notes) |
 
@@ -52,9 +52,10 @@ Contents: [Rules](#rules-of-use) · [Primitives](#primitives) · [Shared composi
 | `TextField`, `TextArea` (`TextField.tsx`) | A text value; one focus rule (the edge turns `fg`) | `size`; `variant` default, `bare` (the composer and comment boxes) | search (`SearchField`), a choice (`Select`), a label (`Field`) | 25 (settings 6, browser 3, sessions 3) |
 | `Field` (`Field.tsx`) | A label, hint and error around a control | `label`, `hint`, `error` | – | 14 (review 4) |
 | `FieldRow` (`FieldRow.tsx`) | Several fields on one grid: labels on one line, controls on one line, hints under the row (decision 84a) | `fields` | one field (`Field`) | 4 (settings 2) |
-| `Select` (`Select.tsx`) | A value from a short list, opened as a menu; options may have a `group` | `size`, `side` | more than about 12 options or anything searchable (`Picker`), actions (`MenuButton`) | 15 (settings 11) |
+| `Select` (`Select.tsx`) | A value from a short list, opened as a menu; options may have a `group` | `size`, `side` | 2–4 descriptive options (`ChoiceGroup`), more than about 12 options or anything searchable (`Picker`), actions (`MenuButton`) | 15 (settings 11) |
+| `ChoiceGroup` (`ChoiceGroup.tsx`) | Two to four exclusive descriptive choices as stacked selectable radio buttons | `options`, `value`, `disabled`, `invalid`, `required`, roving arrow nav | short inline pills (`Segmented`), 5+ options (`Select`), multi-select (`Checkbox`) | 1 (shared `SchemaForm`) |
 | `SearchField` (`SearchField.tsx`) | The one search input: glyph, clear button, a `shortcut` hint while empty; Esc clears first | `variant` bordered, header, bare; `size`; `align="rows"` | a labelled value (`Field` + `TextField`), a combobox (`Picker`) | 15 (settings 4) |
-| `Checkbox` (`Checkbox.tsx`) | A choice submitted with a form; the whole line is the target | `label`, `description` | an on/off that applies at once (`Switch`), exclusive choices (`Segmented`) | 12 (review 4) |
+| `Checkbox` (`Checkbox.tsx`) | A choice submitted with a form; the whole line is the target | `label`, `description` | an on/off that applies at once (`Switch`), exclusive choices (`Segmented`, `ChoiceGroup`) | 12 (review 4) |
 | `Switch` (`Switch.tsx`) | On/off that applies at once (decision 59), 40x24 | `label` | a form choice (`Checkbox`), more than two states (`Segmented`) | 10 (settings 8) |
 
 ### Lists and pickers

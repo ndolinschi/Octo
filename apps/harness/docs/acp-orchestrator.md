@@ -43,9 +43,13 @@ curl -XPOST localhost:8790/v1/projects -d '{"name":"demo","folders":[{"path":"/a
   stops nothing: each session keeps its process and its stored ACP session (on its own root agent).
 - **Resume.** The session id is stored in the project database. After a restart of the process or of the harness the harness uses
   `session/load` when the agent advertised `loadSession`; otherwise (or when the load fails) it starts a new session and puts a
-  **recap** before the first prompt: the latest compaction summary if there is one, else the last 40 user/assistant texts (tool rows
-  left out), newest kept, in order, **capped at 8000 characters** (`orchestrator.RecapCap`). A new session also gets the
-  orchestrator briefing (project brief, how to use the tools, notes). Notes edited between requests are re-sent with the next one.
+  **recap** before the first prompt: the latest compaction summary if there is one plus any messages stored after it, otherwise the
+  last 40 user/assistant texts and answered `request_input` turns (generic tool rows left out), newest kept in order (with long
+  messages middle-clipped so both the start and latest progress survive, and the most recent dropped user request pinned when verbose output
+  would otherwise crowd it out), **capped at 8000 bytes** (`orchestrator.RecapCap`). A new session also gets the orchestrator
+  briefing (project brief, how to use the tools, notes). Notes edited between requests are re-sent with the next one. When a user
+  retries a turn that failed or was interrupted after partial progress (re-sending the same request), the prompt carries a transient
+  continuation note instructing the agent to continue from where it stopped rather than starting over.
 - **Idle shutdown.** A session unused for `HARNESS_ACP_IDLE` (Go duration, default `30m`) has its process shut down (the stored
   session id is kept). The processes also end on project delete and on harness shutdown; the process group is killed, so the stdio
   relay (below) goes too.

@@ -14,6 +14,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/files"
+	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/local"
 )
 
@@ -71,7 +72,11 @@ func (s *acpSession) WriteTextFile(ctx context.Context, req acp.WriteTextFilePar
 	}
 	scope := s.rt.scope(s.agentID, "", changes.SourceACPFS)
 	if _, recorded := t.PostWrite(ctx, scope, changes.Folder{Label: label, Path: root}, rel, before); !recorded {
-		s.rt.publish(events.FileChanged, map[string]any{"folder": label, "path": rel, "source": events.SourceAgent})
+		fields := map[string]any{"folder": label, "path": rel, "source": events.SourceAgent}
+		if s.rt.workspaceID != "" && s.rt.workspaceID != projectstore.SharedWorkspace {
+			fields["workspace_id"] = s.rt.workspaceID
+		}
+		s.rt.publish(events.FileChanged, fields)
 	}
 	return nil
 }

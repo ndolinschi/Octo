@@ -87,6 +87,25 @@ func clipChars(s string, n int) string {
 	return s
 }
 
+func clipMiddleChars(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	const mark = " …[cut]… "
+	markLen := len([]rune(mark))
+	if n <= markLen+6 {
+		return clipChars(s, n)
+	}
+	avail := n - markLen
+	head := avail / 3
+	tail := avail - head
+	return string(r[:head]) + mark + string(r[len(r)-tail:])
+}
+
 func oneLineOf(s string, n int) string { return clip(strings.Join(strings.Fields(s), " "), n) }
 
 // textBlock is a capped text block with its receipt entry.
@@ -175,7 +194,7 @@ func (e exchange) reduced(perMessage int) (user, assistant string) {
 			}
 		}
 	}
-	return user, clipChars(strings.TrimSpace(a.String()), perMessage)
+	return user, clipMiddleChars(strings.TrimSpace(a.String()), perMessage)
 }
 
 // assembly is the result of building the window-mode context.
@@ -188,6 +207,9 @@ type assembly struct {
 	tasks   *textBlock
 	facts   *textBlock
 	receipt Receipt
+	// retryNote is set when the current turn retries an immediately preceding
+	// partially-completed failed turn.
+	retryNote string
 	// currentFrom is the index in the stored messages where the current turn starts.
 	currentFrom int
 	stored      []projectstore.Message
@@ -274,6 +296,11 @@ func (rt *runtime) assembleWindow(ctx context.Context, a projectstore.Agent, st 
 	// of the cap (sized for the longest window) so its text never changes either.
 	ex := splitExchanges(stored[:from])
 	ended := rt.unfinishedTurns(ctx, a.ID)
+	if rt.turnID != 0 && from < len(stored) && stored[from].ID == rt.turnID {
+		if e, ok := failedRetryBefore(stored, from, ended); ok {
+			as.retryNote = retryContinuationNote(e)
+		}
+	}
 	n0 := st.RecentExchanges
 	ex = ex[windowStart(len(ex), n0):]
 	per := CapWindow * 4 / (2 * (2*n0 - 1)) // characters per message
@@ -281,8 +308,12 @@ func (rt *runtime) assembleWindow(ctx context.Context, a projectstore.Agent, st 
 	var winIDs []string
 	for _, e := range ex {
 		u, asst := e.reduced(per)
-		if c, ok := ended[e.msgs[0].ID]; ok && strings.TrimSpace(asst) == "" {
-			asst = closedNote(c) // NEW-8: a request nothing answered is closed for the model (closed.go)
+		if c, ok := ended[e.msgs[0].ID]; ok {
+			if strings.TrimSpace(asst) == "" {
+				asst = closedNote(c) // NEW-8: a request nothing answered is closed for the model (closed.go)
+			} else if c.Status == projectstore.ExchangeFailed || c.Interrupted {
+				asst += "\n[Octo: this turn ended before finishing (" + partialEndedWhy(c) + ").]"
+			}
 		}
 		et := exchangeText{user: u, assistant: asst}
 		for _, mm := range e.msgs {
@@ -421,6 +452,9 @@ func (a *assembly) history() ([]anthropic.MessageParam, error) {
 			}
 			if a.facts != nil {
 				front = append(front, anthropic.NewTextBlock(a.facts.Text))
+			}
+			if a.retryNote != "" {
+				front = append(front, anthropic.NewTextBlock(a.retryNote))
 			}
 			blocks = append(front, blocks...)
 		}

@@ -126,9 +126,19 @@ function WorkspaceTitle({ phone }: { phone: boolean }) {
 /** Open files live under the workspace; it opens their tabs and they report back. */
 function Files({ children }: { children: ReactNode }) {
   const ws = useWorkspace();
+  const { state } = useProject();
   const files = useShowFiles();
+  const sid = ws.focusedSessionId ?? state.sessions.defaultId ?? null;
+  const session = sid !== null ? state.sessions.list.find((x) => x.id === sid) : undefined;
+  const rawWs = session?.workspace?.id;
+  const workspaceId = rawWs && rawWs !== "shared" ? rawWs : undefined;
   return (
-    <CodeProvider onOpen={(key, where) => ws.openFileTab(key, where)} onReveal={files.show} onGone={(key) => ws.dropTab(fileTab(key))}>
+    <CodeProvider
+      workspaceId={workspaceId}
+      onOpen={(key, where) => ws.openFileTab(key, where)}
+      onReveal={files.show}
+      onGone={(key) => ws.dropTab(fileTab(key))}
+    >
       <CodeLink />
       <CommentsProvider>{children}</CommentsProvider>
     </CodeProvider>
