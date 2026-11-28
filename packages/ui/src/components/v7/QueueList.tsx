@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import type { QueuedMessage } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { errorCode, errorMessage } from "../../lib/format";
-import { queueCountLabel, queueLine, queueSummary, queueView } from "../../lib/v7/queue";
+import { queueCountLabel, queueLine, queueView } from "../../lib/v7/queue";
 import { queuedModeTag, STEER_REASON, steerOutcome } from "../../lib/v7/steerQueue";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
@@ -12,7 +12,6 @@ import { ListRow } from "../primitives/ListRow";
 import { Menu, type MenuItem } from "../primitives/Menu";
 import { Notice } from "../primitives/Notice";
 import { Presence } from "../primitives/Presence";
-import { SectionHeader } from "../primitives/SectionHeader";
 import { Sheet } from "../primitives/Sheet";
 import { usePhone } from "../../lib/phone";
 
@@ -53,7 +52,7 @@ export function QueueList(props: QueueListProps) {
       <Presence show={open}>
         <Sheet label="Waiting to send" onClose={() => setOpen(false)}>
           <div className="px-2 pb-2">
-            <QueueBody {...props} />
+            <QueueBody {...props} inSheet />
           </div>
         </Sheet>
       </Presence>
@@ -61,7 +60,7 @@ export function QueueList(props: QueueListProps) {
   );
 }
 
-function QueueBody(props: QueueListProps) {
+function QueueBody(props: QueueListProps & { inSheet?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [pending, setPending] = useState<Pending>(null);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
@@ -115,84 +114,142 @@ function QueueBody(props: QueueListProps) {
   };
 
   const count = messages.length;
-  const sectionClass = "@container/queue flex min-w-0 flex-col border-b border-line px-1 py-0.5 text-sm";
-  if (!unfolded && !props.paused && error === null)
+  const sectionClass = cn(
+    "@container/queue flex min-w-0 flex-col gap-1 px-1.5 py-1.5 text-sm",
+    props.inSheet ? "rounded-md bg-panel" : "rounded-t-xl border-b border-line bg-panel/45",
+  );
+  if (!unfolded && !props.paused && error === null) {
+    const preview = props.waiting ?? (messages[0] ? queueLine(messages[0].text) : "");
     return (
       <section aria-label={queueCountLabel(count)} data-queue-summary className={sectionClass}>
         <ListRow
           tone="quiet"
           leading={<Glyph icon={Clock} size={14} />}
-          title={queueSummary(messages, props.waiting)}
+          title={
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="shrink-0 font-medium text-fg-2 tabular-nums">{queueCountLabel(count)}</span>
+              {preview && (
+                <>
+                  <span aria-hidden className="shrink-0 text-fg-3">
+                    ·
+                  </span>
+                  <span className="min-w-0 truncate text-fg-3">{preview}</span>
+                </>
+              )}
+            </span>
+          }
           tip={messages.map((m) => queueLine(m.text)).join("\n")}
           expanded={false}
-          className="rounded-md"
+          className="rounded-sm"
           onClick={() => setUnfolded(true)}
-          trailing={<Glyph icon={ChevronDown} size={14} className="mx-1.5 text-fg-3" />}
+          trailing={
+            <span aria-hidden className="grid size-6 shrink-0 place-items-center text-fg-3">
+              <Glyph icon={ChevronDown} size={14} />
+            </span>
+          }
           trailingShown
         />
       </section>
     );
+  }
+  const queueHint = unsupported ? STEER_REASON : "Sent one by one when the current reply ends.";
   return (
     <section aria-label={queueCountLabel(count)} className={sectionClass}>
       {/* Round 3: narrow — the sentence is one info glyph's tooltip in the header (it took three lines of the card at 390). */}
-      <SectionHeader
-        inset
-        level="caption"
-        as="h3"
-        aside={
-          view.shown.length > 0 ? (
-            <span className="inline-flex">
-              <span data-steer-reason={unsupported ? "" : undefined} className="inline-flex">
-                <IconButton icon={Info} size="xs" label={unsupported ? STEER_REASON : "Sent one by one when the current reply ends."} />
-              </span>
-              <IconButton icon={ChevronUp} size="xs" label="Fold the queue" aria-expanded onClick={() => setUnfolded(false)} />
-            </span>
-          ) : undefined
-        }
-      >
-        <span className="tabular-nums">
-          {props.paused
-            ? `${queueCountLabel(count)} · paused after a failed or stopped reply`
-            : props.waiting
-              ? `${queueCountLabel(count)} · ${props.waiting}`
-              : queueCountLabel(count)}
-        </span>
-      </SectionHeader>
+      <div className="flex h-ctl-xs min-w-0 items-center gap-1 pr-1 pl-2">
+        <h3 className="flex min-w-0 flex-1 items-center gap-1.5 text-xs">
+          <span className="shrink-0 font-medium text-fg-2 tabular-nums">{queueCountLabel(count)}</span>
+          {props.paused ? (
+            <span className="min-w-0 truncate text-fg-3">· paused after a failed or stopped reply</span>
+          ) : props.waiting ? (
+            <span className="min-w-0 truncate text-fg-3">· {props.waiting}</span>
+          ) : null}
+        </h3>
+        {view.shown.length > 0 && (
+          <span className="flex shrink-0 items-center gap-0.5">
+            <IconButton
+              icon={Info}
+              size="xs"
+              label={queueHint}
+              data-steer-reason={unsupported ? "" : undefined}
+              onClick={() => undefined}
+              className="text-fg-3 hover:text-fg-2"
+            />
+            <IconButton icon={ChevronUp} size="xs" label="Fold the queue" aria-expanded onClick={() => setUnfolded(false)} />
+          </span>
+        )}
+      </div>
       {props.paused && (
-        <div className="flex min-h-ctl-sm flex-wrap items-center gap-2 pr-0.5 pl-2">
+        <div className="flex min-h-ctl-sm flex-wrap items-center gap-2 rounded-sm bg-hover pr-1 pl-2 text-xs">
           <Glyph icon={Pause} size={14} className="shrink-0 text-fg-3" />
           <span className="min-w-0 flex-1 text-fg-2">Nothing is sent until you resume.</span>
-          <Button size="xs" variant="secondary" disabled={pending !== null} onClick={() => void run({ kind: "resume" }, props.onResume, "resume the queue")}>
-            Resume
-          </Button>
-          <Button size="xs" variant="quiet" disabled={pending !== null} onClick={() => void run({ kind: "clear" }, props.onClear, "clear the queue")}>
-            Clear
-          </Button>
+          <span className="flex shrink-0 items-center gap-1">
+            <Button size="xs" variant="secondary" disabled={pending !== null} onClick={() => void run({ kind: "resume" }, props.onResume, "resume the queue")}>
+              Resume
+            </Button>
+            <Button size="xs" variant="quiet" disabled={pending !== null} onClick={() => void run({ kind: "clear" }, props.onClear, "clear the queue")}>
+              Clear
+            </Button>
+          </span>
         </div>
       )}
       {view.shown.length > 0 && (
-        <ul className="flex flex-col">
+        <ul className="flex flex-col gap-0.5">
           {view.shown.map((m) => {
             const busy = pending !== null && "id" in pending && pending.id === m.id;
-            const text = `${queuedModeTag(m.mode) ? `${queuedModeTag(m.mode)} ` : ""}${queueLine(m.text) || "(empty message)"}`;
+            const tag = queuedModeTag(m.mode);
+            const line = queueLine(m.text) || "(empty message)";
             const sendNow = () => void steer(m.id);
             const stopSend = () => void run({ kind: "stop", id: m.id }, () => props.onStopAndSend(m.id), "stop and send it");
             const remove = () => void run({ kind: "remove", id: m.id }, () => props.onRemove(m.id), "remove it");
             return (
               <li key={m.id} data-row>
                 <ListRow
-                  tone="quiet"
                   leading={<Glyph icon={Clock} size={14} />}
-                  title={text}
+                  title={
+                    tag ? (
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="shrink-0 rounded-xs border border-line bg-panel px-1 text-xs font-medium text-fg-2">{tag}</span>
+                        <span className="min-w-0 truncate">{line}</span>
+                      </span>
+                    ) : (
+                      line
+                    )
+                  }
                   tip={m.text}
-                  className={cn(busy && "opacity-70")}
+                  className={cn("hover:bg-hover", busy && "opacity-70")}
                   meta={steering.has(m.id) ? <span data-steering>Sends at the next step</span> : undefined}
+                  trailingShown
                   trailing={
                     steering.has(m.id) ? undefined : (
                       <>
-                        <span className="flex gap-0.5 @max-[480px]/queue:hidden">
-                          {!unsupported && <IconButton icon={CornerDownLeft} size="xs" label="Send now" disabled={pending !== null} onClick={sendNow} />}
-                          <IconButton icon={CircleStop} size="xs" label="Stop and send it now" disabled={pending !== null} onClick={stopSend} />
+                        <span className="flex items-center gap-1 @max-[480px]/queue:hidden">
+                          {unsupported ? (
+                            <Button
+                              variant="quiet"
+                              size="xs"
+                              icon={CircleStop}
+                              title="Stop the current reply and send this next"
+                              disabled={pending !== null}
+                              onClick={stopSend}
+                            >
+                              Stop &amp; send
+                            </Button>
+                          ) : (
+                            <>
+                              <Button
+                                variant="quiet"
+                                size="xs"
+                                icon={CornerDownLeft}
+                                title="Send at the next step without stopping"
+                                disabled={pending !== null}
+                                onClick={sendNow}
+                              >
+                                Send now
+                              </Button>
+                              <IconButton icon={CircleStop} size="xs" label="Stop and send it now" disabled={pending !== null} onClick={stopSend} />
+                            </>
+                          )}
                           <IconButton icon={X} size="xs" label="Remove from queue" disabled={pending !== null} onClick={remove} />
                         </span>
                         <span className="hidden @max-[480px]/queue:inline-flex">

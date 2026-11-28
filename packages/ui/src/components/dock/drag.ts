@@ -14,7 +14,7 @@ export { dragStep, takeSettle, useDrag, useIsDragging } from "./dragStore";
  * that was released before then is not tracked (it would wait for a release that already happened).
  */
 export function pressTab(e: React.PointerEvent, ws: WorkspaceValue, tab: TabId, label: string) {
-  if (e.button !== 0 || ws.narrow) return;
+  if (e.button !== 0) return;
   const wrapper = e.currentTarget instanceof HTMLElement ? e.currentTarget : null;
   if (!wrapper) return;
   const press = {

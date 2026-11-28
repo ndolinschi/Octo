@@ -148,28 +148,22 @@ const TreeNodeRow = memo(function TreeNodeRow({
       )}
     >
       <Indent px={indent} />
-      {vscodeIcons ? (
-        row.kind === "dir" ? (
-          <span aria-hidden className="flex shrink-0 items-center gap-0.5 text-fg-3">
-            <img src={vscodeIcons.folderIcon(row.name, row.expanded)} alt="" className="size-4 shrink-0" draggable={false} />
-            <Glyph icon={ChevronRight} size={12} className={cn("transition-[rotate] duration-base", row.expanded && "rotate-90")} />
-          </span>
+      {/* One 24px glyph column (decided once, v6.2): every folder and file icon at a level shares one vertical center
+          (aligned with `.octo-tree-indent` guides) and every label starts on one edge. */}
+      <span aria-hidden className="grid size-6 shrink-0 place-items-center text-fg-3">
+        {vscodeIcons ? (
+          <img
+            src={row.kind === "dir" ? vscodeIcons.folderIcon(row.name, row.expanded) : vscodeIcons.fileIcon(row.name)}
+            alt=""
+            className="size-4 shrink-0"
+            draggable={false}
+          />
+        ) : Icon ? (
+          <Glyph icon={Icon} size={14} />
         ) : (
-          <span aria-hidden className="grid size-4 shrink-0 place-items-center">
-            <img src={vscodeIcons.fileIcon(row.name)} alt="" className="size-4 shrink-0" draggable={false} />
-          </span>
-        )
-      ) : (
-        /* One glyph column (decided once, v6.2): a folder's chevron or a file's type glyph, so every label of a
-           level starts on one edge. */
-        <span aria-hidden className="grid size-6 shrink-0 place-items-center text-fg-3">
-          {Icon ? (
-            <Glyph icon={Icon} size={14} />
-          ) : (
-            <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-base", row.kind === "dir" && row.expanded && "rotate-90")} />
-          )}
-        </span>
-      )}
+          <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-base", row.kind === "dir" && row.expanded && "rotate-90")} />
+        )}
+      </span>
       <span data-label className={cn("ml-1.5 min-w-0 truncate", isRoot ? "text-xs font-medium text-fg-3" : "text-fg")} title={chain ? row.title : row.name}>
         {/* A root keeps what tells it from the other roots; a compact chain ("com/wsgc/…/config") keeps its last folder. */}
         {isRoot ? (
@@ -182,6 +176,11 @@ const TreeNodeRow = memo(function TreeNodeRow({
           row.name
         )}
       </span>
+      {vscodeIcons && row.kind === "dir" && (
+        <span aria-hidden className="ml-1.5 grid size-4 shrink-0 place-items-center text-fg-3">
+          <Glyph icon={ChevronRight} size={12} className={cn("transition-[rotate] duration-base", row.expanded && "rotate-90")} />
+        </span>
+      )}
       {comments > 0 && (
         <span className="ml-auto pr-1 pl-2">
           <CommentCount count={comments} />

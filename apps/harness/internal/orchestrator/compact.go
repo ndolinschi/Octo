@@ -105,6 +105,7 @@ func (o *Orchestrator) CompactSession(ctx context.Context, pid, sid string) (Com
 	if err != nil {
 		return CompactResult{}, err
 	}
+	hadPrev = hasUsableCompaction(prev, hadPrev)
 	stored, err := db.Messages(ctx, orch.ID)
 	if err != nil {
 		return CompactResult{}, err

@@ -491,6 +491,8 @@ const UserPrompt = memo(function UserPrompt({
     return () => ro.disconnect();
   }, [text, expanded]);
 
+  const hasCards = comments.length > 0 || designNotes.length > 0;
+
   return (
     <div data-prompt className="relative">
       {/* The bubble's meta (who sent it, that it landed mid-reply) sits above it, outside the fill, in the meta tone. */}
@@ -502,17 +504,30 @@ const UserPrompt = memo(function UserPrompt({
       )}
       <div
         data-bubble
-        data-one-line={(oneLine && !external && !steered && images.length === 0 && comments.length === 0 && designNotes.length === 0) || undefined}
+        data-one-line={(oneLine && !external && !steered && images.length === 0 && !hasCards) || undefined}
+        data-has-cards={hasCards || undefined}
         // R2 (owner's addition 10): the shape, padding and fill are the request bubble's block in styles.css (the raised tone, E1).
         className={cn("transition-[box-shadow] duration-slow forced-colors:border", compact ? "text-sm" : "text-base")}
       >
         {text && (
-          <div ref={box} id={id} data-long-word={longWord || undefined} className={cn("wrap-anywhere whitespace-pre-wrap", !expanded && "line-clamp-8")}>
+          <div
+            ref={box}
+            id={id}
+            data-long-word={longWord || undefined}
+            className={cn("wrap-anywhere whitespace-pre-wrap", !expanded && "line-clamp-8", hasCards && "px-2 pt-1")}
+          >
             {text}
           </div>
         )}
         {text && (overflows || expanded) && (
-          <Button variant="quiet" size="xs" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded((x) => !x)} className="mt-1 -ml-2">
+          <Button
+            variant="quiet"
+            size="xs"
+            aria-expanded={expanded}
+            aria-controls={id}
+            onClick={() => setExpanded((x) => !x)}
+            className={cn("mt-1", !hasCards && "-ml-2")}
+          >
             {expanded ? "Show less" : "Show more"}
           </Button>
         )}
@@ -522,14 +537,14 @@ const UserPrompt = memo(function UserPrompt({
           </Suspense>
         )}
         {comments.length > 0 && (
-          <div className={cn(text && "mt-3")}>
+          <div className={cn((text || images.length > 0) && "mt-2")}>
             <Suspense fallback={null}>
               <SentComments comments={comments} />
             </Suspense>
           </div>
         )}
         {designNotes.length > 0 && (
-          <div className={cn((text || comments.length > 0 || images.length > 0) && "mt-3")}>
+          <div className={cn((text || comments.length > 0 || images.length > 0) && "mt-2")}>
             <Suspense fallback={null}>
               <SentDesignNotes notes={designNotes} />
             </Suspense>

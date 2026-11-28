@@ -1,12 +1,16 @@
 import { ChevronDown, type LucideIcon } from "lucide-react";
 import { forwardRef, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
+import { CONTROL } from "../../lib/controls";
 import { Glyph } from "./Glyph";
 import { MiddleText } from "./MiddleText";
 
+const BARE_SIZE = { xs: "w-ctl-xs", sm: "w-ctl-sm" } as const;
+
 /**
- * A ghost chip (decision 62: the composer's control row, and the same model chip in the title bar): 28px, glyph + label + one small down chevron (12px,
- * `fg-3`; E2, owner 2026-11-18: the up-down pair read as noise four times in a row). `bare` drops the label (the row is too narrow); the accessible name keeps it.
+ * A ghost chip (decision 62: the composer's control row, and the same model chip in the title bar): 28px (`sm`, default) or
+ * 24px (`xs`, compact metadata bars), glyph + label + one small down chevron (12px, `fg-3`; E2, owner 2026-11-18: the up-down
+ * pair read as noise four times in a row). `bare` drops the label (the row is too narrow); the accessible name keeps it.
  */
 export const Chip = forwardRef<
   HTMLButtonElement,
@@ -17,6 +21,7 @@ export const Chip = forwardRef<
     label: string;
     name: string;
     tip?: string | undefined;
+    size?: "xs" | "sm";
     bare?: boolean;
     open?: boolean;
     warn?: boolean;
@@ -28,7 +33,8 @@ export const Chip = forwardRef<
      */
     parts?: { provider: string; model: string } | null | undefined;
   }
->(function Chip({ icon, lead, label, name, tip, bare = false, open = false, warn = false, cut = "middle", parts, className, ...rest }, ref) {
+>(function Chip({ icon, lead, label, name, tip, size = "sm", bare = false, open = false, warn = false, cut = "middle", parts, className, ...rest }, ref) {
+  const spec = CONTROL[size];
   return (
     <button
       ref={ref}
@@ -38,14 +44,16 @@ export const Chip = forwardRef<
       title={tip ?? `${name}: ${label}`}
       aria-expanded={open}
       className={cn(
-        "touch-hit flex h-ctl-sm min-w-0 shrink-0 press items-center gap-1.5 rounded-sm text-sm hover:bg-hover disabled:pointer-events-none disabled:opacity-50",
-        bare ? "w-ctl-sm justify-center" : "px-2",
+        "touch-hit flex min-w-0 shrink-0 press items-center gap-1.5 rounded-sm hover:bg-hover disabled:pointer-events-none disabled:opacity-50",
+        spec.h,
+        spec.text,
+        bare ? cn(BARE_SIZE[size], "justify-center") : "px-2",
         open ? "bg-active text-fg" : warn ? "text-warn hover:text-warn" : "text-fg-2 hover:text-fg",
         className,
       )}
       {...rest}
     >
-      {lead ?? (icon && <Glyph icon={icon} size={14} className="shrink-0" />)}
+      {lead ?? (icon && <Glyph icon={icon} size={spec.glyph} className="shrink-0" />)}
       {!bare && (
         <span data-chip-label className="flex min-w-0 items-center gap-1.5">
           {parts ? <PartsLabel key={label} parts={parts} /> : cut === "end" ? <span className="min-w-0 truncate">{label}</span> : <MiddleText text={label} />}

@@ -1,5 +1,5 @@
-import type { TabId } from "../../state/workspace/layout";
-import { clampLeft, insertionIndex, toMoveIndex, type Slot } from "../../state/workspace/tabStrip";
+import { parseTabId, type TabId } from "../../state/workspace/layout";
+import { clampLeft, insertionIndex, narrowStripDropTarget, toMoveIndex, type Slot } from "../../state/workspace/tabStrip";
 import type { DropTarget, WorkspaceValue } from "../../state/workspace/WorkspaceProvider";
 import { getDrag, setDrag, setSettle, type Rect } from "./dragStore";
 import { MOTION_BASE_MS, MOTION_FAST_MS } from "../../lib/constants";
@@ -17,7 +17,7 @@ const EDGE = 0.25;
 /** The window's far right edge: dropping there makes a new group after the last one. */
 const FAR_EDGE = 24;
 
-type StripSnap = { group: string; strip: DOMRect; list: DOMRect; slots: Slot[]; pinned: number };
+type StripSnap = { group: string; strip: DOMRect; list: DOMRect; slots: Slot[]; shown: TabId[]; pinned: number };
 
 function snapshot(): StripSnap[] {
   // Width transitions (an activated icon-only tab widening) end now, so every slot is measured where it will rest.
@@ -28,6 +28,10 @@ function snapshot(): StripSnap[] {
     const list = el.querySelector<HTMLElement>("[data-tab-list]");
     if (!group || !strip || !list || el.hidden) return [];
     const wrappers = [...list.querySelectorAll<HTMLElement>("[data-tab-wrapper]")];
+    const shown = wrappers.flatMap((w) => {
+      const parsed = parseTabId(w.querySelector<HTMLElement>("[data-tab-id]")?.dataset.tabId);
+      return parsed ? [parsed] : [];
+    });
     return [
       {
         group,
@@ -37,6 +41,7 @@ function snapshot(): StripSnap[] {
           const r = w.getBoundingClientRect();
           return { left: r.left, width: r.width };
         }),
+        shown,
         pinned: wrappers.filter((w) => w.dataset.pinned !== undefined).length,
       },
     ];
@@ -110,8 +115,9 @@ export function trackPress(p: Press, ws: WorkspaceValue, tab: TabId, label: stri
     const fromIndex = from?.index ?? -1;
     const base = { tab, label, x, y, fromGroup, fromIndex, width: own.width };
     const left = x - grab;
-    // Inside its own strip (anywhere along it, the tools included) the tab stays attached, clamped to the tab list.
-    const attached = !!source && y >= source.strip.top - DETACH && y <= source.strip.bottom + DETACH && x >= source.strip.left && x <= source.strip.right;
+    // Inside its own strip (anywhere along it, the tools included) — or always in narrow single-strip mode — the tab stays attached, clamped to the tab list.
+    const attached =
+      !!source && (ws.narrow || (y >= source.strip.top - DETACH && y <= source.strip.bottom + DETACH && x >= source.strip.left && x <= source.strip.right));
     const over = attached ? source : snaps.find((s) => x >= s.strip.left && x <= s.strip.right && y >= s.strip.top && y <= s.strip.bottom);
     if (over) {
       const mine = over.group === fromGroup;
@@ -121,7 +127,11 @@ export function trackPress(p: Press, ws: WorkspaceValue, tab: TabId, label: stri
       const center = left + own.width / 2;
       // The pinned Orchestrator tab never leaves first place; nothing goes before it.
       const index = pinnedTab ? 0 : insertionIndex(over.slots, mine ? fromIndex : -1, center, over.pinned);
-      const target: DropTarget = { kind: "strip", group: over.group, index: mine ? toMoveIndex(fromIndex, index) : index };
+      const rawIndex = mine ? toMoveIndex(fromIndex, index) : index;
+      const resolved = ws.narrow ? narrowStripDropTarget(ws.layout.groups, tab, over.shown, rawIndex) : null;
+      const target: DropTarget = resolved
+        ? { kind: "strip", group: resolved.groupId, index: resolved.index }
+        : { kind: "strip", group: over.group, index: rawIndex };
       const ok = ws.canDrop(tab, target);
       const dx = attached ? shown - own.left : 0;
       return setDrag({ ...base, attached, dx, slot: ok ? { group: over.group, index } : null, target: ok ? target : null, indicator: null });
@@ -132,11 +142,14 @@ export function trackPress(p: Press, ws: WorkspaceValue, tab: TabId, label: stri
   const begin = () => {
     dragging = true;
     snaps = snapshot();
+    const live = wrapper.isConnected
+      ? wrapper
+      : (document.querySelector<HTMLElement>(`[role="tab"][data-tab-id="${CSS.escape(tab)}"]`)?.closest<HTMLElement>("[data-tab-wrapper]") ?? wrapper);
     const before = own;
-    own = wrapper.getBoundingClientRect();
+    own = live.getBoundingClientRect();
     grab = Math.max(4, Math.min(own.width - 4, grab + (before.left - own.left)));
-    const group = wrapper.closest<HTMLElement>("[data-dock-group]")?.dataset.dockGroup ?? "";
-    const index = [...(wrapper.parentElement?.querySelectorAll("[data-tab-wrapper]") ?? [])].indexOf(wrapper);
+    const group = live.closest<HTMLElement>("[data-dock-group]")?.dataset.dockGroup ?? "";
+    const index = [...(live.parentElement?.querySelectorAll("[data-tab-wrapper]") ?? [])].indexOf(live);
     from = { group, index };
     body.cursor = "grabbing";
     body.userSelect = "none";

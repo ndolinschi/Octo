@@ -799,6 +799,7 @@ function Message({
         projectId={projectId}
         folder={folder}
         path={path}
+        workspaceId={code.workspaceId}
         sizeHint={listedSize}
         bottomRoom={bottomRoom}
         fallback={notice}

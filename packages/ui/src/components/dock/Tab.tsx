@@ -97,7 +97,11 @@ export const Tab = memo(function Tab(props: {
         title={info.title}
         aria-description={commentsDescription(info.comments)}
         onKeyDown={props.onKeyDown}
-        className={cn("flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 text-sm focus-inset", hasTrailing && slot && "pr-1")}
+        className={cn(
+          "flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 text-sm focus-visible:shadow-none focus-visible:outline-none",
+          hasTrailing && slot && "pr-1",
+          !slot && canClose && "group-focus-within/tab:tab-close-fade group-hover/tab:tab-close-fade",
+        )}
       >
         <span aria-hidden className="grid size-4 shrink-0 place-items-center">
           {info.glyph ? <StateGlyph state={info.glyph} /> : <Glyph icon={info.icon} size={14} />}
@@ -108,10 +112,7 @@ export const Tab = memo(function Tab(props: {
           data-tab-label
           data-bold={info.detail ? `${info.label} / ${info.detail}` : info.label}
           aria-hidden={info.name ? true : undefined}
-          className={cn(
-            "flex min-w-0 flex-col overflow-hidden after:invisible after:h-0 after:font-medium after:whitespace-nowrap after:content-[attr(data-bold)]",
-            !slot && canClose && "group-focus-within/tab:tab-close-fade group-hover/tab:tab-close-fade",
-          )}
+          className="flex min-w-0 flex-col overflow-hidden after:invisible after:h-0 after:font-medium after:whitespace-nowrap after:content-[attr(data-bold)]"
         >
           <span className={cn("min-w-0 truncate", selected && "font-medium")}>
             {info.label}
@@ -145,8 +146,9 @@ export const Tab = memo(function Tab(props: {
               onPointerDown={(e) => e.stopPropagation()}
               onClick={props.onClose}
               className={cn(
-                // A 24px hit area around the 16px slot (decision 36); without a slot it sits over the faded title end.
-                slot ? "absolute -inset-1" : "absolute top-1/2 right-1 -translate-y-1/2",
+                // A 24px hit area with uniform 2px inset and concentric 4px radius (`rounded-xs`) inside the 28px/6px tab.
+                "rounded-xs",
+                slot ? "absolute -inset-1" : "absolute top-1/2 right-0.5 -translate-y-1/2",
                 selected && info.status !== "modified"
                   ? ""
                   : "pointer-events-none opacity-0 transition-opacity duration-fast group-focus-within/tab:pointer-events-auto group-focus-within/tab:opacity-100 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100",

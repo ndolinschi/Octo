@@ -22,6 +22,7 @@ export function ImagePreview(props: {
   projectId: string;
   folder: string;
   path: string;
+  workspaceId?: string | undefined;
   /** The size the tree listed, for "Too large to preview" (the refusal carries none). */
   sizeHint: number | undefined;
   /** An SVG already open as text: drawn from this text (unsaved edits included), nothing is fetched. */
@@ -34,7 +35,7 @@ export function ImagePreview(props: {
   const { bridge } = useApp();
   const canRead = fileBytesReader(bridge) !== undefined;
   // The caller keys this by file, so a new file starts from "loading" without an effect resetting it.
-  const { projectId, folder, path, svgText } = props;
+  const { projectId, folder, path, workspaceId, svgText } = props;
   const [fetched, setLoad] = useState<Load>({ status: "loading" });
   const fromText = svgText !== undefined;
   const load: Load = svgText === undefined ? fetched : { status: "ready", url: svgTextUrl(svgText), size: new TextEncoder().encode(svgText).length };
@@ -48,14 +49,14 @@ export function ImagePreview(props: {
     const read = fileBytesReader(bridge);
     if (!read || fromText) return;
     let live = true;
-    read(projectId, folder, path).then(
+    read(projectId, folder, path, workspaceId ? { workspaceId } : undefined).then(
       (b) => live && setLoad({ status: "ready", url: imageDataUrl(path, b.content), size: b.size }),
       (e: unknown) => live && setLoad(errorCode(e) === "file_too_large" ? { status: "too_large" } : { status: "error", message: errorMessage(e) }),
     );
     return () => {
       live = false;
     };
-  }, [bridge, projectId, folder, path, attempt, fromText]);
+  }, [bridge, projectId, folder, path, workspaceId, attempt, fromText]);
 
   // The pixel size, read from the decoded picture (not from an event on the <img>).
   const url = load.status === "ready" ? load.url : null;

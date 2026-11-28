@@ -32,6 +32,7 @@ func (rt *runtime) loadHistoryWith(ctx context.Context, agentID string, load ima
 	if err != nil {
 		return nil, err
 	}
+	compacted = hasUsableCompaction(comp, compacted)
 	history := make([]anthropic.MessageParam, 0, len(stored)+1)
 	switch {
 	case compacted && comp.Cleared:
@@ -49,6 +50,12 @@ func (rt *runtime) loadHistoryWith(ctx context.Context, agentID string, load ima
 			return nil, err
 		}
 		if ok {
+			if rt.turnID != 0 && m.ID == rt.turnID && m.Role == "user" {
+				if e, isRetry := failedRetryBefore(stored, i, ended); isRetry {
+					blocks := append([]anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(retryContinuationNote(e))}, agent.ContentOf(p)...)
+					p = anthropic.NewUserMessage(blocks...)
+				}
+			}
 			history = append(history, p)
 		}
 		if e, unanswered := closesUnanswered(stored, i, ended); unanswered && ok {

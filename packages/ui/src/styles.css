@@ -519,9 +519,14 @@
   }
 }
 
-/* Fade a tab's trailing label edge under its hover/focus close button (24px → 4px, on scale). */
+/* Fade a tab's trailing content to transparent at the exact left edge of its 24px hover/focus close button (`right-0.5`: W − 26px..W − 2px). */
 @utility tab-close-fade {
-  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent calc(100% - 4px));
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent calc(100% - 26px));
+}
+[data-tab-wrapper]:has(> [role="tab"]:focus-visible) {
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 2px var(--octo-focus);
 }
 
 /* Controls that carry their own elevation shadow (chips, Jump to latest, the comment "+"): the focus ring is
@@ -2755,6 +2760,10 @@ article:not(:has(> [data-turn-changes])):is(:hover, :focus-within) [data-restore
   border-radius: 18px;
   padding: 12px 16px;
   border-color: transparent;
+}
+[data-prompt] > [data-bubble][data-has-cards] {
+  border-radius: 16px;
+  padding: 8px;
 }
 [data-prompt] > [data-bubble][data-one-line],
 [data-pinned-box] > button[data-one-line] {

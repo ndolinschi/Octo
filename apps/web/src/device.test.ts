@@ -14,6 +14,6 @@ test("a change of read-only or permissions is noticed, nothing else", () => {
   assert.equal(deviceChanged(a, { ...a, permissions: ["answer"] }), true);
 });
 
-test("WEB_PHONE_QUERY matches packages/ui landscape height threshold", () => {
-  assert.equal(WEB_PHONE_QUERY, "(max-width: 640px), (pointer: coarse) and (max-height: 479.98px)");
+test("WEB_PHONE_QUERY matches packages/ui 414px mobile threshold", () => {
+  assert.equal(WEB_PHONE_QUERY, "(max-width: 414px), (pointer: coarse) and (max-height: 414px)");
 });
